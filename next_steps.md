@@ -2,16 +2,15 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state (2026-06-12):** Neon is provisioned (`neon-teal-cushion`, via Vercel marketplace) and the schema is live and verified on it: migration + seed ran clean, all 8 tables, 22 indexes, 5 `types` rows, 1 `users` row, `/health` green locally against the pooled connection. Slice 3 (auth) is code-complete (ADR-004): all routes Clerk-protected with `/sign-in` page, `/health` + `/api/machine/*` excluded, hashed scoped API tokens (`LEDGR_API_TOKENS`, `scripts/make-token.mjs`), `/api/machine/ping` verified locally (200 with token, 401 without). **Blocked on Brandon (one-time browser steps):** (1) connect GitHub to the Vercel account (Account Settings → Authentication → Login Connections) — every deploy is currently BLOCKED because Vercel can't verify the commit author against the Hobby-team owner; (2) create the Clerk app (Microsoft sign-in only, restricted sign-ups) and add its keys to Vercel env. Once (1) is done, Claude redeploys and verifies `/health` green + machine ping in production; once (2) is done, slice 3 verification completes (signed-out blocked, Microsoft sign-in works).
+**Current state (2026-06-12, end of day):** Production is fully live and verified: `/health` green (Neon via pooler), GitHub push → auto-deploy working, signed-out browsers redirected to `/sign-in` (API clients get 404), `/api/machine/ping` 200 with the diag token / 401 without. Clerk is wired end to end (app `app_3F2TycnY7yaP2Lypfc3gFp0KLls`, dev instance `tough-redbird-21.clerk.accounts.dev`, keys in `.env.local` + all three Vercel envs); sign-ups are allowlist-restricted to brandoncollins@edgewoodcommunity.org (set via Backend API). **Remaining for slice 3:** (1) Brandon signs in once at https://ledgr-teal.vercel.app with the Microsoft account (creates his Clerk user, backfills `users.clerk_id`, home shows "Signed in as …"); (2) optional dashboard tidy-up: disable Apple, Google, and Email/password so Microsoft is the only visible method (Clerk dashboard → Configure). Then flip the auth box and start slice 4.
 
 ---
 
 ## Next up (in order)
 
-### 3v. Finish slice 3 verification (needs Brandon's two browser steps above)
-- Redeploy production; verify `/health` green and `/api/machine/ping` 200/401 in production (diag token: `.env.claude-diag.local`).
-- With Clerk keys in Vercel env (incl. `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`): verify signed-out users land on `/sign-in`, Microsoft sign-in works, home page shows the resolved owner email (proves the `clerk_id` backfill in `src/lib/owner.ts` ran).
-- Flip the roadmap boxes (scaffold, auth) when green; move slice 3 to done here.
+### 3v. Finish slice 3 (one manual step)
+- Brandon signs in once with Microsoft at the production URL; confirm home shows "Signed in as brandoncollins@edgewoodcommunity.org" (proves the `clerk_id` backfill in `src/lib/owner.ts` ran; check `users.clerk_id` is set).
+- Flip the auth roadmap box; move slice 3 to done here.
 
 ### 4. Item CRUD (owner-scoped)
 - Create/read/update/soft-delete, all filtered on `owner_id`.
