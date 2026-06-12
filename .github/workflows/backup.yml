@@ -1,0 +1,179 @@
+# Weekly pg_dump of the Neon DB (runbook §4) + the tested-restore proof.
+#
+# Two jobs:
+#   backup       — weekly cron + manual: pg_dump -Fc, stored as a workflow
+#                  artifact (60-day retention, private repo), plus a copy to
+#                  OneDrive /Ledgr/Backups/ when the Graph secrets exist
+#                  (they arrive with runbook §1b).
+#   restore-test — manual only: dumps production, restores into a throwaway
+#                  Postgres container, and compares per-table row counts.
+#                  "An untested backup is a hope, not a backup."
+#
+# Failures surface twice: GitHub emails the repo owner on workflow failure,
+# and when LEDGR_ERROR_TOKEN is set the failed run also lands in error_log
+# via POST /api/machine/report-error, so /health counts it.
+#
+# Friday 05:00 UTC: a fresh dump exists before every Sunday, and it never
+# collides with the Saturday-night no-deploy window.
+name: backup
+
+on:
+  schedule:
+    - cron: "0 5 * * 5"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run"
+        type: choice
+        options: [backup, restore-test]
+        default: backup
+
+permissions:
+  contents: read
+
+env:
+  PG_MAJOR: "17"
+
+jobs:
+  backup:
+    if: github.event_name == 'schedule' || inputs.job == 'backup'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install matching postgres client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+
+      - name: Dump
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: |
+          test -n "$DATABASE_URL_UNPOOLED" || { echo "::error::DATABASE_URL_UNPOOLED secret is not set"; exit 1; }
+          STAMP="$(date -u +%Y-%m-%d)"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          pg_dump --format=custom --no-owner --file="ledgr-$STAMP.dump" "$DATABASE_URL_UNPOOLED"
+          ls -la "ledgr-$STAMP.dump"
+          # A custom-format dump starts with the magic bytes PGDMP; a zero-byte
+          # or HTML-error file must fail loudly here, not at restore time.
+          head -c 5 "ledgr-$STAMP.dump" | grep -q "PGDMP"
+
+      - name: Store as workflow artifact (60-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ledgr-backup-${{ env.STAMP }}
+          path: ledgr-${{ env.STAMP }}.dump
+          retention-days: 60
+          if-no-files-found: error
+
+      - name: Copy to OneDrive /Ledgr/Backups (when Graph secrets exist)
+        env:
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+          ONEDRIVE_EXPORT_UPN: ${{ secrets.ONEDRIVE_EXPORT_UPN }}
+        run: |
+          if [ -z "$GRAPH_TENANT_ID" ] || [ -z "$GRAPH_CLIENT_ID" ] || [ -z "$GRAPH_CLIENT_SECRET" ] || [ -z "$ONEDRIVE_EXPORT_UPN" ]; then
+            echo "::warning::Graph secrets not configured; backup stored as artifact only (runbook §1b adds the OneDrive leg)"
+            exit 0
+          fi
+          TOKEN=$(curl -fsS -X POST \
+            "https://login.microsoftonline.com/$GRAPH_TENANT_ID/oauth2/v2.0/token" \
+            -d "client_id=$GRAPH_CLIENT_ID" \
+            -d "client_secret=$GRAPH_CLIENT_SECRET" \
+            -d "scope=https://graph.microsoft.com/.default" \
+            -d "grant_type=client_credentials" | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+          FILE="ledgr-$STAMP.dump"
+          # Upload session: handles any size, unlike the 4MB simple PUT.
+          UPLOAD_URL=$(curl -fsS -X POST \
+            "https://graph.microsoft.com/v1.0/users/$ONEDRIVE_EXPORT_UPN/drive/root:/Ledgr/Backups/$FILE:/createUploadSession" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d '{"item":{"@microsoft.graph.conflictBehavior":"replace"}}' \
+            | python3 -c "import sys,json;print(json.load(sys.stdin)['uploadUrl'])")
+          SIZE=$(stat -c%s "$FILE")
+          curl -fsS -X PUT "$UPLOAD_URL" \
+            -H "Content-Length: $SIZE" \
+            -H "Content-Range: bytes 0-$((SIZE-1))/$SIZE" \
+            --data-binary "@$FILE" > /dev/null
+          echo "uploaded $FILE ($SIZE bytes) to OneDrive /Ledgr/Backups/"
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "https://ledgr-teal.vercel.app/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"backup\",\"message\":\"weekly pg_dump workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true
+
+  restore-test:
+    if: github.event_name == 'workflow_dispatch' && inputs.job == 'restore-test'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: restoretest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - name: Install matching postgres client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+
+      - name: Dump production
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: |
+          test -n "$DATABASE_URL_UNPOOLED" || { echo "::error::DATABASE_URL_UNPOOLED secret is not set"; exit 1; }
+          pg_dump --format=custom --no-owner --file=ledgr.dump "$DATABASE_URL_UNPOOLED"
+          head -c 5 ledgr.dump | grep -q "PGDMP"
+
+      - name: Restore into the throwaway container
+        env:
+          PGPASSWORD: restoretest
+        run: |
+          createdb -h localhost -U postgres ledgr_restore
+          # --no-owner: roles differ between Neon and a vanilla container.
+          pg_restore --no-owner --exit-on-error \
+            -h localhost -U postgres -d ledgr_restore ledgr.dump
+
+      - name: Compare row counts, production vs restored
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          PGPASSWORD: restoretest
+        run: |
+          Q="select table_name || '=' || (xpath('/row/cnt/text()', query_to_xml('select count(*) as cnt from ' || quote_ident(table_name), false, true, '')))[1]::text
+             from information_schema.tables
+             where table_schema='public' and table_type='BASE TABLE'
+             order by table_name"
+          psql "$DATABASE_URL_UNPOOLED" -tA -c "$Q" > prod.txt
+          psql -h localhost -U postgres -d ledgr_restore -tA -c "$Q" > restored.txt
+          echo "--- production ---";  cat prod.txt
+          echo "--- restored ---";    cat restored.txt
+          diff prod.txt restored.txt && echo "RESTORE VERIFIED: all table row counts match"
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "https://ledgr-teal.vercel.app/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"backup\",\"message\":\"restore test failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true
