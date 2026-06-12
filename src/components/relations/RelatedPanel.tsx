@@ -1,24 +1,31 @@
-// Entity page body (slice 6): every item related to the entity, grouped by
-// type — the Notion "tag as dashboard" experience (PRD §4.2). Server
-// component; the query is body-free and owner-scoped (src/lib/relations.ts).
-// Suggested edges (Phase 2 matchers) render grayed with a dashed badge
-// instead of being hidden, so confirming them later has a visible home.
+// Backlinks panel (slice 15, PRD §4.9): every item canvas shows what links
+// here — both-direction traversal of relations, grouped by type, clickable.
+// Grew out of the entity-page Related section (slice 6) and replaces it.
+// Server component; the query is body-free and owner-scoped
+// (src/lib/relations.ts). Suggested edges (Phase 2 matchers) render grayed
+// with a dashed badge plus confirm/reject controls; mention-only rows carry
+// an @ marker and no remove control, because the body owns those edges.
 import Link from "next/link";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
+import { MENTION_ROLE } from "@/lib/mentions";
 import { listRelatedItems, type RelatedItem } from "@/lib/relations";
 import { compareTypeKeys } from "@/lib/type-order";
+import AddRelation from "./AddRelation";
+import RelationActions from "./RelationActions";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
 });
 
-function RelatedRow({ item }: { item: RelatedItem }) {
+function RelatedRow({ itemId, item }: { itemId: string; item: RelatedItem }) {
   const suggested = item.matchState === "suggested";
+  const mention = item.roles.includes(MENTION_ROLE);
+  const mentionOnly = item.roles.every((r) => r === MENTION_ROLE);
   return (
     <li
-      className={`flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60 ${
+      className={`group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60 ${
         suggested ? "opacity-60" : ""
       }`}
     >
@@ -30,6 +37,14 @@ function RelatedRow({ item }: { item: RelatedItem }) {
       >
         {item.title || "Untitled"}
       </Link>
+      {mention && (
+        <span
+          title="Linked by an @-mention in the body"
+          className="shrink-0 text-xs text-neutral-600"
+        >
+          @
+        </span>
+      )}
       {suggested && (
         <span className="shrink-0 rounded border border-dashed border-neutral-600 px-1.5 text-xs text-neutral-500">
           suggested
@@ -48,21 +63,40 @@ function RelatedRow({ item }: { item: RelatedItem }) {
       <span className="shrink-0 text-xs text-neutral-600">
         {dateFmt.format(new Date(item.updatedAt))}
       </span>
+      <RelationActions
+        itemId={itemId}
+        otherId={item.id}
+        suggested={suggested}
+        removable={!mentionOnly}
+      />
     </li>
   );
 }
 
-export default async function RelatedItems({
+export default async function RelatedPanel({
   ownerId,
-  entityId,
+  itemId,
+  itemType,
 }: {
   ownerId: string;
-  entityId: string;
+  itemId: string;
+  itemType: string;
 }) {
   const [related, typeRows] = await Promise.all([
-    listRelatedItems(ownerId, entityId),
+    listRelatedItems(ownerId, itemId),
     getDb().select({ key: types.key, label: types.label }).from(types),
   ]);
+
+  // Non-entity items with nothing linked get the quiet affordance only, no
+  // section chrome (the Subtasks pattern). Entities keep the full section:
+  // the Related list is the entity page's reason to exist (PRD §4.2).
+  if (related.length === 0 && itemType !== "entity") {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-12 pt-2">
+        <AddRelation itemId={itemId} />
+      </div>
+    );
+  }
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
   const byType = new Map<string, RelatedItem[]>();
@@ -74,7 +108,7 @@ export default async function RelatedItems({
   const groups = [...byType.keys()].sort(compareTypeKeys);
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-12 pb-16 pt-4">
+    <section className="mx-auto w-full max-w-3xl px-12 pt-4">
       <h2 className="border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
         Related
         {related.length > 0 && (
@@ -86,7 +120,7 @@ export default async function RelatedItems({
       {groups.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
           Nothing links here yet. @-mention this entity from any item to
-          relate it.
+          relate it, or relate one below.
         </p>
       ) : (
         groups.map((key) => (
@@ -99,12 +133,13 @@ export default async function RelatedItems({
             </h3>
             <ul className="mt-1">
               {byType.get(key)!.map((item) => (
-                <RelatedRow key={item.id} item={item} />
+                <RelatedRow key={item.id} itemId={itemId} item={item} />
               ))}
             </ul>
           </div>
         ))
       )}
+      <AddRelation itemId={itemId} />
     </section>
   );
 }

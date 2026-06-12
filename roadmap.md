@@ -27,7 +27,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Per-type lists with simple filters (2026-06-12: `/tasks` `/meetings` `/notes` `/links` `/entities` + tab strip, filters carried in the URL over the `ViewFilter` shape a future `views` row stores, ADR-011; Tasks nav slot; Trash stays on `/items`)
 - [x] Full-text search (Postgres FTS) filtered by type/entity/date (2026-06-12: `websearch_to_tsquery` over the stored tsvector with `ts_headline` snippets, `/search` + `GET /api/search`, ADR-012; Search nav slot, Ctrl/Cmd+K)
 - [x] Quick capture (global affordance, desktop shortcut, title-only) (2026-06-12: nav "New" button + `q` shortcut open the capture modal — title, type, optional due/urgency, always `inbox: true` — ADR-013; share target rides the PWA-shell slice)
-- [ ] Backlinks panel (traverse `relations` both directions; suggested vs confirmed render)
+- [x] Backlinks panel (traverse `relations` both directions; suggested vs confirmed render) (2026-06-12: `RelatedPanel` on every item canvas — grouped by type, confirm/reject on suggested edges, "+ Relate" typeahead; first relations write path `POST/PATCH/DELETE /api/items/[id]/relations`, ADR-015; entity-at-capture joined the capture modal)
 - [x] Soft delete + Trash (30-day purge); revision snapshots + restore (2026-06-12: cascade soft-delete restores as a unit, daily purge cron at `/api/machine/purge`, debounced snapshots capped at 50; Trash *UI* comes with the list views slice)
 - [ ] PWA shell (installable, responsive)
 - [ ] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}.md` + YAML frontmatter; archive path)

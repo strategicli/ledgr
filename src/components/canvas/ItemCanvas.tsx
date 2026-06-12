@@ -7,7 +7,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ItemEditor from "@/components/editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
-import RelatedItems from "@/components/entity/RelatedItems";
+import RelatedPanel from "@/components/relations/RelatedPanel";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, type CanvasField } from "@/lib/canvas-fields";
 import { ItemError, getItem } from "@/lib/items";
@@ -96,11 +96,9 @@ export default async function ItemCanvas({
         fields={<FieldStrip itemId={item.id} fields={fields} initial={strip} />}
       />
       <Subtasks ownerId={owner.id} itemId={item.id} />
-      {item.type === "entity" && (
-        // Entity page (slice 6): the entity's body is its wiki note; the
-        // related-items dashboard renders beneath it.
-        <RelatedItems ownerId={owner.id} entityId={item.id} />
-      )}
+      {/* Backlinks panel (PRD §4.9): every item shows what links here. On an
+          entity this is the slice-6 "tag as dashboard" Related section. */}
+      <RelatedPanel ownerId={owner.id} itemId={item.id} itemType={item.type} />
       <details className="mx-auto w-full max-w-3xl px-12 pb-12 pt-4">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields

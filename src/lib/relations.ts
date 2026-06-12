@@ -1,13 +1,20 @@
-// Related-items read path (slice 6): the query behind entity pages (PRD
-// §4.2, "tag as dashboard") and the future backlinks panel (PRD §4.9). One
-// both-directions pass over relations, owner-scoped, body-free, live items
-// only. Both match states are returned with the flag carried per row:
-// trusted lists keep only 'confirmed'; the UI renders 'suggested' rows
-// dotted/grayed instead of hiding them.
-import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
+// Relations: the read path behind entity pages and the backlinks panel
+// (slice 6, PRD §4.2 "tag as dashboard" / §4.9), plus the write path
+// (slice 15): relate, un-relate, confirm. One both-directions pass over
+// relations, owner-scoped, body-free, live items only. Both match states are
+// returned with the flag carried per row: trusted lists keep only
+// 'confirmed'; the UI renders 'suggested' rows dotted/grayed instead of
+// hiding them.
+//
+// Mention edges (role 'mention') belong to the body: they are diff-synced
+// from @-mentions on every save (src/lib/mentions.ts), so the write path
+// refuses to create or delete them — a manually deleted mention edge would
+// silently resurrect on the next body save.
+import { and, desc, eq, ne, isNull, or, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
+import { MENTION_ROLE } from "@/lib/mentions";
 
 // Generous bound for a single-user dashboard page; paging can come with the
 // view engine if an entity ever outgrows it.
@@ -74,4 +81,104 @@ export async function listRelatedItems(
     }
   }
   return [...out.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Write path (slice 15). Every entry point validates both ids against the
+// owner before touching relations, because relations rows carry no owner_id
+// of their own (schema.md: ownership lives on the items they connect).
+
+async function assertOwned(
+  ownerId: string,
+  id: string,
+  opts: { live?: boolean } = {}
+) {
+  const rows = await getDb()
+    .select({ deletedAt: items.deletedAt })
+    .from(items)
+    .where(and(eq(items.id, id), eq(items.ownerId, ownerId)));
+  if (rows.length === 0) throw new ItemError("not_found", "item not found");
+  if (opts.live && rows[0].deletedAt !== null) {
+    throw new ItemError("bad_request", "item is in Trash");
+  }
+}
+
+// The backlinks panel is direction-blind (a row is "linked", not "linked
+// from"), so the un-relate and confirm gestures match edges both ways.
+function pairFilter(itemId: string, otherId: string): SQL {
+  return or(
+    and(eq(relations.sourceId, itemId), eq(relations.targetId, otherId)),
+    and(eq(relations.sourceId, otherId), eq(relations.targetId, itemId))
+  )!;
+}
+
+// Manual relate: source -> target with role 'related' by default (PRD §3.4:
+// tagging a task with an entity is an edge from the task to the entity).
+// Upsert on the (source, target, role) unique: re-relating an existing
+// suggested edge confirms it — relating *is* the confirm gesture.
+export async function relateItems(
+  ownerId: string,
+  sourceId: string,
+  targetId: string,
+  role = "related"
+) {
+  if (role === MENTION_ROLE) {
+    throw new ItemError(
+      "bad_request",
+      "mention edges are managed by the body; edit the @-mention instead"
+    );
+  }
+  if (sourceId === targetId) {
+    throw new ItemError("bad_request", "an item cannot relate to itself");
+  }
+  await assertOwned(ownerId, sourceId, { live: true });
+  await assertOwned(ownerId, targetId, { live: true });
+  const rows = await getDb()
+    .insert(relations)
+    .values({ sourceId, targetId, role })
+    .onConflictDoUpdate({
+      target: [relations.sourceId, relations.targetId, relations.role],
+      set: { matchState: "confirmed" },
+    })
+    .returning();
+  return rows[0];
+}
+
+// Un-relate, never delete (PRD §4.9): removes every non-mention edge between
+// the pair in both directions; both items stay. suggestedOnly is the reject
+// gesture for provisional matches — it leaves confirmed edges alone.
+export async function unrelateItems(
+  ownerId: string,
+  itemId: string,
+  otherId: string,
+  opts: { suggestedOnly?: boolean } = {}
+) {
+  await assertOwned(ownerId, itemId);
+  await assertOwned(ownerId, otherId);
+  const where = [pairFilter(itemId, otherId), ne(relations.role, MENTION_ROLE)];
+  if (opts.suggestedOnly) where.push(eq(relations.matchState, "suggested"));
+  const rows = await getDb()
+    .delete(relations)
+    .where(and(...where))
+    .returning({ id: relations.id });
+  return { removed: rows.length };
+}
+
+// Confirm a provisional match: flips every suggested edge between the pair
+// to confirmed (PRD §3.3; the calendar matcher creates these in Phase 2).
+export async function confirmRelations(
+  ownerId: string,
+  itemId: string,
+  otherId: string
+) {
+  await assertOwned(ownerId, itemId);
+  await assertOwned(ownerId, otherId);
+  const rows = await getDb()
+    .update(relations)
+    .set({ matchState: "confirmed" })
+    .where(
+      and(pairFilter(itemId, otherId), eq(relations.matchState, "suggested"))
+    )
+    .returning({ id: relations.id });
+  return { confirmed: rows.length };
 }
