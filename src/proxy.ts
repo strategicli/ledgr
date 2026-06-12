@@ -28,5 +28,7 @@ export const config = {
     // All routes except /health, Next internals, and static files.
     "/((?!health|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
+    // Clerk's auto-proxy path (keyless/dev proxying) must hit the middleware.
+    "/__clerk/:path*",
   ],
 };
