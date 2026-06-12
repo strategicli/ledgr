@@ -29,10 +29,10 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Quick capture (global affordance, desktop shortcut, title-only) (2026-06-12: nav "New" button + `q` shortcut open the capture modal — title, type, optional due/urgency, always `inbox: true` — ADR-013; share target rides the PWA-shell slice)
 - [x] Backlinks panel (traverse `relations` both directions; suggested vs confirmed render) (2026-06-12: `RelatedPanel` on every item canvas — grouped by type, confirm/reject on suggested edges, "+ Relate" typeahead; first relations write path `POST/PATCH/DELETE /api/items/[id]/relations`, ADR-015; entity-at-capture joined the capture modal)
 - [x] Soft delete + Trash (30-day purge); revision snapshots + restore (2026-06-12: cascade soft-delete restores as a unit, daily purge cron at `/api/machine/purge`, debounced snapshots capped at 50; Trash *UI* comes with the list views slice)
-- [ ] PWA shell (installable, responsive)
-- [ ] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}.md` + YAML frontmatter; archive path)
+- [x] PWA shell (installable, responsive) (2026-06-12: manifest + generated icons + conservative SW — shell/static only, never item data, offline fallback page, pinned-cache seam for Pulpit Ready — + GET share target landing URLs as link items and text as tasks, all `inbox: true`, ADR-016; verified on a production build incl. offline navigation and all three share shapes; Brandon installs on his devices)
+- [~] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}-{id8}.md` + YAML frontmatter; archive path) (2026-06-12: engine + Graph app-only target + 06:30 UTC cron + `POST /api/export`, ADR-017; 21/21 checks against Neon with the local target; **awaiting the Azure app registration (runbook §1b, Brandon) for the real OneDrive end-to-end**)
 - [ ] Pulpit Ready action (immediate export + verified offline pin + print-styled PDF)
-- [ ] `/health` endpoint (DB, last export timestamp; Todoist/Graph once they exist)
+- [x] `/health` endpoint (DB, last export timestamp; Todoist/Graph once they exist) (2026-06-12: reports `lastExportAt` — clean runs only — and `lastExportRunAt` from `job_state`; DB check since slice 1; Todoist/Graph checks ride their Phase 2 slices)
 - [ ] Structured JSON logging + correlation ids; toggleable debug mode
 - [ ] Weekly `pg_dump` to OneDrive; restore tested once before Phase 2
 

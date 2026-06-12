@@ -26,7 +26,9 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `R2_BUCKET` | R2 bucket name (`ledgr`) | Cloudflare → R2 |
 | `R2_ENDPOINT` | R2 S3 endpoint URL | Cloudflare → R2 bucket settings |
 | `R2_PUBLIC_BASE_URL` | public CDN base URL for attachments (custom domain or r2.dev) | Cloudflare → R2 bucket settings |
-| `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` | Azure app registration (Phase 2: calendar, email-in, OneDrive export) | Azure portal → App registrations |
+| `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` | Azure app registration, app-only client credentials (OneDrive export now; calendar + email-in join in Phase 2) | Azure portal → App registrations (setup: §1b) |
+| `ONEDRIVE_EXPORT_UPN` | whose OneDrive receives the export tree (Brandon's email); the export job also resolves its `users` row by this email | fixed value |
+| `ONEDRIVE_EXPORT_ROOT` | folder inside that OneDrive holding the export (default `Ledgr` → `/Ledgr/Export/…`) | fixed value, optional |
 | `TODOIST_TOKEN` | Todoist API token (Phase 2) | Todoist settings → Integrations → Developer |
 | `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks): comma-separated `name:scope1+scope2:sha256hex` entries, hashes only | `node scripts/make-token.mjs <name> <scopes>` (§3) |
 | `CRON_SECRET` | Raw `cron`-scoped machine token; Vercel sends it as the Bearer token on scheduled cron requests (§2a) | same generator as `LEDGR_API_TOKENS`; production only |
@@ -66,8 +68,21 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 
 ---
 
+## 1b. Azure app registration for the OneDrive export (one-time, Brandon)
+The export job (ADR-017) authenticates app-only (client credentials): no stored refresh token to expire, no MFA prompt in a cron. Until these steps are done, the nightly export returns a visible 503 ("export target not configured") and `/health` shows `lastExportAt: null`.
+
+1. [Azure portal](https://portal.azure.com) → Microsoft Entra ID → App registrations → **New registration**. Name `ledgr-export`, single tenant, no redirect URI.
+2. On the app's Overview, copy **Directory (tenant) ID** → `GRAPH_TENANT_ID` and **Application (client) ID** → `GRAPH_CLIENT_ID`.
+3. Certificates & secrets → **New client secret** (24 months, the max). Copy the secret **Value** immediately (it never shows again) → `GRAPH_CLIENT_SECRET`. **Put the expiry date on the calendar** (rotation steps: §3).
+4. API permissions → Add a permission → Microsoft Graph → **Application permissions** → `Files.ReadWrite.All` → Add. Then **Grant admin consent** (you're the tenant admin). This is tenant-wide file access, which is why the secret lives only in Vercel env and the app does nothing with Graph except the export writes.
+5. Set the four vars (`GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `ONEDRIVE_EXPORT_UPN=brandoncollins@edgewoodcommunity.org`) in Vercel production env (dashboard or REST API, not piped CLI — BOM gotcha above) and in `.env.local`, redeploy.
+6. Verify: from a signed-in browser console run `fetch('/api/export', {method:'POST'}).then(r=>r.json())`, or trigger the cron manually (§2a). Expect `{exported: N, errors: 0, …}`, files under `/Ledgr/Export/` in OneDrive, and `/health` showing a fresh `lastExportAt`.
+
+---
+
 ## 2. Health and monitoring
-- **`/health`** checks: DB reachable, last successful export timestamp, and (once they exist) Todoist API, Graph token validity.
+- **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome). Todoist API and Graph token checks join once those integrations exist.
+- A stale `lastExportAt` while `lastExportRunAt` advances = runs are happening but failing partway; check `error_log` (source `export`).
 - A **weekly scheduled Claude task** hits `/health` and emails Brandon on failure.
 - The export-timestamp check is the canary for a **silently stalled sync** (see §6, GitHub Actions auto-disable).
 - Debug mode (`DEBUG_MODE` env + per-session UI toggle) surfaces verbose errors, query timings, and calendar-matcher/sync decisions. Off in normal use.
@@ -79,6 +94,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | Job | Schedule | Endpoint | Auth |
 |---|---|---|---|
 | Trash purge (hard-deletes items in Trash > 30 days; child rows cascade) | daily 08:00 UTC (`vercel.json`) | `GET /api/machine/purge` | Vercel sends `Bearer $CRON_SECRET`; `CRON_SECRET` holds the raw `vercel-cron` token (`cron` scope) so platform crons use the ADR-004 machine-token scheme (ADR-005) |
+| OneDrive export (incremental, ≤100 items/run; on-demand twin is `POST /api/export`, user-authed) | daily 06:30 UTC (`vercel.json`) | `GET /api/machine/export` | same `Bearer $CRON_SECRET` path |
 
 - **Run manually:** `curl -H "Authorization: Bearer <cron token>" https://ledgr-teal.vercel.app/api/machine/purge` → `{"ok":true,"purged":N,"detached":M,...}`.
 - **Failures** are written to `error_log` (source `purge`, with correlation id) and logged as structured JSON; check Vercel → Project → Logs, or query `error_log`.
@@ -88,7 +104,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 ---
 
 ## 3. Token and secret rotation
-- **Azure app-only client secret** has an expiry. Track it as a recurring calendar reminder. Rotation steps *(stub, fill when Graph auth is built)*: generate new secret in the app registration, update `GRAPH_CLIENT_SECRET` in Vercel, redeploy, verify `/health` Graph check is green, delete old secret.
+- **Azure app-only client secret** (`ledgr-export` registration, §1b) has an expiry — track it as a calendar reminder. Rotate: app registration → Certificates & secrets → new secret, update `GRAPH_CLIENT_SECRET` in Vercel and `.env.local`, redeploy, run an on-demand export (§1b step 6) and confirm `/health` `lastExportAt` advances, then delete the old secret.
 - **Ledgr API tokens** (MCP/cron/webhooks) are scoped and revocable; only SHA-256 hashes are stored (in `LEDGR_API_TOKENS`), so a leaked env dump yields nothing usable. Rotate on any suspicion of leak.
   - **Issue:** `node scripts/make-token.mjs <name> <scope,scope,…>` prints the raw token (give to the caller, e.g. a GitHub Actions secret; it is never stored server-side) and the env entry. Append the entry, comma-separated, to `LEDGR_API_TOKENS` in Vercel (Project → Settings → Environment Variables), redeploy.
   - **Revoke:** delete that token's entry from `LEDGR_API_TOKENS`, redeploy. The token is dead the moment the new deployment serves.
@@ -101,7 +117,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 ---
 
 ## 4. Backups and restore
-- **Content:** nightly OneDrive markdown export (`/Export/{type}/{year}/{slug}.md` + YAML frontmatter) plus on-demand Pulpit Ready exports.
+- **Content:** nightly OneDrive markdown export (`/Ledgr/Export/{type}/{year}/{slug}-{id8}.md` + YAML frontmatter; trashed/archived items under `/Export/_archive/`, attachment copies under `/Export/_attachments/`) plus on-demand exports (`POST /api/export`, Pulpit Ready's hook).
 - **Everything else:** weekly `pg_dump` of the full DB (relations, revisions, metadata) written to OneDrive via the export job. This is the real restore path (free-tier Postgres PITR is thin).
 - **Attachments:** R2 is durable on its own; OneDrive export holds a second copy.
 - **Restore procedure** *(stub, must be tested once before Phase 2):*

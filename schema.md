@@ -60,6 +60,8 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `todoist_id` | text | nullable; set when synced to Todoist |
 | `ms_event_id` | text | nullable; set when created from a calendar event (dedupe key) |
 | `parent_id` | uuid | nullable; self-FK to `items.id` (containment, §hierarchy) |
+| `exported_at` | timestamptz | nullable; when the OneDrive export last wrote this item (machine state, ADR-017). Incremental selection is `updated_at > exported_at` |
+| `export_path` | text | nullable; where the export file lives, so renames clean up their old file and trash/archive moves to `/_archive/` |
 | `properties` | jsonb | nullable; user-defined custom fields; GIN-indexed |
 | `deleted_at` | timestamptz | nullable; soft-delete marker (Trash; purge after 30 days) |
 | `created_at` | timestamptz | |
@@ -108,7 +110,19 @@ Metadata only. Bytes live in R2 (presigned URLs; bytes never proxy through the a
 | `content_type` | text | |
 | `size_bytes` | bigint | |
 | `storage_key` | text | R2 object key (behind the storage-provider interface) |
+| `exported_at` | timestamptz | nullable; when the export copied the bytes to OneDrive. Attachment bytes are immutable, so one stamp is done forever (ADR-017) |
 | `created_at` | timestamptz | |
+
+---
+
+## `job_state` (Phase 1, slice 17)
+Per-job persistent state, one row per job key: the export job's last-run record now (`onedrive_export` → `{lastRunAt, lastSuccessAt, lastResult}`, read by `/health`); calendar delta links and Todoist sync tokens land here in Phase 2. Machinery, not user content, so it is deliberately not an item.
+
+| Field | Type | Notes |
+|---|---|---|
+| `key` | text PK | job identifier |
+| `value` | jsonb | not null; job-defined shape |
+| `updated_at` | timestamptz | |
 
 ---
 
