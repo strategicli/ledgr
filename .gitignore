@@ -57,3 +57,5 @@ Thumbs.db
 # Misc
 .cache/
 tmp/
+
+.vercel

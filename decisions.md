@@ -53,3 +53,17 @@ stack (Next.js/Vercel, Neon, Drizzle, Clerk, R2, BlockNote), DB-canonical one-wa
 - `/health` reports DB reachability plus a placeholder `lastExportAt`; raw error detail is gated behind `DEBUG_MODE` so failures stay legible without leaking connection details.
 **Why / alternatives:** The Neon HTTP driver was chosen over node-postgres/TCP because it is built for serverless functions and pairs naturally with the pooled endpoint. Requiring Clerk keys at build time was rejected; the no-key fallback keeps the auth seam genuine rather than decorative. Skipping Tailwind was rejected as trading one dependency for a pile of hand-rolled CSS.
 **Affects:** `package.json`, `src/db/`, `src/lib/auth/`, `src/proxy.ts`, `src/app/health/`, `drizzle.config.ts`, `.env.example`, runbook §1.
+
+## ADR-003: Schema implementation judgment calls
+**Date:** 2026-06-12
+**Status:** accepted
+**Context:** Implementing schema.md in Drizzle (slice 2) surfaced the deferred decisions schema.md flagged, plus a few implementable-form details.
+**Decision:**
+- **Entity `kind` is a real column on `items`** (`text`, nullable), not a key in `properties`. It is a hot, filterable field ("show all people"), and hot fields are columns. Plain `text` rather than a Postgres enum so adding a kind never needs a migration.
+- **FTS uses an app-maintained `body_text` column** plus a `GENERATED ALWAYS AS (...) STORED` `tsvector` over `title + body_text`, GIN-indexed. Generating the tsvector straight from the BlockNote JSONB was rejected: `body::text` would index structural noise (`"type":"paragraph"`, etc.) and pollute results. App code extracts plain text from the BlockNote doc on save (same save path that snapshots revisions).
+- **Child tables hard-cascade:** `relations`, `attachments`, `revisions` have `ON DELETE CASCADE` to `items`, so the 30-day Trash purge (the only hard delete) cleans up edges and snapshots in one statement. Soft-delete cascade to child *items* stays app-level (slice 4).
+- **`users.email` is unique and `clerk_id` is nullable-unique**, so the seed is idempotent (`ON CONFLICT DO NOTHING` on email) and the row can exist before Clerk is wired in slice 3.
+- **Migrations:** `drizzle-kit generate` produces SQL into `drizzle/`; `scripts/migrate.mjs` applies it via `drizzle-orm/neon-http/migrator`, and `scripts/seed.mjs` seeds via the same Neon HTTP driver. Both are plain Node (`--env-file-if-exists`), reuse existing deps, and enforce the pooler guard. No `tsx`/`dotenv` added (boring-stack rule).
+- `matchers` (Phase 2) deliberately not created.
+**Why / alternatives:** Each call follows an existing principle (hot-fields-are-columns, no-new-deps, purge must not strand rows). A separate `entities` table for `kind` was rejected (violates everything-is-an-item).
+**Affects:** `src/db/schema.ts`, `drizzle/0000_*.sql`, `scripts/migrate.mjs`, `scripts/seed.mjs`, `package.json` (db:* scripts), schema.md corrected per its own header rule.

@@ -49,6 +49,7 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `type` | text | FK `types.key` |
 | `title` | text | the "one-liner"; may be the entire content |
 | `body` | jsonb | BlockNote document (canonical JSON); null until "gone deeper". **Never selected in list queries.** |
+| `body_text` | text | plain-text extraction of `body`, maintained by app code on save; feeds the generated FTS column (ADR-003). Never selected in list queries. |
 | `status` | enum | `open` \| `done` \| `archived`; non-task types default `open` |
 | `due_date` | timestamptz | nullable |
 | `urgency` | enum | `low` \| `normal` \| `high` \| `critical`; nullable |
@@ -64,7 +65,7 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `updated_at` | timestamptz | |
 
 Notes:
-- `kind` is included as a column here for entity subtype; if preferred it can live in `properties` instead. Decide at build and log it in `decisions.md`. The PRD describes it as "a `kind` field on entity items."
+- `kind` is a real column (decided at build, ADR-003): a hot filterable field, plain text rather than an enum so new kinds need no migration. The PRD describes it as "a `kind` field on entity items."
 - Entities are items with `type = 'entity'`. They have bodies, so "Roger" can hold notes about Roger.
 
 ### Hierarchy (parent/child)
@@ -179,7 +180,7 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 - B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`.
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
-- FTS: a maintained generated `tsvector` column on `items` (title + body text), GIN-indexed. Not computed per query.
+- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items` over `title + body_text`, GIN-indexed. Not computed per query. (`body_text` is app-maintained; generating from raw BlockNote JSONB would index structural noise, ADR-003.)
 - Composite indexes as query patterns prove them out; log additions in `decisions.md`.
 
 ## Phase 2+ structures, noted ahead (don't build in Phase 1)
@@ -190,4 +191,4 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 ## Known schema-adjacent gaps (track, don't block)
 - **Custom property values aren't full-text searched.** FTS covers title + body; `properties` is filterable via GIN but not necessarily searchable. Minor; flagged.
 - **Embedded query-view blocks have no faithful markdown form.** They export as a static snapshot/placeholder, not a live view (fine for the pulpit fallback since sermons are prose).
-- **Entity `kind` placement** (column vs `properties`) to confirm at build.
+- ~~Entity `kind` placement~~ resolved: column on `items` (ADR-003).

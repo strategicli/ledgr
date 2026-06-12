@@ -31,6 +31,14 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 
 ---
 
+## 1a. Schema migrations and seed
+- **Change the schema** in `src/db/schema.ts`, then `npm run db:generate` (writes SQL to `drizzle/`; no DB needed). Review the generated SQL before applying.
+- **Apply:** `npm run db:migrate` (reads `DATABASE_URL` from `.env` / `.env.local`; refuses a non-pooler Neon URL).
+- **Seed:** `npm run db:seed` — idempotent (five system `types` rows + the single `users` row); safe to re-run any time.
+- Migration files in `drizzle/` are committed history. Never edit an applied migration; generate a new one.
+
+---
+
 ## 2. Health and monitoring
 - **`/health`** checks: DB reachable, last successful export timestamp, and (once they exist) Todoist API, Graph token validity.
 - A **weekly scheduled Claude task** hits `/health` and emails Brandon on failure.

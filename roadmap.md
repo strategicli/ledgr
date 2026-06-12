@@ -9,9 +9,9 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 ## Phase 1: Core (build first, live in it)
 The goal: a usable single-user tool Brandon can capture into and write in, with the export safety net working.
 
-- [~] Repo scaffold (Next.js on Vercel, Drizzle, Neon via pooler, Clerk, env config) (code complete + committed 2026-06-12; flip to done when deployed and `/health` is green on a real Neon pooler connection)
-- [ ] Data model: `users`, `types` (seed 5 system rows), `items` (incl. `properties` JSONB), `relations`, `attachments`, `revisions`, `views`, `error_log` (see `schema.md`)
-- [ ] Index plan in place (incl. FTS generated `tsvector` column)
+- [~] Repo scaffold (Next.js on Vercel, Drizzle, Neon via pooler, Clerk, env config) (pushed to GitHub + deployed to Vercel 2026-06-12, `/health` live and correctly degraded; flip to done when `/health` is green on a real Neon pooler connection)
+- [~] Data model: `users`, `types` (seed 5 system rows), `items` (incl. `properties` JSONB), `relations`, `attachments`, `revisions`, `views`, `error_log` (see `schema.md`) (schema + migration + idempotent seed written 2026-06-12, ADR-003; flip to done when the migration runs clean on Neon and seed rows are verified)
+- [~] Index plan in place (incl. FTS generated `tsvector` column) (in migration 0000; verify on Neon with the data model)
 - [ ] Auth: Clerk + Microsoft sign-in; API-token scheme for machine access
 - [ ] Item CRUD (owner-scoped; list queries exclude `body`)
 - [ ] Block editor (BlockNote): slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors
