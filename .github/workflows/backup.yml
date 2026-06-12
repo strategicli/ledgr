@@ -48,6 +48,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
           sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+          # The runner preinstalls client 16 and PATH prefers it; the v17
+          # binaries must win or pg_dump aborts on server version mismatch.
+          echo "/usr/lib/postgresql/${PG_MAJOR}/bin" >> "$GITHUB_PATH"
 
       - name: Dump
         env:
@@ -134,6 +137,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
           sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+          # The runner preinstalls client 16 and PATH prefers it; the v17
+          # binaries must win or pg_dump aborts on server version mismatch.
+          echo "/usr/lib/postgresql/${PG_MAJOR}/bin" >> "$GITHUB_PATH"
 
       - name: Dump production
         env:
