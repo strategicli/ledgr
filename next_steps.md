@@ -2,28 +2,24 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state (2026-06-12, night):** R2 is provisioned (serving via the `*.r2.dev` public development URL; switching to a custom domain is an open follow-up, runbook §1 box) and an interim Work home is live at `/`: items grouped by type with create, open, trash, and restore, so manual testing finally has a front door. The home page is deliberately throwaway chrome; the Today view, per-type lists, and navigation shell slices replace it. Slice 5 (BlockNote editor) remains done except the Brandon-steps below. Test data left in the DB on purpose: "Editor test page (slice 5)", "Roger Smith" entity, and "Manual test task"; trash them anytime.
+**Current state (2026-06-12, night):** Slice 5 is fully closed (Brandon set the R2 CORS policy and confirmed live image paste) and slice 6 (entity pages) is done: opening an entity item shows every related item grouped by type beneath its body. Test data left in the DB on purpose: "Editor test page (slice 5)", "Roger Smith" entity (now mentioned from the test task and the Tyler meeting, so its entity page has content), and "Manual test task" (its body was replaced with a mention of Roger during slice-6 verification); trash them anytime.
 
 **Brandon-steps (manual checks):**
-1. **Set the R2 CORS policy, then retry the image paste (closes slice 5).** Uploads currently fail because the bucket has no CORS policy, so the browser's preflight gets a 403 before any bytes move; the app's object-scoped token can't set bucket config, so it's a dashboard step. Exact JSON in runbook §1 "R2 CORS". Diagnosis verified 2026-06-12: presign returns 201 in production, object writes succeed with the same credentials, and a simulated preflight from the app origin gets 403 with no CORS headers.
-2. (No rush) Attach a custom domain to the R2 bucket and update `R2_PUBLIC_BASE_URL` (runbook §1 "R2 follow-up"); cheaper to do before many images exist. The CORS origins don't change with it (uploads go to the S3 endpoint, not the public domain).
-
-Done: Obsidian eyeball check passed (2026-06-12). Clerk sign-in methods stay at the defaults per Brandon, the tidy-up step is dropped.
+1. (No rush) Attach a custom domain to the R2 bucket and update `R2_PUBLIC_BASE_URL` (runbook §1 "R2 follow-up"); cheaper to do before many images exist. The CORS origins don't change with it (uploads go to the S3 endpoint, not the public domain).
 
 ---
 
 ## Next up (in order)
 
-### 6. Entity pages
-- Open any entity item and see all related items grouped by type (the "tag as dashboard" experience, PRD §4.2).
-- Query `relations` both directions, `match_state = 'confirmed'` only for trusted lists; suggested renders dotted/grayed when it appears.
-- Body-free list queries throughout; group by `items.type`.
-- A first taste of the backlinks data path (the full backlinks panel is its own slice).
+### 7. Parent/child subtasks
+- Recursive tree reads (the write-time cycle guard and cascade soft-delete/restore already exist from slice 4).
+- Subtask display on the item page; progress rollup (n of m done) on parents.
+- Body-free list queries; owner-scoped recursive CTEs like the existing ones in `src/lib/items.ts`.
 
 ---
 
 ## Then (rest of Phase 1, rough order)
-Entity pages → parent/child subtasks (recursive reads, cycle guard, progress rollup) → item canvas (modal default, top/bottom field zones, PRD §4.13) → Today view (batched fetch; fixed layout) → navigation shell (mobile bottom bar; desktop nav test, PRD §4.12) → Inbox → per-type lists + filters → full-text search → quick capture → backlinks panel → PWA shell → OneDrive export → Pulpit Ready → structured logging + debug mode → weekly `pg_dump` + a tested restore. See `roadmap.md` for the full Phase 1 checklist.
+Parent/child subtasks (recursive reads, cycle guard, progress rollup) → item canvas (modal default, top/bottom field zones, PRD §4.13) → Today view (batched fetch; fixed layout) → navigation shell (mobile bottom bar; desktop nav test, PRD §4.12) → Inbox → per-type lists + filters → full-text search → quick capture → backlinks panel → PWA shell → OneDrive export → Pulpit Ready → structured logging + debug mode → weekly `pg_dump` + a tested restore. See `roadmap.md` for the full Phase 1 checklist.
 
 **Before starting Phase 2:** the backup restore must be tested once for real. An untested backup is a hope, not a backup.
 
@@ -39,6 +35,8 @@ Entity pages → parent/child subtasks (recursive reads, cycle guard, progress r
 ---
 
 ## Recently done
+- **Slice 6, entity pages (2026-06-12):** `src/lib/relations.ts` with `listRelatedItems`: one both-directions pass over `relations` (the separate source/target indexes carry the OR join), owner-scoped, live items only, selecting the shared body-free `listColumns` (now exported from `items.ts`). Duplicate edges (multi-role, both directions) dedupe to one row with all roles collected and `confirmed` beating `suggested`; self-edges excluded. `GET /api/items/[id]/related` is the first taste of the backlinks data path. Entity items render a grouped Related section under the editor on `/items/[id]` (type groups in seed order via the new shared `src/lib/type-order.ts`); suggested edges render grayed with a dashed badge instead of hiding. Verified: 17/17 checks in `scripts/verify-relations.mts` against Neon (SQL owner-scoped/body-free, mention path, dedupe, trash exclusion + restore, cross-owner isolation) plus a real-browser check of Roger Smith's page (grouping, suggested badge, zero console errors); synthetic suggested edges cleaned up after.
+- **Slice 5 fully closed (2026-06-12):** Brandon set the bucket CORS policy and confirmed image paste works end to end.
 - **Dark mode as default styling (2026-06-12):** Brandon's preference; light mode returns later as a deliberate toggle. Theme tokens in `globals.css` are the single plug-in point (`--background`/`--foreground`, a future `.light` class on `<html>`), BlockNote runs `theme="dark"` with its editor background pinned to the page token, and the mention chip uses Notion-dark blue. Pages must style from the tokens or neutral dark classes, never hardcode light backgrounds. Sign-in still shows Clerk's light card on the dark page; restyle it whenever Clerk theming comes up.
 - **Interim Work home (2026-06-12):** replaced the placeholder `/` with a minimal owner-scoped item list grouped by type (seed order), per-type "+ New" (POST then jump into the editor), per-row Trash, and a collapsed Trash section with Restore; back link added to `/items/[id]`. Body-free list queries via the existing `listItems`; mutations go through the existing API routes and `router.refresh()`. Explicitly interim: no roadmap box checked; Today/per-type lists/nav shell replace it. Verified in a real browser end to end (create → autosave → back → trash → restore, zero console errors). `.claude/launch.json` now runs dev with the ADR-006 stand-in via Git Bash.
 - **Slice 5, block editor (2026-06-12, ADR-006):** BlockNote 0.51 (core/react/mantine) with the default block set (covers all PRD §4.1 block types) plus a custom `mention` inline node; lazy-loaded so lists never pay the editor bundle. Pure JSON-walking markdown serializer (`src/lib/markdown.ts`, no editor import, usable by the future export cron) over the pinned color table (`src/lib/colors.ts`): text colors → `<span style>`, highlights → `<mark class="hl-*">` + inline style, mentions → `ledgr://item/<id>` links. Storage provider interface (`src/lib/storage/`, R2 via aws4fetch) + `/api/attachments` (presigned PUT, 100MB/file, ~10GB quota, metadata row at presign time). Mention diff-sync (`src/lib/mentions.ts`) on create/update/revision-restore, role `mention` only, other roles untouched. `q=` title search on `GET /api/items` for the picker. Minimal `/items/[id]` page with debounced autosave (1.5s, keepalive flush on pagehide). Dev auth stand-in (`DEV_USER_EMAIL`) + `resolveOwner` backfill hardened to never overwrite a linked `clerk_id`. Verified: 43/43 editor checks + 26/26 item checks against Neon; browser end-to-end (typing, autosave, @ picker → relations row, slash menu items, heading apply); BlockNote confirmed in lazy chunks only. Pending Brandon: R2 provisioning + Obsidian render check (see above).

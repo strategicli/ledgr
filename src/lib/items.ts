@@ -72,8 +72,9 @@ export type ListOptions = {
 
 // Everything except body, body_text, search, owner_id. The body exclusion is
 // a non-negotiable (CLAUDE.md rule 8); properties stays because table views
-// render custom fields in lists.
-const listColumns = {
+// render custom fields in lists. Exported so other list-shaped queries
+// (related items, future views) select the exact same body-free set.
+export const listColumns = {
   id: items.id,
   type: items.type,
   title: items.title,

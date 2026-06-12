@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ItemEditor from "@/components/editor/ItemEditor";
+import RelatedItems from "@/components/entity/RelatedItems";
 import { ItemError, getItem } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 
@@ -40,6 +41,11 @@ export default async function ItemPage({
       <ItemEditor
         item={{ id: item.id, title: item.title, body: item.body }}
       />
+      {item.type === "entity" && (
+        // Entity page (slice 6): the entity's body is its wiki note; the
+        // related-items dashboard renders beneath it.
+        <RelatedItems ownerId={owner.id} entityId={item.id} />
+      )}
     </main>
   );
 }

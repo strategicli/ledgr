@@ -8,11 +8,9 @@ import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import { listItems } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { compareTypeKeys } from "@/lib/type-order";
 
 export const dynamic = "force-dynamic";
-
-// Seed order for the system types; anything added later sorts after them.
-const TYPE_ORDER = ["task", "meeting", "note", "link", "entity"];
 
 type ListedItem = Awaited<ReturnType<typeof listItems>>[number];
 
@@ -70,14 +68,7 @@ export default async function Home() {
     listItems(owner.id, { trash: true, limit: 50 }),
   ]);
 
-  typeRows.sort((a, b) => {
-    const ai = TYPE_ORDER.indexOf(a.key);
-    const bi = TYPE_ORDER.indexOf(b.key);
-    if (ai === -1 && bi === -1) return a.key.localeCompare(b.key);
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
+  typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
   const byType = new Map<string, ListedItem[]>();
   for (const item of live) {
     const group = byType.get(item.type);

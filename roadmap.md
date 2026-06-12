@@ -16,9 +16,9 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Item CRUD (owner-scoped; list queries exclude `body`) (2026-06-12: full REST surface under `/api/items*` + `src/lib/items.ts`; verified against Neon incl. owner scoping, no-body list SQL, cycle guard)
 - [x] Block editor (BlockNote): slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors (2026-06-12: lazy-loaded via `next/dynamic`, verified in-browser incl. autosave; minimal `/items/[id]` host page until the canvas slice)
 - [x] Markdown serialization (color/highlight → inline HTML `<mark>`/`<span>`; single mapping table) (2026-06-12: pure server-safe serializer in `src/lib/markdown.ts` + pinned color table in `src/lib/colors.ts`; 22 serializer checks pass; Obsidian eyeball check pending on `scripts/sample-export.md`)
-- [~] Paste images inline (stored to R2) (2026-06-12: presign flow + `/api/attachments` + storage interface built and verified with fake credentials; **blocked on Brandon provisioning R2 in Cloudflare** — see runbook §1, then a live paste test closes this)
+- [x] Paste images inline (stored to R2) (2026-06-12: presign flow + `/api/attachments` + storage interface; R2 provisioned, CORS policy set, live paste confirmed by Brandon — slice 5 fully closed)
 - [x] `@`-mention to other items (auto-creates a `relations` row) (2026-06-12: mention inline node + picker; diff-sync to `relations` role `mention` on every body save; verified end-to-end in-browser against Neon)
-- [ ] Entity pages (related items grouped by type)
+- [x] Entity pages (related items grouped by type) (2026-06-12: both-directions body-free query in `src/lib/relations.ts` + `GET /api/items/[id]/related`; entity items render a grouped Related section on `/items/[id]`; suggested edges render gray/dashed; 17/17 checks against Neon + browser-verified)
 - [ ] Parent/child subtasks: recursive tree reads, cycle guard, progress rollup, soft-delete cascade
 - [ ] Item canvas: center modal default + expand to full screen; top/bottom field zones, horizontal top strip (PRD §4.13)
 - [ ] Today / dashboard view (batched single fetch; fixed layout, widgets come in Phase 2 per PRD §4.11)
