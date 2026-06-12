@@ -5,10 +5,10 @@ The live, near-term work queue. Start here each session. When you finish a slice
 **Current state (2026-06-12, night):** R2 is provisioned (serving via the `*.r2.dev` public development URL; switching to a custom domain is an open follow-up, runbook §1 box) and an interim Work home is live at `/`: items grouped by type with create, open, trash, and restore, so manual testing finally has a front door. The home page is deliberately throwaway chrome; the Today view, per-type lists, and navigation shell slices replace it. Slice 5 (BlockNote editor) remains done except the Brandon-steps below. Test data left in the DB on purpose: "Editor test page (slice 5)", "Roger Smith" entity, and "Manual test task"; trash them anytime.
 
 **Brandon-steps (manual checks):**
-1. **Image paste check (closes slice 5):** paste an image into any item body and confirm it renders from the r2.dev base URL.
-2. **Obsidian eyeball check:** open `scripts/sample-export.md` (also copied next to this file as `slice5-sample-export.md`) in Obsidian reading view; colors/highlights should render with no plugin.
-3. (Still open from slice 3) Clerk dashboard tidy-up: disable Apple/Google/Email-password so Microsoft is the only visible method.
-4. (New, no rush) Attach a custom domain to the R2 bucket and update `R2_PUBLIC_BASE_URL` (runbook §1 "R2 follow-up"); cheaper to do before many images exist.
+1. **Set the R2 CORS policy, then retry the image paste (closes slice 5).** Uploads currently fail because the bucket has no CORS policy, so the browser's preflight gets a 403 before any bytes move; the app's object-scoped token can't set bucket config, so it's a dashboard step. Exact JSON in runbook §1 "R2 CORS". Diagnosis verified 2026-06-12: presign returns 201 in production, object writes succeed with the same credentials, and a simulated preflight from the app origin gets 403 with no CORS headers.
+2. (No rush) Attach a custom domain to the R2 bucket and update `R2_PUBLIC_BASE_URL` (runbook §1 "R2 follow-up"); cheaper to do before many images exist. The CORS origins don't change with it (uploads go to the S3 endpoint, not the public domain).
+
+Done: Obsidian eyeball check passed (2026-06-12). Clerk sign-in methods stay at the defaults per Brandon, the tidy-up step is dropped.
 
 ---
 
