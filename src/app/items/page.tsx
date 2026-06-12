@@ -1,10 +1,11 @@
 // All-items browse: items grouped by type, with create, open, trash, and
-// restore. Still interim (the per-type lists + filters slice replaces it);
-// moved here from `/` when the Today view took over the home slot.
+// restore. The per-type lists (slice 12) are the real working views; this
+// page stays as the everything-in-one-place sweep and the Trash's home.
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
+import ListTabs from "@/components/lists/ListTabs";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import { listItems } from "@/lib/items";
@@ -77,6 +78,10 @@ export default async function AllItems() {
         <p className="mt-1 text-sm text-neutral-500">
           {live.length} item{live.length === 1 ? "" : "s"}
         </p>
+
+        <div className="mt-6">
+          <ListTabs active="all" />
+        </div>
 
         {typeRows.map(({ key, label }) => {
           const group = byType.get(key) ?? [];

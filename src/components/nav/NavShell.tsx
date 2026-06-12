@@ -6,8 +6,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import CaptureModal from "@/components/capture/CaptureModal";
 
 export type ShellSlot = {
   key: string;
@@ -66,6 +67,20 @@ function Icon({ slot }: { slot: string }) {
           <path d="M4.5 6.5h15L21 13v6H3v-6l1.5-6.5Z" />
         </svg>
       );
+    case "tasks":
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="16" height="16" rx="3" />
+          <path d="m8.5 12.5 2.5 2.5 4.5-5" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg {...common}>
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m16 16 4.5 4.5" />
+        </svg>
+      );
     default: // items / anything else: a list
       return (
         <svg {...common}>
@@ -109,9 +124,49 @@ function SlotLink({
   );
 }
 
-export default function NavShell({ slots }: { slots: ShellSlot[] }) {
+export default function NavShell({
+  slots,
+  typeOptions,
+}: {
+  slots: ShellSlot[];
+  typeOptions: { key: string; label: string }[];
+}) {
   const pathname = usePathname();
+  const router = useRouter();
   const desktopNav = useSyncExternalStore(subscribePref, readPref, () => "bar");
+  const [captureOpen, setCaptureOpen] = useState(false);
+
+  // Global shortcuts (PRD §4.4): q opens quick capture (Todoist muscle
+  // memory), Ctrl/Cmd+K goes to search (the Notion default). q stays inert
+  // while typing anywhere (inputs, selects, the BlockNote editor).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.defaultPrevented) return;
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "k"
+      ) {
+        e.preventDefault();
+        router.push("/search");
+        return;
+      }
+      if (e.key === "q" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const t = e.target;
+        if (
+          t instanceof HTMLElement &&
+          (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+        ) {
+          return;
+        }
+        e.preventDefault();
+        setCaptureOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router]);
 
   function toggleDesktopNav() {
     writePref(desktopNav === "bar" ? "sidebar" : "bar");
@@ -154,6 +209,30 @@ export default function NavShell({ slots }: { slots: ShellSlot[] }) {
     </button>
   );
 
+  const newButton = (vertical: boolean) => (
+    <button
+      onClick={() => setCaptureOpen(true)}
+      title="Quick capture (q)"
+      className={`relative flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] text-blue-400 hover:bg-neutral-800/60 hover:text-blue-300 ${
+        vertical ? "w-14" : ""
+      }`}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      >
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 8.5v7M8.5 12h7" />
+      </svg>
+      New
+    </button>
+  );
+
   const links = (vertical: boolean) =>
     slots.map((slot) => (
       <SlotLink
@@ -174,6 +253,7 @@ export default function NavShell({ slots }: { slots: ShellSlot[] }) {
         }`}
       >
         {links(false)}
+        {newButton(false)}
         {desktopNav === "bar" && toggle}
       </div>
       {/* Desktop sidebar candidate (open Q9): same slots, vertical, right
@@ -181,8 +261,15 @@ export default function NavShell({ slots }: { slots: ShellSlot[] }) {
       {desktopNav === "sidebar" && (
         <div className="fixed right-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur sm:flex">
           {links(true)}
+          {newButton(true)}
           {toggle}
         </div>
+      )}
+      {captureOpen && (
+        <CaptureModal
+          typeOptions={typeOptions}
+          onClose={() => setCaptureOpen(false)}
+        />
       )}
     </nav>
   );

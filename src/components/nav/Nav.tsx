@@ -1,17 +1,26 @@
 // Server wrapper for the nav shell: resolves the signed-in owner (no nav on
-// the signed-out hero or /sign-in) and fills slot badge counts (PRD §4.11)
-// before handing the static slot list to the client chrome.
+// the signed-out hero or /sign-in), fills slot badge counts (PRD §4.11), and
+// gathers the type options the quick-capture modal offers, before handing
+// the static slot list to the client chrome.
+import { getDb } from "@/db";
+import { types } from "@/db/schema";
 import NavShell, { type ShellSlot } from "@/components/nav/NavShell";
 import { countInbox } from "@/lib/items";
 import { NAV_SLOTS, type BadgeSource } from "@/lib/nav";
 import { resolveOwner } from "@/lib/owner";
+import { compareTypeKeys } from "@/lib/type-order";
 
 export default async function Nav() {
   const owner = await resolveOwner();
   if (!owner) return null;
 
+  const [inboxCount, typeRows] = await Promise.all([
+    countInbox(owner.id),
+    getDb().select({ key: types.key, label: types.label }).from(types),
+  ]);
+  typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
   const counts: Record<BadgeSource, number | null> = {
-    inbox: await countInbox(owner.id),
+    inbox: inboxCount,
   };
 
   const slots: ShellSlot[] = NAV_SLOTS.map((s) => ({
@@ -21,5 +30,5 @@ export default async function Nav() {
     count: s.badge ? counts[s.badge] : null,
   }));
 
-  return <NavShell slots={slots} />;
+  return <NavShell slots={slots} typeOptions={typeRows} />;
 }

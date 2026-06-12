@@ -24,9 +24,9 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Today / dashboard view (batched single fetch; fixed layout, widgets come in Phase 2 per PRD §4.11) (2026-06-12: `/` is now Today — quick capture, today's meetings, due/overdue tasks, recent; one batched fetch in `src/lib/today.ts`, `LEDGR_TIMEZONE` defines the day, ADR-008; interim type-grouped list moved to `/items`)
 - [x] Navigation shell: floating bottom bar on mobile (home locked to slot 1, user-assigned slots, badge-count support); desktop bottom-bar vs right-sidebar tested behind the same slot model (PRD §4.12, open Q9) (2026-06-12: slot table in `src/lib/nav.ts` + Nav/NavShell; both desktop candidates live behind an in-nav toggle, ADR-009 — Q9 stays open until Brandon picks)
 - [x] Inbox view (untriaged items) (2026-06-12: explicit `items.inbox` flag set by quick capture, cleared by triage, ADR-010; `/inbox` with retype/triage/trash controls; live count badges the nav slot)
-- [ ] Per-type lists with simple filters
-- [ ] Full-text search (Postgres FTS) filtered by type/entity/date
-- [ ] Quick capture (global affordance, desktop shortcut, title-only)
+- [x] Per-type lists with simple filters (2026-06-12: `/tasks` `/meetings` `/notes` `/links` `/entities` + tab strip, filters carried in the URL over the `ViewFilter` shape a future `views` row stores, ADR-011; Tasks nav slot; Trash stays on `/items`)
+- [x] Full-text search (Postgres FTS) filtered by type/entity/date (2026-06-12: `websearch_to_tsquery` over the stored tsvector with `ts_headline` snippets, `/search` + `GET /api/search`, ADR-012; Search nav slot, Ctrl/Cmd+K)
+- [x] Quick capture (global affordance, desktop shortcut, title-only) (2026-06-12: nav "New" button + `q` shortcut open the capture modal — title, type, optional due/urgency, always `inbox: true` — ADR-013; share target rides the PWA-shell slice)
 - [ ] Backlinks panel (traverse `relations` both directions; suggested vs confirmed render)
 - [x] Soft delete + Trash (30-day purge); revision snapshots + restore (2026-06-12: cascade soft-delete restores as a unit, daily purge cron at `/api/machine/purge`, debounced snapshots capped at 50; Trash *UI* comes with the list views slice)
 - [ ] PWA shell (installable, responsive)
