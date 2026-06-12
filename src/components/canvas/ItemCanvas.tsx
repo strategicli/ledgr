@@ -72,7 +72,7 @@ export default async function ItemCanvas({
       {showBreadcrumb && (
         <div className="mx-auto flex w-full max-w-3xl items-center gap-1 px-12 pt-6 text-sm text-neutral-500">
           {variant === "page" && (
-            <Link href="/" className="hover:text-neutral-300">
+            <Link href="/items" className="hover:text-neutral-300">
               ← All items
             </Link>
           )}
