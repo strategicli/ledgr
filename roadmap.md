@@ -12,8 +12,8 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Repo scaffold (Next.js on Vercel, Drizzle, Neon via pooler, Clerk, env config) (`/health` green in production 2026-06-12; GitHub push → auto-deploy verified working)
 - [x] Data model: `users`, `types` (seed 5 system rows), `items` (incl. `properties` JSONB), `relations`, `attachments`, `revisions`, `views`, `error_log` (see `schema.md`) (migration ran clean on Neon 2026-06-12; all 8 tables, 5 type rows, 1 user row verified)
 - [x] Index plan in place (incl. FTS generated `tsvector` column) (all 22 indexes verified on Neon 2026-06-12, incl. `items_search_gin` and `items_properties_gin`)
-- [~] Auth: Clerk + Microsoft sign-in; API-token scheme for machine access (verified in production 2026-06-12: signed-out blocked with redirect to `/sign-in`, machine token 200/401 on `/api/machine/ping`; sign-ups allowlist-restricted to Brandon's email. Remaining: Brandon's first real Microsoft sign-in, which backfills `users.clerk_id`, then flip to done)
-- [ ] Item CRUD (owner-scoped; list queries exclude `body`)
+- [x] Auth: Clerk + Microsoft sign-in; API-token scheme for machine access (done 2026-06-12: Brandon's first Microsoft sign-in landed and `users.clerk_id` is backfilled, verified against Neon; production route protection and machine tokens verified earlier same day)
+- [x] Item CRUD (owner-scoped; list queries exclude `body`) (2026-06-12: full REST surface under `/api/items*` + `src/lib/items.ts`; verified against Neon incl. owner scoping, no-body list SQL, cycle guard)
 - [ ] Block editor (BlockNote): slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors
 - [ ] Markdown serialization (color/highlight → inline HTML `<mark>`/`<span>`; single mapping table)
 - [ ] Paste images inline (stored to R2)
@@ -28,7 +28,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [ ] Full-text search (Postgres FTS) filtered by type/entity/date
 - [ ] Quick capture (global affordance, desktop shortcut, title-only)
 - [ ] Backlinks panel (traverse `relations` both directions; suggested vs confirmed render)
-- [ ] Soft delete + Trash (30-day purge); revision snapshots + restore
+- [x] Soft delete + Trash (30-day purge); revision snapshots + restore (2026-06-12: cascade soft-delete restores as a unit, daily purge cron at `/api/machine/purge`, debounced snapshots capped at 50; Trash *UI* comes with the list views slice)
 - [ ] PWA shell (installable, responsive)
 - [ ] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}.md` + YAML frontmatter; archive path)
 - [ ] Pulpit Ready action (immediate export + verified offline pin + print-styled PDF)

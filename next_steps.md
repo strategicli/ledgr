@@ -2,21 +2,11 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state (2026-06-12, end of day):** Production is fully live and verified: `/health` green (Neon via pooler), GitHub push → auto-deploy working, signed-out browsers redirected to `/sign-in` (API clients get 404), `/api/machine/ping` 200 with the diag token / 401 without. Clerk is wired end to end (app `app_3F2TycnY7yaP2Lypfc3gFp0KLls`, dev instance `tough-redbird-21.clerk.accounts.dev`, keys in `.env.local` + all three Vercel envs); sign-ups are allowlist-restricted to brandoncollins@edgewoodcommunity.org (set via Backend API). **Remaining for slice 3:** (1) Brandon signs in once at https://ledgr-teal.vercel.app with the Microsoft account (creates his Clerk user, backfills `users.clerk_id`, home shows "Signed in as …"); (2) optional dashboard tidy-up: disable Apple, Google, and Email/password so Microsoft is the only visible method (Clerk dashboard → Configure). Then flip the auth box and start slice 4.
+**Current state (2026-06-12, late):** Slices 3 and 4 are done. Auth is fully closed out: Brandon's Microsoft sign-in landed and `users.clerk_id` is backfilled (verified on Neon). Item CRUD is live: full REST surface under `/api/items*` (list/create/read/update/soft-delete, restore, revisions + revision restore), all owner-scoped, list queries body-free; cascade soft-delete restores as a unit; daily Trash purge cron (`vercel.json` → `GET /api/machine/purge`, 08:00 UTC) authenticating via `CRON_SECRET` = raw `vercel-cron` machine token (ADR-005, runbook §2a). All 26 checks in `scripts/verify-items.mts` pass against Neon (`npx tsx scripts/verify-items.mts`). Next session: start slice 5 (BlockNote editor). Optional Clerk dashboard tidy-up still open: disable Apple/Google/Email-password so Microsoft is the only visible method (Clerk dashboard → Configure).
 
 ---
 
 ## Next up (in order)
-
-### 3v. Finish slice 3 (one manual step)
-- Brandon signs in once with Microsoft at the production URL; confirm home shows "Signed in as brandoncollins@edgewoodcommunity.org" (proves the `clerk_id` backfill in `src/lib/owner.ts` ran; check `users.clerk_id` is set).
-- Flip the auth roadmap box; move slice 3 to done here.
-
-### 4. Item CRUD (owner-scoped)
-- Create/read/update/soft-delete, all filtered on `owner_id`.
-- List endpoints **exclude `body`**.
-- Trash view + 30-day purge job; revision snapshot on save (debounced, cap ~50) + restore.
-- Verify: a list query's SQL has no `body` and is owner-scoped; soft-delete + restore round-trips; a parent's soft-delete cascades to children.
 
 ### 5. Block editor (BlockNote) + markdown serialization
 - Lazy-load / code-split the editor (don't pay its cost on lists/Today).
@@ -45,6 +35,8 @@ Entity pages → parent/child subtasks (recursive reads, cycle guard, progress r
 ---
 
 ## Recently done
+- **Slice 4, item CRUD (2026-06-12, ADR-005):** `src/lib/items.ts` + routes `/api/items` (GET list / POST), `/api/items/[id]` (GET/PATCH/DELETE), `[id]/restore`, `[id]/revisions` (+ `[revisionId]/restore`), `/api/machine/purge`. Owner-scoped throughout; list queries select no `body`/`body_text`; `body_text` re-extracted on every body save (feeds the tsvector); revision snapshots debounced 5 min, capped 50, pre-restore body force-snapshotted so restores are undoable; cascade soft-delete stamps the unit with one `deleted_at` and restore matches on it; write-time parent cycle guard. Daily purge cron wired (`vercel.json`, `CRON_SECRET` + `vercel-cron` token set in production env via CLI). Verified: 26/26 checks in `scripts/verify-items.mts` against Neon, plus HTTP probes on the prod build (signed-out protected; purge 200 with cron scope, 401 without/with wrong scope). Added `tsx` (dev-only) to run TS verification scripts. Trash/Today UI comes with the views slices.
+- **Slice 3 closed (2026-06-12):** Brandon signed in with Microsoft; `users.clerk_id` backfill confirmed on Neon.
 - **Slice 3, auth code (2026-06-12, ADR-004):** route protection in `src/proxy.ts` via `auth.protect()` (public: `/sign-in`, `/api/machine/*`; `/health` stays outside the matcher); in-app `/sign-in` page (works on a Clerk dev instance now and a production instance later, no accounts.dev dependency); `resolveOwner()` in `src/lib/owner.ts` (clerk_id lookup, first-sign-in email match + backfill, no row creation); machine tokens per ADR-004 (`src/lib/auth/machine.ts`, `scripts/make-token.mjs`, `/api/machine/ping`). Verified locally on the production build: ping 200 with a valid token (name + scopes echoed), 401 without/with a bad one; home renders keyless. Production verification pending (see 3v); Clerk dashboard setup pending (Brandon).
 - **Slice 2 verification (2026-06-12):** Neon provisioned via `vercel integration add neon` (`neon-teal-cushion`), pooled `DATABASE_URL` confirmed (`-pooler` host). `db:migrate` + `db:seed` ran clean; verified on Neon: 8 tables, 22 indexes (incl. `items_search_gin`, `items_properties_gin`), 5 `types` rows, 1 `users` row; `/health` green locally (DB latency ~190ms). Production `/health` still degraded: the pre-Neon deployment is serving, and new deploys are BLOCKED by Vercel pending the GitHub login connection (discovered via the deployment's `errorLink`; Hobby teams require the commit author to be verifiable as the team owner).
 - **Slice 2, data model (2026-06-12, ADR-003):** all eight Phase 1 tables in `src/db/schema.ts` (users, types, items, relations, attachments, revisions, views, error_log; matchers deferred to Phase 2). Enums for status/urgency/match_state/layout; entity `kind` as a text column; app-maintained `body_text` feeding a stored generated `tsvector` (GIN); full index plan incl. separate `relations` source/target indexes and the (source, target, role) unique; `ON DELETE CASCADE` from child tables for the purge path. Migration `drizzle/0000_mean_lockheed.sql` generated and reviewed; `scripts/migrate.mjs` + `scripts/seed.mjs` (idempotent, pooler-guarded, zero new deps) wired as `db:generate`/`db:migrate`/`db:seed`. Build green. Verification on a real Neon DB pending (step 2v).
