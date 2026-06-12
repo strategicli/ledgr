@@ -1,6 +1,7 @@
 // Minimal item page: the slice-5 host for the editor. The item canvas slice
 // (PRD §4.13) replaces this page's chrome with the modal canvas and field
 // zones; the editing core (ItemEditor) carries over unchanged.
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ItemEditor from "@/components/editor/ItemEditor";
 import { ItemError, getItem } from "@/lib/items";
@@ -28,6 +29,11 @@ export default async function ItemPage({
 
   return (
     <main className="min-h-screen bg-white">
+      <div className="mx-auto w-full max-w-3xl px-12 pt-6">
+        <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
+          ← All items
+        </Link>
+      </div>
       <ItemEditor
         item={{ id: item.id, title: item.title, body: item.body }}
       />

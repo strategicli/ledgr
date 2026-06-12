@@ -36,6 +36,8 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 
 > **R2 provisioning (one-time, blocks live image paste):** Cloudflare dashboard → R2 → create bucket `ledgr` → Manage API tokens → create an Object Read & Write token scoped to the bucket → fill the five `R2_*` vars locally and on Vercel (REST API or dashboard, not piped CLI — see the BOM gotcha above) → enable public access for the bucket (or attach a custom domain) and set `R2_PUBLIC_BASE_URL` to it → paste an image into any item body and confirm it renders from that base URL.
 
+> **R2 follow-up (open):** the bucket currently serves through the `*.r2.dev` public development URL. Cloudflare rate-limits r2.dev and recommends it for testing only, so before attachments see real use, attach a custom domain (Cloudflare → R2 bucket → Settings → Custom Domains) and change `R2_PUBLIC_BASE_URL` locally and on Vercel. Nothing else changes going forward, but URLs for already-pasted images are stored in item bodies with the old base and would need a one-off rewrite, which is a reason to switch early.
+
 > **PowerShell gotcha #2:** assigning `''` to an env var in PowerShell *deletes* it, so you cannot use PowerShell to run the app with "set-but-empty" Clerk keys (the dev stand-in's gate). Use Git Bash for that: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY= CLERK_SECRET_KEY= DEV_USER_EMAIL=you@example.org npm run dev`.
 
 ---
