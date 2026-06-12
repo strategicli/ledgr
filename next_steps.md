@@ -2,22 +2,16 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state:** Repo is on GitHub (`brandonscollins/ledgr`, private) and deployed to Vercel (`ledgr-teal.vercel.app`); `/health` is live and correctly reports degraded (no DB yet). Schema slice (step 2) is code-complete (ADR-003): all eight Phase 1 tables in Drizzle, migration `drizzle/0000_*.sql` generated, idempotent migrate/seed scripts (`npm run db:migrate` / `db:seed`). **Blocked on Brandon (one-time browser steps):** (1) accept Neon marketplace terms at https://vercel.com/brandons-projects-4beac8e1/~/integrations/accept-terms/neon?source=cli so Claude can finish `vercel integration add neon`; (2) install the Vercel GitHub App (https://github.com/apps/vercel) with access to `brandonscollins/ledgr` so pushes auto-deploy; (3) create the Clerk app (Microsoft sign-in) and add its two keys to Vercel env. Once (1) is done, Claude runs migrate + seed and verifies `/health` green.
+**Current state (2026-06-12):** Neon is provisioned (`neon-teal-cushion`, via Vercel marketplace) and the schema is live and verified on it: migration + seed ran clean, all 8 tables, 22 indexes, 5 `types` rows, 1 `users` row, `/health` green locally against the pooled connection. Slice 3 (auth) is code-complete (ADR-004): all routes Clerk-protected with `/sign-in` page, `/health` + `/api/machine/*` excluded, hashed scoped API tokens (`LEDGR_API_TOKENS`, `scripts/make-token.mjs`), `/api/machine/ping` verified locally (200 with token, 401 without). **Blocked on Brandon (one-time browser steps):** (1) connect GitHub to the Vercel account (Account Settings → Authentication → Login Connections) — every deploy is currently BLOCKED because Vercel can't verify the commit author against the Hobby-team owner; (2) create the Clerk app (Microsoft sign-in only, restricted sign-ups) and add its keys to Vercel env. Once (1) is done, Claude redeploys and verifies `/health` green + machine ping in production; once (2) is done, slice 3 verification completes (signed-out blocked, Microsoft sign-in works).
 
 ---
 
 ## Next up (in order)
 
-### 2v. Verify schema on Neon (needs Neon provisioned; code is done)
-- `npm run db:migrate` then `npm run db:seed` against the pooled `DATABASE_URL`.
-- Verify: tables + indexes exist (incl. `items_search_gin`), five `types` rows, one `users` row, `/health` green in production.
-- Flip the roadmap boxes (scaffold, data model, index plan) when green.
-
-### 3. Auth (Clerk + Microsoft sign-in)
-- Clerk with Microsoft as the primary (only interactive) sign-in.
-- Put all app routes behind auth.
-- Stand up the scoped API-token scheme for machine access (MCP/cron/webhooks), separate from Clerk. Keep Clerk behind a thin interface (Phase 4 insurance).
-- Verify: signed-out users are blocked; one API token authenticates a test machine route.
+### 3v. Finish slice 3 verification (needs Brandon's two browser steps above)
+- Redeploy production; verify `/health` green and `/api/machine/ping` 200/401 in production (diag token: `.env.claude-diag.local`).
+- With Clerk keys in Vercel env (incl. `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`): verify signed-out users land on `/sign-in`, Microsoft sign-in works, home page shows the resolved owner email (proves the `clerk_id` backfill in `src/lib/owner.ts` ran).
+- Flip the roadmap boxes (scaffold, auth) when green; move slice 3 to done here.
 
 ### 4. Item CRUD (owner-scoped)
 - Create/read/update/soft-delete, all filtered on `owner_id`.
@@ -52,6 +46,8 @@ Entity pages → parent/child subtasks (recursive reads, cycle guard, progress r
 ---
 
 ## Recently done
+- **Slice 3, auth code (2026-06-12, ADR-004):** route protection in `src/proxy.ts` via `auth.protect()` (public: `/sign-in`, `/api/machine/*`; `/health` stays outside the matcher); in-app `/sign-in` page (works on a Clerk dev instance now and a production instance later, no accounts.dev dependency); `resolveOwner()` in `src/lib/owner.ts` (clerk_id lookup, first-sign-in email match + backfill, no row creation); machine tokens per ADR-004 (`src/lib/auth/machine.ts`, `scripts/make-token.mjs`, `/api/machine/ping`). Verified locally on the production build: ping 200 with a valid token (name + scopes echoed), 401 without/with a bad one; home renders keyless. Production verification pending (see 3v); Clerk dashboard setup pending (Brandon).
+- **Slice 2 verification (2026-06-12):** Neon provisioned via `vercel integration add neon` (`neon-teal-cushion`), pooled `DATABASE_URL` confirmed (`-pooler` host). `db:migrate` + `db:seed` ran clean; verified on Neon: 8 tables, 22 indexes (incl. `items_search_gin`, `items_properties_gin`), 5 `types` rows, 1 `users` row; `/health` green locally (DB latency ~190ms). Production `/health` still degraded: the pre-Neon deployment is serving, and new deploys are BLOCKED by Vercel pending the GitHub login connection (discovered via the deployment's `errorLink`; Hobby teams require the commit author to be verifiable as the team owner).
 - **Slice 2, data model (2026-06-12, ADR-003):** all eight Phase 1 tables in `src/db/schema.ts` (users, types, items, relations, attachments, revisions, views, error_log; matchers deferred to Phase 2). Enums for status/urgency/match_state/layout; entity `kind` as a text column; app-maintained `body_text` feeding a stored generated `tsvector` (GIN); full index plan incl. separate `relations` source/target indexes and the (source, target, role) unique; `ON DELETE CASCADE` from child tables for the purge path. Migration `drizzle/0000_mean_lockheed.sql` generated and reviewed; `scripts/migrate.mjs` + `scripts/seed.mjs` (idempotent, pooler-guarded, zero new deps) wired as `db:generate`/`db:migrate`/`db:seed`. Build green. Verification on a real Neon DB pending (step 2v).
 - **Slice 1 verification, partial (2026-06-12):** repo pushed to GitHub (`brandonscollins/ledgr`, private), Vercel project `ledgr` created and deployed from CLI (`ledgr-teal.vercel.app`); `/health` returns 503 `degraded / database unreachable` as designed with no `DATABASE_URL`. Still pending: Vercel GitHub App install (auto-deploys), Neon terms + provisioning, Clerk keys.
 - **Slice 1, repo scaffold (2026-06-12, ADR-002):** create-next-app (TypeScript, App Router, Tailwind kept) at `C:\dev\ledgr` (outside OneDrive; node_modules and OneDrive sync don't mix). Drizzle ORM + Neon serverless HTTP driver; `src/db/index.ts` enforces the pooler rule (refuses a `*.neon.tech` host without `-pooler`). Clerk SDK behind a thin `AuthProvider` interface in `src/lib/auth/` with a no-key fallback (Phase 4 seam); Clerk middleware in `src/proxy.ts`, `/health` excluded. `.env.example` documented and mirrored in runbook §1. `/health` returns DB reachability + placeholder `lastExportAt` (verified locally: degraded without DB, pooler guard fires, debug mode gates error detail). Docs copied into the repo; initial commit made. Pending verification: GitHub push, Vercel deploy wiring, `/health` green against a real pooled Neon connection.

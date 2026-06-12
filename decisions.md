@@ -1,4 +1,4 @@
-# decisions.md: Ledgr Architecture Decision Log
+﻿# decisions.md: Ledgr Architecture Decision Log
 
 A running log of decisions made *during the build*. The PRD's §10 decisions log is frozen product intent; this file captures the implementation choices that come up as code gets written (library picks, schema judgment calls, trade-offs Claude Code and Brandon settle in the moment).
 
@@ -67,3 +67,11 @@ stack (Next.js/Vercel, Neon, Drizzle, Clerk, R2, BlockNote), DB-canonical one-wa
 - `matchers` (Phase 2) deliberately not created.
 **Why / alternatives:** Each call follows an existing principle (hot-fields-are-columns, no-new-deps, purge must not strand rows). A separate `entities` table for `kind` was rejected (violates everything-is-an-item).
 **Affects:** `src/db/schema.ts`, `drizzle/0000_*.sql`, `scripts/migrate.mjs`, `scripts/seed.mjs`, `package.json` (db:* scripts), schema.md corrected per its own header rule.
+
+## ADR-004: Machine API tokens as hashed env entries, no DB table
+**Date:** 2026-06-12
+**Status:** accepted
+**Context:** Slice 3 needs the machine-to-machine auth scheme (MCP, cron, webhooks) the PRD requires to be scoped, revocable, and separate from Clerk. The obvious designs were a `api_tokens` DB table or an env-var scheme.
+**Decision:** Tokens live as comma-separated `name:scope1+scope2:sha256hex` entries in the `LEDGR_API_TOKENS` env var. `scripts/make-token.mjs` generates a raw token (`lgr_` + 48 hex chars, shown once, held only by the caller) and its env entry. `src/lib/auth/machine.ts` verifies `Authorization: Bearer` headers by SHA-256 + constant-time compare and returns `{name, scopes}`. Machine routes live under `/api/machine/*`, are excluded from Clerk protection in `src/proxy.ts`, and verify their own token per-handler; `/api/machine/ping` is the diagnostic route (any valid token; echoes the caller's own identity). Revocation = remove the entry, redeploy.
+**Why / alternatives:** Single user with a handful of long-lived tokens does not justify a table, issuance UI, or query on every request (fast-and-cheap rule); env entries are zero-dependency and the hash-only storage means neither a DB dump nor an env dump leaks a credential. A DB table becomes the right answer if tokens ever need per-token expiry, usage audit, or self-serve issuance; nothing in the route contract would change, only `verifyMachineToken`'s lookup.
+**Affects:** `src/lib/auth/machine.ts`, `src/app/api/machine/ping/`, `src/proxy.ts`, `scripts/make-token.mjs`, `.env.example`, runbook §1/§3.

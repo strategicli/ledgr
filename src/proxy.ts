@@ -1,13 +1,24 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Initializes Clerk's request context only; route protection is the auth
-// slice (next_steps.md step 3). Falls through when no key is configured so
-// the scaffold runs before Clerk is set up (and in a future local mode).
-// /health is excluded: machine endpoints authenticate with scoped API
-// tokens, never Clerk (CLAUDE.md).
+// Route protection (next_steps.md step 3): every route requires a signed-in
+// user except the public set below. Falls through when no Clerk key is
+// configured so the scaffold runs before Clerk is set up (and in a future
+// local mode). /health and /api/machine/* are excluded from Clerk entirely:
+// machine endpoints authenticate with scoped API tokens, never Clerk
+// (CLAUDE.md); /health is the matcher exclusion, machine routes verify
+// their own Bearer token in the handler.
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/api/machine(.*)",
+]);
+
 const handler = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  ? clerkMiddleware()
+  ? clerkMiddleware(async (auth, request) => {
+      if (!isPublicRoute(request)) {
+        await auth.protect();
+      }
+    })
   : () => NextResponse.next();
 
 export default handler;

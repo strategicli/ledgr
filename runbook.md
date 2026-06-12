@@ -18,6 +18,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `DATABASE_URL` | Neon **pooler** connection string, never direct (`src/db/index.ts` refuses a `*.neon.tech` host without `-pooler`) | Neon dashboard → Connect → Pooled connection |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (client-side; app falls back to unauthenticated shell if absent) | Clerk dashboard → API Keys |
 | `CLERK_SECRET_KEY` | Clerk secret key (server-side) | Clerk dashboard → API Keys |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` (the in-app sign-in page; no sign-up page, sign-ups are restricted in Clerk) | fixed value |
 | `R2_ACCOUNT_ID` | Cloudflare account id (Phase 1, attachments slice) | Cloudflare dashboard |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 S3-compatible credentials | Cloudflare → R2 → Manage API tokens |
 | `R2_BUCKET` | R2 bucket name (`ledgr`) | Cloudflare → R2 |
@@ -25,7 +26,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `R2_PUBLIC_BASE_URL` | public CDN base URL for attachments (custom domain or r2.dev) | Cloudflare → R2 bucket settings |
 | `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` | Azure app registration (Phase 2: calendar, email-in, OneDrive export) | Azure portal → App registrations |
 | `TODOIST_TOKEN` | Todoist API token (Phase 2) | Todoist settings → Integrations → Developer |
-| `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks), stored hashed | generated |
+| `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks): comma-separated `name:scope1+scope2:sha256hex` entries, hashes only | `node scripts/make-token.mjs <name> <scopes>` (§3) |
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
 
@@ -50,7 +51,11 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 
 ## 3. Token and secret rotation
 - **Azure app-only client secret** has an expiry. Track it as a recurring calendar reminder. Rotation steps *(stub, fill when Graph auth is built)*: generate new secret in the app registration, update `GRAPH_CLIENT_SECRET` in Vercel, redeploy, verify `/health` Graph check is green, delete old secret.
-- **Ledgr API tokens** (MCP/cron/webhooks) are scoped and revocable. Rotate on any suspicion of leak. *(stub: document the issue/revoke flow when built.)*
+- **Ledgr API tokens** (MCP/cron/webhooks) are scoped and revocable; only SHA-256 hashes are stored (in `LEDGR_API_TOKENS`), so a leaked env dump yields nothing usable. Rotate on any suspicion of leak.
+  - **Issue:** `node scripts/make-token.mjs <name> <scope,scope,…>` prints the raw token (give to the caller, e.g. a GitHub Actions secret; it is never stored server-side) and the env entry. Append the entry, comma-separated, to `LEDGR_API_TOKENS` in Vercel (Project → Settings → Environment Variables), redeploy.
+  - **Revoke:** delete that token's entry from `LEDGR_API_TOKENS`, redeploy. The token is dead the moment the new deployment serves.
+  - **Verify either way:** `/api/machine/ping` with the token returns 200 + its name/scopes when live, 401 when revoked.
+  - Current tokens: `claude-diag` (scope `diag`, only grants ping; raw value in `.env.claude-diag.local` locally, used by Claude Code to verify machine auth in production).
 - **Clerk / R2 / Todoist keys:** rotate from each provider's dashboard, update Vercel env, redeploy, verify `/health`.
 - After any rotation, confirm `/health` is fully green before walking away.
 
