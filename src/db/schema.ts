@@ -119,6 +119,13 @@ export const items = pgTable(
     inbox: boolean("inbox").notNull().default(false),
     todoistId: text("todoist_id"),
     msEventId: text("ms_event_id"),
+    // OneDrive export state (slice 17): when this row was last written to
+    // the export tree and where. Machine state like todoist_id/ms_event_id,
+    // not a user property. The incremental selection is
+    // updated_at > exported_at; export_path lets renames clean up their old
+    // file and deletes move it to _archive (PRD §5.4).
+    exportedAt: timestamp("exported_at", { withTimezone: true }),
+    exportPath: text("export_path"),
     parentId: uuid("parent_id").references((): AnyPgColumn => items.id),
     properties: jsonb("properties"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -198,6 +205,9 @@ export const attachments = pgTable(
     contentType: text("content_type").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     storageKey: text("storage_key").notNull(),
+    // Attachment bytes are immutable once uploaded, so one stamp marks the
+    // export copy done forever (slice 17).
+    exportedAt: timestamp("exported_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -221,6 +231,20 @@ export const revisions = pgTable(
   },
   (t) => [index("revisions_item_idx").on(t.itemId)]
 );
+
+// Per-job persistent state, one row per job key (slice 17): the export
+// job's last-success record now; calendar delta links and Todoist sync
+// tokens land here in Phase 2. Not items (CLAUDE.md rule 2 covers user
+// content; sync bookkeeping is machinery) and not env (it changes at
+// runtime).
+export const jobState = pgTable("job_state", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
 
 // No silent failures: failed crons/webhooks land here and surface through
 // /health and the UI. detail is shown only when debug mode is on.

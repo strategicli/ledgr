@@ -3,6 +3,10 @@
     {
       "path": "/api/machine/purge",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/machine/export",
+      "schedule": "30 6 * * *"
     }
   ]
 }

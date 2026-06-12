@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { getExportState } from "@/lib/export/engine";
 
-// /health: the canary endpoint (runbook.md §2). Checks DB reachability now;
-// last-export timestamp, Todoist, and Graph checks join it when those exist.
+// /health: the canary endpoint (runbook.md §2). Checks DB reachability and
+// the last clean export run; Todoist and Graph checks join it when those
+// integrations exist.
 export const dynamic = "force-dynamic";
 
 type Check =
@@ -35,14 +37,27 @@ async function checkDatabase(): Promise<Check> {
 export async function GET() {
   const database = await checkDatabase();
 
-  // Placeholder until the OneDrive export job ships (Phase 1, later slice).
-  // Once real, a stale timestamp here is the stalled-sync canary.
-  const lastExportAt: string | null = null;
+  // lastExportAt is the last run that finished clean (zero item errors,
+  // nothing remaining); lastExportRunAt is the last attempt. A growing gap
+  // between them, or a stale lastExportAt, is the stalled-export canary
+  // (null until Brandon configures the Azure app registration, runbook §1).
+  let lastExportAt: string | null = null;
+  let lastExportRunAt: string | null = null;
+  if (database.ok) {
+    try {
+      const state = await getExportState();
+      lastExportAt = state?.lastSuccessAt ?? null;
+      lastExportRunAt = state?.lastRunAt ?? null;
+    } catch {
+      // job_state being unreadable while select 1 works is strange enough
+      // to surface as nulls rather than fail the whole check.
+    }
+  }
 
   return NextResponse.json(
     {
       status: database.ok ? "ok" : "degraded",
-      checks: { database, lastExportAt },
+      checks: { database, lastExportAt, lastExportRunAt },
       timestamp: new Date().toISOString(),
     },
     { status: database.ok ? 200 : 503 }
