@@ -1,0 +1,59 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+
+# Production
+/dist
+
+# Environment / secrets (NEVER commit real values; keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# Drizzle (keep migrations tracked; ignore transient introspection output if any)
+# /drizzle is committed on purpose; uncomment below only if you generate scratch output there
+# /drizzle/meta/_journal_tmp.json
+
+# Testing
+/coverage
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.cache/
+tmp/

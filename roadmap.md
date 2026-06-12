@@ -1,0 +1,93 @@
+# roadmap.md: Ledgr Phasing Tracker
+
+Phase-by-phase checklist derived from PRD §8. Check boxes as slices ship. The point is twofold: progress is visible, and scope discipline holds (what's deliberately *not* in a phase matters as much as what is). When something moves, update `next_steps.md` too.
+
+Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
+
+---
+
+## Phase 1: Core (build first, live in it)
+The goal: a usable single-user tool Brandon can capture into and write in, with the export safety net working.
+
+- [ ] Repo scaffold (Next.js on Vercel, Drizzle, Neon via pooler, Clerk, env config)
+- [ ] Data model: `users`, `types` (seed 5 system rows), `items` (incl. `properties` JSONB), `relations`, `attachments`, `revisions`, `views`, `error_log` (see `schema.md`)
+- [ ] Index plan in place (incl. FTS generated `tsvector` column)
+- [ ] Auth: Clerk + Microsoft sign-in; API-token scheme for machine access
+- [ ] Item CRUD (owner-scoped; list queries exclude `body`)
+- [ ] Block editor (BlockNote): slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors
+- [ ] Markdown serialization (color/highlight → inline HTML `<mark>`/`<span>`; single mapping table)
+- [ ] Paste images inline (stored to R2)
+- [ ] `@`-mention to other items (auto-creates a `relations` row)
+- [ ] Entity pages (related items grouped by type)
+- [ ] Parent/child subtasks: recursive tree reads, cycle guard, progress rollup, soft-delete cascade
+- [ ] Item canvas: center modal default + expand to full screen; top/bottom field zones, horizontal top strip (PRD §4.13)
+- [ ] Today / dashboard view (batched single fetch; fixed layout, widgets come in Phase 2 per PRD §4.11)
+- [ ] Navigation shell: floating bottom bar on mobile (home locked to slot 1, user-assigned slots, badge-count support); desktop bottom-bar vs right-sidebar tested behind the same slot model (PRD §4.12, open Q9)
+- [ ] Inbox view (untriaged items)
+- [ ] Per-type lists with simple filters
+- [ ] Full-text search (Postgres FTS) filtered by type/entity/date
+- [ ] Quick capture (global affordance, desktop shortcut, title-only)
+- [ ] Backlinks panel (traverse `relations` both directions; suggested vs confirmed render)
+- [ ] Soft delete + Trash (30-day purge); revision snapshots + restore
+- [ ] PWA shell (installable, responsive)
+- [ ] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}.md` + YAML frontmatter; archive path)
+- [ ] Pulpit Ready action (immediate export + verified offline pin + print-styled PDF)
+- [ ] `/health` endpoint (DB, last export timestamp; Todoist/Graph once they exist)
+- [ ] Structured JSON logging + correlation ids; toggleable debug mode
+- [ ] Weekly `pg_dump` to OneDrive; restore tested once before Phase 2
+
+**Not in Phase 1:** integrations (calendar/Todoist/email), view builder, embedded query views, widget dashboard, MCP server, Build surface (custom-type builder, workflow/wiki templates), sharing.
+
+---
+
+## Phase 2: Integrations + sharing
+
+- [ ] Microsoft Graph auth: interactive delegated OAuth (MFA) + app-only client credentials for unattended jobs; mailbox-scoped via Application Access Policy
+- [ ] Calendar sync (poll next 14 days, default 6h via GitHub Actions + "sync now"); auto-create meeting items; `ms_event_id` dedupe; reschedule/cancel handling
+- [ ] Matchers config + engine (attendee email → series id → title regex → `pg_trgm` fuzzy); setup wizard sampling; learn-by-confirmation; suggested/confirmed states
+- [ ] Meeting prep templates (open tasks for the person, last 3 meetings, agenda headings; action-item → task promotion)
+- [ ] Todoist sync: push dated tasks, completions sync back (webhook + polling fallback), inbox pull-in (offline capture), recurrence delegated to Todoist, conflict rule (Ledgr canonical)
+- [ ] Email-in (Outlook "Ledgr Import" folder via Graph `messages/delta`; mark-read + move; note/`task:` prefix; attachments to R2)
+- [ ] View builder (custom views + layouts: list/table/board/calendar/agenda)
+- [ ] Interactive embedded query views (editable filter, inline edit/check-off, create-inherits-filters, remove = un-relate)
+- [ ] Widget dashboard (drag-and-drop View-Definition cards; item-count-driven heights with equal-height option; badge counts; fill-screen desktop, vertical-scroll mobile; PRD §4.11)
+- [ ] Push notifications (morning agenda, meeting-prep-ready)
+- [ ] Public share links (read-only, print-friendly, PDF download)
+- [ ] Provider-interface discipline confirmed for auth + scheduler (keeps Phase 4 cheap)
+
+**Possible late-Phase-2 ride-along:** the Meetings module's manual "Add-to-template" slice (from planning rhythms).
+
+---
+
+## Phase 3: Claude layer + migration + planning rhythms
+
+- [ ] MCP server (search/read/create/update items, list by entity/date; personal API token)
+- [ ] Scheduled Claude tasks (morning briefing, weekly health check) over the same API
+- [ ] Selective Notion migration (full export to OneDrive archive first; import active items; map relations; share-to-app)
+- [ ] Build surface shell (Work/Build toggle in the main menu; PRD §4.10)
+- [ ] Custom type & property builder UI (writes `types.property_schema`; resolves custom-type identity, open Q6)
+- [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
+- [ ] Planning rhythms (configurable rituals; deterministic modules; AI-assembled agenda is the only model step)
+
+---
+
+## Phase 4: Packageable local / self-hosted build (exploratory)
+
+- [ ] Gated on a genuine alternative-deployment motivation (not resilience, already covered by export + Pulpit Ready)
+- [ ] Swap/stub external deps behind provider interfaces (Clerk → local single-user, R2 → local FS, scheduler → local cron, Graph/Todoist → off or stubbed)
+- [ ] DB is already portable (Drizzle connection-string change)
+
+---
+
+## Later / ideas parking lot
+Meeting capture + AI processing (PRD §4.15: Whisper or Teams-transcript + Anthropic API summary and suggested tasks; designed-for now, promoted when PRD Q10 resolves), pulpit mode (large-type distraction-free render), staff accounts (schema ready, product deferred), synced blocks, formulas/rollups, gallery/Gantt layouts, email-out, tiered attachment storage (cold-demotion, gated on a real R2-quota trigger; chosen variant is delete-from-R2-and-rehydrate-from-OneDrive).
+
+---
+
+## Success criteria (PRD §9)
+- Brandon stops opening Notion for new items within 2 weeks of Phase 2 completing
+- A 1:1 with Roger preps in one click and is conducted entirely in the app
+- A sermon is written in the app and preached from it (or its export) at least once
+- Zero data-loss incidents; export verified restorable
+- Maintenance incidents ≤ 5/year, each resolved under an hour with Claude Code
+- Monthly cost stays ~$0
