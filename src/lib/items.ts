@@ -25,10 +25,15 @@ const REVISION_DEBOUNCE_MS = 5 * 60 * 1000;
 const REVISION_CAP = 50;
 const TRASH_RETENTION_DAYS = 30;
 
-export const ITEM_STATUSES = ["open", "done", "archived"] as const;
-export const URGENCIES = ["low", "normal", "high", "critical"] as const;
-export type ItemStatus = (typeof ITEM_STATUSES)[number];
-export type Urgency = (typeof URGENCIES)[number];
+// Re-exported from item-enums.ts (client-safe home) so server callers keep
+// one import site.
+export {
+  ITEM_STATUSES,
+  URGENCIES,
+  type ItemStatus,
+  type Urgency,
+} from "@/lib/item-enums";
+import type { ItemStatus, Urgency } from "@/lib/item-enums";
 
 // Routes map codes to HTTP statuses; messages are safe to return to the
 // (single, authenticated) user.

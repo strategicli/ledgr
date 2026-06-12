@@ -13,9 +13,11 @@ type SaveState = "saved" | "dirty" | "saving" | "error";
 
 export type ItemEditorProps = {
   item: { id: string; title: string; body: unknown };
+  // Canvas top strip (PRD §4.13), rendered between the title and the body.
+  fields?: React.ReactNode;
 };
 
-export default function ItemEditor({ item }: ItemEditorProps) {
+export default function ItemEditor({ item, fields }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -76,6 +78,22 @@ export default function ItemEditor({ item }: ItemEditorProps) {
     return () => window.removeEventListener("pagehide", onHide);
   }, [item.id]);
 
+  // Closing the canvas modal (or any client-side nav away) unmounts the
+  // editor; edits still inside the debounce window must not be lost.
+  useEffect(() => {
+    return () => {
+      const patch = pending.current;
+      if (Object.keys(patch).length === 0) return;
+      pending.current = {};
+      void fetch(`/api/items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+        keepalive: true,
+      });
+    };
+  }, [item.id]);
+
   const statusLabel = {
     saved: "Saved",
     dirty: "Unsaved changes",
@@ -104,6 +122,7 @@ export default function ItemEditor({ item }: ItemEditorProps) {
           {statusLabel}
         </span>
       </div>
+      {fields}
       <LazyEditor
         itemId={item.id}
         initialBody={item.body}

@@ -4,7 +4,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function SubtaskCheckbox({
   id,
@@ -15,7 +15,13 @@ export default function SubtaskCheckbox({
 }) {
   const router = useRouter();
   const [checked, setChecked] = useState(done);
-  useEffect(() => setChecked(done), [done]);
+  // Re-adopt the server value when a refresh changes it (adjust-during-
+  // render pattern; an effect here would double-render).
+  const [prevDone, setPrevDone] = useState(done);
+  if (done !== prevDone) {
+    setPrevDone(done);
+    setChecked(done);
+  }
 
   async function toggle() {
     const next = !checked;

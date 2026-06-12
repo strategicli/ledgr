@@ -20,7 +20,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] `@`-mention to other items (auto-creates a `relations` row) (2026-06-12: mention inline node + picker; diff-sync to `relations` role `mention` on every body save; verified end-to-end in-browser against Neon)
 - [x] Entity pages (related items grouped by type) (2026-06-12: both-directions body-free query in `src/lib/relations.ts` + `GET /api/items/[id]/related`; entity items render a grouped Related section on `/items/[id]`; suggested edges render gray/dashed; 17/17 checks against Neon + browser-verified)
 - [x] Parent/child subtasks: recursive tree reads, cycle guard, progress rollup, soft-delete cascade (2026-06-12: subtree + ancestors reads in `src/lib/subtasks.ts` + `GET /api/items/[id]/subtree`; Subtasks checklist with done-toggles, inline add, n-of-m rollups, and ancestor breadcrumb on `/items/[id]`; 21/21 checks against Neon + browser-verified; cycle guard and cascade were slice 4)
-- [ ] Item canvas: center modal default + expand to full screen; top/bottom field zones, horizontal top strip (PRD §4.13)
+- [x] Item canvas: center modal default + expand to full screen; top/bottom field zones, horizontal top strip (PRD §4.13) (2026-06-12: intercepting-route modal at `src/app/@modal`, shared `ItemCanvas`, per-type strip defaults in `src/lib/canvas-fields.ts`; browser-verified end to end)
 - [ ] Today / dashboard view (batched single fetch; fixed layout, widgets come in Phase 2 per PRD §4.11)
 - [ ] Navigation shell: floating bottom bar on mobile (home locked to slot 1, user-assigned slots, badge-count support); desktop bottom-bar vs right-sidebar tested behind the same slot model (PRD §4.12, open Q9)
 - [ ] Inbox view (untriaged items)
