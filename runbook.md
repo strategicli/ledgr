@@ -10,18 +10,24 @@ Written for future-Brandon working with Claude Code on a Saturday when something
 
 ---
 
-## 1. Environment variables *(stub, fill during repo scaffold)*
-Document every var here with a one-line description and where to get it. Never commit secrets.
+## 1. Environment variables
+Every var, a one-line description, and where to get it. Mirrors `.env.example` in the repo; keep the two in sync. Never commit secrets. Locally these live in `.env.local` (gitignored); on Vercel they're set in Project → Settings → Environment Variables.
 
 | Var | What | Source |
 |---|---|---|
-| `DATABASE_URL` | Neon **pooler** connection string (not direct) | Neon dashboard → Connection pooling |
-| `CLERK_*` | Clerk publishable + secret keys | Clerk dashboard |
-| `R2_*` | Cloudflare R2 access key, secret, bucket, endpoint | Cloudflare R2 |
-| `GRAPH_*` | Azure app registration: client id, tenant id, client secret | Azure portal → App registrations |
-| `TODOIST_TOKEN` | Todoist API token | Todoist settings → Integrations |
-| `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks) | generated, stored hashed |
-| `DEBUG_MODE` | toggles verbose errors/timings | env flag |
+| `DATABASE_URL` | Neon **pooler** connection string, never direct (`src/db/index.ts` refuses a `*.neon.tech` host without `-pooler`) | Neon dashboard → Connect → Pooled connection |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (client-side; app falls back to unauthenticated shell if absent) | Clerk dashboard → API Keys |
+| `CLERK_SECRET_KEY` | Clerk secret key (server-side) | Clerk dashboard → API Keys |
+| `R2_ACCOUNT_ID` | Cloudflare account id (Phase 1, attachments slice) | Cloudflare dashboard |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 S3-compatible credentials | Cloudflare → R2 → Manage API tokens |
+| `R2_BUCKET` | R2 bucket name (`ledgr`) | Cloudflare → R2 |
+| `R2_ENDPOINT` | R2 S3 endpoint URL | Cloudflare → R2 bucket settings |
+| `R2_PUBLIC_BASE_URL` | public CDN base URL for attachments (custom domain or r2.dev) | Cloudflare → R2 bucket settings |
+| `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` | Azure app registration (Phase 2: calendar, email-in, OneDrive export) | Azure portal → App registrations |
+| `TODOIST_TOKEN` | Todoist API token (Phase 2) | Todoist settings → Integrations → Developer |
+| `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks), stored hashed | generated |
+| `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
+| `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
 
 ---
 

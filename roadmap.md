@@ -9,7 +9,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 ## Phase 1: Core (build first, live in it)
 The goal: a usable single-user tool Brandon can capture into and write in, with the export safety net working.
 
-- [ ] Repo scaffold (Next.js on Vercel, Drizzle, Neon via pooler, Clerk, env config)
+- [~] Repo scaffold (Next.js on Vercel, Drizzle, Neon via pooler, Clerk, env config) (code complete + committed 2026-06-12; flip to done when deployed and `/health` is green on a real Neon pooler connection)
 - [ ] Data model: `users`, `types` (seed 5 system rows), `items` (incl. `properties` JSONB), `relations`, `attachments`, `revisions`, `views`, `error_log` (see `schema.md`)
 - [ ] Index plan in place (incl. FTS generated `tsvector` column)
 - [ ] Auth: Clerk + Microsoft sign-in; API-token scheme for machine access

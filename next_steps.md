@@ -2,20 +2,11 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state:** PRD complete (v0.17, now including the two-surface Work/Build architecture, widget dashboard, navigation, item canvas, and meeting-AI design-ahead from the June 11 Tyler call). Supporting docs written (CLAUDE.md, schema.md, roadmap.md, runbook.md, decisions.md). No code yet. We are at the very start of Phase 1.
+**Current state:** Repo scaffolded (slice 1, ADR-002): Next.js 16 App Router at `C:\dev\ledgr`, Drizzle + Neon serverless driver with a pooler guard, Clerk behind a thin auth interface, `/health` stub, docs copied into the repo. Remaining slice-1 verification (GitHub push, Vercel deploy, green `/health` against a real Neon DB) waits on one-time interactive logins (gh, Vercel) and Neon/Clerk account setup. Next code work is step 2, the schema.
 
 ---
 
 ## Next up (in order)
-
-### 1. Scaffold the repo
-- Create the GitHub repo (also the code backup and where Claude Code works).
-- `create-next-app` (TypeScript, App Router). Add Drizzle, the Neon serverless driver, Clerk SDK.
-- Wire Vercel deploy from the repo.
-- Set up `.env` and a documented env-var list (Neon **pooler** connection string, Clerk keys, R2 keys, Graph app registration, Todoist token). Put placeholders + descriptions in the runbook.
-- Add a `/health` endpoint stub (returns DB-reachable + a placeholder export timestamp).
-- Verify: app deploys, `/health` is green, DB connects through the pooler.
-- Log the scaffold choices (App Router, etc.) in `decisions.md`.
 
 ### 2. Define the schema in Drizzle and migrate
 - Implement `users`, `types`, `items`, `relations`, `attachments`, `revisions`, `views`, `error_log` per `schema.md`.
@@ -63,6 +54,7 @@ Entity pages → parent/child subtasks (recursive reads, cycle guard, progress r
 ---
 
 ## Recently done
+- **Slice 1, repo scaffold (2026-06-12, ADR-002):** create-next-app (TypeScript, App Router, Tailwind kept) at `C:\dev\ledgr` (outside OneDrive; node_modules and OneDrive sync don't mix). Drizzle ORM + Neon serverless HTTP driver; `src/db/index.ts` enforces the pooler rule (refuses a `*.neon.tech` host without `-pooler`). Clerk SDK behind a thin `AuthProvider` interface in `src/lib/auth/` with a no-key fallback (Phase 4 seam); Clerk middleware in `src/proxy.ts`, `/health` excluded. `.env.example` documented and mirrored in runbook §1. `/health` returns DB reachability + placeholder `lastExportAt` (verified locally: degraded without DB, pooler guard fires, debug mode gates error detail). Docs copied into the repo; initial commit made. Pending verification: GitHub push, Vercel deploy wiring, `/health` green against a real pooled Neon connection.
 - PRD updated to v0.17 from the June 11 Tyler call: two-surface architecture (Work/Build, §4.10), widget dashboard (§4.11), navigation slots (§4.12), item canvas with field zones (§4.13), Build surface workflows/wikis (§4.14), meeting capture + AI specced design-ahead (§4.15); roadmap/schema/next_steps synced.
 - PRD finalized (v0.16).
 - Generated CLAUDE.md, schema.md, roadmap.md, runbook.md, decisions.md.
