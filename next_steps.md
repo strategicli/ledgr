@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state (2026-06-12, night):** Slice 5 is fully closed (Brandon set the R2 CORS policy and confirmed live image paste) and slice 6 (entity pages) is done: opening an entity item shows every related item grouped by type beneath its body. Test data left in the DB on purpose: "Editor test page (slice 5)", "Roger Smith" entity (now mentioned from the test task and the Tyler meeting, so its entity page has content), and "Manual test task" (its body was replaced with a mention of Roger during slice-6 verification); trash them anytime.
+**Current state (2026-06-12, night):** Slice 7 (parent/child subtasks) is done: any item page shows its child tree as a checklist with done-toggles, an inline "+ Add subtask" capture, an "n of m done" rollup on the header and on every nested parent, and a root-first ancestor breadcrumb. Test data left in the DB on purpose: "Editor test page (slice 5)", "Roger Smith" entity, "Manual test task", and the "Subtask demo (slice 7)" tree (three subtasks, one done, one with a nested grandchild); trash them anytime.
 
 **Brandon-steps (manual checks):**
 1. (No rush) Attach a custom domain to the R2 bucket and update `R2_PUBLIC_BASE_URL` (runbook §1 "R2 follow-up"); cheaper to do before many images exist. The CORS origins don't change with it (uploads go to the S3 endpoint, not the public domain).
@@ -11,15 +11,15 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 ## Next up (in order)
 
-### 7. Parent/child subtasks
-- Recursive tree reads (the write-time cycle guard and cascade soft-delete/restore already exist from slice 4).
-- Subtask display on the item page; progress rollup (n of m done) on parents.
-- Body-free list queries; owner-scoped recursive CTEs like the existing ones in `src/lib/items.ts`.
+### 8. Item canvas (PRD §4.13)
+- Center modal as the default open (full-screen expand kept); the `/items/[id]` page becomes the expanded form, the editing core (ItemEditor) carries over unchanged.
+- Top field zone as a horizontal strip (status, due date, urgency, type-appropriate fields); bottom zone under the body (subtasks and related sections likely move there).
+- Notion-default for interactions (open-in-modal from lists, Esc to close, URL still routable).
 
 ---
 
 ## Then (rest of Phase 1, rough order)
-Parent/child subtasks (recursive reads, cycle guard, progress rollup) → item canvas (modal default, top/bottom field zones, PRD §4.13) → Today view (batched fetch; fixed layout) → navigation shell (mobile bottom bar; desktop nav test, PRD §4.12) → Inbox → per-type lists + filters → full-text search → quick capture → backlinks panel → PWA shell → OneDrive export → Pulpit Ready → structured logging + debug mode → weekly `pg_dump` + a tested restore. See `roadmap.md` for the full Phase 1 checklist.
+Today view (batched fetch; fixed layout) → navigation shell (mobile bottom bar; desktop nav test, PRD §4.12) → Inbox → per-type lists + filters → full-text search → quick capture → backlinks panel → PWA shell → OneDrive export → Pulpit Ready → structured logging + debug mode → weekly `pg_dump` + a tested restore. See `roadmap.md` for the full Phase 1 checklist.
 
 **Before starting Phase 2:** the backup restore must be tested once for real. An untested backup is a hope, not a backup.
 
@@ -35,6 +35,7 @@ Parent/child subtasks (recursive reads, cycle guard, progress rollup) → item c
 ---
 
 ## Recently done
+- **Slice 7, parent/child subtasks (2026-06-12):** `src/lib/subtasks.ts` with `listSubtree` (one recursive CTE, owner-scoped in both terms, body-free, live-only, creation-order siblings, 500-row cap) and `listAncestors` (upward CTE for the breadcrumb, root first; trashed or cross-owner ancestors truncate the chain). Both CTEs use UNION with only id-dependent columns (no depth counter) so even corrupted-cycle data terminates; the write-time guard from slice 4 stays the real defense. Progress rollup per PRD §3.5: n of m done over direct task-type children only (a note filed under a project lists but doesn't count), null when there are none. `GET /api/items/[id]/subtree` returns the nested tree. `/items/[id]` gains the Subtasks section (checklist with optimistic done-toggles, inline Enter-to-add capture that stays open for rapid entry, nested rendering with per-parent rollups) and the ancestor breadcrumb. Verified: 21/21 checks in `scripts/verify-subtasks.mts` against Neon (shape/order/nesting, rollup math incl. recompute after status change and trash/restore of a branch, owner scoping, cycle termination both directions, write-guard refusal) plus a real-browser pass (add three subtasks inline, toggle one done → 1/3 header rollup + strike-through, grandchild under a child → 0/1 badge, two-level breadcrumb, zero console errors).
 - **Slice 6, entity pages (2026-06-12):** `src/lib/relations.ts` with `listRelatedItems`: one both-directions pass over `relations` (the separate source/target indexes carry the OR join), owner-scoped, live items only, selecting the shared body-free `listColumns` (now exported from `items.ts`). Duplicate edges (multi-role, both directions) dedupe to one row with all roles collected and `confirmed` beating `suggested`; self-edges excluded. `GET /api/items/[id]/related` is the first taste of the backlinks data path. Entity items render a grouped Related section under the editor on `/items/[id]` (type groups in seed order via the new shared `src/lib/type-order.ts`); suggested edges render grayed with a dashed badge instead of hiding. Verified: 17/17 checks in `scripts/verify-relations.mts` against Neon (SQL owner-scoped/body-free, mention path, dedupe, trash exclusion + restore, cross-owner isolation) plus a real-browser check of Roger Smith's page (grouping, suggested badge, zero console errors); synthetic suggested edges cleaned up after.
 - **Slice 5 fully closed (2026-06-12):** Brandon set the bucket CORS policy and confirmed image paste works end to end.
 - **Dark mode as default styling (2026-06-12):** Brandon's preference; light mode returns later as a deliberate toggle. Theme tokens in `globals.css` are the single plug-in point (`--background`/`--foreground`, a future `.light` class on `<html>`), BlockNote runs `theme="dark"` with its editor background pinned to the page token, and the mention chip uses Notion-dark blue. Pages must style from the tokens or neutral dark classes, never hardcode light backgrounds. Sign-in still shows Clerk's light card on the dark page; restyle it whenever Clerk theming comes up.
