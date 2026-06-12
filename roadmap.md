@@ -31,10 +31,10 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Soft delete + Trash (30-day purge); revision snapshots + restore (2026-06-12: cascade soft-delete restores as a unit, daily purge cron at `/api/machine/purge`, debounced snapshots capped at 50; Trash *UI* comes with the list views slice)
 - [x] PWA shell (installable, responsive) (2026-06-12: manifest + generated icons + conservative SW — shell/static only, never item data, offline fallback page, pinned-cache seam for Pulpit Ready — + GET share target landing URLs as link items and text as tasks, all `inbox: true`, ADR-016; verified on a production build incl. offline navigation and all three share shapes; Brandon installs on his devices)
 - [~] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}-{id8}.md` + YAML frontmatter; archive path) (2026-06-12: engine + Graph app-only target + 06:30 UTC cron + `POST /api/export`, ADR-017; 21/21 checks against Neon with the local target; **awaiting the Azure app registration (runbook §1b, Brandon) for the real OneDrive end-to-end**)
-- [ ] Pulpit Ready action (immediate export + verified offline pin + print-styled PDF)
+- [x] Pulpit Ready action (immediate export + verified offline pin + print-styled PDF) (2026-06-12, ADR-019: self-contained /items/[id]/print render pins into ledgr-pin-v1 under both URLs, cache.match-verified “cached ✓”, print-to-PDF via @media print; export leg reports honestly until the Azure registration exists)
 - [x] `/health` endpoint (DB, last export timestamp; Todoist/Graph once they exist) (2026-06-12: reports `lastExportAt` — clean runs only — and `lastExportRunAt` from `job_state`; DB check since slice 1; Todoist/Graph checks ride their Phase 2 slices)
 - [x] Structured JSON logging + correlation ids; toggleable debug mode (2026-06-12, ADR-020: shared logger, error_log capture surfaced in /health, DEBUG_MODE env toggle)
-- [ ] Weekly `pg_dump` to OneDrive; restore tested once before Phase 2
+- [x] Weekly `pg_dump` to OneDrive; restore tested once before Phase 2 (2026-06-12, ADR-021: GitHub Actions weekly dump → artifact now + OneDrive after §1b; restore-test job ran green, all table counts matched)
 
 **Not in Phase 1:** integrations (calendar/Todoist/email), view builder, embedded query views, widget dashboard, MCP server, Build surface (custom-type builder, workflow/wiki templates), sharing.
 

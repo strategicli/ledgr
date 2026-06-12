@@ -120,14 +120,17 @@ The export job (ADR-017) authenticates app-only (client credentials): no stored 
 
 ## 4. Backups and restore
 - **Content:** nightly OneDrive markdown export (`/Ledgr/Export/{type}/{year}/{slug}-{id8}.md` + YAML frontmatter; trashed/archived items under `/Export/_archive/`, attachment copies under `/Export/_attachments/`) plus on-demand exports (`POST /api/export`, Pulpit Ready's hook).
-- **Everything else:** weekly `pg_dump` of the full DB (relations, revisions, metadata) written to OneDrive via the export job. This is the real restore path (free-tier Postgres PITR is thin).
+- **Everything else:** weekly `pg_dump` of the full DB (relations, revisions, metadata) via the GitHub Actions `backup` workflow (`.github/workflows/backup.yml`, Fridays 05:00 UTC so a fresh dump precedes every Sunday). The dump (`--format=custom --no-owner --no-privileges`; Neon's roles aren't portable) lands as a **workflow artifact named `ledgr-backup-YYYY-MM-DD`** (private repo, 60-day retention) and, once the Graph secrets exist in GitHub (after §1b: `GRAPH_TENANT_ID`/`GRAPH_CLIENT_ID`/`GRAPH_CLIENT_SECRET`/`ONEDRIVE_EXPORT_UPN` as repo secrets), also to OneDrive `/Ledgr/Backups/`. Until then the OneDrive step skips with a visible warning. This is the real restore path (free-tier Postgres PITR is thin).
+- **Run a backup now:** `gh workflow run backup --field job=backup` (or Actions tab → backup → Run workflow). Failures email Brandon (GitHub default) and, when the `LEDGR_ERROR_TOKEN` repo secret is set (a cron-scope token, §3), also land in `error_log` via `POST /api/machine/report-error`.
 - **Attachments:** R2 is durable on its own; OneDrive export holds a second copy.
-- **Restore procedure** *(stub, must be tested once before Phase 2):*
-  1. Provision a fresh Neon DB.
-  2. `pg_restore` from the latest weekly dump in OneDrive.
-  3. Point `DATABASE_URL` (pooler) at it, redeploy.
-  4. Verify `/health`, spot-check recent items, confirm export resumes.
-- **An untested backup is a hope, not a backup.** Run the restore once for real before relying on it.
+- **Restore test (automated):** `gh workflow run backup --field job=restore-test` dumps production, restores into a throwaway Postgres 17 container, and diffs per-table row counts. **Run green 2026-06-12** (9 tables, all counts matched), so the dump format is proven restorable. Re-run after any schema change that touches extensions or generated columns.
+- **Real restore procedure** (tested mechanics; the Neon leg differs only in the target):
+  1. Download the newest `ledgr-backup-*` artifact (Actions tab) or grab the OneDrive copy.
+  2. Provision a fresh Neon DB (or branch); take its **direct** (non-pooler) URL.
+  3. `pg_restore --no-owner --no-privileges --exit-on-error -d "<direct url>" ledgr-<date>.dump` (client major version must be ≥ server's).
+  4. Point `DATABASE_URL` (the **pooler** URL of the new DB) at it in Vercel, redeploy.
+  5. Verify `/health`, spot-check recent items, confirm the nightly export resumes (`lastExportRunAt` advances).
+- **An untested backup is a hope, not a backup.** The first test ran 2026-06-12; keep it green.
 
 ---
 
