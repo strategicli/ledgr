@@ -1,0 +1,3 @@
+ALTER TABLE "items" drop column "search";--> statement-breakpoint
+ALTER TABLE "items" ADD COLUMN "search" "tsvector" GENERATED ALWAYS AS (setweight(to_tsvector('english', coalesce("items"."title", '')), 'A') || setweight(to_tsvector('english', coalesce("items"."body_text", '')), 'B') || setweight(to_tsvector('english', regexp_replace(coalesce("items"."url", '') || ' ' || coalesce("items"."kind", ''), '[^a-zA-Z0-9]+', ' ', 'g')), 'C') || setweight(jsonb_to_tsvector('english', coalesce("items"."properties", '{}'::jsonb), '["string"]'), 'C')) STORED;--> statement-breakpoint
+CREATE INDEX "items_search_gin" ON "items" USING gin ("search");

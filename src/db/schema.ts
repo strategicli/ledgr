@@ -129,9 +129,13 @@ export const items = pgTable(
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
+    // Weighted FTS document (ADR-014): title (A) outranks body (B) outranks
+    // metadata (C: url + kind + custom property string values). URLs/kinds
+    // are split on punctuation so "youtube" matches a youtube.com link;
+    // status/urgency/dates stay out on purpose (they're filters, not prose).
     search: tsvector("search").generatedAlwaysAs(
       (): SQL =>
-        sql`to_tsvector('english', coalesce(${items.title}, '') || ' ' || coalesce(${items.bodyText}, ''))`
+        sql`setweight(to_tsvector('english', coalesce(${items.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${items.bodyText}, '')), 'B') || setweight(to_tsvector('english', regexp_replace(coalesce(${items.url}, '') || ' ' || coalesce(${items.kind}, ''), '[^a-zA-Z0-9]+', ' ', 'g')), 'C') || setweight(jsonb_to_tsvector('english', coalesce(${items.properties}, '{}'::jsonb), '["string"]'), 'C')`
     ),
   },
   (t) => [

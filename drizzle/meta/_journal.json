@@ -15,6 +15,13 @@
       "when": 1781290657671,
       "tag": "0001_yellow_tomas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781293506009,
+      "tag": "0002_past_bloodscream",
+      "breakpoints": true
     }
   ]
 }

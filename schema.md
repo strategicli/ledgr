@@ -181,7 +181,7 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 - B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`; partial on `items.owner_id where inbox and deleted_at is null` (nav badge count + Inbox view).
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
-- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items` over `title + body_text`, GIN-indexed. Not computed per query. (`body_text` is app-maintained; generating from raw BlockNote JSONB would index structural noise, ADR-003.)
+- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url + kind (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained; generating from raw BlockNote JSONB would index structural noise, ADR-003.)
 - Composite indexes as query patterns prove them out; log additions in `decisions.md`.
 
 ## Phase 2+ structures, noted ahead (don't build in Phase 1)
@@ -190,6 +190,6 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 - **Meeting AI (PRD §4.15):** needs no new tables. Audio is an `attachments` row; transcript/summary are sections in the meeting `body`; suggested tasks are task items related to the meeting with `match_state = 'suggested'`.
 
 ## Known schema-adjacent gaps (track, don't block)
-- **Custom property values aren't full-text searched.** FTS covers title + body; `properties` is filterable via GIN but not necessarily searchable. Minor; flagged.
+- ~~Custom property values aren't full-text searched~~ resolved 2026-06-12: `properties` string values, link URLs, and entity kinds joined the FTS document at weight `C` (ADR-014, migration 0002).
 - **Embedded query-view blocks have no faithful markdown form.** They export as a static snapshot/placeholder, not a live view (fine for the pulpit fallback since sermons are prose).
 - ~~Entity `kind` placement~~ resolved: column on `items` (ADR-003).

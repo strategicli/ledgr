@@ -216,6 +216,44 @@ try {
   const scoped = await searchItems(ownerId, "xylophone");
   check("cross-owner search isolation", !scoped.some((r) => r.id === foreignNote.id));
 
+  // 6. Coverage beyond title+body (ADR-014): url, kind, properties; weighting.
+  const link = await createItem(ownerId, { type: "link", title: "V14 a saved video", url: "https://www.youtube.com/watch?v=xylovid123" });
+  const propped = await createItem(ownerId, { type: "task", title: "V14 propped task", properties: { campus: "Xylocampus North" } });
+  const kindEntity = await createItem(ownerId, { type: "entity", title: "V14 Xyloplex Org", kind: "xylokind" });
+  const quokkaTitle = await createItem(ownerId, { type: "note", title: "V14 quokka in the title" });
+  const quokkaBody = await createItem(ownerId, { type: "note", title: "V14 plain note", body: para("A quokka appears only in the body.") });
+  created.push(link.id, propped.id, kindEntity.id, quokkaTitle.id, quokkaBody.id);
+
+  const byUrl = await searchItems(ownerId, "youtube");
+  check("url words are searchable (punctuation split)", byUrl.some((r) => r.id === link.id));
+  const byUrlId = await searchItems(ownerId, "xylovid123");
+  check("url path tokens are searchable", byUrlId.some((r) => r.id === link.id));
+  const byProp = await searchItems(ownerId, "xylocampus");
+  check("custom property string values are searchable", byProp.some((r) => r.id === propped.id));
+  const byKind = await searchItems(ownerId, "xylokind");
+  check("entity kind is searchable", byKind.some((r) => r.id === kindEntity.id));
+  const byStatus = await searchItems(ownerId, "open");
+  check(
+    "status enum is NOT a search word",
+    !byStatus.some((r) => r.id === propped.id || r.id === quokkaTitle.id)
+  );
+  const quokka = await searchItems(ownerId, "quokka");
+  check(
+    "title hits outrank body hits",
+    quokka.findIndex((r) => r.id === quokkaTitle.id) <
+      quokka.findIndex((r) => r.id === quokkaBody.id) &&
+      quokka.some((r) => r.id === quokkaBody.id),
+    quokka.map((r) => `${r.title}:${r.rank.toFixed(3)}`).join(", ")
+  );
+  const gin = await db.execute(
+    sql`select indexdef from pg_indexes where indexname = 'items_search_gin'`
+  );
+  check(
+    "items_search_gin survived the column rebuild",
+    String(gin.rows[0]?.indexdef ?? "").includes("gin"),
+    String(gin.rows[0]?.indexdef ?? "missing")
+  );
+
   await softDeleteItem(ownerId, note.id);
   const afterTrash = await searchItems(ownerId, "xylophone");
   check("trashed items drop out of search", !afterTrash.some((r) => r.id === note.id));
