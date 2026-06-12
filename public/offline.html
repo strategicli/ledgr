@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- Offline fallback (slice 16). A static, fully self-contained file (no CSS
+     or JS chunks to also have cached) precached by sw.js and served when a
+     navigation fails. The PWA promises no offline writes (PRD §4.5): this
+     page just says so and points at the fallback paths. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#191919" />
+    <title>Ledgr — offline</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #191919;
+        color: #d4d4d4;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      main { text-align: center; padding: 2rem; max-width: 26rem; }
+      .mark {
+        display: inline-block;
+        width: 56px; height: 56px;
+        border-radius: 12px;
+        background: #232323;
+        position: relative;
+        margin-bottom: 1rem;
+      }
+      .mark::before {
+        content: "L";
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        color: #529cca; font-size: 34px; font-weight: bold;
+      }
+      h1 { font-size: 1.25rem; margin: 0 0 0.5rem; color: #ededed; }
+      p { margin: 0.25rem 0; color: #9b9b9b; font-size: 0.9rem; line-height: 1.5; }
+      button {
+        margin-top: 1.25rem;
+        background: #529cca; color: #191919;
+        border: 0; border-radius: 6px;
+        padding: 0.5rem 1.25rem;
+        font-size: 0.9rem; font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="mark" aria-hidden="true"></span>
+      <h1>You're offline</h1>
+      <p>Ledgr needs a connection to load your items.</p>
+      <p>Capture on the go lives in Todoist; Sunday's fallback is the OneDrive export.</p>
+      <button onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

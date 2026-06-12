@@ -248,7 +248,7 @@ export default function NavShell({
       {/* Mobile: always the floating bottom bar (settled, PRD §4.12). On
           desktop this same element serves bar mode. */}
       <div
-        className={`fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur ${
+        className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-neutral-800 bg-neutral-900/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur ${
           desktopNav === "sidebar" ? "sm:hidden" : ""
         }`}
       >
