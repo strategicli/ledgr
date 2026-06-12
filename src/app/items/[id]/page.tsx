@@ -28,9 +28,12 @@ export default async function ItemPage({
   if (item.deletedAt) notFound(); // Trash items restore first, then open.
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-12 pt-6">
-        <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
+        <Link
+          href="/"
+          className="text-sm text-neutral-500 hover:text-neutral-300"
+        >
           ← All items
         </Link>
       </div>

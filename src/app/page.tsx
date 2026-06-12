@@ -29,21 +29,21 @@ function ItemRow({
   action: "trash" | "restore";
 }) {
   return (
-    <li className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-gray-50">
+    <li className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">
       <Link
         href={`/items/${item.id}`}
         className={`min-w-0 flex-1 truncate text-sm ${
-          item.title ? "text-gray-800" : "text-gray-400"
+          item.title ? "text-neutral-200" : "text-neutral-500"
         } ${action === "restore" ? "pointer-events-none" : ""}`}
       >
         {item.title || "Untitled"}
       </Link>
       {item.status !== "open" && (
-        <span className="shrink-0 rounded bg-gray-100 px-1.5 text-xs text-gray-500">
+        <span className="shrink-0 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
           {item.status}
         </span>
       )}
-      <span className="shrink-0 text-xs text-gray-300">
+      <span className="shrink-0 text-xs text-neutral-600">
         {dateFmt.format(new Date(item.updatedAt))}
       </span>
       <RowAction id={item.id} action={action} />
@@ -86,10 +86,12 @@ export default async function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-white text-gray-900">
+    <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
-      <h1 className="text-2xl font-bold tracking-tight">Ledgr</h1>
-      <p className="mt-1 text-sm text-gray-400">
+      <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
+        Ledgr
+      </h1>
+      <p className="mt-1 text-sm text-neutral-500">
         {live.length} item{live.length === 1 ? "" : "s"} · signed in as{" "}
         {owner.email}
       </p>
@@ -98,11 +100,11 @@ export default async function Home() {
         const group = byType.get(key) ?? [];
         return (
           <section key={key} className="mt-8">
-            <div className="flex items-baseline justify-between border-b border-gray-100 pb-1">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            <div className="flex items-baseline justify-between border-b border-neutral-800 pb-1">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
                 {label}
                 {group.length > 0 && (
-                  <span className="ml-2 font-normal text-gray-300">
+                  <span className="ml-2 font-normal text-neutral-600">
                     {group.length}
                   </span>
                 )}
@@ -116,14 +118,16 @@ export default async function Home() {
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 px-2 text-sm text-gray-300">No items yet.</p>
+              <p className="mt-2 px-2 text-sm text-neutral-600">
+                No items yet.
+              </p>
             )}
           </section>
         );
       })}
 
       <details className="mt-10">
-        <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-600">
+        <summary className="cursor-pointer text-sm text-neutral-500 hover:text-neutral-300">
           Trash ({trashed.length})
         </summary>
         {trashed.length > 0 ? (
@@ -133,7 +137,7 @@ export default async function Home() {
             ))}
           </ul>
         ) : (
-          <p className="mt-2 px-2 text-sm text-gray-300">Trash is empty.</p>
+          <p className="mt-2 px-2 text-sm text-neutral-600">Trash is empty.</p>
         )}
       </details>
       </div>

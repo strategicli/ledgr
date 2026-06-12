@@ -87,7 +87,7 @@ export default function ItemEditor({ item }: ItemEditorProps) {
     <div className="mx-auto w-full max-w-3xl">
       <div className="flex items-baseline justify-between px-12 pt-8 pb-2">
         <input
-          className="w-full bg-transparent text-3xl font-bold outline-none placeholder:text-gray-300"
+          className="w-full bg-transparent text-3xl font-bold text-neutral-100 outline-none placeholder:text-neutral-600"
           placeholder="Untitled"
           value={title}
           onChange={(e) => {
@@ -98,7 +98,7 @@ export default function ItemEditor({ item }: ItemEditorProps) {
         />
         <span
           className={`shrink-0 pl-4 text-xs ${
-            saveState === "error" ? "text-red-500" : "text-gray-400"
+            saveState === "error" ? "text-red-400" : "text-neutral-500"
           }`}
         >
           {statusLabel}

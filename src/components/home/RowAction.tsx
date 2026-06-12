@@ -37,7 +37,7 @@ export default function RowAction({
     <button
       onClick={run}
       disabled={state === "busy"}
-      className="rounded px-2 py-0.5 text-xs text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+      className="rounded px-2 py-0.5 text-xs text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-neutral-700 hover:text-neutral-200 disabled:opacity-50"
     >
       {state === "error" ? "Failed, retry?" : label}
     </button>

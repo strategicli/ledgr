@@ -28,7 +28,7 @@ export default function NewItemButton({ type }: { type: string }) {
     <button
       onClick={create}
       disabled={state === "busy"}
-      className="rounded px-2 py-0.5 text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+      className="rounded px-2 py-0.5 text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50"
     >
       {state === "error" ? "Failed, retry?" : "+ New"}
     </button>

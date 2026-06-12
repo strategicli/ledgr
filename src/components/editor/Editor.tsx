@@ -97,7 +97,7 @@ export default function Editor({
   return (
     <BlockNoteView
       editor={editor}
-      theme="light"
+      theme="dark"
       onChange={() => onBodyChange(editor.document)}
     >
       <SuggestionMenuController
