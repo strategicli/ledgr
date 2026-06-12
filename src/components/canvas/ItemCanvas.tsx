@@ -53,12 +53,16 @@ export default async function ItemCanvas({
   };
 
   // The strip's fields don't repeat in the footer; neither do empty ones.
+  // Task fields (status, due, urgency) never surface on other types, even
+  // when legacy data set them (ADR-018).
   const footerFields: [string, string][] = [["Type", item.type]];
   const maybe = (name: CanvasField, label: string, value: string | null) => {
     if (value && !fields.includes(name)) footerFields.push([label, value]);
   };
-  maybe("dueDate", "Due", item.dueDate ? tsFmt.format(item.dueDate) : null);
-  maybe("urgency", "Urgency", item.urgency);
+  if (item.type === "task") {
+    maybe("dueDate", "Due", item.dueDate ? tsFmt.format(item.dueDate) : null);
+    maybe("urgency", "Urgency", item.urgency);
+  }
   maybe("meetingAt", "When", item.meetingAt ? tsFmt.format(item.meetingAt) : null);
   maybe("url", "URL", item.url);
   maybe("kind", "Kind", item.kind);
@@ -93,9 +97,15 @@ export default async function ItemCanvas({
       )}
       <ItemEditor
         item={{ id: item.id, title: item.title, body: item.body }}
-        fields={<FieldStrip itemId={item.id} fields={fields} initial={strip} />}
+        fields={
+          fields.length > 0 ? (
+            <FieldStrip itemId={item.id} fields={fields} initial={strip} />
+          ) : null
+        }
       />
-      <Subtasks ownerId={owner.id} itemId={item.id} />
+      {/* Subtasks are a task feature (ADR-018); a future project treatment
+          may widen this, but meetings and notes don't grow checklists. */}
+      {item.type === "task" && <Subtasks ownerId={owner.id} itemId={item.id} />}
       {/* Backlinks panel (PRD §4.9): every item shows what links here. On an
           entity this is the slice-6 "tag as dashboard" Related section. */}
       <RelatedPanel ownerId={owner.id} itemId={item.id} itemType={item.type} />

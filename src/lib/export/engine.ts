@@ -82,7 +82,9 @@ function buildFrontmatter(
   add("id", item.id);
   add("type", item.type);
   add("title", item.title);
-  add("status", item.status);
+  // Status is a task field (ADR-018); "status: open" on every note would be
+  // frontmatter noise. Archived non-tasks still land under /_archive/.
+  if (item.type === "task") add("status", item.status);
   add("kind", item.kind);
   add("url", item.url);
   add("due", item.dueDate?.toISOString());

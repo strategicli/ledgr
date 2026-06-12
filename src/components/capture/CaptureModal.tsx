@@ -102,9 +102,11 @@ export default function CaptureModal({
     if (!title || state === "busy") return;
     setState("busy");
     const body: Record<string, unknown> = { type, title, inbox: true };
-    // Due dates are calendar days stored as UTC midnight (ADR-008).
-    if (due) body.dueDate = `${due}T00:00:00.000Z`;
-    if (urgency) body.urgency = urgency;
+    // Due dates are calendar days stored as UTC midnight (ADR-008). Due and
+    // urgency are task fields (ADR-018); a non-task capture ignores them
+    // even if they were filled before the type changed.
+    if (type === "task" && due) body.dueDate = `${due}T00:00:00.000Z`;
+    if (type === "task" && urgency) body.urgency = urgency;
     try {
       const res = await fetch("/api/items", {
         method: "POST",
@@ -165,26 +167,30 @@ export default function CaptureModal({
               </option>
             ))}
           </select>
-          <input
-            type="date"
-            value={due}
-            onChange={(e) => setDue(e.target.value)}
-            aria-label="Due date"
-            className={`${fieldClass} [color-scheme:dark]`}
-          />
-          <select
-            value={urgency}
-            onChange={(e) => setUrgency(e.target.value)}
-            aria-label="Urgency"
-            className={fieldClass}
-          >
-            <option value="">urgency</option>
-            {URGENCIES.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
+          {type === "task" && (
+            <>
+              <input
+                type="date"
+                value={due}
+                onChange={(e) => setDue(e.target.value)}
+                aria-label="Due date"
+                className={`${fieldClass} [color-scheme:dark]`}
+              />
+              <select
+                value={urgency}
+                onChange={(e) => setUrgency(e.target.value)}
+                aria-label="Urgency"
+                className={fieldClass}
+              >
+                <option value="">urgency</option>
+                {URGENCIES.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           {entity ? (
             <span className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-xs text-neutral-200">
               @ {entity.title || "Untitled"}

@@ -51,7 +51,7 @@ function MeetingRow({ meeting, now }: { meeting: ListedItem; now: Date }) {
         href={`/items/${meeting.id}`}
         className={`min-w-0 flex-1 truncate text-sm ${
           meeting.title ? "text-neutral-200" : "text-neutral-500"
-        } ${meeting.status === "done" ? "line-through opacity-60" : ""}`}
+        }`}
       >
         {meeting.title || "Untitled"}
       </Link>

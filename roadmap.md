@@ -67,6 +67,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [ ] Build surface shell (Work/Build toggle in the main menu; PRD §4.10)
 - [ ] Custom type & property builder UI (writes `types.property_schema`; resolves custom-type identity, open Q6)
 - [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
+- [ ] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12)
 - [ ] Planning rhythms (configurable rituals; deterministic modules; AI-assembled agenda is the only model step)
 
 ---

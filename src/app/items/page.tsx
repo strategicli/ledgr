@@ -38,7 +38,7 @@ function ItemRow({
       >
         {item.title || "Untitled"}
       </Link>
-      {item.status !== "open" && (
+      {item.type === "task" && item.status !== "open" && (
         <span className="shrink-0 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
           {item.status}
         </span>

@@ -10,16 +10,19 @@ export type CanvasField =
   | "url"
   | "kind";
 
+// Baked-in fields stay core to their type (ADR-018): status, due date, and
+// urgency belong to tasks only. Other types surface nothing task-shaped;
+// users add such fields later via custom properties, not built-ins.
 const TOP_STRIP: Record<string, CanvasField[]> = {
   task: ["status", "dueDate", "urgency"],
-  meeting: ["meetingAt", "status"],
-  note: ["status"],
-  link: ["url", "status"],
-  entity: ["kind", "status"],
+  meeting: ["meetingAt"],
+  note: [],
+  link: ["url"],
+  entity: ["kind"],
 };
 
-// Custom types (§3.6) get the lowest common denominator until the Build
-// surface lets them declare their own strip.
+// Custom types (§3.6) get no built-in strip until the Build surface lets
+// them declare their own.
 export function topStripFields(type: string): CanvasField[] {
-  return TOP_STRIP[type] ?? ["status"];
+  return TOP_STRIP[type] ?? [];
 }
