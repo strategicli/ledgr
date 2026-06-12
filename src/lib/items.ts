@@ -3,10 +3,20 @@
 // body_text; bodies load only when an item is opened. Deletes are soft
 // (deleted_at), cascade to children, and round-trip through restore; hard
 // deletes happen only in purgeExpiredTrash (the 30-day purge job).
-import { and, desc, eq, isNull, isNotNull, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  ilike,
+  isNull,
+  isNotNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
+import { syncMentionRelations } from "@/lib/mentions";
 
 // A new revision is skipped when the latest one is younger than this; the
 // editor autosaves often (slice 5) and one snapshot per burst is enough
@@ -52,6 +62,9 @@ export type ListOptions = {
   status?: ItemStatus;
   kind?: string;
   parentId?: string;
+  // Title substring match (powers the @-mention picker). Full-text search
+  // over bodies is its own slice and uses the tsvector, not this.
+  q?: string;
   trash?: boolean;
   limit?: number;
   offset?: number;
@@ -90,6 +103,9 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.kind) where.push(eq(items.kind, opts.kind));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
+  if (opts.q) {
+    where.push(ilike(items.title, `%${opts.q.replace(/[\\%_]/g, "\\$&")}%`));
+  }
 
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
   return getDb()
@@ -227,7 +243,10 @@ export async function createItem(ownerId: string, input: ItemInput) {
     })
     .returning(itemColumns);
   const created = rows[0];
-  if (created.body != null) await snapshotRevision(created.id, created.body);
+  if (created.body != null) {
+    await snapshotRevision(created.id, created.body);
+    await syncMentionRelations(ownerId, created.id, created.body);
+  }
   return created;
 }
 
@@ -275,8 +294,10 @@ export async function updateItem(
     .where(and(eq(items.id, id), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
   const updated = rows[0];
-  if (patch.body !== undefined && updated.body != null) {
-    await snapshotRevision(id, updated.body);
+  if (patch.body !== undefined) {
+    if (updated.body != null) await snapshotRevision(id, updated.body);
+    // Runs on null bodies too: clearing a body clears its mention edges.
+    await syncMentionRelations(ownerId, id, updated.body);
   }
   return updated;
 }
@@ -359,6 +380,8 @@ export async function restoreRevision(
     .set({ body, bodyText: extractBodyText(body) })
     .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
+  // The restored body's mentions are the live ones now.
+  await syncMentionRelations(ownerId, itemId, body);
   return rows[0];
 }
 

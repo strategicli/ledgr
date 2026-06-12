@@ -2,19 +2,22 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-**Current state (2026-06-12, late):** Slices 3 and 4 are done. Auth is fully closed out: Brandon's Microsoft sign-in landed and `users.clerk_id` is backfilled (verified on Neon). Item CRUD is live: full REST surface under `/api/items*` (list/create/read/update/soft-delete, restore, revisions + revision restore), all owner-scoped, list queries body-free; cascade soft-delete restores as a unit; daily Trash purge cron (`vercel.json` → `GET /api/machine/purge`, 08:00 UTC) authenticating via `CRON_SECRET` = raw `vercel-cron` machine token (ADR-005, runbook §2a). All 26 checks in `scripts/verify-items.mts` pass against Neon (`npx tsx scripts/verify-items.mts`). Next session: start slice 5 (BlockNote editor). Optional Clerk dashboard tidy-up still open: disable Apple/Google/Email-password so Microsoft is the only visible method (Clerk dashboard → Configure).
+**Current state (2026-06-12, night):** Slice 5 (BlockNote editor) is done except two Brandon-steps below. Editor lives at `/items/[id]` (minimal host page; canvas slice replaces its chrome later), lazy-loaded via `next/dynamic` (confirmed absent from the page's initial chunks). Markdown serialization is pure server-safe code (`src/lib/markdown.ts` + the single color table in `src/lib/colors.ts`). @-mentions insert via an `@` picker (`/api/items?q=` title search) and diff-sync to `relations` rows with role `mention` on every body save. Image paste is fully built behind the storage interface (`/api/attachments` presign → browser PUT to R2) but can't go live until R2 exists. All 43 checks in `scripts/verify-editor.mts` pass against Neon, slice 4's 26 checks still pass, and the full chain (type → autosave → mention → relations row) was driven in a real browser using the new dev auth stand-in (`DEV_USER_EMAIL`, ADR-006). Test data left in the DB on purpose: "Editor test page (slice 5)" + "Roger Smith" entity, trash them anytime.
+
+**Brandon-steps to close slice 5:**
+1. **Provision R2** (runbook §1 box), then paste an image into the test page and confirm it renders.
+2. **Obsidian eyeball check:** open `scripts/sample-export.md` (also copied next to this file as `slice5-sample-export.md`) in Obsidian reading view; colors/highlights should render with no plugin.
+3. (Still open from slice 3) Clerk dashboard tidy-up: disable Apple/Google/Email-password so Microsoft is the only visible method.
 
 ---
 
 ## Next up (in order)
 
-### 5. Block editor (BlockNote) + markdown serialization
-- Lazy-load / code-split the editor (don't pay its cost on lists/Today).
-- Slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors.
-- Markdown export with the color/highlight → inline-HTML mapping table (one table, shared with any future importer).
-- Paste images inline → R2 via presigned URL.
-- `@`-mention creates a `relations` row.
-- Verify: a colored/highlighted doc round-trips to markdown and renders in Obsidian reading view with no plugin.
+### 6. Entity pages
+- Open any entity item and see all related items grouped by type (the "tag as dashboard" experience, PRD §4.2).
+- Query `relations` both directions, `match_state = 'confirmed'` only for trusted lists; suggested renders dotted/grayed when it appears.
+- Body-free list queries throughout; group by `items.type`.
+- A first taste of the backlinks data path (the full backlinks panel is its own slice).
 
 ---
 
@@ -35,6 +38,7 @@ Entity pages → parent/child subtasks (recursive reads, cycle guard, progress r
 ---
 
 ## Recently done
+- **Slice 5, block editor (2026-06-12, ADR-006):** BlockNote 0.51 (core/react/mantine) with the default block set (covers all PRD §4.1 block types) plus a custom `mention` inline node; lazy-loaded so lists never pay the editor bundle. Pure JSON-walking markdown serializer (`src/lib/markdown.ts`, no editor import, usable by the future export cron) over the pinned color table (`src/lib/colors.ts`): text colors → `<span style>`, highlights → `<mark class="hl-*">` + inline style, mentions → `ledgr://item/<id>` links. Storage provider interface (`src/lib/storage/`, R2 via aws4fetch) + `/api/attachments` (presigned PUT, 100MB/file, ~10GB quota, metadata row at presign time). Mention diff-sync (`src/lib/mentions.ts`) on create/update/revision-restore, role `mention` only, other roles untouched. `q=` title search on `GET /api/items` for the picker. Minimal `/items/[id]` page with debounced autosave (1.5s, keepalive flush on pagehide). Dev auth stand-in (`DEV_USER_EMAIL`) + `resolveOwner` backfill hardened to never overwrite a linked `clerk_id`. Verified: 43/43 editor checks + 26/26 item checks against Neon; browser end-to-end (typing, autosave, @ picker → relations row, slash menu items, heading apply); BlockNote confirmed in lazy chunks only. Pending Brandon: R2 provisioning + Obsidian render check (see above).
 - **Slice 4, item CRUD (2026-06-12, ADR-005):** `src/lib/items.ts` + routes `/api/items` (GET list / POST), `/api/items/[id]` (GET/PATCH/DELETE), `[id]/restore`, `[id]/revisions` (+ `[revisionId]/restore`), `/api/machine/purge`. Owner-scoped throughout; list queries select no `body`/`body_text`; `body_text` re-extracted on every body save (feeds the tsvector); revision snapshots debounced 5 min, capped 50, pre-restore body force-snapshotted so restores are undoable; cascade soft-delete stamps the unit with one `deleted_at` and restore matches on it; write-time parent cycle guard. Daily purge cron wired (`vercel.json`, `CRON_SECRET` + `vercel-cron` token set in production env via CLI). Verified: 26/26 checks in `scripts/verify-items.mts` against Neon, plus HTTP probes on the prod build (signed-out protected; purge 200 with cron scope, 401 without/with wrong scope). Added `tsx` (dev-only) to run TS verification scripts. Trash/Today UI comes with the views slices.
 - **Slice 3 closed (2026-06-12):** Brandon signed in with Microsoft; `users.clerk_id` backfill confirmed on Neon.
 - **Slice 3, auth code (2026-06-12, ADR-004):** route protection in `src/proxy.ts` via `auth.protect()` (public: `/sign-in`, `/api/machine/*`; `/health` stays outside the matcher); in-app `/sign-in` page (works on a Clerk dev instance now and a production instance later, no accounts.dev dependency); `resolveOwner()` in `src/lib/owner.ts` (clerk_id lookup, first-sign-in email match + backfill, no row creation); machine tokens per ADR-004 (`src/lib/auth/machine.ts`, `scripts/make-token.mjs`, `/api/machine/ping`). Verified locally on the production build: ping 200 with a valid token (name + scopes echoed), 401 without/with a bad one; home renders keyless. Production verification pending (see 3v); Clerk dashboard setup pending (Brandon).

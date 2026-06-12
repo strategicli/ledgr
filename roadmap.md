@@ -14,10 +14,10 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [x] Index plan in place (incl. FTS generated `tsvector` column) (all 22 indexes verified on Neon 2026-06-12, incl. `items_search_gin` and `items_properties_gin`)
 - [x] Auth: Clerk + Microsoft sign-in; API-token scheme for machine access (done 2026-06-12: Brandon's first Microsoft sign-in landed and `users.clerk_id` is backfilled, verified against Neon; production route protection and machine tokens verified earlier same day)
 - [x] Item CRUD (owner-scoped; list queries exclude `body`) (2026-06-12: full REST surface under `/api/items*` + `src/lib/items.ts`; verified against Neon incl. owner scoping, no-body list SQL, cycle guard)
-- [ ] Block editor (BlockNote): slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors
-- [ ] Markdown serialization (color/highlight → inline HTML `<mark>`/`<span>`; single mapping table)
-- [ ] Paste images inline (stored to R2)
-- [ ] `@`-mention to other items (auto-creates a `relations` row)
+- [x] Block editor (BlockNote): slash commands, headings, lists, checkboxes, quotes, dividers, code; bold/italic/highlight/text colors (2026-06-12: lazy-loaded via `next/dynamic`, verified in-browser incl. autosave; minimal `/items/[id]` host page until the canvas slice)
+- [x] Markdown serialization (color/highlight → inline HTML `<mark>`/`<span>`; single mapping table) (2026-06-12: pure server-safe serializer in `src/lib/markdown.ts` + pinned color table in `src/lib/colors.ts`; 22 serializer checks pass; Obsidian eyeball check pending on `scripts/sample-export.md`)
+- [~] Paste images inline (stored to R2) (2026-06-12: presign flow + `/api/attachments` + storage interface built and verified with fake credentials; **blocked on Brandon provisioning R2 in Cloudflare** — see runbook §1, then a live paste test closes this)
+- [x] `@`-mention to other items (auto-creates a `relations` row) (2026-06-12: mention inline node + picker; diff-sync to `relations` role `mention` on every body save; verified end-to-end in-browser against Neon)
 - [ ] Entity pages (related items grouped by type)
 - [ ] Parent/child subtasks: recursive tree reads, cycle guard, progress rollup, soft-delete cascade
 - [ ] Item canvas: center modal default + expand to full screen; top/bottom field zones, horizontal top strip (PRD §4.13)

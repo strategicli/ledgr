@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { authProvider } from "@/lib/auth";
@@ -26,10 +26,20 @@ export async function resolveOwner(): Promise<Owner | null> {
   if (byClerkId.length > 0) return byClerkId[0];
 
   if (!authUser.email) return null;
-  const linked = await db
-    .update(users)
-    .set({ clerkId: authUser.externalId })
-    .where(eq(users.email, authUser.email))
-    .returning({ id: users.id, email: users.email });
-  return linked[0] ?? null;
+  const byEmail = await db
+    .select({ id: users.id, email: users.email, clerkId: users.clerkId })
+    .from(users)
+    .where(eq(users.email, authUser.email));
+  if (byEmail.length === 0) return null;
+
+  // Backfill fills an empty clerk_id only, never overwrites an existing
+  // link: a second provider identity with a matching email (the dev
+  // stand-in, a re-created Clerk user) must not silently steal the row.
+  if (!byEmail[0].clerkId) {
+    await db
+      .update(users)
+      .set({ clerkId: authUser.externalId })
+      .where(and(eq(users.id, byEmail[0].id), isNull(users.clerkId)));
+  }
+  return { id: byEmail[0].id, email: byEmail[0].email };
 }

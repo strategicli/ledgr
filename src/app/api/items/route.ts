@@ -11,8 +11,9 @@ import {
 export const dynamic = "force-dynamic";
 
 // GET /api/items — owner-scoped list, never includes body. Filters:
-// ?type= &status= &kind= &parentId= &trash=true &limit= &offset=
-// trash=true is the Trash view: deleted items only, newest deletion first.
+// ?type= &status= &kind= &parentId= &q= &trash=true &limit= &offset=
+// q is a title substring match (the @-mention picker); trash=true is the
+// Trash view: deleted items only, newest deletion first.
 export async function GET(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
       type: params.get("type") ?? undefined,
       kind: params.get("kind") ?? undefined,
       parentId: params.get("parentId") ?? undefined,
+      q: params.get("q") ?? undefined,
       trash: params.get("trash") === "true",
     };
     const status = params.get("status");
