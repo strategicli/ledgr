@@ -112,6 +112,11 @@ export const items = pgTable(
     // Entities only: person | org | project | topic | campus. Text rather
     // than an enum so new kinds don't need a migration (ADR-003).
     kind: text("kind"),
+    // Untriaged flag (PRD §4.2 Inbox): set by arrival paths (quick capture
+    // now; email-in/Todoist/share-target later), cleared by triage. A real
+    // column, not a properties key: it is hot (nav badge counts it on every
+    // page) and filterable.
+    inbox: boolean("inbox").notNull().default(false),
     todoistId: text("todoist_id"),
     msEventId: text("ms_event_id"),
     parentId: uuid("parent_id").references((): AnyPgColumn => items.id),
@@ -135,6 +140,11 @@ export const items = pgTable(
     index("items_status_idx").on(t.status),
     index("items_due_date_idx").on(t.dueDate),
     index("items_parent_idx").on(t.parentId),
+    // Partial: the badge count and Inbox view only ever read live inbox
+    // rows, and those should stay few by design.
+    index("items_inbox_idx")
+      .on(t.ownerId)
+      .where(sql`${t.inbox} and ${t.deletedAt} is null`),
     index("items_properties_gin").using("gin", t.properties),
     index("items_search_gin").using("gin", t.search),
   ]

@@ -129,6 +129,10 @@ export function parseItemPayload(
     out.parentId =
       input.parentId === null ? null : asUuid(input.parentId, "parentId");
   }
+  if (input.inbox !== undefined) {
+    if (typeof input.inbox !== "boolean") bad("inbox must be a boolean");
+    out.inbox = input.inbox;
+  }
   if (input.properties !== undefined) {
     if (
       input.properties !== null &&

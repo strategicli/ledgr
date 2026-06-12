@@ -56,6 +56,7 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `meeting_at` | timestamptz | meetings only |
 | `url` | text | links only; original web address |
 | `kind` | text | entities only: `person` \| `org` \| `project` \| `topic` \| `campus` |
+| `inbox` | boolean | not null, default false; untriaged flag (PRD §4.2 Inbox). Arrival paths (quick capture; later email-in/Todoist/share-target) set it, triage clears it |
 | `todoist_id` | text | nullable; set when synced to Todoist |
 | `ms_event_id` | text | nullable; set when created from a calendar event (dedupe key) |
 | `parent_id` | uuid | nullable; self-FK to `items.id` (containment, §hierarchy) |
@@ -177,7 +178,7 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 ---
 
 ## Index plan
-- B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`.
+- B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`; partial on `items.owner_id where inbox and deleted_at is null` (nav badge count + Inbox view).
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
 - FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items` over `title + body_text`, GIN-indexed. Not computed per query. (`body_text` is app-maintained; generating from raw BlockNote JSONB would index structural noise, ADR-003.)

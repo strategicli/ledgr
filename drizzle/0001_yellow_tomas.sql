@@ -1,0 +1,2 @@
+ALTER TABLE "items" ADD COLUMN "inbox" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "items_inbox_idx" ON "items" USING btree ("owner_id") WHERE "items"."inbox" and "items"."deleted_at" is null;

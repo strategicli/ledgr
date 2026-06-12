@@ -58,6 +58,8 @@ export type ItemInput = {
   kind?: string | null;
   parentId?: string | null;
   properties?: Record<string, unknown> | null;
+  // Untriaged flag (PRD §4.2 Inbox): arrival paths set it, triage clears it.
+  inbox?: boolean;
 };
 
 export type ItemPatch = Partial<ItemInput>;
@@ -67,6 +69,7 @@ export type ListOptions = {
   status?: ItemStatus;
   kind?: string;
   parentId?: string;
+  inbox?: boolean;
   // Title substring match (powers the @-mention picker). Full-text search
   // over bodies is its own slice and uses the tsvector, not this.
   q?: string;
@@ -90,6 +93,7 @@ export const listColumns = {
   url: items.url,
   kind: items.kind,
   parentId: items.parentId,
+  inbox: items.inbox,
   todoistId: items.todoistId,
   msEventId: items.msEventId,
   properties: items.properties,
@@ -109,6 +113,7 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.kind) where.push(eq(items.kind, opts.kind));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
+  if (opts.inbox !== undefined) where.push(eq(items.inbox, opts.inbox));
   if (opts.q) {
     where.push(ilike(items.title, `%${opts.q.replace(/[\\%_]/g, "\\$&")}%`));
   }
@@ -125,6 +130,21 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
 
 export async function listItems(ownerId: string, opts: ListOptions = {}) {
   return listItemsQuery(ownerId, opts);
+}
+
+// The nav badge (PRD §4.11): live untriaged items. Rides items_inbox_idx.
+export async function countInbox(ownerId: string): Promise<number> {
+  const rows = await getDb()
+    .select({ count: sql<number>`count(*)::int` })
+    .from(items)
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        eq(items.inbox, true),
+        isNull(items.deletedAt)
+      )
+    );
+  return rows[0].count;
 }
 
 export async function getItem(ownerId: string, id: string) {
@@ -246,6 +266,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
       kind: input.kind ?? null,
       parentId: input.parentId ?? null,
       properties: input.properties ?? null,
+      inbox: input.inbox ?? false,
     })
     .returning(itemColumns);
   const created = rows[0];
@@ -286,6 +307,7 @@ export async function updateItem(
   if (patch.kind !== undefined) set.kind = patch.kind;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;
   if (patch.properties !== undefined) set.properties = patch.properties;
+  if (patch.inbox !== undefined) set.inbox = patch.inbox;
   if (patch.body !== undefined) {
     set.body = patch.body;
     set.bodyText = extractBodyText(patch.body);

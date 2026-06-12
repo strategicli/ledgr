@@ -1,0 +1,85 @@
+// Inbox (PRD §4.2): items that arrived untriaged, awaiting type/entity/date
+// assignment. Phase 1's only arrival path is quick capture; email-in,
+// Todoist pull-ins, and the share target (Phase 2) land here through the
+// same inbox flag. Rows open in the canvas for deep triage; the inline
+// controls cover the fast cases (retype, mark triaged, trash).
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getDb } from "@/db";
+import { types } from "@/db/schema";
+import RowAction from "@/components/home/RowAction";
+import TriageControls from "@/components/inbox/TriageControls";
+import QuickCapture from "@/components/today/QuickCapture";
+import { listItems } from "@/lib/items";
+import { resolveOwner } from "@/lib/owner";
+import { compareTypeKeys } from "@/lib/type-order";
+
+export const dynamic = "force-dynamic";
+
+const dateFmt = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+export default async function Inbox() {
+  const owner = await resolveOwner();
+  if (!owner) redirect("/sign-in");
+
+  const [typeRows, inboxItems] = await Promise.all([
+    getDb().select({ key: types.key, label: types.label }).from(types),
+    listItems(owner.id, { inbox: true, limit: 200 }),
+  ]);
+  typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
+  // Oldest first: the Inbox is a queue, and the back of it is the debt.
+  inboxItems.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  return (
+    <main className="min-h-screen">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
+        <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
+          Inbox
+        </h1>
+        <p className="mt-1 text-sm text-neutral-500">
+          {inboxItems.length === 0
+            ? "Nothing waiting."
+            : `${inboxItems.length} item${
+                inboxItems.length === 1 ? "" : "s"
+              } awaiting triage`}
+        </p>
+
+        <div className="mt-6">
+          <QuickCapture />
+        </div>
+
+        {inboxItems.length > 0 && (
+          <ul className="mt-6">
+            {inboxItems.map((item) => (
+              <li
+                key={item.id}
+                className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60"
+              >
+                <Link
+                  href={`/items/${item.id}`}
+                  className={`min-w-0 flex-1 truncate text-sm ${
+                    item.title ? "text-neutral-200" : "text-neutral-500"
+                  }`}
+                >
+                  {item.title || "Untitled"}
+                </Link>
+                <span className="shrink-0 text-xs text-neutral-600">
+                  {dateFmt.format(item.createdAt)}
+                </span>
+                <TriageControls
+                  id={item.id}
+                  type={item.type}
+                  typeOptions={typeRows}
+                />
+                <RowAction id={item.id} action="trash" />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </main>
+  );
+}
