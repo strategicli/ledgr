@@ -81,12 +81,14 @@ The export job (ADR-017) authenticates app-only (client credentials): no stored 
 ---
 
 ## 2. Health and monitoring
-- **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome). Todoist API and Graph token checks join once those integrations exist.
+- **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome), and `errors.last24h` (count of `error_log` rows captured in the last 24 hours; should be 0). Todoist API and Graph token checks join once those integrations exist.
 - A stale `lastExportAt` while `lastExportRunAt` advances = runs are happening but failing partway; check `error_log` (source `export`).
 - A **weekly scheduled Claude task** hits `/health` and emails Brandon on failure.
 - The export-timestamp check is the canary for a **silently stalled sync** (see §6, GitHub Actions auto-disable).
-- Debug mode (`DEBUG_MODE` env + per-session UI toggle) surfaces verbose errors, query timings, and calendar-matcher/sync decisions. Off in normal use.
-- Failed crons/webhooks are captured (small `error_log` table or free Sentry tier) and surfaced through `/health` and the UI. No silent failures, ever.
+- **Structured logs (ADR-020):** every server-side event is one JSON line `{ts, level, source, correlationId, message, ...}` via `src/lib/log.ts`; read them in Vercel → Project → Logs. One correlation id covers one request/job run, and 500 responses echo it (`{"error":"internal error","correlationId":"…"}`), so a screenshot of a failure can be grepped straight to its lines and its `error_log` row.
+- **Error capture:** `captureError(source, err)` logs *and* inserts into `error_log` (sources so far: `api`, `export`, `export-now`, `purge`). It never throws and survives DB-down (the console line still exists). Query: `select created_at, source, message, correlation_id from error_log order by created_at desc limit 20;`. `error_log` rows are kept indefinitely for now; prune by hand if it ever matters.
+- **Debug mode** = `DEBUG_MODE=true` env (set in Vercel env or `.env.local`, redeploy/restart). On: `/health` includes the 5 most recent captured error messages (`errors.recent`) and DB-check failures show the real exception text. Off (default): counts only, generic messages. The per-session UI toggle joins when the Build surface lands.
+- No silent failures, ever: anything that fails in a cron, webhook, or API route must end up in `error_log` and the logs, never swallowed.
 
 ---
 

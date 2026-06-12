@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
 import { runExport } from "@/lib/export/engine";
 import { getGraphConfig, OneDriveExportTarget } from "@/lib/export/onedrive";
+import { captureError } from "@/lib/log";
 
 // On-demand "export now" (PRD §5.4), the user-authed twin of the nightly
 // cron. Pulpit Ready (next slice) calls this before pinning; until then
@@ -21,6 +22,15 @@ export async function POST() {
       { status: 503 }
     );
   }
-  const result = await runExport(owner.id, new OneDriveExportTarget(cfg));
-  return NextResponse.json(result);
+  try {
+    const result = await runExport(owner.id, new OneDriveExportTarget(cfg));
+    return NextResponse.json(result);
+  } catch (err) {
+    const correlationId = crypto.randomUUID();
+    await captureError("export-now", err, { correlationId });
+    return NextResponse.json(
+      { error: "export failed", correlationId },
+      { status: 500 }
+    );
+  }
 }

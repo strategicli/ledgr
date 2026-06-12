@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { getDb } from "@/db";
-import { errorLog, users } from "@/db/schema";
+import { users } from "@/db/schema";
 import { runExport } from "@/lib/export/engine";
 import { getGraphConfig, OneDriveExportTarget } from "@/lib/export/onedrive";
+import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // Nightly OneDrive export (vercel.json cron; PRD §5.4). Same door as the
 // purge: Vercel sends GET with CRON_SECRET, a raw cron-scoped machine token.
@@ -32,20 +33,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const correlationId = crypto.randomUUID();
+  const log = createLogger("export");
   const cfg = getGraphConfig();
   if (!cfg) {
     // Not configured yet is a visible condition, not a crash and not a
     // silent skip.
-    console.warn(
-      JSON.stringify({
-        source: "export",
-        correlationId,
-        message: "export target not configured (GRAPH_* / ONEDRIVE_* env unset)",
-      })
-    );
+    log.warn("export target not configured (GRAPH_* / ONEDRIVE_* env unset)");
     return NextResponse.json(
-      { ok: false, correlationId, error: "export target not configured" },
+      {
+        ok: false,
+        correlationId: log.correlationId,
+        error: "export target not configured",
+      },
       { status: 503 }
     );
   }
@@ -58,38 +57,26 @@ export async function GET(request: Request) {
     const itemErrors: { itemId: string; message: string }[] = [];
     const result = await runExport(ownerId, new OneDriveExportTarget(cfg), {
       onError: (itemId, err) =>
-        itemErrors.push({
-          itemId,
-          message: err instanceof Error ? err.message : String(err),
-        }),
+        itemErrors.push({ itemId, message: errorMessage(err) }),
     });
-    console.log(
-      JSON.stringify({ source: "export", correlationId, ...result })
-    );
+    log.info("export run finished", { ...result });
     if (itemErrors.length > 0) {
-      await getDb().insert(errorLog).values({
-        correlationId,
-        source: "export",
+      await captureError("export", null, {
+        correlationId: log.correlationId,
         message: `${itemErrors.length} item(s) failed to export`,
         detail: { itemErrors },
       });
     }
-    return NextResponse.json({ ok: true, correlationId, ...result });
+    return NextResponse.json({
+      ok: true,
+      correlationId: log.correlationId,
+      ...result,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(
-      JSON.stringify({ source: "export", correlationId, message })
+    await captureError("export", err, { correlationId: log.correlationId });
+    return NextResponse.json(
+      { ok: false, correlationId: log.correlationId },
+      { status: 500 }
     );
-    try {
-      await getDb().insert(errorLog).values({
-        correlationId,
-        source: "export",
-        message,
-        detail: err instanceof Error && err.stack ? { stack: err.stack } : null,
-      });
-    } catch {
-      // DB down is the likely cause; the console line above is the record.
-    }
-    return NextResponse.json({ ok: false, correlationId }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@
 // request-body parsing/validation (hand-rolled; the shapes are small and a
 // validation lib isn't worth a dependency), and ItemError -> HTTP mapping.
 import { NextResponse } from "next/server";
+import { captureError } from "@/lib/log";
 import { resolveOwner, type Owner } from "@/lib/owner";
 import {
   ITEM_STATUSES,
@@ -23,20 +24,22 @@ export async function requireOwner(): Promise<Owner | NextResponse> {
   return owner;
 }
 
-export function errorResponse(err: unknown): NextResponse {
+// ItemErrors are expected request outcomes (4xx); anything else is a real
+// failure: captured to error_log (rule 9, no silent failures) and answered
+// with the correlation id so a user report can be matched to its log lines.
+export async function errorResponse(err: unknown): Promise<NextResponse> {
   if (err instanceof ItemError) {
     return NextResponse.json(
       { error: err.message },
       { status: err.code === "not_found" ? 404 : 400 }
     );
   }
-  console.error(
-    JSON.stringify({
-      source: "api-items",
-      message: err instanceof Error ? err.message : String(err),
-    })
+  const correlationId = crypto.randomUUID();
+  await captureError("api", err, { correlationId });
+  return NextResponse.json(
+    { error: "internal error", correlationId },
+    { status: 500 }
   );
-  return NextResponse.json({ error: "internal error" }, { status: 500 });
 }
 
 const UUID_RE =

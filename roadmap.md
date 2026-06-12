@@ -33,7 +33,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [~] OneDrive export (nightly cron + on-demand; `/Export/{type}/{year}/{slug}-{id8}.md` + YAML frontmatter; archive path) (2026-06-12: engine + Graph app-only target + 06:30 UTC cron + `POST /api/export`, ADR-017; 21/21 checks against Neon with the local target; **awaiting the Azure app registration (runbook §1b, Brandon) for the real OneDrive end-to-end**)
 - [ ] Pulpit Ready action (immediate export + verified offline pin + print-styled PDF)
 - [x] `/health` endpoint (DB, last export timestamp; Todoist/Graph once they exist) (2026-06-12: reports `lastExportAt` — clean runs only — and `lastExportRunAt` from `job_state`; DB check since slice 1; Todoist/Graph checks ride their Phase 2 slices)
-- [ ] Structured JSON logging + correlation ids; toggleable debug mode
+- [x] Structured JSON logging + correlation ids; toggleable debug mode (2026-06-12, ADR-020: shared logger, error_log capture surfaced in /health, DEBUG_MODE env toggle)
 - [ ] Weekly `pg_dump` to OneDrive; restore tested once before Phase 2
 
 **Not in Phase 1:** integrations (calendar/Todoist/email), view builder, embedded query views, widget dashboard, MCP server, Build surface (custom-type builder, workflow/wiki templates), sharing.
