@@ -12,7 +12,16 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v0.17-blocknote-canonical` marks the last pre-pivot state; a GitHub Release marks the turn. **The docs are now updated; the code is not.**
 
-**The next build work is the foundation rework** (roadmap "Markdown epoch foundation rework"), which gates the new modules (Papers, Songs, etc.): body as `{format, text}`, a markdown-native WYSIWYG editor (library TBD), inverting `src/lib/markdown.ts` so markdown is the source, the per-type canvas seam, and the module registration boundary. This should be scoped as its own slice and is more pressing than opening Phase 3. Tyler's PR #1 (`ty-additions/` module specs) is the companion context for what the modules need.
+**The next build work is the foundation rework** (roadmap **Phase M**), which gates the new modules (Papers, Songs, etc.) and is more pressing than opening Phase 3. It's scoped into six ordered slices, each leaving the app working:
+
+- **M1 — Editor selection (spike + ADR)** ← **active next.** Evaluate tiptap (Savor-proven) / Milkdown / Lexical for markdown round-trip, color marks, mentions, and a path to slash-menu + `^block-id` anchors. Output an ADR. **Core decision → needs Tyler's agreement** (CLAUDE.md "Building together"). Lean: tiptap.
+- **M2** — markdown editor stood up in isolation (scratch route, round-trip verified).
+- **M3** — print/export renderers + `body_text` read from markdown (likely one markdown lib, a Principle-5 dependency call).
+- **M4** — cutover + data migration (BlockNote JSON → markdown via the existing serializer; retire `@blocknote/*`). The flip.
+- **M5** — per-type canvas seam (the hook modules need).
+- **M6** — module registration boundary (build with the first real module, Papers).
+
+Tyler's PR #1 (`ty-additions/` module specs) is the companion context for what the modules need. Detail and rationale in `roadmap.md` Phase M.
 
 ---
 

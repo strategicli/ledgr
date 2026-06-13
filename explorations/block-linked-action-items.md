@@ -2,7 +2,13 @@
 
 **Status:** parked (Brandon, 2026-06-13). Not intent, not a decision; a likely Phase 3 feature. Raised while reviewing the meeting canvas.
 
-> **⚠️ Affected by ADR-037 (Markdown epoch).** This exploration assumed BlockNote's stable per-block `id`s in the document JSON. With **markdown** now the canonical body, there are no native block ids, so the "link to *that specific block*" anchor needs a markdown-friendly mechanism instead: a heading/line anchor, a positional offset (fragile across edits), or an injected stable marker (e.g. a hidden `<a id>`/comment the editor maintains). The rest of the idea (promote a line to a task, title-from-text, back-link to the meeting) survives unchanged. Revisit the "Is block-level linking buildable?" section against whichever markdown editor is chosen.
+> **⚠️ Affected by ADR-037 (Markdown epoch).** This exploration assumed BlockNote's stable per-block `id`s in the document JSON. With **markdown** now the canonical body, there are no native block ids, so the anchor needs a markdown-friendly mechanism. **Resolution (Brandon, 2026-06-13): adopt Obsidian's approach.** The rest of the idea (promote a line to a task, title-from-text, back-link to the meeting) survives unchanged.
+>
+> **Obsidian-style block ids (the chosen direction).** Obsidian links to a specific block by appending a short marker to the end of that line/paragraph in the source markdown — e.g. `This is the action item. ^a1b2c3` — and references it as `[[note#^a1b2c3]]`. The marker is plain text, auto-generated on first link, nearly invisible in reading view, and travels with the file. We mirror it:
+> - **Anchor:** on promote, ensure the source line has a `^id` marker (insert a random short id if absent); store that id on the task (`properties.source.blockRef` + the item id). No schema change — rides `properties`, same as before.
+> - **Jump-to:** the editor scrolls to / highlights the line carrying `^id` (a `#^id` hash the editor host reads), deterministic, no model.
+> - **Resilience:** the marker persists through edits to the line's text; deleting the whole line dangles the link (handle gracefully, same as Obsidian). This replaces the old "BlockNote block id" plumbing below.
+> - **Editor requirement:** whichever editor M1 picks should be able to render/preserve a trailing `^id` marker (and ideally hide it in WYSIWYG view) — noted as an M1 evaluation criterion.
 
 ## The idea
 

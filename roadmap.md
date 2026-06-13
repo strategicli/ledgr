@@ -8,15 +8,18 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 
 ---
 
-## Markdown epoch foundation rework (v0.18 — do before new modules)
-The pivot is recorded in the docs (ADR-037); the code rework is its own slice.
+## Phase M: Markdown epoch foundation rework (v0.18 — gates the new modules)
 
-- [ ] Body stored as `{format, text}` with `format: "markdown"` canonical; migrate existing `body` reads/writes (PRD §3.1, schema.md)
-- [ ] Markdown-native WYSIWYG editor (library selection: tiptap / Milkdown / Lexical / BlockNote-as-candidate); source/preview toggle; colors as inline-HTML marks
-- [ ] Invert `src/lib/markdown.ts`: markdown is the source; the print/export/`.docx` renderers read from it (pandoc for Word)
-- [ ] `body_text` extraction becomes a markdown-syntax strip (not a JSON walk); confirm FTS still green
-- [ ] Per-type canvas seam (a type may declare its own canvas; default = markdown canvas) — the platform hook the Songs/Papers modules need
-- [ ] Module registration boundary (a module registers its type + canvas + exporters + integration; per-user enable a later config flip)
+The pivot (ADR-037) is recorded; this is the code arc that makes it real. Slices are ordered so **the app keeps working after each one**. A key de-risking asset: the existing `src/lib/markdown.ts` BlockNote→markdown serializer (proven, 22 checks in ADR-006) becomes the one-time **migration tool**, so the data move reuses code that already works. Editor selection (M1) is a **core decision** → both-agree + ADR per CLAUDE.md "Building together."
+
+- [ ] **M1 — Editor selection (spike + ADR).** Evaluate **tiptap** (ProseMirror; Savor-proven, Tyler's stack), **Milkdown**, **Lexical** against: lossless markdown round-trip; custom color/highlight marks that serialize to `<mark>`/`<span>` (reuse the `src/lib/colors.ts` table); `@`-mention as the markdown link `[@Title](ledgr://item/<uuid>)` the serializer already emits; lazy-load + bundle size; and a credible path to the later "Notion feel" (slash menu, block drag) and to Obsidian-style `^block-id` anchors. Output: an ADR picking the editor. Lean: tiptap. Spike code only, nothing production.
+- [ ] **M2 — Markdown editor stood up in isolation.** The chosen editor on a scratch/dev route, reading and writing `{format:"markdown", text}`; colors + mentions working; verified round-trip (type → markdown → reload → identical, colors intact). Does **not** touch the live BlockNote path yet, so nothing user-facing breaks.
+- [ ] **M3 — Renderers read from markdown.** Reimplement the print render (`src/lib/print-html.ts`) and the OneDrive export to render markdown → HTML, and switch `body_text` to a markdown-syntax strip for FTS. This likely justifies one vetted markdown library (markdown-it / remark) under Principle 5, since markdown→HTML is a harder transform than the current JSON walk — note it as a dependency decision. Verify print/export/FTS output matches the BlockNote path on identical content.
+- [ ] **M4 — Cutover + data migration (the flip).** One-time migration converting every item's and revision's BlockNote-JSON `body` → `{format:"markdown", text}` via the existing serializer; switch the canonical editor to the markdown one; update email-in to write markdown (trivial — it's plain text now); retire the `@blocknote/*` read path and dependencies. Run against a DB copy first (round-trip a sample, eyeball sermon colors). After this slice, BlockNote is gone and markdown is the only path.
+- [ ] **M5 — Per-type canvas seam.** A `type → canvas` registry (default = the markdown canvas) wired into `ItemCanvas` and the intercepting routes (ADR-007 mechanics stay intact). This is the platform hook the Songs/Papers modules need; ship with default-only plus one trivial proof so the seam is exercised.
+- [ ] **M6 — Module registration boundary.** How a module registers its `{type, canvas, exporters, integration}` onto core (rather than reaching into it), with per-user enable as a later config flip. **Build this alongside the first real module (Papers), to fit the path actually walked** (ADR-037 / the interview's "build it to fit the workflow run three times"), not speculatively.
+
+**Out of scope of Phase M (module-level, comes later):** the Word/`.docx` exporter (Papers module — a JS docx renderer like Tyler's `ty-additions/msm-render.js`, or pandoc on his local path; not server-side core); ChordPro rendering and PCO push (Songs module); Obsidian-style `^block-id` block anchors (a Phase 3 feature — `explorations/block-linked-action-items.md`, M1 just keeps the door open).
 
 ---
 
