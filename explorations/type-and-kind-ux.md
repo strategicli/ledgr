@@ -20,6 +20,13 @@ The quick-capture modal's type `<select>` currently lists only the core item typ
 Direction to weigh:
 - Make `typeOptions` **data-driven from the type/kind registry**, with an **opt-in flag per type/kind** ("show in quick capture" — e.g. a checkbox on the type's / entity-kind's settings) so the dropdown stays short and curated rather than listing everything. This pairs naturally with whatever registry #1 produces.
 
+## 3. "Entity" means two different things in quick capture (and captures a kind-less entity)
+
+From Brandon's 2026-06-13 use of quick capture. Two problems, both flavors of the type/kind gap above:
+
+- **The word "Entity" appears twice, side by side, meaning two different things.** The type `<select>` offers **Entity** as a value ("make this captured thing an entity item"), and right next to it the relate-to picker reads **`@ entity`** (placeholder) / `aria-label="Entity"` — but that box means "relate this item to an *existing* entity" (person/org/topic/…), a completely different action. Having both say "entity" at the same altitude is the confusing part. Likely fix: rename the relate picker to something action-shaped and unambiguous — **"Relate to…"**, **"Link to…"**, or **"Tag…"** (the picker is `CaptureModal.tsx`'s entity typeahead; this is plain UI copy, changeable independent of the registry work).
+- **Selecting type = Entity captures a kind-less entity.** The capture modal collects only type + title (+ due/urgency for tasks); it never asks for a **kind**, so capturing an "Entity" creates a bare entity with no `person`/`org`/`topic`/… — a half-formed object that then needs fixing on the canvas. Options (tie into §1/§2): when type = Entity is chosen, reveal an inline **kind** picker (reusing §1's kind registry); **or** drop Entity from the quick-capture dropdown entirely via the §2 per-type "show in quick capture" opt-in (entities get created in their own flow, not quick-captured kind-less). Brandon flagged this as a later UX-workflow call, noted here so it isn't lost.
+
 ## Why parked
 
 Both depend on machinery that doesn't exist yet: a managed **type/kind registry** and the **Build surface** to edit it (roadmap Phase 3: "Custom type & property builder UI", "resolves custom-type identity, open Q6"). The per-type *canvas* seam (M5/ADR-041) and the module-registration boundary (M6) are the platform hooks; this is the *authoring/selection UX* layered on top. Resolve when building that surface. Related: [[project-items]] (another "what is a type" question).

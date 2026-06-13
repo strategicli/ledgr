@@ -7,7 +7,7 @@
 // extensions; the rest is StarterKit + the first-party Markdown extension.
 "use client";
 
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { useEffect, useRef } from "react";
@@ -85,6 +85,28 @@ export default function MarkdownEditor({
     onUpdate: ({ editor }) => onChangeRef.current(editor.getMarkdown()),
   });
 
+  // Keep the toolbar's active states in sync with the cursor. useEditor alone
+  // doesn't re-render React on a bare selection change (clicking into an H1
+  // without typing), so reading editor.isActive() during render went stale
+  // until the next keystroke — the "toolbar sometimes doesn't update / is
+  // slow" symptom. useEditorState subscribes to the selection and re-renders
+  // only when one of these derived values actually changes.
+  const toolbar = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      isBold: editor?.isActive("bold") ?? false,
+      isItalic: editor?.isActive("italic") ?? false,
+      isH1: editor?.isActive("heading", { level: 1 }) ?? false,
+      isH2: editor?.isActive("heading", { level: 2 }) ?? false,
+      isBulletList: editor?.isActive("bulletList") ?? false,
+      isOrderedList: editor?.isActive("orderedList") ?? false,
+      isBlockquote: editor?.isActive("blockquote") ?? false,
+      isCodeBlock: editor?.isActive("codeBlock") ?? false,
+      textColor: (editor?.getAttributes("textColor").color as string) || "",
+      highlight: (editor?.getAttributes("highlight").color as string) || "",
+    }),
+  });
+
   // If the host swaps in a different document (e.g. "reload from saved" on the
   // scratch route), reset the editor to it without firing onUpdate.
   useEffect(() => {
@@ -99,7 +121,7 @@ export default function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMarkdown, editor]);
 
-  if (!editor) {
+  if (!editor || !toolbar) {
     return (
       <div className="px-4 py-3 text-sm text-neutral-400">Loading editor…</div>
     );
@@ -123,19 +145,19 @@ export default function MarkdownEditor({
         <ToolbarButton
           label="B"
           title="Bold"
-          active={editor.isActive("bold")}
+          active={toolbar.isBold}
           onClick={() => editor.chain().focus().toggleBold().run()}
         />
         <ToolbarButton
           label="I"
           title="Italic"
-          active={editor.isActive("italic")}
+          active={toolbar.isItalic}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         />
         <ToolbarButton
           label="H1"
           title="Heading 1"
-          active={editor.isActive("heading", { level: 1 })}
+          active={toolbar.isH1}
           onClick={() =>
             editor.chain().focus().toggleHeading({ level: 1 }).run()
           }
@@ -143,7 +165,7 @@ export default function MarkdownEditor({
         <ToolbarButton
           label="H2"
           title="Heading 2"
-          active={editor.isActive("heading", { level: 2 })}
+          active={toolbar.isH2}
           onClick={() =>
             editor.chain().focus().toggleHeading({ level: 2 }).run()
           }
@@ -151,25 +173,25 @@ export default function MarkdownEditor({
         <ToolbarButton
           label="• List"
           title="Bullet list"
-          active={editor.isActive("bulletList")}
+          active={toolbar.isBulletList}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         />
         <ToolbarButton
           label="1. List"
           title="Numbered list"
-          active={editor.isActive("orderedList")}
+          active={toolbar.isOrderedList}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         />
         <ToolbarButton
           label="❝"
           title="Quote"
-          active={editor.isActive("blockquote")}
+          active={toolbar.isBlockquote}
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
         />
         <ToolbarButton
           label="</>"
           title="Code block"
-          active={editor.isActive("codeBlock")}
+          active={toolbar.isCodeBlock}
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         />
 
@@ -179,7 +201,7 @@ export default function MarkdownEditor({
         <select
           title="Text color"
           className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-          value={(editor.getAttributes("textColor").color as string) || ""}
+          value={toolbar.textColor}
           onChange={(e) =>
             setColor((e.target.value || null) as BlockNoteColor | null)
           }
@@ -196,7 +218,7 @@ export default function MarkdownEditor({
         <select
           title="Highlight"
           className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-          value={(editor.getAttributes("highlight").color as string) || ""}
+          value={toolbar.highlight}
           onChange={(e) =>
             setHighlight((e.target.value || null) as BlockNoteColor | null)
           }
