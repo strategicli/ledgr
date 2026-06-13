@@ -2,6 +2,20 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ⚠️ TURNING POINT — the Markdown epoch (v0.18, ADR-037, 2026-06-13)
+
+**Read this before anything below.** After a long Brandon↔Tyler conversation, two foundational decisions changed and Ledgr became a two-builder project:
+
+1. **Canonical body format is now Markdown** (extended dialect: GFM + Pandoc footnotes/superscripts/citations + inline HTML for sermon colors + ChordPro per type), not BlockNote JSON. Markdown is the source of truth; Word/PDF/chord-chart/slides all render *from* it.
+2. **Bespoke-first with per-type canvases** (a type may declare its own canvas), not "Notion-default / one editor canvas." One customizable catch-all type for the tail, with a promotion path.
+3. **Two builders** (Brandon + Tyler), shared codebase, separate single-tenant deploys. Core changes need both-agree + an ADR (see CLAUDE.md "Building together"); `COLLAB.md` holds rotating plans.
+
+Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v0.17-blocknote-canonical` marks the last pre-pivot state; a GitHub Release marks the turn. **The docs are now updated; the code is not.**
+
+**The next build work is the foundation rework** (roadmap "Markdown epoch foundation rework"), which gates the new modules (Papers, Songs, etc.): body as `{format, text}`, a markdown-native WYSIWYG editor (library TBD), inverting `src/lib/markdown.ts` so markdown is the source, the per-type canvas seam, and the module registration boundary. This should be scoped as its own slice and is more pressing than opening Phase 3. Tyler's PR #1 (`ty-additions/` module specs) is the companion context for what the modules need.
+
+---
+
 ## ⟢ Session summary — Phase 2 tail: push, share links, provider audit (2026-06-13, session 3)
 
 **Built and verified this session — slices 30–32, which close the Phase 2 backbone:**
@@ -33,7 +47,7 @@ The live, near-term work queue. Start here each session. When you finish a slice
 **Review follow-ups (2026-06-13, ADR-032 + two explorations):** acted on Brandon's review of the views features.
 - **Fixed:** date filters now name a `dateField` (due date / **When** / created / updated) so "meetings today" works, plus a **within-N-days** range ("meetings in the next N days"); the builder auto-switches to "When" for meeting views; the embedded view follows the type. `verify-views` extended to 33 checks, green.
 - **Clarified in-product:** the meeting "Agenda" section got a one-line hint (it's a default frame; editable templates come later).
-- **Parked for future phases (documented):** inline action-item → linked task with a backlink to the specific BlockNote block (`explorations/block-linked-action-items.md`); richer/flexible dashboard widgets — layout-faithful + stat cards, spanning sizes, regions, per-widget settings (`explorations/dashboard-widgets.md`). Both added to roadmap Phase 3.
+- **Parked for future phases (documented):** inline action-item → linked task with a backlink to the specific body line (`explorations/block-linked-action-items.md`; note ADR-037 — markdown has no native block ids, so the anchor mechanism needs rethinking); richer/flexible dashboard widgets — layout-faithful + stat cards, spanning sizes, regions, per-widget settings (`explorations/dashboard-widgets.md`). Both added to roadmap Phase 3.
 
 **Next session — Phase 2 tail:** push notifications → public share links → provider-interface confirmation (auth + scheduler), then circle back to the deferred matcher UIs once §1c lands. The MS/Todoist integrations remain code-complete and Brandon-step-blocked (unchanged).
 

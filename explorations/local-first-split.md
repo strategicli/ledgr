@@ -3,6 +3,8 @@
 **Status:** parked, not a current direction (2026-06-11)
 **What this doc is:** a captured fork-in-the-road idea. Not PRD intent, not a decision. If a direction here is ever chosen, it graduates to an ADR in `decisions.md` and a PRD amendment.
 
+> **⚠️ Re-weighted by ADR-037 (Markdown epoch).** This doc's option C ("true local-first: MD files canonical on disk") was rejected partly because it "fights BlockNote-JSON-canonical (markdown can't natively hold sermon colors/highlights)." That specific objection is **gone**: markdown is now the canonical body (extended dialect, colors as inline HTML), and the round-trip prototype this doc calls for is essentially the foundation rework itself. Local-first is still *not* a current direction (it still reverses rule #1 DB-canonical and fights everything-is-an-item + boring-stack), but the format barrier no longer applies — so if it's ever revisited, the gap is smaller than this doc estimated. Re-read options B and C with that in mind.
+
 ## The idea as raised
 
 Split Ledgr into two chunks. A local chunk lives on Brandon's computer as markdown files that Claude Code can read, edit, and create directly with no MCP in the loop ("take the fetters off Claude"). A lighter cloud chunk serves fast, snappy access to basic info from the phone or another computer, backed by the database. Open challenge as raised: sync, both computer-to-computer and local-to-server, possibly P2P.

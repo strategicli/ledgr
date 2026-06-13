@@ -4,6 +4,20 @@ Phase-by-phase checklist derived from PRD §8. Check boxes as slices ship. The p
 
 Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 
+> **⚠️ Markdown epoch (v0.18, ADR-037, 2026-06-13).** The canonical body format pivoted from BlockNote JSON to **Markdown**, the system is now **bespoke-first with per-type canvases**, and Ledgr is built by two people (Brandon + Tyler). Completed Phase-1 items below that read "BlockNote" record what was actually built and stay as history; the **editor and body-format code will be reworked** in the foundation-rework section below. New work follows the markdown-canonical model.
+
+---
+
+## Markdown epoch foundation rework (v0.18 — do before new modules)
+The pivot is recorded in the docs (ADR-037); the code rework is its own slice.
+
+- [ ] Body stored as `{format, text}` with `format: "markdown"` canonical; migrate existing `body` reads/writes (PRD §3.1, schema.md)
+- [ ] Markdown-native WYSIWYG editor (library selection: tiptap / Milkdown / Lexical / BlockNote-as-candidate); source/preview toggle; colors as inline-HTML marks
+- [ ] Invert `src/lib/markdown.ts`: markdown is the source; the print/export/`.docx` renderers read from it (pandoc for Word)
+- [ ] `body_text` extraction becomes a markdown-syntax strip (not a JSON walk); confirm FTS still green
+- [ ] Per-type canvas seam (a type may declare its own canvas; default = markdown canvas) — the platform hook the Songs/Papers modules need
+- [ ] Module registration boundary (a module registers its type + canvas + exporters + integration; per-user enable a later config flip)
+
 ---
 
 ## Phase 1: Core (build first, live in it)
@@ -68,7 +82,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [ ] Custom type & property builder UI (writes `types.property_schema`; resolves custom-type identity, open Q6)
 - [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
 - [ ] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12)
-- [ ] Inline action-item → linked task: promote a body line/bullet to a task whose title is the line text, linked back to the meeting and to that specific BlockNote block (`explorations/block-linked-action-items.md`; Brandon, 2026-06-13)
+- [ ] Inline action-item → linked task: promote a body line/bullet to a task whose title is the line text, linked back to the meeting and to that line (`explorations/block-linked-action-items.md`; Brandon, 2026-06-13). **Note (ADR-037):** markdown has no native stable block ids the way BlockNote JSON did, so the back-link anchor needs a markdown-friendly mechanism (a line/heading anchor or an injected marker) — see the exploration.
 - [ ] Richer dashboard widgets + flexible layout: widget types beyond the list preview (layout-faithful cards, stat/count cards), spanning sizes, regions/sidebars, per-widget settings — likely a Build-surface feature. **Direction: the dashboard becomes the Work home, replacing the fixed Today layout once widgets are rich enough** (Brandon, 2026-06-13; `explorations/dashboard-widgets.md`)
 - [ ] Planning rhythms (configurable rituals; deterministic modules; AI-assembled agenda is the only model step)
 

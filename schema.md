@@ -48,8 +48,8 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `owner_id` | uuid | FK `users.id`. **Filter every query on this.** |
 | `type` | text | FK `types.key` |
 | `title` | text | the "one-liner"; may be the entire content |
-| `body` | jsonb | BlockNote document (canonical JSON); null until "gone deeper". **Never selected in list queries.** |
-| `body_text` | text | plain-text extraction of `body`, maintained by app code on save; feeds the generated FTS column (ADR-003). Never selected in list queries. |
+| `body` | jsonb | Canonical body as `{format, text}` — `format: "markdown"` (default; extended dialect, PRD §4.1) or a markdown-family format like `chordpro` per type; `text` is the markdown source of truth. Null until "gone deeper". **Never selected in list queries.** *(Markdown-canonical since ADR-037; was BlockNote JSON through v0.17.)* |
+| `body_text` | text | plain-text extraction of `body.text`, maintained by app code on save; feeds the generated FTS column (ADR-003). With markdown canonical this is a near-identity strip of markdown syntax, not a JSON walk. Never selected in list queries. |
 | `status` | enum | `open` \| `done` \| `archived`; non-task types default `open` |
 | `due_date` | timestamptz | nullable |
 | `urgency` | enum | `low` \| `normal` \| `high` \| `critical`; nullable |
@@ -133,7 +133,7 @@ Body snapshots for restore. Debounced on save; cap ~50 per item with a prune ste
 |---|---|---|
 | `id` | uuid PK | |
 | `item_id` | uuid | FK `items.id` |
-| `body` | jsonb | snapshot of BlockNote JSON |
+| `body` | jsonb | snapshot of the canonical `{format, text}` body (markdown since ADR-037) |
 | `created_at` | timestamptz | |
 
 ---
@@ -228,7 +228,7 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 - B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`; partial on `items.owner_id where inbox and deleted_at is null` (nav badge count + Inbox view).
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
-- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url + kind (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained; generating from raw BlockNote JSONB would index structural noise, ADR-003.)
+- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url + kind (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained: it strips markdown syntax from `body.text`. Generating the tsvector straight from the raw `body` jsonb would index structural noise, ADR-003; with markdown canonical the extraction is a light strip rather than a JSON walk.)
 - B-tree on `push_subscriptions.owner_id` and `share_tokens.owner_id`/`share_tokens.item_id` (slices 30/31); `endpoint` and `token` are unique constraints.
 - Composite indexes as query patterns prove them out; log additions in `decisions.md`.
 

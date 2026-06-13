@@ -2,6 +2,8 @@
 
 **Status:** parked (Brandon, 2026-06-13). Not intent, not a decision; a likely Phase 3 feature. Raised while reviewing the meeting canvas.
 
+> **⚠️ Affected by ADR-037 (Markdown epoch).** This exploration assumed BlockNote's stable per-block `id`s in the document JSON. With **markdown** now the canonical body, there are no native block ids, so the "link to *that specific block*" anchor needs a markdown-friendly mechanism instead: a heading/line anchor, a positional offset (fragile across edits), or an injected stable marker (e.g. a hidden `<a id>`/comment the editor maintains). The rest of the idea (promote a line to a task, title-from-text, back-link to the meeting) survives unchanged. Revisit the "Is block-level linking buildable?" section against whichever markdown editor is chosen.
+
 ## The idea
 
 Today, action items get promoted to tasks through a separate input box on the meeting canvas (`PromoteTask`, slice 24 / ADR-025). Brandon would rather write action items *inline in the note body* (the BlockNote editor) as a normal sentence or bullet, then convert a line to a task with one click:

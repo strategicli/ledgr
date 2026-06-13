@@ -1,14 +1,16 @@
 # Ledgr — Product Requirements Document
 
 **Owner:** Brandon Collins
-**Status:** Draft v0.17
-**Last updated:** June 11, 2026
+**Status:** Draft v0.18 — **Markdown epoch**
+**Last updated:** June 13, 2026
+
+> **⚠️ Architecture epoch — Markdown-canonical (v0.18, 2026-06-13).** This document turned a corner from v0.17. Two foundational decisions changed, recorded in **ADR-037** and signalled by the git tag `v0.17-blocknote-canonical` (the last pre-pivot state): **(1)** the canonical body format is now **Markdown** (an extended dialect), not BlockNote JSON — markdown is the source of truth and every rich output renders from it; **(2)** the system is **bespoke-first** (each content type designed with its own features and, where useful, its own canvas, plus one customizable catch-all type), not "Notion-default / one generic canvas." Ledgr is also now built by **two people** (Brandon + Tyler) sharing one codebase across separate single-tenant deployments. Where older prose below still reads "BlockNote canonical," "Notion-default," or "every item opens the same canvas," ADR-037 governs. Sections have been updated to match; this banner stays as the marker of the turn.
 
 ---
 
 ## 1. Overview
 
-Ledgr is a single-user personal life management system replacing Notion. It stores meetings, tasks, notes, and saved links as richly formatted items (BlockNote documents, with a markdown export) in a relational database, presented through a custom web app (PWA) and integrated with the Microsoft 365 and Todoist ecosystems Brandon already lives in.
+Ledgr is a personal life management system replacing Notion, built by Brandon and Tyler as one shared codebase with separate single-tenant deployments. It stores meetings, tasks, notes, saved links, and richer workflow items (songs, papers, sermons, and more) as **Markdown documents** (an extended dialect that carries colors, footnotes, and chords) in a relational database, presented through a custom web app (PWA) and integrated with the ecosystems each instance lives in (Microsoft 365 and Todoist for Brandon; Google Workspace and iCloud for Tyler, behind the same provider seams).
 
 The system follows one architectural rule: **the database is the source of truth, and OneDrive receives a one-way markdown export** for backup, portability, and preach-from-anywhere resilience.
 
@@ -31,7 +33,7 @@ Notion's strengths (relational databases, "go deeper" pages, markdown storage, g
 5. **Boring stack, few dependencies.** Every package is a future maintenance event.
 6. **Sunday-proof.** The app can be down and Brandon can still preach (from the OneDrive export).
 7. **Deterministic by default, AI on purpose.** Routine plumbing (calendar matching, metadata extraction, formatting, sync) is plain code with no model in the loop. AI is reserved for high-judgment, low-frequency, human-in-the-loop work invoked deliberately through the Claude/MCP layer, never baked into a cron job.
-8. **Default to the Notion experience.** Where several UX or behavioral options exist, pick the one closest to how Notion already works, as long as it doesn't require inventing a major new feature. Brandon is migrating muscle memory, not just data, so familiarity lowers the cost of the switch.
+8. **Bespoke-first, one catch-all (v0.18, supersedes "Default to the Notion experience").** Design each content type with the features that type actually needs, and give it its own canvas where that earns its keep. A single customizable catch-all type absorbs temporary or unanticipated uses; a catch-all use that proves itself gets promoted to a permanent bespoke type. Notion remains a reference for individual interactions and Brandon's muscle memory where it fits, but the system is no longer generic-first. (The prior principle was: match Notion's UX by default. See ADR-037.)
 9. **Fast for the user, cheap on the back end.** Every design choice is weighed on two axes at once: perceived speed in the user's hands (optimistic updates, instant cached reads, lazy loading) and back-end thrift (minimal compute, storage, and traffic). Neither is sacrificed quietly for the other (see §6.5).
 10. **Observable and debuggable.** The app is built to be diagnosed by a solo maintainer working with Claude Code: structured logging, a toggleable debug mode that surfaces detailed errors and timings, clear human-readable error messages, and documentation (inline and in the runbook) kept current. When something breaks on a Saturday, the goal is a fast, legible trail to the cause (see §6.6).
 
@@ -66,7 +68,7 @@ Every unit of life is a row in `items`:
 | `owner_id` | uuid | FK to `users`; one row in v1, multi-user-ready |
 | `type` | text | FK to `types.key` (§3.6); built-in keys `task`, `meeting`, `note`, `link`, `entity`, extensible with user types |
 | `title` | text | The "one-liner"; may be the entire content |
-| `body` | jsonb | BlockNote document (canonical JSON); serialized to markdown for export (§4.1, §6.1); null until "gone deeper" |
+| `body` | jsonb | Canonical body, stored as `{format, text}` — `format: "markdown"` (default; an extended dialect, §4.1) or a markdown-family format like `chordpro` per type; `text` is the source of truth. Rich outputs (docx/PDF/chart) render from it (§6.1). Null until "gone deeper"; **never selected in list queries** |
 | `status` | enum | `open`, `done`, `archived` (task-relevant; others default `open`) |
 | `due_date` | timestamptz | nullable |
 | `urgency` | enum | `low`, `normal`, `high`, `critical`; nullable |
@@ -149,15 +151,20 @@ Three layers of capability, from universal to bespoke:
 
 Why this split is right: hard-coding the handful of types Brandon lives in lets the platform deliver reliable core functionality and real integrations out of the box, avoiding the common Notion pitfall where the user has to assemble their own task system from generic parts. The custom-type sandbox then absorbs everything else ("I want to track books") without each new type demanding bespoke engineering, and the middle layer keeps that sandbox genuinely useful rather than a dead-end store. The rejected alternative, going fully generic with no privileged types (pure Notion), is exactly what reintroduces that pitfall and makes the integration plumbing brittle.
 
+**v0.18 sharpening (ADR-037):** this tiering is now the default posture, not a curated exception. Ledgr is **bespoke-first** — most types are Tier-3 (their own features and, where useful, their own canvas, §4.13), and Tier 2 collapses toward a **single customizable catch-all type** for the temporary or unanticipated tail. A catch-all use that recurs gets **promoted** to a permanent bespoke type (Claude Code does the conversion). A Tier-3 type can also be packaged as a **contributed workflow module** (a type + canvas + exporters + optional integration) that registers onto the shared frame, so an instance can choose which modules it runs (module-ready; see §6.1 and the collaboration model in CLAUDE.md).
+
 ## 4. Features
 
-### 4.1 Editor (block editor, v1)
+### 4.1 Editor (markdown-canonical, v1)
 
-- BlockNote (or equivalent) block editor: slash commands, headings, bullets/numbered lists, checkboxes, quotes, dividers, code blocks
-- Text formatting: bold, italic, highlight colors, text colors — sufficient to write and preach a sermon
-- Markdown serialization: every document round-trips to markdown for export and Claude access. To stop colors and highlights getting dropped on the way out, the exporter encodes them as standard inline HTML (`<mark class="hl-blue">…</mark>`, `<span style="color:#…">…</span>`) rather than invented tags. Markdown passes raw HTML through, and Obsidian's reading view (plus GitHub and most viewers) renders it with no plugin required; a CSS snippet can theme the class names later. A single BlockNote-color-to-tag mapping table keeps the exporter and any future importer in sync. This is pure serialization logic, no model.
-- Paste images inline (stored as attachments in object storage per §3.4, rendered in place)
-- Links to other items via `@`-mention (creates a relation row automatically)
+**Canonical body format is Markdown** (v0.18, ADR-037), an extended dialect rich enough to carry everything Brandon's and Tyler's content needs: CommonMark/GFM as the base, Pandoc features (footnotes, superscripts/subscripts, citations, attribute spans) for papers, inline HTML (`<mark class="hl-blue">…</mark>`, `<span style="color:#…">…</span>`) for the sermon colors/highlights that plain markdown can't hold, and markdown-family formats like ChordPro for songs (declared per type). The markdown *is* the stored document; rich features layer on top of it, and every other artifact (Word/`.docx` via pandoc, chord charts, slides, print/PDF) is rendered from the markdown on demand, never a second source of truth.
+
+- **Markdown-native WYSIWYG editor.** The editing surface renders rich (headings, lists, checkboxes, quotes, dividers, code, bold/italic, highlight + text colors — enough to write and preach a sermon), not raw markdown, with a likely source/preview toggle for people who want the plain text. The specific library is TBD (tiptap / Milkdown / Lexical with markdown serialization, or any editor that can treat markdown as its store losslessly); BlockNote is one candidate, no longer the canonical-defining choice.
+- **Per-type canvas.** A content type may declare its own canvas (a chord editor for songs, a paper workspace with a quote-bank sidebar for papers); a type without one gets the default markdown canvas (§4.13).
+- **Color/highlight fidelity** rides the inline-HTML encoding above. A single color-to-tag mapping table keeps the renderers (export, print, on-screen) in sync. Obsidian's reading view, GitHub, and most viewers render it with no plugin; a CSS snippet can theme the class names. Pure serialization, no model.
+- Paste images inline (stored as attachments in object storage per §3.4, rendered in place).
+- Links to other items via `@`-mention (creates a relation row automatically).
+- **The "Notion feel"** (slash menu, drag-to-reorder blocks) is desired and may be reproduced later or adopted from an existing library; it is explicitly **not** a v1 requirement, the cost paid to make markdown the durable base.
 
 ### 4.2 Views
 
@@ -240,7 +247,7 @@ Two related capabilities make "relations are real" tangible from inside any item
 - **Create inherits the view's filters.** Adding an item from the view pre-fills it from the filter's assignment clauses, so a new task here is auto-related to Roger. Range or OR predicates (like the due window) stay blank rather than guess a value, since they're ambiguous.
 - **Remove means un-relate, not delete.** Removing a row from a filtered-by-entity view drops the relation (un-tags it) and never deletes the underlying item. Deletion stays explicit and soft (§4.6).
 
-Implementation: embeddable views are a custom BlockNote block whose attributes hold the filter spec, and the same renderer powers entity pages and meeting-prep templates. Live queries re-run on load, fine at single-user scale with indexes on `relations` and `due_date`.
+Implementation: embeddable views are a custom markdown construct (a fenced directive / code block whose attributes hold the filter spec), and the same renderer powers entity pages and meeting-prep templates. Live queries re-run on load, fine at single-user scale with indexes on `relations` and `due_date`.
 
 ### 4.10 Two-surface architecture: Work and Build
 
@@ -283,9 +290,9 @@ Either way, the slot contents, order, and badges are user-configured from the Bu
 
 ### 4.13 Item view: the canvas
 
-Opening any item (task, meeting, note, anything) lands in a **full text-editor canvas** (§4.1). This is a key differentiator carried over from Notion and it applies uniformly: there is no item type that dead-ends in a bare row.
+Opening any item lands in a canvas (§4.1). The default canvas is the **markdown-native editor**, and no item type dead-ends in a bare row. **A content type may declare its own canvas** (v0.18, ADR-037): a chord editor for songs, a paper workspace with a quote-bank sidebar and stage tracker for papers. A type without a declared canvas gets the default markdown canvas, so the uniform "everything opens to a real editing surface" promise holds while bespoke types get the surface their workflow actually needs. (This revises the former v0.17 rule that *every* item opened the same single editor canvas.)
 
-- **Opening modes.** Side panel, center modal, full screen, or new tab. Notion now offers all four; per Principle 8 the default is a center modal with a one-click expand to full screen, and the mode is a per-user preference. (Side panel and new tab can follow; the renderer is the same.)
+- **Opening modes.** Side panel, center modal, full screen, or new tab. The default is a center modal with a one-click expand to full screen, and the mode is a per-user preference. (Side panel and new tab can follow; the default markdown renderer is shared.)
 - **Fields split top and bottom.** Item properties render in two zones: a **top strip** above the body for the fields actually needed at a glance, and a **bottom section** below (or collapsed) for the rest. Which fields go where is user-configurable per type. This avoids the Notion failure mode of every property stacked above the content whether you need it or not.
 - **Horizontal property layout.** The top strip lays fields out horizontally (label-value pairs in a row), not as a vertical stack, so two or three key fields cost one line, not five.
 - **Fields are collapsible.** The bottom section collapses by default once configured, keeping the canvas as the star.
@@ -402,7 +409,7 @@ Capture works off a dedicated Outlook folder, not a separate inbound email addre
 - **Frontend/backend:** Next.js (single app) on Vercel
 - **Database:** Postgres on Neon (free tier to start); connect through Neon's connection pooler, not a direct connection (serverless requirement, §6.5). Neon chosen over Supabase because storage (R2) and auth (Clerk) are handled elsewhere, so Supabase's bundled extras would go unused
 - **Data layer / migrations:** Drizzle, a lightweight, SQL-close TypeScript ORM (the layer the app uses to read/write Postgres in typed code instead of hand-written SQL strings, and to version schema changes as migrations). Chosen over Prisma for being thinner and serverless-friendly, matching Principle 5
-- **Editor:** BlockNote. **Canonical document format is BlockNote JSON**, not markdown — markdown can't natively represent text colors/highlights, which sermons use heavily. Markdown remains the greppable export format, made lossless for color/highlight by the inline-HTML encoding in §4.1; the Pulpit Ready PDF still carries full formatting as the print-fidelity artifact.
+- **Editor & body format (v0.18, ADR-037):** **Canonical body format is Markdown**, an extended dialect (CommonMark/GFM + Pandoc footnotes/superscripts/citations/attribute-spans + inline HTML for colors/highlights + markdown-family formats like ChordPro per type). Markdown is the source of truth; the Word/`.docx`, chord chart, slides, and the Save-Offline print/PDF are all **rendered from** it (pandoc and pure serializers, no model). The editor is a markdown-native WYSIWYG surface; library TBD (tiptap / Milkdown / Lexical / BlockNote-as-candidate). This reverses the v0.17 BlockNote-JSON-canonical choice: the durable, greppable, multi-output base is worth giving up BlockNote's turnkey block UX for, with the "Notion feel" a later nice-to-have (§4.1).
 - **Auth:** Clerk (free tier), Microsoft sign-in as the primary method (one identity, the ECC tenant). Multi-user auth comes built, matching the "maybe staff later" posture. Machine-to-machine access (MCP server, cron, webhooks) uses scoped API tokens, separate from Clerk.
 - **Scheduler:** Vercel Hobby cron only runs daily jobs, so sub-daily schedules (e.g., 6-hour calendar polling, §5.1) are triggered by a free GitHub Actions workflow hitting authenticated endpoints. Protects the $0 target. (Note the failure mode in §12: GitHub auto-disables Actions after 60 days of repo inactivity; the `/health` export-timestamp check catches a silently stalled sync.)
 - **File storage:** Cloudflare R2 (object storage + CDN) behind a storage-provider interface; presigned URLs, per-user quota; OneDrive receives backup copies via export (§3.4, §5.4)
@@ -453,14 +460,14 @@ Two goals are weighed in every design choice (Principle 9): the tool feels insta
 
 - **Optimistic updates.** Inline edits, check-offs, and captures apply in the UI immediately and reconcile with the server in the background, so nothing waits on a round-trip.
 - **Stale-while-revalidate.** Render from the local/PWA cache instantly, then refetch and update, so repeat views feel instant.
-- **Lazy-load the editor.** BlockNote is heavy; code-split it so opening the app (lists, Today) doesn't pay the editor's cost until an item is actually opened.
+- **Lazy-load the editor.** A rich WYSIWYG editor is heavy; code-split it so opening the app (lists, Today) doesn't pay the editor's cost until an item is actually opened.
 - **Virtualized long lists** and pagination, so a 1,000-item list renders a screenful, not all of it.
 - **Batched page loads.** A screen like Today fetches its data in one request, not a query per widget.
 
 **Back-end (cheap compute, storage, traffic):**
 
 - **Pooled DB connections are mandatory.** Serverless functions (Vercel) plus Postgres is a classic footgun: each invocation can open a connection and exhaust a free-tier cap fast. Use the host's pooler (Neon/Supabase pooler or a serverless driver) from day one, never a direct connection.
-- **List queries never select `body`.** Bodies (BlockNote JSON, sermon-sized) load only when an item is opened, so a task list never pulls megabytes.
+- **List queries never select `body`.** Bodies (markdown, sermon-sized) load only when an item is opened, so a task list never pulls megabytes.
 - **Index plan.** Index `type`, `owner_id`, `status`, `due_date`, and `parent_id`; index `relations.source_id` and `relations.target_id` separately so both-direction backlink queries use bitmap index scans; GIN-index `properties` and the FTS tsvector (a maintained generated column, not computed per query).
 - **Incremental everything.** Calendar, email, and Todoist sync use delta/changed-since queries, not full re-pulls; the nightly export writes only items changed since the last run; the weekly `pg_dump` is the one full snapshot (§6.4).
 - **Right-sized crons.** Sub-daily jobs run at the cadence the feature actually needs (calendar 6h, not 30 min) to limit function invocations and stay in free tiers.
@@ -509,7 +516,7 @@ A downloadable build that runs the whole stack on a local machine, pointed at th
 ### Later / ideas parking lot
 **Meeting capture and AI processing** (§4.15: record/transcribe via Whisper or Teams-transcript pull, Anthropic API summary + suggested tasks; specced and designed-for now, promoted when Q10 resolves), pulpit mode (large-type distraction-free render), staff accounts (schema is ready; product work deferred), Notion-style synced blocks, Notion-style formulas and rollups (custom-type deep end, §3.6), gallery and Gantt view layouts (view deep end, §4.2), email-out.
 
-**Tiered attachment storage (cold-demotion), gated on a real quota trigger.** Idea: once an attachment hasn't been accessed in a couple of weeks, demote it off R2's hot/CDN path to cheaper/slower storage. Held lightly because the problem may not exist: §3.4 keeps attachments small by design and open Q8 hasn't confirmed real volume yet, so this is complexity (a per-attachment hot/cold state machine plus link rewriting inside BlockNote bodies) against Principle 5 until R2 nears the 10GB quota. The originally floated mechanism (demote to a OneDrive *share link*) is the weak form: OneDrive links resolve to HTML preview pages, the direct-download URL format is unofficial and shifts, and they're rate-limited, so serving a demoted image reliably would force bytes back through the app server via Graph, breaking the "bytes never proxy through the app server" rule (§3.4) and reintroducing the Microsoft coupling that section deliberately shed. It also needs per-attachment last-access tracking the app doesn't have today (CDN serving means the app never sees most reads). **Cleaner variant if cost ever bites:** since OneDrive already holds a backup copy (§5.4), "cold" can just mean *delete from R2 and rehydrate from Graph on demand*, no second storage system and no new link type. Revisit only on the R2-approaching-quota trigger.
+**Tiered attachment storage (cold-demotion), gated on a real quota trigger.** Idea: once an attachment hasn't been accessed in a couple of weeks, demote it off R2's hot/CDN path to cheaper/slower storage. Held lightly because the problem may not exist: §3.4 keeps attachments small by design and open Q8 hasn't confirmed real volume yet, so this is complexity (a per-attachment hot/cold state machine plus link rewriting inside markdown bodies) against Principle 5 until R2 nears the 10GB quota. The originally floated mechanism (demote to a OneDrive *share link*) is the weak form: OneDrive links resolve to HTML preview pages, the direct-download URL format is unofficial and shifts, and they're rate-limited, so serving a demoted image reliably would force bytes back through the app server via Graph, breaking the "bytes never proxy through the app server" rule (§3.4) and reintroducing the Microsoft coupling that section deliberately shed. It also needs per-attachment last-access tracking the app doesn't have today (CDN serving means the app never sees most reads). **Cleaner variant if cost ever bites:** since OneDrive already holds a backup copy (§5.4), "cold" can just mean *delete from R2 and rehydrate from Graph on demand*, no second storage system and no new link type. Revisit only on the R2-approaching-quota trigger.
 
 ---
 
@@ -532,7 +539,7 @@ A downloadable build that runs the whole stack on a local machine, pointed at th
 - **Offline capture:** Todoist inbox is the offline capture path; PWA does not promise offline writes
 - **Pulpit Ready:** v1 feature; Sunday never depends on the app being up
 - **Auth:** Clerk free tier, Microsoft sign-in primary; API tokens for machine access
-- **Document format:** BlockNote JSON canonical (preserves colors/highlights); markdown is the lossy export
+- **Document format (revised v0.18, ADR-037):** **Markdown canonical** (extended dialect: GFM + Pandoc features + inline HTML for colors/highlights + ChordPro per type); every rich output renders from it. *(Was, through v0.17: BlockNote JSON canonical, markdown the lossy export.)*
 - **History:** soft deletes + revision snapshots are v1
 - **Scheduling:** GitHub Actions triggers sub-daily jobs (Vercel Hobby cron is daily-only)
 - **AI scope:** deterministic by default; routine plumbing (calendar matching, metadata extraction, formatting, sync) runs with no model; AI is reserved for deliberate human-in-the-loop work in the Claude/MCP layer (Principle 7)
@@ -544,7 +551,7 @@ A downloadable build that runs the whole stack on a local machine, pointed at th
 - **Match state:** `relations` carry `confirmed` | `suggested`; fuzzy and auto matches render provisional until confirmed and are excluded from trusted queries
 - **Linked views:** backlinks panel (Phase 1) plus interactive embedded query views (Phase 2); embedded views are editable filters with inline edit, check-off, and create-inherits-filters; remove = un-relate, never delete; ambiguous filters (ranges/ORs) don't auto-assign defaults
 - **Relations model:** generic page-to-page edge (`source_id`/`target_id`, optional `role`), Notion-faithful; tags are just edges to entity items; backlinks query both directions
-- **Notion-default (Principle 8):** where options exist, match Notion's UX unless it demands a major new feature
+- **Bespoke-first (Principle 8, revised v0.18, ADR-037):** design each type with its own features and, where useful, its own canvas; one customizable catch-all type for the temporary tail, with a promotion path to a permanent type. *(Was: Notion-default — match Notion's UX where options exist.)*
 - **Hierarchy:** containment via a self-referential `parent_id` (single parent), separate from associative relations; projects are emergent (any task with children gets a subtask checklist + progress rollup); cycle-guarded, recursive tree reads; soft-delete cascades to children
 - **Custom types:** middle path — user-defined Types (each a page with a property schema + default view) plus a `properties` JSONB bag and a core set of property kinds (text/number/date/select/multi-select/checkbox/url/relation); views reuse saved views; `properties` column ships Phase 1, builder UI Phase 3; formulas/rollups out of scope (parking lot)
 - **Type tiers (§3.7):** one type system, two behavior tiers; built-in types are `system`-flagged with reserved columns and bespoke code (integrations, templates, planning), custom types get universal item behavior plus property-kind-driven generic behavior (date → calendar, etc.); type-specific plumbing stays reserved for built-in types; fully generic (no privileged types) rejected
@@ -552,7 +559,7 @@ A downloadable build that runs the whole stack on a local machine, pointed at th
 - **Views (§4.2):** every view is a stored View Definition (filter, sort, grouping, layout, type/date-property surfacing); built-in views are editable/clonable `system` seeds; users build their own (3-day, 1-week, 3-month, etc.); same engine as embedded views (§4.9); core layouts list/table/board/calendar/agenda, gallery/Gantt parked; view builder Phase 2
 - **Performance principle (9):** weigh perceived speed (optimistic UI, stale-while-revalidate, lazy editor, virtualized lists) and back-end thrift (pooled connections, no-body-in-lists, incremental syncs, right-sized crons, CDN serving) on every choice; rules mirrored into the runbook
 - **File storage (§3.4):** Cloudflare R2 primary (presigned URLs, CDN, per-user quota ~10GB, no egress) behind a provider interface; OneDrive demoted to export/backup target; generalizes to non-Microsoft users
-- **Body format (clarified v0.13):** `items.body` stores canonical BlockNote JSON (not markdown); markdown is the derived, lossy-but-color-safe export (§3.1, §4.1, §6.1)
+- **Body format (clarified v0.13, reversed v0.18 — ADR-037):** `items.body` stores canonical **Markdown** as `{format, text}` (§3.1, §4.1, §6.1); rich outputs render from it. *(The v0.13 decision was the opposite — BlockNote JSON canonical, markdown derived — superseded by the Markdown epoch.)*
 - **Integration phasing (clarified v0.13):** export is Phase 1; calendar, Todoist, and email-in are Phase 2; MCP server is Phase 3 (§5 headings now match §8)
 - **Microsoft auth (v0.14):** two modes to handle MFA — interactive login uses delegated OAuth (MFA at the Microsoft prompt), unattended jobs use app-only client credentials (no MFA), scoped to Brandon's mailbox via an Application Access Policy; Brandon self-consents as tenant admin
 - **Name (v0.15):** the app is **Ledgr**
@@ -566,7 +573,7 @@ A downloadable build that runs the whole stack on a local machine, pointed at th
 - **Pre-loaded core (v0.17, §4.10):** new users start with the five system types and system views already in place, never a blank slate; this is the existing `is_system` architecture doing double duty as onboarding
 - **Dashboard phasing (v0.17, §4.11):** main screen is a dashboard; Phase 1 ships the fixed-layout Today view, Phase 2 ships the widget system (drag-and-drop View-Definition cards, item-count-driven heights, badge counts, fill-screen desktop layout) alongside the view builder it depends on
 - **Navigation (v0.17, §4.12):** user-configured slots with badges, home always slot 1; floating bottom bar settled for mobile; desktop is bottom-bar vs right-sidebar, both specced behind the same slot model, decided in testing (Q9)
-- **Item canvas (v0.17, §4.13):** every item opens to a full editor canvas; default center modal with expand to full screen (Notion-default); properties split into a horizontal top strip (user-picked, at-a-glance fields) and a collapsible bottom section, per type
+- **Item canvas (v0.17, revised v0.18 — ADR-037, §4.13):** every item opens to a canvas (no bare rows); the **default** is the markdown editor, but a content type **may declare its own canvas** (song chord editor, paper workspace). Default center modal with expand to full screen; properties split into a horizontal top strip (user-picked, at-a-glance fields) and a collapsible bottom section, per type. *(v0.17 had every item open the same single editor canvas.)*
 - **Build surface use cases (v0.17, §4.14):** workflows (step-based processes) and wikis (interconnected reference) are the two template categories; creation is template-led ("New Workflow"/"New Wiki" prompting key parameters, auto-generating type + properties + views via §3.6), with on-the-fly tweaks kept cheap; retired structures leave Work but archive, never delete
 - **Meeting capture + AI (v0.17, §4.15):** specced as a later-phase feature, designed-for now (transcript/summary sections on meeting bodies, audio as attachments, suggested tasks via `match_state = 'suggested'`, processing over the existing API); implementation options (Whisper + Anthropic API vs manual Voice Memos + MCP) and trigger (button vs auto) stay open as Q10; Principle 7 and the $0 cost target are not amended yet
 
@@ -603,7 +610,7 @@ These aren't blockers, they're the soft spots worth holding in view as the build
 **Data-model gaps to close before their phase**
 
 - **Custom-type item identity (open Q6).** How a custom-typed item declares its type against the fixed `type` enum is unsettled. Low risk now (deferred to Phase 3), but the Phase 3 builder can't start until it's decided.
-- **Markdown export degrades for custom blocks.** Canonical BlockNote JSON round-trips to markdown well for prose, but embedded query-view blocks (§4.9) and future custom blocks have no faithful markdown form. They should export as a static snapshot or placeholder, not a live view. Fine for the pulpit fallback (sermons are prose); flagged so the export's limits are explicit.
+- **Dynamic constructs have no static export form (v0.18).** With markdown canonical (ADR-037), prose no longer round-trips — the markdown *is* the document, so export and Claude access are lossless for ordinary content. The residual gap is the reverse: live constructs embedded in a body — embedded query views (§4.9), and any markdown directive that resolves at render time — can't carry their live behavior into a flat exported file. They export as a static snapshot or placeholder, not a live view. Fine for the pulpit fallback (sermons are prose); flagged so the export's limits stay explicit.
 - **Full-text search covers title and body, not custom property values.** Custom `properties` are filterable via GIN but not necessarily full-text searchable. Minor, likely fine, just unspecified.
 
 **Concurrency and sync edge cases (low risk at one user)**
