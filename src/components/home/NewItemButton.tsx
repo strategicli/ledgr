@@ -19,6 +19,10 @@ export default function NewItemButton({ type }: { type: string }) {
       if (!res.ok) throw new Error(String(res.status));
       const { item } = await res.json();
       router.push(`/items/${item.id}`);
+      // The list page stays mounted under the intercepting modal, so this
+      // button never remounts on its own — reset it here, or it stays
+      // disabled ("busy") and a second "+ New" does nothing until a refresh.
+      setState("idle");
     } catch {
       setState("error");
     }
