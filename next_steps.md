@@ -132,16 +132,16 @@ Tyler's PR #1 (`ty-additions/` module specs) is the companion context for what t
 
 **Slices 30–32 shipped this session (push notifications, public share links, provider-interface confirmation) — see the session-3 summary above and "Recently done."** Phase 2 is code-complete; what remains is the §1c-blocked matcher UIs below and Phase 3.
 
-### Phase 3 opener (no external deps): MCP server
-- A thin MCP server exposing search/read/create/update items + list-by-entity/date over a personal API token (the machine-token scheme already exists). The deterministic-by-default rule holds; this is the deliberate AI seam. Then scheduled Claude tasks (morning briefing / weekly health check) over the same API, and the Build-surface shell. See `roadmap.md` Phase 3.
+### Phase 3 opener (after Phase M): the Build surface UX
+- **Reordered 2026-06-13 (Brandon):** building the UX is the next priority after Phase M, ahead of the Claude layer and Notion migration. Tier 1 is the **Build surface shell** (Work/Build toggle, PRD §4.10) then the **custom type & property builder UI** (writes `types.property_schema`, resolves custom-type identity Q6, and the type/kind authoring + quick-capture-opt-in UX from `explorations/type-and-kind-ux.md`). Tier 2 is templates (workflow/wiki, then per-type item templates), which follow from those UX decisions. The **MCP server + scheduled Claude tasks + Notion migration moved to Tier 3** (later). Planning rhythms + parked items last. See `roadmap.md` Phase 3.
 
 ### (follow-up) Matchers: setup wizard + learn-by-confirmation UI
 - The matcher **engine + config + suggested/confirmed states are done** (slice 23). Remaining: (a) **setup wizard** — sample recent/upcoming events and let Brandon pick matches → write first rules (needs live calendar, so **§1c-blocked**); (b) **learn-by-confirmation** — when Brandon confirms a suggested match on a meeting (slice-15 confirm path), offer to save a standing rule (POST `/api/matchers`); the data backbone (`properties.match.matcherIds`, the matchers API) is already in place. Pick these up once §1c lands and the meeting canvas shows matches.
 
 ---
 
-## Then (Phase 3, rough order)
-MCP server → scheduled Claude tasks (briefing / health check) → Build-surface shell → custom type/property builder → workflow/wiki templates → per-type item templates → planning rhythms. The deferred matcher setup-wizard + learn-by-confirmation UIs slot in whenever §1c lands. See `roadmap.md` Phase 3.
+## Then (Phase 3, rough order — reordered 2026-06-13)
+Build-surface shell → custom type/property builder (+ type/kind UX) → workflow/wiki templates → per-type item templates → MCP server → scheduled Claude tasks (briefing / health check) → selective Notion migration → planning rhythms (+ parked items: inline action-item→task, richer dashboard widgets). The deferred matcher setup-wizard + learn-by-confirmation UIs slot in whenever §1c lands. See `roadmap.md` Phase 3.
 
 ---
 

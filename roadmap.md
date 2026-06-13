@@ -79,18 +79,29 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 
 ---
 
-## Phase 3: Claude layer + migration + planning rhythms
+## Phase 3: Build surface + templates + Claude layer + planning rhythms
 
+> **⚠️ Reordered 2026-06-13 (Brandon).** After Phase M, **building the UX (the Build surface) is the next priority** — moved to the top. Templates follow from those UX decisions. The Claude layer (MCP, scheduled tasks) and Notion migration moved **later**. Planning rhythms stay last, alongside the parked items.
+
+**Tier 1 — Build the UX (next priority after Phase M):**
+- [ ] Build surface shell (Work/Build toggle in the main menu; PRD §4.10)
+- [ ] Custom type & property builder UI (writes `types.property_schema`; resolves custom-type identity, open Q6). **Includes the type/kind authoring + selection UX** (Brandon, 2026-06-13, `explorations/type-and-kind-ux.md`): entity **Kind** should reuse existing kinds (dropdown + "new", or a WordPress-style manage-kinds-then-add-items flow) instead of a raw free-text box; and the **quick-capture type dropdown should be data-driven from the registry with a per-type/kind "show in quick capture" opt-in** so custom types/kinds can be captured into directly.
+
+**Tier 2 — Templates (follow from the Build-surface UX decisions above):**
+- [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
+- [ ] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12)
+
+**Tier 3 — Claude layer + migration (moved later):**
 - [ ] MCP server (search/read/create/update items, list by entity/date; personal API token)
 - [ ] Scheduled Claude tasks (morning briefing, weekly health check) over the same API
 - [ ] Selective Notion migration (full export to OneDrive archive first; import active items; map relations; share-to-app)
-- [ ] Build surface shell (Work/Build toggle in the main menu; PRD §4.10)
-- [ ] Custom type & property builder UI (writes `types.property_schema`; resolves custom-type identity, open Q6). **Includes the type/kind authoring + selection UX** (Brandon, 2026-06-13, `explorations/type-and-kind-ux.md`): entity **Kind** should reuse existing kinds (dropdown + "new", or a WordPress-style manage-kinds-then-add-items flow) instead of a raw free-text box; and the **quick-capture type dropdown should be data-driven from the registry with a per-type/kind "show in quick capture" opt-in** so custom types/kinds can be captured into directly.
-- [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
-- [ ] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12)
+
+**Tier 4 — Planning rhythms + parked items (last):**
+- [ ] Planning rhythms (configurable rituals; deterministic modules; AI-assembled agenda is the only model step)
 - [ ] Inline action-item → linked task: promote a body line/bullet to a task whose title is the line text, linked back to the meeting and to that line (`explorations/block-linked-action-items.md`; Brandon, 2026-06-13). **Note (ADR-037):** markdown has no native stable block ids the way BlockNote JSON did, so the back-link anchor needs a markdown-friendly mechanism (a line/heading anchor or an injected marker) — see the exploration.
 - [ ] Richer dashboard widgets + flexible layout: widget types beyond the list preview (layout-faithful cards, stat/count cards), spanning sizes, regions/sidebars, per-widget settings — likely a Build-surface feature. **Direction: the dashboard becomes the Work home, replacing the fixed Today layout once widgets are rich enough** (Brandon, 2026-06-13; `explorations/dashboard-widgets.md`)
-- [ ] Planning rhythms (configurable rituals; deterministic modules; AI-assembled agenda is the only model step)
+
+**Slots in whenever §1c lands (Brandon-step-gated, not priority-ordered):** the deferred matcher setup-wizard + learn-by-confirmation UIs (see Phase 2).
 
 ---
 
