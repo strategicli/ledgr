@@ -1,0 +1,110 @@
+// Meeting prep assembly (slice 24, PRD §5.1). Deterministic, no model in the
+// loop: given a meeting, gather the related person/entity's open tasks, the
+// last few meetings with them, and agenda headings. This is the Phase 2
+// forerunner of the general per-type item template (roadmap Phase 3). Reads
+// only — owner-scoped, body-free (listColumns), confirmed edges only (a
+// provisional calendar match must not shape prep, PRD §3.3).
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { getDb } from "@/db";
+import { items } from "@/db/schema";
+import { listColumns } from "@/lib/items";
+import { queryViewItems } from "@/lib/views";
+
+export type PrepEntity = { id: string; title: string; kind: string | null };
+type ListRow = Awaited<ReturnType<typeof queryViewItems>>[number];
+
+export type MeetingPrep = {
+  entities: PrepEntity[];
+  openTasks: ListRow[];
+  recentMeetings: ListRow[];
+  agenda: string[];
+  // The template a matcher chose (slice 23), if any — shown as a hint; the
+  // full named-template system (agenda per template) is Phase 3.
+  templateName: string | null;
+};
+
+// A sensible default until per-template agendas exist (Phase 3). Kept short so
+// it's a starting frame, not a form to fill.
+const DEFAULT_AGENDA = ["Agenda", "Discussion", "Action items", "Follow-ups"];
+const RECENT_MEETINGS = 3;
+
+// The meeting's confirmed related entities (both directions), title order.
+export async function getMeetingEntities(
+  ownerId: string,
+  meetingId: string
+): Promise<PrepEntity[]> {
+  const rows = await getDb().execute(sql`
+    select distinct e.id, e.title, e.kind
+    from relations r
+    join items e
+      on e.id = case when r.source_id = ${meetingId} then r.target_id else r.source_id end
+    where (r.source_id = ${meetingId} or r.target_id = ${meetingId})
+      and r.match_state = 'confirmed'
+      and e.type = 'entity'
+      and e.owner_id = ${ownerId}
+      and e.deleted_at is null
+    order by e.title
+  `);
+  return rows.rows as PrepEntity[];
+}
+
+function dedupeById(rows: ListRow[]): ListRow[] {
+  const seen = new Set<string>();
+  const out: ListRow[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
+export async function getMeetingPrep(
+  ownerId: string,
+  meetingId: string
+): Promise<MeetingPrep> {
+  // The matched template name, if a matcher recorded one (slice 23).
+  const self = await getDb()
+    .select({ properties: items.properties })
+    .from(items)
+    .where(and(eq(items.id, meetingId), eq(items.ownerId, ownerId), isNull(items.deletedAt)));
+  const templateName =
+    ((self[0]?.properties as { match?: { templateName?: string | null } } | null)?.match
+      ?.templateName) ?? null;
+
+  const entities = await getMeetingEntities(ownerId, meetingId);
+  if (entities.length === 0) {
+    return { entities, openTasks: [], recentMeetings: [], agenda: DEFAULT_AGENDA, templateName };
+  }
+
+  // Per-entity queries (entities per meeting are few) reusing the tested
+  // viewItemsQuery entity filter; merge + dedupe across entities.
+  const openTasksNested = await Promise.all(
+    entities.map((e) =>
+      queryViewItems(
+        ownerId,
+        { type: "task", status: "open", entityId: e.id },
+        { field: "dueDate", dir: "asc" },
+        50
+      )
+    )
+  );
+  const recentNested = await Promise.all(
+    entities.map((e) =>
+      queryViewItems(
+        ownerId,
+        { type: "meeting", entityId: e.id },
+        { field: "meetingAt", dir: "desc" },
+        RECENT_MEETINGS + 1 // room to drop this meeting before slicing
+      )
+    )
+  );
+
+  const openTasks = dedupeById(openTasksNested.flat());
+  const recentMeetings = dedupeById(recentNested.flat())
+    .filter((m) => m.id !== meetingId)
+    .sort((a, b) => (b.meetingAt?.getTime() ?? 0) - (a.meetingAt?.getTime() ?? 0))
+    .slice(0, RECENT_MEETINGS);
+
+  return { entities, openTasks, recentMeetings, agenda: DEFAULT_AGENDA, templateName };
+}

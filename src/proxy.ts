@@ -11,6 +11,10 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/api/machine(.*)",
+  // Todoist signs its webhook with an HMAC (no Bearer token); the route
+  // verifies the signature itself (slice 25). Only the webhook is public —
+  // /api/todoist/sync stays Clerk-protected.
+  "/api/todoist/webhook",
 ]);
 
 const handler = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { getCalendarState } from "@/lib/calendar/sync";
+import { getEmailState } from "@/lib/email/sync";
 import { getExportState } from "@/lib/export/engine";
+import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
+import { getTodoistState } from "@/lib/todoist/sync";
 import { createLogger, isDebugMode } from "@/lib/log";
 
 // /health: the canary endpoint (runbook.md §2). Checks DB reachability and
@@ -73,6 +77,16 @@ export async function GET() {
   // (null until Brandon configures the Azure app registration, runbook §1).
   let lastExportAt: string | null = null;
   let lastExportRunAt: string | null = null;
+  // Calendar sync canary (slice 22): lastSuccessAt is the last error-free run;
+  // a stale value while lastRunAt advances means runs are failing partway, and
+  // both null means the 6h GitHub Actions poll never reaches the endpoint or
+  // Calendars.Read isn't granted yet (runbook §1c).
+  let lastCalendarSyncAt: string | null = null;
+  let lastCalendarRunAt: string | null = null;
+  let lastTodoistSyncAt: string | null = null;
+  let lastTodoistRunAt: string | null = null;
+  let lastEmailImportAt: string | null = null;
+  let lastEmailRunAt: string | null = null;
   let errors: ErrorsCheck = null;
   if (database.ok) {
     try {
@@ -83,13 +97,58 @@ export async function GET() {
       // job_state being unreadable while select 1 works is strange enough
       // to surface as nulls rather than fail the whole check.
     }
+    try {
+      const cal = await getCalendarState();
+      lastCalendarSyncAt = cal?.lastSuccessAt ?? null;
+      lastCalendarRunAt = cal?.lastRunAt ?? null;
+    } catch {
+      // same posture as the export state read.
+    }
+    try {
+      const td = await getTodoistState();
+      lastTodoistSyncAt = td?.lastSuccessAt ?? null;
+      lastTodoistRunAt = td?.lastRunAt ?? null;
+    } catch {
+      // same posture as the export state read.
+    }
+    try {
+      const em = await getEmailState();
+      lastEmailImportAt = em?.lastSuccessAt ?? null;
+      lastEmailRunAt = em?.lastRunAt ?? null;
+    } catch {
+      // same posture as the export state read.
+    }
     errors = await checkErrors();
+  }
+
+  // App-only Graph token grant (slice 21): a failed grant is the secret-expiry
+  // / consent-revocation canary for every unattended Graph job (export, and
+  // Phase 2 calendar + email-in). `{configured:false}` until the registration
+  // exists; it never changes overall status, since Graph being down must not
+  // make the app itself look unhealthy (Sunday-proof: the DB is what matters).
+  let graph: GraphHealth = { configured: false };
+  try {
+    graph = await checkGraphAuth();
+  } catch {
+    // checkGraphAuth swallows its own errors; this is belt-and-suspenders.
   }
 
   return NextResponse.json(
     {
       status: database.ok ? "ok" : "degraded",
-      checks: { database, lastExportAt, lastExportRunAt, errors },
+      checks: {
+        database,
+        lastExportAt,
+        lastExportRunAt,
+        lastCalendarSyncAt,
+        lastCalendarRunAt,
+        lastTodoistSyncAt,
+        lastTodoistRunAt,
+        lastEmailImportAt,
+        lastEmailRunAt,
+        graph,
+        errors,
+      },
       timestamp: new Date().toISOString(),
     },
     { status: database.ok ? 200 : 503 }

@@ -156,8 +156,8 @@ Every view is a stored View Definition. Built-in views (Today, Inbox, per-type l
 
 ---
 
-## `matchers` (Phase 2; calendar event → template/entity)
-Ordered, user-built rules (no seeded list). Editable without redeploy. Populated via setup wizard and learn-by-confirmation.
+## `matchers` (Phase 2, built slice 23; calendar event → template/entity)
+Ordered, user-built rules (no seeded list). Editable without redeploy. Populated via setup wizard and learn-by-confirmation. Created in migration 0004, which also enables the `pg_trgm` extension for the fuzzy condition (ADR-024).
 
 | Field | Type | Notes |
 |---|---|---|

@@ -14,6 +14,7 @@ import {
   boolean,
   customType,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -245,6 +246,32 @@ export const jobState = pgTable("job_state", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 });
+
+// Calendar event -> entity/template matching rules (slice 23, PRD §5.1).
+// Ordered, user-built (no seeded list); editable without a redeploy. The
+// calendar sync runs them on a new meeting; deterministic, no model in the
+// loop. condition is one of attendee-email / series-id / title-regex /
+// title-fuzzy (pg_trgm similarity, the last resort); action attaches default
+// entities/tags, names a template, sets default urgency. Populated by the
+// setup wizard and learn-by-confirmation.
+export const matchers = pgTable(
+  "matchers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    // Evaluation order within a condition kind (lower first). The kind itself
+    // also ranks: attendee-email -> series-id -> title-regex -> fuzzy (PRD).
+    priority: integer("priority").notNull().default(0),
+    condition: jsonb("condition").notNull(),
+    action: jsonb("action").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("matchers_owner_priority_idx").on(t.ownerId, t.priority)]
+);
 
 // No silent failures: failed crons/webhooks land here and surface through
 // /health and the UI. detail is shown only when debug mode is on.

@@ -8,6 +8,7 @@ import { notFound, redirect } from "next/navigation";
 import ItemEditor from "@/components/editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import PulpitReady from "@/components/canvas/PulpitReady";
+import MeetingPrep from "@/components/meetings/MeetingPrep";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, type CanvasField } from "@/lib/canvas-fields";
@@ -107,6 +108,9 @@ export default async function ItemCanvas({
       {/* Subtasks are a task feature (ADR-018); a future project treatment
           may widen this, but meetings and notes don't grow checklists. */}
       {item.type === "task" && <Subtasks ownerId={owner.id} itemId={item.id} />}
+      {/* Meeting prep (PRD §5.1): the person's open tasks, recent meetings,
+          agenda, and action-item -> task promotion. */}
+      {item.type === "meeting" && <MeetingPrep ownerId={owner.id} itemId={item.id} />}
       {/* Backlinks panel (PRD §4.9): every item shows what links here. On an
           entity this is the slice-6 "tag as dashboard" Related section. */}
       <RelatedPanel ownerId={owner.id} itemId={item.id} itemType={item.type} />

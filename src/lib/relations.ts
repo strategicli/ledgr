@@ -10,7 +10,7 @@
 // from @-mentions on every save (src/lib/mentions.ts), so the write path
 // refuses to create or delete them — a manually deleted mention edge would
 // silently resurrect on the next body save.
-import { and, desc, eq, ne, isNull, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, ne, isNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
@@ -139,6 +139,40 @@ export async function relateItems(
     .onConflictDoUpdate({
       target: [relations.sourceId, relations.targetId, relations.role],
       set: { matchState: "confirmed" },
+    })
+    .returning();
+  return rows[0];
+}
+
+// Machine-made edge from the calendar matcher (slice 23). Like relateItems
+// but writes the given match_state (attendee/fuzzy land 'suggested', series/
+// regex 'confirmed', per the engine) and, crucially, **never downgrades** an
+// existing confirmed edge to suggested: if the user already confirmed (or
+// manually related) this pair, a later suggested auto-match leaves it
+// confirmed. A confirmed auto-match upgrades an existing suggested edge.
+export async function addMatchEdge(
+  ownerId: string,
+  sourceId: string,
+  targetId: string,
+  matchState: "confirmed" | "suggested",
+  role = "related"
+) {
+  if (role === MENTION_ROLE) {
+    throw new ItemError("bad_request", "mention edges are body-managed");
+  }
+  if (sourceId === targetId) {
+    throw new ItemError("bad_request", "an item cannot relate to itself");
+  }
+  await assertOwned(ownerId, sourceId, { live: true });
+  await assertOwned(ownerId, targetId, { live: true });
+  const rows = await getDb()
+    .insert(relations)
+    .values({ sourceId, targetId, role, matchState })
+    .onConflictDoUpdate({
+      target: [relations.sourceId, relations.targetId, relations.role],
+      set: {
+        matchState: sql`case when excluded.match_state = 'confirmed' or ${relations.matchState} = 'confirmed' then 'confirmed'::match_state else 'suggested'::match_state end`,
+      },
     })
     .returning();
   return rows[0];

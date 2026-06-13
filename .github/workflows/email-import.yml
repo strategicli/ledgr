@@ -1,0 +1,45 @@
+# Email-in import (slice 26, PRD §5.3). Polls the "Ledgr Import" Outlook
+# folder via Graph messages/delta on the GitHub Actions scheduler — same door
+# and cron token as the other syncs. Every 30 min: email capture should feel
+# reasonably prompt, and delta makes each poll cheap.
+#
+# Auth: LEDGR_CRON_TOKEN repo secret (cron-scope machine token, runbook §3).
+name: email-import
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger email import
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          HTTP=$(curl -sS -o response.json -w "%{http_code}" -X GET \
+            "$APP_URL/api/machine/email-import" \
+            -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+          echo "HTTP $HTTP"; cat response.json; echo
+          # 503 = Mail.ReadWrite / the Outlook folder not set up yet (§1c/§5.3):
+          # expected before setup, so don't fail the run. Any other non-200 does.
+          [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ] || { echo "::error::email-import returned $HTTP"; exit 1; }
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"email-import\",\"message\":\"email import workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true

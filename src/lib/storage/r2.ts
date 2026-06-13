@@ -46,6 +46,23 @@ export class R2Provider implements StorageProvider {
     return { uploadUrl: signed.url, publicUrl: this.publicUrl(key) };
   }
 
+  async putObject(
+    key: string,
+    bytes: Uint8Array,
+    contentType: string
+  ): Promise<string> {
+    const signed = await this.client.sign(
+      new Request(this.objectUrl(key), {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: bytes as BodyInit,
+      })
+    );
+    const res = await fetch(signed);
+    if (!res.ok) throw new Error(`R2 put failed: ${res.status}`);
+    return this.publicUrl(key);
+  }
+
   publicUrl(key: string): string {
     const base = this.config.publicBaseUrl.replace(/\/+$/, "");
     const path = key.split("/").map(encodeURIComponent).join("/");

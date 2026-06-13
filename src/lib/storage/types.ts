@@ -13,6 +13,11 @@ export type PresignedUpload = {
 
 export interface StorageProvider {
   presignUpload(key: string, contentType: string): Promise<PresignedUpload>;
+  // Server-side write. Browser uploads use presignUpload (bytes never proxy
+  // the app server); this is for bytes that originate server-side with no
+  // browser in the loop — e.g. email-in attachments arriving from Graph
+  // (slice 26). Returns the public URL.
+  putObject(key: string, bytes: Uint8Array, contentType: string): Promise<string>;
   publicUrl(key: string): string;
   deleteObject(key: string): Promise<void>;
 }

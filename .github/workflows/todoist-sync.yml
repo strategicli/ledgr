@@ -1,0 +1,48 @@
+# Todoist sync polling fallback (slice 25, PRD §5.2). The webhook
+# (/api/todoist/webhook) is the real-time path; this is the backstop that
+# catches anything the webhook missed (and works even if the webhook isn't
+# registered yet). Same GitHub Actions scheduler + cron token as calendar-sync.
+#
+# Every 3h: tasks aren't time-critical the way calendar prep is, and the
+# webhook handles the prompt cases. Auth: LEDGR_CRON_TOKEN repo secret
+# (cron-scope machine token, runbook §3).
+name: todoist-sync
+
+on:
+  schedule:
+    - cron: "30 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Todoist sync
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          HTTP=$(curl -sS -o response.json -w "%{http_code}" -X GET \
+            "$APP_URL/api/machine/todoist-sync" \
+            -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+          echo "HTTP $HTTP"; cat response.json; echo
+          # A 503 (TODOIST_TOKEN not configured yet) is expected until the
+          # Brandon-step is done; treat it as success so the run isn't red
+          # before setup. Any other non-200 fails the run.
+          [ "$HTTP" = "200" ] || [ "$HTTP" = "503" ] || { echo "::error::todoist-sync returned $HTTP"; exit 1; }
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"todoist-sync\",\"message\":\"todoist sync workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true

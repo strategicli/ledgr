@@ -1,0 +1,53 @@
+# Calendar sync (slice 22, PRD §5.1). Vercel Hobby cron only runs daily, so
+# this sub-daily poll comes from GitHub Actions hitting the authenticated
+# endpoint — the scheduler interface the PRD chose (§6.1), the same door the
+# purge/export crons use, swappable for a local cron in Phase 4.
+#
+# Default 6h: prep-freshness sets the cadence, not cost (the poll is free
+# either way). Adjust the cron below if 6h feels stale or chatty.
+#
+# Auth: a cron-scoped Ledgr machine token in the LEDGR_CRON_TOKEN repo secret
+# (issue with `node scripts/make-token.mjs gh-actions cron`; one cron-scope
+# token can also serve the backup's failure report). Until it's set, the run
+# fails loudly here (and GitHub emails the owner) rather than syncing silently.
+name: calendar-sync
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger calendar sync
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          # -f makes curl exit non-zero on HTTP >= 400 so a 401/500 fails the
+          # run (GitHub emails the owner). A 503 (Graph not configured / §1c not
+          # done) also fails it — visible, not silent — which is what we want
+          # until calendar access is granted.
+          HTTP=$(curl -sS -o response.json -w "%{http_code}" -X GET \
+            "$APP_URL/api/machine/calendar-sync" \
+            -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+          echo "HTTP $HTTP"; cat response.json; echo
+          [ "$HTTP" = "200" ] || { echo "::error::calendar-sync returned $HTTP"; exit 1; }
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"calendar-sync\",\"message\":\"calendar sync workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true
