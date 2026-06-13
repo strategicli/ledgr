@@ -79,13 +79,23 @@ export const views = pgTable("views", {
 });
 
 // Extensible type registry (Gmail system-vs-user-label pattern). Five system
-// rows are seeded; user types are more rows (builder UI lands Phase 3).
+// rows are seeded; user types are more rows the Build surface writes (slice 33,
+// PRD §3.6/§4.10). property_schema holds the type's custom field definitions
+// (an ordered PropertyDef[], parsed in src/lib/types.ts); the per-item values
+// live in items.properties. Not owner-scoped: types are an instance-global
+// registry (one user per deploy), and the FK items.type -> types.key keeps a
+// type in use from being deleted.
 export const types = pgTable("types", {
   key: text("key").primaryKey(),
   label: text("label").notNull(),
   icon: text("icon"),
   isSystem: boolean("is_system").notNull().default(false),
   propertySchema: jsonb("property_schema"),
+  // Whether this type appears in the quick-capture type dropdown (PRD §4.4,
+  // exploration type-and-kind-ux §2). Default true keeps the five core types
+  // capturable; the builder toggles it so a "data only" custom type can stay
+  // out of the curated dropdown.
+  showInQuickCapture: boolean("show_in_quick_capture").notNull().default(true),
   defaultViewId: uuid("default_view_id").references(() => views.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

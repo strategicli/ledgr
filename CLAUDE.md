@@ -14,7 +14,7 @@ This is the operating manual for building Ledgr with Claude Code. Read it at the
 - **`next_steps.md`**: the immediate work queue. Start here each session, update it when you finish a slice.
 - **`runbook.md`**: operations: token rotation, restore procedure, common fixes, the performance rules. Keep current as you build.
 - **`decisions.md`**: ADR log for choices made *during* the build (the PRD's §10 log is frozen intent; this is the running record).
-- **`explorations/`**: parked fork-in-the-road ideas under consideration (not intent, not decisions). Currently: `local-first-split.md`, `project-items.md`, `block-linked-action-items.md`, `dashboard-widgets.md`, `type-and-kind-ux.md`.
+- **`explorations/`**: parked fork-in-the-road ideas under consideration (not intent, not decisions). Currently: `local-first-split.md`, `project-items.md`, `block-linked-action-items.md`, `dashboard-widgets.md`. (`type-and-kind-ux.md` is resolved — built in slice 33, ADR-044 — kept for the record.)
 
 ## The non-negotiable rules
 

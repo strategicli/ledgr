@@ -1,0 +1,1 @@
+ALTER TABLE "types" ADD COLUMN "show_in_quick_capture" boolean DEFAULT true NOT NULL;

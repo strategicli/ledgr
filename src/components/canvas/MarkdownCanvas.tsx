@@ -9,6 +9,7 @@
 // either replaces it or, like LinkCanvas, wraps it.
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
+import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
@@ -16,10 +17,15 @@ import EmbeddedView from "@/components/views/EmbeddedView";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, footerFieldsFor } from "@/lib/canvas-fields";
+import { distinctEntityKinds, getType } from "@/lib/types";
 import type { CanvasProps } from "@/lib/modules";
 
-export default function MarkdownCanvas({ item, ownerId }: CanvasProps) {
+export default async function MarkdownCanvas({ item, ownerId }: CanvasProps) {
   const fields = topStripFields(item.type);
+  // The entity Kind picker reuses the owner's existing kinds (type-and-kind-ux
+  // §1); only entities show the kind field, so only they pay for the query.
+  const kindOptions =
+    item.type === "entity" ? await distinctEntityKinds(ownerId) : [];
   const strip: StripValues = {
     status: item.status,
     dueDate: item.dueDate?.toISOString() ?? null,
@@ -29,6 +35,10 @@ export default function MarkdownCanvas({ item, ownerId }: CanvasProps) {
     kind: item.kind,
   };
   const footerFields = footerFieldsFor(item);
+  // The type's custom fields (Build surface). A user type resolves through the
+  // default canvas, so this is where its properties get an editable surface.
+  const typeDef = await getType(item.type).catch(() => null);
+  const propertySchema = typeDef?.propertySchema ?? [];
 
   return (
     <>
@@ -36,7 +46,12 @@ export default function MarkdownCanvas({ item, ownerId }: CanvasProps) {
         item={{ id: item.id, title: item.title, body: item.body }}
         fields={
           fields.length > 0 ? (
-            <FieldStrip itemId={item.id} fields={fields} initial={strip} />
+            <FieldStrip
+              itemId={item.id}
+              fields={fields}
+              initial={strip}
+              kindOptions={kindOptions}
+            />
           ) : null
         }
       />
@@ -50,6 +65,15 @@ export default function MarkdownCanvas({ item, ownerId }: CanvasProps) {
           items related to this entity — inline check-off, create-inherits,
           remove = un-relate. The actionable surface for a 1:1 prep. */}
       {item.type === "entity" && <EmbeddedView hostId={item.id} />}
+      {/* Custom properties (PRD §3.6): the type's Build-surface fields, edited
+          in place. Renders only when the type declares a property schema. */}
+      {propertySchema.length > 0 && (
+        <CustomProperties
+          itemId={item.id}
+          schema={propertySchema}
+          initial={(item.properties as Record<string, unknown>) ?? {}}
+        />
+      )}
       {/* Backlinks panel (PRD §4.9): every item shows what links here. On an
           entity this is the slice-6 "tag as dashboard" Related section. */}
       <RelatedPanel ownerId={ownerId} itemId={item.id} itemType={item.type} />

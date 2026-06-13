@@ -23,20 +23,21 @@ Real table, one row in v1. Exists so `owner_id` foreign keys are honest and mult
 
 ---
 
-## `types` (Phase 1 table, builder UI Phase 3)
-Extensible type registry. `items.type` is a FK to `types.key`. Five system rows seed it; user types are just more rows (Gmail system-vs-user-label pattern).
+## `types` (Phase 1 table, builder UI Phase 3 — built slice 33, ADR-044)
+Extensible type registry. `items.type` is a FK to `types.key`. Five system rows seed it; user types are just more rows (Gmail system-vs-user-label pattern). **Not owner-scoped** (no `owner_id`): types are an instance-global registry (one user per deploy). The Build surface CRUD is in `src/lib/types.ts`, guarded by `requireOwner`. The DB owns label/icon/`property_schema`/enumeration; the **module registry** (`src/lib/modules.ts`, ADR-043) owns a type's *code behavior* (canvas/format/exporters) — a user type isn't registered, so it falls back to the default markdown canvas + markdown format.
 
 | Field | Type | Notes |
 |---|---|---|
-| `key` | text PK | stable key: `task`, `meeting`, `note`, `link`, `entity`, then user keys |
+| `key` | text PK | stable key: `task`, `meeting`, `note`, `link`, `entity`, then user keys. **Immutable** (PK + FK target; the builder never lets it change). Slug-shaped: `^[a-z][a-z0-9_]*$` |
 | `label` | text | display name |
-| `icon` | text | |
-| `is_system` | boolean | true for the five built-ins; code keys bespoke behavior off system keys |
-| `property_schema` | jsonb | property definitions for this type (Phase 3 builder writes this) |
+| `icon` | text | optional icon name |
+| `is_system` | boolean | true for the five built-ins; code keys bespoke behavior off system keys. System types are extendable in the builder but never deletable |
+| `property_schema` | jsonb | the type's custom fields as an **ordered `PropertyDef[]`**: `{key, label, kind, options?}` (slice 33 builder writes this; per-item values live in `items.properties`). See "Property kinds" below |
+| `show_in_quick_capture` | boolean | not null, default true (migration 0008). Whether the type appears in the quick-capture dropdown (data-driven + opt-in, PRD §4.4 / exploration type-and-kind-ux §2) |
 | `default_view_id` | uuid | FK to `views.id`, nullable |
 | `created_at` | timestamptz | |
 
-Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system = true`.
+Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system = true`. Deleting a user type is blocked while any item references it (the FK, plus a counted pre-check in the store).
 
 ---
 
@@ -220,7 +221,7 @@ No silent failures. Failed crons/webhooks captured here and surfaced through `/h
 ---
 
 ## Property kinds (for `types.property_schema` and `items.properties`)
-A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-select`, `checkbox`, `url`, `relation` (relation reuses the `relations` edge table). Formulas and rollups are out of scope (parking lot), except the deterministic subtask progress rollup.
+A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):** `text`, `number`, `date`, `checkbox`, `url`, `select`, `multi_select` (the last two carry an `options: string[]`). `property_schema` is an **ordered array** of `{key, label, kind, options?}` (`key` is a stable slug, immutable once created, so renaming a label never orphans `items.properties` values). **`relation` is deferred** in the builder — item-to-item links already have the `@`-mention + Related panel, so a relation "property" would duplicate that surface (it can be added later if a distinct use appears). Formulas and rollups are out of scope (parking lot), except the deterministic subtask progress rollup.
 
 ---
 

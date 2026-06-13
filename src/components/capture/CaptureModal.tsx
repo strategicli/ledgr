@@ -17,9 +17,11 @@ type EntityHit = { id: string; title: string; kind: string | null };
 
 export default function CaptureModal({
   typeOptions,
+  entityKinds,
   onClose,
 }: {
   typeOptions: { key: string; label: string }[];
+  entityKinds: string[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -27,6 +29,10 @@ export default function CaptureModal({
   const [type, setType] = useState("task");
   const [due, setDue] = useState("");
   const [urgency, setUrgency] = useState("");
+  // Entity captures pick a kind inline so they don't land kind-less (§3); the
+  // picker drops to free text when "New kind…" is chosen.
+  const [kind, setKind] = useState("");
+  const [kindNew, setKindNew] = useState(false);
   const [entity, setEntity] = useState<EntityHit | null>(null);
   const [entityQ, setEntityQ] = useState("");
   const [entityHits, setEntityHits] = useState<EntityHit[]>([]);
@@ -107,6 +113,8 @@ export default function CaptureModal({
     // even if they were filled before the type changed.
     if (type === "task" && due) body.dueDate = `${due}T00:00:00.000Z`;
     if (type === "task" && urgency) body.urgency = urgency;
+    // Kind is an entity field; only sent for entity captures (§3).
+    if (type === "entity" && kind.trim()) body.kind = kind.trim();
     try {
       const res = await fetch("/api/items", {
         method: "POST",
@@ -167,6 +175,47 @@ export default function CaptureModal({
               </option>
             ))}
           </select>
+          {type === "entity" &&
+            (kindNew ? (
+              <input
+                type="text"
+                autoFocus
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setKind("");
+                    setKindNew(false);
+                  }
+                }}
+                placeholder="new kind…"
+                aria-label="Kind"
+                className={`${fieldClass} w-28`}
+              />
+            ) : (
+              <select
+                value={kind}
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setKind("");
+                    setKindNew(true);
+                    return;
+                  }
+                  setKind(e.target.value);
+                }}
+                aria-label="Kind"
+                className={fieldClass}
+              >
+                <option value="">kind…</option>
+                {entityKinds.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+                <option value="__new__">＋ New kind…</option>
+              </select>
+            ))}
           {type === "task" && (
             <>
               <input
@@ -223,8 +272,8 @@ export default function CaptureModal({
                     pickEntity(entityHits[activeHit]);
                   }
                 }}
-                placeholder="@ entity"
-                aria-label="Entity"
+                placeholder="Relate to…"
+                aria-label="Relate to an entity"
                 className={`${fieldClass} w-28`}
               />
               {entityHits.length > 0 && (

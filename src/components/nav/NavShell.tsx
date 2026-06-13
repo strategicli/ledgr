@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import BuildModeButton from "@/components/build/BuildModeButton";
 import CaptureModal from "@/components/capture/CaptureModal";
 
 export type ShellSlot = {
@@ -127,9 +128,11 @@ function SlotLink({
 export default function NavShell({
   slots,
   typeOptions,
+  entityKinds,
 }: {
   slots: ShellSlot[];
   typeOptions: { key: string; label: string }[];
+  entityKinds: string[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -244,7 +247,10 @@ export default function NavShell({
     ));
 
   return (
-    <nav aria-label="Main">
+    <>
+      {/* The Work/Build switch (PRD §4.10): floating, separate from the nav. */}
+      <BuildModeButton />
+      <nav aria-label="Main">
       {/* Mobile: always the floating bottom bar (settled, PRD §4.12). On
           desktop this same element serves bar mode. */}
       <div
@@ -268,9 +274,11 @@ export default function NavShell({
       {captureOpen && (
         <CaptureModal
           typeOptions={typeOptions}
+          entityKinds={entityKinds}
           onClose={() => setCaptureOpen(false)}
         />
       )}
-    </nav>
+      </nav>
+    </>
   );
 }

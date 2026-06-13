@@ -1,0 +1,178 @@
+// Slice 33 verification: the type registry store — parse/validate of
+// types + property schemas, the CRUD store, system-type protection, the
+// in-use delete guard, and the entity-kind vocabulary. Against live Neon.
+// Types are instance-global (no owner_id), so the script tracks the keys it
+// creates and deletes them in finally. Run: npx tsx scripts/verify-types.mts
+// Safe to delete once the slice is closed.
+import { readFileSync } from "node:fs";
+
+for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
+  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+  if (m && !process.env[m[1]]) {
+    process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
+}
+
+const { getDb } = await import("../src/db");
+const { items, types, users } = await import("../src/db/schema");
+const {
+  parseTypeInput,
+  parsePropertySchema,
+  createType,
+  getType,
+  listTypes,
+  updateType,
+  deleteType,
+  distinctEntityKinds,
+  PROPERTY_KINDS,
+  DEFAULT_ENTITY_KINDS,
+} = await import("../src/lib/types");
+const { ItemError } = await import("../src/lib/items");
+const { eq, inArray } = await import("drizzle-orm");
+
+let failures = 0;
+function check(name: string, ok: boolean, detail = "") {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+  if (!ok) failures += 1;
+}
+async function throws(name: string, fn: () => Promise<unknown> | unknown, code?: string) {
+  try {
+    await fn();
+    check(name, false, "did not throw");
+  } catch (err) {
+    const ok = err instanceof ItemError && (!code || err.code === code);
+    check(name, ok, err instanceof Error ? err.message : String(err));
+  }
+}
+
+const stamp = Date.now();
+const k1 = `vt${stamp}`; // a clean user type
+const k2 = `vtb${stamp}`; // a second, used to test the in-use delete guard
+const createdKeys = [k1, k2];
+
+const db = getDb();
+const [tempUser] = await db
+  .insert(users)
+  .values({ email: `verify-types-${stamp}@example.invalid` })
+  .returning({ id: users.id });
+const ownerId = tempUser.id;
+const [otherUser] = await db
+  .insert(users)
+  .values({ email: `verify-types-other-${stamp}@example.invalid` })
+  .returning({ id: users.id });
+
+try {
+  // --- parseTypeInput ---
+  check("PROPERTY_KINDS has the scalar + option kinds", PROPERTY_KINDS.length === 7);
+  await throws("rejects missing label", () => parseTypeInput({ key: "x" }, "create"), "bad_request");
+  await throws("rejects missing key on create", () => parseTypeInput({ label: "X" }, "create"), "bad_request");
+  await throws("rejects non-slug key", () => parseTypeInput({ key: "1bad", label: "X" }, "create"), "bad_request");
+  await throws("rejects key with hyphen", () => parseTypeInput({ key: "a-b", label: "X" }, "create"), "bad_request");
+
+  const created = parseTypeInput({ key: "Hiring", label: "  Hiring  " }, "create");
+  check("lowercases the key", created.key === "hiring");
+  check("trims the label", created.label === "Hiring");
+  check("defaults showInQuickCapture true", created.showInQuickCapture === true);
+  check("defaults icon null", created.icon === null);
+  const optedOut = parseTypeInput({ key: "data", label: "Data", showInQuickCapture: false }, "create");
+  check("honors showInQuickCapture false", optedOut.showInQuickCapture === false);
+
+  // patch carries no key
+  const patch = parseTypeInput({ label: "Renamed" }, "patch");
+  check("patch parses without a key", !("key" in patch) && patch.label === "Renamed");
+
+  // --- parsePropertySchema ---
+  await throws("rejects non-array schema", () => parsePropertySchema({}), "bad_request");
+  await throws("rejects unknown kind", () => parsePropertySchema([{ key: "a", label: "A", kind: "color" }]), "bad_request");
+  await throws("rejects select with no options", () => parsePropertySchema([{ key: "s", label: "S", kind: "select" }]), "bad_request");
+  await throws("rejects duplicate property keys", () =>
+    parsePropertySchema([
+      { key: "a", label: "A", kind: "text" },
+      { key: "a", label: "A2", kind: "number" },
+    ]), "bad_request");
+
+  const schema = parsePropertySchema([
+    { key: "Stage", label: "Stage", kind: "select", options: ["Applied", "Applied", " Interview ", ""] },
+    { key: "salary", label: "Salary", kind: "number" },
+    { key: "notes_url", label: "Notes URL", kind: "url" },
+  ]);
+  check("normalizes property key to lowercase", schema[0].key === "stage");
+  check("dedupes + trims + drops empty options", JSON.stringify(schema[0].options) === JSON.stringify(["Applied", "Interview"]));
+  check("strips options from non-option kinds", schema[1].options === undefined);
+  check("preserves property order", schema.map((p) => p.key).join(",") === "stage,salary,notes_url");
+
+  // --- store CRUD ---
+  const t1 = await createType(parseTypeInput({
+    key: k1,
+    label: "Hiring Candidate",
+    icon: "user-plus",
+    propertySchema: [{ key: "stage", label: "Stage", kind: "select", options: ["Applied", "Interview", "Offer"] }],
+  }, "create"));
+  check("createType returns a user type", t1.key === k1 && t1.isSystem === false);
+  check("createType stored the schema", t1.propertySchema[0].kind === "select" && t1.propertySchema[0].options?.length === 3);
+
+  const fetched = await getType(k1);
+  check("getType round-trips", fetched.key === k1 && fetched.label === "Hiring Candidate");
+
+  await throws("createType rejects a duplicate key", () =>
+    createType(parseTypeInput({ key: k1, label: "Dupe" }, "create")), "bad_request");
+
+  const updated = await updateType(k1, parseTypeInput({
+    label: "Candidate",
+    icon: "user",
+    showInQuickCapture: false,
+    propertySchema: [
+      { key: "stage", label: "Stage", kind: "select", options: ["Applied", "Interview", "Offer", "Hired"] },
+      { key: "salary", label: "Target salary", kind: "number" },
+    ],
+  }, "patch"));
+  check("updateType changed the label", updated.label === "Candidate");
+  check("updateType toggled showInQuickCapture", updated.showInQuickCapture === false);
+  check("updateType grew the schema", updated.propertySchema.length === 2);
+
+  const list = await listTypes();
+  check("listTypes includes the new type", list.some((t) => t.key === k1));
+  check("listTypes sorts system types first", (() => {
+    const firstUser = list.findIndex((t) => !t.isSystem);
+    const lastSystem = list.map((t) => t.isSystem).lastIndexOf(true);
+    return firstUser === -1 || lastSystem === -1 || lastSystem < firstUser;
+  })());
+
+  await throws("getType is not-found for unknown", () => getType(`nope${stamp}`), "not_found");
+
+  // --- system-type protection (the five seeded rows must already exist) ---
+  const note = await getType("note").catch(() => null);
+  if (note) {
+    check("note is a system type", note.isSystem === true);
+    await throws("system types can't be deleted", () => deleteType("note"), "bad_request");
+  } else {
+    check("note system type present (run db:seed)", false, "no 'note' row");
+  }
+
+  // --- in-use delete guard ---
+  await createType(parseTypeInput({ key: k2, label: "Used Type" }, "create"));
+  await db.insert(items).values({ ownerId, type: k2, title: "holds the type" });
+  await throws("deleteType blocked while items use it", () => deleteType(k2), "bad_request");
+  await db.delete(items).where(eq(items.type, k2));
+  await deleteType(k2);
+  await throws("deleted type is gone", () => getType(k2), "not_found");
+
+  // --- entity kinds vocabulary ---
+  await db.insert(items).values({ ownerId, type: "entity", title: "Acme", kind: `vk${stamp}` });
+  await db.insert(items).values({ ownerId: otherUser.id, type: "entity", title: "Other", kind: `ok${stamp}` });
+  const kinds = await distinctEntityKinds(ownerId);
+  check("kinds include the built-in vocabulary", DEFAULT_ENTITY_KINDS.every((k) => kinds.includes(k)));
+  check("kinds include the owner's used kind", kinds.includes(`vk${stamp}`));
+  check("kinds are owner-scoped (no other owner's kind)", !kinds.includes(`ok${stamp}`));
+  check("kinds are unique + sorted", kinds.length === new Set(kinds).size && [...kinds].sort().join() === kinds.join());
+} finally {
+  // items FK to users + types; delete items first, then the test types, then users.
+  await db.delete(items).where(eq(items.ownerId, ownerId));
+  await db.delete(items).where(eq(items.ownerId, otherUser.id));
+  await db.delete(types).where(inArray(types.key, createdKeys));
+  await db.delete(users).where(eq(users.id, ownerId));
+  await db.delete(users).where(eq(users.id, otherUser.id));
+}
+
+console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+process.exit(failures === 0 ? 0 : 1);

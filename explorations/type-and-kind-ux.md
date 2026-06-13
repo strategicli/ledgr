@@ -1,4 +1,12 @@
-# Exploration: type & kind creation/reuse UX (parked, Phase 3)
+# Exploration: type & kind creation/reuse UX (RESOLVED — built in slice 33)
+
+> **✅ Resolved 2026-06-13 (ADR-044, slice 33).** All three sections below were implemented when the Build surface / custom type & property builder landed:
+> - **§1 (entity Kind reuse):** the Kind field is now a dropdown of existing kinds + "New kind…" (`distinctEntityKinds` merges the built-in vocabulary with the owner's used kinds), in both `FieldStrip` and quick capture. The "dropdown + new" direction was chosen over the heavier WordPress manage-kinds-then-add flow.
+> - **§2 (data-driven quick capture):** `types.show_in_quick_capture` (migration 0008) + a data-driven `typeOptions` make the dropdown opt-in per type.
+> - **§3 (the double "Entity" + kind-less capture):** the capture relate-picker is renamed "Relate to…", and selecting type = Entity reveals an inline kind picker (the §3 "inline kind picker" option, not the "drop Entity from the dropdown" one).
+> - **Q6 working resolution:** types are first-class and creatable in the builder; entity *kinds* stay a reused property-style vocabulary, not auto-graduated to types. The kind registry and the type registry remain distinct.
+>
+> Kept for the record. The original parked notes follow.
 
 **Status:** parked notes from Brandon's 2026-06-13 click-through of the live app. Not intent, not a decision — UX directions to resolve when the **Build surface / custom type & property builder** lands (roadmap Phase 3). Recorded so they aren't lost; nothing built yet.
 

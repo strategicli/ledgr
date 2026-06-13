@@ -34,13 +34,19 @@ export default function FieldStrip({
   itemId,
   fields,
   initial,
+  kindOptions = [],
 }: {
   itemId: string;
   fields: CanvasField[];
   initial: StripValues;
+  // Existing entity kinds to offer in the Kind picker (type-and-kind-ux §1);
+  // empty for non-entity types, which don't show the field.
+  kindOptions?: string[];
 }) {
   const [values, setValues] = useState(initial);
   const [error, setError] = useState(false);
+  // The Kind picker drops to a free-text input when "New kind…" is chosen.
+  const [newKind, setNewKind] = useState(false);
 
   // One field per request is fine here: strip edits are single deliberate
   // clicks, not keystroke streams like the body autosave.
@@ -139,22 +145,55 @@ export default function FieldStrip({
             }}
           />
         );
-      case "kind":
-        return (
-          <input
-            type="text"
-            className={`${inputClass} w-28`}
-            placeholder="person, org…"
-            defaultValue={values.kind ?? ""}
-            onBlur={(e) => {
-              const v = e.target.value.trim() || null;
-              if (v !== values.kind) void save({ kind: v });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-          />
+      case "kind": {
+        // Free-text entry only while adding a new kind; otherwise a dropdown of
+        // existing kinds so the same kind is reused, not retyped (§1).
+        if (newKind) {
+          return (
+            <input
+              type="text"
+              autoFocus
+              className={`${inputClass} w-28`}
+              placeholder="new kind…"
+              defaultValue=""
+              onBlur={(e) => {
+                const v = e.target.value.trim() || null;
+                setNewKind(false);
+                if (v !== values.kind) void save({ kind: v });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setNewKind(false);
+              }}
+            />
+          );
+        }
+        // Current value may be a kind not in the suggestion list (legacy/import).
+        const opts = Array.from(
+          new Set([...kindOptions, ...(values.kind ? [values.kind] : [])])
         );
+        return (
+          <select
+            className={selectClass}
+            value={values.kind ?? ""}
+            onChange={(e) => {
+              if (e.target.value === "__new__") {
+                setNewKind(true);
+                return;
+              }
+              void save({ kind: e.target.value || null });
+            }}
+          >
+            <option value="">—</option>
+            {opts.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+            <option value="__new__">＋ New kind…</option>
+          </select>
+        );
+      }
     }
   }
 
