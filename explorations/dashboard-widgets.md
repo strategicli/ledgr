@@ -27,8 +27,11 @@ A genuinely customizable dashboard:
 - This is squarely the **Build surface** territory (PRD §4.10/§4.11): the widget palette and grid editor are Build-surface configuration. It may wait for that shell rather than landing piecemeal.
 - A "stat" widget (just a number) is the cheapest first step and could ship before the full grid editor — it reuses `countViewItems` and needs no new layout engine.
 
+## Direction (Brandon, 2026-06-13)
+
+- **The dashboard is intended to become the Work home**, replacing the fixed Phase-1 Today layout once the richer widget types/sizes exist. Slice 29 kept `/dashboard` separate deliberately (don't break the working Today mid-build); the merge happens when widgets are good enough to carry the home. Until then, `/dashboard` is the staging ground and Today stays as-is.
+
 ## Open questions
 
-- One dashboard or several (per context: a "Sunday" board, a "weekly review" board)?
-- Is the dashboard eventually the Work home (PRD §4.11 implies yes), replacing the fixed Today layout, or a peer surface? (Slice 29 deliberately kept them separate.)
+- One dashboard or several (per context: a "Sunday" board, a "weekly review" board)? (If several, the merge-into-home picks a default.)
 - Widget config UI: inline on the card (like Notion) vs a separate edit mode?
