@@ -14,7 +14,7 @@ const KINDS: { kind: PropertyKind; label: string }[] = [
   { kind: "text", label: "Text" },
   { kind: "number", label: "Number" },
   { kind: "date", label: "Date" },
-  { kind: "checkbox", label: "Checkbox" },
+  { kind: "checkbox", label: "Checkbox (yes/no)" },
   { kind: "url", label: "URL" },
   { kind: "select", label: "Select (one)" },
   { kind: "multi_select", label: "Multi-select" },

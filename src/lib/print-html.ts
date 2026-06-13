@@ -48,6 +48,9 @@ h2{font-size:1.45rem}h3{font-size:1.2rem}h4{font-size:1.05rem}
 p,ul,ol,blockquote,figure,table,pre{margin-bottom:.85em}
 ul,ol{padding-left:1.5em}
 li>ul,li>ol{margin-bottom:0}
+ul.contains-task-list{list-style:none;padding-left:.2em}
+ul.contains-task-list li{margin-bottom:.2em}
+li.task-list-item input{margin-right:.2em}
 blockquote{border-left:3px solid #525252;padding-left:1em;color:#a3a3a3}
 pre{background:#171717;border:1px solid #262626;border-radius:6px;
   padding:.75em 1em;overflow-x:auto;font-size:.85em}

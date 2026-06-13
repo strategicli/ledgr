@@ -52,6 +52,16 @@ check("divider", markdownToHtml("---").includes("<hr>"));
 const tableHtml = markdownToHtml("| A | B |\n| --- | --- |\n| 1 | 2 |");
 check("table renders th + td", tableHtml.includes("<table>") && tableHtml.includes("<th>A</th>") && tableHtml.includes("<td>1</td>"), tableHtml);
 
+// --- task lists (GFM, ADR-044): - [ ] / - [x] → checkboxes --------------------
+const taskHtml = markdownToHtml("- [ ] todo\n- [x] done");
+check("task list marks the <ul> contains-task-list", taskHtml.includes('contains-task-list'), taskHtml);
+check("unchecked item → empty checkbox + stripped marker",
+  taskHtml.includes('<input type="checkbox" disabled> todo') && !taskHtml.includes("[ ] todo"), taskHtml);
+check("checked item → checked checkbox",
+  taskHtml.includes('<input type="checkbox" disabled checked> done'), taskHtml);
+check("plain bullet list is untouched by the task rule",
+  !markdownToHtml("- a\n- b").includes("contains-task-list"));
+
 // --- empty ------------------------------------------------------------------
 check("empty markdown → empty body", markdownToHtml("") === "");
 

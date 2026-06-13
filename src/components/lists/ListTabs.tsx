@@ -1,24 +1,42 @@
 // Tab strip across the per-type list pages (PRD §4.2) plus the All-items
-// browse (which keeps the Trash). These are the system View Definitions'
-// stand-ins; when the view engine lands (Phase 2) this becomes a render of
-// stored views, same seam pattern as nav.ts.
+// browse (which keeps the Trash). The five system types keep their bespoke
+// routes (/tasks etc.); custom types (Build surface, ADR-044) are appended,
+// each linking to the generic focused list at /list/<key>, so a type you
+// create shows up here without a hand-written page. Data-driven now; when the
+// view engine fully owns these they become stored views (same seam as nav.ts).
 import Link from "next/link";
+import { getDb } from "@/db";
+import { types } from "@/db/schema";
 
-const TABS = [
+// Active tab is identified by a string: a system tab key, a type key, or "all".
+export type ListTabKey = string;
+
+const SYSTEM_TABS = [
   { key: "tasks", label: "Tasks", href: "/tasks" },
   { key: "meetings", label: "Meetings", href: "/meetings" },
   { key: "notes", label: "Notes", href: "/notes" },
   { key: "links", label: "Links", href: "/links" },
   { key: "entities", label: "Entities", href: "/entities" },
-  { key: "all", label: "All", href: "/items" },
-] as const;
+];
 
-export type ListTabKey = (typeof TABS)[number]["key"];
+export default async function ListTabs({ active }: { active: ListTabKey }) {
+  const rows = await getDb()
+    .select({ key: types.key, label: types.label, isSystem: types.isSystem })
+    .from(types);
+  const custom = rows
+    .filter((r) => !r.isSystem)
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((c) => ({ key: c.key, label: c.label, href: `/list/${c.key}` }));
 
-export default function ListTabs({ active }: { active: ListTabKey }) {
+  const tabs = [
+    ...SYSTEM_TABS,
+    ...custom,
+    { key: "all", label: "All", href: "/items" },
+  ];
+
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-neutral-800 pb-px">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <Link
           key={tab.key}
           href={tab.href}

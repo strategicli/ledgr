@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import ViewBuilder from "@/components/views/ViewBuilder";
 import { resolveOwner } from "@/lib/owner";
+import { listTypes } from "@/lib/types";
 import { listEntityOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,10 @@ export default async function NewView() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const entities = await listEntityOptions(owner.id);
+  const [entities, types] = await Promise.all([
+    listEntityOptions(owner.id),
+    listTypes(),
+  ]);
 
   return (
     <main className="min-h-screen">
@@ -25,7 +29,10 @@ export default async function NewView() {
             ← All views
           </Link>
         </div>
-        <ViewBuilder entities={entities.map((e) => ({ id: e.id, title: e.title }))} />
+        <ViewBuilder
+          entities={entities.map((e) => ({ id: e.id, title: e.title }))}
+          types={types.map((t) => ({ key: t.key, label: t.label }))}
+        />
       </div>
     </main>
   );

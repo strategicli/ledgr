@@ -10,7 +10,6 @@ import { useState } from "react";
 import type { ViewDefinition } from "@/lib/views";
 
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
-const TYPES = ["task", "meeting", "note", "link", "entity"];
 const STATUSES = ["open", "done", "archived"];
 const URGENCIES = ["low", "normal", "high", "critical"];
 const ENTITY_KINDS = ["person", "org", "project", "topic", "campus"];
@@ -85,9 +84,13 @@ function Opt({ value, label }: { value: string; label?: string }) {
 export default function ViewBuilder({
   initial,
   entities,
+  types,
 }: {
   initial?: ViewDefinition;
   entities: EntityOption[];
+  // The full type registry (system + custom), so a view can filter to a
+  // user-created type, not just the five system ones.
+  types: { key: string; label: string }[];
 }) {
   const router = useRouter();
   // Clamp anything the stored definition holds that's no longer valid for its
@@ -266,8 +269,8 @@ export default function ViewBuilder({
             className={selectClass}
           >
             <Opt value="" label="any" />
-            {TYPES.map((t) => (
-              <Opt key={t} value={t} />
+            {types.map((t) => (
+              <Opt key={t.key} value={t.key} label={t.label} />
             ))}
           </select>
         </Field>

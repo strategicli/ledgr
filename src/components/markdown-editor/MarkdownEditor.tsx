@@ -10,6 +10,7 @@
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { useEffect, useRef } from "react";
 import {
   BLOCKNOTE_COLORS,
@@ -70,6 +71,11 @@ export default function MarkdownEditor({
     extensions: [
       StarterKit,
       Markdown,
+      // GFM task lists (- [ ] / - [x]): @tiptap/markdown round-trips them, so no
+      // bespoke serializer is needed (unlike the color marks). nested lets a
+      // checklist item hold a sub-checklist.
+      TaskList,
+      TaskItem.configure({ nested: true }),
       TextColor,
       Highlight,
       LedgrMention.configure({
@@ -100,6 +106,7 @@ export default function MarkdownEditor({
       isH2: editor?.isActive("heading", { level: 2 }) ?? false,
       isBulletList: editor?.isActive("bulletList") ?? false,
       isOrderedList: editor?.isActive("orderedList") ?? false,
+      isTaskList: editor?.isActive("taskList") ?? false,
       isBlockquote: editor?.isActive("blockquote") ?? false,
       isCodeBlock: editor?.isActive("codeBlock") ?? false,
       textColor: (editor?.getAttributes("textColor").color as string) || "",
@@ -181,6 +188,12 @@ export default function MarkdownEditor({
           title="Numbered list"
           active={toolbar.isOrderedList}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        />
+        <ToolbarButton
+          label="☑ Tasks"
+          title="Checklist (- [ ])"
+          active={toolbar.isTaskList}
+          onClick={() => editor.chain().focus().toggleTaskList().run()}
         />
         <ToolbarButton
           label="❝"

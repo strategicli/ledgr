@@ -64,6 +64,40 @@ md.core.ruler.push("ledgr_transforms", (state) => {
   }
 });
 
+// GFM task lists: render "- [ ] " / "- [x] " list items as real (disabled)
+// checkboxes, so the markdown the editor round-trips (@tiptap/markdown task
+// lists, ADR-044) renders the same way on the print/share document and the
+// export. Compact hand-rolled rule (the markdown-it-task-lists approach) rather
+// than a dependency (Principle 5): a list item's first inline child is a text
+// token starting with the marker; strip it, prepend a checkbox, and tag the
+// item + its list so CSS can drop the disc bullet.
+md.core.ruler.after("inline", "task_lists", (state) => {
+  const tokens = state.tokens;
+  for (let i = 2; i < tokens.length; i++) {
+    if (tokens[i].type !== "inline") continue;
+    if (tokens[i - 2].type !== "list_item_open") continue; // open, paragraph, inline
+    const children = tokens[i].children;
+    const first = children?.[0];
+    if (!first || first.type !== "text") continue;
+    const m = /^\[([ xX])\]\s+/.exec(first.content);
+    if (!m) continue;
+    const checked = m[1].toLowerCase() === "x";
+    first.content = first.content.slice(m[0].length);
+    tokens[i - 2].attrJoin("class", "task-list-item");
+    const box = new state.Token("html_inline", "", 0);
+    box.content = `<input type="checkbox" disabled${checked ? " checked" : ""}> `;
+    children!.unshift(box);
+    // Tag the enclosing list so CSS can remove its bullet.
+    for (let k = i - 2; k >= 0; k--) {
+      if (tokens[k].type === "bullet_list_open") {
+        tokens[k].attrJoin("class", "contains-task-list");
+        break;
+      }
+      if (tokens[k].type === "bullet_list_close") break;
+    }
+  }
+});
+
 // Markdown → HTML for the print/share document body and export. Empty in,
 // empty out (the document shell renders the title and an empty body).
 export function markdownToHtml(markdown: string): string {

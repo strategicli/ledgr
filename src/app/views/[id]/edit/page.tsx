@@ -6,6 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import ViewBuilder from "@/components/views/ViewBuilder";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { listTypes } from "@/lib/types";
 import { getView, listEntityOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,10 @@ export default async function EditView({ params }: Context) {
   }
   if (view.isSystem) redirect(`/views/${view.id}`);
 
-  const entities = await listEntityOptions(owner.id);
+  const [entities, types] = await Promise.all([
+    listEntityOptions(owner.id),
+    listTypes(),
+  ]);
 
   return (
     <main className="min-h-screen">
@@ -45,6 +49,7 @@ export default async function EditView({ params }: Context) {
         <ViewBuilder
           initial={view}
           entities={entities.map((e) => ({ id: e.id, title: e.title }))}
+          types={types.map((t) => ({ key: t.key, label: t.label }))}
         />
       </div>
     </main>
