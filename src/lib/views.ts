@@ -8,11 +8,13 @@ import { getDb } from "@/db";
 import { items, views } from "@/db/schema";
 import { ITEM_STATUSES, URGENCIES, type ItemStatus, type Urgency } from "@/lib/item-enums";
 import { ItemError, listColumns } from "@/lib/items";
-import { todayBounds } from "@/lib/today";
+import { APP_TIMEZONE, todayBounds, zonedMidnightUtc } from "@/lib/today";
 
-// Due windows compare against the calendar-day encoding (UTC midnights,
-// ADR-008): overdue is strictly before today, week is today through six
-// days out, none is the holding bin (no due date at all).
+// Date windows. "overdue" is strictly before today (for a meeting, "in the
+// past"); "today" is the single day; "week" is today through six days out;
+// "none" is the holding bin (no date at all). The window applies to whichever
+// date the filter names (dateField) — due date by default, or a meeting's
+// "When", so "meetings today" is expressible.
 export const DUE_WINDOWS = ["overdue", "today", "week", "none"] as const;
 export type DueWindow = (typeof DUE_WINDOWS)[number];
 
@@ -21,7 +23,14 @@ export type ViewFilter = {
   status?: ItemStatus;
   urgency?: Urgency;
   kind?: string;
+  // Which date the window applies to (default "dueDate"). "meetingAt" lets a
+  // meeting view filter by its "When"; due-date semantics are UTC-midnight
+  // calendar days, the timestamp fields use real timezone midnights.
+  dateField?: DateProperty;
   due?: DueWindow;
+  // Range window: today through today + N days (exclusive). Wins over `due`
+  // when both are set. Powers "meetings in the next N days".
+  withinDays?: number;
   // Related-to filter (tasks by entity, PRD §4.2): confirmed relations
   // edges only, either direction. Suggested edges are provisional and stay
   // out of trusted queries (PRD §3.3).
@@ -58,15 +67,34 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
   if (filter.urgency) where.push(eq(items.urgency, filter.urgency));
   if (filter.kind) where.push(eq(items.kind, filter.kind));
 
-  if (filter.due) {
-    const { dueToday, dueCutoff } = todayBounds();
-    const weekCutoff = new Date(dueToday.getTime() + 7 * 24 * 60 * 60 * 1000);
-    if (filter.due === "overdue") where.push(lt(items.dueDate, dueToday));
+  if (filter.due || filter.withinDays != null) {
+    const field = filter.dateField ?? "dueDate";
+    const col = {
+      dueDate: items.dueDate,
+      meetingAt: items.meetingAt,
+      createdAt: items.createdAt,
+      updatedAt: items.updatedAt,
+    }[field];
+    const b = todayBounds();
+    // Due dates are UTC-midnight calendar days; the timestamp fields use real
+    // timezone midnights (same split as today.ts). cutoff(n) is the start of
+    // the day n days from today in the right calendar.
+    const isDue = field === "dueDate";
+    const startToday = isDue ? b.dueToday : b.dayStart;
+    const tomorrow = isDue ? b.dueCutoff : b.dayEnd;
+    const cutoff = (n: number) =>
+      isDue
+        ? new Date(Date.UTC(b.today.y, b.today.m - 1, b.today.d + n))
+        : zonedMidnightUtc({ ...b.today, d: b.today.d + n }, APP_TIMEZONE);
+
+    if (filter.withinDays != null) {
+      where.push(gte(col, startToday), lt(col, cutoff(filter.withinDays)));
+    } else if (filter.due === "overdue") where.push(lt(col, startToday));
     else if (filter.due === "today") {
-      where.push(gte(items.dueDate, dueToday), lt(items.dueDate, dueCutoff));
+      where.push(gte(col, startToday), lt(col, tomorrow));
     } else if (filter.due === "week") {
-      where.push(gte(items.dueDate, dueToday), lt(items.dueDate, weekCutoff));
-    } else if (filter.due === "none") where.push(isNull(items.dueDate));
+      where.push(gte(col, startToday), lt(col, cutoff(7)));
+    } else if (filter.due === "none") where.push(isNull(col));
   }
 
   if (filter.entityId) {
@@ -195,9 +223,22 @@ export function parseViewFilter(raw: unknown): ViewFilter {
     if (!URGENCIES.includes(r.urgency as Urgency)) bad("filter.urgency invalid");
     out.urgency = r.urgency as Urgency;
   }
+  if (r.dateField != null) {
+    if (!DATE_PROPERTIES.includes(r.dateField as DateProperty)) {
+      bad("filter.dateField invalid");
+    }
+    out.dateField = r.dateField as DateProperty;
+  }
   if (r.due != null) {
     if (!DUE_WINDOWS.includes(r.due as DueWindow)) bad("filter.due invalid");
     out.due = r.due as DueWindow;
+  }
+  if (r.withinDays != null) {
+    const n = Number(r.withinDays);
+    if (!Number.isInteger(n) || n < 1 || n > 366) {
+      bad("filter.withinDays must be an integer 1–366");
+    }
+    out.withinDays = n;
   }
   if (r.entityId != null) {
     if (!UUID_RE.test(String(r.entityId))) bad("filter.entityId must be a UUID");

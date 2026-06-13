@@ -13,6 +13,11 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 `tsc --noEmit` clean; full `next build` clean (all new routes compile, no RSC/client-boundary issues); all three new verify scripts green; `verify-print` still 23/23 after the rename. **Pending:** the in-browser *visual/interaction* check for the new UI (board layout, native drag-drop) — logic + types + build are proven, mirroring slice 24's posture; eyeball on the deploy.
 
+**Review follow-ups (2026-06-13, ADR-032 + two explorations):** acted on Brandon's review of the views features.
+- **Fixed:** date filters now name a `dateField` (due date / **When** / created / updated) so "meetings today" works, plus a **within-N-days** range ("meetings in the next N days"); the builder auto-switches to "When" for meeting views; the embedded view follows the type. `verify-views` extended to 33 checks, green.
+- **Clarified in-product:** the meeting "Agenda" section got a one-line hint (it's a default frame; editable templates come later).
+- **Parked for future phases (documented):** inline action-item → linked task with a backlink to the specific BlockNote block (`explorations/block-linked-action-items.md`); richer/flexible dashboard widgets — layout-faithful + stat cards, spanning sizes, regions, per-widget settings (`explorations/dashboard-widgets.md`). Both added to roadmap Phase 3.
+
 **Next session — Phase 2 tail:** push notifications → public share links → provider-interface confirmation (auth + scheduler), then circle back to the deferred matcher UIs once §1c lands. The MS/Todoist integrations remain code-complete and Brandon-step-blocked (unchanged).
 
 ---

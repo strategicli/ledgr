@@ -68,6 +68,8 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [ ] Custom type & property builder UI (writes `types.property_schema`; resolves custom-type identity, open Q6)
 - [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
 - [ ] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12)
+- [ ] Inline action-item → linked task: promote a body line/bullet to a task whose title is the line text, linked back to the meeting and to that specific BlockNote block (`explorations/block-linked-action-items.md`; Brandon, 2026-06-13)
+- [ ] Richer dashboard widgets + flexible layout: widget types beyond the list preview (layout-faithful cards, stat/count cards), spanning sizes, regions/sidebars, per-widget settings — likely a Build-surface feature (`explorations/dashboard-widgets.md`; Brandon, 2026-06-13)
 - [ ] Planning rhythms (configurable rituals; deterministic modules; AI-assembled agenda is the only model step)
 
 ---

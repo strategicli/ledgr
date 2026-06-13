@@ -32,6 +32,7 @@ function check(name: string, ok: boolean, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
   if (!ok) failures += 1;
 }
+const has = (rows: { id: string }[], id: string) => rows.some((r) => r.id === id);
 async function throws(name: string, fn: () => Promise<unknown> | unknown, code?: string) {
   try {
     await fn();
@@ -128,11 +129,48 @@ try {
   await deleteView(ownerId, created.id);
   await throws("deleted view is gone", () => getView(ownerId, created.id), "not_found");
 
+  // --- date filtering: meetings filter by "When", + within-N-days range ---
+  await throws("rejects bad dateField", () =>
+    parseViewInput({ name: "x", layout: "list", filter: { dateField: "whenever" } }), "bad_request");
+  await throws("rejects withinDays out of range", () =>
+    parseViewInput({ name: "x", layout: "list", filter: { withinDays: 0 } }), "bad_request");
+  const coerced = parseViewInput({ name: "x", layout: "list", filter: { withinDays: "10" } });
+  check("withinDays coerces to a number", coerced.filter.withinDays === 10);
+
+  const now = new Date();
+  const plus = (d: number) => new Date(now.getTime() + d * 86400000);
+  const mk = async (title: string, meetingAt: Date) =>
+    (await db.insert(items).values({ ownerId, type: "meeting", title, meetingAt }).returning({ id: items.id }))[0].id;
+  const mToday = await mk("m today", now);
+  const m3 = await mk("m +3d", plus(3));
+  const m20 = await mk("m +20d", plus(20));
+
+  const onWhen = (over: Record<string, unknown>) =>
+    queryViewItems(ownerId, { type: "meeting", dateField: "meetingAt", ...over });
+
+  const todayMtgs = await onWhen({ due: "today" });
+  check("meetingAt=today includes today's meeting", has(todayMtgs, mToday));
+  check("meetingAt=today excludes future meetings", !has(todayMtgs, m3) && !has(todayMtgs, m20));
+
+  const weekMtgs = await onWhen({ due: "week" });
+  check("meetingAt=week spans the next 7 days", has(weekMtgs, mToday) && has(weekMtgs, m3));
+  check("meetingAt=week excludes day 20", !has(weekMtgs, m20));
+
+  const within14 = await onWhen({ withinDays: 14 });
+  check("withinDays=14 includes day 3, excludes day 20", has(within14, m3) && !has(within14, m20));
+
+  // The old behavior (default dueDate field) would miss these meetings — they
+  // have no due date — which is exactly the gap this fixes.
+  const onDue = await queryViewItems(ownerId, { type: "meeting", due: "today" });
+  check("dueDate=today misses meetings (no due date)", !has(onDue, mToday));
+
   // --- the view query stays body-free + owner-scoped ---
   void queryViewItems;
   const sql = viewItemsQuery(ownerId, { type: "task" }, { field: "updatedAt", dir: "desc" }).toSQL();
   check("view query carries owner_id", sql.sql.includes("owner_id"));
   check("view query selects no body", !/"body"/.test(sql.sql) && !/body_text/.test(sql.sql));
+  const whenSql = viewItemsQuery(ownerId, { dateField: "meetingAt", due: "today" }).toSQL();
+  check("meetingAt filter targets meeting_at", whenSql.sql.includes("meeting_at"));
 } finally {
   // Cleanup: views FK to users, items FK to users; delete children first.
   await db.delete(views).where(eq(views.ownerId, ownerId));

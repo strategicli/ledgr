@@ -42,14 +42,20 @@ export default function EmbeddedView({ hostId }: { hostId: string }) {
 
   const load = useCallback(async () => {
     setError(null);
+    const dateField = type === "meeting" ? "meetingAt" : "dueDate";
     const p = new URLSearchParams({
       entityId: hostId,
-      sort: type === "meeting" ? "meetingAt" : "dueDate",
+      sort: dateField,
       dir: "asc",
     });
     if (type) p.set("type", type);
     if (status) p.set("status", status);
-    if (due) p.set("due", due);
+    // The window applies to the type's natural date — a meeting's "When",
+    // otherwise the due date — so "meetings today" works here too.
+    if (due) {
+      p.set("due", due);
+      p.set("dateField", dateField);
+    }
     try {
       const res = await fetch(`/api/items/query?${p.toString()}`);
       if (!res.ok) {
@@ -171,10 +177,10 @@ export default function EmbeddedView({ hostId }: { hostId: string }) {
             value={due}
             onChange={(e) => setDue(e.target.value)}
             className={selectClass}
-            aria-label="Due"
+            aria-label="Date window"
           >
-            <option value="">any due</option>
-            <option value="overdue">overdue</option>
+            <option value="">any date</option>
+            <option value="overdue">{type === "meeting" ? "past" : "overdue"}</option>
             <option value="today">today</option>
             <option value="week">next 7 days</option>
             <option value="none">no date</option>

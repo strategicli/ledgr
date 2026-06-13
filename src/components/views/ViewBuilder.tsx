@@ -59,7 +59,17 @@ export default function ViewBuilder({
   const [type, setType] = useState(initial?.filter.type ?? "");
   const [status, setStatus] = useState<string>(initial?.filter.status ?? "");
   const [urgency, setUrgency] = useState<string>(initial?.filter.urgency ?? "");
-  const [due, setDue] = useState<string>(initial?.filter.due ?? "");
+  const [dateField, setDateField] = useState<string>(
+    initial?.filter.dateField ?? "dueDate"
+  );
+  // Window control: "" | overdue | today | week | none | "within". "within"
+  // reveals the day-count input below.
+  const [dateWindow, setDateWindow] = useState<string>(
+    initial?.filter.withinDays != null ? "within" : initial?.filter.due ?? ""
+  );
+  const [withinDays, setWithinDays] = useState<string>(
+    initial?.filter.withinDays != null ? String(initial.filter.withinDays) : "7"
+  );
   const [kind, setKind] = useState(initial?.filter.kind ?? "");
   const [entityId, setEntityId] = useState(initial?.filter.entityId ?? "");
   const [sortField, setSortField] = useState<string>(
@@ -92,9 +102,22 @@ export default function ViewBuilder({
     if (type) filter.type = type;
     if (status) filter.status = status;
     if (urgency) filter.urgency = urgency;
-    if (due) filter.due = due;
     if (kind) filter.kind = kind;
     if (entityId) filter.entityId = entityId;
+    if (dateWindow) {
+      if (dateField) filter.dateField = dateField;
+      if (dateWindow === "within") {
+        const n = parseInt(withinDays, 10);
+        if (!Number.isInteger(n) || n < 1) {
+          setError("Enter a positive number of days.");
+          setBusy(false);
+          return;
+        }
+        filter.withinDays = String(n);
+      } else {
+        filter.due = dateWindow;
+      }
+    }
     const payload = {
       name: name.trim(),
       layout,
@@ -177,7 +200,17 @@ export default function ViewBuilder({
         <Field label="Type">
           <select
             value={type}
-            onChange={(e) => setType(e.target.value)}
+            onChange={(e) => {
+              const t = e.target.value;
+              setType(t);
+              // Meetings live on "When", not a due date — nudge the date field
+              // so "meetings today" works without a second step.
+              if (t === "meeting" && dateField === "dueDate") {
+                setDateField("meetingAt");
+              } else if (t !== "meeting" && dateField === "meetingAt") {
+                setDateField("dueDate");
+              }
+            }}
             className={selectClass}
           >
             <Opt value="" label="any" />
@@ -210,18 +243,51 @@ export default function ViewBuilder({
             ))}
           </select>
         </Field>
-        <Field label="Due window">
-          <select
-            value={due}
-            onChange={(e) => setDue(e.target.value)}
-            className={selectClass}
-          >
-            <Opt value="" label="any" />
-            <Opt value="overdue" />
-            <Opt value="today" />
-            <Opt value="week" label="next 7 days" />
-            <Opt value="none" label="no date" />
-          </select>
+        <Field
+          label="Date filter"
+          hint="Filter by a date, and which date it applies to."
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={dateField}
+              onChange={(e) => setDateField(e.target.value)}
+              className={selectClass}
+              aria-label="Date field"
+            >
+              <Opt value="dueDate" label="due date" />
+              <Opt value="meetingAt" label="when (meetings)" />
+              <Opt value="createdAt" label="created" />
+              <Opt value="updatedAt" label="updated" />
+            </select>
+            <select
+              value={dateWindow}
+              onChange={(e) => setDateWindow(e.target.value)}
+              className={selectClass}
+              aria-label="Date window"
+            >
+              <Opt value="" label="any time" />
+              <Opt value="overdue" label="in the past" />
+              <Opt value="today" />
+              <Opt value="week" label="next 7 days" />
+              <Opt value="within" label="next N days…" />
+              <Opt value="none" label="no date set" />
+            </select>
+            {dateWindow === "within" && (
+              <span className="flex items-center gap-1 text-xs text-neutral-500">
+                next
+                <input
+                  type="number"
+                  min={1}
+                  max={366}
+                  value={withinDays}
+                  onChange={(e) => setWithinDays(e.target.value)}
+                  className="w-16 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+                  aria-label="Number of days"
+                />
+                days
+              </span>
+            )}
+          </div>
         </Field>
         <Field label="Entity kind">
           <select

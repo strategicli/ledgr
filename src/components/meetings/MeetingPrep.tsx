@@ -105,6 +105,10 @@ export default async function MeetingPrep({
 
       <div className="mt-4">
         <SectionLabel>Agenda</SectionLabel>
+        <p className="mt-0.5 px-2 text-xs text-neutral-700">
+          A default starting frame. Editable, per-meeting-type templates come
+          later; for now, write your agenda in the note above.
+        </p>
         <ul className="mt-1 flex flex-col gap-0.5 px-2 text-sm text-neutral-500">
           {prep.agenda.map((h) => (
             <li key={h}>· {h}</li>

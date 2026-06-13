@@ -22,7 +22,16 @@ export async function GET(request: Request) {
   try {
     const p = new URL(request.url).searchParams;
     const raw: Record<string, string> = {};
-    for (const key of ["type", "status", "urgency", "due", "kind", "entityId"]) {
+    for (const key of [
+      "type",
+      "status",
+      "urgency",
+      "due",
+      "kind",
+      "entityId",
+      "dateField",
+      "withinDays",
+    ]) {
       const v = p.get(key);
       if (v) raw[key] = v;
     }
