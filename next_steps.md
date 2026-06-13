@@ -26,6 +26,26 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Tyler's lane — what the Songs module needs (design input from a throwaway demo, 2026-06-13)
+
+Stood up a `song` type + a songwriting pipeline against the **current** systems (the custom type/property builder + views) as a feel-test — **not** a module, **not** committed, dev fixture only (the type, 7 demo songs across stages, and two views live in my dev DB and reuse Brandon's seed entities; delete/reseed freely). It worked well enough to expose exactly what's missing to make Songs real. Split into **platform changes** (core — need both-agree + an ADR per CLAUDE.md "Building together") and **module-local** work (mostly my lane, on top of the M5 canvas seam + M6 module boundary).
+
+**Platform changes (core — Brandon + ADR):**
+1. **Board / grouping by a custom `select` property.** `GROUP_FIELDS` in `src/lib/views.ts` is `status|urgency|kind|type|due` only, so the demo had to ride the workflow stage on the free-text **`kind`** column — a hack that also pollutes the entity Kind vocabulary (`distinctEntityKinds`). Biggest single unlock: let `ViewGrouping` name a custom property key so a `Stage` select drives the Kanban columns (touches `views.ts` group resolution + the board path in `ViewRenderer`/`DashboardGrid`).
+2. **Explicit column order for an ordered workflow.** A pipeline is sequenced (idea→lyrics→music→demo→refine→ready); board columns must follow the select's `options` order, not alpha/insertion. Pairs with #1.
+3. **Filter + sort views by custom property values** (at least `select`/`checkbox`). `ViewFilter` only knows `type/status/urgency/kind/due/entityId`, so "congregational-ready songs" or "songs in G" can't be a view yet — I faked ready-ness with `kind`.
+
+**Module-local (my lane, on the M5/M6 seams):**
+4. **Move stage off `kind` onto a first-class `Stage` select** on the song type once #1 lands; one-time migrate the demo's `kind` stage values → `properties.stage`.
+5. **ChordPro as the song type's canonical body.** M6's `canonicalFormatForType` already lets `song` declare `chordpro`; needs a ChordPro parse/render path (chart layout + transpose) and editor handling. Today chords are hand-aligned inside markdown code fences — fragile, not transposable. (ty-additions `module-songs.md`; ADR-037 decision #1.)
+6. **A chord canvas via the M5 per-type seam** — section/line/chord-attachment editor, transpose/capo control, key picker; register it as the song type's `canvasId` (the default markdown canvas stays the fallback).
+7. **Exporters off the M6 exporter slot:** ChordPro → printable chart PDF, transposed chart, and a **Planning Center (PCO) push** (ty-additions `module-songs.md`).
+8. **Register a `songs` module** in `src/lib/modules.ts` bundling the song type def (`canonicalFormat: chordpro`, `canvasId: chord`), the exporters, and an optional PCO `IntegrationDef` — the step that turns the demo into a real module (ADR-042: modules sit on top of the foundation, my lane).
+
+**Build order:** #1+#2 (platform — unblocks a real stage board) → #4 → #5/#6 (chordpro + chord canvas) → #7/#8 (exporters + module registration). #3 is independent polish, whenever.
+
+---
+
 ## ⟢ Session summary — the Build surface + custom type & property builder (2026-06-13, ADR-044, slice 33)
 
 **Phase 3, Tier 1 shipped end-to-end: Ledgr now has a Build surface and a working custom type & property builder.** First Phase-3 slice; touches core (a `types` column + the type model), shipped solo per Brandon ("build the full shell and full type/property builder and then merge; no Tyler sign-off needed") — flagged to Tyler in `COLLAB.md`.
