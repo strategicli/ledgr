@@ -275,6 +275,7 @@ export function parseViewInput(raw: unknown): ViewInput {
   if (name.length > 120) bad("name too long");
   const layout = r.layout as ViewLayout;
   if (!VIEW_LAYOUTS.includes(layout)) bad("layout invalid");
+  const filter = parseViewFilter(r.filter);
   let dateProperty: DateProperty | null = null;
   if (r.dateProperty != null) {
     if (!DATE_PROPERTIES.includes(r.dateProperty as DateProperty)) {
@@ -282,13 +283,14 @@ export function parseViewInput(raw: unknown): ViewInput {
     }
     dateProperty = r.dateProperty as DateProperty;
   }
-  // Calendar/agenda need a date to place items on; default sensibly.
+  // Calendar/agenda need a date to place items on; default to the one the
+  // type actually has — a meeting has no due date, so it places by "When".
   if ((layout === "calendar" || layout === "agenda") && !dateProperty) {
-    dateProperty = "dueDate";
+    dateProperty = filter.type === "meeting" ? "meetingAt" : "dueDate";
   }
   return {
     name,
-    filter: parseViewFilter(r.filter),
+    filter,
     sort: parseSort(r.sort),
     grouping: parseGrouping(r.grouping),
     layout,

@@ -65,6 +65,8 @@ try {
 
   const calendarDef = parseViewInput({ name: "Cal", layout: "calendar", filter: {} });
   check("calendar defaults dateProperty to dueDate", calendarDef.dateProperty === "dueDate");
+  const mtgCal = parseViewInput({ name: "Mtg cal", layout: "calendar", filter: { type: "meeting" } });
+  check("meeting calendar defaults dateProperty to meetingAt", mtgCal.dateProperty === "meetingAt");
 
   const dropped = parseViewInput({
     name: "  Trimmed  ",

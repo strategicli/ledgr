@@ -13,11 +13,47 @@ const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 const TYPES = ["task", "meeting", "note", "link", "entity"];
 const STATUSES = ["open", "done", "archived"];
 const URGENCIES = ["low", "normal", "high", "critical"];
-const DUE_WINDOWS = ["overdue", "today", "week", "none"];
 const ENTITY_KINDS = ["person", "org", "project", "topic", "campus"];
-const SORT_FIELDS = ["updatedAt", "createdAt", "dueDate", "meetingAt", "title"];
-const GROUP_FIELDS = ["status", "urgency", "kind", "type", "due"];
-const DATE_PROPERTIES = ["dueDate", "meetingAt", "createdAt", "updatedAt"];
+
+// Friendly labels for the "by which field" selects.
+const DATE_LABELS: Record<string, string> = {
+  dueDate: "due date",
+  meetingAt: "when",
+  createdAt: "created",
+  updatedAt: "updated",
+};
+const GROUP_LABELS: Record<string, string> = {
+  status: "status",
+  urgency: "urgency",
+  kind: "kind",
+  type: "type",
+  due: "due window",
+};
+
+// The whole point of Brandon's feedback: a field is only offered if it exists
+// for the view's type. Meetings have no due date, so a meeting view never lets
+// you sort/place/filter by it; tasks have no "when"; notes/links have neither.
+// Every field select below draws from these, and changeType() reconciles the
+// current pick when the type changes.
+function dateFieldsFor(type: string): string[] {
+  if (type === "task") return ["dueDate", "createdAt", "updatedAt"];
+  if (type === "meeting") return ["meetingAt", "createdAt", "updatedAt"];
+  if (type === "") return ["dueDate", "meetingAt", "createdAt", "updatedAt"];
+  return ["createdAt", "updatedAt"]; // note / link / entity
+}
+function sortFieldsFor(type: string): string[] {
+  return [...dateFieldsFor(type), "title"];
+}
+// urgency + due window are task-only in the UI (ADR-018); kind is entity-only.
+function groupFieldsFor(type: string): string[] {
+  if (type === "task") return ["status", "urgency", "due", "type"];
+  if (type === "meeting") return ["status", "type"];
+  if (type === "entity") return ["status", "kind", "type"];
+  if (type === "") return ["status", "urgency", "kind", "due", "type"];
+  return ["status", "type"]; // note / link
+}
+const showsUrgency = (type: string) => type === "task" || type === "";
+const showsKind = (type: string) => type === "entity" || type === "";
 
 type EntityOption = { id: string; title: string };
 
@@ -54,13 +90,23 @@ export default function ViewBuilder({
   entities: EntityOption[];
 }) {
   const router = useRouter();
+  // Clamp anything the stored definition holds that's no longer valid for its
+  // type (e.g. a legacy meeting calendar saved with date field "due date"):
+  // it snaps to the first valid field, so editing + saving repairs it.
+  const t0 = initial?.filter.type ?? "";
+  const df0 = dateFieldsFor(t0);
+  const pick = (allowed: string[], val: string | null | undefined, fallback: string) =>
+    val && allowed.includes(val) ? val : fallback;
+
   const [name, setName] = useState(initial?.name ?? "");
   const [layout, setLayout] = useState<string>(initial?.layout ?? "list");
-  const [type, setType] = useState(initial?.filter.type ?? "");
+  const [type, setType] = useState(t0);
   const [status, setStatus] = useState<string>(initial?.filter.status ?? "");
-  const [urgency, setUrgency] = useState<string>(initial?.filter.urgency ?? "");
+  const [urgency, setUrgency] = useState<string>(
+    showsUrgency(t0) ? initial?.filter.urgency ?? "" : ""
+  );
   const [dateField, setDateField] = useState<string>(
-    initial?.filter.dateField ?? "dueDate"
+    pick(df0, initial?.filter.dateField, df0[0])
   );
   // Window control: "" | overdue | today | week | none | "within". "within"
   // reveals the day-count input below.
@@ -70,25 +116,41 @@ export default function ViewBuilder({
   const [withinDays, setWithinDays] = useState<string>(
     initial?.filter.withinDays != null ? String(initial.filter.withinDays) : "7"
   );
-  const [kind, setKind] = useState(initial?.filter.kind ?? "");
+  const [kind, setKind] = useState(showsKind(t0) ? initial?.filter.kind ?? "" : "");
   const [entityId, setEntityId] = useState(initial?.filter.entityId ?? "");
   const [sortField, setSortField] = useState<string>(
-    initial?.sort.field ?? "updatedAt"
+    pick(sortFieldsFor(t0), initial?.sort.field, "updatedAt")
   );
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     initial?.sort.dir ?? "desc"
   );
   const [groupField, setGroupField] = useState<string>(
-    initial?.grouping?.field ?? ""
+    pick(groupFieldsFor(t0), initial?.grouping?.field, "")
   );
   const [dateProperty, setDateProperty] = useState<string>(
-    initial?.dateProperty ?? ""
+    pick(df0, initial?.dateProperty, df0[0])
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const needsDate = layout === "calendar" || layout === "agenda";
   const canGroup = layout === "board" || layout === "agenda";
+  const dateFields = dateFieldsFor(type);
+  const sortFields = sortFieldsFor(type);
+  const groupFields = groupFieldsFor(type);
+
+  // Selecting a type reconciles every field pick to what that type supports —
+  // the "lists update based on what the view shows" rule.
+  function changeType(t: string) {
+    setType(t);
+    const df = dateFieldsFor(t);
+    setDateField((v) => (df.includes(v) ? v : df[0]));
+    setDateProperty((v) => (df.includes(v) ? v : df[0]));
+    setSortField((v) => (sortFieldsFor(t).includes(v) ? v : "updatedAt"));
+    setGroupField((v) => (groupFieldsFor(t).includes(v) ? v : ""));
+    if (!showsUrgency(t)) setUrgency("");
+    if (!showsKind(t)) setKind("");
+  }
 
   async function save() {
     if (busy) return;
@@ -124,7 +186,7 @@ export default function ViewBuilder({
       filter,
       sort: { field: sortField, dir: sortDir },
       grouping: canGroup && groupField ? { field: groupField } : null,
-      dateProperty: needsDate ? dateProperty || "dueDate" : dateProperty || null,
+      dateProperty: needsDate ? dateProperty : null,
     };
     try {
       const res = await fetch(
@@ -200,17 +262,7 @@ export default function ViewBuilder({
         <Field label="Type">
           <select
             value={type}
-            onChange={(e) => {
-              const t = e.target.value;
-              setType(t);
-              // Meetings live on "When", not a due date — nudge the date field
-              // so "meetings today" works without a second step.
-              if (t === "meeting" && dateField === "dueDate") {
-                setDateField("meetingAt");
-              } else if (t !== "meeting" && dateField === "meetingAt") {
-                setDateField("dueDate");
-              }
-            }}
+            onChange={(e) => changeType(e.target.value)}
             className={selectClass}
           >
             <Opt value="" label="any" />
@@ -231,18 +283,20 @@ export default function ViewBuilder({
             ))}
           </select>
         </Field>
-        <Field label="Urgency">
-          <select
-            value={urgency}
-            onChange={(e) => setUrgency(e.target.value)}
-            className={selectClass}
-          >
-            <Opt value="" label="any" />
-            {URGENCIES.map((u) => (
-              <Opt key={u} value={u} />
-            ))}
-          </select>
-        </Field>
+        {showsUrgency(type) && (
+          <Field label="Urgency">
+            <select
+              value={urgency}
+              onChange={(e) => setUrgency(e.target.value)}
+              className={selectClass}
+            >
+              <Opt value="" label="any" />
+              {URGENCIES.map((u) => (
+                <Opt key={u} value={u} />
+              ))}
+            </select>
+          </Field>
+        )}
         <Field
           label="Date filter"
           hint="Filter by a date, and which date it applies to."
@@ -254,10 +308,9 @@ export default function ViewBuilder({
               className={selectClass}
               aria-label="Date field"
             >
-              <Opt value="dueDate" label="due date" />
-              <Opt value="meetingAt" label="when (meetings)" />
-              <Opt value="createdAt" label="created" />
-              <Opt value="updatedAt" label="updated" />
+              {dateFields.map((f) => (
+                <Opt key={f} value={f} label={DATE_LABELS[f]} />
+              ))}
             </select>
             <select
               value={dateWindow}
@@ -289,18 +342,20 @@ export default function ViewBuilder({
             )}
           </div>
         </Field>
-        <Field label="Entity kind">
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value)}
-            className={selectClass}
-          >
-            <Opt value="" label="any" />
-            {ENTITY_KINDS.map((k) => (
-              <Opt key={k} value={k} />
-            ))}
-          </select>
-        </Field>
+        {showsKind(type) && (
+          <Field label="Entity kind">
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+              className={selectClass}
+            >
+              <Opt value="" label="any" />
+              {ENTITY_KINDS.map((k) => (
+                <Opt key={k} value={k} />
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Related to entity">
           <select
             value={entityId}
@@ -322,8 +377,8 @@ export default function ViewBuilder({
             onChange={(e) => setSortField(e.target.value)}
             className={selectClass}
           >
-            {SORT_FIELDS.map((f) => (
-              <Opt key={f} value={f} />
+            {sortFields.map((f) => (
+              <Opt key={f} value={f} label={DATE_LABELS[f] ?? f} />
             ))}
           </select>
         </Field>
@@ -347,22 +402,25 @@ export default function ViewBuilder({
             className={selectClass}
           >
             <Opt value="" label={layout === "board" ? "status (default)" : "none"} />
-            {GROUP_FIELDS.map((g) => (
-              <Opt key={g} value={g} />
+            {groupFields.map((g) => (
+              <Opt key={g} value={g} label={GROUP_LABELS[g]} />
             ))}
           </select>
         </Field>
       )}
 
       {needsDate && (
-        <Field label="Date field" hint="Which date places items on the calendar/agenda.">
+        <Field
+          label="Date field"
+          hint={`Which date places items on the ${layout}.`}
+        >
           <select
-            value={dateProperty || "dueDate"}
+            value={dateProperty}
             onChange={(e) => setDateProperty(e.target.value)}
             className={selectClass}
           >
-            {DATE_PROPERTIES.map((d) => (
-              <Opt key={d} value={d} />
+            {dateFields.map((d) => (
+              <Opt key={d} value={d} label={DATE_LABELS[d]} />
             ))}
           </select>
         </Field>
