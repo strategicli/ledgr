@@ -43,6 +43,20 @@
       "when": 1781351446930,
       "tag": "0005_steady_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781356883196,
+      "tag": "0006_good_anthem",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781357279101,
+      "tag": "0007_lumpy_king_cobra",
+      "breakpoints": true
     }
   ]
 }

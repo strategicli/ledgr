@@ -3,6 +3,7 @@
 // batched fetch via getTodayData; widgets and user arrangement are Phase 2.
 import Link from "next/link";
 import QuickCapture from "@/components/today/QuickCapture";
+import PushToggle from "@/components/pwa/PushToggle";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { listItems } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
@@ -192,13 +193,14 @@ export default async function Today() {
           )}
         </Section>
 
-        <p className="mt-10 flex gap-4 text-sm">
+        <p className="mt-10 flex flex-wrap items-center gap-4 text-sm">
           <Link href="/dashboard" className="text-neutral-500 hover:text-neutral-300">
             Dashboard →
           </Link>
           <Link href="/items" className="text-neutral-500 hover:text-neutral-300">
             All items →
           </Link>
+          <PushToggle />
         </p>
       </div>
     </main>

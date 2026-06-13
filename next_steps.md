@@ -2,6 +2,23 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ⟢ Session summary — Phase 2 tail: push, share links, provider audit (2026-06-13, session 3)
+
+**Built and verified this session — slices 30–32, which close the Phase 2 backbone:**
+- **Slice 30 — Push notifications (ADR-034):** Web Push hand-rolled over `node:crypto` (VAPID ES256 JWT + RFC 8291 aes128gcm encryption — **no `web-push` dependency**) behind a `PushSender` interface; `push_subscriptions` table (migration **0006**, applied to Neon), idempotent subscribe + Gone-prunes-self; the **morning agenda** runs daily on the Vercel cron (`/api/machine/notify-agenda`, 11:00 UTC) and **meeting-prep-ready** hourly on GitHub Actions (`/api/machine/notify-prep`), both over the machine-token door; SW bumped to **v3** (push + notificationclick, still never caches data); `PushToggle` on Today; `/health` agenda/prep canaries. **25/25** in `verify-push.mts` incl. an encryption round-trip and a JWT sign+verify.
+- **Slice 31 — Public share links (ADR-035):** unguessable 192-bit token → the shared print render with **no Clerk on the path** (`/share/[token]` joined the public-route set); `share_tokens` table (migration **0007**, applied), revocation is a `revoked_at` stamp; the self-contained print document shell moved into `renderPrintDocument()` and is now shared by `/items/[id]/print` and the share route; CDN-cacheable (`s-maxage=60`) with ~60s revocation, `noindex`/`no-referrer`; a `ShareLink` control on every canvas. **18/18** in `verify-share.mts`; `verify-print` still 23/23 after the shell extraction.
+- **Slice 32 — Provider-interface confirmation (ADR-036):** audit of the Phase-4 seams found **no gaps** — Clerk confined to 4 seam files, R2 to `src/lib/storage`, all 9 `/api/machine` endpoints token-gated (so Vercel cron / GitHub Actions / a local cron all reach them identically), DB portable via Drizzle. Turned the audit into an enforceable guard: `verify-provider-seams.mts` (**8/8**) fails loudly if a future file breaks a boundary; documented in runbook **§8 (Phase 4 readiness)**.
+
+`tsc --noEmit` clean; full `next build` clean (all new routes compile); the two new migrations applied to Neon; all three new verify scripts green plus `verify-print` unchanged. **Pending (same posture as the rest of Phase 2):** the in-browser checks — a real push subscription + delivered notification (needs VAPID keys, §1e), and eyeballing the share render / canvas controls on the deploy. Logic + types + build are proven.
+
+**Phase 2 is now code-complete** except the deferred matcher UIs (setup wizard + learn-by-confirmation), which stay **§1c-blocked** (need live calendar). Everything else awaits Brandon-steps (Azure §1c, the cron token, Todoist token/webhook, and now VAPID keys §1e), not code.
+
+**Next session — Phase 3 opens:** the MCP server (search/read/create/update items over a personal API token) is the natural first slice; then scheduled Claude tasks (morning briefing / weekly health check) over the same API, and the Build surface shell. Or, once Brandon completes §1c, circle back to the matcher setup-wizard + learn-by-confirmation UIs.
+
+**New Brandon-step for notifications (§1e):** `node scripts/make-vapid-keys.mjs` → set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` in Vercel + `.env.local`, redeploy → open Today on the installed PWA, "Enable notifications", confirm a row lands and a test push arrives. The agenda/prep crons also need the existing `LEDGR_CRON_TOKEN` (the agenda rides the Vercel `CRON_SECRET` automatically).
+
+---
+
 ## ⟢ Session summary — view builder + embedded views + dashboard (2026-06-13, session 2)
 
 **Shipped and pushed to `main` (deploys are fine during build-out now — see below):**
@@ -58,22 +75,18 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 ## Next up (in order)
 
-### 30. Push notifications (PRD §4.11) — morning agenda, meeting-prep-ready
-- Web Push (VAPID) — needs a keypair (Brandon-step-ish: generate + store `VAPID_PUBLIC/PRIVATE` env) and a subscriptions store. Triggered by a daily/sub-daily cron over the same authenticated endpoints. First external-dep slice of the tail.
+**Slices 30–32 shipped this session (push notifications, public share links, provider-interface confirmation) — see the session-3 summary above and "Recently done."** Phase 2 is code-complete; what remains is the §1c-blocked matcher UIs below and Phase 3.
 
-### 31. Public share links — read-only, print-friendly, PDF download
-- Reuses the Save Offline print render (`/items/[id]/print`) behind an unguessable token; owner-scoped issuance, revocable. No Clerk on the public path.
-
-### 32. Provider-interface confirmation (auth + scheduler)
-- Confirm the Phase-4 seams hold: auth behind the interface (the dev stand-in already proves the shape), scheduler = GitHub Actions hitting the same endpoints a local cron would. Mostly an audit + any gaps.
+### Phase 3 opener (no external deps): MCP server
+- A thin MCP server exposing search/read/create/update items + list-by-entity/date over a personal API token (the machine-token scheme already exists). The deterministic-by-default rule holds; this is the deliberate AI seam. Then scheduled Claude tasks (morning briefing / weekly health check) over the same API, and the Build-surface shell. See `roadmap.md` Phase 3.
 
 ### (follow-up) Matchers: setup wizard + learn-by-confirmation UI
 - The matcher **engine + config + suggested/confirmed states are done** (slice 23). Remaining: (a) **setup wizard** — sample recent/upcoming events and let Brandon pick matches → write first rules (needs live calendar, so **§1c-blocked**); (b) **learn-by-confirmation** — when Brandon confirms a suggested match on a meeting (slice-15 confirm path), offer to save a standing rule (POST `/api/matchers`); the data backbone (`properties.match.matcherIds`, the matchers API) is already in place. Pick these up once §1c lands and the meeting canvas shows matches.
 
 ---
 
-## Then (rest of Phase 2, rough order)
-Push notifications → public share links → provider-interface confirmation, then the deferred matcher UIs once §1c lands. See `roadmap.md`.
+## Then (Phase 3, rough order)
+MCP server → scheduled Claude tasks (briefing / health check) → Build-surface shell → custom type/property builder → workflow/wiki templates → per-type item templates → planning rhythms. The deferred matcher setup-wizard + learn-by-confirmation UIs slot in whenever §1c lands. See `roadmap.md` Phase 3.
 
 ---
 
@@ -89,6 +102,9 @@ Push notifications → public share links → provider-interface confirmation, t
 ---
 
 ## Recently done
+- **Slice 32, provider-interface confirmation (2026-06-13, ADR-036):** audited the Phase-4 seams — Clerk imported in exactly 4 files (provider impl, React wrapper, middleware, sign-in page); everything else uses `authProvider`/`resolveOwner`/`requireOwner`. Storage (`aws4fetch`/R2) confined to `src/lib/storage`. All 9 `/api/machine` endpoints verify a machine token, so any scheduler (Vercel cron / GitHub Actions / a local cron) reaches them with the same authenticated call. DB portable via Drizzle (pooler guard exempts local Postgres). **No gaps found.** New `scripts/verify-provider-seams.mts` enforces the boundaries statically (8/8) so a future break fails loudly; runbook §8 (Phase 4 readiness) documents what swaps where. No source changes.
+- **Slice 31, public share links (2026-06-13, ADR-035):** unguessable 24-byte token → the shared print render, no Clerk on `/share/[token]` (joined the public-route set). `share_tokens` table (migration 0007); owner-scoped issuance, revocation is a `revoked_at` stamp (auditable, blocks reissue), cascade-deletes with the item. The self-contained print shell moved into `renderPrintDocument()` (shared by `/items/[id]/print` + the share route, so a pin and a share render identically); the share page adds a read-only footer (dropped in print). `Cache-Control: s-maxage=60` (cheap origin, ~60s revocation) + `noindex`/`no-referrer`. `ShareLink` control on every canvas (create/copy/revoke). 18/18 in `verify-share.mts`; `verify-print` still 23/23. **In-browser eyeball pending on the deploy.**
+- **Slice 30, push notifications (2026-06-13, ADR-034):** Web Push **hand-rolled over `node:crypto`** (VAPID ES256 JWT + RFC 8291 aes128gcm encryption — no `web-push` dep, the round-trip self-test de-risks it) behind a `PushSender` interface. `push_subscriptions` table (migration 0006), idempotent subscribe, Gone (404/410) prunes the row. Morning agenda = deterministic count summary from `getTodayData`, daily on the Vercel cron with a day-guard; meeting-prep-ready = each meeting coming due in 2h **with a confirmed entity**, once per meeting via a `properties.notify.prepNotifiedAt` flag, hourly on GitHub Actions. SW v3 (push + notificationclick, never caches data). `PushToggle` on Today; `/health` agenda/prep canaries; `scripts/make-vapid-keys.mjs`. 25/25 in `verify-push.mts`. **Brandon-step: generate + set VAPID keys (§1e); live delivery check pending.**
 - **Slice 29, widget dashboard (2026-06-13, ADR-031):** nullable `views.dashboard_order` is the entire config (null = not a widget, number = position; migration **0005**, applied to Neon). `/dashboard` renders pinned views as cards in a responsive grid (`DashboardGrid`, client), native HTML5 drag-reorder persisted via `PUT /api/dashboard`, `POST /api/dashboard` pins/unpins. Badge = `countViewItems` (shares `viewWhere` with the list, can't disagree); 8-item preview + "+N more". Equal-height toggle in localStorage. Pin/unpin button on the view page; distinct from the Phase-1 Today home. 9/9 in `verify-dashboard.mts`. **In-browser drag check pending.**
 - **Slice 28, embedded query views (2026-06-13, ADR-030):** `EmbeddedView` (client) on entity canvases — runs `GET /api/items/query` (new shared filter-runner) scoped to items related to the host. Editable type/status/due filter refetches in place; task check-off PATCHes optimistically and drops the row if it leaves an active status filter; "+ Add" creates an item of the filtered type and relates it to the host (create-inherits); "remove" un-relates the edge, never deletes. Kept alongside `RelatedPanel`. 7/7 in `verify-embedded-views.mts`. **In-browser interaction check pending.**
 - **Slice 27, view builder (2026-06-13, ADR-029):** stored View Definitions in `src/lib/views.ts` — `filter`/`sort`/`grouping` jsonb are the existing `ViewFilter`/`ViewSort` + a new `ViewGrouping`; `layout`/`date_property` columns. One `ViewRenderer` (server) dispatches list/table/board/calendar/agenda (board groups by field with enums ordered first; calendar = current-month grid; agenda = day-bucketed). Owner-scoped CRUD store (`parseViewInput` drops unknown keys, system views immutable), `/api/views(+/[id])`, `/views` index + `new` + `[id]` + `[id]/edit`, `ViewBuilder` client form, Views nav slot. 25/25 in `verify-views.mts`. **In-browser visual check pending.**

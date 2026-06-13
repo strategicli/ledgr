@@ -5,6 +5,7 @@ import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
 import { getExportState } from "@/lib/export/engine";
 import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
+import { getPushState } from "@/lib/push/notify";
 import { getTodoistState } from "@/lib/todoist/sync";
 import { createLogger, isDebugMode } from "@/lib/log";
 
@@ -87,6 +88,11 @@ export async function GET() {
   let lastTodoistRunAt: string | null = null;
   let lastEmailImportAt: string | null = null;
   let lastEmailRunAt: string | null = null;
+  // Push notification canaries (slice 30): the last morning-agenda send and the
+  // last prep-ready run. Both null = the crons never reach the endpoint (no
+  // LEDGR_CRON_TOKEN) or VAPID keys aren't set yet (runbook §1e, the 503 path).
+  let lastAgendaNotifyAt: string | null = null;
+  let lastPrepNotifyAt: string | null = null;
   let errors: ErrorsCheck = null;
   if (database.ok) {
     try {
@@ -118,6 +124,13 @@ export async function GET() {
     } catch {
       // same posture as the export state read.
     }
+    try {
+      const push = await getPushState();
+      lastAgendaNotifyAt = push.agenda?.lastSuccessAt ?? null;
+      lastPrepNotifyAt = push.prep?.lastSuccessAt ?? null;
+    } catch {
+      // same posture as the export state read.
+    }
     errors = await checkErrors();
   }
 
@@ -146,6 +159,8 @@ export async function GET() {
         lastTodoistRunAt,
         lastEmailImportAt,
         lastEmailRunAt,
+        lastAgendaNotifyAt,
+        lastPrepNotifyAt,
         graph,
         errors,
       },

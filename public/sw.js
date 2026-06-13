@@ -8,7 +8,9 @@
 //
 // Bump VERSION on any change to this file's caching behavior; activate
 // drops older shell caches (pins survive — they are user-meaningful data).
-const VERSION = "v2";
+// v3 (slice 30): push + notificationclick handlers for Web Push notifications
+// (morning agenda, meeting-prep-ready). These never touch any cache.
+const VERSION = "v3";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -96,5 +98,47 @@ self.addEventListener("fetch", (event) => {
         .then((cache) => cache.match(request));
       return pinned ?? Response.error();
     })
+  );
+});
+
+// Web Push (slice 30, PRD §4.11). The server sends an encrypted JSON payload
+// ({title, body, url, tag}); we render it as a notification. A malformed or
+// empty payload still shows a generic notice rather than dropping silently.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "Ledgr";
+  const options = {
+    body: data.body || "",
+    tag: data.tag,
+    // Replace a same-tag notification rather than stacking duplicates.
+    renotify: !!data.tag,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: data.url || "/" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Tapping a notification focuses an existing app window (navigating it to the
+// target) or opens a new one. Same-origin only.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+            return client.focus().then((c) => (c && "navigate" in c ? c.navigate(target) : c));
+          }
+        }
+        return self.clients.openWindow(target);
+      })
   );
 });

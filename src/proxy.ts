@@ -15,6 +15,10 @@ const isPublicRoute = createRouteMatcher([
   // verifies the signature itself (slice 25). Only the webhook is public —
   // /api/todoist/sync stays Clerk-protected.
   "/api/todoist/webhook",
+  // Public share links (slice 31): an unguessable token is the credential, so
+  // the render path takes no Clerk session. Issuance (/api/items/[id]/share)
+  // stays Clerk-protected.
+  "/share(.*)",
 ]);
 
 const handler = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY

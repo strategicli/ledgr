@@ -173,6 +173,38 @@ Condition priority order: attendee email → series id → title regex → fuzzy
 
 ---
 
+## `push_subscriptions` (Phase 2, slice 30; Web Push)
+One row per browser/device the owner enabled notifications on (PRD §4.11). The push service `endpoint` is the unique key; `p256dh`/`auth` are the RFC 8291 message-encryption keys the browser supplies at subscribe time. Owner-scoped; a subscription the push service reports Gone (404/410) is pruned, so the table self-heals to live endpoints. Migration 0006.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `owner_id` | uuid | FK `users.id` |
+| `endpoint` | text | **unique**; the push service URL |
+| `p256dh` | text | base64url; subscription public key |
+| `auth` | text | base64url; subscription auth secret |
+| `created_at` | timestamptz | |
+
+VAPID keys live in env (`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`), not the DB; the Web Push protocol (VAPID JWT + RFC 8291 encryption) is hand-rolled over `node:crypto`, no `web-push` dependency (ADR-034).
+
+---
+
+## `share_tokens` (Phase 2, slice 31; public share links)
+One row per issued public link (PRD §4.12): an unguessable `token` grants read-only access to one item's print render with no Clerk on the path. Owner-scoped issuance; revocation is a `revoked_at` stamp, not a delete, so the history is auditable and a revoked string can't be silently reissued. Cascade-deletes with the item at purge. Migration 0007.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `owner_id` | uuid | FK `users.id` |
+| `item_id` | uuid | FK `items.id`, `ON DELETE CASCADE` |
+| `token` | text | **unique**; 24 random bytes base64url (~192 bits) |
+| `revoked_at` | timestamptz | nullable; set on revoke (the link stops resolving) |
+| `created_at` | timestamptz | |
+
+The public resolve joins token→item in one query so it only ever yields a live (non-revoked) token bound to a live (non-trashed) item. Indexes on `item_id` (list a page's links) and `owner_id`.
+
+---
+
 ## `error_log` (Phase 1; or use a free Sentry tier)
 No silent failures. Failed crons/webhooks captured here and surfaced through `/health` and the UI.
 
@@ -197,6 +229,7 @@ A core set covers nearly everything: `text`, `number`, `date`, `select`, `multi-
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
 - FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url + kind (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained; generating from raw BlockNote JSONB would index structural noise, ADR-003.)
+- B-tree on `push_subscriptions.owner_id` and `share_tokens.owner_id`/`share_tokens.item_id` (slices 30/31); `endpoint` and `token` are unique constraints.
 - Composite indexes as query patterns prove them out; log additions in `decisions.md`.
 
 ## Phase 2+ structures, noted ahead (don't build in Phase 1)

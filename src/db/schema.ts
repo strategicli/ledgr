@@ -278,6 +278,57 @@ export const matchers = pgTable(
   (t) => [index("matchers_owner_priority_idx").on(t.ownerId, t.priority)]
 );
 
+// Web Push subscriptions (slice 30, PRD §4.11). One row per browser/device
+// the owner enabled notifications on; the endpoint is the push service URL
+// (unique), p256dh/auth are the RFC 8291 encryption keys the browser hands us
+// at subscribe time. Owner-scoped like everything else (multi-user-ready). A
+// subscription the push service reports Gone (404/410) is pruned, so this
+// table self-heals to live endpoints only.
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("push_subscriptions_owner_idx").on(t.ownerId)]
+);
+
+// Public share links (slice 31, PRD §4.12). One row per issued link: an
+// unguessable token that grants read-only access to one item's print render,
+// no Clerk on the public path. Owner-scoped issuance; revocation is a stamp
+// (revoked_at), not a delete, so a revoked token can't be silently reissued to
+// the same string and the history is auditable. Cascade-deletes with the item
+// at purge (a purged item has no shareable render).
+export const shareTokens = pgTable(
+  "share_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("share_tokens_item_idx").on(t.itemId),
+    index("share_tokens_owner_idx").on(t.ownerId),
+  ]
+);
+
 // No silent failures: failed crons/webhooks land here and surface through
 // /health and the UI. detail is shown only when debug mode is on.
 export const errorLog = pgTable("error_log", {

@@ -8,6 +8,7 @@ import { notFound, redirect } from "next/navigation";
 import ItemEditor from "@/components/editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import SaveOffline from "@/components/canvas/SaveOffline";
+import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import EmbeddedView from "@/components/views/EmbeddedView";
 import RelatedPanel from "@/components/relations/RelatedPanel";
@@ -121,6 +122,8 @@ export default async function ItemCanvas({
       <RelatedPanel ownerId={owner.id} itemId={item.id} itemType={item.type} />
       {/* Save Offline (PRD §4.7): export now, verified offline pin, print/PDF. */}
       <SaveOffline itemId={item.id} />
+      {/* Public share link (PRD §4.12): read-only, print-friendly, PDF. */}
+      <ShareLink itemId={item.id} />
       <details className="mx-auto w-full max-w-3xl px-12 pb-12 pt-4">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields

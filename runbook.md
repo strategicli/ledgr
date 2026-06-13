@@ -31,6 +31,8 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `ONEDRIVE_EXPORT_ROOT` | folder inside that OneDrive holding the export (default `Ledgr` → `/Ledgr/Export/…`) | fixed value, optional |
 | `GRAPH_MAILBOX_UPN` | mailbox whose calendar/mail the app-only jobs read (Phase 2). Optional: defaults to `ONEDRIVE_EXPORT_UPN` since it's the same person; set only if they ever diverge | fixed value, optional |
 | `TODOIST_TOKEN` | Todoist API token (Phase 2) | Todoist settings → Integrations → Developer |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (Phase 2, slice 30) VAPID keypair; without them `/api/push` reports unconfigured and the notify crons 503. The public key is also the browser's `applicationServerKey` | `node scripts/make-vapid-keys.mjs` (§1e) |
+| `VAPID_SUBJECT` | Push contact (RFC 8292 `sub`): `mailto:` or https URL | fixed value, optional (defaults to a localhost mailto) |
 | `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks): comma-separated `name:scope1+scope2:sha256hex` entries, hashes only | `node scripts/make-token.mjs <name> <scopes>` (§3) |
 | `CRON_SECRET` | Raw `cron`-scoped machine token; Vercel sends it as the Bearer token on scheduled cron requests (§2a) | same generator as `LEDGR_API_TOKENS`; production only |
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
@@ -123,6 +125,16 @@ Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date chang
 
 ---
 
+## 1e. Web Push notifications setup (one-time, Brandon — Phase 2)
+Push notifications (ADR-034) send the morning agenda summary and meeting-prep-ready notices. The protocol is hand-rolled over `node:crypto` (no `web-push` dependency); all it needs is a VAPID keypair. Until the keys are set, `/api/push` reports `{configured:false}` (the Today toggle stays hidden) and the notify crons return a 503 (reported, not red-spamming).
+
+1. **Generate the keypair:** `node scripts/make-vapid-keys.mjs` → prints `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. The keypair is permanent (rotating it invalidates every existing subscription — they'd re-subscribe), so generate once and keep it.
+2. **Set the env vars** in Vercel production (dashboard or REST API, not piped CLI — BOM gotcha §1) and in `.env.local`, redeploy.
+3. **Cron tokens:** the morning-agenda cron runs on Vercel (`vercel.json`, daily 11:00 UTC) and rides the existing `CRON_SECRET`. The hourly meeting-prep cron runs on GitHub Actions (`.github/workflows/notify-prep.yml`) and uses the same `LEDGR_CRON_TOKEN` repo secret as calendar/email sync (§2a). No new token needed.
+4. **Subscribe + verify:** open Today on the installed PWA (push needs the production-registered service worker — it won't work in `next dev`), click **Enable notifications**, accept the browser prompt. Confirm a row lands (`select count(*) from push_subscriptions;`) and `/health` shows `lastAgendaNotifyAt`/`lastPrepNotifyAt` once the crons run. Force a send now: `curl -H "Authorization: Bearer <cron token>" https://ledgr-teal.vercel.app/api/machine/notify-agenda` → a notification should arrive (the day-guard means it sends once/day; clear `notify:agenda` in `job_state` to re-test). Task *reminders* stay Todoist's job by design (PRD §4.5).
+
+---
+
 ## 2. Health and monitoring
 - **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome), `graph` (app-only Graph token grant; see below), and `errors.last24h` (count of `error_log` rows captured in the last 24 hours; should be 0). The Todoist API check joins once that integration exists.
 - **`checks.graph`** (slice 21, ADR-022) is the canary for every unattended Graph job (export, calendar, email-in): `{configured:false}` until the registration is set (§1b), `{configured:true, ok:true}` when an app-only token grant succeeds (proving the client secret is valid and unexpired), `{configured:true, ok:false, detail}` when it fails — the **secret-expiry / revoked-consent alarm**. It is a token grant only, not a resource call, so it stays green even before the calendar permission is granted (§1c); it never changes overall `/health` status (Graph down must not make the app look unhealthy — the DB is what "healthy" means).
@@ -130,6 +142,7 @@ Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date chang
 - **`lastCalendarSyncAt` / `lastCalendarRunAt`** (slice 22) mirror the export pair for the 6h calendar poll: `lastCalendarSyncAt` is the last error-free run, `lastCalendarRunAt` the last attempt. Both null = the GitHub Actions poll never reaches the endpoint (missing `LEDGR_CRON_TOKEN`, §2a) or Calendars.Read isn't granted (§1c, the 403 path). A stale sync while runs advance = events failing partway (`error_log` source `calendar-sync`).
 - **`lastTodoistSyncAt` / `lastTodoistRunAt`** (slice 25) are the same pair for Todoist. Both null = `TODOIST_TOKEN` unset (§1d) or the poll never reaches the endpoint. `error_log` sources `todoist-sync` / `todoist-sync-now` / `todoist-webhook`.
 - **`lastEmailImportAt` / `lastEmailRunAt`** (slice 26) are the same pair for email-in. Both null = `Mail.ReadWrite` not granted / the `Ledgr Import` folder missing (§1c, the 403/404→503 path) or the poll never reaches the endpoint. `error_log` source `email-import`.
+- **`lastAgendaNotifyAt` / `lastPrepNotifyAt`** (slice 30) are the last clean morning-agenda send and meeting-prep-ready run. Both null = VAPID keys unset (§1e, the 503 path) or the crons never reach the endpoint (agenda needs `CRON_SECRET`, prep needs `LEDGR_CRON_TOKEN`). `error_log` sources `notify-agenda` / `notify-prep`.
 - A **weekly scheduled Claude task** hits `/health` and emails Brandon on failure.
 - The export-timestamp check is the canary for a **silently stalled sync** (see §6, GitHub Actions auto-disable).
 - **Structured logs (ADR-020):** every server-side event is one JSON line `{ts, level, source, correlationId, message, ...}` via `src/lib/log.ts`; read them in Vercel → Project → Logs. One correlation id covers one request/job run, and 500 responses echo it (`{"error":"internal error","correlationId":"…"}`), so a screenshot of a failure can be grepped straight to its lines and its `error_log` row.
@@ -147,6 +160,8 @@ Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date chang
 | Calendar sync (poll next 14 days → meeting items; on-demand twin is `POST /api/calendar/sync`, user-authed) | every 6h (`.github/workflows/calendar-sync.yml`) | `GET /api/machine/calendar-sync` | GitHub Actions sends `Bearer ${{ secrets.LEDGR_CRON_TOKEN }}` (a `cron`-scope machine token, §3) |
 | Todoist sync (polling backstop to the webhook; push dated tasks, pull completions/dates/inbox; twin is `POST /api/todoist/sync`) | every 3h (`.github/workflows/todoist-sync.yml`) | `GET /api/machine/todoist-sync` | same `Bearer $LEDGR_CRON_TOKEN` path. Real-time path is `POST /api/todoist/webhook` (HMAC-verified, no token) |
 | Email-in (poll "Ledgr Import" folder via messages/delta → note/task items; twin is `POST /api/email/import`) | every 30 min (`.github/workflows/email-import.yml`) | `GET /api/machine/email-import` | same `Bearer $LEDGR_CRON_TOKEN` path |
+| Morning agenda push (today's meeting/task count → Web Push; once/day, day-guarded) | daily 11:00 UTC (`vercel.json`) | `GET /api/machine/notify-agenda` | same `Bearer $CRON_SECRET` path |
+| Meeting-prep-ready push (meetings due within 2h with a confirmed entity → Web Push, once per meeting) | hourly (`.github/workflows/notify-prep.yml`) | `GET /api/machine/notify-prep` | same `Bearer $LEDGR_CRON_TOKEN` path |
 
 - **Run manually:** `curl -H "Authorization: Bearer <cron token>" https://ledgr-teal.vercel.app/api/machine/purge` → `{"ok":true,"purged":N,"detached":M,...}`. Calendar: `curl -H "Authorization: Bearer <cron token>" https://ledgr-teal.vercel.app/api/machine/calendar-sync` → `{"ok":true,"created":N,"updated":M,"canceled":K,...}`, or `gh workflow run calendar-sync`.
 - **Failures** are written to `error_log` (sources `purge`, `export`, `calendar-sync`, with correlation id) and logged as structured JSON; check Vercel → Project → Logs, or query `error_log`. A calendar **403** before §1c is done is reported as a 503 and a warn log (not an `error_log` row), so it doesn't spam the table; `/health` `lastCalendarSyncAt` staying null is the canary.
@@ -219,3 +234,16 @@ Back-end (cheap compute/storage/traffic):
 Format each entry: symptom → cause → fix → prevention. Building this log over time is what keeps maintenance incidents under an hour.
 
 - _(none yet)_
+
+---
+
+## 8. Phase 4 readiness (provider-interface seams, confirmed slice 32)
+Phase 4 (a packageable local / self-hosted build) is gated and exploratory (roadmap), but the seams that keep it a *packaging* exercise rather than a rewrite are confirmed and enforced. `scripts/verify-provider-seams.mts` (run it after touching auth, storage, or any `/api/machine` route) fails loudly if a boundary breaks. What swaps where:
+
+- **Auth (Clerk → local single-user):** the app reaches identity only through `authProvider.getCurrentUser()` (→ `resolveOwner` → `requireOwner`). `@clerk/nextjs` is imported in exactly four files — `src/lib/auth/clerk.ts` (the provider), `src/lib/auth/provider.tsx` (the React wrapper, with a no-key fallback), `src/proxy.ts` (route-protection middleware), and the sign-in page. The active provider is chosen in **one place**, `src/lib/auth/index.ts`. A local build adds a ~10-line `localAuthProvider` (returns the single user) and selects it there; the dev stand-in (`DEV_USER_EMAIL`, ADR-006) already proves the shape. Nothing else changes.
+- **Scheduler (Vercel cron + GitHub Actions → local cron):** every scheduled job triggers an authenticated `GET /api/machine/*` with a `cron`-scoped machine token. The scheduler is interchangeable because the contract is just "authenticated HTTP call to a machine endpoint" — a local cron runs the identical `curl -H "Authorization: Bearer <token>" …`. All `/api/machine` endpoints verify their own token (the guard asserts this), so a local cron needs no new auth path.
+- **Storage (R2 → local FS):** bytes go through the `StorageProvider` interface (`src/lib/storage/`); `aws4fetch`/the R2 client is confined there (guard-asserted). A local FS provider implements the same `putObject`/presign surface.
+- **DB (Neon → local Postgres):** already portable — a `DATABASE_URL` change. The pooler guard in `src/db/index.ts` exempts non-Neon hosts, so a local Postgres connects directly.
+- **Graph / Todoist / Web Push:** off or stubbed in a local build (each is already behind an interface — `CalendarSource`/`MailSource`/`ExportTarget`/`TodoistClient`/`PushSender` — and each has a stub used in verification).
+
+Confirmed 2026-06-13 (ADR-036): no gaps; the audit added the guard, not code changes.

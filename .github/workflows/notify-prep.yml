@@ -1,0 +1,50 @@
+# Meeting-prep-ready notifications (slice 30, PRD §4.11). Sub-daily, so it
+# comes from GitHub Actions hitting the authenticated endpoint — the scheduler
+# interface the PRD chose (§6.1), the same door the calendar/email/Todoist
+# crons use, swappable for a local cron in Phase 4.
+#
+# Hourly: a meeting is notified once, as it enters the 2h prep window (the
+# per-meeting flag in runPrepNotify dedups). The morning-agenda push is daily,
+# so it rides the Vercel cron (vercel.json) instead of here.
+#
+# Auth: the same LEDGR_CRON_TOKEN repo secret as calendar-sync (a cron-scoped
+# Ledgr machine token). Until VAPID keys are set (runbook §1e) the endpoint
+# returns 503 and the run fails loudly here (GitHub emails the owner), which is
+# what we want until notifications are configured.
+name: notify-prep
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger prep notifications
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          HTTP=$(curl -sS -o response.json -w "%{http_code}" -X GET \
+            "$APP_URL/api/machine/notify-prep" \
+            -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+          echo "HTTP $HTTP"; cat response.json; echo
+          [ "$HTTP" = "200" ] || { echo "::error::notify-prep returned $HTTP"; exit 1; }
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"notify-prep\",\"message\":\"prep notification workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true
