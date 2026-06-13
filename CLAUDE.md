@@ -52,7 +52,8 @@ To keep a future local build (Phase 4) a packaging exercise rather than a rewrit
 - **Snapshot bodies to `revisions` on save (debounced).** Cap ~50 per item.
 - **Indexes are part of the feature.** When you add a queried field, add its index (see `schema.md`).
 - **Incremental syncs only.** Delta/changed-since queries, never full re-pulls.
-- **No deploys Saturday night.** (Sunday-proof.)
+- **No deploys Saturday night — once Ledgr is in real Sunday use.** The rule guards a working tool Brandon relies on for Sunday; it does not apply during build-out, when there's nothing live to break and shipping fast matters more. Treat it as active from the day Brandon starts preaching/working from Ledgr (track that flip in `decisions.md`), not before.
+- **Standardized, generic language in the tool's UI.** Prefer plain, conventional product language over church-specific jargon for labels, buttons, and surfaces (e.g. "Save Offline", not "Pulpit Ready"; "Sync to Storage" over insider terms). Brandon is the only user, but the tool should read like a general product so its concepts stay portable. PRD section names can keep their original wording; this is about what's rendered on screen.
 - **Writing style for any prose Claude generates for Brandon:** no em dashes (use commas, colons, parentheticals, or rework); don't split a contrast into two choppy sentences; concise, direct, warm, active voice.
 
 ## When you finish a slice

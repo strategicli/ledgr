@@ -7,8 +7,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ItemEditor from "@/components/editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
-import PulpitReady from "@/components/canvas/PulpitReady";
+import SaveOffline from "@/components/canvas/SaveOffline";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
+import EmbeddedView from "@/components/views/EmbeddedView";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, type CanvasField } from "@/lib/canvas-fields";
@@ -111,11 +112,15 @@ export default async function ItemCanvas({
       {/* Meeting prep (PRD §5.1): the person's open tasks, recent meetings,
           agenda, and action-item -> task promotion. */}
       {item.type === "meeting" && <MeetingPrep ownerId={owner.id} itemId={item.id} />}
+      {/* Embedded query view (PRD §4.9): an interactive, filterable view of
+          items related to this entity — inline check-off, create-inherits,
+          remove = un-relate. The actionable surface for a 1:1 prep. */}
+      {item.type === "entity" && <EmbeddedView hostId={item.id} />}
       {/* Backlinks panel (PRD §4.9): every item shows what links here. On an
           entity this is the slice-6 "tag as dashboard" Related section. */}
       <RelatedPanel ownerId={owner.id} itemId={item.id} itemType={item.type} />
-      {/* Pulpit Ready (PRD §4.7): export now, verified offline pin, print/PDF. */}
-      <PulpitReady itemId={item.id} />
+      {/* Save Offline (PRD §4.7): export now, verified offline pin, print/PDF. */}
+      <SaveOffline itemId={item.id} />
       <details className="mx-auto w-full max-w-3xl px-12 pb-12 pt-4">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields

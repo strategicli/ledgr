@@ -152,6 +152,7 @@ Every view is a stored View Definition. Built-in views (Today, Inbox, per-type l
 | `grouping` | jsonb | |
 | `layout` | enum | `list` \| `table` \| `board` \| `calendar` \| `agenda` (gallery/Gantt parked) |
 | `date_property` | text | for time-based layouts: which date drives placement |
+| `dashboard_order` | integer | dashboard config (slice 29, migration 0005): null = not a widget; a number = position in the widget grid. One dashboard per owner in v1 — the config rides the view it shows, no separate table. |
 | `created_at` | timestamptz | |
 
 ---

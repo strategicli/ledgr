@@ -18,6 +18,7 @@ export const NAV_SLOTS: NavSlot[] = [
   { key: "home", label: "Home", href: "/" }, // locked slot 1
   { key: "inbox", label: "Inbox", href: "/inbox", badge: "inbox" },
   { key: "tasks", label: "Tasks", href: "/tasks" },
+  { key: "views", label: "Views", href: "/views" },
   { key: "search", label: "Search", href: "/search" },
   { key: "items", label: "Items", href: "/items" },
 ];

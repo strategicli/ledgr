@@ -192,7 +192,10 @@ export default async function Today() {
           )}
         </Section>
 
-        <p className="mt-10 text-sm">
+        <p className="mt-10 flex gap-4 text-sm">
+          <Link href="/dashboard" className="text-neutral-500 hover:text-neutral-300">
+            Dashboard →
+          </Link>
           <Link href="/items" className="text-neutral-500 hover:text-neutral-300">
             All items →
           </Link>

@@ -1,7 +1,7 @@
 // Ledgr service worker (slices 16 + 18). Deliberately conservative (PRD
 // §4.5): it caches the app shell (offline fallback, icons, hashed build
 // assets), never item data on its own — the PWA promises no offline writes
-// and no stale reads. The one exception is deliberate: Pulpit Ready (PRD
+// and no stale reads. The one exception is deliberate: Save Offline (PRD
 // §4.7) pins verified documents (and their images) into PIN_CACHE from the
 // page; this worker only ever *reads* that cache, as a fallback when the
 // network fails.
@@ -44,7 +44,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   // Cross-origin GETs (R2 attachment images): network, falling back to a
-  // pinned copy if Pulpit Ready stored one. Never cached here.
+  // pinned copy if Save Offline stored one. Never cached here.
   if (url.origin !== self.location.origin) {
     event.respondWith(
       fetch(request).catch(async () => {
@@ -73,7 +73,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Navigations: always network (fresh data); when it fails, a pinned copy
-  // wins (Pulpit Ready seam), else the offline page.
+  // wins (Save Offline seam), else the offline page.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(async () => {

@@ -1,4 +1,4 @@
-// BlockNote JSON → print-ready HTML (Pulpit Ready, PRD §4.7).
+// BlockNote JSON → print-ready HTML (Save Offline, PRD §4.7).
 //
 // Same discipline as the markdown serializer (markdown.ts): pure JSON
 // walking, no @blocknote import, server-safe. Where markdown is the

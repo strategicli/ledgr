@@ -1,7 +1,7 @@
 // BlockNote JSON → markdown serializer (PRD §4.1, §6.1).
 //
 // Deliberately pure JSON-walking code with no @blocknote import: the
-// OneDrive export job and Pulpit Ready run server-side and must never load
+// OneDrive export job and Save Offline run server-side and must never load
 // the editor. Markdown is the derived, color-safe export; colors and
 // highlights encode as standard inline HTML (<span style>/<mark class>)
 // via the single mapping table in colors.ts, so Obsidian's reading view

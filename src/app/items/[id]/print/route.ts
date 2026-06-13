@@ -1,4 +1,4 @@
-// Pulpit Ready's document render (PRD §4.7): a self-contained HTML page —
+// Save Offline's document render (PRD §4.7): a self-contained HTML page —
 // inline CSS, no scripts beyond one print button handler, no app chrome, no
 // /_next chunks. Self-containment is the point: this exact response is what
 // the pin protocol stores in the service worker's ledgr-pin-v1 cache, so it

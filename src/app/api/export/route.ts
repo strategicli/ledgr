@@ -5,7 +5,7 @@ import { getGraphConfig, OneDriveExportTarget } from "@/lib/export/onedrive";
 import { captureError } from "@/lib/log";
 
 // On-demand "export now" (PRD §5.4), the user-authed twin of the nightly
-// cron. Pulpit Ready (next slice) calls this before pinning; until then
+// cron. Save Offline calls this before pinning; until then
 // it's reachable from the browser console or any signed-in fetch.
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;

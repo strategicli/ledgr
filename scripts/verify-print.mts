@@ -1,4 +1,4 @@
-// Verification for the Pulpit Ready print renderer (slice 18): bodyToHtml
+// Verification for the Save Offline print renderer (slice 18): bodyToHtml
 // is a pure function, so this needs no DB. Run: npx tsx scripts/verify-print.mts
 import { bodyToHtml, escapeHtml } from "../src/lib/print-html";
 

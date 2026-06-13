@@ -1,8 +1,8 @@
-// Pulpit Ready (PRD §4.7): one tap makes a document survive Sunday morning.
-// Three legs: (1) export to OneDrive now via POST /api/export, (2) pin the
-// self-contained print render (/items/[id]/print) plus its images into the
-// service worker's ledgr-pin-v1 cache — *verified* with a cache.match
-// round-trip before "cached ✓" is shown, never best-effort, (3) the print
+// Save Offline (PRD §4.7): one tap makes a document available with no
+// network at all. Three legs: (1) export to OneDrive now via POST /api/export,
+// (2) pin the self-contained print render (/items/[id]/print) plus its images
+// into the service worker's ledgr-pin-v1 cache — *verified* with a cache.match
+// round-trip before "saved ✓" is shown, never best-effort, (3) the print
 // view's @media print styles make the browser's print-to-PDF the PDF leg.
 // The pin is stored under both the print URL and /items/[id], so an offline
 // navigation to the item itself serves the clean document render.
@@ -55,7 +55,7 @@ async function pinLeg(itemId: string): Promise<LegState> {
     await cache.put(printUrl, new Response(html, { headers }));
     await cache.put(`/items/${itemId}`, new Response(html, { headers }));
 
-    // Pin the document's images too (sermon slides, diagrams). Cross-origin
+    // Pin the document's images too (slides, diagrams). Cross-origin
     // (R2) fetches may only yield opaque responses; those still serve from
     // the cache. Image failures downgrade the message, not the pin.
     const doc = new DOMParser().parseFromString(html, "text/html");
@@ -87,7 +87,7 @@ async function pinLeg(itemId: string): Promise<LegState> {
       srcs.length > 0
         ? `, ${imagesPinned}/${srcs.length} image(s)`
         : "";
-    return { phase: "ok", detail: `cached for offline ✓${imgNote}` };
+    return { phase: "ok", detail: `saved for offline ✓${imgNote}` };
   } catch {
     return { phase: "fail", detail: "pin failed" };
   }
@@ -108,12 +108,12 @@ function Row({ state }: { state: LegState }) {
   );
 }
 
-export default function PulpitReady({ itemId }: { itemId: string }) {
+export default function SaveOffline({ itemId }: { itemId: string }) {
   const [exportState, setExportState] = useState<LegState>({ phase: "idle" });
   const [pinState, setPinState] = useState<LegState>({ phase: "idle" });
   const [alreadyPinned, setAlreadyPinned] = useState(false);
 
-  // Surface an existing pin so "is this safe for Sunday?" has an answer
+  // Surface an existing pin so "is this available offline?" has an answer
   // without re-running anything.
   useEffect(() => {
     if (!("caches" in window)) return;
@@ -161,7 +161,7 @@ export default function PulpitReady({ itemId }: { itemId: string }) {
           disabled={busy}
           className="rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-xs font-medium text-neutral-200 hover:bg-neutral-700 disabled:opacity-50"
         >
-          {busy ? "Working…" : "Pulpit Ready"}
+          {busy ? "Working…" : "Save Offline"}
         </button>
         <a
           href={`/items/${itemId}/print`}
@@ -172,7 +172,7 @@ export default function PulpitReady({ itemId }: { itemId: string }) {
         </a>
         {alreadyPinned && pinState.phase === "idle" && (
           <span className="text-xs text-green-500/80">
-            pinned for offline ✓
+            saved offline ✓
             <button
               onClick={() => void unpin()}
               className="ml-2 text-neutral-600 hover:text-neutral-400"

@@ -1,0 +1,455 @@
+// View renderer (slice 27, PRD §4.2/§4.9): one server component that takes a
+// stored View Definition's items (already owner-scoped, body-free, filtered,
+// and sorted by queryViewItems) and renders them in the view's layout. The
+// five layouts are different presentations of the same row set; none of them
+// re-queries or reaches for a body. Task rows carry the shared check-off
+// control so a view of tasks behaves like the Tasks list.
+import Link from "next/link";
+import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
+import { APP_TIMEZONE } from "@/lib/today";
+import type { GroupField, ViewDefinition } from "@/lib/views";
+
+// Structural shape of a listColumns row, narrowed to what the layouts use.
+export type ViewItem = {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  dueDate: Date | null;
+  urgency: string | null;
+  meetingAt: Date | null;
+  url: string | null;
+  kind: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+// Due dates are UTC-midnight calendar days (ADR-008); format in UTC. The
+// timestamp columns are real instants; format in the app's timezone.
+const utcDay = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+const tzDay = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: APP_TIMEZONE,
+});
+const tzDayLong = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  timeZone: APP_TIMEZONE,
+});
+const utcDayLong = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+// en-CA renders YYYY-MM-DD, a sortable day key.
+const utcKey = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" });
+const tzKey = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE });
+
+function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | null {
+  switch (prop) {
+    case "dueDate":
+      return item.dueDate;
+    case "meetingAt":
+      return item.meetingAt;
+    case "createdAt":
+      return item.createdAt;
+    case "updatedAt":
+      return item.updatedAt;
+    default:
+      return item.dueDate ?? item.meetingAt;
+  }
+}
+
+const usesUtc = (prop: ViewDefinition["dateProperty"]) => prop === "dueDate";
+
+function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
+  return (usesUtc(prop) ? utcKey : tzKey).format(date);
+}
+
+function StatusChip({ status }: { status: string }) {
+  if (status === "open") return null;
+  const tone =
+    status === "done"
+      ? "bg-green-950 text-green-400"
+      : status === "archived"
+        ? "bg-neutral-800 text-neutral-400"
+        : "bg-neutral-800 text-neutral-300";
+  return (
+    <span className={`shrink-0 rounded px-1.5 text-xs ${tone}`}>{status}</span>
+  );
+}
+
+function UrgencyChip({ urgency }: { urgency: string | null }) {
+  if (urgency !== "high" && urgency !== "critical") return null;
+  return (
+    <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
+      {urgency}
+    </span>
+  );
+}
+
+// A row's headline date, picked for the layout's date property.
+function rowDate(item: ViewItem, prop: ViewDefinition["dateProperty"]) {
+  const d = dateOf(item, prop);
+  if (!d) return "";
+  return (usesUtc(prop) ? utcDay : tzDay).format(d);
+}
+
+function ItemRow({ item, prop }: { item: ViewItem; prop: ViewDefinition["dateProperty"] }) {
+  const isTask = item.type === "task";
+  const done = item.status === "done";
+  return (
+    <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+      {isTask ? (
+        <SubtaskCheckbox id={item.id} done={done} />
+      ) : (
+        <span className="w-14 shrink-0 truncate text-xs text-neutral-600">
+          {item.type}
+        </span>
+      )}
+      <Link
+        href={`/items/${item.id}`}
+        className={`min-w-0 flex-1 truncate text-sm ${
+          item.title ? "text-neutral-200" : "text-neutral-500"
+        } ${done ? "line-through opacity-60" : ""}`}
+      >
+        {item.title || "Untitled"}
+      </Link>
+      <StatusChip status={item.status} />
+      <UrgencyChip urgency={item.urgency} />
+      <span className="shrink-0 text-xs text-neutral-600">
+        {rowDate(item, prop)}
+      </span>
+    </li>
+  );
+}
+
+// --- grouping (board, agenda) --------------------------------------------
+
+const DUE_ORDER = ["overdue", "today", "this week", "later", "no date"] as const;
+
+function dueBucket(item: ViewItem): string {
+  if (!item.dueDate) return "no date";
+  const key = utcKey.format(new Date());
+  const itemKey = utcKey.format(item.dueDate);
+  if (itemKey < key) return "overdue";
+  if (itemKey === key) return "today";
+  const week = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  if (itemKey <= utcKey.format(week)) return "this week";
+  return "later";
+}
+
+function groupValue(item: ViewItem, field: GroupField): string {
+  switch (field) {
+    case "status":
+      return item.status;
+    case "urgency":
+      return item.urgency ?? "none";
+    case "kind":
+      return item.kind ?? "none";
+    case "type":
+      return item.type;
+    case "due":
+      return dueBucket(item);
+  }
+}
+
+// Column/section order: known enums first in their canonical order, then any
+// remaining values alphabetically, so a board reads predictably.
+function orderedGroups(field: GroupField, present: Set<string>): string[] {
+  const known: Record<GroupField, readonly string[]> = {
+    status: ITEM_STATUSES,
+    urgency: [...URGENCIES, "none"],
+    due: DUE_ORDER,
+    kind: [],
+    type: [],
+  };
+  const head = known[field].filter((v) => present.has(v));
+  const rest = [...present].filter((v) => !head.includes(v)).sort();
+  return [...head, ...rest];
+}
+
+// --- layouts --------------------------------------------------------------
+
+function ListLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+  return (
+    <ul className="mt-4">
+      {items.map((item) => (
+        <ItemRow key={item.id} item={item} prop={view.dateProperty} />
+      ))}
+    </ul>
+  );
+}
+
+function TableLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
+            <th className="py-1.5 pr-3 font-medium">Title</th>
+            <th className="py-1.5 pr-3 font-medium">Type</th>
+            <th className="py-1.5 pr-3 font-medium">Status</th>
+            <th className="py-1.5 pr-3 font-medium">Urgency</th>
+            <th className="py-1.5 pr-3 font-medium">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr
+              key={item.id}
+              className="border-b border-neutral-900 hover:bg-neutral-800/40"
+            >
+              <td className="max-w-xs truncate py-1.5 pr-3">
+                <Link
+                  href={`/items/${item.id}`}
+                  className={`hover:text-neutral-100 ${
+                    item.title ? "text-neutral-200" : "text-neutral-500"
+                  } ${item.status === "done" ? "line-through opacity-60" : ""}`}
+                >
+                  {item.title || "Untitled"}
+                </Link>
+              </td>
+              <td className="py-1.5 pr-3 text-neutral-500">{item.type}</td>
+              <td className="py-1.5 pr-3 text-neutral-400">{item.status}</td>
+              <td className="py-1.5 pr-3 text-neutral-400">
+                {item.urgency ?? ""}
+              </td>
+              <td className="py-1.5 pr-3 text-neutral-500">
+                {rowDate(item, view.dateProperty)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BoardLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+  const field: GroupField = view.grouping?.field ?? "status";
+  const present = new Set(items.map((i) => groupValue(i, field)));
+  const columns = orderedGroups(field, present);
+  return (
+    <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+      {columns.map((col) => {
+        const colItems = items.filter((i) => groupValue(i, field) === col);
+        return (
+          <div
+            key={col}
+            className="flex w-60 shrink-0 flex-col rounded-lg border border-neutral-800 bg-neutral-900/40"
+          >
+            <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+              <span className="truncate">{col}</span>
+              <span className="text-neutral-600">{colItems.length}</span>
+            </div>
+            <ul className="flex flex-col gap-1.5 p-2">
+              {colItems.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={`/items/${item.id}`}
+                    className={`block rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm hover:border-neutral-700 ${
+                      item.title ? "text-neutral-200" : "text-neutral-500"
+                    } ${item.status === "done" ? "line-through opacity-60" : ""}`}
+                  >
+                    <span className="block truncate">
+                      {item.title || "Untitled"}
+                    </span>
+                    {rowDate(item, view.dateProperty) && (
+                      <span className="mt-0.5 block text-xs text-neutral-600">
+                        {rowDate(item, view.dateProperty)}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AgendaLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+  const prop = view.dateProperty;
+  const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
+  // Bucket by day; sort buckets chronologically; undated last.
+  const buckets = new Map<string, { label: string; items: ViewItem[] }>();
+  const undated: ViewItem[] = [];
+  for (const item of items) {
+    const d = dateOf(item, prop);
+    if (!d) {
+      undated.push(item);
+      continue;
+    }
+    const key = dayKey(d, prop);
+    if (!buckets.has(key)) buckets.set(key, { label: longFmt.format(d), items: [] });
+    buckets.get(key)!.items.push(item);
+  }
+  const days = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return (
+    <div className="mt-4 flex flex-col gap-5">
+      {days.map(([key, { label, items: dayItems }]) => (
+        <section key={key}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {label}
+          </h3>
+          <ul className="mt-1">
+            {dayItems.map((item) => (
+              <ItemRow key={item.id} item={item} prop={prop} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {undated.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+            No date
+          </h3>
+          <ul className="mt-1">
+            {undated.map((item) => (
+              <ItemRow key={item.id} item={item} prop={prop} />
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function CalendarLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+  const prop = view.dateProperty;
+  // The month containing "now" in the app's timezone.
+  const parts = tzKey.format(new Date()).split("-"); // YYYY-MM-DD
+  const year = Number(parts[0]);
+  const month = Number(parts[1]); // 1-12
+  const monthLabel = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: APP_TIMEZONE,
+  }).format(new Date());
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const todayKey = tzKey.format(new Date());
+
+  // Bucket items by day key; count any that fall outside the shown month.
+  const byDay = new Map<string, ViewItem[]>();
+  let outside = 0;
+  for (const item of items) {
+    const d = dateOf(item, prop);
+    if (!d) {
+      outside += 1;
+      continue;
+    }
+    const key = dayKey(d, prop);
+    if (!key.startsWith(`${parts[0]}-${parts[1]}`)) {
+      outside += 1;
+      continue;
+    }
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key)!.push(item);
+  }
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const cells: ({ day: number; key: string } | null)[] = [];
+  for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d += 1) {
+    cells.push({ day: d, key: `${parts[0]}-${parts[1]}-${pad(d)}` });
+  }
+
+  return (
+    <div className="mt-4">
+      <p className="text-sm font-medium text-neutral-300">{monthLabel}</p>
+      <div className="mt-2 grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-neutral-800 bg-neutral-800 text-xs">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+          <div
+            key={d}
+            className="bg-neutral-900 px-2 py-1 text-center font-medium uppercase tracking-wide text-neutral-500"
+          >
+            {d}
+          </div>
+        ))}
+        {cells.map((cell, i) => {
+          if (!cell) return <div key={`pad-${i}`} className="min-h-20 bg-neutral-950" />;
+          const dayItems = byDay.get(cell.key) ?? [];
+          const isToday = cell.key === todayKey;
+          return (
+            <div key={cell.key} className="min-h-20 bg-neutral-900 p-1">
+              <div
+                className={`mb-1 text-right text-[11px] ${
+                  isToday ? "font-bold text-neutral-100" : "text-neutral-600"
+                }`}
+              >
+                {cell.day}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {dayItems.slice(0, 4).map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/items/${item.id}`}
+                    title={item.title || "Untitled"}
+                    className={`block truncate rounded bg-neutral-800 px-1 py-0.5 text-[11px] hover:bg-neutral-700 ${
+                      item.status === "done"
+                        ? "text-neutral-500 line-through"
+                        : "text-neutral-300"
+                    }`}
+                  >
+                    {item.title || "Untitled"}
+                  </Link>
+                ))}
+                {dayItems.length > 4 && (
+                  <span className="px-1 text-[11px] text-neutral-600">
+                    +{dayItems.length - 4} more
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {outside > 0 && (
+        <p className="mt-2 text-xs text-neutral-600">
+          {outside} item{outside === 1 ? "" : "s"} outside {monthLabel} (no
+          date or another month).
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function ViewRenderer({
+  view,
+  items,
+}: {
+  view: ViewDefinition;
+  items: ViewItem[];
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="mt-6 px-2 text-sm text-neutral-600">
+        No items match this view.
+      </p>
+    );
+  }
+  switch (view.layout) {
+    case "table":
+      return <TableLayout items={items} view={view} />;
+    case "board":
+      return <BoardLayout items={items} view={view} />;
+    case "calendar":
+      return <CalendarLayout items={items} view={view} />;
+    case "agenda":
+      return <AgendaLayout items={items} view={view} />;
+    default:
+      return <ListLayout items={items} view={view} />;
+  }
+}

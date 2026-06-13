@@ -2,6 +2,21 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ⟢ Session summary — view builder + embedded views + dashboard (2026-06-13, session 2)
+
+**Shipped and pushed to `main` (deploys are fine during build-out now — see below):**
+- **Slices 21–26 committed + pushed** (the Phase 2 integrations backbone from session 1, reviewed by Brandon). Production deploy ran.
+- **Slice 27 — View builder (ADR-029):** stored View Definitions over the existing `ViewFilter`/`ViewSort` jsonb + a new `ViewGrouping`; one `ViewRenderer` dispatches list/table/board/calendar/agenda; owner-scoped CRUD, system views immutable; `/views` index + builder + per-view page; Views nav slot. **25/25** in `verify-views.mts`.
+- **Slice 28 — Embedded query views (ADR-030):** interactive panel on entity canvases over a shared `GET /api/items/query` — editable filter, optimistic check-off, add-creates-and-relates-to-host, remove = un-relate (item survives). **7/7** in `verify-embedded-views.mts`.
+- **Slice 29 — Widget dashboard (ADR-031):** nullable `views.dashboard_order` is the whole config (migration **0005**, applied to Neon); native HTML5 drag-reorder (no DnD lib); `countViewItems` badges; equal-height toggle in localStorage; `/dashboard` distinct from Today; pin/unpin from the view page. **9/9** in `verify-dashboard.mts`.
+- **Tool language standardized + Saturday rule scoped (ADR-028):** "Pulpit Ready" → **"Save Offline"** (component renamed, copy + comments swept); CLAUDE.md gained a "standardized UI language" rule and the no-Saturday-deploy rule now applies **only once Ledgr is in real Sunday use**, not during build-out (per Brandon).
+
+`tsc --noEmit` clean; full `next build` clean (all new routes compile, no RSC/client-boundary issues); all three new verify scripts green; `verify-print` still 23/23 after the rename. **Pending:** the in-browser *visual/interaction* check for the new UI (board layout, native drag-drop) — logic + types + build are proven, mirroring slice 24's posture; eyeball on the deploy.
+
+**Next session — Phase 2 tail:** push notifications → public share links → provider-interface confirmation (auth + scheduler), then circle back to the deferred matcher UIs once §1c lands. The MS/Todoist integrations remain code-complete and Brandon-step-blocked (unchanged).
+
+---
+
 ## ⟢ Session summary — Phase 2 integrations backbone (2026-06-13)
 
 **(1) Completed & verified this session — six slices (21–26), all green against live Neon (and live Graph where reachable):**
@@ -32,16 +47,20 @@ The live, near-term work queue. Start here each session. When you finish a slice
 3. **Todoist token + webhook — runbook §1d (unblocks Todoist sync):** set `TODOIST_TOKEN` (Settings → Integrations → Developer) and `TODOIST_CLIENT_SECRET` (a Todoist app's client secret) in Vercel + `.env.local`; register the webhook `https://ledgr-teal.vercel.app/api/todoist/webhook` for `item:completed`/`item:updated`/`item:added`. Verify per §1d step 5.
 
 **Phase 1 "live with it" checks (no rush, carried over):**
-- Pulpit Ready airplane-mode test on the installed phone PWA (+ the Print/PDF view); PWA install + share-target on Android; try both desktop navs and pick one (closes Q9, loser gets deleted); live with `q`/`Ctrl+K`; (optional) attach an R2 custom domain and update `R2_PUBLIC_BASE_URL` before many images exist.
+- Save Offline (was "Pulpit Ready") airplane-mode test on the installed phone PWA (+ the Print/PDF view); PWA install + share-target on Android; try both desktop navs and pick one (closes Q9, loser gets deleted); live with `q`/`Ctrl+K`; (optional) attach an R2 custom domain and update `R2_PUBLIC_BASE_URL` before many images exist.
 
 ---
 
 ## Next up (in order)
 
-### 27. View builder (PRD §4.2 / §4.9) — no external deps, fully doable
-- Custom views as stored View Definitions (the `views` table already exists; `ViewFilter`/`ViewSort` in `src/lib/views.ts` are the seed shapes). Layouts: list / table / board / calendar / agenda.
-- A Build-surface-ish UI to create/edit a view (pick type/status/entity/date filters, sort, grouping, layout) and a renderer per layout. Seed the existing hardcoded list pages (`/tasks` etc.) as `system` views, or let them stay and add user views alongside.
-- This is the foundation the embedded query views (28) and widget dashboard (29) both build on, so design the View Definition + renderer cleanly.
+### 30. Push notifications (PRD §4.11) — morning agenda, meeting-prep-ready
+- Web Push (VAPID) — needs a keypair (Brandon-step-ish: generate + store `VAPID_PUBLIC/PRIVATE` env) and a subscriptions store. Triggered by a daily/sub-daily cron over the same authenticated endpoints. First external-dep slice of the tail.
+
+### 31. Public share links — read-only, print-friendly, PDF download
+- Reuses the Save Offline print render (`/items/[id]/print`) behind an unguessable token; owner-scoped issuance, revocable. No Clerk on the public path.
+
+### 32. Provider-interface confirmation (auth + scheduler)
+- Confirm the Phase-4 seams hold: auth behind the interface (the dev stand-in already proves the shape), scheduler = GitHub Actions hitting the same endpoints a local cron would. Mostly an audit + any gaps.
 
 ### (follow-up) Matchers: setup wizard + learn-by-confirmation UI
 - The matcher **engine + config + suggested/confirmed states are done** (slice 23). Remaining: (a) **setup wizard** — sample recent/upcoming events and let Brandon pick matches → write first rules (needs live calendar, so **§1c-blocked**); (b) **learn-by-confirmation** — when Brandon confirms a suggested match on a meeting (slice-15 confirm path), offer to save a standing rule (POST `/api/matchers`); the data backbone (`properties.match.matcherIds`, the matchers API) is already in place. Pick these up once §1c lands and the meeting canvas shows matches.
@@ -49,7 +68,7 @@ The live, near-term work queue. Start here each session. When you finish a slice
 ---
 
 ## Then (rest of Phase 2, rough order)
-Embedded query views → widget dashboard → push notifications → public share links → provider-interface confirmation. See `roadmap.md`.
+Push notifications → public share links → provider-interface confirmation, then the deferred matcher UIs once §1c lands. See `roadmap.md`.
 
 ---
 
@@ -65,6 +84,10 @@ Embedded query views → widget dashboard → push notifications → public shar
 ---
 
 ## Recently done
+- **Slice 29, widget dashboard (2026-06-13, ADR-031):** nullable `views.dashboard_order` is the entire config (null = not a widget, number = position; migration **0005**, applied to Neon). `/dashboard` renders pinned views as cards in a responsive grid (`DashboardGrid`, client), native HTML5 drag-reorder persisted via `PUT /api/dashboard`, `POST /api/dashboard` pins/unpins. Badge = `countViewItems` (shares `viewWhere` with the list, can't disagree); 8-item preview + "+N more". Equal-height toggle in localStorage. Pin/unpin button on the view page; distinct from the Phase-1 Today home. 9/9 in `verify-dashboard.mts`. **In-browser drag check pending.**
+- **Slice 28, embedded query views (2026-06-13, ADR-030):** `EmbeddedView` (client) on entity canvases — runs `GET /api/items/query` (new shared filter-runner) scoped to items related to the host. Editable type/status/due filter refetches in place; task check-off PATCHes optimistically and drops the row if it leaves an active status filter; "+ Add" creates an item of the filtered type and relates it to the host (create-inherits); "remove" un-relates the edge, never deletes. Kept alongside `RelatedPanel`. 7/7 in `verify-embedded-views.mts`. **In-browser interaction check pending.**
+- **Slice 27, view builder (2026-06-13, ADR-029):** stored View Definitions in `src/lib/views.ts` — `filter`/`sort`/`grouping` jsonb are the existing `ViewFilter`/`ViewSort` + a new `ViewGrouping`; `layout`/`date_property` columns. One `ViewRenderer` (server) dispatches list/table/board/calendar/agenda (board groups by field with enums ordered first; calendar = current-month grid; agenda = day-bucketed). Owner-scoped CRUD store (`parseViewInput` drops unknown keys, system views immutable), `/api/views(+/[id])`, `/views` index + `new` + `[id]` + `[id]/edit`, `ViewBuilder` client form, Views nav slot. 25/25 in `verify-views.mts`. **In-browser visual check pending.**
+- **Tool language + Saturday rule (2026-06-13, ADR-028):** "Pulpit Ready" → **"Save Offline"** (component/file renamed, button + status copy + comments across print/sw/markdown/export). CLAUDE.md gained a standardized-UI-language rule; the no-Saturday-deploy rule now applies only once Ledgr is in real Sunday use (Brandon's call). 23/23 `verify-print` still green; `next build` clean.
 - **Slice 26, email-in (2026-06-13, ADR-027):** `src/lib/email/` engine behind a `MailSource` interface — `GraphMailSource` over `messages/delta` (folder resolve + auto-create Imported subfolder + mark-read/move), `html.ts` HTML→text-paragraph BlockNote (no parser dep), `task:`→task/else note, `inbox:true`, `properties.email.messageId` dedup, delta token in `job_state` (advances only on clean run). Attachments via a new **server-side `storage.putObject`** (added to the StorageProvider interface + R2). 30-min cron + `POST /api/email/import` + `/health` canary. 20/20 in `verify-email-in.mts` (incl. a real R2 putObject roundtrip). **Brandon-steps: `Mail.ReadWrite` on the registration (§1c, now folded in) + create the `Ledgr Import` Outlook folder — Brandon-step 0 covers §1c.**
 - **Slice 25, Todoist sync (2026-06-13, ADR-026):** `src/lib/todoist/` engine behind a `TodoistClient` interface — push dated open tasks (priority-mapped, link back), three-way due reconcile (`properties.todoist.syncedDue`; Ledgr-canonical content, Ledgr wins on conflict, Todoist-only date syncs back), completion both ways, lost-due delete+unlink, inbox pull-in (offline capture → `inbox:true`). HMAC-verified `POST /api/todoist/webhook` (Clerk-public) triggers an idempotent sync; `GET /api/machine/todoist-sync` 3h polling backstop; `POST /api/todoist/sync` "sync now"; `/health` canary. 14/14 in `verify-todoist-sync.mts` (stub). **Brandon-steps: `TODOIST_TOKEN`, `TODOIST_CLIENT_SECRET`, webhook registration, `LEDGR_CRON_TOKEN` (runbook §1d) — see Brandon-step 9.** Recurrence-occurrence logging (Sync API) deferred.
 - **Slice 24, meeting prep templates (2026-06-13, ADR-025):** `src/lib/meetings/prep.ts` `getMeetingPrep` — a live canvas panel (not body-seeded) assembling the related person's open tasks + last 3 meetings + default agenda from confirmed edges (reuses `viewItemsQuery`); `promote.ts` `promoteActionItem` + `POST /api/items/[id]/promote-task` turns an action item into a task related to the meeting and its people (so it flows into next prep). `MeetingPrep`/`PromoteTask` components wired into `ItemCanvas` for meetings. 10/10 in `verify-meeting-prep.mts`. **UI panel built; in-browser visual check pending (needs a meeting with a related person).**

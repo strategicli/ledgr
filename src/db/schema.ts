@@ -68,6 +68,11 @@ export const views = pgTable("views", {
   grouping: jsonb("grouping"),
   layout: viewLayout("layout").notNull().default("list"),
   dateProperty: text("date_property"),
+  // Dashboard placement (slice 29, PRD §4.11): null means the view isn't a
+  // dashboard widget; a number is its position in the widget grid. A nullable
+  // ordering column keeps the dashboard config owner-scoped on the view it
+  // shows, with no separate table for one dashboard per user.
+  dashboardOrder: integer("dashboard_order"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
