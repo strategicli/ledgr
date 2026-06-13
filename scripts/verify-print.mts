@@ -1,180 +1,71 @@
-// Verification for the Save Offline print renderer (slice 18): bodyToHtml
-// is a pure function, so this needs no DB. Run: npx tsx scripts/verify-print.mts
-import { bodyToHtml, escapeHtml } from "../src/lib/print-html";
+// Verification for the Save Offline / share print render (slice 18, reworked
+// for markdown bodies in M3/ADR-040): markdownToHtml turns a canonical markdown
+// body into the document body markup, and renderPrintDocument wraps it in the
+// self-contained shell. Pure functions, no DB, no browser.
+//   npx tsx scripts/verify-print.mts
+import { markdownToHtml } from "../src/lib/markdown-render";
+import { renderPrintDocument, escapeHtml } from "../src/lib/print-html";
+import { makeMarkdownBody } from "../src/lib/body";
+import { mentionToMarkdown } from "../src/lib/editor/mention-markdown";
+import { textColorTag, highlightTag } from "../src/lib/colors";
 
-let passed = 0;
-let failed = 0;
-function check(name: string, cond: boolean, got?: string) {
-  if (cond) {
-    passed += 1;
-    console.log(`  ok  ${name}`);
-  } else {
-    failed += 1;
-    console.error(`FAIL  ${name}${got !== undefined ? `\n      got: ${got}` : ""}`);
-  }
-}
-
-const p = (text: string, props = {}) => ({
-  type: "paragraph",
-  props,
-  content: [{ type: "text", text, styles: {} }],
-});
-
-// --- escaping ---
-check(
-  "escapeHtml escapes the four",
-  escapeHtml(`<a b="c">&`) === "&lt;a b=&quot;c&quot;&gt;&amp;"
-);
-{
-  const out = bodyToHtml([p(`<script>alert("x")</script>`)]);
-  check("body text is escaped", !out.includes("<script>") && out.includes("&lt;script&gt;"), out);
+let failures = 0;
+function check(name: string, ok: boolean, detail = "") {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+  if (!ok) failures += 1;
 }
 
-// --- blocks ---
-{
-  const out = bodyToHtml([
-    { type: "heading", props: { level: 1 }, content: [{ type: "text", text: "Sermon", styles: {} }] },
-  ]);
-  check("heading level 1 renders as h2 (h1 is the title)", out === "<h2>Sermon</h2>", out);
-}
-{
-  const out = bodyToHtml([
-    { type: "heading", props: { level: 99 }, content: [{ type: "text", text: "x", styles: {} }] },
-  ]);
-  check("heading level clamps to h6", out === "<h6>x</h6>", out);
-}
-{
-  const out = bodyToHtml([
-    { type: "quote", props: {}, content: [{ type: "text", text: "Selah", styles: {} }] },
-  ]);
-  check("quote", out === "<blockquote>Selah</blockquote>", out);
-}
-{
-  const out = bodyToHtml([
-    { type: "codeBlock", props: { language: "js" }, content: [{ type: "text", text: "a < b && c", styles: {} }] },
-  ]);
-  check("code block escapes raw", out === "<pre><code>a &lt; b &amp;&amp; c</code></pre>", out);
-}
-check("divider", bodyToHtml([{ type: "divider", props: {}, content: [] }]) === "<hr>");
+// --- headings shift under the document's <h1> ------------------------------
+check("h1 in body renders <h2> (title owns <h1>)", markdownToHtml("# Point").includes("<h2>Point</h2>"));
+check("h2 renders <h3>", markdownToHtml("## Sub").includes("<h3>Sub</h3>"));
+check("h6 clamps at <h6>, no overflow to <h7>", markdownToHtml("###### Deep").includes("<h6>Deep</h6>"));
 
-// --- lists group ---
-{
-  const li = (text: string) => ({
-    type: "bulletListItem",
-    props: {},
-    content: [{ type: "text", text, styles: {} }],
-  });
-  const out = bodyToHtml([li("a"), li("b"), p("after")]);
-  check(
-    "consecutive bullets share one ul, paragraph closes it",
-    out === "<ul><li>a</li><li>b</li></ul><p>after</p>",
-    out
-  );
-}
-{
-  const out = bodyToHtml([
-    { type: "numberedListItem", props: {}, content: [{ type: "text", text: "one", styles: {} }] },
-    { type: "bulletListItem", props: {}, content: [{ type: "text", text: "dot", styles: {} }] },
-  ]);
-  check("ol closes before ul", out === "<ol><li>one</li></ol><ul><li>dot</li></ul>", out);
-}
-{
-  const out = bodyToHtml([
-    { type: "checkListItem", props: { checked: true }, content: [{ type: "text", text: "done", styles: {} }] },
-    { type: "checkListItem", props: { checked: false }, content: [{ type: "text", text: "todo", styles: {} }] },
-  ]);
-  check(
-    "checklist glyphs",
-    out.includes("☑</span> done") && out.includes("☐</span> todo"),
-    out
-  );
-}
-{
-  // Nested children render inside the parent li.
-  const out = bodyToHtml([
-    {
-      type: "bulletListItem",
-      props: {},
-      content: [{ type: "text", text: "parent", styles: {} }],
-      children: [
-        { type: "bulletListItem", props: {}, content: [{ type: "text", text: "child", styles: {} }] },
-      ],
-    },
-  ]);
-  check("nested list inside li", out === "<ul><li>parent<ul><li>child</li></ul></li></ul>", out);
-}
+// --- inline marks ----------------------------------------------------------
+check("bold", markdownToHtml("**b**").includes("<strong>b</strong>"));
+check("italic", markdownToHtml("*i*").includes("<em>i</em>"));
+check("strikethrough", markdownToHtml("~~x~~").includes("<s>x</s>"));
 
-// --- inline styles ---
-{
-  const out = bodyToHtml([
-    {
-      type: "paragraph",
-      props: {},
-      content: [
-        { type: "text", text: "b", styles: { bold: true } },
-        { type: "text", text: "i", styles: { italic: true } },
-        { type: "text", text: "c", styles: { code: true } },
-        { type: "text", text: "red", styles: { textColor: "red" } },
-        { type: "text", text: "hl", styles: { backgroundColor: "yellow" } },
-      ],
-    },
-  ]);
-  check("bold/italic/code", out.includes("<strong>b</strong>") && out.includes("<em>i</em>") && out.includes("<code>c</code>"), out);
-  check("text color inline span", out.includes(`<span style="color:#e03e3e">red</span>`), out);
-  check("highlight mark class", out.includes(`<mark class="hl-yellow">hl</mark>`), out);
-}
-{
-  const out = bodyToHtml([
-    {
-      type: "paragraph",
-      props: {},
-      content: [
-        { type: "link", href: "https://x.test/?a=1&b=2", content: [{ type: "text", text: "go", styles: {} }] },
-        { type: "mention", props: { title: "Roger Smith", itemId: "abc" } },
-      ],
-    },
-  ]);
-  check("link href escaped", out.includes(`href="https://x.test/?a=1&amp;b=2"`), out);
-  check("mention renders styled, not a link", out.includes(`<span class="mention">@Roger Smith</span>`) && !out.includes("ledgr://"), out);
-}
+// --- mention link renders as a flat span, never an anchor ------------------
+const id = "9f8c2b14-0000-4abc-8def-112233445566";
+const mHtml = markdownToHtml(`Prep with ${mentionToMarkdown(id, "Roger 1:1")}.`);
+check('mention → <span class="mention">', mHtml.includes('<span class="mention">@Roger 1:1</span>'), mHtml);
+check("mention drops the ledgr:// href (no anchor)", !mHtml.includes("ledgr://") && !mHtml.includes("<a "), mHtml);
 
-// --- image / table / unknown ---
-{
-  const out = bodyToHtml([
-    { type: "image", props: { url: "https://r2.test/a.png", name: "a", caption: "cap" }, content: [] },
-  ]);
-  check("image with caption", out.includes(`<img src="https://r2.test/a.png"`) && out.includes("<figcaption>cap</figcaption>"), out);
-}
-{
-  const out = bodyToHtml([
-    {
-      type: "table",
-      props: {},
-      content: {
-        rows: [
-          { cells: [{ type: "tableCell", content: [{ type: "text", text: "h1", styles: {} }] }] },
-          { cells: [{ type: "tableCell", content: [{ type: "text", text: "v|1", styles: {} }] }] },
-        ],
-      },
-    },
-  ]);
-  check("table renders rows", out === "<table><tr><td>h1</td></tr><tr><td>v|1</td></tr></table>", out);
-}
-{
-  const out = bodyToHtml([
-    { type: "futureQueryView", props: {}, content: [{ type: "text", text: "fallback text", styles: {} }] },
-  ]);
-  check("unknown block degrades to text", out === "<p>fallback text</p>", out);
-}
-{
-  const out = bodyToHtml([
-    { type: "paragraph", props: { backgroundColor: "blue", textColor: "red" }, content: [{ type: "text", text: "x", styles: {} }] },
-  ]);
-  check("block colors apply", out.includes("color:#e03e3e") && out.includes("background-color:#ddebf1"), out);
-}
-check("null body", bodyToHtml(null) === "");
-check("empty paragraph renders nothing", bodyToHtml([p("")]) === "");
-check("pageBreak", bodyToHtml([{ type: "pageBreak", props: {}, content: [] }]) === `<div class="page-break"></div>`);
+// --- color / highlight inline HTML passes through --------------------------
+const colorMd = `${textColorTag("red").open}covenant${textColorTag("red").close}`;
+check("text color span survives", markdownToHtml(colorMd).includes(textColorTag("red").open));
+const hlMd = `${highlightTag("yellow").open}grace${highlightTag("yellow").close}`;
+check("highlight mark survives", markdownToHtml(hlMd).includes('<mark class="hl-yellow"'));
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+// --- ordinary links still anchor -------------------------------------------
+const linkHtml = markdownToHtml("[site](https://example.com)");
+check("https link → anchor", linkHtml.includes('<a href="https://example.com">site</a>'), linkHtml);
+
+// --- block structures ------------------------------------------------------
+const listHtml = markdownToHtml("- a\n- b");
+check("bullet list", listHtml.includes("<ul>") && listHtml.includes("<li>a</li>") && listHtml.includes("<li>b</li>"));
+const olHtml = markdownToHtml("1. one\n2. two");
+check("numbered list", olHtml.includes("<ol>") && olHtml.includes("<li>one</li>"));
+check("blockquote", markdownToHtml("> q").includes("<blockquote>"));
+check("code block", markdownToHtml("```\ncode\n```").includes("<pre><code>code\n</code></pre>"));
+check("divider", markdownToHtml("---").includes("<hr>"));
+const tableHtml = markdownToHtml("| A | B |\n| --- | --- |\n| 1 | 2 |");
+check("table renders th + td", tableHtml.includes("<table>") && tableHtml.includes("<th>A</th>") && tableHtml.includes("<td>1</td>"), tableHtml);
+
+// --- empty ------------------------------------------------------------------
+check("empty markdown → empty body", markdownToHtml("") === "");
+
+// --- escapeHtml + the document shell ---------------------------------------
+check("escapeHtml escapes the dangerous four", escapeHtml(`<a&"`) === "&lt;a&amp;&quot;");
+const doc = renderPrintDocument("Sermon <Notes>", makeMarkdownBody("# Intro\n\nGrace."));
+check("shell escapes the title", doc.includes("<h1>Sermon &lt;Notes&gt;</h1>"));
+check("shell renders the body markdown", doc.includes("<h2>Intro</h2>") && doc.includes("<p>Grace.</p>"));
+check("shell is a complete, self-contained page", doc.startsWith("<!doctype html>") && doc.includes("<style>") && doc.includes("window.print()"));
+check("shell hl-* CSS is present for highlights", doc.includes("mark.hl-yellow{"));
+const shared = renderPrintDocument("Doc", makeMarkdownBody("Body."), { footerHtml: "Shared from Ledgr · read-only" });
+check("footer appears when given", shared.includes('<div class="doc-footer">Shared from Ledgr · read-only</div>'));
+check("no footer element by default", !doc.includes('<div class="doc-footer">'));
+check("null/empty body renders the title with no body markup", renderPrintDocument("T", null).includes("<h1>T</h1>"));
+
+console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
+process.exit(failures === 0 ? 0 : 1);

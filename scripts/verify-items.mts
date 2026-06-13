@@ -28,6 +28,7 @@ const {
   softDeleteItem,
   updateItem,
 } = await import("../src/lib/items");
+const { makeMarkdownBody } = await import("../src/lib/body");
 const { eq, inArray, sql } = await import("drizzle-orm");
 
 
@@ -66,12 +67,9 @@ const ownerId = owners[0].id;
 const created: string[] = [];
 let tempUserId: string | null = null;
 
-const bodyV1 = [
-  { type: "paragraph", content: [{ type: "text", text: "hello slice four", styles: {} }] },
-];
-const bodyV2 = [
-  { type: "paragraph", content: [{ type: "text", text: "edited body", styles: {} }] },
-];
+// Canonical markdown bodies (ADR-040); body_text/FTS derive from these.
+const bodyV1 = makeMarkdownBody("hello slice four");
+const bodyV2 = makeMarkdownBody("edited body");
 
 try {
   // 1. The list query's SQL: owner-scoped, no body columns.
@@ -86,7 +84,7 @@ try {
     body: bodyV1,
   });
   created.push(a.id);
-  check("create returns body", Array.isArray(a.body));
+  check("create returns body", canon(a.body) === canon(bodyV1));
   const revs1 = await listRevisions(ownerId, a.id);
   check("create snapshots one revision", revs1.length === 1);
 

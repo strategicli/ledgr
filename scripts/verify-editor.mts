@@ -1,9 +1,8 @@
-// Slice 5 verification (next_steps.md): the markdown serializer (pure),
-// mention → relations sync and attachment presign flow (against live Neon).
-// Run with:  npx tsx scripts/verify-editor.mts
-// Also writes sample-export.md next to this script for the manual Obsidian
-// reading-view check (PRD §4.1's acceptance test).
-import { readFileSync, writeFileSync } from "node:fs";
+// Slice 5 verification (next_steps.md), markdown-era (ADR-040): the @-mention
+// → relations sync over markdown bodies and the attachment presign flow,
+// against the live Neon DB, then cleans up. Run with:
+//   npx tsx scripts/verify-editor.mts
+import { readFileSync } from "node:fs";
 
 // Minimal .env.local loader; strips BOM and CRLF (PowerShell-written files).
 for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
@@ -13,8 +12,8 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
   }
 }
 
-const { bodyToMarkdown } = await import("../src/lib/markdown");
-const { BLOCKNOTE_COLORS } = await import("../src/lib/colors");
+const { makeMarkdownBody } = await import("../src/lib/body");
+const { mentionToMarkdown } = await import("../src/lib/editor/mention-markdown");
 const { getDb } = await import("../src/db");
 const { attachments, items, relations, users } = await import(
   "../src/db/schema"
@@ -43,148 +42,7 @@ async function expectError(
   }
 }
 
-// ---------- Part 1: serializer (pure, no DB) ----------
-
-const t = (text: string, styles: Record<string, unknown> = {}) => ({
-  type: "text",
-  text,
-  styles,
-});
-const p = (content: unknown[], props: Record<string, unknown> = {}) => ({
-  type: "paragraph",
-  props,
-  content,
-  children: [],
-});
-
-const sermonDoc = [
-  { type: "heading", props: { level: 1 }, content: [t("The Good Shepherd")], children: [] },
-  p([
-    t("Plain, "),
-    t("bold", { bold: true }),
-    t(", "),
-    t("italic", { italic: true }),
-    t(", "),
-    t("red text", { textColor: "red" }),
-    t(", and "),
-    t("yellow highlight", { backgroundColor: "yellow" }),
-    t("."),
-  ]),
-  p([t("Bold blue highlight", { bold: true, backgroundColor: "blue" })]),
-  { type: "heading", props: { level: 2 }, content: [t("Outline")], children: [] },
-  {
-    type: "numberedListItem",
-    props: {},
-    content: [t("First point")],
-    children: [
-      { type: "bulletListItem", props: {}, content: [t("Sub point")], children: [] },
-    ],
-  },
-  { type: "numberedListItem", props: {}, content: [t("Second point")], children: [] },
-  { type: "checkListItem", props: { checked: true }, content: [t("Done thing")], children: [] },
-  { type: "checkListItem", props: { checked: false }, content: [t("Open thing")], children: [] },
-  p([t("A paragraph directly after the list.")]),
-  { type: "quote", props: {}, content: [t("I am the good shepherd.")], children: [] },
-  { type: "divider", props: {}, content: undefined, children: [] },
-  {
-    type: "codeBlock",
-    props: { language: "text" },
-    content: [t("John 10:11 *not emphasis*")],
-    children: [],
-  },
-  p([
-    t("See "),
-    {
-      type: "mention",
-      props: { itemId: "00000000-0000-0000-0000-000000000001", title: "Roger" },
-    },
-    t(" and "),
-    { type: "link", href: "https://example.com", content: [t("this link")] },
-    t("."),
-  ]),
-  {
-    type: "image",
-    props: { url: "https://cdn.example.com/img.png", name: "img.png", caption: "A caption" },
-    content: undefined,
-    children: [],
-  },
-  {
-    type: "table",
-    props: {},
-    content: {
-      type: "tableContent",
-      rows: [
-        { cells: [{ type: "tableCell", content: [t("Name")] }, { type: "tableCell", content: [t("Role")] }] },
-        { cells: [{ type: "tableCell", content: [t("Roger")] }, { type: "tableCell", content: [t("Elder")] }] },
-      ],
-    },
-    children: [],
-  },
-  p([t("Whole-paragraph green block")], { backgroundColor: "green" }),
-  { type: "futureQueryView", props: {}, content: [t("placeholder text")], children: [] },
-];
-
-const md = bodyToMarkdown(sermonDoc);
-
-check("md: h1", md.includes("# The Good Shepherd"));
-check("md: h2", md.includes("## Outline"));
-check("md: bold", md.includes("**bold**"));
-check("md: italic", md.includes("*italic*"));
-check(
-  "md: text color via mapping table",
-  md.includes(`<span style="color:${BLOCKNOTE_COLORS.red.text}">red text</span>`)
-);
-check(
-  "md: highlight via mapping table",
-  md.includes(
-    `<mark class="hl-yellow" style="background-color:${BLOCKNOTE_COLORS.yellow.background}">yellow highlight</mark>`
-  )
-);
-check(
-  "md: nested bold inside highlight",
-  md.includes(`<mark class="hl-blue" style="background-color:${BLOCKNOTE_COLORS.blue.background}">**Bold blue highlight**</mark>`)
-);
-check("md: numbered sequence", md.includes("1. First point") && md.includes("2. Second point"));
-check("md: nested bullet indented", md.includes("    - Sub point"));
-check("md: checklist", md.includes("- [x] Done thing") && md.includes("- [ ] Open thing"));
-check(
-  "md: blank line closes list before paragraph",
-  md.includes("Open thing\n\nA paragraph directly after the list.")
-);
-check("md: quote", md.includes("> I am the good shepherd."));
-check("md: divider", md.includes("\n---\n"));
-check(
-  "md: code fence keeps raw text",
-  md.includes("```text\nJohn 10:11 *not emphasis*\n```")
-);
-check(
-  "md: mention exports as ledgr:// link",
-  md.includes("[@Roger](ledgr://item/00000000-0000-0000-0000-000000000001)")
-);
-check("md: link", md.includes("[this link](https://example.com)"));
-check(
-  "md: image with caption",
-  md.includes("![img.png](https://cdn.example.com/img.png)") && md.includes("*A caption*")
-);
-check(
-  "md: table",
-  md.includes("| Name | Role |") && md.includes("| --- | --- |") && md.includes("| Roger | Elder |")
-);
-check(
-  "md: block-level background color",
-  md.includes(`<mark class="hl-green" style="background-color:${BLOCKNOTE_COLORS.green.background}">Whole-paragraph green block</mark>`)
-);
-check("md: unknown block degrades to text", md.includes("placeholder text"));
-check("md: empty body is empty string", bodyToMarkdown(null) === "" && bodyToMarkdown([]) === "");
-check(
-  "md: special chars escaped in prose",
-  bodyToMarkdown([p([t("a*b_c<d")])]).includes("a\\*b\\_c\\<d")
-);
-
-writeFileSync("scripts/sample-export.md", md);
-console.log("\nwrote scripts/sample-export.md (open in Obsidian reading view to eyeball)\n");
-
-// ---------- Part 2: mention sync + search (live Neon) ----------
+// ---------- Part 1: mention sync + search (live Neon) ----------
 
 const db = getDb();
 const owner = (await db.select({ id: users.id }).from(users).limit(1))[0];
@@ -198,9 +56,8 @@ async function mk(title: string, body: unknown = null) {
 }
 
 const target = await mk("verify5 target");
-const mentionOf = (id: string) => [
-  p([t("see "), { type: "mention", props: { itemId: id, title: "x" } }]),
-];
+// Bodies are canonical markdown now (ADR-040): a mention is the ledgr:// link.
+const mentionOf = (id: string) => makeMarkdownBody(`see ${mentionToMarkdown(id, "x")}`);
 
 const source = await mk("verify5 source", mentionOf(target.id));
 
@@ -222,7 +79,7 @@ await db.insert(relations).values({
   role: "tagged",
 });
 
-await updateItem(owner.id, source.id, { body: [p([t("no mentions now")])] });
+await updateItem(owner.id, source.id, { body: makeMarkdownBody("no mentions now") });
 check("mention: removing mention removes relation row", (await rels()).length === 0);
 const tagged = await db
   .select({ id: relations.id })
@@ -276,7 +133,7 @@ check(
   qsql.includes("owner_id") && qsql.includes("ilike") && !qsql.includes('"body"')
 );
 
-// ---------- Part 3: attachments (validation + presign shape) ----------
+// ---------- Part 2: attachments (validation + presign shape) ----------
 
 const att = await import("../src/lib/attachments");
 

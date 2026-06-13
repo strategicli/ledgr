@@ -4,6 +4,8 @@ This is the operating manual for building Ledgr with Claude Code. Read it at the
 
 **Ledgr** is a single-user personal life management system (replacing Notion) for Brandon Collins, Executive Pastor at Edgewood Community Church. It stores meetings, tasks, notes, and links as richly formatted items in Postgres, presented through a Next.js PWA with two surfaces (Work for daily use, Build for configuration; PRD §4.10), integrated with Microsoft 365, Todoist, and Claude (via MCP).
 
+> **🚧 Project status: ALPHA / build phase — pre-production (ADR-039, 2026-06-13).** Ledgr is not in real use yet: there is **no production data to protect**. Do not slow down for data-loss, careful-migration, or backward-compatibility concerns — favor the cleanest, most direct path and convert-or-reseed dev data freely. The same flip that ends this phase turns on the "no Saturday deploys" rule (below): when Ledgr goes into real Sunday/daily use, record the flip to **v1.0 production** in `decisions.md`, update this line, and *then* migration caution applies. Until that note exists, assume alpha.
+
 ## Where things live
 
 - **`ledgr-prd.md`**: the full product spec and the source of truth for *intent*. When a behavior question isn't answered here, it's answered there.

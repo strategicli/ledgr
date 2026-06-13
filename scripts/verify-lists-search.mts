@@ -16,6 +16,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 const { getDb } = await import("../src/db");
 const { items, relations, users } = await import("../src/db/schema");
 const { createItem, softDeleteItem } = await import("../src/lib/items");
+const { makeMarkdownBody } = await import("../src/lib/body");
 const { todayBounds } = await import("../src/lib/today");
 const { listEntityOptions, queryViewItems, viewItemsQuery } = await import(
   "../src/lib/views"
@@ -35,13 +36,10 @@ const ownerId = owners[0].id;
 const created: string[] = [];
 let tempUserId: string | null = null;
 
+// Bodies are canonical markdown now (ADR-040); a one-paragraph body is just
+// the text. body_text (and thus FTS) is derived from this on save.
 function para(text: string) {
-  return [
-    {
-      type: "paragraph",
-      content: [{ type: "text", text, styles: {} }],
-    },
-  ];
+  return makeMarkdownBody(text);
 }
 
 try {

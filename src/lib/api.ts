@@ -3,6 +3,7 @@
 // validation lib isn't worth a dependency), and ItemError -> HTTP mapping.
 import { NextResponse } from "next/server";
 import { captureError } from "@/lib/log";
+import { isItemBody } from "@/lib/body";
 import { resolveOwner, type Owner } from "@/lib/owner";
 import {
   ITEM_STATUSES,
@@ -98,10 +99,11 @@ export function parseItemPayload(
 
   if (input.title !== undefined) out.title = asString(input.title, "title");
   if (input.body !== undefined) {
-    // BlockNote documents are arrays of blocks; that's the only body shape
-    // the editor (slice 5) will ever save.
-    if (input.body !== null && !Array.isArray(input.body)) {
-      bad("body must be a BlockNote block array or null");
+    // The canonical body is { format, text } (markdown by default; ADR-040).
+    // null clears it. Reject anything else, including the pre-cutover block
+    // array, so a stale client can't write a body no renderer understands.
+    if (input.body !== null && !isItemBody(input.body)) {
+      bad("body must be a { format, text } object or null");
     }
     out.body = input.body;
   }

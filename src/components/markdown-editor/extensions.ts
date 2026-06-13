@@ -1,0 +1,187 @@
+// Ledgr's bespoke Tiptap extensions: the two color marks and the mention
+// node, each wired to emit the exact markdown the v0.17 serializer produced
+// (so the M4 migration and existing exports agree on one shape). The hard
+// encode/decode logic lives in pure, node-tested helpers (src/lib/colors.ts,
+// src/lib/editor/mention-markdown.ts); these extensions only bind Tiptap's
+// renderMarkdown / parseHTML hooks to them. Markdown is the source of truth
+// (ADR-037), so every renderMarkdown here is part of the canonical contract.
+"use client";
+
+import { Mark, mergeAttributes } from "@tiptap/core";
+import Mention from "@tiptap/extension-mention";
+import {
+  BLOCKNOTE_COLORS,
+  highlightColorName,
+  highlightTag,
+  isBlockNoteColor,
+  textColorName,
+  textColorTag,
+} from "@/lib/colors";
+import {
+  MENTION_URI_PREFIX,
+  mentionToMarkdown,
+} from "@/lib/editor/mention-markdown";
+
+// Text color → <span style="color:#hex"> (markdown) / styled span (editor DOM).
+export const TextColor = Mark.create({
+  name: "textColor",
+
+  addAttributes() {
+    return {
+      // The palette name (e.g. "red"); the hex is derived so the single
+      // table in colors.ts stays authoritative. Not emitted as its own
+      // attribute — the style carries it.
+      color: { default: null, renderHTML: () => ({}) },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "span[style]",
+        getAttrs: (el) => {
+          const name = textColorName(
+            (el as HTMLElement).getAttribute("style") || ""
+          );
+          return name ? { color: name } : false;
+        },
+      },
+    ];
+  },
+
+  renderHTML({ mark }) {
+    const color = mark.attrs.color;
+    const style = isBlockNoteColor(color)
+      ? `color:${BLOCKNOTE_COLORS[color].text}`
+      : undefined;
+    return ["span", style ? mergeAttributes({ style }) : {}, 0];
+  },
+
+  renderMarkdown(node, helpers) {
+    const content = helpers.renderChildren(node);
+    const color = node.attrs?.color;
+    if (!isBlockNoteColor(color)) return content;
+    const tag = textColorTag(color);
+    return `${tag.open}${content}${tag.close}`;
+  },
+});
+
+// Highlight → <mark class="hl-name" style="background-color:#hex">. The class
+// is the primary parse hook (unambiguous); the style keeps the exact color.
+export const Highlight = Mark.create({
+  name: "highlight",
+
+  addAttributes() {
+    return {
+      color: { default: null, renderHTML: () => ({}) },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "mark",
+        getAttrs: (el) => {
+          const node = el as HTMLElement;
+          const name = highlightColorName(
+            node.getAttribute("class"),
+            node.getAttribute("style")
+          );
+          return name ? { color: name } : {};
+        },
+      },
+    ];
+  },
+
+  renderHTML({ mark }) {
+    const color = mark.attrs.color;
+    if (!isBlockNoteColor(color)) return ["mark", {}, 0];
+    return [
+      "mark",
+      mergeAttributes({
+        class: `hl-${color}`,
+        style: `background-color:${BLOCKNOTE_COLORS[color].background}`,
+      }),
+      0,
+    ];
+  },
+
+  renderMarkdown(node, helpers) {
+    const content = helpers.renderChildren(node);
+    const color = node.attrs?.color;
+    if (!isBlockNoteColor(color)) return `<mark>${content}</mark>`;
+    const tag = highlightTag(color);
+    return `${tag.open}${content}${tag.close}`;
+  },
+});
+
+// The mention node. Reuses @tiptap/extension-mention (id/label attrs + the
+// "@" suggestion machinery) and binds the markdown contract on top:
+//  - out: renderMarkdown → [@Title](ledgr://item/<uuid>)
+//  - in:  a custom inline tokenizer reclaims that exact link as a mention
+//         token before the Link mark can claim it, so the round-trip holds.
+// The suggestion items are supplied where the editor is created.
+export const LedgrMention = Mention.extend({
+  // Render the in-editor chip as a styled span carrying the item id, matching
+  // the v0.17 .ledgr-mention hook.
+  renderHTML({ node }) {
+    return [
+      "span",
+      mergeAttributes({
+        class: "ledgr-mention",
+        "data-item-id": node.attrs.id ?? "",
+      }),
+      `@${node.attrs.label || "untitled"}`,
+    ];
+  },
+
+  renderText({ node }) {
+    return `@${node.attrs.label || "untitled"}`;
+  },
+
+  renderMarkdown(node) {
+    const id = typeof node.attrs?.id === "string" ? node.attrs.id : "";
+    const label =
+      typeof node.attrs?.label === "string" && node.attrs.label
+        ? node.attrs.label
+        : "untitled";
+    return mentionToMarkdown(id, label);
+  },
+
+  // Reclaim [@Title](ledgr://item/<id>) at the inline level. start() points
+  // marked at the next candidate so the tokenizer isn't asked to run on every
+  // character; tokenize() only matches our exact mention-link shape.
+  markdownTokenizer: {
+    name: "mention",
+    level: "inline",
+    start: (src: string) => {
+      const i = src.indexOf("[@");
+      return i < 0 ? src.length : i;
+    },
+    tokenize: (src: string) => {
+      const m = /^\[@((?:\\.|[^\]\\])+)\]\(ledgr:\/\/item\/([^)\s]+)\)/.exec(
+        src
+      );
+      if (!m) return undefined;
+      const label = m[1].replace(/\\([\\[\]])/g, "$1");
+      return {
+        type: "mention",
+        raw: m[0],
+        // carried through to parseMarkdown below
+        mentionLabel: label,
+        mentionId: m[2],
+      };
+    },
+  },
+
+  parseMarkdown(token, helpers) {
+    return helpers.createNode("mention", {
+      id: token.mentionId,
+      label: token.mentionLabel,
+    });
+  },
+});
+
+// The "ledgr://item/" prefix is the load-bearing piece of the round-trip;
+// re-exported so the editor and any consumer reference one constant.
+export const MENTION_PREFIX = MENTION_URI_PREFIX;

@@ -20,6 +20,8 @@ const { ItemError, createItem, softDeleteItem, updateItem } = await import(
 );
 const { confirmRelations, listRelatedItems, relateItems, unrelateItems } =
   await import("../src/lib/relations");
+const { makeMarkdownBody } = await import("../src/lib/body");
+const { mentionToMarkdown } = await import("../src/lib/editor/mention-markdown");
 const { and, eq, inArray, or } = await import("drizzle-orm");
 
 let failures = 0;
@@ -117,9 +119,7 @@ try {
   // 7. un-relate removes every non-mention edge, both directions; a mention
   // edge survives because the body owns it.
   await updateItem(ownerId, T.id, {
-    body: [
-      { type: "paragraph", content: [{ type: "mention", props: { itemId: N.id, title: N.title } }] },
-    ],
+    body: makeMarkdownBody(`see ${mentionToMarkdown(N.id, N.title)}`),
   });
   check("mention sync created its edge", (await edgesBetween(T.id, N.id)).length === 3);
   const removed = await unrelateItems(ownerId, T.id, N.id);

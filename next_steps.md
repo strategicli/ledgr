@@ -12,16 +12,33 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v0.17-blocknote-canonical` marks the last pre-pivot state; a GitHub Release marks the turn. **The docs are now updated; the code is not.**
 
-**The next build work is the foundation rework** (roadmap **Phase M**), which gates the new modules (Papers, Songs, etc.) and is more pressing than opening Phase 3. It's scoped into six ordered slices, each leaving the app working:
+**The next build work is the foundation rework** (roadmap **Phase M**), which gates the new modules (Papers, Songs, etc.) and is more pressing than opening Phase 3.
 
-- **M1 — Editor selection (spike + ADR)** ← **active next.** Evaluate tiptap (Savor-proven) / Milkdown / Lexical for markdown round-trip, color marks, mentions, and a path to slash-menu + `^block-id` anchors. Output an ADR. **Core decision → needs Tyler's agreement** (CLAUDE.md "Building together"). Lean: tiptap.
-- **M2** — markdown editor stood up in isolation (scratch route, round-trip verified).
-- **M3** — print/export renderers + `body_text` read from markdown (likely one markdown lib, a Principle-5 dependency call).
-- **M4** — cutover + data migration (BlockNote JSON → markdown via the existing serializer; retire `@blocknote/*`). The flip.
-- **M5** — per-type canvas seam (the hook modules need).
-- **M6** — module registration boundary (build with the first real module, Papers).
+> **🚧 Alpha / build phase (ADR-039, 2026-06-13).** Ledgr is pre-production — **no data to protect.** The original "each slice leaves the app working / careful staged migration" framing is dropped: get fully onto Tiptap/markdown the cleanest way, convert-or-reseed dev data freely, no DB-copy dry runs. **M3 and M4 are collapsed into one direct cutover.**
+
+- **M1 — Editor selection (spike + ADR)** ✓ **decided (ADR-038, 2026-06-13, accepted — Brandon + Tyler agreed): Tiptap + first-party `@tiptap/markdown`.** Custom marks via `renderMarkdown`/`parseMarkdown` emit the exact `colors.ts` inline-HTML; official Mention/slash/drag extensions for the deferred Notion feel; Savor-proven in Tyler's prod. Milkdown documented as runner-up, Lexical rejected.
+- **M2 — Markdown editor stood up in isolation** ✓ **built (2026-06-13).** Tiptap v3.26.1 + first-party `@tiptap/markdown` on `/scratch/editor`, with a WordPress-style **Visual / Markdown toggle** (WYSIWYG + Ctrl-shortcuts ⇄ editable raw source). New `src/components/markdown-editor/` (BlockNote's `editor/` dir still present until M3's cutover): `TextColor`/`Highlight` marks + `LedgrMention` node whose `renderMarkdown` emits the **exact** `colors.ts` inline-HTML and `[@Title](ledgr://item/<uuid>)`; hand-rolled `@`-mention popup (no popup dep) over `/api/items`; lazy-loaded. Pure bespoke logic in `src/lib/editor/mention-markdown.ts` + `colors.ts` reverse lookups. `scripts/verify-tiptap-markdown.mts` covers the color/mention encode↔decode round-trip; `tsc` clean. **(In-browser eyeball + `next build` were closed as part of M3.)**
+- **M3 — The cutover (merged M3+M4, the flip)** ✓ **done (2026-06-13, ADR-040).** All of it landed: (a) renderers read markdown via **markdown-it** (new `src/lib/markdown-render.ts` — `markdownToHtml` for print/share + `markdownToText` for FTS, with heading-shift, mention-as-span, color-HTML passthrough); (b) Tiptap wired into the real canvas (`ItemEditor` moved to `src/components/markdown-editor/`); (c) body is `{format,text}` via new `src/lib/body.ts`; (d) `mentions.ts` scans `ledgr://item/<id>` out of markdown; email-in emits markdown; (e) **dev data wiped, not migrated** (Brandon's call — start fresh, alpha; the BlockNote serializer `src/lib/markdown.ts` + the migration script were deleted, not kept); (f) `@blocknote/*` uninstalled + `src/components/editor/` deleted. Markdown is now the only path. Bonus: fixed a pre-existing export-idempotency flake. `tsc` + `next build` clean; **24/24** verify scripts; in-browser editor + share render + write round-trip all confirmed.
+- **M5 — Per-type canvas seam** (the hook modules need) ← **next.** A `type → canvas` registry (default = the markdown canvas) wired into `ItemCanvas` + the intercepting routes; ship default-only + one trivial proof so the seam is exercised. The platform hook the Songs/Papers modules need.
+- **M6 — Module registration boundary** (build with the first real module, Papers) — unchanged.
 
 Tyler's PR #1 (`ty-additions/` module specs) is the companion context for what the modules need. Detail and rationale in `roadmap.md` Phase M.
+
+---
+
+## ⟢ Session summary — M3, the Markdown cutover (2026-06-13, ADR-040)
+
+**BlockNote is gone; Markdown is the only body path.** Shipped and verified:
+- **`{format,text}` body** via new `src/lib/body.ts` (`makeMarkdownBody`/`isItemBody`/tolerant `bodyMarkdown`); `items.body`/`revisions.body` stay jsonb (no column migration). `parseItemPayload` now accepts the object and rejects the old block array.
+- **Server render via markdown-it** (new `src/lib/markdown-render.ts`): `markdownToHtml` (print/share) + `markdownToText` (FTS), one token-rewrite rule shifts body headings under the doc `<h1>` and renders `ledgr://item/<id>` links as flat `.mention` spans; `html:true` passes the color/highlight inline HTML through. markdown-it is the one vetted markdown dep (Principle 5, server-only).
+- **Readers/writers switched:** `print-html.ts` (shell+CSS kept, body via markdown-it), `export/engine.ts` (`bodyMarkdown` — body *is* the markdown), `body-text.ts` (markdown strip), `mentions.ts` (`collectMentionIdsFromMarkdown`), email-in (`emailToMarkdown`). `ItemEditor` moved to `src/components/markdown-editor/` and wired to the Tiptap `LazyMarkdownEditor`.
+- **Data: wiped, not migrated** (Brandon's call — alpha, start fresh). 30 dev items deleted (cascades cleaned the rest). The BlockNote→markdown serializer (`src/lib/markdown.ts`) + the migration script were **deleted** (no data to migrate, so no tool to keep).
+- **BlockNote retired:** `@blocknote/*` uninstalled, `src/components/editor/` deleted, stale globals.css rules dropped.
+- **Side fix:** a pre-existing export-idempotency flake (export's `updatedAt` $onUpdate landing just after `exportedAt` → spurious re-export) — pinned both stamps to one instant; `verify-export` 5/5.
+
+`tsc` + full `next build` clean; **24/24 verify scripts** (rewrote `verify-print` for markdown, added `verify-body-contract`, migrated the BlockNote-body fixtures in 7 scripts to markdown). **In-browser (dev stand-in):** share page renders the heading-shift/colors/highlight/mention/code/table with no console errors; the real canvas mounts the Tiptap editor over a `{format,text}` body and a live edit autosaved back as markdown with `body_text` reindexed.
+
+**Next: M5 — the per-type canvas seam** (`type → canvas` registry, default = markdown canvas), the platform hook the Papers/Songs modules need. Then M6 (module registration boundary), built alongside the first real module.
 
 ---
 

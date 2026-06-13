@@ -17,6 +17,7 @@ const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
 const { createShareToken, listShareTokens, revokeShareToken, resolveShareToken } = await import("../src/lib/share");
 const { renderPrintDocument } = await import("../src/lib/print-html");
+const { makeMarkdownBody } = await import("../src/lib/body");
 const { eq } = await import("drizzle-orm");
 
 let failures = 0;
@@ -32,10 +33,7 @@ const [tempUser] = await db
   .returning({ id: users.id });
 const ownerId = tempUser.id;
 
-const body = [
-  { type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Sermon outline", styles: {} }] },
-  { type: "paragraph", content: [{ type: "text", text: "Grace & peace <to all>.", styles: {} }] },
-];
+const body = makeMarkdownBody("## Sermon outline\n\nGrace and peace to all.");
 const mk = async (v: Record<string, unknown>) =>
   (await db.insert(items).values({ ownerId, ...(v as object) } as typeof items.$inferInsert).returning({ id: items.id }))[0].id;
 
@@ -48,12 +46,13 @@ try {
 
   const resolved = await resolveShareToken(row.token);
   check("public resolve returns the item by token", !!resolved && resolved.itemId === itemId && resolved.title === "Sunday notes");
-  check("resolve carries the body for rendering", Array.isArray(resolved?.body) && (resolved!.body as unknown[]).length === 2);
+  const rbody = resolved?.body as { format?: string; text?: string } | null;
+  check("resolve carries the markdown body for rendering", rbody?.format === "markdown" && (rbody.text ?? "").includes("Sermon outline"));
 
   // --- render --------------------------------------------------------------
   const html = renderPrintDocument(resolved!.title, resolved!.body, { footerHtml: "Shared from Ledgr · read-only" });
   check("render is a full HTML document", html.startsWith("<!doctype html>") && html.includes("<title>Sunday notes</title>"));
-  check("render escapes body text (no raw <to all>)", html.includes("Grace &amp; peace &lt;to all&gt;.") && !html.includes("<to all>"));
+  check("render shows the body, heading shifted under the title", html.includes("<h3>Sermon outline</h3>") && html.includes("Grace and peace to all."));
   check("share render carries the read-only footer", html.includes("Shared from Ledgr"));
 
   // --- listing -------------------------------------------------------------

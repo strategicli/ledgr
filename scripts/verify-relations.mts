@@ -20,6 +20,8 @@ const { ItemError, createItem, softDeleteItem, restoreItem, updateItem } =
 const { listRelatedItems, relatedItemsQuery } = await import(
   "../src/lib/relations"
 );
+const { makeMarkdownBody } = await import("../src/lib/body");
+const { mentionToMarkdown } = await import("../src/lib/editor/mention-markdown");
 const { eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;
@@ -73,16 +75,10 @@ try {
     { sourceId: E.id, targetId: E.id, role: "related" }, // self-edge
   ]);
 
-  // 3. Mention path: a body mention creates an edge that lists here.
+  // 3. Mention path: a body mention (the ledgr:// link, ADR-040) creates an
+  // edge that lists here.
   await updateItem(ownerId, M.id, {
-    body: [
-      {
-        type: "paragraph",
-        content: [
-          { type: "mention", props: { itemId: E.id, title: E.title } },
-        ],
-      },
-    ],
+    body: makeMarkdownBody(`Prep with ${mentionToMarkdown(E.id, E.title)}.`),
   });
 
   const related = await listRelatedItems(ownerId, E.id);

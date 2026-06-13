@@ -1,11 +1,14 @@
 // Title + body editing with debounced autosave against PATCH /api/items/:id.
-// This is the editing core the item canvas (PRD §4.13, its own slice) will
-// wrap with the modal chrome and field zones; kept free of layout opinions
-// for that reason.
+// The editing core the item canvas (PRD §4.13) wraps with modal chrome and
+// field zones; kept free of layout opinions for that reason. The body is
+// canonical markdown (ADR-037/ADR-040): the markdown editor reads the body's
+// text and emits markdown on every edit, which we wrap back into the
+// { format, text } shape the API and DB store.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import LazyEditor from "./LazyEditor";
+import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
+import LazyMarkdownEditor from "./LazyMarkdownEditor";
 
 const SAVE_DEBOUNCE_MS = 1500;
 
@@ -123,14 +126,16 @@ export default function ItemEditor({ item, fields }: ItemEditorProps) {
         </span>
       </div>
       {fields}
-      <LazyEditor
-        itemId={item.id}
-        initialBody={item.body}
-        onBodyChange={(document) => {
-          pending.current.body = document;
-          schedule();
-        }}
-      />
+      <div className="px-12 pt-2">
+        <LazyMarkdownEditor
+          itemId={item.id}
+          initialMarkdown={bodyMarkdown(item.body)}
+          onChange={(markdown) => {
+            pending.current.body = makeMarkdownBody(markdown);
+            schedule();
+          }}
+        />
+      </div>
     </div>
   );
 }

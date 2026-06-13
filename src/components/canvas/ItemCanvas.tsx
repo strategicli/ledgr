@@ -5,7 +5,7 @@
 // Fields section for everything the strip doesn't show.
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import ItemEditor from "@/components/editor/ItemEditor";
+import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";

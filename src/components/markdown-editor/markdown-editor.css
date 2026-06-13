@@ -1,0 +1,138 @@
+/* Minimal dark styling for the Tiptap markdown canvas (M2 scratch). Polished
+   "Notion feel" is explicitly deferred (ADR-037); this is just enough to read
+   and edit comfortably while the round-trip is proven. */
+
+.ledgr-prose {
+  min-height: 14rem;
+  padding: 1rem;
+  outline: none;
+  color: #e5e5e5;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.ledgr-prose:focus {
+  outline: none;
+}
+
+.ledgr-prose h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0.8rem 0 0.4rem;
+}
+
+.ledgr-prose h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0.7rem 0 0.35rem;
+}
+
+.ledgr-prose h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.6rem 0 0.3rem;
+}
+
+.ledgr-prose p {
+  margin: 0.4rem 0;
+}
+
+.ledgr-prose ul,
+.ledgr-prose ol {
+  padding-left: 1.4rem;
+  margin: 0.4rem 0;
+}
+
+.ledgr-prose ul {
+  list-style: disc;
+}
+
+.ledgr-prose ol {
+  list-style: decimal;
+}
+
+.ledgr-prose blockquote {
+  border-left: 3px solid #525252;
+  padding-left: 0.8rem;
+  color: #a3a3a3;
+  margin: 0.5rem 0;
+}
+
+.ledgr-prose pre {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+.ledgr-prose code {
+  background: #262626;
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.85em;
+}
+
+.ledgr-prose pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.ledgr-prose hr {
+  border: none;
+  border-top: 1px solid #404040;
+  margin: 0.8rem 0;
+}
+
+.ledgr-prose a {
+  color: #5aa9e6;
+  text-decoration: underline;
+}
+
+/* Mention chip */
+.ledgr-mention {
+  color: #5aa9e6;
+  background: rgba(90, 169, 230, 0.12);
+  border-radius: 0.25rem;
+  padding: 0 0.25rem;
+  white-space: nowrap;
+}
+
+/* Mention suggestion popup */
+.ledgr-mention-popup {
+  position: absolute;
+  z-index: 50;
+  min-width: 12rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  background: #171717;
+  border: 1px solid #333;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 0.25rem;
+}
+
+.ledgr-mention-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.375rem;
+  color: #e5e5e5;
+  font-size: 0.875rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.ledgr-mention-item.is-selected,
+.ledgr-mention-item:hover {
+  background: #2a2a2a;
+}
+
+.ledgr-mention-empty {
+  padding: 0.5rem;
+  color: #737373;
+  font-size: 0.85rem;
+}

@@ -120,15 +120,25 @@ try {
 
   const n1 = await findByMessageId("m1");
   check("plain message becomes a note, inbox:true", n1?.type === "note" && n1?.title === "Hello there" && n1?.inbox === true);
-  check("note body splits into paragraphs", Array.isArray(n1?.body) && (n1!.body as unknown[]).length === 2);
+  const nb1 = n1?.body as { format?: string; text?: string } | null;
+  check(
+    "note body is markdown with two paragraphs",
+    nb1?.format === "markdown" && (nb1.text ?? "").split(/\n{2,}/).filter(Boolean).length === 2,
+    JSON.stringify(nb1)
+  );
   check("note records sender in properties.email", (n1?.properties as { email?: { fromEmail?: string } })?.email?.fromEmail === "sender@example.invalid");
 
   const t2 = await findByMessageId("m2");
   check("`task:` subject becomes a task with the prefix stripped", t2?.type === "task" && t2?.title === "Follow up with Roger");
 
   const h3 = await findByMessageId("m3");
-  const h3text = JSON.stringify(h3?.body);
-  check("HTML body is converted to text (tags stripped)", h3text.includes("Hi there") && h3text.includes("bye") && !h3text.includes("<"));
+  const h3body = h3?.body as { format?: string; text?: string } | null;
+  const h3text = h3body?.text ?? "";
+  check(
+    "HTML body is converted to markdown text (tags stripped)",
+    h3body?.format === "markdown" && h3text.includes("Hi there") && h3text.includes("bye") && !h3text.includes("<"),
+    h3text
+  );
 
   const a4 = await findByMessageId("m4");
   check("attachment-bearing message imports; bytes dropped gracefully w/o storage", !!a4 && r1.attachments === 0);

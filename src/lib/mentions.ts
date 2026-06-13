@@ -1,46 +1,21 @@
 // @-mention → relations sync (PRD §4.1: a mention creates a relation row
-// automatically). Mentions live in the body as custom inline nodes
-// ({ type: "mention", props: { itemId, title } }); on every body save the
-// relation rows with role 'mention' are diffed against what the body
-// actually contains, so removing a mention removes its edge. Rows with any
-// other role (tags, manual links) are never touched here.
+// automatically). A mention lives in the canonical markdown body as a link
+// whose href is `ledgr://item/<id>` (ADR-037/ADR-040); on every body save the
+// relation rows with role 'mention' are diffed against what the body actually
+// contains, so removing a mention removes its edge. Rows with any other role
+// (tags, manual links) are never touched here.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
+import { bodyMarkdown } from "@/lib/body";
+import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 
 export const MENTION_ROLE = "mention";
 
-type UnknownNode = {
-  type?: unknown;
-  props?: { itemId?: unknown };
-  content?: unknown;
-  children?: unknown;
-  rows?: unknown;
-  cells?: unknown;
-};
-
-// Defensive walk, same posture as body-text.ts: unknown node shapes must
-// degrade, not throw.
-function collect(node: unknown, out: Set<string>): void {
-  if (node == null || typeof node !== "object") return;
-  if (Array.isArray(node)) {
-    for (const child of node) collect(child, out);
-    return;
-  }
-  const n = node as UnknownNode;
-  if (n.type === "mention" && typeof n.props?.itemId === "string") {
-    out.add(n.props.itemId);
-  }
-  collect(n.content, out);
-  collect(n.rows, out);
-  collect(n.cells, out);
-  collect(n.children, out);
-}
-
+// Every distinct item id mentioned in a body. Tolerant of the body shape via
+// bodyMarkdown, then scans the markdown for the mention link's href.
 export function collectMentionIds(body: unknown): string[] {
-  const out = new Set<string>();
-  collect(body, out);
-  return [...out];
+  return collectMentionIdsFromMarkdown(bodyMarkdown(body));
 }
 
 export async function syncMentionRelations(

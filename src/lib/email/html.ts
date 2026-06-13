@@ -1,10 +1,9 @@
-// Email body -> BlockNote conversion (slice 26, PRD §5.3). HTML email converts
-// imperfectly, which the PRD accepts; rather than pull in an HTML parser (rule
-// 5), we reduce the body to plain text and wrap it in paragraph blocks. The
-// canonical body format is BlockNote JSON, so we hand-build the blocks the
-// editor reads (no @blocknote import, same discipline as the markdown
-// serializer). Fidelity is deliberately low; the original lands in the Inbox
-// for review.
+// Email body -> markdown conversion (slice 26, PRD §5.3; markdown bodies since
+// ADR-040). HTML email converts imperfectly, which the PRD accepts; rather than
+// pull in an HTML parser (rule 5), we reduce the body to plain text and emit it
+// as markdown paragraphs. Fidelity is deliberately low; the original lands in
+// the Inbox for review. Inline markdown punctuation in the text is escaped so a
+// stray `*` or `[` from an email doesn't turn into formatting.
 
 // Minimal entity decode for the handful that actually show up in mail text.
 function decodeEntities(s: string): string {
@@ -36,48 +35,25 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-let counter = 0;
-// BlockNote block ids only need to be unique within the doc; a per-call
-// counter is deterministic (useful for verification) and collision-free.
-function blockId(): string {
-  return `mail-${++counter}`;
+// Escape the inline markdown/HTML punctuation that would otherwise be read as
+// formatting. Same character set as the migration serializer's escapeText, so
+// email text and editor text round-trip through the same rules.
+function escapeInline(text: string): string {
+  return text.replace(/[\\`*_[\]<>]/g, (c) => `\\${c}`);
 }
 
-type Block = {
-  id: string;
-  type: "paragraph";
-  props: Record<string, never>;
-  content: { type: "text"; text: string; styles: Record<string, never> }[];
-  children: never[];
-};
-
-function paragraph(text: string): Block {
-  return {
-    id: blockId(),
-    type: "paragraph",
-    props: {},
-    content: text ? [{ type: "text", text, styles: {} }] : [],
-    children: [],
-  };
-}
-
-// Build a BlockNote document (array of paragraph blocks) from an email body.
-// Prefers the plain-text part; falls back to stripped HTML. Paragraphs split
-// on blank lines; single newlines within a paragraph become spaces.
-export function emailToBlocks(
+// Build a markdown body from an email. Prefers the plain-text part; falls back
+// to stripped HTML. Paragraphs split on blank lines; single newlines within a
+// paragraph become spaces; empty in yields an empty string.
+export function emailToMarkdown(
   bodyText: string | null,
   bodyHtml: string | null
-): Block[] {
+): string {
   const text = (bodyText && bodyText.trim()) || (bodyHtml ? htmlToText(bodyHtml) : "");
-  if (!text) return [paragraph("")];
-  const paras = text
+  if (!text) return "";
+  return text
     .split(/\n{2,}/)
-    .map((p) => p.replace(/\n/g, " ").trim())
-    .filter(Boolean);
-  return paras.length > 0 ? paras.map(paragraph) : [paragraph("")];
-}
-
-// Test seam: reset the id counter so a verification run is reproducible.
-export function _resetBlockIdsForTests(): void {
-  counter = 0;
+    .map((p) => escapeInline(p.replace(/\n/g, " ").trim()))
+    .filter(Boolean)
+    .join("\n\n");
 }

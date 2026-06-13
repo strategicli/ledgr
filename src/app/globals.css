@@ -23,18 +23,6 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* BlockNote paints its own editor background; pin it to the page token so
-   the body doesn't sit on the page as a lighter card. */
-.bn-root.bn-container[data-color-scheme="dark"] {
-  --bn-colors-editor-background: var(--background);
-}
-
-/* @-mention inline nodes (src/components/editor/schema.tsx) */
-.ledgr-mention {
-  background: rgba(82, 156, 202, 0.18);
-  border-radius: 4px;
-  padding: 0 3px;
-  color: #529cca;
-  font-weight: 500;
-  cursor: pointer;
-}
+/* The markdown editor (Tiptap) and its @-mention chip carry their own styles
+   in src/components/markdown-editor/markdown-editor.css, loaded with the lazy
+   editor bundle; nothing editor-specific belongs here. */

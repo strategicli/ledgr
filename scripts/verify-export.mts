@@ -28,6 +28,7 @@ const { EXPORT_JOB_KEY, getExportState, runExport } = await import(
   "../src/lib/export/engine"
 );
 const { LocalExportTarget } = await import("../src/lib/export/local");
+const { makeMarkdownBody } = await import("../src/lib/body");
 const { and, eq, isNotNull, ne, sql } = await import("drizzle-orm");
 
 let failures = 0;
@@ -68,15 +69,7 @@ try {
         .returning()
     )[0];
 
-  const body = [
-    {
-      id: "b1",
-      type: "paragraph",
-      props: {},
-      content: [{ type: "text", text: "Sermon outline body text", styles: {} }],
-      children: [],
-    },
-  ];
+  const body = makeMarkdownBody("Sermon outline body text");
   const task = await mkItem({
     type: "task",
     title: `Émile's Notes / Q1 — "draft"?`,

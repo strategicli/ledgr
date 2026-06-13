@@ -8,7 +8,7 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments, items, jobState } from "@/db/schema";
-import { bodyToMarkdown } from "@/lib/markdown";
+import { bodyMarkdown } from "@/lib/body";
 import { getStorage } from "@/lib/storage";
 import { APP_TIMEZONE } from "@/lib/today";
 import type { ExportTarget } from "./target";
@@ -222,16 +222,22 @@ export async function runExport(
       ];
       result.attachmentsCopied += atts.copied;
 
-      const content = `${buildFrontmatter(item, entities, atts.paths)}\n\n${bodyToMarkdown(item.body)}\n`;
+      const content = `${buildFrontmatter(item, entities, atts.paths)}\n\n${bodyMarkdown(item.body)}\n`;
       await target.putFile(desired, content);
       // A rename, retype, or live<->archive move leaves a stale file at the
       // old path; the put above already wrote the replacement.
       if (item.exportPath && item.exportPath !== desired) {
         await target.deleteFile(item.exportPath);
       }
+      // Pin exportedAt and updatedAt to the same instant. updatedAt carries a
+      // $onUpdate (schema.ts); without setting it explicitly it would land a
+      // hair after exportedAt, so needsExportWhere's `updatedAt > exportedAt`
+      // would re-select the item on the very next run (a spurious re-export).
+      // The export write is bookkeeping, not a content edit.
+      const exportedAt = new Date();
       await db
         .update(items)
-        .set({ exportedAt: new Date(), exportPath: desired })
+        .set({ exportedAt, updatedAt: exportedAt, exportPath: desired })
         .where(and(eq(items.id, item.id), eq(items.ownerId, ownerId)));
       result.exported++;
       if (inArchive) result.archived++;

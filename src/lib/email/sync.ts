@@ -8,9 +8,10 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments as attachmentsTable, jobState } from "@/db/schema";
+import { makeMarkdownBody } from "@/lib/body";
 import { createItem } from "@/lib/items";
 import { getStorage } from "@/lib/storage";
-import { emailToBlocks } from "./html";
+import { emailToMarkdown } from "./html";
 import type { MailSource, NormalizedMessage } from "./types";
 
 export const EMAIL_JOB_KEY = "email_import";
@@ -106,7 +107,7 @@ export async function runEmailImport(
       const item = await createItem(ownerId, {
         type,
         title,
-        body: emailToBlocks(msg.bodyText, msg.bodyHtml),
+        body: makeMarkdownBody(emailToMarkdown(msg.bodyText, msg.bodyHtml)),
         inbox: true,
         properties: {
           email: {

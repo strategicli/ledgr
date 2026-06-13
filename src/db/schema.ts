@@ -104,11 +104,13 @@ export const items = pgTable(
       .notNull()
       .references(() => types.key),
     title: text("title").notNull().default(""),
-    // BlockNote document (canonical JSON); null until "gone deeper".
+    // Canonical body: { format, text } (markdown by default; ADR-037/ADR-040).
+    // jsonb so the format tag travels with the text and markdown-family formats
+    // (chordpro, etc.) are per-type. null until "gone deeper".
     body: jsonb("body"),
-    // Plain-text extraction of body, maintained by app code on save, so the
-    // generated tsvector below indexes real words instead of BlockNote JSON
-    // structure (ADR-003).
+    // Plain-text extraction of the body's markdown, maintained by app code on
+    // save (body-text.ts), so the generated tsvector below indexes real words
+    // instead of markup, URIs, or color hexes (ADR-003).
     bodyText: text("body_text"),
     status: itemStatus("status").notNull().default("open"),
     dueDate: timestamp("due_date", { withTimezone: true }),

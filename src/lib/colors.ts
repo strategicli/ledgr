@@ -46,3 +46,48 @@ export function highlightTag(color: BlockNoteColor): {
     close: "</mark>",
   };
 }
+
+// Reverse lookups — the way back IN (markdown → editor). The serializer above
+// owns the way out; these own the parse side so the round-trip is symmetric
+// off the one table. Hex matching is case-insensitive and tolerant of
+// shorthand spacing ("color: #abc"); the hl-* class is the primary,
+// unambiguous hook for highlights.
+const TEXT_HEX_TO_COLOR: Record<string, BlockNoteColor> = Object.fromEntries(
+  (Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[]).map((c) => [
+    BLOCKNOTE_COLORS[c].text.toLowerCase(),
+    c,
+  ])
+) as Record<string, BlockNoteColor>;
+
+const BG_HEX_TO_COLOR: Record<string, BlockNoteColor> = Object.fromEntries(
+  (Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[]).map((c) => [
+    BLOCKNOTE_COLORS[c].background.toLowerCase(),
+    c,
+  ])
+) as Record<string, BlockNoteColor>;
+
+function hexInStyle(style: string): string | null {
+  const m = style.match(/#[0-9a-fA-F]{3,8}/);
+  return m ? m[0].toLowerCase() : null;
+}
+
+// A CSS color value (e.g. from a span's `color:`) back to its palette name,
+// or null if it isn't one of ours.
+export function textColorName(style: string): BlockNoteColor | null {
+  const hex = hexInStyle(style);
+  return hex && hex in TEXT_HEX_TO_COLOR ? TEXT_HEX_TO_COLOR[hex] : null;
+}
+
+// A <mark>'s class ("hl-yellow") or background style back to its palette name.
+export function highlightColorName(
+  className: string | null,
+  style: string | null
+): BlockNoteColor | null {
+  const cls = (className ?? "").match(/\bhl-([a-z]+)\b/);
+  if (cls && isBlockNoteColor(cls[1])) return cls[1];
+  if (style) {
+    const hex = hexInStyle(style);
+    if (hex && hex in BG_HEX_TO_COLOR) return BG_HEX_TO_COLOR[hex];
+  }
+  return null;
+}
