@@ -1,0 +1,253 @@
+// The module-registration boundary (roadmap M6, ADR-043). A *module* packages a
+// workflow as a unit — its system type(s), each type's canonical body format and
+// canvas, deterministic exporters, and an optional integration — and contributes
+// that bundle onto core rather than reaching into it (Tyler's PR #1 §1; CLAUDE.md
+// "Building together" lists the module-system boundary as core). Core itself is
+// the first module (`coreModule` below), so the whole app resolves type behavior
+// through this one boundary — the strongest proof it's real, and the shape every
+// workflow module (Papers, Songs, …) follows later, with per-user enable as a
+// config flip (the `isModuleEnabled` seam, default-on today).
+//
+// This is the POLICY/CONTRACT half and is kept pure: it imports no React
+// component and nothing heavy, so it resolves identically on the server and in a
+// plain-node verify script (the discipline M5 set for canvas-registry, ADR-041).
+// Canvas *components* are the one thing that can't be pure, so they live in
+// `module-wiring.tsx`, linked back here by `canvasId` (a string). Exporters are
+// deterministic code (Principle 7), so an exporter's `render` lives directly on
+// its def — a real module with a heavy renderer (pandoc → docx) keeps that in its
+// own module file, which this core registry never imports, so core stays
+// node-pure.
+import type { ReactNode } from "react";
+import type { getItem } from "@/lib/items";
+import { MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
+
+// --- canvas contract (re-homed from canvas-registry, ADR-041) --------------
+
+// The loaded item a canvas renders, derived from getItem so it can't drift from
+// the real row shape.
+export type CanvasItem = Awaited<ReturnType<typeof getItem>>;
+
+// Every canvas — default or module — receives the same context: the loaded,
+// owner-checked, non-trashed item, its owner, and which surface it's on.
+export type CanvasProps = {
+  item: CanvasItem;
+  ownerId: string;
+  variant: "page" | "modal";
+};
+
+// Canvases are (often async) server components — a function returning rendered
+// output. Only the canvas *id* (a string) is resolved in this pure file; the
+// actual component is wired in module-wiring.tsx.
+export type CanvasComponent = (
+  props: CanvasProps
+) => ReactNode | Promise<ReactNode>;
+
+// The default canvas id — the markdown editor + the type's standard panels
+// (MarkdownCanvas). Any type that doesn't declare its own canvas renders through
+// it.
+export const DEFAULT_CANVAS = "markdown";
+
+// --- the module contract ---------------------------------------------------
+
+// A deterministic export of an item to a derived artifact — no model in the loop
+// (Principle 7): markdown → docx (Papers), ChordPro → chart (Songs). `render` is
+// plain code on the def. (The OneDrive export *engine* is core infrastructure,
+// not one of these per-type module exporters.)
+export type ExporterRender = (
+  body: ItemBody,
+  item: CanvasItem
+) => string | Promise<string>;
+
+export type ExporterDef = {
+  id: string;
+  label: string;
+  forType: string; // the type key this exporter renders
+  fileExtension: string; // "docx" | "pdf" | "txt" | …
+  render: ExporterRender;
+};
+
+// An optional provider-seam integration a module brings (Savor pull, PCO push).
+// Metadata only here; the adapter itself lives behind the relevant provider
+// interface (the same discipline as storage/calendar/mail).
+export type IntegrationDef = {
+  id: string;
+  label: string;
+  direction: "pull" | "push" | "bidirectional";
+};
+
+// A type a module defines. `key` matches items.type and the types-table row the
+// module seeds at install. `canonicalFormat` makes "more than one body format,
+// keyed off type" a real platform capability (Tyler PR #1 decision #1) — markdown
+// by default, a markdown-kin like "chordpro" per type. `canvasId` is the M5
+// per-type-canvas policy. `label`/`icon` define the type for install; note the DB
+// `types` table stays the runtime source for label/icon *enumeration*, while this
+// registry owns the type's *code behavior* (canvas, format, exporters).
+export type ModuleTypeDef = {
+  key: string;
+  label: string;
+  canonicalFormat: string;
+  canvasId: string;
+  icon?: string;
+};
+
+// A module: a workflow packaged as a unit (Tyler PR #1 §1). Mostly assembled from
+// machinery Ledgr already has (typed items, properties, relations, FTS, export);
+// the only new platform pieces are the per-type canvas (M5) and this registration
+// boundary (M6).
+export type ModuleManifest = {
+  id: string;
+  label: string;
+  // Whether the module is on for an instance by default. The per-user enable
+  // flip (below) starts from this; flipping it off is what `isModuleEnabled`
+  // will eventually answer per owner.
+  enabledByDefault: boolean;
+  types: ModuleTypeDef[];
+  exporters: ExporterDef[];
+  integration?: IntegrationDef;
+};
+
+// --- core as the first module ----------------------------------------------
+
+// The five system types (schema.md / scripts/seed.mjs). All markdown-canonical
+// today; only `link` declares a bespoke canvas (the URL chip, ADR-041).
+// Registering core as a module means the whole app resolves type behavior
+// through this one boundary, and the default markdown experience is unchanged.
+export const coreModule: ModuleManifest = {
+  id: "core",
+  label: "Core",
+  enabledByDefault: true,
+  types: [
+    { key: "task", label: "Task", icon: "check-square", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "meeting", label: "Meeting", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "link" },
+    { key: "entity", label: "Entity", icon: "tag", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+  ],
+  exporters: [],
+};
+
+// --- the registry ----------------------------------------------------------
+
+// Core is always present. A workflow module appends via `registerModule` (and,
+// once per-user enable lands, is seeded per instance). The live app ships
+// core-only: `referenceModule` (below) is a worked example the M6 verify script
+// registers to prove a second module slots in — the foundation delivers the
+// *capability*, not the modules (ADR-042).
+const BUILTIN_MODULES: ModuleManifest[] = [coreModule];
+const registered: ModuleManifest[] = [];
+
+export function registerModule(manifest: ModuleManifest): void {
+  if (allModules().some((m) => m.id === manifest.id)) {
+    throw new Error(`module "${manifest.id}" is already registered`);
+  }
+  registered.push(manifest);
+}
+
+export function allModules(): ModuleManifest[] {
+  return [...BUILTIN_MODULES, ...registered];
+}
+
+// The per-user enable seam (the "later config flip", Tyler PR #1 / roadmap M6).
+// Today it returns the manifest's default and ignores `ownerId`; per-user
+// enablement becomes a lookup against a settings table right here, with no change
+// to any call site. A type whose module is disabled resolves to the default
+// canvas, contributes no exporters, and reports no canonical format override.
+export function isModuleEnabled(moduleId: string, _ownerId?: string): boolean {
+  const m = allModules().find((x) => x.id === moduleId);
+  return m ? m.enabledByDefault : false;
+}
+
+function enabledModules(ownerId?: string): ModuleManifest[] {
+  return allModules().filter((m) => isModuleEnabled(m.id, ownerId));
+}
+
+// --- resolvers (pure; the boundary core dispatches through) ----------------
+
+// Which module owns a type (the first enabled module that declares it).
+export function moduleForType(
+  type: string,
+  ownerId?: string
+): ModuleManifest | undefined {
+  return enabledModules(ownerId).find((m) =>
+    m.types.some((t) => t.key === type)
+  );
+}
+
+export function typeDefFor(
+  type: string,
+  ownerId?: string
+): ModuleTypeDef | undefined {
+  for (const m of enabledModules(ownerId)) {
+    const def = m.types.find((t) => t.key === type);
+    if (def) return def;
+  }
+  return undefined;
+}
+
+// The per-type canvas policy (M5). An unknown type, or one whose module is
+// disabled, falls back to the default markdown canvas.
+export function canvasIdForType(type: string, ownerId?: string): string {
+  return typeDefFor(type, ownerId)?.canvasId ?? DEFAULT_CANVAS;
+}
+
+// The canonical body format for a type — markdown unless the owning type declares
+// otherwise (e.g. ChordPro for Songs). The body contract (`src/lib/body.ts`)
+// already stores `{format, text}`; this is where a renderer/editor asks "which
+// format is canonical for this type."
+export function canonicalFormatForType(type: string, ownerId?: string): string {
+  return typeDefFor(type, ownerId)?.canonicalFormat ?? MARKDOWN_FORMAT;
+}
+
+// The deterministic exporters a type offers (markdown→docx, ChordPro→chart).
+export function exportersForType(type: string, ownerId?: string): ExporterDef[] {
+  return enabledModules(ownerId).flatMap((m) =>
+    m.exporters.filter((e) => e.forType === type)
+  );
+}
+
+// Every type key contributed by an enabled module — the seam a future Build
+// surface / quick-capture list reads from (today the UI enumerates the DB `types`
+// table; this is its code-side counterpart).
+export function registeredTypeKeys(ownerId?: string): string[] {
+  return enabledModules(ownerId).flatMap((m) => m.types.map((t) => t.key));
+}
+
+// --- reference module (worked example; NOT registered in the live app) ------
+
+// A minimal module touching all four slots — a type with its own canonical
+// format and canvas, an exporter, and an integration — kept as executable
+// documentation of the contract and as the fixture the M6 verify script
+// registers to prove a workflow module slots in. It is deliberately NOT in
+// BUILTIN_MODULES, so it never affects the running app (no DB `types` row exists
+// for it either); per ADR-042 the foundation ships the capability, not modules.
+// Real modules (Papers → markdown/docx + quote bank, Songs → ChordPro/chart +
+// PCO) follow this exact shape in their own files.
+export const referenceModule: ModuleManifest = {
+  id: "reference",
+  label: "Reference (example module)",
+  enabledByDefault: true,
+  types: [
+    {
+      key: "reference",
+      label: "Reference Item",
+      canonicalFormat: MARKDOWN_FORMAT,
+      canvasId: "reference-canvas",
+    },
+  ],
+  exporters: [
+    {
+      id: "reference-text",
+      label: "Plain text",
+      forType: "reference",
+      fileExtension: "txt",
+      // Deterministic, no model: the body's text, verbatim. Stands in for a real
+      // module's markdown→docx / ChordPro→chart render.
+      render: (body) => body.text,
+    },
+  ],
+  integration: {
+    id: "reference-pull",
+    label: "Reference source",
+    direction: "pull",
+  },
+};

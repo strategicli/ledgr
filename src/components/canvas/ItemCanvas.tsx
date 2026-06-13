@@ -1,28 +1,18 @@
 // The item canvas shell (PRD §4.13), shared by the full /items/[id] page and
 // the intercepted center modal. It owns the universal frame — owner check,
 // item load, trash/notFound guards, and the ancestor breadcrumb — then hands
-// the loaded item to the type's canvas. Most types render through the default
-// markdown canvas; a type may declare a bespoke one (the per-type canvas seam,
-// ADR-041 / roadmap M5) — the platform hook the Songs/Papers modules need.
+// the loaded item to the type's canvas. The type → canvas resolution now runs
+// through the module-registration boundary (M6, ADR-043): `canvasIdForType` is
+// the owning module's policy, `canvasComponentFor` the wiring. Most types
+// resolve to the default markdown canvas; `link` declares a bespoke one, and a
+// workflow module (Songs/Papers) adds its own the same way.
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
-import LinkCanvas from "@/components/canvas/LinkCanvas";
-import { canvasIdForType, type CanvasComponent } from "@/lib/canvas-registry";
 import { ItemError, getItem } from "@/lib/items";
+import { canvasIdForType } from "@/lib/modules";
+import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
-
-// Canvas id -> component wiring. The policy (which id per type) lives in
-// canvas-registry, pure; the wiring lives here with the components so that
-// pure module never imports the editor bundle. The `?? MarkdownCanvas` fallback
-// keeps a policy/wiring drift from crashing the page. M6 replaces this
-// hardcoded map with the module-registration boundary (a module contributes
-// its own {id, canvas}).
-const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
-  markdown: MarkdownCanvas,
-  link: LinkCanvas,
-};
 
 export default async function ItemCanvas({
   id,
@@ -48,8 +38,9 @@ export default async function ItemCanvas({
   const ancestors = item.parentId ? await listAncestors(owner.id, item.id) : [];
   const showBreadcrumb = variant === "page" || ancestors.length > 0;
 
-  const Canvas =
-    CANVAS_COMPONENTS[canvasIdForType(item.type)] ?? MarkdownCanvas;
+  // Owner-aware so the per-user enable flip (M6) can route a disabled module's
+  // type back to the default canvas without touching this call site.
+  const Canvas = canvasComponentFor(canvasIdForType(item.type, owner.id));
 
   return (
     <>

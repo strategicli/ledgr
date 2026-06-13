@@ -1,13 +1,13 @@
-// Proof of the per-type canvas seam (ADR-041): the `link` type renders through
-// its own canvas instead of the default. A link item is really a URL plus a
-// note about it, so this foregrounds the URL as a click-through affordance,
-// then delegates everything else to the default markdown canvas. It's the
-// pattern a real module canvas follows — add a bespoke surface, reuse the
-// standard canvas underneath — proven on the lowest-stakes type. Drop the
-// `link` entry from canvas-registry and links fall straight back to the
-// default; nothing else depends on this.
+// The `link` type's bespoke canvas — core's own use of the per-type canvas seam
+// (ADR-041), now resolved through the module boundary (M6, ADR-043: `link`'s
+// canvasId is declared on coreModule). A link item is really a URL plus a note
+// about it, so this foregrounds the URL as a click-through affordance, then
+// delegates everything else to the default markdown canvas. It's the pattern a
+// real module canvas follows — add a bespoke surface, reuse the standard canvas
+// underneath. Point coreModule's `link` type back at the default canvas and
+// links fall straight back; nothing else depends on this.
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
-import type { CanvasProps } from "@/lib/canvas-registry";
+import type { CanvasProps } from "@/lib/modules";
 
 export default function LinkCanvas(props: CanvasProps) {
   const { item } = props;

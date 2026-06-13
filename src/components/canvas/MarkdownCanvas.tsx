@@ -16,7 +16,7 @@ import EmbeddedView from "@/components/views/EmbeddedView";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, footerFieldsFor } from "@/lib/canvas-fields";
-import type { CanvasProps } from "@/lib/canvas-registry";
+import type { CanvasProps } from "@/lib/modules";
 
 export default function MarkdownCanvas({ item, ownerId }: CanvasProps) {
   const fields = topStripFields(item.type);

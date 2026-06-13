@@ -1,14 +1,17 @@
 // M5 / ADR-041 verification: the per-type canvas seam, as pure functions (no
 // DB, no browser, no component imports — the policy half resolves the same here
-// as on the server).
-//  - canvas-registry.ts: canvasIdForType — `link` gets its own canvas; every
-//    other type, and any unknown/module type, falls back to the default
-//    markdown canvas.
+// as on the server). The policy moved into the module registry in M6 (ADR-043),
+// so `canvasIdForType`/`DEFAULT_CANVAS` now import from modules.ts; the M5
+// invariants below are unchanged. (The fuller M6 contract is in
+// verify-module-registry.mts.)
+//  - modules.ts: canvasIdForType — `link` gets its own canvas; every other
+//    type, and any unknown/module type, falls back to the default markdown
+//    canvas.
 //  - canvas-fields.ts: footerFieldsFor — the collapsed Fields section, with the
 //    ADR-018 "task fields stay task-only" invariant.
 //   npx tsx scripts/verify-canvas-seam.mts
-import { canvasIdForType, DEFAULT_CANVAS } from "../src/lib/canvas-registry";
 import { footerFieldsFor } from "../src/lib/canvas-fields";
+import { canvasIdForType, DEFAULT_CANVAS } from "../src/lib/modules";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
