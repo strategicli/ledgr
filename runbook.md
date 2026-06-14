@@ -69,6 +69,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 - **Apply:** `npm run db:migrate` (reads `DATABASE_URL` from `.env` / `.env.local`; refuses a non-pooler Neon URL).
 - **Seed:** `npm run db:seed` — idempotent (five system `types` rows + the single `users` row); safe to re-run any time.
 - Migration files in `drizzle/` are committed history. Never edit an applied migration; generate a new one.
+- **After every `git pull`, run `npm run db:migrate`.** Migrations are committed but each builder's database applies them separately. A pull that brings new `drizzle/*.sql` files leaves your DB a table behind until you apply them, and the missing-table error only shows when you hit the page that queries it (see §7, the `templates` incident).
 
 ---
 
@@ -246,7 +247,7 @@ Back-end (cheap compute/storage/traffic):
 ## 7. Common fixes *(stub: append real incidents and resolutions as they happen)*
 Format each entry: symptom → cause → fix → prevention. Building this log over time is what keeps maintenance incidents under an hour.
 
-- _(none yet)_
+- **Build surface (`/build`, `/build/templates`) 500s with `NeonDbError: relation "templates" does not exist`** (2026-06-14). *Symptom:* clicking the floating Build button throws on a query against `templates` (also any page calling `listTemplates`). *Cause:* migration `0009_square_maddog.sql` (the item-templates slice, ADR-045) was committed but never applied to the local `ledgr_dev` Neon database, so the code expected a table the DB didn't have. *Fix:* `npm run db:migrate`. *Prevention:* run `npm run db:migrate` after any pull that adds files to `drizzle/` (see §1a).
 
 ---
 

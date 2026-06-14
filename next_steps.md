@@ -281,6 +281,23 @@ Build-surface shell → custom type/property builder (+ type/kind UX) → workfl
 
 ---
 
+## Bespoke module backlog (ideas, not built — captured 2026-06-14)
+
+Modules to build on top of the M6 boundary (and, where it fits, offered through the **bespoke-tool catalog** spec at line 94 so a user can attach the behavior to a type they name). Most are **non-core module internals** = whoever-wants-it, move fast solo; the cross-cutting one (Bible passages) is flagged. Ordered loosely by how much they interconnect, not strictly by priority.
+
+- **Bible books / chapters / verses — the relational hub (build this early; it's the keystone).** A reference model of the canon so any other item can point at a passage, and one search surfaces *every* sermon, paper, devotional, song, or lesson that touches it. **Why it's first among these:** Sermons/Lessons, Songs, Quiet-time journals, and Papers all want to relate *to* it, so building it first lets the others wire in as they land. **Architectural flag (likely Brandon + ADR):** this is the first real use of the **`relation` property kind** — noted pending in `explorations/entity-vs-custom-type.md` and the catalog spec. It touches `relations` + FTS/search (core invariants), so it's not a pure solo module: land the `relation` kind first, then decide the passage model (one item per book? per chapter? a parsed `Book c:v–v` reference value?) in a short ADR. The payoff (passage → all related work) is the thing that makes the whole "second brain" click.
+- **Sermons & Bible Lessons.** A preaching/teaching workspace tied to **one primary passage** plus **many referenced passages** (most sermons cross-reference widely) — both via relations to the Bible model above. Canvas akin to Papers (notes → manuscript), with the Pulpit-Ready/offline + export paths the PRD already wants. Connects to Songs (same-passage worship) once both relate to passages.
+- **Songs ↔ passages (extend the existing Songs module).** Let a song relate to Bible passages so "songs on this passage" shows up beside sermons and papers. Small addition to the shipped Songs module once the Bible hub exists; not a new module.
+- **People / relational growth.** Track relationships you're intentionally investing in and *where each one is at* — clients, discipleship relationships, a pastor learning a congregation, wife and kids, friends to stay in touch with. Shape: likely the **`person` entity kind + a stage select** (so it leans on the existing entity model and a board-by-stage view, ADR-046) rather than a from-scratch type. **Why:** turns "I mean to invest in people" into something with state you can actually see and act on. Cross-reference `explorations/entity-vs-custom-type.md` (keep entities; this is a strong use case for them).
+- **Presentations (three stages; storage needs a decision).** Stage 1 outline/notes (Papers-like), stage 2 a completed notes markdown file, stage 3 the actual presentation. **Open fork on how the deliverable is stored:**
+  - **(a) markdown → `.pptx` render**, the Papers→`.docx` pattern (deterministic, one source of truth, but limited design).
+  - **(b) save Claude-designed artifact files** (the HTML/JSX/JS/MD bundle Claude produces, per Tyler's example — Pages/Components/Scripts/Documents) as attachments, and launch the HTML deck (rich design, but the markdown is no longer the single source). Possibly support both: markdown for the notes, saved artifact for the deck. **Needs more thought before building.**
+- **Books (long-form writing workspace).** A writing shape using the **Snowflake method** for fiction, with a tweaked variant for non-fiction (premise → expansions → outline → draft). Papers-family canvas, different stage model. Whoever-wants-it, solo.
+- **Quiet-time journals (Tyler — Savor pull).** Tyler already has this data shaped in **Savor**; for him this is "take the existing shape and sync it into Ledgr" via an **API on both sides** (a Savor endpoint + a Ledgr ingest). Maps to a module type + an **`IntegrationDef` (direction: pull)** behind the provider-seam pattern (per-instance integration, Tyler's lane per CLAUDE.md). Connects to the Bible hub (journal entry → passage).
+- **Hiring (Brandon's — already built in Notion).** Pinged in `COLLAB.md`; Brandon to build when he has a chance, shaping from his existing Notion hiring data to get most of the way there.
+
+---
+
 ## Open decisions to make as we build
 - ~~Entity `kind`~~: decided, real column on `items` (ADR-003).
 - ~~OneDrive export file scope~~: decided, app-only client credentials (ADR-017).
