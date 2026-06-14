@@ -76,7 +76,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
     const chordAt = new Map<number, string>();
     chords.forEach((c) => chordAt.set(c.at, c.chord));
     const cell = (ch: string, i: number): ReactNode => (
-      <span key={i} className="inline-flex cursor-pointer flex-col items-center rounded hover:bg-neutral-800/50">
+      <span key={i} className="group/ch inline-flex cursor-pointer flex-col items-center rounded hover:bg-neutral-800/50">
         <button
           className="flex h-4 items-end leading-none"
           onClick={(e) => openPicker(si, li, i, chordAt.get(i) ?? null, e)}
@@ -85,7 +85,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           {chordAt.has(i) ? (
             <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(i)}</span>
           ) : (
-            <span className="text-[0.72rem] text-transparent">+</span>
+            <span className="text-[0.72rem] text-neutral-600 opacity-0 group-hover/ch:opacity-100">+</span>
           )}
         </button>
         <button className="leading-snug" onClick={(e) => openPicker(si, li, i, chordAt.get(i) ?? null, e)}>
@@ -182,8 +182,9 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           <div className="flex items-center gap-2">
             <input
               value={section.label}
+              size={Math.max(section.label.length + 1, 6)}
               onChange={(e) => onChange(setSectionLabel(chart, si, e.target.value))}
-              className="rounded bg-transparent text-sm font-bold uppercase tracking-wide text-neutral-300 underline decoration-neutral-700 outline-none focus:decoration-sky-600"
+              className="max-w-full rounded bg-transparent text-sm font-bold uppercase tracking-wide text-neutral-300 underline decoration-neutral-700 outline-none focus:decoration-sky-600"
             />
             {section.ref && <span className="text-[10px] uppercase text-neutral-600">repeat</span>}
             <span className="ml-auto flex items-center gap-0.5 text-neutral-600">
@@ -224,8 +225,8 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
                 return (
                   <div key={li} className="group flex items-start gap-1">
                     <div className="flex-1 py-0.5">{lyricCells(edit.text, edit.chords, si, li)}</div>
-                    <button onClick={() => toggleRaw(k)} className="px-1 text-neutral-700 opacity-0 hover:text-neutral-300 group-hover:opacity-100" title="Edit text">✎</button>
-                    <button onClick={() => onChange(removeLine(chart, si, li))} className="px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete line">✕</button>
+                    <button onClick={() => toggleRaw(k)} className="shrink-0 rounded px-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-sky-400" title="Edit lyrics text">✎</button>
+                    <button onClick={() => onChange(removeLine(chart, si, li))} className="shrink-0 px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete line">✕</button>
                   </div>
                 );
               })}
