@@ -90,10 +90,29 @@ export type ModuleTypeDef = {
   icon?: string;
 };
 
+// An *attachable capability* (SPIKE — bespoke-tool catalog, next_steps.md:94).
+// The decoupling at the heart of the catalog: a module's behavior (canvas,
+// canonical format, exporters) named as a bundle that a user can attach to a
+// type *they* create under their own key/label — so the chord chart isn't locked
+// to the `song` key, and someone can make a "Worship Set" type that still gets
+// the ChordPro canvas. `id` is the stable identifier a `types` row stores;
+// `label`/`description`/`usage` are the catalog copy (what it does, how it can be
+// used). The behavior fields mirror a ModuleTypeDef so resolution is identical
+// whether a type *is* a module type or *borrows* one.
+export type ModuleCapability = {
+  id: string;
+  label: string;
+  description: string; // what it does
+  usage: string; // how it can be used (the catalog's "for example…")
+  canvasId: string;
+  canonicalFormat: string;
+};
+
 // A module: a workflow packaged as a unit (Tyler PR #1 §1). Mostly assembled from
 // machinery Ledgr already has (typed items, properties, relations, FTS, export);
 // the only new platform pieces are the per-type canvas (M5) and this registration
-// boundary (M6).
+// boundary (M6). `capabilities` (SPIKE) are the behaviors this module offers up
+// for attachment to user-named types via the Build catalog.
 export type ModuleManifest = {
   id: string;
   label: string;
@@ -104,6 +123,7 @@ export type ModuleManifest = {
   types: ModuleTypeDef[];
   exporters: ExporterDef[];
   integration?: IntegrationDef;
+  capabilities?: ModuleCapability[];
 };
 
 // --- core as the first module ----------------------------------------------
@@ -184,25 +204,90 @@ export function typeDefFor(
   return undefined;
 }
 
+// --- attachable capabilities (SPIKE — bespoke-tool catalog) ----------------
+
+// Every capability an enabled module offers for attachment — the list the Build
+// catalog renders. Capabilities a disabled module exposes drop out, like its
+// types do.
+export function attachableCapabilities(
+  ownerId?: string
+): (ModuleCapability & { moduleId: string })[] {
+  return enabledModules(ownerId).flatMap((m) =>
+    (m.capabilities ?? []).map((c) => ({ ...c, moduleId: m.id }))
+  );
+}
+
+// Resolve a capability id to its bundle (+ owning module), or undefined if no
+// enabled module offers it (e.g. the module was disabled after a type attached
+// it — the type then degrades to the default canvas, exactly like a disabled
+// module's own type).
+export function capabilityById(
+  id: string,
+  ownerId?: string
+): (ModuleCapability & { moduleId: string }) | undefined {
+  return attachableCapabilities(ownerId).find((c) => c.id === id);
+}
+
+// --- capability-aware behavior resolution ----------------------------------
+//
+// SPIKE: each resolver takes an optional `capability` — the id a user-created
+// `types` row stored when it attached a bespoke tool. A registered module type
+// (its key matches) always wins; otherwise an attached capability resolves the
+// behavior; otherwise the default. This is the whole decoupling: behavior is no
+// longer pinned to the type key.
+
 // The per-type canvas policy (M5). An unknown type, or one whose module is
-// disabled, falls back to the default markdown canvas.
-export function canvasIdForType(type: string, ownerId?: string): string {
-  return typeDefFor(type, ownerId)?.canvasId ?? DEFAULT_CANVAS;
+// disabled, falls back to the default markdown canvas — unless it borrows a
+// capability, which supplies the canvas instead.
+export function canvasIdForType(
+  type: string,
+  ownerId?: string,
+  capability?: string | null
+): string {
+  const def = typeDefFor(type, ownerId);
+  if (def) return def.canvasId;
+  if (capability) {
+    const cap = capabilityById(capability, ownerId);
+    if (cap) return cap.canvasId;
+  }
+  return DEFAULT_CANVAS;
 }
 
 // The canonical body format for a type — markdown unless the owning type declares
-// otherwise (e.g. ChordPro for Songs). The body contract (`src/lib/body.ts`)
-// already stores `{format, text}`; this is where a renderer/editor asks "which
-// format is canonical for this type."
-export function canonicalFormatForType(type: string, ownerId?: string): string {
-  return typeDefFor(type, ownerId)?.canonicalFormat ?? MARKDOWN_FORMAT;
+// otherwise (e.g. ChordPro for Songs), or unless it borrows a capability that
+// does. The body contract (`src/lib/body.ts`) already stores `{format, text}`;
+// this is where a renderer/editor asks "which format is canonical for this type."
+export function canonicalFormatForType(
+  type: string,
+  ownerId?: string,
+  capability?: string | null
+): string {
+  const def = typeDefFor(type, ownerId);
+  if (def) return def.canonicalFormat;
+  if (capability) {
+    const cap = capabilityById(capability, ownerId);
+    if (cap) return cap.canonicalFormat;
+  }
+  return MARKDOWN_FORMAT;
 }
 
-// The deterministic exporters a type offers (markdown→docx, ChordPro→chart).
-export function exportersForType(type: string, ownerId?: string): ExporterDef[] {
-  return enabledModules(ownerId).flatMap((m) =>
+// The deterministic exporters a type offers (markdown→docx, ChordPro→chart). A
+// type that borrows a capability inherits its module's exporters, re-pointed at
+// this type key (the exporter's `render` is key-agnostic — it reads the body),
+// so a "Worship Set" gets the song module's "Copy for Planning Center" exporter.
+export function exportersForType(
+  type: string,
+  ownerId?: string,
+  capability?: string | null
+): ExporterDef[] {
+  const own = enabledModules(ownerId).flatMap((m) =>
     m.exporters.filter((e) => e.forType === type)
   );
+  if (own.length > 0 || !capability) return own;
+  const cap = capabilityById(capability, ownerId);
+  if (!cap) return [];
+  const owner = allModules().find((m) => m.id === cap.moduleId);
+  return (owner?.exporters ?? []).map((e) => ({ ...e, forType: type }));
 }
 
 // Every type key contributed by an enabled module — the seam a future Build

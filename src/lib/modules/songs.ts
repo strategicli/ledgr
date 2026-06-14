@@ -34,4 +34,20 @@ export const songModule: ModuleManifest = {
       render: (body) => toPlanningCenterChordPro(parseChordPro(body.text)),
     },
   ],
+  // SPIKE (bespoke-tool catalog, next_steps.md:94): offer the chord behavior up
+  // for attachment to a user-named type. The chord chart isn't locked to the
+  // `song` key — someone can make a "Worship Set" or "Music" type and still get
+  // the ChordPro canvas, transpose, and the Planning Center export underneath.
+  capabilities: [
+    {
+      id: "chord-chart",
+      label: "Chord Chart",
+      description:
+        "A ChordPro chart editor: chords sit above the lyrics, with transpose and a Planning Center copy button.",
+      usage:
+        "Use it for a song, but also for a worship set, a setlist, or any sheet where you want to see and shift chords over words.",
+      canvasId: "chord",
+      canonicalFormat: CHORDPRO_FORMAT,
+    },
+  ],
 };

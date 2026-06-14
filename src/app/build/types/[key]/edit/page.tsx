@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
+import { capabilityById } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
 import { ItemError } from "@/lib/items";
@@ -23,6 +24,13 @@ export default async function EditType({
     throw err;
   });
 
+  // SPIKE (bespoke-tool catalog): resolve any attached capability to its label
+  // for the builder's banner.
+  const cap = type.capability
+    ? capabilityById(type.capability, owner.id)
+    : undefined;
+  const attached = cap ? { id: cap.id, label: cap.label } : null;
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
@@ -37,7 +45,7 @@ export default async function EditType({
             ← All types
           </Link>
         </div>
-        <TypeBuilder initial={type} />
+        <TypeBuilder initial={type} attached={attached} />
       </div>
     </main>
   );

@@ -27,4 +27,19 @@ export const paperModule: ModuleManifest = {
     },
   ],
   exporters: [],
+  // SPIKE (bespoke-tool catalog, next_steps.md:94): the paper workspace offered
+  // up for attachment to a user-named type, so the Quote Bank · Outline · Draft
+  // canvas isn't locked to the `paper` key.
+  capabilities: [
+    {
+      id: "paper-workspace",
+      label: "Paper Workspace",
+      description:
+        "A writing workspace with a quote bank, outline, and draft, plus a Word (.docx) title-page render.",
+      usage:
+        "Use it for a seminary paper, but also for an article, a long-form study, or any researched piece that grows from quotes to outline to draft.",
+      canvasId: "paper",
+      canonicalFormat: MARKDOWN_FORMAT,
+    },
+  ],
 };

@@ -17,6 +17,13 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { ItemError } from "@/lib/items";
+import { capabilityById } from "@/lib/modules";
+// SPIKE (bespoke-tool catalog): registers the workflow modules (Songs, Papers)
+// onto core for their side effect, so capability validation here — and the API
+// route that calls parseTypeInput — sees the attachable capabilities. Idempotent
+// (register.ts guards the duplicate-id throw). The canvas path imports this via
+// module-wiring; this is the type-validation path's counterpart.
+import "@/lib/modules/register";
 
 // The core property kinds (schema.md "Property kinds"). `relation` is
 // deliberately omitted from the builder for now: item-to-item links already
@@ -54,6 +61,10 @@ export type TypeDefinition = {
   isSystem: boolean;
   propertySchema: PropertyDef[];
   showInQuickCapture: boolean;
+  // SPIKE (bespoke-tool catalog): the attached module-capability id, or null.
+  // The registry (modules.ts) resolves this type's canvas/format/exporters from
+  // it when set — see canvasIdForType's third arg.
+  capability: string | null;
   createdAt: Date;
 };
 
@@ -64,6 +75,7 @@ export type TypeInput = {
   icon: string | null;
   propertySchema: PropertyDef[];
   showInQuickCapture: boolean;
+  capability: string | null; // SPIKE: attached bespoke-tool capability id
 };
 export type TypeCreateInput = TypeInput & { key: string };
 
@@ -148,12 +160,24 @@ export function parsePropertySchema(raw: unknown): PropertyDef[] {
   return out;
 }
 
+// SPIKE (bespoke-tool catalog): validate an attached capability id against the
+// live registry, so a type can't store a capability no enabled module offers.
+// null/"" means a plain custom type (default markdown canvas).
+function parseCapability(raw: unknown): string | null {
+  if (raw == null || raw === "") return null;
+  const id = asTrimmedString(raw, "capability");
+  if (!id) return null;
+  if (!capabilityById(id)) bad(`unknown bespoke tool '${id}'`);
+  return id;
+}
+
 function parseCommon(raw: unknown): {
   r: Record<string, unknown>;
   label: string;
   icon: string | null;
   propertySchema: PropertyDef[];
   showInQuickCapture: boolean;
+  capability: string | null;
 } {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     bad("request body must be a JSON object");
@@ -167,7 +191,8 @@ function parseCommon(raw: unknown): {
   const propertySchema = parsePropertySchema(r.propertySchema);
   // Default true (a new type is capturable unless the builder opts it out).
   const showInQuickCapture = r.showInQuickCapture !== false;
-  return { r, label, icon, propertySchema, showInQuickCapture };
+  const capability = parseCapability(r.capability);
+  return { r, label, icon, propertySchema, showInQuickCapture, capability };
 }
 
 export function parseTypeInput(raw: unknown, mode: "create"): TypeCreateInput;
@@ -176,7 +201,7 @@ export function parseTypeInput(
   raw: unknown,
   mode: "create" | "patch"
 ): TypeCreateInput | TypeInput {
-  const { r, label, icon, propertySchema, showInQuickCapture } =
+  const { r, label, icon, propertySchema, showInQuickCapture, capability } =
     parseCommon(raw);
   if (mode === "create") {
     return {
@@ -185,9 +210,10 @@ export function parseTypeInput(
       icon,
       propertySchema,
       showInQuickCapture,
+      capability,
     };
   }
-  return { label, icon, propertySchema, showInQuickCapture };
+  return { label, icon, propertySchema, showInQuickCapture, capability };
 }
 
 // Drizzle returns property_schema as unknown; coerce through the parser so a
@@ -207,6 +233,7 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     isSystem: row.isSystem,
     propertySchema,
     showInQuickCapture: row.showInQuickCapture,
+    capability: row.capability,
     createdAt: row.createdAt,
   };
 }
@@ -249,12 +276,14 @@ export async function createType(
       isSystem: false, // the five system types are seeded, never built here
       propertySchema: input.propertySchema,
       showInQuickCapture: input.showInQuickCapture,
+      capability: input.capability,
     })
     .returning();
   return rowToDefinition(rows[0]);
 }
 
-// Edits label/icon/property_schema/show-in-quick-capture. The key is the PK and
+// Edits label/icon/property_schema/show-in-quick-capture/capability. The key is
+// the PK and
 // FK target, so it's immutable (renaming it would orphan every item). System
 // types are editable here (adding a property to "meeting" is harmless and
 // useful); only delete is blocked for them.
@@ -270,6 +299,7 @@ export async function updateType(
       icon: input.icon,
       propertySchema: input.propertySchema,
       showInQuickCapture: input.showInQuickCapture,
+      capability: input.capability,
     })
     .where(eq(types.key, key))
     .returning();

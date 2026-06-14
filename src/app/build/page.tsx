@@ -109,6 +109,11 @@ export default async function BuildHome() {
             title="Work surface"
             description="Choose which views become dashboard widgets and navigation slots."
           />
+          <BuildCard
+            href="/build/tools"
+            title="Bespoke tools"
+            description="Add a specialized capability (chord charts, a paper workspace) to a type you name yourself."
+          />
         </div>
       </div>
     </main>
