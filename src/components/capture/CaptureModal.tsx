@@ -311,10 +311,15 @@ export default function CaptureModal({
             </span>
           )}
           <span className="ml-auto text-xs text-neutral-600">
-            {state === "error"
-              ? "Failed, Enter to retry"
-              : "Enter to capture · Esc to close"}
+            {state === "error" ? "Failed, retry" : "Enter or Create · Esc to close"}
           </span>
+          <button
+            onClick={() => void capture()}
+            disabled={state === "busy"}
+            className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          >
+            {state === "busy" ? "Creating…" : "Create"}
+          </button>
         </div>
       </div>
     </div>

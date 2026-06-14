@@ -28,7 +28,8 @@ const STATUS: Record<string, string> = {
 export default function ChordCanvasClient({ itemId, initialTitle, initialBody }: Props) {
   const [chart, setChart] = useState<ChordChart>(() => parseChordPro(bodyMarkdown(initialBody)));
   const [title, setTitle] = useState(initialTitle);
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  // Songs open in Preview (v5) — you read/perform far more than you edit.
+  const [mode, setMode] = useState<"edit" | "preview">("preview");
   const [copied, setCopied] = useState(false);
   const { patch, saveState } = useItemAutosave(itemId);
 

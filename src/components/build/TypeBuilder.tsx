@@ -249,8 +249,8 @@ export default function TypeBuilder({
         label="Key"
         hint={
           editing
-            ? "The stable identifier; fixed once created."
-            : "Lowercase identifier used internally; auto-filled from the name."
+            ? "The internal id this type is stored under. Fixed once created so existing items don't break."
+            : "The internal id this type is stored under (lowercase, no spaces). Auto-filled from the name; you rarely need to change it."
         }
       >
         <input
@@ -266,11 +266,14 @@ export default function TypeBuilder({
       </Field>
 
       <div className="flex flex-wrap items-end gap-4">
-        <Field label="Icon" hint="Optional name, e.g. user-plus.">
+        <Field
+          label="Icon"
+          hint="Optional. The name of an icon shown next to this type, e.g. music, file-text, user-plus."
+        >
           <input
             value={icon}
             onChange={(e) => setIcon(e.target.value)}
-            placeholder="tag"
+            placeholder="e.g. file-text"
             className={`${selectClass} w-40`}
           />
         </Field>
@@ -389,7 +392,7 @@ export default function TypeBuilder({
         )}
         {isSystem && (
           <span className="text-xs text-neutral-600">
-            System type — can be extended, not deleted.
+            Built-in type — can be extended, not deleted.
           </span>
         )}
       </div>
