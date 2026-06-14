@@ -12,7 +12,10 @@
 // shifted under the title's <h1>). This module owns only the document shell and
 // its styles.
 import { BLOCKNOTE_COLORS } from "@/lib/colors";
-import { bodyMarkdown } from "@/lib/body";
+import { bodyMarkdown, isItemBody } from "@/lib/body";
+import { CHART_CSS } from "@/lib/chordpro/chart-css";
+import { chordProToHtml } from "@/lib/chordpro/render";
+import { CHORDPRO_FORMAT } from "@/lib/chordpro/types";
 import { markdownToHtml } from "@/lib/markdown-render";
 
 export function escapeHtml(text: string): string {
@@ -83,6 +86,7 @@ ${HL_CSS}
   .print-bar{display:none}
   h2,h3,h4{page-break-after:avoid}
 }
+${CHART_CSS}
 `;
 
 // Renders one item to a complete HTML page. `body` is the item's stored body
@@ -96,6 +100,14 @@ export function renderPrintDocument(
 ): string {
   const safeTitle = escapeHtml(title || "Untitled");
   const footer = opts.footerHtml ? `<div class="doc-footer">${opts.footerHtml}</div>` : "";
+  // A chordpro body renders as a chord chart whose own header carries the title,
+  // key/capo/tempo/time line — so the outer <h1> is suppressed for it. Every
+  // other body stays on the markdown path under the title heading, unchanged.
+  const isChordpro = isItemBody(body) && body.format === CHORDPRO_FORMAT;
+  const heading = isChordpro ? "" : `<h1>${safeTitle}</h1>`;
+  const bodyHtml = isChordpro
+    ? chordProToHtml(bodyMarkdown(body))
+    : markdownToHtml(bodyMarkdown(body));
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -106,8 +118,8 @@ export function renderPrintDocument(
 </head>
 <body>
 <div class="print-bar"><button onclick="window.print()">Print / PDF</button></div>
-<h1>${safeTitle}</h1>
-${markdownToHtml(bodyMarkdown(body))}
+${heading}
+${bodyHtml}
 ${footer}
 </body>
 </html>`;

@@ -10,13 +10,19 @@
 // A workflow module adds its canvas component here (a chord grid, a paper
 // workspace); core wires the two it ships — the default markdown canvas and the
 // `link` URL chip (ADR-041).
+import ChordCanvas from "@/components/canvas/ChordCanvas";
 import LinkCanvas from "@/components/canvas/LinkCanvas";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
 import { DEFAULT_CANVAS, type CanvasComponent } from "@/lib/modules";
+// Side-effect import: registers the workflow modules (Songs, …) onto core so a
+// `song` resolves its `chord` canvas. This is the canvas-dispatch path
+// (ItemCanvas imports this file), so registration happens before any render.
+import "@/lib/modules/register";
 
 const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   [DEFAULT_CANVAS]: MarkdownCanvas,
   link: LinkCanvas,
+  chord: ChordCanvas,
 };
 
 // Resolve a canvas id (from `canvasIdForType`) to its component. Anything
