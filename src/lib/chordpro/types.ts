@@ -40,6 +40,10 @@ export type Section = {
   label: string;
   kind: SectionKind;
   ref: boolean;
+  // Force a column break before this section (Planning Center's COLUMN_BREAK /
+  // a {column_break} directive). In the 2-column chart this starts the section
+  // at the top of the next column.
+  breakBefore?: boolean;
   lines: ChartLine[];
 };
 
@@ -50,6 +54,9 @@ export type ChartMeta = {
   capo?: number;
   tempo?: number;
   time?: string;
+  // The song map / play order ("Intro, V1, V2, PC, C1, …") shown under the
+  // header — the arrangement, not the printed section order.
+  arrangement?: string;
   ccli?: string;
   copyright?: string;
 };

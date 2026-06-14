@@ -147,5 +147,31 @@ check(
 );
 check("untransposed render keeps the stored key spelling", html.includes("Key: Bb"));
 
+// ── 10. Column break + arrangement (from the real Light on the Hill chart) ────
+const COLBREAK = `{title: Light on the Hill}
+{artist: Tyler Collins, Isaac Downing}
+{key: G}
+{tempo: 80}
+{time: 4/4}
+{arrangement: Intro, V1, V2, PC, C1, V3, PC, C2, B×2, C3, C4, E}
+
+{section: Verse 1}
+I was wa[G]lking, in the shadow land
+
+{column_break}
+{section: Chorus 2}
+He's the [G]light of the world`;
+const cb = parseChordPro(COLBREAK);
+check("arrangement parsed", cb.meta.arrangement === "Intro, V1, V2, PC, C1, V3, PC, C2, B×2, C3, C4, E");
+check("column break sets breakBefore on the next section", cb.sections.find((s) => s.label === "Chorus 2")?.breakBefore === true);
+check("section before the break has no breakBefore", !cb.sections.find((s) => s.label === "Verse 1")?.breakBefore);
+check("column break + arrangement round-trip", roundTrips(COLBREAK));
+const cbHtml = chartToHtml(cb);
+check("renders the arrangement line", cbHtml.includes('class="cc-arrangement"') && cbHtml.includes("B×2"));
+check("renders a column break on the section", cbHtml.includes("cc-break"));
+// the bare Planning Center "COLUMN_BREAK" token is honored like the directive
+const pcStyle = parseChordPro("{section: A}\nx\nCOLUMN_BREAK\n{section: B}\ny");
+check("bare COLUMN_BREAK token honored", pcStyle.sections.find((s) => s.label === "B")?.breakBefore === true);
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

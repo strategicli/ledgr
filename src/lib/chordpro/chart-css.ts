@@ -10,8 +10,10 @@ export const CHART_CSS = `
 .cc-title{font-size:1.7rem;font-weight:700;line-height:1.15}
 .cc-artist{color:#a3a3a3;font-size:.95rem;margin-top:.1rem}
 .cc-meta{color:#a3a3a3;font-size:.9rem;margin-top:.25rem}
+.cc-arrangement{color:#737373;font-size:.85rem;margin-top:.35rem;font-weight:600}
 .cc-body{column-count:2;column-gap:2rem}
 .cc-section{break-inside:avoid;margin:0 0 1rem;display:block}
+.cc-break{break-before:column}
 .cc-label{font-weight:700;text-decoration:underline;margin-bottom:.25rem}
 .cc-ref .cc-label{color:#737373;font-weight:600}
 .cc-line{margin-bottom:.1rem}
@@ -23,12 +25,19 @@ export const CHART_CSS = `
 .cc-pipe{color:#737373;margin:0 .35rem}
 .cc-beat{color:#737373}
 .cc-comment{font-style:italic;color:#a3a3a3;margin:.15rem 0}
+/* On-screen the canvas can be narrow (e.g. a modal); drop to one column so
+   chords aren't cramped. Print overrides this back to two columns on the page. */
+@media screen and (max-width:640px){
+  .cc-body{column-count:1}
+}
 @media print{
   .cc-head{border-color:#bbb}
   .cc-title{color:#111}
   .cc-artist,.cc-meta{color:#444}
+  .cc-arrangement{color:#555}
   .cc-chord{color:#1a4d8f}
   .cc-bars{color:#222}
   .cc-pipe,.cc-beat{color:#888}
+  .cc-body{column-count:2}
 }
 `;

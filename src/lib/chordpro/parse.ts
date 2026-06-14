@@ -66,10 +66,15 @@ export function parseChordPro(text: string): ChordChart {
   const meta: ChartMeta = {};
   const sections: Section[] = [];
   let current: Section | null = null;
+  let pendingBreak = false;
 
   const openSection = (label: string, ref = false) => {
     if (current) sections.push(current);
     current = { label, kind: classifySection(label), ref, lines: [] };
+    if (pendingBreak) {
+      current.breakBefore = true;
+      pendingBreak = false;
+    }
     if (ref) {
       sections.push(current);
       current = null;
@@ -86,6 +91,13 @@ export function parseChordPro(text: string): ChordChart {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (line === "") continue;
+
+    // Planning Center emits a bare COLUMN_BREAK token; treat it the same as a
+    // {column_break} directive — the next section starts the next column.
+    if (line.toUpperCase() === "COLUMN_BREAK") {
+      pendingBreak = true;
+      continue;
+    }
 
     const dir = DIRECTIVE_RE.exec(line);
     if (dir) {
@@ -116,6 +128,14 @@ export function parseChordPro(text: string): ChordChart {
         }
         case "time":
           meta.time = value;
+          break;
+        case "arrangement":
+        case "sequence":
+          meta.arrangement = value;
+          break;
+        case "column_break":
+        case "colb":
+          pendingBreak = true;
           break;
         case "ccli":
           meta.ccli = value;
@@ -168,6 +188,7 @@ const META_ORDER: [keyof ChartMeta, string][] = [
   ["capo", "capo"],
   ["tempo", "tempo"],
   ["time", "time"],
+  ["arrangement", "arrangement"],
   ["ccli", "ccli"],
   ["copyright", "copyright"],
 ];
@@ -180,6 +201,7 @@ export function serializeChordChart(chart: ChordChart): string {
   }
   for (const section of chart.sections) {
     if (out.length > 0) out.push("");
+    if (section.breakBefore) out.push("{column_break}");
     if (section.ref) {
       out.push(`{repeat: ${section.label}}`);
       continue;

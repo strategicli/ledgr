@@ -51,19 +51,22 @@ function headerHtml(chart: ChordChart, opts: RenderOptions): string {
   if (meta.title) rows.push(`<div class="cc-title">${esc(meta.title)}</div>`);
   if (meta.artist) rows.push(`<div class="cc-artist">${esc(meta.artist)}</div>`);
   if (parts.length) rows.push(`<div class="cc-meta">${parts.join(" · ")}</div>`);
+  if (meta.arrangement)
+    rows.push(`<div class="cc-arrangement">${esc(meta.arrangement)}</div>`);
   return rows.length ? `<header class="cc-head">${rows.join("")}</header>` : "";
 }
 
 function sectionHtml(section: Section, opts: RenderOptions): string {
   const kindClass = `cc-${section.kind}`;
+  const breakClass = section.breakBefore ? " cc-break" : "";
   const label = section.label
     ? `<div class="cc-label">${esc(section.label)}</div>`
     : "";
   if (section.ref) {
-    return `<section class="cc-section cc-ref ${kindClass}">${label}</section>`;
+    return `<section class="cc-section cc-ref ${kindClass}${breakClass}">${label}</section>`;
   }
 
-  const lines = section.lines
+  const linesHtml = section.lines
     .map((line) => {
       if (line.kind === "comment") {
         return `<div class="cc-comment">${esc(line.text)}</div>`;
@@ -94,7 +97,7 @@ function sectionHtml(section: Section, opts: RenderOptions): string {
     })
     .join("");
 
-  return `<section class="cc-section ${kindClass}">${label}${lines}</section>`;
+  return `<section class="cc-section ${kindClass}${breakClass}">${label}${linesHtml}</section>`;
 }
 
 function footerHtml(chart: ChordChart): string {

@@ -72,6 +72,7 @@ th{text-align:left;font-weight:600;background:#171717}
 .print-bar button{background:#262626;color:#e5e5e5;border:1px solid #404040;
   border-radius:6px;padding:.4rem .9rem;font:13px system-ui,sans-serif;cursor:pointer}
 ${HL_CSS}
+@page{size:letter;margin:0.5in}
 @media print{
   :root{color-scheme:light}
   body{background:#fff;color:#111;max-width:none;padding:0;font-size:12pt}
