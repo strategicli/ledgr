@@ -236,18 +236,20 @@ check(
 check("transposeChartChords leaves the chart unchanged at 0/12 semitones", transposeChartChords(base, 12) === base);
 check("capo math: A capo 2 → G shapes (for the live header)", keyOfCapo("A", 2) === "G");
 
-// ── 14. Planning Center ChordPro export (copy button) ─────────────────────────
+// ── 14. Planning Center Lyrics & Chords export (copy button) ──────────────────
 const { toPlanningCenterChordPro } = await import("../src/lib/chordpro/export");
 const pco = toPlanningCenterChordPro(
   parseChordPro(
-    "{title: Demo}\n{key: A}\n{capo: 2}\n{tempo: 80}\n{arrangement: V1, C}\n{section: Verse 1}\nLong [G]ago\n\n{section: Chorus}\nHe's the [G]light\n\n{repeat: Chorus}"
+    "{key: A}\n{capo: 2}\n{tempo: 80}\n{time: 4/4}\n{arrangement: V1, C}\n{section: Verse 1}\nLong [G]ago\n{c: soft}\n\n{column_break}\n{section: Chorus}\nHe's the [G]light\n\n{repeat: Chorus}"
   )
 );
-check("PCO export emits standard metadata directives", pco.includes("{title: Demo}") && pco.includes("{key: A}") && pco.includes("{capo: 2}") && pco.includes("{tempo: 80}"));
-check("PCO export renders section labels as {comment}", pco.includes("{comment: Verse 1}") && pco.includes("{comment: Chorus}"));
-check("PCO export keeps inline chords", pco.includes("Long [G]ago"));
-check("PCO export drops non-standard layout directives", !pco.includes("{section:") && !pco.includes("{arrangement") && !pco.includes("{repeat"));
-check("PCO export repeat reference is a bare label, no duplicated lyrics", pco.split("He's the [G]light").length - 1 === 1);
+check("PCO: section headings are plain ALL-CAPS lines", /^VERSE 1$/m.test(pco) && /^CHORUS$/m.test(pco));
+check("PCO: metadata is a single chord-chart-only note", pco.includes("{{ Key: A · Capo: 2 · 80 bpm · 4/4 }}"));
+check("PCO: keeps inline [chord] lyrics", pco.includes("Long [G]ago"));
+check("PCO: comments become single-curly notes", pco.includes("{soft}"));
+check("PCO: layout uses bare COLUMN_BREAK token", /^COLUMN_BREAK$/m.test(pco));
+check("PCO: no ChordPro {key}/{title}/{comment}/{section} directives", !pco.includes("{key:") && !pco.includes("{title") && !pco.includes("{comment") && !pco.includes("{section"));
+check("PCO: repeat reference is a bare heading, no duplicated lyrics", pco.split("He's the [G]light").length - 1 === 1);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

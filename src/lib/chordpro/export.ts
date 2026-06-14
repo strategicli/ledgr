@@ -1,31 +1,51 @@
-// Export a chart as portable ChordPro for pasting into Planning Center's
-// Lyrics & Chords editor (PCO imports ChordPro). Our internal dialect uses
-// {section: …}/{repeat: …} and layout directives (column/page break,
-// arrangement) that aren't standard ChordPro; this emits the widely-understood
-// subset — standard metadata directives, section labels as {comment: …}, and
-// inline [chord]lyrics — so the paste lands clean. Pure (type-only + lineToSource).
+// Export a chart in Planning Center's Lyrics & Chords format, for pasting into
+// PCO's editor. Per PCO's spec the body uses:
+//   - SECTION HEADINGS as plain ALL-CAPS lines (no {comment:}, no chords on them)
+//   - [chord] inline ChordPro (placed above the lyric, chord-chart only)
+//   - { note } single-curly notes (shown on chord + lyric PDFs)
+//   - {{ note }} double-curly notes (chord-chart PDFs only)
+//   - bare COLUMN_BREAK / PAGE_BREAK tokens for layout
+// PCO does NOT read ChordPro {title}/{key}/{capo}/{tempo} directives in the
+// editor (those are arrangement fields), so song metadata goes in a single
+// chord-chart-only {{ … }} note at the top rather than as directives.
 import { lineToSource } from "./parse";
 import type { ChordChart } from "./types";
+
+// Instrumental/bar line → bracketed chords so they land on a chord chart;
+// the "/" beat marks and "|" bar lines stay literal.
+function barsToPco(bars: string[][]): string {
+  const body = bars
+    .map((bar) => bar.map((t) => (t === "/" ? "/" : `[${t}]`)).join(" "))
+    .join(" | ");
+  return `| ${body} |`;
+}
 
 export function toPlanningCenterChordPro(chart: ChordChart): string {
   const out: string[] = [];
   const m = chart.meta;
-  if (m.title) out.push(`{title: ${m.title}}`);
-  if (m.artist) out.push(`{subtitle: ${m.artist}}`);
-  if (m.key) out.push(`{key: ${m.key}}`);
-  if (m.capo != null) out.push(`{capo: ${m.capo}}`);
-  if (m.tempo != null) out.push(`{tempo: ${m.tempo}}`);
-  if (m.time) out.push(`{time: ${m.time}}`);
-  if (m.ccli) out.push(`{ccli: ${m.ccli}}`);
+
+  // Key / capo / tempo / time as a chord-chart-only note (PCO sets these in the
+  // arrangement; this keeps them visible on the pasted chart without polluting
+  // lyric PDFs).
+  const info: string[] = [];
+  if (m.key) info.push(`Key: ${m.key}`);
+  if (m.capo != null) info.push(`Capo: ${m.capo}`);
+  if (m.tempo != null) info.push(`${m.tempo} bpm`);
+  if (m.time) info.push(m.time);
+  if (info.length) out.push(`{{ ${info.join(" · ")} }}`);
 
   for (const section of chart.sections) {
     out.push("");
-    // Section label as a comment — PCO (and most ChordPro tools) show it as a
-    // heading. A repeat reference is just the label, no lyrics.
-    if (section.label) out.push(`{comment: ${section.label}}`);
-    if (section.ref) continue;
-    for (const line of section.lines) out.push(lineToSource(line));
+    if (section.pageBreakBefore) out.push("PAGE_BREAK");
+    if (section.breakBefore) out.push("COLUMN_BREAK");
+    if (section.label) out.push(section.label.toUpperCase());
+    if (section.ref) continue; // a repeat is just the heading, no lyrics
+    for (const line of section.lines) {
+      if (line.kind === "lyric") out.push(lineToSource(line)); // [G]lyric
+      else if (line.kind === "bars") out.push(barsToPco(line.bars));
+      else out.push(`{${line.text}}`); // single-curly note
+    }
   }
 
-  return out.join("\n").trim() + "\n";
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
