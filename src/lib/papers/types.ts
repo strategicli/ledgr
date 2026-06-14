@@ -52,6 +52,11 @@ export type QuoteEntry = {
   source: Source;
   page?: string;
   text: string;
+  // Where this quote is filed (v5). `paragraphId` → under a specific paragraph;
+  // else `sectionId` → at the section level; else neither → Unsorted. A pointer
+  // to a deleted section/paragraph is treated as Unsorted.
+  sectionId?: string;
+  paragraphId?: string;
 };
 
 // The paper's title-page metadata, stored under these keys in items.properties
@@ -67,12 +72,32 @@ export type PaperMeta = {
   stage?: string;
 };
 
+// The structured outline (Papers module; v5 feedback round 3, modeled on
+// ty-docs/1peter_outline_viewer.html). A paper is Sections → Paragraphs, and
+// quotes file under paragraphs. Section titles become `##` headers; paragraph
+// titles are OPTIONAL (Tyler's papers use sections only — an untitled paragraph
+// is just a quote-holder; other users can title them, becoming `###` headers).
+// A `note` is the prose plan for the unit. This is the source of truth the Draft
+// skeleton and the HTML outline-viewer export both render from.
+export type OutlineParagraph = {
+  id: string;
+  title?: string; // optional sub-header (off by default for Tyler's papers)
+  note?: string; // the writer's thoughts for this paragraph (markdown), Outline tab
+};
+
+export type OutlineSection = {
+  id: string;
+  title: string;
+  note?: string;
+  paragraphs: OutlineParagraph[];
+};
+
 // The full scaffold the paper canvas owns inside items.properties. Spread over
 // any pre-existing properties so system keys (email/todoist/calendar/…) a paper
 // is unlikely to have but might inherit are never clobbered.
 export type PaperScaffold = PaperMeta & {
-  outline?: string; // markdown
-  quoteBank?: QuoteEntry[];
+  sections?: OutlineSection[];
+  quoteBank?: QuoteEntry[]; // all quotes; filed ones carry a paragraphId
 };
 
 // The stages a paper moves through (the workflow in the build spec: shape →
