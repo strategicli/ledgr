@@ -316,7 +316,7 @@ export default function CaptureModal({
           <button
             onClick={() => void capture()}
             disabled={state === "busy"}
-            className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+            className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110 disabled:opacity-40"
           >
             {state === "busy" ? "Creating…" : "Create"}
           </button>

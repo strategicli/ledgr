@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import type { CSSProperties } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import Nav from "@/components/nav/Nav";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import { AppAuthProvider } from "@/lib/auth/provider";
+import { resolveOwner } from "@/lib/owner";
+import { DEFAULT_SETTINGS, getSettings } from "@/lib/settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,7 +36,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
   modal,
 }: Readonly<{
@@ -41,13 +44,25 @@ export default function RootLayout({
   // Parallel slot for the intercepted item canvas modal (src/app/@modal).
   modal: React.ReactNode;
 }>) {
+  // The owner's highlight color drives the app-wide `--accent` var (v5). Best-
+  // effort: signed-out / pre-DB renders fall back to the default.
+  let accent = DEFAULT_SETTINGS.highlightColor;
+  try {
+    const owner = await resolveOwner();
+    if (owner) accent = (await getSettings(owner.id)).highlightColor;
+  } catch {
+    /* default accent */
+  }
   return (
     <AppAuthProvider>
       <html
         lang="en"
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       >
-        <body className="min-h-full flex flex-col pb-24">
+        <body
+          className="min-h-full flex flex-col pb-24"
+          style={{ "--accent": accent } as CSSProperties}
+        >
           {children}
           <Nav />
           {modal}

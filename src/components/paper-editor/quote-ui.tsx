@@ -61,7 +61,7 @@ export function QuotePasteBox({ onSave, compact }: { onSave: (e: QuoteEntry) => 
         <button
           onClick={save}
           disabled={!text.trim()}
-          className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110 disabled:opacity-40"
         >
           Save quote
         </button>

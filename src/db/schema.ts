@@ -49,6 +49,10 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   clerkId: text("clerk_id").unique(),
   email: text("email").notNull().unique(),
+  // Per-owner UI/preferences blob (v5): highlight-accent color, Trash retention
+  // days, nav position, etc. A single jsonb keeps adding a preference from being
+  // a migration each time. Shape parsed/defaulted in src/lib/settings.ts.
+  settings: jsonb("settings"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
