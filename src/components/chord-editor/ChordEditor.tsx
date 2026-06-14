@@ -6,7 +6,7 @@
 // canvas toggle.
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { lineToSource, parseLineSource } from "@/lib/chordpro/parse";
 import type { ChordChart } from "@/lib/chordpro/types";
 import ChordPicker from "./ChordPicker";
@@ -14,14 +14,13 @@ import {
   addLine,
   addRepeat,
   addSection,
-  EditChord,
+  type EditChord,
   moveSection,
   pairsToEditLine,
   removeLine,
   removeSection,
   setChordAt,
   setLine,
-  setLineText,
   setSectionLabel,
   updateMeta,
 } from "./chordpro-edit";
@@ -34,29 +33,6 @@ type Props = {
 };
 
 type PickerTarget = { si: number; li: number; at: number; value: string | null; x: number; y: number };
-
-// Split a line's text into word slots and bucket each chord onto a word (or a
-// trailing slot at the end), so chords render above the right word and each
-// word is a click target for adding one.
-function layout(text: string, chords: EditChord[]) {
-  const slots: { w: string; start: number; end: number; chords: EditChord[] }[] = [];
-  const re = /\S+/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) slots.push({ w: m[0], start: m.index, end: 0, chords: [] });
-  slots.forEach((s, i) => (s.end = i + 1 < slots.length ? slots[i + 1].start : text.length));
-  const trailing: EditChord[] = [];
-  for (const c of chords) {
-    if (slots.length === 0) {
-      trailing.push(c);
-      continue;
-    }
-    const slot = slots.find((s) => c.at >= s.start && c.at < s.end);
-    if (slot) slot.chords.push(c);
-    else if (c.at < slots[0].start) slots[0].chords.push(c);
-    else trailing.push(c);
-  }
-  return { slots, trailing };
-}
 
 const META_FIELDS: { key: keyof ChordChart["meta"]; label: string; width: string }[] = [
   { key: "key", label: "Key", width: "w-16" },
@@ -89,6 +65,70 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
       onChange(setLine(chart, si, li, edit));
     }
     setPicker(null);
+  };
+
+  // Render a lyric line character by character so a chord can sit above the
+  // exact letter you click (mid-syllable, S5). Non-space runs group into
+  // non-breaking words; spaces stay breakable wrap points; a trailing slot sits
+  // after the last word. Each character's chord row + the character itself open
+  // the picker at that precise offset.
+  const lyricCells = (text: string, chords: EditChord[], si: number, li: number): ReactNode => {
+    const chordAt = new Map<number, string>();
+    chords.forEach((c) => chordAt.set(c.at, c.chord));
+    const cell = (ch: string, i: number): ReactNode => (
+      <span key={i} className="inline-flex cursor-pointer flex-col items-center rounded hover:bg-neutral-800/50">
+        <button
+          className="flex h-4 items-end leading-none"
+          onClick={(e) => openPicker(si, li, i, chordAt.get(i) ?? null, e)}
+          title="Add / edit chord here"
+        >
+          {chordAt.has(i) ? (
+            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(i)}</span>
+          ) : (
+            <span className="text-[0.72rem] text-transparent">+</span>
+          )}
+        </button>
+        <button className="leading-snug" onClick={(e) => openPicker(si, li, i, chordAt.get(i) ?? null, e)}>
+          {ch}
+        </button>
+      </span>
+    );
+    const units: ReactNode[] = [];
+    let word: ReactNode[] = [];
+    const flush = (key: string) => {
+      if (word.length) {
+        units.push(<span key={key} className="inline-flex items-end">{word}</span>);
+        word = [];
+      }
+    };
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (/\s/.test(ch)) {
+        flush(`w${i}`);
+        units.push(cell(" ", i));
+      } else {
+        word.push(cell(ch, i));
+      }
+    }
+    flush("wend");
+    const end = text.length;
+    units.push(
+      <span key="trail" className="inline-flex flex-col items-center">
+        <button
+          className="flex h-4 items-end leading-none"
+          onClick={(e) => openPicker(si, li, end, chordAt.get(end) ?? null, e)}
+          title="Trailing chord"
+        >
+          {chordAt.has(end) ? (
+            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(end)}</span>
+          ) : (
+            <span className="text-[0.72rem] text-neutral-700">＋</span>
+          )}
+        </button>
+        <span className="h-4 w-2" />
+      </span>
+    );
+    return <div className="flex flex-wrap items-end">{units}</div>;
   };
 
   return (
@@ -179,61 +219,11 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
                     </div>
                   );
                 }
-                // interactive lyric line: click a word to add a chord, a chord to edit it
+                // interactive lyric line: click a character to drop/edit a chord above it
                 const edit = pairsToEditLine(line.pairs);
-                const { slots, trailing } = layout(edit.text, edit.chords);
                 return (
                   <div key={li} className="group flex items-start gap-1">
-                    <div className="cc-edit-line flex flex-1 flex-wrap items-end gap-x-1.5 py-0.5">
-                      {slots.map((s, wi) => (
-                        <span key={wi} className="inline-flex flex-col items-start">
-                          <span className="flex h-4 items-end gap-1">
-                            {s.chords.length ? (
-                              s.chords.map((c, ci) => (
-                                <button
-                                  key={ci}
-                                  onClick={(e) => openPicker(si, li, c.at, c.chord, e)}
-                                  className="text-xs font-bold leading-none text-sky-400 hover:text-sky-300"
-                                >
-                                  {c.chord}
-                                </button>
-                              ))
-                            ) : (
-                              <button
-                                onClick={(e) => openPicker(si, li, s.start, null, e)}
-                                className="text-xs leading-none text-transparent hover:text-neutral-600"
-                                title="Add chord"
-                              >
-                                ＋
-                              </button>
-                            )}
-                          </span>
-                          <button
-                            onClick={(e) => openPicker(si, li, s.start, s.chords[0]?.chord ?? null, e)}
-                            className="text-left leading-snug text-neutral-200 hover:text-white"
-                          >
-                            {s.w}
-                          </button>
-                        </span>
-                      ))}
-                      {/* trailing chord slot after the last word */}
-                      <span className="inline-flex flex-col items-start">
-                        <span className="flex h-4 items-end gap-1">
-                          {trailing.length ? (
-                            trailing.map((c, ci) => (
-                              <button key={ci} onClick={(e) => openPicker(si, li, c.at, c.chord, e)} className="text-xs font-bold leading-none text-sky-400 hover:text-sky-300">
-                                {c.chord}
-                              </button>
-                            ))
-                          ) : (
-                            <button onClick={(e) => openPicker(si, li, edit.text.length, null, e)} className="text-xs leading-none text-neutral-700 hover:text-neutral-500" title="Trailing chord">
-                              ＋
-                            </button>
-                          )}
-                        </span>
-                        <span className="h-4" />
-                      </span>
-                    </div>
+                    <div className="flex-1 py-0.5">{lyricCells(edit.text, edit.chords, si, li)}</div>
                     <button onClick={() => toggleRaw(k)} className="px-1 text-neutral-700 opacity-0 hover:text-neutral-300 group-hover:opacity-100" title="Edit text">✎</button>
                     <button onClick={() => onChange(removeLine(chart, si, li))} className="px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete line">✕</button>
                   </div>
