@@ -82,6 +82,13 @@ function Icon({ slot }: { slot: string }) {
           <path d="m16 16 4.5 4.5" />
         </svg>
       );
+    case "views": // distinct from items: a stack of saved slices
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="16" height="6" rx="1.5" />
+          <rect x="4" y="14" width="16" height="6" rx="1.5" />
+        </svg>
+      );
     default: // items / anything else: a list
       return (
         <svg {...common}>

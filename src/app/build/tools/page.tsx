@@ -50,7 +50,7 @@ export default async function BespokeTools() {
             {capabilities.map((c) => (
               <li
                 key={c.id}
-                className="rounded-xl border border-blue-500/60 p-4 shadow-[0_0_18px_-2px_rgba(59,130,246,0.45)]"
+                className="rounded-xl border border-neutral-800 p-4"
               >
                 <h2 className="text-sm font-semibold text-neutral-100">
                   {c.label}

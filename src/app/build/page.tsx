@@ -18,12 +18,14 @@ function BuildCard({
   description,
   badge,
   soon,
+  highlight,
 }: {
   href?: string;
   title: string;
   description: string;
   badge?: string;
   soon?: boolean;
+  highlight?: boolean;
 }) {
   const inner = (
     <>
@@ -41,13 +43,15 @@ function BuildCard({
       <p className="mt-1 text-sm text-neutral-500">{description}</p>
     </>
   );
-  const base =
-    "block rounded-xl border border-neutral-800 p-4 text-left transition-colors";
+  const border = highlight
+    ? "border-blue-500/60 shadow-[0_0_18px_-2px_rgba(59,130,246,0.45)]"
+    : "border-neutral-800";
+  const base = `block rounded-xl border ${border} p-4 text-left transition-colors`;
   if (soon || !href) {
     return <div className={`${base} opacity-60`}>{inner}</div>;
   }
   return (
-    <Link href={href} className={`${base} hover:border-neutral-700 hover:bg-neutral-900`}>
+    <Link href={href} className={`${base} hover:bg-neutral-900 ${highlight ? "" : "hover:border-neutral-700"}`}>
       {inner}
     </Link>
   );
@@ -113,6 +117,7 @@ export default async function BuildHome() {
             href="/build/tools"
             title="Bespoke tools"
             description="Add a specialized capability (chord charts, a paper workspace) to a type you name yourself."
+            highlight
           />
         </div>
       </div>
