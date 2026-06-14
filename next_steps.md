@@ -231,6 +231,12 @@ Captured 2026-06-14 from real mobile use. Fix against priority, not all at once.
 
 **Explorations opened (2026-06-14):** `explorations/mobile-swipe-navigation.md`, `explorations/notes-organization.md`, `explorations/meeting-recording.md`, `explorations/canvas-drag-and-drop.md`, `explorations/rich-export-and-theming.md`.
 
+**Build surface follow-up (2026-06-14) — custom properties on system types:**
+The infrastructure for this already exists: `updateType` allows editing system types (adding properties is explicitly permitted in the code comment), and the `TypeBuilder` already shows "System type — can be extended, not deleted" when you open one via `/build/types/[key]/edit`. What's missing is **discoverability and framing**:
+- The types list in `/build/types` should make it clearer that system types are editable (an "Add property" shortcut or a more inviting edit link, not just a greyed-out system badge).
+- In the property editor for a system type, distinguish between **built-in properties** (connected to plumbing — Todoist sync, calendar fields, etc.) and **custom properties** (organizational only — sorting, grouping, filtering). A visual divider or a label like "Custom properties" below the system ones would set the right expectation.
+- No schema change needed — custom properties on system types ride `properties` jsonb the same way they do on user types.
+
 ---
 
 ## Next up (in order)
