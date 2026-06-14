@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { hasScopedToken } from "@/lib/auth/machine";
+import { resolveMcpOwner } from "@/lib/mcp/owner";
 import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
 import { getExportState } from "@/lib/export/engine";
@@ -93,6 +95,10 @@ export async function GET() {
   // LEDGR_CRON_TOKEN) or VAPID keys aren't set yet (runbook §1e, the 503 path).
   let lastAgendaNotifyAt: string | null = null;
   let lastPrepNotifyAt: string | null = null;
+  // MCP server canary (slice 36, ADR-047): configured = a token with the `mcp`
+  // scope exists AND the owner UPN resolves to a users row. Both must hold for
+  // Claude to reach it; like the Graph check it never changes overall status.
+  let mcp = { configured: false, hasToken: false, ownerResolves: false };
   let errors: ErrorsCheck = null;
   if (database.ok) {
     try {
@@ -131,6 +137,13 @@ export async function GET() {
     } catch {
       // same posture as the export state read.
     }
+    try {
+      const hasToken = hasScopedToken("mcp");
+      const ownerResolves = !!(await resolveMcpOwner());
+      mcp = { configured: hasToken && ownerResolves, hasToken, ownerResolves };
+    } catch {
+      // same posture as the export state read.
+    }
     errors = await checkErrors();
   }
 
@@ -161,6 +174,7 @@ export async function GET() {
         lastEmailRunAt,
         lastAgendaNotifyAt,
         lastPrepNotifyAt,
+        mcp,
         graph,
         errors,
       },

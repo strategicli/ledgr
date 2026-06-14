@@ -30,6 +30,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `ONEDRIVE_EXPORT_UPN` | whose OneDrive receives the export tree (Brandon's email); the export job also resolves its `users` row by this email | fixed value |
 | `ONEDRIVE_EXPORT_ROOT` | folder inside that OneDrive holding the export (default `Ledgr` → `/Ledgr/Export/…`) | fixed value, optional |
 | `GRAPH_MAILBOX_UPN` | mailbox whose calendar/mail the app-only jobs read (Phase 2). Optional: defaults to `ONEDRIVE_EXPORT_UPN` since it's the same person; set only if they ever diverge | fixed value, optional |
+| `LEDGR_MCP_OWNER_UPN` | whose `users` row the MCP server (§1f) acts for. Optional: defaults to `ONEDRIVE_EXPORT_UPN` / `GRAPH_MAILBOX_UPN` (same person); set only if the MCP identity ever diverges | fixed value, optional |
 | `TODOIST_TOKEN` | Todoist API token (Phase 2) | Todoist settings → Integrations → Developer |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (Phase 2, slice 30) VAPID keypair; without them `/api/push` reports unconfigured and the notify crons 503. The public key is also the browser's `applicationServerKey` | `node scripts/make-vapid-keys.mjs` (§1e) |
 | `VAPID_SUBJECT` | Push contact (RFC 8292 `sub`): `mailto:` or https URL | fixed value, optional (defaults to a localhost mailto) |
@@ -135,6 +136,17 @@ Push notifications (ADR-034) send the morning agenda summary and meeting-prep-re
 
 ---
 
+## 1f. Claude MCP server setup (one-time, Brandon — Phase 3)
+The MCP server (ADR-047) makes Claude a first-class client: from Claude desktop/web/mobile you can search, read, create, and update your Ledgr items over a personal API token (PRD §5.5) — "what's open with Roger," "file this as a task due Friday," "prep tomorrow's 1:1." It's an **in-app** endpoint at `POST /api/mcp` (Streamable HTTP — no separate server to host or keep warm), gated by a scoped machine token, never Clerk. Until a token exists the endpoint 401s every call; `/health` `checks.mcp.configured` is the canary.
+
+1. **Issue a token:** `node scripts/make-token.mjs claude-mcp mcp` prints the raw token (`lgr_…`, shown once — keep it for the client) and the `LEDGR_API_TOKENS` entry. Append the entry, comma-separated, to `LEDGR_API_TOKENS` in Vercel (and `.env.local`), redeploy. The token's scope is `mcp`; it grants only the MCP endpoint, nothing else.
+2. **Owner:** the server resolves your `users` row from `LEDGR_MCP_OWNER_UPN`, falling back to `ONEDRIVE_EXPORT_UPN` (the same person), so if the export is set up (§1b) there's nothing to do here. Set `LEDGR_MCP_OWNER_UPN` only if the MCP identity ever differs from the export mailbox.
+3. **Connect a client:** add a custom/remote MCP connector with URL `https://ledgr-teal.vercel.app/api/mcp` and header `Authorization: Bearer <raw token>` (Claude apps: Settings → Connectors → Add custom connector; Claude Desktop: a remote MCP server entry). The server is stateless and request/response only (no SSE stream), which every Streamable-HTTP client supports.
+4. **Verify:** `/health` `checks.mcp` should read `{configured:true, hasToken:true, ownerResolves:true}`. From the client, ask Claude to "list my Ledgr types" (`list_types`) or "what tasks are open" (`list_items`). The six tools: `search_items`, `list_items`, `get_item`, `create_item`, `update_item`, `list_types`.
+5. **Revoke:** delete the `claude-mcp` entry from `LEDGR_API_TOKENS`, redeploy (same flow as any machine token, §3). Rotate on any suspicion of leak — a token is the only credential on this endpoint.
+
+---
+
 ## 2. Health and monitoring
 - **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome), `graph` (app-only Graph token grant; see below), and `errors.last24h` (count of `error_log` rows captured in the last 24 hours; should be 0). The Todoist API check joins once that integration exists.
 - **`checks.graph`** (slice 21, ADR-022) is the canary for every unattended Graph job (export, calendar, email-in): `{configured:false}` until the registration is set (§1b), `{configured:true, ok:true}` when an app-only token grant succeeds (proving the client secret is valid and unexpired), `{configured:true, ok:false, detail}` when it fails — the **secret-expiry / revoked-consent alarm**. It is a token grant only, not a resource call, so it stays green even before the calendar permission is granted (§1c); it never changes overall `/health` status (Graph down must not make the app look unhealthy — the DB is what "healthy" means).
@@ -143,6 +155,7 @@ Push notifications (ADR-034) send the morning agenda summary and meeting-prep-re
 - **`lastTodoistSyncAt` / `lastTodoistRunAt`** (slice 25) are the same pair for Todoist. Both null = `TODOIST_TOKEN` unset (§1d) or the poll never reaches the endpoint. `error_log` sources `todoist-sync` / `todoist-sync-now` / `todoist-webhook`.
 - **`lastEmailImportAt` / `lastEmailRunAt`** (slice 26) are the same pair for email-in. Both null = `Mail.ReadWrite` not granted / the `Ledgr Import` folder missing (§1c, the 403/404→503 path) or the poll never reaches the endpoint. `error_log` source `email-import`.
 - **`lastAgendaNotifyAt` / `lastPrepNotifyAt`** (slice 30) are the last clean morning-agenda send and meeting-prep-ready run. Both null = VAPID keys unset (§1e, the 503 path) or the crons never reach the endpoint (agenda needs `CRON_SECRET`, prep needs `LEDGR_CRON_TOKEN`). `error_log` sources `notify-agenda` / `notify-prep`.
+- **`checks.mcp`** (slice 36, ADR-047) is the MCP-server canary: `{configured:true, hasToken:true, ownerResolves:true}` once an `mcp`-scoped token exists and the owner UPN resolves to a `users` row (§1f). Both false until setup; like `checks.graph` it never changes overall `/health` status. `error_log` source `mcp`.
 - A **weekly scheduled Claude task** hits `/health` and emails Brandon on failure.
 - The export-timestamp check is the canary for a **silently stalled sync** (see §6, GitHub Actions auto-disable).
 - **Structured logs (ADR-020):** every server-side event is one JSON line `{ts, level, source, correlationId, message, ...}` via `src/lib/log.ts`; read them in Vercel → Project → Logs. One correlation id covers one request/job run, and 500 responses echo it (`{"error":"internal error","correlationId":"…"}`), so a screenshot of a failure can be grepped straight to its lines and its `error_log` row.

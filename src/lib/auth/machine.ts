@@ -69,3 +69,13 @@ export function verifyMachineToken(
   }
   return null;
 }
+
+// Whether any configured token carries the given scope. Env-only (no token in
+// hand), so it's a cheap "is this capability wired up" check — the /health MCP
+// canary uses it (a `mcp`-scoped token must exist for the MCP server to be
+// reachable), the same way the Graph/push checks report configured-ness.
+export function hasScopedToken(scope: string): boolean {
+  return parseEntries(process.env.LEDGR_API_TOKENS).some((e) =>
+    e.scopes.includes(scope)
+  );
+}

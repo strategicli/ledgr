@@ -11,6 +11,9 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/api/machine(.*)",
+  // The MCP server (slice 36, ADR-047) authenticates with a scoped machine
+  // token in the handler, never Clerk — same door as /api/machine/*.
+  "/api/mcp(.*)",
   // Todoist signs its webhook with an HMAC (no Bearer token); the route
   // verifies the signature itself (slice 25). Only the webhook is public —
   // /api/todoist/sync stays Clerk-protected.
