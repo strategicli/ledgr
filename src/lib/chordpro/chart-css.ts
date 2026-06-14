@@ -5,17 +5,21 @@
 // (chord over its syllable) that wrap naturally; the chart body flows two
 // columns like the reference PraiseCharts.
 export const CHART_CSS = `
-.cc-chart{font-family:system-ui,-apple-system,sans-serif;color:inherit}
+/* Sized so a full lyric line fits one column (~the density of a letter-page
+   PraiseChart) rather than wrapping; chords scale with it (em, not rem). */
+.cc-chart{font-family:system-ui,-apple-system,sans-serif;color:inherit;font-size:0.95rem}
 .cc-head{margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid #333}
 .cc-title{font-size:1.7rem;font-weight:700;line-height:1.15}
 .cc-artist{color:#a3a3a3;font-size:.95rem;margin-top:.1rem}
 .cc-meta{color:#a3a3a3;font-size:.9rem;margin-top:.25rem}
 .cc-arrangement{color:#737373;font-size:.85rem;margin-top:.35rem;font-weight:600}
-/* Print is two columns on the letter page; the in-app canvas (.cc-canvas) is a
-   single full-width column so lines fit and don't wrap mid-phrase — digital
-   practice view ≠ the printed chart. */
+/* Two columns — print (letter page) and the in-app canvas alike. The canvas is
+   a query container, so it shows two columns only when it's wide enough for a
+   full lyric line per column and collapses to one in a narrow modal/window
+   (avoids mid-phrase wrapping). Print stays two columns regardless. */
 .cc-body{column-count:2;column-gap:2rem}
-.cc-canvas .cc-body{column-count:1}
+.cc-canvas{container-type:inline-size}
+@container (max-width:60rem){.cc-body{column-count:1}}
 .cc-section{break-inside:avoid;margin:0 0 1rem;display:block}
 .cc-break{break-before:column}
 .cc-page-break{break-before:page}
@@ -27,13 +31,16 @@ export const CHART_CSS = `
 .cc-space{white-space:pre}
 .cc-cell{display:inline-flex;flex-direction:column;white-space:pre}
 .cc-trail .cc-chord{padding-left:.15rem}
-.cc-chord{font-weight:700;color:#7cb3ff;font-size:.8rem;line-height:1.1;min-height:1.1em;white-space:pre}
+.cc-chord{font-weight:700;color:#7cb3ff;font-size:.8em;line-height:1.1;min-height:1.1em;white-space:pre}
 .cc-text{line-height:1.25}
 .cc-bars{font-family:ui-monospace,Consolas,monospace;color:#d4d4d4}
 .cc-pipe{color:#737373;margin:0 .35rem}
 .cc-beat{color:#737373}
 .cc-comment{font-style:italic;color:#a3a3a3;margin:.15rem 0}
 @media print{
+  /* Letter page, two ~3.5in columns: this size lets a full lyric line fit a
+     column without wrapping, matching the reference PraiseChart density. */
+  .cc-chart{font-size:10.5pt}
   .cc-head{border-color:#bbb}
   .cc-title{color:#111}
   .cc-artist,.cc-meta{color:#444}

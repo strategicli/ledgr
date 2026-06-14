@@ -12,7 +12,7 @@ export default function ChordCanvas({ item }: CanvasProps) {
   const source = bodyMarkdown(item.body); // returns body.text for any {format,text}
   const html = chordProToHtml(source);
   return (
-    <div className="cc-canvas mx-auto w-full max-w-3xl px-12 py-6">
+    <div className="cc-canvas mx-auto w-full max-w-6xl px-8 py-6">
       <style>{CHART_CSS}</style>
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </div>
