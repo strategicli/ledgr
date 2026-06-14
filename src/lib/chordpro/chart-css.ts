@@ -7,7 +7,9 @@
 export const CHART_CSS = `
 /* Sized so a full lyric line fits one column (~the density of a letter-page
    PraiseChart) rather than wrapping; chords scale with it (em, not rem). */
-.cc-chart{font-family:system-ui,-apple-system,sans-serif;color:inherit;font-size:0.95rem}
+/* The whole chart — title, metadata, columns, footer — shares one width so the
+   header lines up with the song body. */
+.cc-chart{font-family:system-ui,-apple-system,sans-serif;color:inherit;font-size:0.95rem;max-width:52rem;margin-inline:auto}
 .cc-head{margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid #333}
 .cc-title{font-size:1.7rem;font-weight:700;line-height:1.15}
 .cc-artist{color:#a3a3a3;font-size:.95rem;margin-top:.1rem}
@@ -17,10 +19,9 @@ export const CHART_CSS = `
    a query container, so it shows two columns only when it's wide enough for a
    full lyric line per column and collapses to one in a narrow modal/window
    (avoids mid-phrase wrapping). Print stays two columns regardless. */
-/* Cap the chart width so two columns hug the lyric width instead of spreading
-   across a wide page — otherwise the empty right edge of column one reads as a
-   huge gutter. Centered; gap stays tight. */
-.cc-body{column-count:2;column-gap:0.75rem;max-width:52rem;margin-inline:auto}
+/* Two snug columns; the chart wrapper (.cc-chart) owns the width cap so the
+   header aligns with the body. Gap stays tight. */
+.cc-body{column-count:2;column-gap:0.75rem}
 .cc-canvas{container-type:inline-size}
 @container (max-width:52rem){.cc-body{column-count:1}}
 .cc-section{break-inside:avoid;margin:0 0 1rem;display:block}
