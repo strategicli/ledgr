@@ -64,6 +64,13 @@
       "when": 1781386379314,
       "tag": "0008_bright_dazzler",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781397644035,
+      "tag": "0009_square_maddog",
+      "breakpoints": true
     }
   ]
 }

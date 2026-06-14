@@ -91,7 +91,7 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 
 **Tier 2 — Templates (follow from the Build-surface UX decisions above):**
 - [ ] Workflow & wiki templates ("New Workflow"/"New Wiki" guided creation → type + properties + views; on-the-fly tweaks; wire into Work as widget/nav slot; retire = archive, never delete; PRD §4.14)
-- [ ] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12)
+- [x] Per-type item templates (task/meeting/note templates storing property choices + starter canvas content; the meeting-prep template of Phase 2 becomes one instance; Brandon, 2026-06-12) **(2026-06-13, ADR-045, slice 34: owner-scoped `templates` table (migration 0009) keyed to a type, storing a `{format,text}` starter body + `property_defaults`; `src/lib/templates.ts` store + `createItemFromTemplate` (rides the item-create path, `inbox:false`); `/api/templates{,/[id],/[id]/apply}`; `TemplateBuilder` over `/build/templates` reusing the Tiptap editor in controlled mode + a property-defaults editor off the type's schema; template-aware "+ New ▾" menu via a self-fetch in `NewItemButton` (zero page churn). The Phase-2 meeting-prep agenda is now an expressible instance. `verify-templates.mts` 27/27; in-browser end-to-end (build → list → apply seeds the default) confirmed.)**
 
 **Tier 3 — Claude layer + migration (moved later):**
 - [ ] MCP server (search/read/create/update items, list by entity/date; personal API token)
@@ -104,6 +104,12 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [ ] Richer dashboard widgets + flexible layout: widget types beyond the list preview (layout-faithful cards, stat/count cards), spanning sizes, regions/sidebars, per-widget settings — likely a Build-surface feature. **Direction: the dashboard becomes the Work home, replacing the fixed Today layout once widgets are rich enough** (Brandon, 2026-06-13; `explorations/dashboard-widgets.md`)
 
 **Slots in whenever §1c lands (Brandon-step-gated, not priority-ordered):** the deferred matcher setup-wizard + learn-by-confirmation UIs (see Phase 2).
+
+**Editor parity / completeness (carried from the M3 markdown cutover, ADR-040 — runs parallel to the tiers, not tier-ordered):** the Tiptap editor was stood up with the core path (text, headings, lists, colors, mentions, task-list checkboxes) but a few BlockNote-era affordances didn't get ported. The R2 attachment infra (`/api/attachments`, presign, `src/lib/attachments.ts`, the storage `putObject` interface) is all intact, so these are re-wiring jobs against an existing backend, not rebuilds.
+- [ ] **Inline image paste — REGRESSION fix.** Was Phase-1-complete (paste image → R2 → inline), dropped by the M3 cutover; the `markdown-editor/` components have zero paste/drop/image handling. Re-wire a Tiptap paste/drop handler onto the existing R2 presign flow and insert a markdown image (`![](url)`). Brandon confirmed it no longer works (2026-06-13).
+- [ ] **Tables.** GFM table syntax (`| col |`). Server render is **already covered** — markdown-it's default preset has GFM tables on (`markdown-render.ts`), so this is **editor-side only**: the first-party `@tiptap/extension-table` (+ row/cell/header nodes), a toolbar insert/edit affordance, and CSS. Low resilience risk (markdown is canonical; tables serialize to standard GFM, no data lock-in; same `@tiptap/*` vendor already in use). The real work is verifying `@tiptap/markdown` round-trips a table to GFM and back identical. (Brandon, 2026-06-13.)
+- [ ] **Paste / embed documents (files).** BlockNote had file blocks; the markdown canvas doesn't. Decide the markdown representation (a link to the R2-stored file vs an inline embed) and wire paste/drop → R2 → markdown. (Brandon, 2026-06-13 — recorded for later; lower priority than image paste.)
+- Minor: a **strikethrough toolbar button** (Strike already round-trips via StarterKit; just no button).
 
 ---
 

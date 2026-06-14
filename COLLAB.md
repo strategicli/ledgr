@@ -14,9 +14,11 @@ Rule of thumb: a change to **core** (data model, the canonical body format, the 
 ## Brandon — current
 
 - **Availability:** _(e.g. "around this week, evenings")_
-- **Working on:** **Phase 3, Tier 1 — the Build surface UX — DONE (2026-06-13, ADR-044, slice 33).** The Build surface (a standalone floating Work/Build toggle + a `/build` home) and the full **custom type & property builder** shipped: `src/lib/types.ts` registry store, `/api/types{,/[key]}`, `TypeBuilder` over `/build/types`, custom properties rendered + edited on the canvas, and the parked type/kind authoring UX (kind dropdown, data-driven opt-in quick capture, "Relate to…" rename). Migration **0008** adds `types.show_in_quick_capture`. (Phase M is also complete — ADR-040/041/043.)
-- **Next:** **Phase 3, Tier 2 — templates** (workflow/wiki guided creation, then per-type item templates), building on the new type/property machinery. Claude/MCP layer + Notion migration are Tier 3.
-- **Heads-up (Tyler) — slice 33 touched core (the `types` table + the type model); Brandon directed shipping it solo, same as M6. Two things for you:**
+- **Working on:** **Phase 3, Tier 2 — templates.** **Tier 2a (per-type item templates) DONE (2026-06-13, ADR-045, slice 34); Tier 2b (workflow/wiki structure generator) in progress this session (ADR-046).** (Tier 1 — the Build surface + custom type/property builder — done in ADR-044/slice 33; Phase M done in ADR-040/041/043.)
+- **Next:** finish Tier 2b (workflow/wiki guided creation → type + properties + starter views, wired into Work). Then Tier 3 (Claude/MCP layer + Notion migration).
+- **Heads-up (Tyler) — Tier 2a added core (a new `templates` table); Brandon directed shipping Tier 2 solo, same waiver as M6/slice 33. For you:**
+  - **New `templates` table (migration 0009):** owner-scoped item templates, `{id, owner_id, type → types.key ON DELETE cascade, name, body jsonb ({format,text}), property_defaults jsonb, created_at}`. `src/lib/templates.ts` is the store; `createItemFromTemplate` just calls `createItem` with the body + defaults pre-filled (`inbox:false`). The Phase-2 meeting-prep agenda is the forerunner — your module types get item templates for free (no module-side work; it's owner data over the existing type). `TemplateBuilder` reuses the Tiptap editor in *controlled* mode (`LazyMarkdownEditor` + stable `initialMarkdown` + `onChange`, `itemId` optional) — handy if a module canvas ever needs an editor not bound to an item.
+- **(slice 33 heads-up, still relevant) Tier 1 touched core (the `types` table + the type model). Two things:**
   - **The `types` table gained a `show_in_quick_capture` column (migration 0008)** and `property_schema` now has a concrete shape: an ordered **`PropertyDef[]`** = `{key, label, kind, options?}`, kinds `text|number|date|checkbox|url|select|multi_select` (parsed in `src/lib/types.ts`). Per-item values live in `items.properties`.
   - **The ADR-043 split is intact:** a user type is just a `types` row and falls back to the default markdown canvas (no `modules.ts` change). For your modules nothing changes — you still register a `ModuleManifest` *and* seed a `types` row (the DB owns label/icon/`property_schema`/enumeration; the registry owns canvas/format/exporters). New reusable bit: `src/components/build/CustomProperties.tsx` renders a type's `property_schema` editably on the default canvas — your module canvas can compose it or roll its own.
 - **(Earlier heads-up, still relevant) the M6 boundary** — what you implement to add a module (Papers/Songs/…):
@@ -27,7 +29,7 @@ Rule of thumb: a change to **core** (data model, the canonical body format, the 
   - **Worked example:** `referenceModule` (exported from `modules.ts`) shows a full four-slot manifest; `scripts/verify-module-registry.mts` shows it resolving. Copy that shape.
   - **Scope (ADR-042):** the foundation delivered the *capability*; **building the modules is your lane** ("module internals — move fast, solo"). Adding a type also means a `types` DB row (see `scripts/seed.mjs`) — the registry owns *code behavior*, the DB still owns label/icon enumeration.
   - Still current: **markdown-it** is the core server-side markdown→HTML path (`src/lib/markdown-render.ts`, `html:true`, `ledgr://`→`.mention`, heading-shift) your docx/chart renderers derive from; bespoke Tiptap `TextColor`/`Highlight`/`LedgrMention` are the only editor path (compare against your Savor versions).
-- **Last updated:** 2026-06-13
+- **Last updated:** 2026-06-13 (Tier 2a — item templates)
 
 ## Tyler — current
 

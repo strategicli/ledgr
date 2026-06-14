@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
+import { listTemplates } from "@/lib/templates";
 import { listTypes } from "@/lib/types";
 import { listViews } from "@/lib/views";
 
@@ -56,9 +57,10 @@ export default async function BuildHome() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [types, views] = await Promise.all([
+  const [types, views, templates] = await Promise.all([
     listTypes(),
     listViews(owner.id),
+    listTemplates(owner.id),
   ]);
   const userTypes = types.filter((t) => !t.isSystem).length;
 
@@ -92,7 +94,13 @@ export default async function BuildHome() {
             badge={`${views.length}`}
           />
           <BuildCard
-            title="Templates & workflows"
+            href="/build/templates"
+            title="Item templates"
+            description="Reusable starting points for new tasks, meetings, and notes: preset fields and starter content."
+            badge={templates.length ? `${templates.length}` : undefined}
+          />
+          <BuildCard
+            title="Workflows & wikis"
             description="Guided 'New Workflow' / 'New Wiki' creation that generates a type, its properties, and starter views."
             soon
           />

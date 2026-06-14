@@ -341,6 +341,36 @@ export const shareTokens = pgTable(
   ]
 );
 
+// Per-type item templates (slice 34, PRD §4.3/§4.14): reusable starting points
+// for new items of a type — preset custom-property values + starter body
+// content. The Phase-2 meeting-prep agenda (§5.1) is the forerunner; this
+// generalizes it to any type. Owner-scoped like views/matchers (personal
+// config, not shared structure). body is the canonical { format, text }
+// shape; property_defaults seeds items.properties. A template references its
+// type (FK), and the cascade drops a type's templates if the type itself is
+// ever deleted (deleteType already blocks while items use it). Not items
+// (CLAUDE.md rule 2 covers user content; a template is config, like a view),
+// and kept out of items.properties so getType stays lean on the canvas.
+export const templates = pgTable(
+  "templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    type: text("type")
+      .notNull()
+      .references(() => types.key, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    body: jsonb("body"),
+    propertyDefaults: jsonb("property_defaults"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("templates_owner_type_idx").on(t.ownerId, t.type)]
+);
+
 // No silent failures: failed crons/webhooks land here and surface through
 // /health and the UI. detail is shown only when debug mode is on.
 export const errorLog = pgTable("error_log", {
