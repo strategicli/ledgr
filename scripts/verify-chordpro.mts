@@ -9,6 +9,7 @@ import { chartToHtml } from "../src/lib/chordpro/render";
 import { chordProToText } from "../src/lib/chordpro/render-text";
 import {
   keyOfCapo,
+  transposeChartChords,
   transposeChord,
   transposeNote,
 } from "../src/lib/chordpro/transpose";
@@ -218,6 +219,22 @@ check(
 );
 const clamped = setLineText(el, "Long ago");
 check("setLineText drops chords past the new text length", clamped.chords.every((c) => c.at <= "Long ago".length));
+
+// ── 13. Transpose the whole chart (S4) ────────────────────────────────────────
+const base = parseChordPro(
+  "{key: G}\n{section: Verse}\n[G]Long [Em]ago\n| G | D/F# |"
+);
+const up2 = transposeChartChords(base, 2);
+const v = up2.sections[0].lines[0];
+const vp = v.kind === "lyric" ? v.pairs : [];
+check("transposeChartChords shifts lyric chords", vp[0].chord === "A" && vp[1].chord === "F#m");
+const barsUp = up2.sections[0].lines[1];
+check(
+  "transposeChartChords shifts bar tokens incl. slash chords",
+  barsUp.kind === "bars" && json(barsUp.bars) === json([["A"], ["E/G#"]])
+);
+check("transposeChartChords leaves the chart unchanged at 0/12 semitones", transposeChartChords(base, 12) === base);
+check("capo math: A capo 2 → G shapes (for the live header)", keyOfCapo("A", 2) === "G");
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

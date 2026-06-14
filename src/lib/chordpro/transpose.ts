@@ -4,6 +4,8 @@
 // Cmaj7(no3), D(4) — only the root note (and the slash bass note) move; the
 // quality/suffix is preserved verbatim.
 
+import type { ChordChart } from "./types";
+
 const SHARP_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const FLAT_NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 
@@ -71,4 +73,32 @@ export function semitonesBetween(fromKey: string, toKey: string): number {
 // keyOfCapo("Bb", 3) === "G".  (Capo raises pitch, so shapes are lower.)
 export function keyOfCapo(soundingKey: string, capo: number, preferFlats = false): string {
   return transposeNote(soundingKey, -capo, preferFlats);
+}
+
+// Shift every chord token in a chart (lyric chords + bar tokens) by `semitones`.
+// Pure (type-only import); the transpose/capo control composes this with a meta
+// update — transposing changes the sounding key, a capo change shifts the
+// shapes inversely so the sounding key holds.
+export function transposeChartChords(
+  chart: ChordChart,
+  semitones: number,
+  preferFlats = false
+): ChordChart {
+  if (semitones % 12 === 0) return chart;
+  const tx = (c: string) => transposeChord(c, semitones, preferFlats);
+  return {
+    ...chart,
+    sections: chart.sections.map((s) => ({
+      ...s,
+      lines: s.lines.map((l) => {
+        if (l.kind === "lyric") {
+          return { ...l, pairs: l.pairs.map((p) => ({ ...p, chord: p.chord ? tx(p.chord) : null })) };
+        }
+        if (l.kind === "bars") {
+          return { ...l, bars: l.bars.map((bar) => bar.map(tx)) };
+        }
+        return l;
+      }),
+    })),
+  };
 }

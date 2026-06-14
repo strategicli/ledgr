@@ -11,6 +11,7 @@ import { parseChordPro, serializeChordChart } from "@/lib/chordpro/parse";
 import { chartToHtml } from "@/lib/chordpro/render";
 import { CHORDPRO_FORMAT, type ChordChart } from "@/lib/chordpro/types";
 import ChordEditor from "@/components/chord-editor/ChordEditor";
+import TransposeControl from "@/components/chord-editor/TransposeControl";
 import { updateMeta } from "@/components/chord-editor/chordpro-edit";
 import { useItemAutosave } from "@/components/chord-editor/useItemAutosave";
 
@@ -63,6 +64,9 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
         <span className={`text-xs ${saveState === "error" ? "text-red-400" : "text-neutral-500"}`}>
           {STATUS[saveState]}
         </span>
+        <div className="ml-auto">
+          <TransposeControl chart={chart} onChange={commitChart} />
+        </div>
       </div>
 
       {mode === "edit" ? (
