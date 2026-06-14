@@ -5,6 +5,8 @@
 // stays node-pure like the rest of the registry. Exporters (ChordPro→chart PDF,
 // transposed chart) and a Planning Center integration are deferred (the plan's
 // out-of-branch list); the slots are here when they land.
+import { toPlanningCenterChordPro } from "@/lib/chordpro/export";
+import { parseChordPro } from "@/lib/chordpro/parse";
 import { CHORDPRO_FORMAT } from "@/lib/chordpro/types";
 import type { ModuleManifest } from "@/lib/modules";
 
@@ -21,5 +23,15 @@ export const songModule: ModuleManifest = {
       canvasId: "chord",
     },
   ],
-  exporters: [],
+  // Portable ChordPro for Planning Center's Lyrics & Chords editor (copy/paste;
+  // the canvas "Copy for Planning Center" button uses the same renderer live).
+  exporters: [
+    {
+      id: "song-chordpro-pco",
+      label: "ChordPro (Planning Center)",
+      forType: "song",
+      fileExtension: "cho",
+      render: (body) => toPlanningCenterChordPro(parseChordPro(body.text)),
+    },
+  ],
 };

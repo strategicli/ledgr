@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { bodyMarkdown } from "@/lib/body";
 import { CHART_CSS } from "@/lib/chordpro/chart-css";
+import { toPlanningCenterChordPro } from "@/lib/chordpro/export";
 import { parseChordPro, serializeChordChart } from "@/lib/chordpro/parse";
 import { chartToHtml } from "@/lib/chordpro/render";
 import { CHORDPRO_FORMAT, type ChordChart } from "@/lib/chordpro/types";
@@ -28,7 +29,18 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
   const [chart, setChart] = useState<ChordChart>(() => parseChordPro(bodyMarkdown(initialBody)));
   const [title, setTitle] = useState(initialTitle);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [copied, setCopied] = useState(false);
   const { patch, saveState } = useItemAutosave(itemId);
+
+  const copyForPCO = async () => {
+    try {
+      await navigator.clipboard.writeText(toPlanningCenterChordPro(chart));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked — no-op */
+    }
+  };
 
   const commitChart = (next: ChordChart) => {
     setChart(next);
@@ -64,6 +76,13 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
         <span className={`text-xs ${saveState === "error" ? "text-red-400" : "text-neutral-500"}`}>
           {STATUS[saveState]}
         </span>
+        <button
+          onClick={() => void copyForPCO()}
+          className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:border-neutral-500 hover:text-neutral-100"
+          title="Copy ChordPro to paste into Planning Center's Lyrics & Chords editor"
+        >
+          {copied ? "Copied ✓" : "Copy for Planning Center"}
+        </button>
         <div className="ml-auto">
           <TransposeControl chart={chart} onChange={commitChart} />
         </div>
