@@ -16,6 +16,26 @@ import { updateMeta } from "./chordpro-edit";
 
 type Props = { chart: ChordChart; onChange: (next: ChordChart) => void };
 
+// Line-art padlock (lucide-style), open or closed; inherits the button color.
+function LockIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      {open ? <path d="M7 11V7a5 5 0 0 1 9.9-1" /> : <path d="M7 11V7a5 5 0 0 1 10 0v4" />}
+    </svg>
+  );
+}
+
 function Stepper({
   label,
   value,
@@ -92,14 +112,15 @@ export default function TransposeControl({ chart, onChange }: Props) {
       <button
         onClick={() => setLockShapes((l) => !l)}
         aria-pressed={lockShapes}
-        className={`rounded border px-1.5 text-xs ${
+        className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs ${
           lockShapes
             ? "border-sky-700 bg-sky-950/60 text-sky-300"
             : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
         }`}
         title="Lock shapes: keep the chord shapes and let the capo set the key"
       >
-        {lockShapes ? "🔒 shapes" : "🔓 shapes"}
+        <LockIcon open={!lockShapes} />
+        shapes
       </button>
       <button
         onClick={() => setPreferFlats((f) => !f)}
