@@ -26,6 +26,29 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Tyler's lane — Songs module: the chord chart builder ✅ DONE (2026-06-13, PR #3 `tyler/chord-chart-builder`)
+
+The first real workflow module, built end-to-end on the M5/M6 foundation (ADR-042). A `song` type with a **ChordPro canonical body**, a bespoke **chord-chart canvas**, a **click-to-place WYSIWYG editor**, and **live transpose/capo** — designed against two real PraiseCharts exports ("Light on the Hill", "Sharpen My Sword"). All in `src/lib/chordpro/` + `src/components/chord-editor/` + `src/components/canvas/Chord*`.
+
+- **S1 — pure ChordPro core** (`src/lib/chordpro/`): parser/serializer, chart→HTML renderer (chords over syllables, words never split, leading + trailing chords, two columns, column/page breaks, arrangement line), lyrics-only FTS text, transpose/capo math. Import-pure → one renderer for editor preview, print/share, and the verify script.
+- **S2 — module + render surfaces**: `src/lib/modules/songs.ts` + the registration boot site (`src/lib/modules/register.ts` — the first live `registerModule` caller, imported by `module-wiring.tsx`); `print-html.ts`/`body-text.ts` branch on `body.format === "chordpro"`; song types-row seed.
+- **S3 — WYSIWYG editor + Edit ⇄ Preview toggle**: click a character → chord picker (no bracket typing); leading/trailing slots; per-line ✎ raw fallback; section add/label/reorder/delete/repeat; autosave (`useItemAutosave`).
+- **S4 — transpose/capo** + **lock-shapes** (🔒 keep shapes, capo drives the key).
+- **S5 — mid-syllable placement** (chord above the exact clicked character).
+- **S6 — mid-song key change**: TRANSPOSE/REDEFINE KEY markers (parse PCO tokens + directives; renderer threads a running transpose; PCO export emits them).
+- **Copy for Planning Center**: button copies PCO Lyrics & Chords format exactly (ALL-CAPS headings, inline `[chord]`, bare `COLUMN_BREAK`/`PAGE_BREAK`, `{ note }`, `{{ … }}` metadata note, plain `| G | G |` bars). Registered as the song module's `ExporterDef`.
+
+**Verification:** `verify-chordpro.mts` 91/91, `verify-songs.mts` 13/13; `verify-module-registry` 38 + `verify-canvas-seam` 16 still green; `tsc` clean. Two of Tyler's songs seeded locally and confirmed canvas/print/FTS/copy end to end.
+
+**Shared-file touches (flagged for Brandon in the PR):** (1) module-registration boot site — first `registerModule` caller (possible ADR — where modules register); (2) `print-html.ts` + `body-text.ts` branch on `body.format` (markdown default byte-for-byte unchanged); (3) `Modal.tsx` gained a `wide` prop (songs preview two-column; note/task modals unchanged). No behavior change for the five core types.
+
+**Future (logged, not built):**
+- **S7 — inline performance instructions** ("Band builds in") that render *above* the lyric line like a chord but styled as a direction; export as a bracketed `[…]` token (PCO convention). Currently imported as a `{note}` comment line.
+- **Real Planning Center API push** (one-click) — investigated (PCO Services API + personal access token); deferred in favor of copy/paste. The `IntegrationDef` slot + provider-seam pattern are mapped.
+- **Chord-diagram grids** and **style tags** (`<b>`/`<i>`) / **∆ ♭ ° ø** glyphs in export.
+
+---
+
 ## ⟢ Session summary — the Build surface + custom type & property builder (2026-06-13, ADR-044, slice 33)
 
 **Phase 3, Tier 1 shipped end-to-end: Ledgr now has a Build surface and a working custom type & property builder.** First Phase-3 slice; touches core (a `types` column + the type model), shipped solo per Brandon ("build the full shell and full type/property builder and then merge; no Tyler sign-off needed") — flagged to Tyler in `COLLAB.md`.
