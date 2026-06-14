@@ -11,6 +11,7 @@ import { lineToSource, parseLineSource } from "@/lib/chordpro/parse";
 import type { ChordChart } from "@/lib/chordpro/types";
 import ChordPicker from "./ChordPicker";
 import {
+  addKeyChange,
   addLine,
   addRepeat,
   addSection,
@@ -22,6 +23,7 @@ import {
   setChordAt,
   setLine,
   setSectionLabel,
+  updateLine,
   updateMeta,
 } from "./chordpro-edit";
 
@@ -75,6 +77,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
   const lyricCells = (text: string, chords: EditChord[], si: number, li: number): ReactNode => {
     const chordAt = new Map<number, string>();
     chords.forEach((c) => chordAt.set(c.at, c.chord));
+    const leading = chords.filter((c) => c.at < 0); // chord before the lyrics
     const cell = (ch: string, i: number): ReactNode => (
       <span key={i} className="group/ch inline-flex cursor-pointer flex-col items-center rounded hover:bg-neutral-800/50">
         <button
@@ -94,6 +97,23 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
       </span>
     );
     const units: ReactNode[] = [];
+    // leading chord slot — a chord that sounds before the lyrics begin
+    units.push(
+      <span key="lead" className="inline-flex flex-col items-center">
+        <button
+          className="flex h-4 items-end leading-none"
+          onClick={(e) => openPicker(si, li, -1, leading[0]?.chord ?? null, e)}
+          title="Chord before the line"
+        >
+          {leading.length ? (
+            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{leading[0].chord}</span>
+          ) : (
+            <span className="text-[0.72rem] text-neutral-700">＋</span>
+          )}
+        </button>
+        <span className="h-4 w-2" />
+      </span>
+    );
     let word: ReactNode[] = [];
     const flush = (key: string) => {
       if (word.length) {
@@ -198,6 +218,30 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
             <div className="mt-1">
               {section.lines.map((line, li) => {
                 const k = `${si}:${li}`;
+                if (line.kind === "keychange") {
+                  const sign = line.semitones >= 0 ? `+${line.semitones}` : `${line.semitones}`;
+                  return (
+                    <div key={li} className="group flex items-center gap-2 py-0.5 text-xs">
+                      <span className="font-semibold text-orange-300">▲ Key change</span>
+                      <select
+                        value={line.mode}
+                        onChange={(e) =>
+                          onChange(updateLine(chart, si, li, { ...line, mode: e.target.value as "transpose" | "redefine" }))
+                        }
+                        className="rounded border border-neutral-800 bg-neutral-950 px-1 py-0.5 text-neutral-200 outline-none"
+                      >
+                        <option value="transpose">Transpose</option>
+                        <option value="redefine">Redefine</option>
+                      </select>
+                      <span className="inline-flex items-center gap-1 text-neutral-400">
+                        <button onClick={() => onChange(updateLine(chart, si, li, { ...line, semitones: line.semitones - 1 }))} className="rounded bg-neutral-800 px-1.5 hover:bg-neutral-700">−</button>
+                        <span className="w-6 text-center font-semibold text-neutral-200">{sign}</span>
+                        <button onClick={() => onChange(updateLine(chart, si, li, { ...line, semitones: line.semitones + 1 }))} className="rounded bg-neutral-800 px-1.5 hover:bg-neutral-700">+</button>
+                      </span>
+                      <button onClick={() => onChange(removeLine(chart, si, li))} className="px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete">✕</button>
+                    </div>
+                  );
+                }
                 const raw = rawEditing.has(k);
                 const isEmptyLyric = line.kind === "lyric" && line.pairs.every((p) => !p.text && !p.chord);
                 if (raw || isEmptyLyric || line.kind !== "lyric") {
@@ -232,6 +276,9 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
               })}
               <button onClick={() => onChange(addLine(chart, si))} className="mt-1 text-xs text-neutral-600 hover:text-sky-400">
                 + line
+              </button>
+              <button onClick={() => onChange(addKeyChange(chart, si))} className="ml-3 mt-1 text-xs text-neutral-600 hover:text-orange-300">
+                + key change
               </button>
             </div>
           )}

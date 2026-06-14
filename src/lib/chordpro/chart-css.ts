@@ -41,6 +41,7 @@ export const CHART_CSS = `
 .cc-pipe{color:#737373;margin:0 .35rem}
 .cc-beat{color:#737373}
 .cc-comment{font-style:italic;color:#a3a3a3;margin:.15rem 0}
+.cc-keychange{font-weight:700;color:#f5a97f;margin:.25rem 0;font-size:.85em}
 @media print{
   /* Letter page, two ~3.5in columns: this size lets a full lyric line fit a
      column without wrapping, matching the reference PraiseChart density. */

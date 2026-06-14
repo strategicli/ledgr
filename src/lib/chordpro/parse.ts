@@ -109,6 +109,17 @@ export function parseChordPro(text: string): ChordChart {
       continue;
     }
 
+    // Planning Center's bare key-change tokens: TRANSPOSE KEY +2 / REDEFINE KEY -1
+    const kc = /^(TRANSPOSE|REDEFINE)\s+KEY\s*([+-]?\d+)$/i.exec(line);
+    if (kc) {
+      pushLine({
+        kind: "keychange",
+        mode: kc[1].toLowerCase() === "redefine" ? "redefine" : "transpose",
+        semitones: parseInt(kc[2], 10) || 0,
+      });
+      continue;
+    }
+
     const dir = DIRECTIVE_RE.exec(line);
     if (dir) {
       const name = dir[1].toLowerCase();
@@ -150,6 +161,12 @@ export function parseChordPro(text: string): ChordChart {
         case "page_break":
         case "new_page":
           pendingPageBreak = true;
+          break;
+        case "transpose_key":
+          pushLine({ kind: "keychange", mode: "transpose", semitones: parseInt(value, 10) || 0 });
+          break;
+        case "redefine_key":
+          pushLine({ kind: "keychange", mode: "redefine", semitones: parseInt(value, 10) || 0 });
           break;
         case "ccli":
           meta.ccli = value;
@@ -199,14 +216,29 @@ function barsToText(bars: string[][]): string {
 export function lineToSource(line: ChartLine): string {
   if (line.kind === "lyric") return lyricToText(line.pairs);
   if (line.kind === "bars") return barsToText(line.bars);
+  if (line.kind === "keychange") {
+    return `{${line.mode === "redefine" ? "redefine_key" : "transpose_key"}: ${line.semitones}}`;
+  }
   return `{c: ${line.text}}`;
 }
 
 export function parseLineSource(raw: string): ChartLine {
   const t = raw.trim();
+  const kc = /^(TRANSPOSE|REDEFINE)\s+KEY\s*([+-]?\d+)$/i.exec(t);
+  if (kc) {
+    return {
+      kind: "keychange",
+      mode: kc[1].toLowerCase() === "redefine" ? "redefine" : "transpose",
+      semitones: parseInt(kc[2], 10) || 0,
+    };
+  }
   const dir = DIRECTIVE_RE.exec(t);
-  if (dir && (dir[1].toLowerCase() === "c" || dir[1].toLowerCase() === "comment")) {
-    return { kind: "comment", text: (dir[2] ?? "").trim() };
+  if (dir) {
+    const name = dir[1].toLowerCase();
+    const val = (dir[2] ?? "").trim();
+    if (name === "c" || name === "comment") return { kind: "comment", text: val };
+    if (name === "transpose_key") return { kind: "keychange", mode: "transpose", semitones: parseInt(val, 10) || 0 };
+    if (name === "redefine_key") return { kind: "keychange", mode: "redefine", semitones: parseInt(val, 10) || 0 };
   }
   if (t.includes("|")) return { kind: "bars", bars: parseBars(t) };
   return { kind: "lyric", pairs: parseLyric(t) };
@@ -242,7 +274,10 @@ export function serializeChordChart(chart: ChordChart): string {
     for (const line of section.lines) {
       if (line.kind === "lyric") out.push(lyricToText(line.pairs));
       else if (line.kind === "bars") out.push(barsToText(line.bars));
-      else out.push(`{c: ${line.text}}`);
+      else if (line.kind === "keychange") {
+        const dir = line.mode === "redefine" ? "redefine_key" : "transpose_key";
+        out.push(`{${dir}: ${line.semitones}}`);
+      } else out.push(`{c: ${line.text}}`);
     }
   }
   return out.join("\n");

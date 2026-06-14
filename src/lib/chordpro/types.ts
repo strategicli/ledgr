@@ -19,7 +19,17 @@ export type BarsLine = { kind: "bars"; bars: string[][] };
 // A free comment line inside a section ({c: ...}).
 export type CommentLine = { kind: "comment"; text: string };
 
-export type ChartLine = LyricLine | BarsLine | CommentLine;
+// A mid-song key change (modulation). `transpose` = chords are still written in
+// the original key and shift by `semitones` from here on (PCO TRANSPOSE KEY);
+// `redefine` = chords are already written in the new key, the marker only
+// relabels it (PCO REDEFINE KEY) and does not re-transpose the chord chart.
+export type KeyChangeLine = {
+  kind: "keychange";
+  semitones: number;
+  mode: "transpose" | "redefine";
+};
+
+export type ChartLine = LyricLine | BarsLine | CommentLine | KeyChangeLine;
 
 export type SectionKind =
   | "intro"

@@ -21,10 +21,8 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function chordHtml(chord: string, opts: RenderOptions): string {
-  const shifted = opts.transpose
-    ? transposeChord(chord, opts.transpose, opts.preferFlats)
-    : chord;
+function chordHtml(chord: string, semitones: number, preferFlats?: boolean): string {
+  const shifted = semitones ? transposeChord(chord, semitones, preferFlats) : chord;
   return `<span class="cc-chord">${esc(shifted)}</span>`;
 }
 
@@ -65,7 +63,7 @@ type LineUnit = { word: Cell[] } | { space: string };
 // bracket position: a chord BEFORE a syllable ([G]me) stacks above it; a chord
 // with no following text (me [G]) is a TRAILING chord, hugging the end of the
 // preceding word at chord height.
-function lyricLineHtml(pairs: ChordPair[], opts: RenderOptions): string {
+function lyricLineHtml(pairs: ChordPair[], semitones: number, preferFlats?: boolean): string {
   const units: LineUnit[] = [];
   let cur: Cell[] = [];
   const flush = () => {
@@ -102,7 +100,7 @@ function lyricLineHtml(pairs: ChordPair[], opts: RenderOptions): string {
 
   const cellHtml = (c: Cell) => {
     const chord = c.chord
-      ? chordHtml(c.chord, opts)
+      ? chordHtml(c.chord, semitones, preferFlats)
       : `<span class="cc-chord"></span>`;
     const cls = c.text === "" ? "cc-cell cc-trail" : "cc-cell";
     // A trailing chord has no syllable; a zero-width space reserves the lyric
@@ -120,7 +118,9 @@ function lyricLineHtml(pairs: ChordPair[], opts: RenderOptions): string {
   return `<div class="cc-line cc-lyric">${html}</div>`;
 }
 
-function sectionHtml(section: Section, opts: RenderOptions): string {
+// `state.extra` is the running transpose from mid-song key changes seen so far
+// (in document order); it stacks on top of the global opts.transpose.
+function sectionHtml(section: Section, opts: RenderOptions, state: { extra: number }): string {
   const kindClass = `cc-${section.kind}`;
   const breakClass =
     (section.pageBreakBefore ? " cc-page-break" : "") +
@@ -134,8 +134,18 @@ function sectionHtml(section: Section, opts: RenderOptions): string {
 
   const linesHtml = section.lines
     .map((line) => {
+      const tx = (opts.transpose ?? 0) + state.extra;
       if (line.kind === "comment") {
         return `<div class="cc-comment">${esc(line.text)}</div>`;
+      }
+      if (line.kind === "keychange") {
+        // transpose: chords stay in the original key and shift from here on;
+        // redefine: chords are now written in the real key, so stop shifting.
+        if (line.mode === "transpose") state.extra += line.semitones;
+        else state.extra = 0;
+        const sign = line.semitones >= 0 ? `+${line.semitones}` : `${line.semitones}`;
+        const verb = line.mode === "redefine" ? "Redefine" : "Transpose";
+        return `<div class="cc-line cc-keychange">▲ ${verb} key ${sign}</div>`;
       }
       if (line.kind === "bars") {
         const bars = line.bars
@@ -145,7 +155,7 @@ function sectionHtml(section: Section, opts: RenderOptions): string {
                 .map((tok) =>
                   tok === "/"
                     ? `<span class="cc-beat">/</span>`
-                    : chordHtml(tok, opts)
+                    : chordHtml(tok, tx, opts.preferFlats)
                 )
                 .join(" ")}</span>`
           )
@@ -153,7 +163,7 @@ function sectionHtml(section: Section, opts: RenderOptions): string {
         return `<div class="cc-line cc-bars"><span class="cc-pipe">|</span>${bars}<span class="cc-pipe">|</span></div>`;
       }
       // lyric line: chords stacked over syllables, grouped into non-breaking words
-      return lyricLineHtml(line.pairs, opts);
+      return lyricLineHtml(line.pairs, tx, opts.preferFlats);
     })
     .join("");
 
@@ -169,7 +179,8 @@ function footerHtml(chart: ChordChart): string {
 }
 
 export function chartToHtml(chart: ChordChart, opts: RenderOptions = {}): string {
-  const body = chart.sections.map((s) => sectionHtml(s, opts)).join("");
+  const state = { extra: 0 }; // running mid-song key-change transpose
+  const body = chart.sections.map((s) => sectionHtml(s, opts, state)).join("");
   return (
     `<div class="cc-chart">` +
     headerHtml(chart, opts) +

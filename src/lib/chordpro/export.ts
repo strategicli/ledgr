@@ -11,13 +11,10 @@
 import { lineToSource } from "./parse";
 import type { ChordChart } from "./types";
 
-// Instrumental/bar line → bracketed chords so they land on a chord chart;
-// the "/" beat marks and "|" bar lines stay literal.
+// Instrumental/bar line → plain bar notation ("| G | G | Em | Em |"); PCO shows
+// the chord names as typed on the chart, no brackets.
 function barsToPco(bars: string[][]): string {
-  const body = bars
-    .map((bar) => bar.map((t) => (t === "/" ? "/" : `[${t}]`)).join(" "))
-    .join(" | ");
-  return `| ${body} |`;
+  return `| ${bars.map((bar) => bar.join(" ")).join(" | ")} |`;
 }
 
 export function toPlanningCenterChordPro(chart: ChordChart): string {
@@ -43,7 +40,10 @@ export function toPlanningCenterChordPro(chart: ChordChart): string {
     for (const line of section.lines) {
       if (line.kind === "lyric") out.push(lineToSource(line)); // [G]lyric
       else if (line.kind === "bars") out.push(barsToPco(line.bars));
-      else out.push(`{${line.text}}`); // single-curly note
+      else if (line.kind === "keychange") {
+        const sign = line.semitones >= 0 ? `+${line.semitones}` : `${line.semitones}`;
+        out.push(`${line.mode === "redefine" ? "REDEFINE" : "TRANSPOSE"} KEY ${sign}`);
+      } else out.push(`{${line.text}}`); // single-curly note
     }
   }
 

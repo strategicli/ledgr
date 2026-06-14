@@ -220,6 +220,14 @@ check(
 const clamped = setLineText(el, "Long ago");
 check("setLineText drops chords past the new text length", clamped.chords.every((c) => c.at <= "Long ago".length));
 
+// leading chord (before the lyrics): [G][C]Lyrics → G is a leading chord, C on the word
+const leadLine = parseChordPro("{section: X}\n[G][C]Lyrics").sections[0].lines[0];
+const leadPairs = leadLine.kind === "lyric" ? leadLine.pairs : [];
+const leadEdit = pairsToEditLine(leadPairs);
+check("leading chord recorded at offset -1", leadEdit.chords.some((c) => c.at === -1 && c.chord === "G"));
+check("editLineToPairs preserves a standalone leading chord", json(editLineToPairs(leadEdit)) === json(leadPairs));
+check("a leading-only chord round-trips", json(editLineToPairs(pairsToEditLine([{ chord: "G", text: "" }, { chord: null, text: "Lyrics" }]))) === json([{ chord: "G", text: "" }, { chord: null, text: "Lyrics" }]));
+
 // ── 13. Transpose the whole chart (S4) ────────────────────────────────────────
 const base = parseChordPro(
   "{key: G}\n{section: Verse}\n[G]Long [Em]ago\n| G | D/F# |"
@@ -250,6 +258,23 @@ check("PCO: comments become single-curly notes", pco.includes("{soft}"));
 check("PCO: layout uses bare COLUMN_BREAK token", /^COLUMN_BREAK$/m.test(pco));
 check("PCO: no ChordPro {key}/{title}/{comment}/{section} directives", !pco.includes("{key:") && !pco.includes("{title") && !pco.includes("{comment") && !pco.includes("{section"));
 check("PCO: repeat reference is a bare heading, no duplicated lyrics", pco.split("He's the [G]light").length - 1 === 1);
+
+// ── 15. Mid-song key change (S6) ──────────────────────────────────────────────
+const kcSrc =
+  "{key: G}\n{section: Verse}\n[G]one\n\nTRANSPOSE KEY +2\n{section: Chorus}\n[G]two\n\n{section: Tag}\n{redefine_key: -1}\n[A]three";
+const kcChart = parseChordPro(kcSrc);
+const verseKc = kcChart.sections[0].lines[1]; // after the Verse lyric line
+check("parses bare 'TRANSPOSE KEY +2'", verseKc.kind === "keychange" && verseKc.mode === "transpose" && verseKc.semitones === 2);
+const tagKc = kcChart.sections[2].lines[0];
+check("parses {redefine_key: -1}", tagKc.kind === "keychange" && tagKc.mode === "redefine" && tagKc.semitones === -1);
+check("key change round-trips", roundTrips(kcSrc));
+const kcHtml = chartToHtml(kcChart);
+check("transpose key shifts later chords (G→A after +2)", kcHtml.includes('cc-chord">A</span><span class="cc-text">two'));
+check("chords before the key change are untouched (G→G)", kcHtml.includes('cc-chord">G</span><span class="cc-text">one'));
+check("redefine key does NOT transpose the chord chart (A stays A)", kcHtml.includes('cc-chord">A</span><span class="cc-text">three'));
+check("key change renders a marker line", kcHtml.includes("cc-keychange") && kcHtml.includes("Transpose key +2"));
+const kcPco = (await import("../src/lib/chordpro/export")).toPlanningCenterChordPro(kcChart);
+check("PCO export emits TRANSPOSE KEY / REDEFINE KEY", kcPco.includes("TRANSPOSE KEY +2") && kcPco.includes("REDEFINE KEY -1"));
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
