@@ -1,0 +1,284 @@
+// ChordPro parse + serialize (Song module, S1). A pragmatic ChordPro-family
+// dialect — standard metadata directives ({title}/{key}/{capo}/{tempo}/{time}/
+// {ccli}), inline chords ([G]word), bar lines (| G / / / |), labelled sections
+// ({section: Verse 1}), and a repeat reference ({repeat: Chorus}) for the
+// "author once, recall later" model. parse and serialize are inverse: for any
+// chart, parse(serialize(chart)) deep-equals it (the verify script pins this).
+import {
+  classifySection,
+  type ChartLine,
+  type ChartMeta,
+  type ChordChart,
+  type ChordPair,
+  type Section,
+} from "./types";
+
+const DIRECTIVE_RE = /^\{\s*([a-zA-Z_]+)\s*(?::\s*([\s\S]*?))?\s*\}$/;
+const INLINE_CHORD_RE = /\[([^\]]*)\]/g;
+
+// Standard ChordPro environment-open aliases mapped to a section label.
+const ENV_OPEN: Record<string, string> = {
+  soc: "Chorus",
+  start_of_chorus: "Chorus",
+  sov: "Verse",
+  start_of_verse: "Verse",
+  sob: "Bridge",
+  start_of_bridge: "Bridge",
+};
+const ENV_CLOSE = new Set([
+  "eoc",
+  "end_of_chorus",
+  "eov",
+  "end_of_verse",
+  "eob",
+  "end_of_bridge",
+]);
+
+function parseLyric(line: string): ChordPair[] {
+  const matches: { chord: string; start: number; end: number }[] = [];
+  let m: RegExpExecArray | null;
+  INLINE_CHORD_RE.lastIndex = 0;
+  while ((m = INLINE_CHORD_RE.exec(line))) {
+    matches.push({ chord: m[1], start: m.index, end: m.index + m[0].length });
+  }
+  if (matches.length === 0) return [{ chord: null, text: line }];
+  const pairs: ChordPair[] = [];
+  if (matches[0].start > 0) {
+    pairs.push({ chord: null, text: line.slice(0, matches[0].start) });
+  }
+  for (let i = 0; i < matches.length; i++) {
+    const textEnd = i + 1 < matches.length ? matches[i + 1].start : line.length;
+    pairs.push({ chord: matches[i].chord, text: line.slice(matches[i].end, textEnd) });
+  }
+  return pairs;
+}
+
+// A bar line is recognised by containing a pipe; tokens split on whitespace.
+function parseBars(line: string): string[][] {
+  return line
+    .split("|")
+    .map((bar) => bar.trim())
+    .filter((bar) => bar.length > 0)
+    .map((bar) => bar.split(/\s+/));
+}
+
+export function parseChordPro(text: string): ChordChart {
+  const meta: ChartMeta = {};
+  const sections: Section[] = [];
+  let current: Section | null = null;
+  let pendingBreak = false;
+  let pendingPageBreak = false;
+
+  const openSection = (label: string, ref = false) => {
+    if (current) sections.push(current);
+    current = { label, kind: classifySection(label), ref, lines: [] };
+    if (pendingBreak) {
+      current.breakBefore = true;
+      pendingBreak = false;
+    }
+    if (pendingPageBreak) {
+      current.pageBreakBefore = true;
+      pendingPageBreak = false;
+    }
+    if (ref) {
+      sections.push(current);
+      current = null;
+    }
+  };
+  const ensureSection = () => {
+    if (!current) current = { label: "", kind: "other", ref: false, lines: [] };
+  };
+  const pushLine = (line: ChartLine) => {
+    ensureSection();
+    current!.lines.push(line);
+  };
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === "") continue;
+
+    // Planning Center emits bare COLUMN_BREAK / PAGE_BREAK tokens; treat them
+    // like the {column_break} / {page_break} directives — the next section
+    // starts the next column / page.
+    if (line.toUpperCase() === "COLUMN_BREAK") {
+      pendingBreak = true;
+      continue;
+    }
+    if (line.toUpperCase() === "PAGE_BREAK") {
+      pendingPageBreak = true;
+      continue;
+    }
+
+    // Planning Center's bare key-change tokens: TRANSPOSE KEY +2 / REDEFINE KEY -1
+    const kc = /^(TRANSPOSE|REDEFINE)\s+KEY\s*([+-]?\d+)$/i.exec(line);
+    if (kc) {
+      pushLine({
+        kind: "keychange",
+        mode: kc[1].toLowerCase() === "redefine" ? "redefine" : "transpose",
+        semitones: parseInt(kc[2], 10) || 0,
+      });
+      continue;
+    }
+
+    const dir = DIRECTIVE_RE.exec(line);
+    if (dir) {
+      const name = dir[1].toLowerCase();
+      const value = (dir[2] ?? "").trim();
+      switch (name) {
+        case "title":
+        case "t":
+          meta.title = value;
+          break;
+        case "subtitle":
+        case "artist":
+        case "st":
+          meta.artist = value;
+          break;
+        case "key":
+          meta.key = value;
+          break;
+        case "capo": {
+          const n = parseInt(value, 10);
+          if (!Number.isNaN(n)) meta.capo = n;
+          break;
+        }
+        case "tempo": {
+          const n = parseInt(value, 10);
+          if (!Number.isNaN(n)) meta.tempo = n;
+          break;
+        }
+        case "time":
+          meta.time = value;
+          break;
+        case "arrangement":
+        case "sequence":
+          meta.arrangement = value;
+          break;
+        case "column_break":
+        case "colb":
+          pendingBreak = true;
+          break;
+        case "page_break":
+        case "new_page":
+          pendingPageBreak = true;
+          break;
+        case "transpose_key":
+          pushLine({ kind: "keychange", mode: "transpose", semitones: parseInt(value, 10) || 0 });
+          break;
+        case "redefine_key":
+          pushLine({ kind: "keychange", mode: "redefine", semitones: parseInt(value, 10) || 0 });
+          break;
+        case "ccli":
+          meta.ccli = value;
+          break;
+        case "copyright":
+        case "footer":
+          meta.copyright = value;
+          break;
+        case "section":
+          openSection(value);
+          break;
+        case "repeat":
+          openSection(value, true);
+          break;
+        case "comment":
+        case "c":
+          pushLine({ kind: "comment", text: value });
+          break;
+        default:
+          if (name in ENV_OPEN) openSection(value || ENV_OPEN[name]);
+          else if (ENV_CLOSE.has(name)) {
+            /* close is implicit at next open / EOF */
+          }
+          // unknown directive: ignore (forward-compatible)
+          break;
+      }
+      continue;
+    }
+
+    if (line.includes("|")) pushLine({ kind: "bars", bars: parseBars(line) });
+    else pushLine({ kind: "lyric", pairs: parseLyric(line) });
+  }
+  if (current) sections.push(current);
+
+  return { meta, sections };
+}
+
+function lyricToText(pairs: ChordPair[]): string {
+  return pairs.map((p) => (p.chord ? `[${p.chord}]` : "") + p.text).join("");
+}
+
+function barsToText(bars: string[][]): string {
+  return "| " + bars.map((bar) => bar.join(" ")).join(" | ") + " |";
+}
+
+// One chart line <-> its ChordPro source, for the editor's raw-edit fallback.
+export function lineToSource(line: ChartLine): string {
+  if (line.kind === "lyric") return lyricToText(line.pairs);
+  if (line.kind === "bars") return barsToText(line.bars);
+  if (line.kind === "keychange") {
+    return `{${line.mode === "redefine" ? "redefine_key" : "transpose_key"}: ${line.semitones}}`;
+  }
+  return `{c: ${line.text}}`;
+}
+
+export function parseLineSource(raw: string): ChartLine {
+  const t = raw.trim();
+  const kc = /^(TRANSPOSE|REDEFINE)\s+KEY\s*([+-]?\d+)$/i.exec(t);
+  if (kc) {
+    return {
+      kind: "keychange",
+      mode: kc[1].toLowerCase() === "redefine" ? "redefine" : "transpose",
+      semitones: parseInt(kc[2], 10) || 0,
+    };
+  }
+  const dir = DIRECTIVE_RE.exec(t);
+  if (dir) {
+    const name = dir[1].toLowerCase();
+    const val = (dir[2] ?? "").trim();
+    if (name === "c" || name === "comment") return { kind: "comment", text: val };
+    if (name === "transpose_key") return { kind: "keychange", mode: "transpose", semitones: parseInt(val, 10) || 0 };
+    if (name === "redefine_key") return { kind: "keychange", mode: "redefine", semitones: parseInt(val, 10) || 0 };
+  }
+  if (t.includes("|")) return { kind: "bars", bars: parseBars(t) };
+  return { kind: "lyric", pairs: parseLyric(t) };
+}
+
+const META_ORDER: [keyof ChartMeta, string][] = [
+  ["title", "title"],
+  ["artist", "artist"],
+  ["key", "key"],
+  ["capo", "capo"],
+  ["tempo", "tempo"],
+  ["time", "time"],
+  ["arrangement", "arrangement"],
+  ["ccli", "ccli"],
+  ["copyright", "copyright"],
+];
+
+export function serializeChordChart(chart: ChordChart): string {
+  const out: string[] = [];
+  for (const [field, name] of META_ORDER) {
+    const v = chart.meta[field];
+    if (v !== undefined && v !== "") out.push(`{${name}: ${v}}`);
+  }
+  for (const section of chart.sections) {
+    if (out.length > 0) out.push("");
+    if (section.pageBreakBefore) out.push("{page_break}");
+    if (section.breakBefore) out.push("{column_break}");
+    if (section.ref) {
+      out.push(`{repeat: ${section.label}}`);
+      continue;
+    }
+    out.push(`{section: ${section.label}}`);
+    for (const line of section.lines) {
+      if (line.kind === "lyric") out.push(lyricToText(line.pairs));
+      else if (line.kind === "bars") out.push(barsToText(line.bars));
+      else if (line.kind === "keychange") {
+        const dir = line.mode === "redefine" ? "redefine_key" : "transpose_key";
+        out.push(`{${dir}: ${line.semitones}}`);
+      } else out.push(`{c: ${line.text}}`);
+    }
+  }
+  return out.join("\n");
+}

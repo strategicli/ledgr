@@ -74,6 +74,51 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Tyler's lane — Songs module: the chord chart builder ✅ DONE (2026-06-13, PR #3 `tyler/chord-chart-builder`)
+
+The first real workflow module, built end-to-end on the M5/M6 foundation (ADR-042). A `song` type with a **ChordPro canonical body**, a bespoke **chord-chart canvas**, a **click-to-place WYSIWYG editor**, and **live transpose/capo** — designed against two real PraiseCharts exports ("Light on the Hill", "Sharpen My Sword"). All in `src/lib/chordpro/` + `src/components/chord-editor/` + `src/components/canvas/Chord*`.
+
+- **S1 — pure ChordPro core** (`src/lib/chordpro/`): parser/serializer, chart→HTML renderer (chords over syllables, words never split, leading + trailing chords, two columns, column/page breaks, arrangement line), lyrics-only FTS text, transpose/capo math. Import-pure → one renderer for editor preview, print/share, and the verify script.
+- **S2 — module + render surfaces**: `src/lib/modules/songs.ts` + the registration boot site (`src/lib/modules/register.ts` — the first live `registerModule` caller, imported by `module-wiring.tsx`); `print-html.ts`/`body-text.ts` branch on `body.format === "chordpro"`; song types-row seed.
+- **S3 — WYSIWYG editor + Edit ⇄ Preview toggle**: click a character → chord picker (no bracket typing); leading/trailing slots; per-line ✎ raw fallback; section add/label/reorder/delete/repeat; autosave (`useItemAutosave`).
+- **S4 — transpose/capo** + **lock-shapes** (🔒 keep shapes, capo drives the key).
+- **S5 — mid-syllable placement** (chord above the exact clicked character).
+- **S6 — mid-song key change**: TRANSPOSE/REDEFINE KEY markers (parse PCO tokens + directives; renderer threads a running transpose; PCO export emits them).
+- **Copy for Planning Center**: button copies PCO Lyrics & Chords format exactly (ALL-CAPS headings, inline `[chord]`, bare `COLUMN_BREAK`/`PAGE_BREAK`, `{ note }`, `{{ … }}` metadata note, plain `| G | G |` bars). Registered as the song module's `ExporterDef`.
+
+**Verification:** `verify-chordpro.mts` 91/91, `verify-songs.mts` 13/13; `verify-module-registry` 38 + `verify-canvas-seam` 16 still green; `tsc` clean. Two of Tyler's songs seeded locally and confirmed canvas/print/FTS/copy end to end.
+
+**Shared-file touches (flagged for Brandon in the PR):** (1) module-registration boot site — first `registerModule` caller (possible ADR — where modules register); (2) `print-html.ts` + `body-text.ts` branch on `body.format` (markdown default byte-for-byte unchanged); (3) `Modal.tsx` gained a `wide` prop (songs preview two-column; note/task modals unchanged). No behavior change for the five core types.
+
+**Future (logged, not built):**
+- **Bespoke-module catalog — attach a module's behavior to any type the user names** *(platform; needs Brandon + an ADR — touches the module/type core).* A "Bespoke modules" browser in the Build surface (`/build`) that lists the bespoke capabilities we've built (Chord Chart today; Papers/etc. later) with a short description/preview. A user who wants it picks it and **attaches it to a type they create under their own name** (key/label/icon) — so the chord-chart behavior isn't locked to the `song` key: someone could make a **"Music"** or **"Worship Set"** type and still get the chord canvas + ChordPro + transpose + PCO export on top. **The architectural change:** decouple a module's *behavior* (canvas/format/exporters) from a fixed type key. Today a module owns its key (`songModule.types[0].key === "song"`); instead a user-created type would declare a `capability`/module id that the registry resolves for canvas/format/exporters — generalizing M6 (ADR-043) + the type builder (ADR-044) + the per-user `isModuleEnabled` seam. **Why:** the tool shouldn't impose naming. Most users never see these (opt-in, invisible by default), but a user who wants the power keeps ownership of their own data model — they shape the type, our bespoke behavior rides underneath.
+- **S7 — inline performance instructions** ("Band builds in") that render *above* the lyric line like a chord but styled as a direction; export as a bracketed `[…]` token (PCO convention). Currently imported as a `{note}` comment line.
+- **Real Planning Center API push** (one-click) — investigated (PCO Services API + personal access token); deferred in favor of copy/paste. The `IntegrationDef` slot + provider-seam pattern are mapped.
+- **Chord-diagram grids** and **style tags** (`<b>`/`<i>`) / **∆ ♭ ° ø** glyphs in export.
+- **Song import: PDF / chord chart → ChordPro** — bulk-add the existing chord-chart library to the archive. Scoped 2026-06-14, **build is the next Songs-lane slice**: deterministic text-layer parse (no AI), reviewed in the chord canvas before save. Full build spec in `explorations/song-import.md` (pipeline, reuse map, the one new dep `unpdf`, risks). Decided over AI-assisted (Principle 3/5; ~$0 target); AI fallback for scanned PDFs deferred.
+
+---
+
+## ⟢ Tyler's lane — Papers module: the seminary paper workspace ✅ DONE (2026-06-14, ADR-048)
+
+The second workflow module on the M5/M6 foundation. A `paper` type with a **markdown-canonical body**, a bespoke **tabbed canvas (Quote Bank · Outline · Draft)**, a **deterministic MSM citation engine**, click-to-cite footnotes, and a one-click **MSM `.docx` export** (the proven `ty-docs/msm-render.js` ported in). Replaces the hand-run HTML-viewer + Word-doc flow (`ty-docs/Paper_Outline_Viewer_Build_Spec.md`).
+
+- **P1 — pure core** (`src/lib/papers/`): `types.ts` (`Source`/`QuoteEntry`/`PaperMeta`/`PaperScaffold`, `PAPER_STAGES`) + `citation.ts` (MSM 4th-ed Full/Short/Ibid for book + video sources). Import-pure → one engine for the quote-bank UI, the docx renderer, and the verify script.
+- **P2 — MSM docx** (`src/lib/papers/msm-docx.ts` + `app/api/items/[id]/render-docx/route.ts`): faithful port of the CLI renderer, meta from item title + properties (not YAML); positional footnotes (no unpack/pack fix). Binary → a dedicated route, **not** the `ExporterDef` slot (which returns a string), so the core module contract is untouched. New runtime dep: `docx`.
+- **P3 — tabbed canvas** (`PaperCanvas` → `PaperCanvasClient` + `PaperMarkdownArea`/`QuoteBank`/`PaperMeta`): Draft = canonical body; Outline + Quote Bank = scaffold in `properties`. **`PaperCanvasClient` is the single properties writer** (no `CustomProperties` race). Cite from the quote bank mints a unique `[^id]`, splices it at the Draft caret, and appends the definition. Draft/Outline use a raw-markdown textarea (footnotes are a raw-markdown feature Tiptap doesn't support); CodeMirror later.
+- **Module + seed**: `src/lib/modules/papers.ts` (+`register.ts`, `module-wiring.tsx`), `scripts/seed-papers.mjs` (type row + title-page/stage `property_schema`, idempotent; seeded to dev DB).
+
+**Verification:** `verify-papers.mts` **16/16** (registration, citation book+video forms, a real 10KB docx render with 3 footnotes); `verify-module-registry` 38 + `verify-canvas-seam` 16 + `verify-songs` still green; `tsc` + `next build` + eslint clean. **Left for Tyler's morning check:** the in-browser canvas walkthrough (create a paper → add a quote → Cite drops a footnote → edit Outline persists → fill title page → Export MSM .docx opens correctly; compare title-page spacing to the 2 Timothy 100/100 benchmark, the renderer's `TP` constants).
+
+**Shared-file touches (flag for Brandon):** `register.ts` (+`paperModule`) and `module-wiring.tsx` (+`paper` canvas) — both additive; the five core types unchanged. Binary docx via a route, so no change to the `ExporterDef` core contract.
+
+**Future (logged, not built):**
+- **Promote the scaffold to a child item** if `properties` bloats (outline → child `note` for its own revisions/FTS) — the logged caveat in ADR-048.
+- **Outline-as-shape generator** — generate the Draft heading skeleton + gray cue paragraphs from the outline structure (the build spec's "Paper Shape → built markdown"), if the side-by-side scaffold proves too manual.
+- **CodeMirror** for the Draft/Outline (syntax highlight, better caret UX) over the v1 textarea.
+
+---
+
 ## ⟢ Session summary — the Build surface + custom type & property builder (2026-06-13, ADR-044, slice 33)
 
 **Phase 3, Tier 1 shipped end-to-end: Ledgr now has a Build surface and a working custom type & property builder.** First Phase-3 slice; touches core (a `types` column + the type model), shipped solo per Brandon ("build the full shell and full type/property builder and then merge; no Tyler sign-off needed") — flagged to Tyler in `COLLAB.md`.
