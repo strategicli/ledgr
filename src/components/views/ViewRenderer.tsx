@@ -8,7 +8,7 @@ import Link from "next/link";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
-import type { ViewDefinition } from "@/lib/views";
+import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 
 // Structural shape of a listColumns row, narrowed to what the layouts use.
 // properties rides along so a board can group by a custom select field (the
@@ -106,7 +106,79 @@ function rowDate(item: ViewItem, prop: ViewDefinition["dateProperty"]) {
   return (usesUtc(prop) ? utcDay : tzDay).format(d);
 }
 
-function ItemRow({ item, prop }: { item: ViewItem; prop: ViewDefinition["dateProperty"] }) {
+// --- configurable columns (Brandon feedback, 2026-06-14) ------------------
+// A view can choose which fields/properties the list + table show; null falls
+// back to each layout's default. propertyLabels maps a custom property key to
+// its label (resolved from the type's schema by the page); missing → the key.
+
+const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
+  type: "Type",
+  status: "Status",
+  urgency: "Urgency",
+  kind: "Kind",
+  dueDate: "Due",
+  meetingAt: "When",
+  createdAt: "Created",
+  updatedAt: "Updated",
+  url: "URL",
+};
+
+function columnLabel(col: ViewColumn, labels: Record<string, string>): string {
+  return col.source === "property"
+    ? labels[col.key] ?? col.key
+    : FIELD_COLUMN_LABELS[col.key];
+}
+
+function formatPropValue(v: unknown): string {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map((x) => String(x)).join(", ");
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  return String(v);
+}
+
+// The display text for a column on a row. Dates format in the same calendars
+// as everywhere else (due is a UTC calendar day; the rest are real instants).
+function columnText(item: ViewItem, col: ViewColumn): string {
+  if (col.source === "property") {
+    const props =
+      item.properties && typeof item.properties === "object"
+        ? (item.properties as Record<string, unknown>)
+        : null;
+    return formatPropValue(props?.[col.key]);
+  }
+  switch (col.key) {
+    case "type":
+      return item.type;
+    case "status":
+      return item.status;
+    case "urgency":
+      return item.urgency ?? "";
+    case "kind":
+      return item.kind ?? "";
+    case "url":
+      return item.url ?? "";
+    case "dueDate":
+      return item.dueDate ? utcDay.format(item.dueDate) : "";
+    case "meetingAt":
+      return item.meetingAt ? tzDay.format(item.meetingAt) : "";
+    case "createdAt":
+      return tzDay.format(item.createdAt);
+    case "updatedAt":
+      return tzDay.format(item.updatedAt);
+  }
+}
+
+function ItemRow({
+  item,
+  prop,
+  columns,
+  propertyLabels = {},
+}: {
+  item: ViewItem;
+  prop: ViewDefinition["dateProperty"];
+  columns?: ViewColumn[] | null;
+  propertyLabels?: Record<string, string>;
+}) {
   const isTask = item.type === "task";
   const done = item.status === "done";
   return (
@@ -126,11 +198,38 @@ function ItemRow({ item, prop }: { item: ViewItem; prop: ViewDefinition["datePro
       >
         {item.title || "Untitled"}
       </Link>
-      <StatusChip status={item.status} />
-      <UrgencyChip urgency={item.urgency} />
-      <span className="shrink-0 text-xs text-neutral-600">
-        {rowDate(item, prop)}
-      </span>
+      {columns && columns.length > 0 ? (
+        // Configured columns: status/urgency keep their chips (the established
+        // look); everything else is a labelled value. A blank value renders
+        // nothing so the row doesn't fill with empty labels.
+        columns.map((col) => {
+          if (col.source === "field" && col.key === "status") {
+            return <StatusChip key="status" status={item.status} />;
+          }
+          if (col.source === "field" && col.key === "urgency") {
+            return <UrgencyChip key="urgency" urgency={item.urgency} />;
+          }
+          const text = columnText(item, col);
+          if (!text) return null;
+          return (
+            <span
+              key={`${col.source}:${col.key}`}
+              className="shrink-0 text-xs text-neutral-500"
+              title={columnLabel(col, propertyLabels)}
+            >
+              {text}
+            </span>
+          );
+        })
+      ) : (
+        <>
+          <StatusChip status={item.status} />
+          <UrgencyChip urgency={item.urgency} />
+          <span className="shrink-0 text-xs text-neutral-600">
+            {rowDate(item, prop)}
+          </span>
+        </>
+      )}
     </li>
   );
 }
@@ -138,27 +237,70 @@ function ItemRow({ item, prop }: { item: ViewItem; prop: ViewDefinition["datePro
 // --- layouts --------------------------------------------------------------
 // (board/agenda grouping lives in src/lib/view-grouping.ts — pure + testable)
 
-function ListLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+function ListLayout({
+  items,
+  view,
+  propertyLabels,
+}: {
+  items: ViewItem[];
+  view: ViewDefinition;
+  propertyLabels: Record<string, string>;
+}) {
   return (
     <ul className="mt-4">
       {items.map((item) => (
-        <ItemRow key={item.id} item={item} prop={view.dateProperty} />
+        <ItemRow
+          key={item.id}
+          item={item}
+          prop={view.dateProperty}
+          columns={view.columns}
+          propertyLabels={propertyLabels}
+        />
       ))}
     </ul>
   );
 }
 
-function TableLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+function TableLayout({
+  items,
+  view,
+  propertyLabels,
+}: {
+  items: ViewItem[];
+  view: ViewDefinition;
+  propertyLabels: Record<string, string>;
+}) {
+  // The view's chosen columns, or the default four (Type/Status/Urgency/Date)
+  // expressed as field columns so one rendering path serves both. "Date" maps
+  // to the view's date property so the default keeps its old meaning.
+  const defaultDateKey: ColumnField =
+    view.dateProperty === "meetingAt"
+      ? "meetingAt"
+      : view.dateProperty === "createdAt"
+        ? "createdAt"
+        : view.dateProperty === "updatedAt"
+          ? "updatedAt"
+          : "dueDate";
+  const columns: ViewColumn[] =
+    view.columns && view.columns.length > 0
+      ? view.columns
+      : [
+          { source: "field", key: "type" },
+          { source: "field", key: "status" },
+          { source: "field", key: "urgency" },
+          { source: "field", key: defaultDateKey },
+        ];
   return (
     <div className="mt-4 overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
             <th className="py-1.5 pr-3 font-medium">Title</th>
-            <th className="py-1.5 pr-3 font-medium">Type</th>
-            <th className="py-1.5 pr-3 font-medium">Status</th>
-            <th className="py-1.5 pr-3 font-medium">Urgency</th>
-            <th className="py-1.5 pr-3 font-medium">Date</th>
+            {columns.map((col) => (
+              <th key={`${col.source}:${col.key}`} className="py-1.5 pr-3 font-medium">
+                {columnLabel(col, propertyLabels)}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -177,14 +319,14 @@ function TableLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition 
                   {item.title || "Untitled"}
                 </Link>
               </td>
-              <td className="py-1.5 pr-3 text-neutral-500">{item.type}</td>
-              <td className="py-1.5 pr-3 text-neutral-400">{item.status}</td>
-              <td className="py-1.5 pr-3 text-neutral-400">
-                {item.urgency ?? ""}
-              </td>
-              <td className="py-1.5 pr-3 text-neutral-500">
-                {rowDate(item, view.dateProperty)}
-              </td>
+              {columns.map((col) => (
+                <td
+                  key={`${col.source}:${col.key}`}
+                  className="py-1.5 pr-3 text-neutral-400"
+                >
+                  {columnText(item, col)}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -248,7 +390,15 @@ function BoardLayout({
   );
 }
 
-function AgendaLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+function AgendaLayout({
+  items,
+  view,
+  propertyLabels,
+}: {
+  items: ViewItem[];
+  view: ViewDefinition;
+  propertyLabels: Record<string, string>;
+}) {
   const prop = view.dateProperty;
   const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
   // Bucket by day; sort buckets chronologically; undated last.
@@ -274,7 +424,13 @@ function AgendaLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition
           </h3>
           <ul className="mt-1">
             {dayItems.map((item) => (
-              <ItemRow key={item.id} item={item} prop={prop} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                prop={prop}
+                columns={view.columns}
+                propertyLabels={propertyLabels}
+              />
             ))}
           </ul>
         </section>
@@ -286,7 +442,13 @@ function AgendaLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition
           </h3>
           <ul className="mt-1">
             {undated.map((item) => (
-              <ItemRow key={item.id} item={item} prop={prop} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                prop={prop}
+                columns={view.columns}
+                propertyLabels={propertyLabels}
+              />
             ))}
           </ul>
         </section>
@@ -399,12 +561,16 @@ export default function ViewRenderer({
   view,
   items,
   groupOrder,
+  propertyLabels = {},
 }: {
   view: ViewDefinition;
   items: ViewItem[];
   // Column order for a board grouped by a custom property (the property's
   // option order); resolved by the page from the type's schema (ADR-046).
   groupOrder?: string[];
+  // Labels for the type's custom properties, so a property column shows its
+  // label rather than its key. Resolved by the page from the type's schema.
+  propertyLabels?: Record<string, string>;
 }) {
   if (items.length === 0) {
     return (
@@ -415,14 +581,14 @@ export default function ViewRenderer({
   }
   switch (view.layout) {
     case "table":
-      return <TableLayout items={items} view={view} />;
+      return <TableLayout items={items} view={view} propertyLabels={propertyLabels} />;
     case "board":
       return <BoardLayout items={items} view={view} groupOrder={groupOrder} />;
     case "calendar":
       return <CalendarLayout items={items} view={view} />;
     case "agenda":
-      return <AgendaLayout items={items} view={view} />;
+      return <AgendaLayout items={items} view={view} propertyLabels={propertyLabels} />;
     default:
-      return <ListLayout items={items} view={view} />;
+      return <ListLayout items={items} view={view} propertyLabels={propertyLabels} />;
   }
 }

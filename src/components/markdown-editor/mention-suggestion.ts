@@ -35,6 +35,22 @@ export function createMentionSuggestion(
       let items: Item[] = [];
       let selected = 0;
       let cmd: SuggestionProps<Item>["command"] | null = null;
+      let onDocPointer: ((e: MouseEvent) => void) | null = null;
+
+      // One place to tear the popup down so every exit path (onExit, Escape,
+      // click-away) also unregisters the document listener — otherwise a stray
+      // listener leaks. The DOM node lives on document.body (outside React), so
+      // if it isn't removed here nothing else will: that was the bug where the
+      // "No matches" box survived clicking away and even a route change, until
+      // a full refresh. See also the unmount sweep in MarkdownEditor.tsx.
+      const close = () => {
+        popup?.remove();
+        popup = null;
+        if (onDocPointer) {
+          document.removeEventListener("mousedown", onDocPointer, true);
+          onDocPointer = null;
+        }
+      };
 
       const paint = () => {
         if (!popup) return;
@@ -68,12 +84,27 @@ export function createMentionSuggestion(
 
       return {
         onStart: (props: SuggestionProps<Item>) => {
+          // Defensive: clear any orphan popup left by a previous session that
+          // didn't tear down cleanly (belt-and-suspenders with close()).
+          document
+            .querySelectorAll(".ledgr-mention-popup")
+            .forEach((n) => n.remove());
           items = props.items;
           selected = 0;
           cmd = props.command;
           popup = document.createElement("div");
           popup.className = "ledgr-mention-popup";
           document.body.appendChild(popup);
+          // Clicking anywhere outside the popup dismisses it. Tiptap's
+          // suggestion only fires onExit when the matched range changes in the
+          // doc, so a plain blur (click away, never finishing the @) never
+          // closed it on its own. Capture phase so we see the click before it
+          // is swallowed elsewhere; row clicks use mousedown and live inside
+          // the popup, so they're excluded by the contains() check.
+          onDocPointer = (e: MouseEvent) => {
+            if (popup && !popup.contains(e.target as Node)) close();
+          };
+          document.addEventListener("mousedown", onDocPointer, true);
           paint();
           place(props.clientRect?.() ?? null);
         },
@@ -103,15 +134,13 @@ export function createMentionSuggestion(
             return true;
           }
           if (event.key === "Escape") {
-            popup?.remove();
-            popup = null;
+            close();
             return true;
           }
           return false;
         },
         onExit: () => {
-          popup?.remove();
-          popup = null;
+          close();
         },
       };
     },

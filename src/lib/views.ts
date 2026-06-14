@@ -176,6 +176,27 @@ export type ViewGrouping = { field: GroupField } | { propertyKey: string } | nul
 export const DATE_PROPERTIES = ["dueDate", "meetingAt", "createdAt", "updatedAt"] as const;
 export type DateProperty = (typeof DATE_PROPERTIES)[number];
 
+// Columns the list + table layouts can show (Brandon feedback, 2026-06-14:
+// "the items list only shows the created date — let me pick what shows"). A
+// column is either a built-in field (resolved from the row) or one of the
+// type's custom properties (read from items.properties by key). Title is always
+// the row's primary link, so it isn't a configurable column.
+export const COLUMN_FIELDS = [
+  "type",
+  "status",
+  "urgency",
+  "kind",
+  "dueDate",
+  "meetingAt",
+  "createdAt",
+  "updatedAt",
+  "url",
+] as const;
+export type ColumnField = (typeof COLUMN_FIELDS)[number];
+export type ViewColumn =
+  | { source: "field"; key: ColumnField }
+  | { source: "property"; key: string };
+
 export type ViewDefinition = {
   id: string;
   name: string;
@@ -183,6 +204,9 @@ export type ViewDefinition = {
   filter: ViewFilter;
   sort: ViewSort;
   grouping: ViewGrouping;
+  // Ordered columns for the list/table layouts; null = the layout's defaults
+  // (so every pre-existing view is unchanged).
+  columns: ViewColumn[] | null;
   layout: ViewLayout;
   dateProperty: DateProperty | null;
   // null = not on the dashboard; a number is its widget position (slice 29).
@@ -196,6 +220,7 @@ export type ViewInput = {
   filter: ViewFilter;
   sort: ViewSort;
   grouping: ViewGrouping;
+  columns: ViewColumn[] | null;
   layout: ViewLayout;
   dateProperty: DateProperty | null;
 };
@@ -274,6 +299,36 @@ function parseGrouping(raw: unknown): ViewGrouping {
   return { field };
 }
 
+// Columns: an ordered list of field/property selectors. Tolerant — a malformed
+// entry is dropped, not rejected; an empty result collapses to null so the
+// layout falls back to its defaults. Deduped on source:key, order preserved.
+export function parseColumns(raw: unknown): ViewColumn[] | null {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) bad("columns must be an array");
+  const out: ViewColumn[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const r = entry as Record<string, unknown>;
+    const key = String(r.key ?? "").trim();
+    if (!key) continue;
+    if (r.source === "property") {
+      if (key.length > 40) continue;
+      const id = `property:${key}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ source: "property", key });
+    } else if (r.source === "field") {
+      if (!COLUMN_FIELDS.includes(key as ColumnField)) continue;
+      const id = `field:${key}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ source: "field", key: key as ColumnField });
+    }
+  }
+  return out.length ? out : null;
+}
+
 export function parseViewInput(raw: unknown): ViewInput {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     bad("request body must be a JSON object");
@@ -302,6 +357,7 @@ export function parseViewInput(raw: unknown): ViewInput {
     filter,
     sort: parseSort(r.sort),
     grouping: parseGrouping(r.grouping),
+    columns: parseColumns(r.columns),
     layout,
     dateProperty,
   };
@@ -317,6 +373,7 @@ function rowToDefinition(row: typeof views.$inferSelect): ViewDefinition {
     filter: parseViewFilter(row.filter),
     sort: parseSort(row.sort),
     grouping: parseGrouping(row.grouping),
+    columns: parseColumns(row.columns),
     layout: row.layout as ViewLayout,
     dateProperty: (row.dateProperty as DateProperty | null) ?? null,
     dashboardOrder: row.dashboardOrder,
@@ -357,6 +414,7 @@ export async function createView(
       filter: input.filter,
       sort: input.sort,
       grouping: input.grouping,
+      columns: input.columns,
       layout: input.layout,
       dateProperty: input.dateProperty,
     })
@@ -378,6 +436,7 @@ export async function updateView(
       filter: input.filter,
       sort: input.sort,
       grouping: input.grouping,
+      columns: input.columns,
       layout: input.layout,
       dateProperty: input.dateProperty,
     })

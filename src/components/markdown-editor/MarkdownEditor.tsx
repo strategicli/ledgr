@@ -114,6 +114,20 @@ export default function MarkdownEditor({
     }),
   });
 
+  // Safety net for the @-mention popup. It lives on document.body (outside
+  // React), so if the editor unmounts mid-suggestion — e.g. navigating away
+  // with the menu still open — Tiptap may not fire the suggestion's onExit and
+  // the popup would strand on the page until a full refresh. Sweep any lingering
+  // popup on unmount. (The suggestion also self-closes on click-away; this
+  // covers the route-change path.)
+  useEffect(() => {
+    return () => {
+      document
+        .querySelectorAll(".ledgr-mention-popup")
+        .forEach((n) => n.remove());
+    };
+  }, []);
+
   // If the host swaps in a different document (e.g. "reload from saved" on the
   // scratch route), reset the editor to it without firing onUpdate.
   useEffect(() => {

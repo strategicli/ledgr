@@ -14,6 +14,13 @@ import { getDb } from "@/db";
 import { items, templates, types } from "@/db/schema";
 import { isItemBody, makeMarkdownBody, type ItemBody } from "@/lib/body";
 import { createItem, ItemError } from "@/lib/items";
+import { relateItems } from "@/lib/relations";
+
+// A relation the template pre-creates on apply: an edge from the new item to an
+// existing item (a person/org entity, usually), with a role. This is the piece
+// property defaults can't express — relations live in the relations table, not
+// items.properties (Brandon feedback, 2026-06-14).
+export type RelationDefault = { targetId: string; role: string };
 
 export type ItemTemplate = {
   id: string;
@@ -24,6 +31,9 @@ export type ItemTemplate = {
   // Seeds items.properties on apply; the keys are a type's property_schema
   // keys (validated loosely here — it mirrors the freeform properties column).
   propertyDefaults: Record<string, unknown>;
+  // Edges relateItems writes from the new item on apply (e.g. a meeting's usual
+  // attendees). Empty array = none.
+  relationDefaults: RelationDefault[];
   createdAt: Date;
 };
 
@@ -34,6 +44,9 @@ export type TemplateCreateInput = {
   name: string;
   body: ItemBody | null;
   propertyDefaults: Record<string, unknown>;
+  // Optional on the input so hand-built callers don't have to pass it; parse
+  // always sets it, and the store normalizes a missing value to [].
+  relationDefaults?: RelationDefault[];
 };
 export type TemplatePatchInput = Omit<TemplateCreateInput, "type">;
 
@@ -65,6 +78,31 @@ function parseDefaults(raw: unknown): Record<string, unknown> {
   return out;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// A list of { targetId, role } edges. Tolerant like parseDefaults: drop
+// anything malformed rather than reject the whole save, and de-dupe on
+// (targetId, role) so the same person can't be added twice.
+function parseRelationDefaults(raw: unknown): RelationDefault[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) bad("relationDefaults must be an array");
+  const out: RelationDefault[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const r = entry as Record<string, unknown>;
+    const targetId = String(r.targetId ?? "").trim();
+    if (!UUID_RE.test(targetId)) continue;
+    const role = String(r.role ?? "related").trim() || "related";
+    const dedupe = `${targetId}:${role}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    out.push({ targetId, role });
+  }
+  return out;
+}
+
 function parseName(raw: unknown): string {
   if (typeof raw !== "string") bad("name must be a string");
   const name = raw.trim();
@@ -87,6 +125,7 @@ export function parseTemplateInput(
     name: parseName(r.name),
     body: parseBody(r.body),
     propertyDefaults: parseDefaults(r.propertyDefaults),
+    relationDefaults: parseRelationDefaults(r.relationDefaults),
   };
   if (mode === "create") {
     if (typeof r.type !== "string" || !r.type.trim()) bad("type is required");
@@ -116,6 +155,8 @@ function rowToTemplate(row: typeof templates.$inferSelect): ItemTemplate {
     name: row.name,
     body: isItemBody(row.body) ? row.body : null,
     propertyDefaults: defaults,
+    // Coerce through the same parser so a hand-edited/legacy row reads cleanly.
+    relationDefaults: parseRelationDefaults(row.relationDefaults),
     createdAt: row.createdAt,
   };
 }
@@ -161,6 +202,7 @@ export async function createTemplate(
       name: input.name,
       body: input.body,
       propertyDefaults: input.propertyDefaults,
+      relationDefaults: input.relationDefaults ?? [],
     })
     .returning();
   return rowToTemplate(rows[0]);
@@ -178,6 +220,7 @@ export async function updateTemplate(
       name: input.name,
       body: input.body,
       propertyDefaults: input.propertyDefaults,
+      relationDefaults: input.relationDefaults ?? [],
     })
     .where(and(eq(templates.id, id), eq(templates.ownerId, ownerId)))
     .returning();
@@ -197,7 +240,7 @@ export async function deleteTemplate(ownerId: string, id: string): Promise<void>
 // The title is left empty for the user to fill, matching the blank "+ New".
 export async function createItemFromTemplate(ownerId: string, id: string) {
   const template = await getTemplate(ownerId, id);
-  return createItem(ownerId, {
+  const created = await createItem(ownerId, {
     type: template.type,
     body: template.body,
     properties: Object.keys(template.propertyDefaults).length
@@ -205,6 +248,18 @@ export async function createItemFromTemplate(ownerId: string, id: string) {
       : null,
     inbox: false,
   });
+  // Write the preset relation edges from the new item. Resilient by design: a
+  // target that was deleted/trashed since the template was saved (relateItems
+  // throws not_found / "in Trash") is skipped, not allowed to abort the create
+  // — the item already exists and one stale attendee shouldn't lose it.
+  for (const rel of template.relationDefaults) {
+    try {
+      await relateItems(ownerId, created.id, rel.targetId, rel.role);
+    } catch (err) {
+      if (!(err instanceof ItemError)) throw err;
+    }
+  }
+  return created;
 }
 
 // Per-type template counts for the owner, e.g. { task: 2, meeting: 1 }. Powers

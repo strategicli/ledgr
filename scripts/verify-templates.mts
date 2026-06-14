@@ -14,7 +14,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, templates, types, users } = await import("../src/db/schema");
+const { items, relations, templates, types, users } = await import("../src/db/schema");
 const {
   parseTemplateInput,
   createTemplate,
@@ -26,8 +26,8 @@ const {
   templateCountsByType,
 } = await import("../src/lib/templates");
 const { createType } = await import("../src/lib/types");
-const { ItemError } = await import("../src/lib/items");
-const { eq, inArray } = await import("drizzle-orm");
+const { ItemError, createItem } = await import("../src/lib/items");
+const { and, eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -76,6 +76,36 @@ try {
     "create"
   );
   check("drops null/empty defaults, keeps real values", JSON.stringify(withDefaults.propertyDefaults) === JSON.stringify({ stage: "Applied", n: 0 }));
+
+  // relationDefaults: well-formed kept, malformed dropped, dupes collapsed.
+  const u1 = "11111111-1111-1111-1111-111111111111";
+  const u2 = "22222222-2222-2222-2222-222222222222";
+  const rels = parseTemplateInput(
+    {
+      type: "meeting",
+      name: "X",
+      relationDefaults: [
+        { targetId: u1 },                       // role defaults to "related"
+        { targetId: u1, role: "related" },      // dupe of the above
+        { targetId: u2, role: "attendee" },
+        { targetId: "not-a-uuid" },             // dropped
+        "garbage",                               // dropped
+      ],
+    },
+    "create"
+  );
+  check(
+    "relationDefaults: dedupes + drops malformed + defaults role",
+    JSON.stringify(rels.relationDefaults) ===
+      JSON.stringify([
+        { targetId: u1, role: "related" },
+        { targetId: u2, role: "attendee" },
+      ])
+  );
+  check("relationDefaults defaults to [] when absent", JSON.stringify(parseTemplateInput({ type: "task", name: "X" }, "create").relationDefaults) === "[]");
+  await throws("rejects non-array relationDefaults", () =>
+    parseTemplateInput({ type: "task", name: "X", relationDefaults: { targetId: u1 } }, "create"), "bad_request");
+
   const patch = parseTemplateInput({ name: "Renamed" }, "patch");
   check("patch parses without a type", !("type" in patch) && patch.name === "Renamed");
 
@@ -128,6 +158,49 @@ try {
   // apply a body-less, default-less template → a blank item of the type
   const blankish = await createItemFromTemplate(owner.id, t2.id);
   check("apply of an empty template still makes a typed item", blankish.type === typeKey && blankish.body == null);
+
+  // --- relation defaults: apply pre-relates the listed items ---
+  const alice = await createItem(owner.id, { type: "entity", title: "Alice", kind: "person" });
+  const bob = await createItem(owner.id, { type: "entity", title: "Bob", kind: "person" });
+  const ghost = "33333333-3333-3333-3333-333333333333"; // valid uuid, no such item
+  const tRel = await createTemplate(owner.id, {
+    type: typeKey,
+    name: "Pastors meeting",
+    body: null,
+    propertyDefaults: {},
+    relationDefaults: [
+      { targetId: alice.id, role: "related" },
+      { targetId: bob.id, role: "related" },
+      { targetId: ghost, role: "related" }, // stale target — must be skipped
+    ],
+  });
+  check("createTemplate stored relation defaults", tRel.relationDefaults.length === 3);
+  check("getTemplate round-trips relation defaults", (await getTemplate(owner.id, tRel.id)).relationDefaults.length === 3);
+
+  const meetingItem = await createItemFromTemplate(owner.id, tRel.id);
+  const edges = await db
+    .select({ targetId: relations.targetId })
+    .from(relations)
+    .where(eq(relations.sourceId, meetingItem.id));
+  const relatedIds = edges.map((e) => e.targetId).sort();
+  check("apply wrote an edge to each live target", relatedIds.length === 2 && relatedIds.includes(alice.id) && relatedIds.includes(bob.id));
+  check("apply skipped the stale target, item still created", !relatedIds.includes(ghost) && meetingItem.type === typeKey);
+
+  // a foreign target can't be related through a template (owner-scoping holds)
+  const otherEntity = await createItem(other.id, { type: "entity", title: "Carol", kind: "person" });
+  const tForeign = await createTemplate(owner.id, {
+    type: typeKey,
+    name: "Cross-owner",
+    body: null,
+    propertyDefaults: {},
+    relationDefaults: [{ targetId: otherEntity.id, role: "related" }],
+  });
+  const crossItem = await createItemFromTemplate(owner.id, tForeign.id);
+  const crossEdges = await db
+    .select({ id: relations.id })
+    .from(relations)
+    .where(and(eq(relations.sourceId, crossItem.id), eq(relations.targetId, otherEntity.id)));
+  check("apply won't relate a target owned by someone else", crossEdges.length === 0);
 
   // --- delete ---
   await deleteTemplate(owner.id, t2.id);

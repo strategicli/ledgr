@@ -66,6 +66,11 @@ export const views = pgTable("views", {
   filter: jsonb("filter"),
   sort: jsonb("sort"),
   grouping: jsonb("grouping"),
+  // Which columns/properties the list + table layouts show (Brandon feedback,
+  // 2026-06-14): an ordered ViewColumn[] (src/lib/views.ts) of built-in fields
+  // and the type's custom property keys. null = the layout's default columns,
+  // so every pre-existing view is unchanged.
+  columns: jsonb("columns"),
   layout: viewLayout("layout").notNull().default("list"),
   dateProperty: text("date_property"),
   // Dashboard placement (slice 29, PRD §4.11): null means the view isn't a
@@ -364,6 +369,13 @@ export const templates = pgTable(
     name: text("name").notNull(),
     body: jsonb("body"),
     propertyDefaults: jsonb("property_defaults"),
+    // Relations the template pre-creates on apply (Brandon feedback,
+    // 2026-06-14): an array of { targetId, role } edges written from the new
+    // item to existing items — e.g. a "pastors meeting" template that
+    // pre-relates the people who normally attend. property_defaults can't do
+    // this: relations live in the relations table, not items.properties, and
+    // there is no relation property kind. null = no preset edges.
+    relationDefaults: jsonb("relation_defaults"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

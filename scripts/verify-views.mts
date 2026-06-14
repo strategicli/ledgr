@@ -102,6 +102,34 @@ try {
       "propertyKey" in propGroup.grouping &&
       propGroup.grouping.propertyKey === "stage"
   );
+
+  // Columns (Brandon feedback, 2026-06-14): field + property selectors, with
+  // malformed entries dropped, dupes collapsed, order preserved, empty → null.
+  check("columns default to null when absent", parseViewInput({ name: "x", layout: "list" }).columns === null);
+  const cols = parseViewInput({
+    name: "x",
+    layout: "table",
+    columns: [
+      { source: "field", key: "status" },
+      { source: "property", key: "stage" },
+      { source: "field", key: "status" },   // dupe → dropped
+      { source: "field", key: "bogus" },      // unknown field → dropped
+      { source: "property", key: "" },         // empty key → dropped
+      { source: "weird", key: "status" },      // bad source → dropped
+      "garbage",                                // non-object → dropped
+    ],
+  }).columns;
+  check(
+    "columns: keeps valid, drops malformed/dupes, preserves order",
+    JSON.stringify(cols) ===
+      JSON.stringify([
+        { source: "field", key: "status" },
+        { source: "property", key: "stage" },
+      ])
+  );
+  check("columns: all-invalid collapses to null", parseViewInput({ name: "x", layout: "list", columns: [{ source: "field", key: "nope" }] }).columns === null);
+  await throws("rejects non-array columns", () =>
+    parseViewInput({ name: "x", layout: "list", columns: { source: "field", key: "status" } }), "bad_request");
   await throws("rejects blank propertyKey grouping", () =>
     parseViewInput({ name: "x", layout: "board", grouping: { propertyKey: "   " } }), "bad_request");
 
@@ -111,10 +139,16 @@ try {
     layout: "table",
     filter: { type: "task", status: "open" },
     sort: { field: "dueDate", dir: "asc" },
+    columns: [
+      { source: "field", key: "status" },
+      { source: "field", key: "dueDate" },
+    ],
   }));
   check("createView returns a row", !!created.id && created.name === "My tasks");
   check("createView stored filter", created.filter.type === "task");
   check("createView stored sort", created.sort.field === "dueDate" && created.sort.dir === "asc");
+  check("createView stored columns", JSON.stringify(created.columns) === JSON.stringify([{ source: "field", key: "status" }, { source: "field", key: "dueDate" }]));
+  check("getView round-trips columns", JSON.stringify((await getView(ownerId, created.id)).columns) === JSON.stringify(created.columns));
 
   const fetched = await getView(ownerId, created.id);
   check("getView round-trips", fetched.id === created.id && fetched.layout === "table");

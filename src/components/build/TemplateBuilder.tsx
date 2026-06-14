@@ -10,8 +10,10 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import LazyMarkdownEditor from "@/components/markdown-editor/LazyMarkdownEditor";
-import type { ItemTemplate } from "@/lib/templates";
+import type { ItemTemplate, RelationDefault } from "@/lib/templates";
 import type { PropertyDef, TypeDefinition } from "@/lib/types";
+
+type EntityOption = { id: string; title: string };
 
 const fieldClass =
   "rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
@@ -134,10 +136,15 @@ function DefaultControl({
 
 export default function TemplateBuilder({
   types,
+  entities,
   initial,
   defaultType,
 }: {
   types: TypeDefinition[];
+  // The owner's entities (people/orgs/…), so a template can pre-select the
+  // related items a new item should start with — e.g. a meeting's usual
+  // attendees (Brandon feedback, 2026-06-14).
+  entities: EntityOption[];
   initial?: ItemTemplate;
   defaultType?: string;
 }) {
@@ -153,8 +160,29 @@ export default function TemplateBuilder({
   const initialBodyMd = initial?.body?.text ?? "";
   const [bodyMd, setBodyMd] = useState(initialBodyMd);
   const [defaults, setDefaults] = useState<Values>(initial?.propertyDefaults ?? {});
+  const [relations, setRelations] = useState<RelationDefault[]>(
+    initial?.relationDefaults ?? []
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const entityTitle = (id: string) =>
+    entities.find((e) => e.id === id)?.title || "Untitled";
+  // Entities not yet picked, for the "add" select.
+  const available = entities.filter(
+    (e) => !relations.some((r) => r.targetId === e.id)
+  );
+  function addRelation(targetId: string) {
+    if (!targetId) return;
+    setRelations((rs) =>
+      rs.some((r) => r.targetId === targetId)
+        ? rs
+        : [...rs, { targetId, role: "related" }]
+    );
+  }
+  function removeRelation(targetId: string) {
+    setRelations((rs) => rs.filter((r) => r.targetId !== targetId));
+  }
 
   const selectedType = useMemo(
     () => types.find((t) => t.key === typeKey),
@@ -187,6 +215,7 @@ export default function TemplateBuilder({
       name: name.trim(),
       body: bodyMd.trim() ? bodyMd : null,
       propertyDefaults: defaults,
+      relationDefaults: relations,
       ...(editing ? {} : { type: typeKey }),
     };
     try {
@@ -285,6 +314,57 @@ export default function TemplateBuilder({
           ))}
         </fieldset>
       )}
+
+      <fieldset className="flex flex-col gap-3 rounded-lg border border-neutral-800 p-3">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          Related items
+        </legend>
+        <p className="text-xs text-neutral-600">
+          Items a new one starts out linked to — e.g. the people who normally
+          attend this meeting. They appear in its Related panel right away.
+        </p>
+        {relations.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {relations.map((r) => (
+              <li
+                key={r.targetId}
+                className="flex items-center gap-1.5 rounded bg-neutral-800 px-2 py-1 text-sm text-neutral-200"
+              >
+                {entityTitle(r.targetId)}
+                <button
+                  type="button"
+                  aria-label={`Remove ${entityTitle(r.targetId)}`}
+                  onClick={() => removeRelation(r.targetId)}
+                  className="text-neutral-500 hover:text-neutral-200"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {available.length > 0 ? (
+          <select
+            value=""
+            onChange={(e) => addRelation(e.target.value)}
+            className={`${fieldClass} w-64`}
+            aria-label="Add a related item"
+          >
+            <option value="">Add a related item…</option>
+            {available.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.title || "Untitled"}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="text-xs text-neutral-600">
+            {entities.length === 0
+              ? "No entities yet — create people/orgs to relate them here."
+              : "All entities added."}
+          </p>
+        )}
+      </fieldset>
 
       <Field label="Starter content" hint="The body new items begin with. Headings, checklists, agenda — whatever sets up the work.">
         <LazyMarkdownEditor initialMarkdown={initialBodyMd} onChange={setBodyMd} />

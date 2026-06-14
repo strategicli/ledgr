@@ -30,17 +30,27 @@ export default async function ViewPage({ params }: Context) {
 
   const items = await queryViewItems(owner.id, view.filter, view.sort);
 
+  // Load the view's type once: it powers both the board's column order (group
+  // by a custom property) and the labels for any custom-property columns.
+  const type = view.filter.type
+    ? await getType(view.filter.type).catch(() => null)
+    : null;
+
   // For a board grouped by a custom property, order its columns by the type's
   // option list (a workflow board reads Applied → Interview → Offer, not
   // alphabetically). Falls back to present-value order if the type/prop is gone.
   let groupOrder: string[] | undefined;
   const grouping = view.grouping;
-  if (grouping && "propertyKey" in grouping && view.filter.type) {
-    const type = await getType(view.filter.type).catch(() => null);
+  if (grouping && "propertyKey" in grouping) {
     groupOrder = type?.propertySchema.find(
       (p) => p.key === grouping.propertyKey
     )?.options;
   }
+
+  // key → label for the type's custom properties, so a property column reads
+  // "Stage", not "stage".
+  const propertyLabels: Record<string, string> = {};
+  for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
 
   return (
     <main className="min-h-screen">
@@ -68,7 +78,12 @@ export default async function ViewPage({ params }: Context) {
           {items.length} item{items.length === 1 ? "" : "s"} · {view.layout}
         </p>
 
-        <ViewRenderer view={view} items={items} groupOrder={groupOrder} />
+        <ViewRenderer
+          view={view}
+          items={items}
+          groupOrder={groupOrder}
+          propertyLabels={propertyLabels}
+        />
       </div>
     </main>
   );

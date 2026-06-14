@@ -8,7 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { PropertyDef } from "@/lib/types";
-import type { ViewDefinition } from "@/lib/views";
+import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 const STATUSES = ["open", "done", "archived"];
@@ -54,6 +54,33 @@ function groupFieldsFor(type: string): string[] {
 }
 const showsUrgency = (type: string) => type === "task" || type === "";
 const showsKind = (type: string) => type === "entity" || type === "";
+
+// Columns are offered for the row-based layouts (list/table/agenda); board and
+// calendar have their own card shapes and ignore the column choice.
+const showsColumns = (layout: string) =>
+  layout === "list" || layout === "table" || layout === "agenda";
+
+// Built-in field columns offered for a type, mirroring which fields that type
+// actually has (the same discipline as the date/sort selects above).
+const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
+  type: "Type",
+  status: "Status",
+  urgency: "Urgency",
+  kind: "Kind",
+  dueDate: "Due date",
+  meetingAt: "When",
+  createdAt: "Created",
+  updatedAt: "Updated",
+  url: "URL",
+};
+function fieldColumnsFor(type: string): ColumnField[] {
+  const cols: ColumnField[] = ["type", "status"];
+  if (showsUrgency(type)) cols.push("urgency");
+  if (showsKind(type)) cols.push("kind");
+  for (const d of dateFieldsFor(type)) cols.push(d as ColumnField);
+  if (type === "link" || type === "") cols.push("url");
+  return cols;
+}
 
 type EntityOption = { id: string; title: string };
 
@@ -103,6 +130,11 @@ export default function ViewBuilder({
     return schema
       .filter((p) => p.kind === "select" || p.kind === "multi_select")
       .map((p) => ({ value: `prop:${p.key}`, label: p.label }));
+  }
+  // The type's custom properties, offered as property columns.
+  function propColumnsFor(typeKey: string): { key: string; label: string }[] {
+    const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
+    return schema.map((p) => ({ key: p.key, label: p.label }));
   }
   const validGroup = (typeKey: string, val: string | undefined): string => {
     if (!val) return "";
@@ -156,8 +188,21 @@ export default function ViewBuilder({
   const [dateProperty, setDateProperty] = useState<string>(
     pick(df0, initial?.dateProperty, df0[0])
   );
+  // Chosen columns, in order; empty = the layout's default columns. Toggling
+  // appends (so check order = column order) or removes.
+  const [columns, setColumns] = useState<ViewColumn[]>(initial?.columns ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const hasColumn = (col: ViewColumn) =>
+    columns.some((c) => c.source === col.source && c.key === col.key);
+  function toggleColumn(col: ViewColumn) {
+    setColumns((cs) =>
+      cs.some((c) => c.source === col.source && c.key === col.key)
+        ? cs.filter((c) => !(c.source === col.source && c.key === col.key))
+        : [...cs, col]
+    );
+  }
 
   const needsDate = layout === "calendar" || layout === "agenda";
   const canGroup = layout === "board" || layout === "agenda";
@@ -176,6 +221,15 @@ export default function ViewBuilder({
     setGroupField((v) => validGroup(t, v));
     if (!showsUrgency(t)) setUrgency("");
     if (!showsKind(t)) setKind("");
+    // Drop any column the new type doesn't have (a stale field or a property
+    // key that isn't in the new type's schema).
+    const okFields = new Set<string>(fieldColumnsFor(t));
+    const okProps = new Set(propColumnsFor(t).map((p) => p.key));
+    setColumns((cs) =>
+      cs.filter((c) =>
+        c.source === "field" ? okFields.has(c.key) : okProps.has(c.key)
+      )
+    );
   }
 
   async function save() {
@@ -217,6 +271,7 @@ export default function ViewBuilder({
             ? { propertyKey: groupField.slice(5) }
             : { field: groupField }
           : null,
+      columns: showsColumns(layout) && columns.length ? columns : null,
       dateProperty: needsDate ? dateProperty : null,
     };
     try {
@@ -441,6 +496,49 @@ export default function ViewBuilder({
             ))}
           </select>
         </Field>
+      )}
+
+      {showsColumns(layout) && (
+        <fieldset className="flex flex-col gap-2 rounded-lg border border-neutral-800 p-3">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Columns
+          </legend>
+          <p className="text-xs text-neutral-600">
+            Which fields show beside each item. None checked = the default
+            (status, urgency, date).
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {fieldColumnsFor(type).map((key) => {
+              const col: ViewColumn = { source: "field", key };
+              return (
+                <label key={`field:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-neutral-300"
+                    checked={hasColumn(col)}
+                    onChange={() => toggleColumn(col)}
+                  />
+                  {FIELD_COLUMN_LABELS[key]}
+                </label>
+              );
+            })}
+            {propColumnsFor(type).map(({ key, label }) => {
+              const col: ViewColumn = { source: "property", key };
+              return (
+                <label key={`property:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-neutral-300"
+                    checked={hasColumn(col)}
+                    onChange={() => toggleColumn(col)}
+                  />
+                  {label}{" "}
+                  <span className="text-xs text-neutral-600">(property)</span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
       )}
 
       {needsDate && (
