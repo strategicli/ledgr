@@ -10,9 +10,13 @@ import { useRouter } from "next/navigation";
 export default function Modal({
   itemId,
   children,
+  wide = false,
 }: {
   itemId: string;
   children: React.ReactNode;
+  // Wider panel for canvases that need the room (a song's two-column chart);
+  // the default keeps note/task previews compact.
+  wide?: boolean;
 }) {
   const router = useRouter();
   const close = useCallback(() => router.back(), [router]);
@@ -45,7 +49,11 @@ export default function Modal({
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[var(--background)] shadow-2xl">
+      <div
+        className={`flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[var(--background)] shadow-2xl ${
+          wide ? "max-w-5xl" : "max-w-3xl"
+        }`}
+      >
         <div className="flex shrink-0 items-center justify-end gap-1 px-3 pt-2">
           {/* Plain <a>, not <Link>: a soft nav to the same URL would stay
               intercepted; a document load renders the full page form. */}
