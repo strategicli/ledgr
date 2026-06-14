@@ -32,6 +32,7 @@ Rule of thumb: a change to **core** (data model, the canonical body format, the 
 ## Tyler — current
 
 - **Availability:** _(Tyler to fill)_
-- **Working on:** PR #1 (`ty-additions/` module specs) is up for review. Modules planned: Papers, Songs, Sermons/Lessons, Discipleship; integrations Savor + Atlas; eventual iOS wrapper.
-- **Next:** _(Tyler to fill)_
-- **Last updated:** _(Tyler to fill)_
+- **Working on:** **Papers module — DONE (2026-06-14, ADR-045).** Second workflow module after Songs. `paper` type, markdown-canonical; tabbed canvas (Quote Bank · Outline · Draft); deterministic MSM citation engine (Full/Short/Ibid) + click-to-cite footnotes; one-click MSM `.docx` export (ported from `ty-docs/msm-render.js`). All in `src/lib/papers/` + `src/components/paper-editor/` + `PaperCanvas`. `verify-papers.mts` 16/16; registry/canvas/songs verifiers, `tsc`, `next build`, eslint all green; `paper` type seeded.
+- **Heads-up (Brandon):** two additive touches to shared files — `src/lib/modules/register.ts` (+`paperModule`) and `src/lib/module-wiring.tsx` (+`paper` canvas). Core types unchanged. **One thing to know:** the MSM `.docx` is binary, and `ExporterDef.render` returns a string, so I shipped it as a dedicated route (`GET /api/items/[id]/render-docx`) rather than widen the exporter contract — the core module contract is untouched (no ADR needed). New runtime dep: `docx`. If we ever want binary exporters as a first-class module slot, that's a core change for us to agree on later.
+- **Next:** **Song import (PDF / chord chart → ChordPro)** — bulk-add my chord-chart library. Spec'd in `explorations/song-import.md` (deterministic text-parse, reviewed in the chord canvas; new dep `unpdf` when I build it). Then Sermons/Lessons, Discipleship; Savor/Atlas integrations; iOS wrapper.
+- **Last updated:** 2026-06-14

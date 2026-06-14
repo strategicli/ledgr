@@ -47,6 +47,27 @@ The first real workflow module, built end-to-end on the M5/M6 foundation (ADR-04
 - **S7 — inline performance instructions** ("Band builds in") that render *above* the lyric line like a chord but styled as a direction; export as a bracketed `[…]` token (PCO convention). Currently imported as a `{note}` comment line.
 - **Real Planning Center API push** (one-click) — investigated (PCO Services API + personal access token); deferred in favor of copy/paste. The `IntegrationDef` slot + provider-seam pattern are mapped.
 - **Chord-diagram grids** and **style tags** (`<b>`/`<i>`) / **∆ ♭ ° ø** glyphs in export.
+- **Song import: PDF / chord chart → ChordPro** — bulk-add the existing chord-chart library to the archive. Scoped 2026-06-14, **build is the next Songs-lane slice**: deterministic text-layer parse (no AI), reviewed in the chord canvas before save. Full build spec in `explorations/song-import.md` (pipeline, reuse map, the one new dep `unpdf`, risks). Decided over AI-assisted (Principle 3/5; ~$0 target); AI fallback for scanned PDFs deferred.
+
+---
+
+## ⟢ Tyler's lane — Papers module: the seminary paper workspace ✅ DONE (2026-06-14, ADR-045)
+
+The second workflow module on the M5/M6 foundation. A `paper` type with a **markdown-canonical body**, a bespoke **tabbed canvas (Quote Bank · Outline · Draft)**, a **deterministic MSM citation engine**, click-to-cite footnotes, and a one-click **MSM `.docx` export** (the proven `ty-docs/msm-render.js` ported in). Replaces the hand-run HTML-viewer + Word-doc flow (`ty-docs/Paper_Outline_Viewer_Build_Spec.md`).
+
+- **P1 — pure core** (`src/lib/papers/`): `types.ts` (`Source`/`QuoteEntry`/`PaperMeta`/`PaperScaffold`, `PAPER_STAGES`) + `citation.ts` (MSM 4th-ed Full/Short/Ibid for book + video sources). Import-pure → one engine for the quote-bank UI, the docx renderer, and the verify script.
+- **P2 — MSM docx** (`src/lib/papers/msm-docx.ts` + `app/api/items/[id]/render-docx/route.ts`): faithful port of the CLI renderer, meta from item title + properties (not YAML); positional footnotes (no unpack/pack fix). Binary → a dedicated route, **not** the `ExporterDef` slot (which returns a string), so the core module contract is untouched. New runtime dep: `docx`.
+- **P3 — tabbed canvas** (`PaperCanvas` → `PaperCanvasClient` + `PaperMarkdownArea`/`QuoteBank`/`PaperMeta`): Draft = canonical body; Outline + Quote Bank = scaffold in `properties`. **`PaperCanvasClient` is the single properties writer** (no `CustomProperties` race). Cite from the quote bank mints a unique `[^id]`, splices it at the Draft caret, and appends the definition. Draft/Outline use a raw-markdown textarea (footnotes are a raw-markdown feature Tiptap doesn't support); CodeMirror later.
+- **Module + seed**: `src/lib/modules/papers.ts` (+`register.ts`, `module-wiring.tsx`), `scripts/seed-papers.mjs` (type row + title-page/stage `property_schema`, idempotent; seeded to dev DB).
+
+**Verification:** `verify-papers.mts` **16/16** (registration, citation book+video forms, a real 10KB docx render with 3 footnotes); `verify-module-registry` 38 + `verify-canvas-seam` 16 + `verify-songs` still green; `tsc` + `next build` + eslint clean. **Left for Tyler's morning check:** the in-browser canvas walkthrough (create a paper → add a quote → Cite drops a footnote → edit Outline persists → fill title page → Export MSM .docx opens correctly; compare title-page spacing to the 2 Timothy 100/100 benchmark, the renderer's `TP` constants).
+
+**Shared-file touches (flag for Brandon):** `register.ts` (+`paperModule`) and `module-wiring.tsx` (+`paper` canvas) — both additive; the five core types unchanged. Binary docx via a route, so no change to the `ExporterDef` core contract.
+
+**Future (logged, not built):**
+- **Promote the scaffold to a child item** if `properties` bloats (outline → child `note` for its own revisions/FTS) — the logged caveat in ADR-045.
+- **Outline-as-shape generator** — generate the Draft heading skeleton + gray cue paragraphs from the outline structure (the build spec's "Paper Shape → built markdown"), if the side-by-side scaffold proves too manual.
+- **CodeMirror** for the Draft/Outline (syntax highlight, better caret UX) over the v1 textarea.
 
 ---
 
