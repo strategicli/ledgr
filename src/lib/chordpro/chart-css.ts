@@ -17,7 +17,10 @@ export const CHART_CSS = `
    a query container, so it shows two columns only when it's wide enough for a
    full lyric line per column and collapses to one in a narrow modal/window
    (avoids mid-phrase wrapping). Print stays two columns regardless. */
-.cc-body{column-count:2;column-gap:0.75rem}
+/* Cap the chart width so two columns hug the lyric width instead of spreading
+   across a wide page — otherwise the empty right edge of column one reads as a
+   huge gutter. Centered; gap stays tight. */
+.cc-body{column-count:2;column-gap:0.75rem;max-width:52rem;margin-inline:auto}
 .cc-canvas{container-type:inline-size}
 @container (max-width:52rem){.cc-body{column-count:1}}
 .cc-section{break-inside:avoid;margin:0 0 1rem;display:block}
