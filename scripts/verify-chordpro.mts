@@ -137,7 +137,7 @@ check("renders chord cells above text", html.includes('class="cc-chord"') && htm
 check("repeat reference renders as a bare label", html.includes("cc-ref"));
 check(
   "full chorus rendered once, reference adds no second lyric copy",
-  html.split('class="cc-text">This is our ').length - 1 === 1
+  html.split('cc-text">This</span>').length - 1 === 1
 );
 const htmlT2 = chartToHtml(tiog, { transpose: 2 });
 check(
@@ -172,6 +172,29 @@ check("renders a column break on the section", cbHtml.includes("cc-break"));
 // the bare Planning Center "COLUMN_BREAK" token is honored like the directive
 const pcStyle = parseChordPro("{section: A}\nx\nCOLUMN_BREAK\n{section: B}\ny");
 check("bare COLUMN_BREAK token honored", pcStyle.sections.find((s) => s.label === "B")?.breakBefore === true);
+
+// ── 11. Word grouping: chord-above vs trailing, no word splitting ─────────────
+// chord BEFORE a syllable stacks above it; a mid-word chord keeps the word whole.
+const above = chartToHtml(parseChordPro("{section: X}\nfor [G]me\neyes si[C]ght"));
+check(
+  "chord before a word stacks above it",
+  above.includes('<span class="cc-chord">G</span><span class="cc-text">me</span>')
+);
+check(
+  "a mid-word chord keeps the word in one non-breaking unit",
+  above.includes(
+    '<span class="cc-cell"><span class="cc-chord"></span><span class="cc-text">si</span></span><span class="cc-cell"><span class="cc-chord">C</span><span class="cc-text">ght</span></span>'
+  )
+);
+check("word units are emitted", above.includes('class="cc-word"'));
+// a chord with no following text is a trailing chord, hugging the prior word.
+const trail = chartToHtml(parseChordPro("{section: X}\nHill [D]"));
+check("trailing chord marked cc-trail", trail.includes("cc-trail"));
+check("trailing chord carries the chord, no syllable", trail.includes('<span class="cc-chord">D</span><span class="cc-text"></span>'));
+check(
+  "trailing chord stays inside the word it follows",
+  trail.includes('cc-text">Hill</span></span><span class="cc-cell cc-trail">')
+);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

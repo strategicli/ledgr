@@ -18,8 +18,11 @@ export const CHART_CSS = `
 .cc-ref .cc-label{color:#737373;font-weight:600}
 .cc-line{margin-bottom:.1rem}
 .cc-lyric{display:flex;flex-wrap:wrap;align-items:flex-end}
+.cc-word{display:inline-flex;align-items:flex-end}
+.cc-space{white-space:pre}
 .cc-cell{display:inline-flex;flex-direction:column;white-space:pre}
-.cc-chord{font-weight:700;color:#7cb3ff;font-size:.8rem;line-height:1.1;min-height:1.1em}
+.cc-trail .cc-chord{padding-left:.15rem}
+.cc-chord{font-weight:700;color:#7cb3ff;font-size:.8rem;line-height:1.1;min-height:1.1em;white-space:pre}
 .cc-text{line-height:1.25}
 .cc-bars{font-family:ui-monospace,Consolas,monospace;color:#d4d4d4}
 .cc-pipe{color:#737373;margin:0 .35rem}

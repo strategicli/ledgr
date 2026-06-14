@@ -6,7 +6,7 @@
 // (DOC_CSS in print-html.ts, the editor css), keyed off these class names.
 import { parseChordPro } from "./parse";
 import { keyOfCapo, transposeChord, transposeNote } from "./transpose";
-import type { ChordChart, Section } from "./types";
+import type { ChordChart, ChordPair, Section } from "./types";
 
 export type RenderOptions = {
   transpose?: number; // semitones to shift every chord (and the key label)
@@ -56,6 +56,67 @@ function headerHtml(chart: ChordChart, opts: RenderOptions): string {
   return rows.length ? `<header class="cc-head">${rows.join("")}</header>` : "";
 }
 
+type Cell = { chord: string | null; text: string };
+type LineUnit = { word: Cell[] } | { space: string };
+
+// Group a lyric line's chord/text pairs into non-breaking WORD units separated
+// by breakable spaces. This keeps a word that a chord splits ("si[C]ght") whole
+// across a line wrap, and supports both placements the author controls by
+// bracket position: a chord BEFORE a syllable ([G]me) stacks above it; a chord
+// with no following text (me [G]) is a TRAILING chord, hugging the end of the
+// preceding word at chord height.
+function lyricLineHtml(pairs: ChordPair[], opts: RenderOptions): string {
+  const units: LineUnit[] = [];
+  let cur: Cell[] = [];
+  const flush = () => {
+    if (cur.length) {
+      units.push({ word: cur });
+      cur = [];
+    }
+  };
+  const trailing = (chord: string) => {
+    // attach to the current word, else the most recent word, so it hugs it
+    if (cur.length) return void cur.push({ chord, text: "" });
+    for (let i = units.length - 1; i >= 0; i--) {
+      const u = units[i];
+      if ("word" in u) return void u.word.push({ chord, text: "" });
+    }
+    cur.push({ chord, text: "" });
+  };
+
+  for (const p of pairs) {
+    let pending = p.chord;
+    for (const seg of p.text.split(/(\s+)/)) {
+      if (seg === "") continue;
+      if (/^\s+$/.test(seg)) {
+        flush();
+        units.push({ space: seg });
+        continue;
+      }
+      cur.push({ chord: pending, text: seg });
+      pending = null;
+    }
+    if (pending != null) trailing(pending); // chord with no following text
+  }
+  flush();
+
+  const cellHtml = (c: Cell) => {
+    const chord = c.chord
+      ? chordHtml(c.chord, opts)
+      : `<span class="cc-chord"></span>`;
+    const cls = c.text === "" ? "cc-cell cc-trail" : "cc-cell";
+    return `<span class="${cls}">${chord}<span class="cc-text">${esc(c.text)}</span></span>`;
+  };
+  const html = units
+    .map((u) =>
+      "space" in u
+        ? `<span class="cc-space">${esc(u.space)}</span>`
+        : `<span class="cc-word">${u.word.map(cellHtml).join("")}</span>`
+    )
+    .join("");
+  return `<div class="cc-line cc-lyric">${html}</div>`;
+}
+
 function sectionHtml(section: Section, opts: RenderOptions): string {
   const kindClass = `cc-${section.kind}`;
   const breakClass = section.breakBefore ? " cc-break" : "";
@@ -86,14 +147,8 @@ function sectionHtml(section: Section, opts: RenderOptions): string {
           .join('<span class="cc-pipe">|</span>');
         return `<div class="cc-line cc-bars"><span class="cc-pipe">|</span>${bars}<span class="cc-pipe">|</span></div>`;
       }
-      // lyric line: each pair is a stacked cell (chord over its syllable)
-      const cells = line.pairs
-        .map((p) => {
-          const chord = p.chord ? chordHtml(p.chord, opts) : `<span class="cc-chord"></span>`;
-          return `<span class="cc-cell">${chord}<span class="cc-text">${esc(p.text)}</span></span>`;
-        })
-        .join("");
-      return `<div class="cc-line cc-lyric">${cells}</div>`;
+      // lyric line: chords stacked over syllables, grouped into non-breaking words
+      return lyricLineHtml(line.pairs, opts);
     })
     .join("");
 
