@@ -281,6 +281,72 @@ Build-surface shell → custom type/property builder (+ type/kind UX) → workfl
 
 ---
 
+## Ledgr v5 — feedback batch (captured 2026-06-14, Tyler)
+
+A round of use-it feedback. **Priority: the Papers bespoke-model changes (below) first.** Tags: **[solo]** = module/UI internals, move fast; **[shared]** = touches a surface both builders use (coordinate, no ADR); **[CORE]** = needs Brandon + an ADR before merge.
+
+### ★ Papers bespoke model (PRIORITY) [solo, mostly — see flags]
+The current canvas is Quote Bank · Outline · Draft (`PaperCanvas` + `src/components/paper-editor/`, `src/lib/papers/`). Wanted:
+
+**Status (branch `papers-v5`, 2026-06-14, not yet committed):** **P1 ✓, P4 ✓, P5 ✓** built + verified (`verify-quote-paste` 21/21, `verify-paper-shape` 9/9, `verify-papers` 16/16, tsc + build clean). Decisions: Shape tab seeds **headings + empty `[paragraph]` slots** at **~3 paragraphs/page**; data model = **full relational (School → Class → Paper)**. **Next: P2/P3 (the relational model).** ⚠️ One piece is **CORE** — a per-owner profile/settings store for the author name (schema addition) needs Brandon + an ADR before merge; the School/Class types + relations + inheritance are solo.
+
+  **v5 feedback round 2 (built on papers-v5):** Shape "Generate" lands on **Quote Bank**, not Draft (drafting is later). Quote Bank now: paste-and-save **doesn't pop the edit form** (it just saves; Edit to tweak), the empty "+ Add quote" card is gone (paste is the add path), **Full/Short/Ibid copy the citation to the clipboard** (plain text) instead of inserting a draft footnote, the edit form puts **quote text at the top**, and quotes **file under Shape sections** (grouped, per-card section dropdown).
+  **v5 feedback round 3 — the Outline rebuild (modeled on `ty-docs/1peter_outline_viewer.html`, the target shape):** the planning surface becomes **Outline | Quote Bank | Draft** (Shape is absorbed into Outline). **Outline** = **Sections → Paragraphs → quotes** (quotes attach at paragraph level, the viewer's shape). Each section has a title; **paragraph titles are OPTIONAL** (Tyler's papers use section titles only — untitled paragraphs render as plain quote-holders under the section; others can title them). A section auto-gets one untitled paragraph so "Add quote" works immediately; "Add paragraph" + "Add quote" inline; quotes show under their paragraph as added. **Quote Bank** = the **unfiled holding pen** (paste box lives here; assign a quote to a section/paragraph to file it). The Draft skeleton generates from the section/paragraph structure. The structured outline is also what the **HTML outline-viewer export** will render later (the drafting reference). This **supersedes** the round-2 grouped-dropdown quote bank.
+  **★ Principle (new) — bespoke modules are user-configurable.** A bespoke module ships a sensible default shape (Papers = MSM/seminary), but its specifics should be **tweakable per user**: paragraph-titles on/off, which title-page meta fields, section conventions, etc. This extends the bespoke-tool catalog (a user attaches a capability to a type *they* name) toward **per-user configuration of a module's shape**, not just its name. Design TBD; for now paragraph-titles-optional is the first concrete instance. Likely lands on the same per-owner settings/profile store as the other config (and is core-adjacent — flag for an ADR when the config surface is designed).
+
+  **v5 feedback round 4 — Outline Preview + HTML output (built on papers-v5):** the outline's *output* is a standalone HTML viewer (modeled on `ty-docs/1peter_outline_viewer.html`) — paragraph **notes** + their filed quotes, each quote with a click-to-copy footnote popup (Full/Short/Ibid). One generator (`src/lib/papers/outline-html.ts`, pure, `verify-outline-html` 11/11) powers both: (a) an in-app **Edit ⇄ Preview** toggle on the Outline tab (`OutlinePreview` renders it in a sandboxed iframe, so the preview is byte-identical to the export), and (b) an **"Export outline (HTML)"** download (the distraction-free page to set alongside the draft). Doesn't touch the paper's final output (still MSM `.docx`). Added **note editing** per paragraph in the Outline. Subtitle auto-built from course · school.
+
+  **v5 feedback round 5 — regression fixes (built on papers-v5):** (1) **Migrate-on-read** in `PaperCanvasClient` recovers papers saved under earlier scaffolds — old `shape:{title,pages}[]` → `sections`, a quote's old `section` title → the matching section's `paragraphId`, old freeform `outline` string → the first section's note. Persists the upgraded shape once on load. (Fixed the "my Week 7 sections vanished" regression caused by the round-3 model change.) (2) Tabs are **Shape · Quote Bank · Draft** (Shape default) — the section-builder tab was mislabeled "Outline"; renamed to **Shape** (it owns sections + the Edit ⇄ Preview outline viewer) and moved first. (3) **Removed "Generate draft from outline"** + `buildSkeleton` — the writer composes the Draft themselves from the outline; auto-drafting would be an AI job this module deliberately avoids. (4) Filing labels read **section-only** when a section has a single untitled paragraph (Tyler's case). **Association flow:** in the Quote Bank, each unfiled quote has a "File under" dropdown of sections; picking one files it (it then appears under that section in the Outline tab + Preview).
+
+  **v5 feedback round 6 — the four-tab rebuild (the agreed spec; built on papers-v5).** Tabs are **Shape · Quote Bank · Outline · Draft**, each with a one-line explainer.
+  - **Shape** (`ShapeTab`): set up sections; a new section comes with a few starter paragraphs; add/remove/reorder (↑↓ arrows now, drag-and-drop is the next step). Titles only.
+  - **Quote Bank** (`QuoteBank`): home for ALL quotes, laid over the sections. Under each section: Add paragraph + Add quote (section-level); each paragraph has its own Add quote; an **Unsorted** area at the bottom. Add quote = inline paste box, files where clicked. Each quote has a "Filed" picker to refile (section/paragraph/unsorted).
+  - **Outline** (`OutlineTab`): defaults to **Preview** (the drafting reference). Edit = per-paragraph **notes** (markdown ok) + restructure (↑↓) + add/remove quotes in place (**Remove unfiles** a quote to Unsorted, doesn't delete it). Preview/clean-page show notes + filed quotes (**quote text only; click a quote to roll down Full/Short/Ibid copy**) + an **auto Bibliography** (unique sources, MSM book form, sorted by surname).
+  - **Draft**: write it yourself (no auto-generation — the old "Generate draft" was removed).
+  - **"Open outline page"** button opens the outline as a clean read-only page in a new tab (was a download). One generator (`outline-html.ts`) powers Preview + the page. Quote model: `{sectionId?, paragraphId?}` (paragraph / section / unsorted), helpers in `outline.ts`; `bibliographyEntry` added to `citation.ts`. Migrate-on-read updated (old `section` title → section-level). `verify-paper-outline` 17/17, `verify-outline-html` 12/12, `verify-quote-paste` 21/21, `verify-papers` 16/16; tsc + build clean. **Next: drag-and-drop (dnd-kit) for Shape/Outline restructuring.**
+
+  **Deferred — depend on the relational model / books:** (a) **books-per-class** — set which books a Class is reading; (b) **auto-create a Book from a pasted quote** (the parser already extracts the source, so a Book entity/item could be created + linked, and reused across quotes/classes); (c) **footnote-insert-at-cursor during drafting** — the old "Cite into draft" behavior, repurposed for the Draft stage (the markdown-footnote mechanism the docx renderer consumes still exists; it just needs a drafting-stage affordance).
+- **P1. Auto-fill the paper's date** with the item's creation date (no manual entry). [solo]
+- **P2. Enter author/school info once, reuse it.** The student name (just Tyler), school, and school location shouldn't be retyped per paper. Implies a **reusable profile/defaults** store. **Fork to decide:** a user-profile/settings block vs. deriving from a School entity (see P3).
+- **P3. School + Class/Course as related data, bundled with Papers.** Enabling Papers also gives the user a **School** type (carries location) and a **Class/Course** type; a Class ties to a School, a Paper ties to a Class, and the paper inherits school + location from its class. **Flag:** this is relational (Paper → Class → School). Item-to-item relations already exist (Related panel, `relations` table), so likely buildable without the pending `relation` *property* kind, but the modeling is worth a quick design pass.
+- **P4. New "Shape" tab before Quote Bank (and make it the default landing tab, not Draft).** A small UI where the user lists **sections** with a title and a rough **page count** each; the system suggests a default **paragraph count** per section from the pages. Section titles become the document's headers automatically and seed the Quote Bank and Outline. **All of it round-trips through the markdown** so the user can edit freely; the UI just makes writing that markdown easier. [solo]
+- **P5. Quote Bank custom paste UI.** A box where the user pastes a quote + its citation as one blob, e.g. `"Assurance is the fruit…" … Patrick Schreiner, The Visual Word…, ed. Connor Sterchi (Chicago, IL: Moody, 2021), 160.` and clicks Save; the system splits the **quote** from the **citation/source**, formats it, and files it under the right section. [solo] (Parser heuristic: quoted span = quote, trailing block = citation; reuses the MSM citation engine in `src/lib/papers/`.)
+
+### Navigation & chrome
+- **Menu bar repositioning via a kebab [shared — nav is a shared surface; ties to PRD Q9 + the `NAV_SLOTS` stand-in].** Kebab with position options: **Top** (classic menu bar), **Bottom** (today's floating bar), **Left/Right** (full "slice" sidebar, Notion-left-menu styling). Today the floating bar covers the Build button when thrown left — this fixes that. **Build moves into the kebab** (kebab option 1 = move menu, option 2 = Build) and gets a **global keyboard shortcut**. Also house: **Trash**, **user settings** (see below).
+- **Nav slot icon + order tweaks [solo].** Give **Views** its own icon so it's visually distinct from **Items** (they read the same now). Move **Search** to sit **next to New, toward the end** of the nav list.
+- **Search → floating modal (command-palette style) [solo].** Change Search from a page to a **floating modal**: type a query, hit **Enter**, and it takes you to the page/result at that point. Quick-open over the current full-page `/search`.
+- **Trash UI [solo].** Soft-delete + 30-day purge already exist; surface a Trash (in the kebab) so accidental deletes are recoverable for the retention window. **Retention period becomes a user setting** (see settings). **Archive** button wanted eventually — needs a design discussion on what archive does vs. trash.
+
+### Settings / profile (new cross-cutting concept) [shared]
+Several items below need a **per-owner settings/profile store** that doesn't exist yet: the Papers "enter info once" (P2), the Trash **retention period**, and a user **highlight-accent color** choice. Worth standing up one small settings surface (in the kebab) rather than three one-offs. The highlight color is referenced all over this batch (default **blue**, as in the chord app).
+
+### Editor & canvases [solo]
+- **Dark-mode task checkboxes.** Dark background, light-gray circle, **highlight color (blue) when checked**. Today's checkboxes have no dark-mode treatment.
+- **Songs: default to Preview, not Edit** on open.
+- **Songs: push Key / Capo / Tempo / layout labels (Intro, V1, V2…) to the right**, across from the song title + authors text.
+
+### Build surface & types [solo]
+- **Rename "System" types.** The "System" tag on built-in types is confusing; pick a clearer term (e.g. **"Built-in"**).
+- **Explain Key and Icon in the type builder.** The "Icon" field with placeholder "tag" reads as confusing; add hint text clarifying both fields.
+- **Highlight bespoke modules** in the catalog with a **glowing blue (highlight-color) border** so they draw the eye.
+
+### Views [shared — view engine is shared, definitions are solo]
+- **"Create item" button on every view by default.** A table view (e.g. "Papers in Process") with nothing in it gives no way to add an item; the global "Add" is clunky. (Open: what exactly "Add" should do / whether it needs a richer UI — worth a short discussion.)
+- **Kanban (board) view — high priority.** Board grouping by a select property already exists (ADR-046); this is the Work-surface board view. Defaults to **status**, with the user able to define their own status set.
+
+### Create flow [solo]
+- **"Create" button on the New-item title step.** After typing a title in the "New" flow, add a **Create button (highlight blue)** alongside the existing hit-Enter behavior (keep both).
+
+### Modal [solo]
+- **Peek modal needs bottom padding** — it cuts off too close to the "Share link" button.
+
+### CORE — needs Brandon + an ADR
+- **Songs + Papers in the MCP [CORE — MCP/API contract, ADR-047 is Brandon's].** Note: song/paper *items* already get the six generic MCP tools for free (they key off `items.type`). What's new is **module-specific** access: tools/resources that teach the AI a module's shape.
+- **Papers: teach the AI the paper schema/rules [CORE — MCP].** So a user can dump notes/quotes/thoughts at the AI and it shapes a paper following our section/quote/citation schema. This is the paper "shaping rules" exposed over MCP; pairs with P4/P5.
+
+---
+
 ## Bespoke module backlog (ideas, not built — captured 2026-06-14)
 
 Modules to build on top of the M6 boundary (and, where it fits, offered through the **bespoke-tool catalog** spec at line 94 so a user can attach the behavior to a type they name). Most are **non-core module internals** = whoever-wants-it, move fast solo; the cross-cutting one (Bible passages) is flagged. Ordered loosely by how much they interconnect, not strictly by priority.
