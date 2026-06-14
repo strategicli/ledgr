@@ -210,6 +210,29 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## Known mobile bugs & UX gaps
+
+Captured 2026-06-14 from real mobile use. Fix against priority, not all at once.
+
+**Bugs:**
+- **Can't delete items from mobile.** The delete/Trash affordance is missing or unreachable on the mobile canvas.
+- **Saving a link from Android creates 2 copies.** The share-target → link creation produces a duplicate item.
+- **Build button overlaps content on mobile.** The floating `BuildModeButton` covers page content or other controls at small viewport sizes.
+
+**UX fixes:**
+- **Canvas too narrow on mobile.** Excess margin on the item canvas; should be full-width or near-full-width.
+- **No obvious way to close an item on mobile.** Back button works but isn't intuitive; a visible dismiss control is needed on the canvas.
+- **Text wrapping on mobile.** Long lines don't wrap well; consider forcing word-wrap by default or adding a view-settings toggle.
+
+**Missing features / gaps:**
+- **Kanban drag-and-drop not implemented.** Board views have no DnD on any platform; items can't be moved between columns by dragging.
+- **`@`-mention links aren't tappable in read/share view.** Mentions render as `.mention` spans (not `<a>` tags) in `markdown-render.ts`, so they're not clickable in the print view or share page. Should resolve to `/items/[id]`.
+- **No undo button on the canvas.** Tiptap history is active (Ctrl+Z works on desktop) but no tap-accessible undo control exists for mobile.
+
+**Explorations opened (2026-06-14):** `explorations/mobile-swipe-navigation.md`, `explorations/notes-organization.md`, `explorations/meeting-recording.md`, `explorations/canvas-drag-and-drop.md`, `explorations/rich-export-and-theming.md`.
+
+---
+
 ## Next up (in order)
 
 **Slices 30–32 shipped this session (push notifications, public share links, provider-interface confirmation) — see the session-3 summary above and "Recently done."** Phase 2 is code-complete; what remains is the §1c-blocked matcher UIs below and Phase 3.

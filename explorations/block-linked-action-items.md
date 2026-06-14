@@ -36,6 +36,19 @@ Yes. BlockNote blocks carry stable `id`s in the document JSON. The pieces:
 - Reuse `promoteActionItem` / the relations write path rather than a parallel mechanism.
 - BlockNote stays lazy-loaded (rule 8); the jump-to-block logic lives in the editor host, not the server render.
 
+## Extension: deep links to a specific canvas line (and public sharing of them)
+
+*Added 2026-06-14.* The same `^id` block-anchor mechanism supports a broader use case: **linking directly to a specific line in any item's canvas**, not just as a back-reference from a promoted task.
+
+**In-app deep link:** `ledgr://item/<uuid>#^a1b2c3` (or `/items/<uuid>?block=a1b2c3`) would open the item and scroll the editor to the anchored line. Useful for referencing a specific decision in a long meeting note, a paragraph in a paper, or a line in a sermon draft — from another item's body, from a task, or from an MCP tool response.
+
+**Public share link to a specific line:** extend the share-token system (ADR-035) to include an optional `#^id` anchor. The public share page (`/share/[token]`) already renders the full document; it would additionally scroll to and highlight the anchored block on load. The URL would look like `/share/[token]#^a1b2c3`.
+
+**Constraints to honor:**
+- The anchor is only valid if the `^id` marker still exists in the body; a graceful fallback (open the item at the top, no error) handles the dangling case.
+- Generating the shareable anchor URL lives on the canvas — a "Copy link to this line" affordance that appears on hover/tap next to a block (similar to GitHub's line-link icon). It ensures the `^id` marker exists before copying the URL.
+- Rule 4 (Sunday-proof): the print view and the Pulpit Ready pin don't need to honor anchors — static documents don't scroll.
+
 ## Open questions
 
 - One block ↔ one task, or allow several? What happens to the link if the block is deleted or edited after promotion?
