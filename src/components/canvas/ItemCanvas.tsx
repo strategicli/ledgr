@@ -13,6 +13,7 @@ import { canvasIdForType } from "@/lib/modules";
 import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
+import { getType } from "@/lib/types";
 
 export default async function ItemCanvas({
   id,
@@ -39,8 +40,14 @@ export default async function ItemCanvas({
   const showBreadcrumb = variant === "page" || ancestors.length > 0;
 
   // Owner-aware so the per-user enable flip (M6) can route a disabled module's
-  // type back to the default canvas without touching this call site.
-  const Canvas = canvasComponentFor(canvasIdForType(item.type, owner.id));
+  // type back to the default canvas without touching this call site. The type's
+  // attached capability (SPIKE — bespoke-tool catalog) lets a user-named type
+  // borrow a module's canvas; an unregistered type with no capability falls back
+  // to the default markdown canvas, so this load is best-effort.
+  const typeDef = await getType(item.type).catch(() => null);
+  const Canvas = canvasComponentFor(
+    canvasIdForType(item.type, owner.id, typeDef?.capability)
+  );
 
   return (
     <>

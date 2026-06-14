@@ -96,6 +96,12 @@ export const types = pgTable("types", {
   // capturable; the builder toggles it so a "data only" custom type can stay
   // out of the curated dropdown.
   showInQuickCapture: boolean("show_in_quick_capture").notNull().default(true),
+  // SPIKE (bespoke-tool catalog, next_steps.md:94): the id of an attached
+  // module capability (ModuleCapability.id, e.g. "chord-chart"). When set, the
+  // registry resolves this user type's canvas/format/exporters from the
+  // capability instead of the default markdown canvas — decoupling a module's
+  // behavior from a fixed type key. Null for a plain custom type.
+  capability: text("capability"),
   defaultViewId: uuid("default_view_id").references(() => views.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

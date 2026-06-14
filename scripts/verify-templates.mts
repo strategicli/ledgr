@@ -80,7 +80,7 @@ try {
   check("patch parses without a type", !("type" in patch) && patch.name === "Renamed");
 
   // --- store CRUD (needs a real type) ---
-  await createType({ key: typeKey, label: "WF Candidate", icon: null, showInQuickCapture: true, propertySchema: [
+  await createType({ key: typeKey, label: "WF Candidate", icon: null, showInQuickCapture: true, capability: null, propertySchema: [
     { key: "stage", label: "Stage", kind: "select", options: ["Applied", "Interview", "Offer"] },
   ] });
 
@@ -135,7 +135,7 @@ try {
   await throws("deleteTemplate is owner-scoped", () => deleteTemplate(other.id, t1.id), "not_found");
 
   // --- type cascade: deleting the type drops its templates ---
-  await createType({ key: typeKey2, label: "Cascade Type", icon: null, showInQuickCapture: true, propertySchema: [] });
+  await createType({ key: typeKey2, label: "Cascade Type", icon: null, showInQuickCapture: true, capability: null, propertySchema: [] });
   const tc = await createTemplate(owner.id, { type: typeKey2, name: "doomed", body: null, propertyDefaults: {} });
   await db.delete(types).where(eq(types.key, typeKey2)); // raw delete to exercise the FK cascade
   const after = await db.select().from(templates).where(eq(templates.id, tc.id));

@@ -7,6 +7,7 @@ import Modal from "@/components/canvas/Modal";
 import { getItem } from "@/lib/items";
 import { canvasIdForType } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
+import { getType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,11 @@ export default async function ItemModal({
     const owner = await resolveOwner();
     if (owner) {
       const item = await getItem(owner.id, id);
-      wide = canvasIdForType(item.type, owner.id) === "chord";
+      // Resolve through the capability too (SPIKE), so a user type borrowing the
+      // chord chart widens the modal like a real song.
+      const typeDef = await getType(item.type).catch(() => null);
+      wide =
+        canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
     }
   } catch {
     // ignore — render the default modal width

@@ -63,10 +63,20 @@ function Field({
   );
 }
 
-export default function TypeBuilder({ initial }: { initial?: TypeDefinition }) {
+export default function TypeBuilder({
+  initial,
+  attached,
+}: {
+  initial?: TypeDefinition;
+  // SPIKE (bespoke-tool catalog): the bespoke tool this type borrows, resolved
+  // server-side to {id, label} so this client form never imports the registry.
+  // Set when arriving from the catalog (new) or editing a type that has one.
+  attached?: { id: string; label: string } | null;
+}) {
   const router = useRouter();
   const editing = !!initial;
   const isSystem = initial?.isSystem ?? false;
+  const capability = attached?.id ?? null;
 
   const nextId = useRef(0);
   const makeRow = (p?: PropertyDef): Row => ({
@@ -166,6 +176,7 @@ export default function TypeBuilder({ initial }: { initial?: TypeDefinition }) {
       icon: icon.trim() || null,
       showInQuickCapture,
       propertySchema: schema,
+      capability, // SPIKE: the borrowed bespoke tool (null for a plain type)
       ...(editing ? {} : { key: finalKey }),
     };
     try {
@@ -215,6 +226,16 @@ export default function TypeBuilder({ initial }: { initial?: TypeDefinition }) {
 
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
+      {attached && (
+        <div className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-sm">
+          <span className="text-neutral-500">Bespoke tool: </span>
+          <span className="font-medium text-neutral-200">{attached.label}</span>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            This type will use the {attached.label} canvas. Give it any name you
+            like.
+          </p>
+        </div>
+      )}
       <Field label="Name">
         <input
           value={label}
