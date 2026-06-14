@@ -168,7 +168,9 @@ export type ViewLayout = (typeof VIEW_LAYOUTS)[number];
 // Fields a board/agenda can group rows by. due buckets reuse DUE_WINDOWS.
 export const GROUP_FIELDS = ["status", "urgency", "kind", "type", "due"] as const;
 export type GroupField = (typeof GROUP_FIELDS)[number];
-export type ViewGrouping = { field: GroupField } | null;
+// A board groups by a built-in field, or by a custom select/multi_select
+// property (a workflow's "Stage", slice 35) named by its property_schema key.
+export type ViewGrouping = { field: GroupField } | { propertyKey: string } | null;
 
 // Which date a calendar/agenda places an item on.
 export const DATE_PROPERTIES = ["dueDate", "meetingAt", "createdAt", "updatedAt"] as const;
@@ -260,7 +262,14 @@ function parseSort(raw: unknown): ViewSort {
 function parseGrouping(raw: unknown): ViewGrouping {
   if (raw == null) return null;
   if (typeof raw !== "object" || Array.isArray(raw)) bad("grouping must be an object or null");
-  const field = (raw as Record<string, unknown>).field as GroupField;
+  const r = raw as Record<string, unknown>;
+  // A property grouping wins when present (a board by a custom select field).
+  if (r.propertyKey != null && r.propertyKey !== "") {
+    const key = String(r.propertyKey).trim();
+    if (!key || key.length > 40) bad("grouping.propertyKey invalid");
+    return { propertyKey: key };
+  }
+  const field = r.field as GroupField;
   if (!GROUP_FIELDS.includes(field)) bad("grouping.field invalid");
   return { field };
 }

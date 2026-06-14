@@ -8,6 +8,7 @@ import PinButton from "@/components/views/PinButton";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { getType } from "@/lib/types";
 import { getView, queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,18 @@ export default async function ViewPage({ params }: Context) {
   }
 
   const items = await queryViewItems(owner.id, view.filter, view.sort);
+
+  // For a board grouped by a custom property, order its columns by the type's
+  // option list (a workflow board reads Applied → Interview → Offer, not
+  // alphabetically). Falls back to present-value order if the type/prop is gone.
+  let groupOrder: string[] | undefined;
+  const grouping = view.grouping;
+  if (grouping && "propertyKey" in grouping && view.filter.type) {
+    const type = await getType(view.filter.type).catch(() => null);
+    groupOrder = type?.propertySchema.find(
+      (p) => p.key === grouping.propertyKey
+    )?.options;
+  }
 
   return (
     <main className="min-h-screen">
@@ -55,7 +68,7 @@ export default async function ViewPage({ params }: Context) {
           {items.length} item{items.length === 1 ? "" : "s"} · {view.layout}
         </p>
 
-        <ViewRenderer view={view} items={items} />
+        <ViewRenderer view={view} items={items} groupOrder={groupOrder} />
       </div>
     </main>
   );

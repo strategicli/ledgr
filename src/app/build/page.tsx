@@ -100,14 +100,14 @@ export default async function BuildHome() {
             badge={templates.length ? `${templates.length}` : undefined}
           />
           <BuildCard
+            href="/build/new"
             title="Workflows & wikis"
             description="Guided 'New Workflow' / 'New Wiki' creation that generates a type, its properties, and starter views."
-            soon
           />
           <BuildCard
+            href="/build/surface"
             title="Work surface"
             description="Choose which views become dashboard widgets and navigation slots."
-            soon
           />
         </div>
       </div>

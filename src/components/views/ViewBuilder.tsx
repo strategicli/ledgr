@@ -7,6 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { PropertyDef } from "@/lib/types";
 import type { ViewDefinition } from "@/lib/views";
 
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
@@ -89,9 +90,31 @@ export default function ViewBuilder({
   initial?: ViewDefinition;
   entities: EntityOption[];
   // The full type registry (system + custom), so a view can filter to a
-  // user-created type, not just the five system ones.
-  types: { key: string; label: string }[];
+  // user-created type, not just the five system ones. propertySchema rides
+  // along so a board can group by the type's select properties (a workflow's
+  // "Stage", slice 35).
+  types: { key: string; label: string; propertySchema?: PropertyDef[] }[];
 }) {
+  // A type's select/multi_select properties, as group-by options encoded
+  // "prop:<key>" so they share the one Group-by control with the built-in
+  // fields. A board grouped by one of these reads as a workflow board.
+  function groupPropsFor(typeKey: string): { value: string; label: string }[] {
+    const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
+    return schema
+      .filter((p) => p.kind === "select" || p.kind === "multi_select")
+      .map((p) => ({ value: `prop:${p.key}`, label: p.label }));
+  }
+  const validGroup = (typeKey: string, val: string | undefined): string => {
+    if (!val) return "";
+    const ok =
+      groupFieldsFor(typeKey).includes(val) ||
+      groupPropsFor(typeKey).some((o) => o.value === val);
+    return ok ? val : "";
+  };
+  // The stored grouping is {field} or {propertyKey}; collapse to the control's
+  // string form ("status" | "prop:stage").
+  const groupingToValue = (g: ViewDefinition["grouping"] | undefined): string =>
+    g ? ("propertyKey" in g ? `prop:${g.propertyKey}` : g.field) : "";
   const router = useRouter();
   // Clamp anything the stored definition holds that's no longer valid for its
   // type (e.g. a legacy meeting calendar saved with date field "due date"):
@@ -128,7 +151,7 @@ export default function ViewBuilder({
     initial?.sort.dir ?? "desc"
   );
   const [groupField, setGroupField] = useState<string>(
-    pick(groupFieldsFor(t0), initial?.grouping?.field, "")
+    validGroup(t0, groupingToValue(initial?.grouping))
   );
   const [dateProperty, setDateProperty] = useState<string>(
     pick(df0, initial?.dateProperty, df0[0])
@@ -150,7 +173,7 @@ export default function ViewBuilder({
     setDateField((v) => (df.includes(v) ? v : df[0]));
     setDateProperty((v) => (df.includes(v) ? v : df[0]));
     setSortField((v) => (sortFieldsFor(t).includes(v) ? v : "updatedAt"));
-    setGroupField((v) => (groupFieldsFor(t).includes(v) ? v : ""));
+    setGroupField((v) => validGroup(t, v));
     if (!showsUrgency(t)) setUrgency("");
     if (!showsKind(t)) setKind("");
   }
@@ -188,7 +211,12 @@ export default function ViewBuilder({
       layout,
       filter,
       sort: { field: sortField, dir: sortDir },
-      grouping: canGroup && groupField ? { field: groupField } : null,
+      grouping:
+        canGroup && groupField
+          ? groupField.startsWith("prop:")
+            ? { propertyKey: groupField.slice(5) }
+            : { field: groupField }
+          : null,
       dateProperty: needsDate ? dateProperty : null,
     };
     try {
@@ -407,6 +435,9 @@ export default function ViewBuilder({
             <Opt value="" label={layout === "board" ? "status (default)" : "none"} />
             {groupFields.map((g) => (
               <Opt key={g} value={g} label={GROUP_LABELS[g]} />
+            ))}
+            {groupPropsFor(type).map((o) => (
+              <Opt key={o.value} value={o.value} label={`${o.label} (field)`} />
             ))}
           </select>
         </Field>

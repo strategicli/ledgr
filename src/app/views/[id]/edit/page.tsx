@@ -49,7 +49,11 @@ export default async function EditView({ params }: Context) {
         <ViewBuilder
           initial={view}
           entities={entities.map((e) => ({ id: e.id, title: e.title }))}
-          types={types.map((t) => ({ key: t.key, label: t.label }))}
+          types={types.map((t) => ({
+            key: t.key,
+            label: t.label,
+            propertySchema: t.propertySchema,
+          }))}
         />
       </div>
     </main>

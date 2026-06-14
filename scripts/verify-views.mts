@@ -82,9 +82,28 @@ try {
     layout: "board",
     grouping: { field: "status" },
   });
-  check("parses grouping", groupedDef.grouping?.field === "status");
+  check(
+    "parses field grouping",
+    !!groupedDef.grouping &&
+      "field" in groupedDef.grouping &&
+      groupedDef.grouping.field === "status"
+  );
   await throws("rejects bad grouping field", () =>
     parseViewInput({ name: "x", layout: "board", grouping: { field: "color" } }), "bad_request");
+  // Property grouping (slice 35): a board can group by a custom select field.
+  const propGroup = parseViewInput({
+    name: "Pipeline",
+    layout: "board",
+    grouping: { propertyKey: "stage" },
+  });
+  check(
+    "parses property grouping",
+    !!propGroup.grouping &&
+      "propertyKey" in propGroup.grouping &&
+      propGroup.grouping.propertyKey === "stage"
+  );
+  await throws("rejects blank propertyKey grouping", () =>
+    parseViewInput({ name: "x", layout: "board", grouping: { propertyKey: "   " } }), "bad_request");
 
   // --- store CRUD ---
   const created = await createView(ownerId, parseViewInput({
@@ -110,7 +129,12 @@ try {
     grouping: { field: "urgency" },
   }));
   check("updateView changes layout", updated.layout === "board");
-  check("updateView changes grouping", updated.grouping?.field === "urgency");
+  check(
+    "updateView changes grouping",
+    !!updated.grouping &&
+      "field" in updated.grouping &&
+      updated.grouping.field === "urgency"
+  );
   check("updateView changes filter", updated.filter.due === "week" && !updated.filter.status);
 
   // --- owner scoping ---

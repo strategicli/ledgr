@@ -6,11 +6,13 @@
 // control so a view of tasks behaves like the Tasks list.
 import Link from "next/link";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
-import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
 import { APP_TIMEZONE } from "@/lib/today";
-import type { GroupField, ViewDefinition } from "@/lib/views";
+import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
+import type { ViewDefinition } from "@/lib/views";
 
 // Structural shape of a listColumns row, narrowed to what the layouts use.
+// properties rides along so a board can group by a custom select field (the
+// query already selects it; ADR-046).
 export type ViewItem = {
   id: string;
   type: string;
@@ -21,6 +23,7 @@ export type ViewItem = {
   meetingAt: Date | null;
   url: string | null;
   kind: string | null;
+  properties: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -132,52 +135,8 @@ function ItemRow({ item, prop }: { item: ViewItem; prop: ViewDefinition["datePro
   );
 }
 
-// --- grouping (board, agenda) --------------------------------------------
-
-const DUE_ORDER = ["overdue", "today", "this week", "later", "no date"] as const;
-
-function dueBucket(item: ViewItem): string {
-  if (!item.dueDate) return "no date";
-  const key = utcKey.format(new Date());
-  const itemKey = utcKey.format(item.dueDate);
-  if (itemKey < key) return "overdue";
-  if (itemKey === key) return "today";
-  const week = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  if (itemKey <= utcKey.format(week)) return "this week";
-  return "later";
-}
-
-function groupValue(item: ViewItem, field: GroupField): string {
-  switch (field) {
-    case "status":
-      return item.status;
-    case "urgency":
-      return item.urgency ?? "none";
-    case "kind":
-      return item.kind ?? "none";
-    case "type":
-      return item.type;
-    case "due":
-      return dueBucket(item);
-  }
-}
-
-// Column/section order: known enums first in their canonical order, then any
-// remaining values alphabetically, so a board reads predictably.
-function orderedGroups(field: GroupField, present: Set<string>): string[] {
-  const known: Record<GroupField, readonly string[]> = {
-    status: ITEM_STATUSES,
-    urgency: [...URGENCIES, "none"],
-    due: DUE_ORDER,
-    kind: [],
-    type: [],
-  };
-  const head = known[field].filter((v) => present.has(v));
-  const rest = [...present].filter((v) => !head.includes(v)).sort();
-  return [...head, ...rest];
-}
-
 // --- layouts --------------------------------------------------------------
+// (board/agenda grouping lives in src/lib/view-grouping.ts — pure + testable)
 
 function ListLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
   return (
@@ -234,14 +193,24 @@ function TableLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition 
   );
 }
 
-function BoardLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
-  const field: GroupField = view.grouping?.field ?? "status";
-  const present = new Set(items.map((i) => groupValue(i, field)));
-  const columns = orderedGroups(field, present);
+function BoardLayout({
+  items,
+  view,
+  groupOrder,
+}: {
+  items: ViewItem[];
+  view: ViewDefinition;
+  groupOrder?: string[];
+}) {
+  const now = new Date();
+  const present = new Set(items.map((i) => groupValueFor(i, view.grouping, now)));
+  const columns = orderedGroups(view.grouping, present, groupOrder);
   return (
     <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
       {columns.map((col) => {
-        const colItems = items.filter((i) => groupValue(i, field) === col);
+        const colItems = items.filter(
+          (i) => groupValueFor(i, view.grouping, now) === col
+        );
         return (
           <div
             key={col}
@@ -429,9 +398,13 @@ function CalendarLayout({ items, view }: { items: ViewItem[]; view: ViewDefiniti
 export default function ViewRenderer({
   view,
   items,
+  groupOrder,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
+  // Column order for a board grouped by a custom property (the property's
+  // option order); resolved by the page from the type's schema (ADR-046).
+  groupOrder?: string[];
 }) {
   if (items.length === 0) {
     return (
@@ -444,7 +417,7 @@ export default function ViewRenderer({
     case "table":
       return <TableLayout items={items} view={view} />;
     case "board":
-      return <BoardLayout items={items} view={view} />;
+      return <BoardLayout items={items} view={view} groupOrder={groupOrder} />;
     case "calendar":
       return <CalendarLayout items={items} view={view} />;
     case "agenda":
