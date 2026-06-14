@@ -44,15 +44,28 @@ export default async function RootLayout({
   // Parallel slot for the intercepted item canvas modal (src/app/@modal).
   modal: React.ReactNode;
 }>) {
-  // The owner's highlight color drives the app-wide `--accent` var (v5). Best-
-  // effort: signed-out / pre-DB renders fall back to the default.
+  // The owner's settings drive the app-wide `--accent` var and the body padding
+  // that clears the nav bar (v5). Best-effort: signed-out / pre-DB renders fall
+  // back to the defaults. Mobile always keeps the bottom bar (pb-24); the nav
+  // position only reflows the desktop padding.
   let accent = DEFAULT_SETTINGS.highlightColor;
+  let navPosition = DEFAULT_SETTINGS.navPosition;
   try {
     const owner = await resolveOwner();
-    if (owner) accent = (await getSettings(owner.id)).highlightColor;
+    if (owner) {
+      const s = await getSettings(owner.id);
+      accent = s.highlightColor;
+      navPosition = s.navPosition;
+    }
   } catch {
-    /* default accent */
+    /* defaults */
   }
+  const navPad: Record<typeof navPosition, string> = {
+    bottom: "pb-24",
+    top: "pb-24 sm:pb-0 sm:pt-24",
+    left: "pb-24 sm:pb-0 sm:pl-28",
+    right: "pb-24 sm:pb-0 sm:pr-28",
+  };
   return (
     <AppAuthProvider>
       <html
@@ -60,7 +73,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       >
         <body
-          className="min-h-full flex flex-col pb-24"
+          className={`min-h-full flex flex-col ${navPad[navPosition]}`}
           style={{ "--accent": accent } as CSSProperties}
         >
           {children}
