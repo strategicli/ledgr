@@ -39,17 +39,35 @@ function Stepper({
 
 export default function TransposeControl({ chart, onChange }: Props) {
   const [preferFlats, setPreferFlats] = useState(false);
+  const [lockShapes, setLockShapes] = useState(false);
   const key = chart.meta.key;
   const capo = chart.meta.capo ?? 0;
 
-  // Transpose the whole song by n semitones: shapes + sounding key move together.
+  // Shapes locked: move the capo and let the key follow (G shapes + capo 4 → B).
+  // The chords never rewrite; only the capo and the derived sounding key change.
+  const moveCapoLocked = (target: number) => {
+    const clamped = Math.max(0, Math.min(11, target));
+    const delta = clamped - capo;
+    onChange(
+      updateMeta(chart, {
+        capo: clamped === 0 ? undefined : clamped,
+        key: key ? transposeNote(key, delta, preferFlats) : undefined,
+      })
+    );
+  };
+
+  // Transpose: shapes locked → just slide the capo/key; otherwise rewrite every
+  // shape and move the key with it (capo unchanged).
   const transpose = (n: number) => {
+    if (lockShapes) return moveCapoLocked(capo + n);
     const next = transposeChartChords(chart, n, preferFlats);
     onChange(updateMeta(next, { key: key ? transposeNote(key, n, preferFlats) : undefined }));
   };
 
-  // Change the capo: shift shapes by the opposite delta so the sounding key holds.
+  // Capo: shapes locked → the key follows the capo (no shape rewrite); otherwise
+  // shift shapes by the opposite delta so the sounding key holds.
   const setCapo = (c: number) => {
+    if (lockShapes) return moveCapoLocked(c);
     const clamped = Math.max(0, Math.min(11, c));
     const next = transposeChartChords(chart, capo - clamped, preferFlats);
     onChange(updateMeta(next, { capo: clamped === 0 ? undefined : clamped }));
@@ -71,6 +89,18 @@ export default function TransposeControl({ chart, onChange }: Props) {
           shapes: <span className="font-semibold text-sky-400">{shapes}</span>
         </span>
       )}
+      <button
+        onClick={() => setLockShapes((l) => !l)}
+        aria-pressed={lockShapes}
+        className={`rounded border px-1.5 text-xs ${
+          lockShapes
+            ? "border-sky-700 bg-sky-950/60 text-sky-300"
+            : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
+        }`}
+        title="Lock shapes: keep the chord shapes and let the capo set the key"
+      >
+        {lockShapes ? "🔒 shapes" : "🔓 shapes"}
+      </button>
       <button
         onClick={() => setPreferFlats((f) => !f)}
         className="rounded border border-neutral-800 px-1.5 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
