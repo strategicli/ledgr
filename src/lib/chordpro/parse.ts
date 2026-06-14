@@ -195,6 +195,23 @@ function barsToText(bars: string[][]): string {
   return "| " + bars.map((bar) => bar.join(" ")).join(" | ") + " |";
 }
 
+// One chart line <-> its ChordPro source, for the editor's raw-edit fallback.
+export function lineToSource(line: ChartLine): string {
+  if (line.kind === "lyric") return lyricToText(line.pairs);
+  if (line.kind === "bars") return barsToText(line.bars);
+  return `{c: ${line.text}}`;
+}
+
+export function parseLineSource(raw: string): ChartLine {
+  const t = raw.trim();
+  const dir = DIRECTIVE_RE.exec(t);
+  if (dir && (dir[1].toLowerCase() === "c" || dir[1].toLowerCase() === "comment")) {
+    return { kind: "comment", text: (dir[2] ?? "").trim() };
+  }
+  if (t.includes("|")) return { kind: "bars", bars: parseBars(t) };
+  return { kind: "lyric", pairs: parseLyric(t) };
+}
+
 const META_ORDER: [keyof ChartMeta, string][] = [
   ["title", "title"],
   ["artist", "artist"],

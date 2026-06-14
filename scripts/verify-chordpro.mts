@@ -201,5 +201,23 @@ check(
   trail.includes('cc-text">Hill</span></span><span class="cc-cell cc-trail">')
 );
 
+// ── 12. Editor conversions (S3): ChordPair[] ⇄ {text, chords} round-trip ──────
+const { pairsToEditLine, editLineToPairs, setLineText } = await import(
+  "../src/components/chord-editor/chordpro-edit"
+);
+const sampleLine = parseChordPro("{section: X}\nLong [G]ago You [C]spoke for me [D]").sections[0]
+  .lines[0];
+const samplePairs = sampleLine.kind === "lyric" ? sampleLine.pairs : [];
+const el = pairsToEditLine(samplePairs);
+check("pairsToEditLine extracts the bare lyric text", el.text === "Long ago You spoke for me ");
+check("pairsToEditLine records chord offsets", el.chords.length === 3 && el.chords[0].chord === "G");
+check("trailing chord lands at end-of-line offset", el.chords[2].at === el.text.length);
+check(
+  "editLineToPairs ∘ pairsToEditLine is identity",
+  json(editLineToPairs(el)) === json(samplePairs)
+);
+const clamped = setLineText(el, "Long ago");
+check("setLineText drops chords past the new text length", clamped.chords.every((c) => c.at <= "Long ago".length));
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

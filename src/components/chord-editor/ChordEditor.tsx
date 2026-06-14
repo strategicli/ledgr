@@ -1,0 +1,274 @@
+// The Edit-mode WYSIWYG chord editor (S3). Operates on the ChordChart AST in
+// state (lifted to ChordCanvasClient, which autosaves). The headline: click a
+// word to drop a chord above it — no [G] typing. Each line can also flip to a
+// raw ChordPro input (✎) for power edits. Metadata and sections are plain
+// controls. Preview (the finished 2-column chart) is the other half of the
+// canvas toggle.
+"use client";
+
+import { useState } from "react";
+import { lineToSource, parseLineSource } from "@/lib/chordpro/parse";
+import type { ChordChart } from "@/lib/chordpro/types";
+import ChordPicker from "./ChordPicker";
+import {
+  addLine,
+  addRepeat,
+  addSection,
+  EditChord,
+  moveSection,
+  pairsToEditLine,
+  removeLine,
+  removeSection,
+  setChordAt,
+  setLine,
+  setLineText,
+  setSectionLabel,
+  updateMeta,
+} from "./chordpro-edit";
+
+type Props = {
+  chart: ChordChart;
+  onChange: (next: ChordChart) => void;
+  title: string;
+  onTitleChange: (title: string) => void;
+};
+
+type PickerTarget = { si: number; li: number; at: number; value: string | null; x: number; y: number };
+
+// Split a line's text into word slots and bucket each chord onto a word (or a
+// trailing slot at the end), so chords render above the right word and each
+// word is a click target for adding one.
+function layout(text: string, chords: EditChord[]) {
+  const slots: { w: string; start: number; end: number; chords: EditChord[] }[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) slots.push({ w: m[0], start: m.index, end: 0, chords: [] });
+  slots.forEach((s, i) => (s.end = i + 1 < slots.length ? slots[i + 1].start : text.length));
+  const trailing: EditChord[] = [];
+  for (const c of chords) {
+    if (slots.length === 0) {
+      trailing.push(c);
+      continue;
+    }
+    const slot = slots.find((s) => c.at >= s.start && c.at < s.end);
+    if (slot) slot.chords.push(c);
+    else if (c.at < slots[0].start) slots[0].chords.push(c);
+    else trailing.push(c);
+  }
+  return { slots, trailing };
+}
+
+const META_FIELDS: { key: keyof ChordChart["meta"]; label: string; width: string }[] = [
+  { key: "key", label: "Key", width: "w-16" },
+  { key: "capo", label: "Capo", width: "w-14" },
+  { key: "tempo", label: "Tempo", width: "w-16" },
+  { key: "time", label: "Time", width: "w-14" },
+];
+
+export default function ChordEditor({ chart, onChange, title, onTitleChange }: Props) {
+  const [picker, setPicker] = useState<PickerTarget | null>(null);
+  const [rawEditing, setRawEditing] = useState<Set<string>>(new Set());
+
+  const toggleRaw = (k: string) =>
+    setRawEditing((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+
+  const openPicker = (si: number, li: number, at: number, value: string | null, e: React.MouseEvent) =>
+    setPicker({ si, li, at, value, x: e.clientX, y: e.clientY });
+
+  const applyChord = (chord: string | null) => {
+    if (!picker) return;
+    const { si, li, at } = picker;
+    const line = chart.sections[si]?.lines[li];
+    if (line && line.kind === "lyric") {
+      const edit = setChordAt(pairsToEditLine(line.pairs), at, chord);
+      onChange(setLine(chart, si, li, edit));
+    }
+    setPicker(null);
+  };
+
+  return (
+    <div className="cc-editor mx-auto w-full max-w-3xl px-6 py-4 text-neutral-200">
+      {/* Header: title + metadata */}
+      <input
+        value={title}
+        onChange={(e) => onTitleChange(e.target.value)}
+        placeholder="Song title"
+        className="w-full bg-transparent text-2xl font-bold text-neutral-100 outline-none placeholder:text-neutral-600"
+      />
+      <input
+        value={chart.meta.artist ?? ""}
+        onChange={(e) => onChange(updateMeta(chart, { artist: e.target.value }))}
+        placeholder="Artist / credits"
+        className="mt-1 w-full bg-transparent text-sm text-neutral-400 outline-none placeholder:text-neutral-700"
+      />
+      <div className="mt-3 flex flex-wrap items-end gap-3 border-b border-neutral-800 pb-3">
+        {META_FIELDS.map((f) => (
+          <label key={f.key} className="flex flex-col text-[10px] uppercase tracking-wide text-neutral-500">
+            {f.label}
+            <input
+              value={chart.meta[f.key] != null ? String(chart.meta[f.key]) : ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                const num = f.key === "capo" || f.key === "tempo";
+                onChange(
+                  updateMeta(chart, {
+                    [f.key]: v === "" ? undefined : num ? Number(v) || undefined : v,
+                  })
+                );
+              }}
+              className={`${f.width} rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-100 outline-none focus:border-sky-700`}
+            />
+          </label>
+        ))}
+        <label className="flex flex-1 flex-col text-[10px] uppercase tracking-wide text-neutral-500">
+          Arrangement
+          <input
+            value={chart.meta.arrangement ?? ""}
+            onChange={(e) => onChange(updateMeta(chart, { arrangement: e.target.value || undefined }))}
+            placeholder="Intro, V1, C1, …"
+            className="min-w-[8rem] rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-300 outline-none focus:border-sky-700 placeholder:text-neutral-700"
+          />
+        </label>
+      </div>
+
+      {/* Sections */}
+      {chart.sections.map((section, si) => (
+        <section key={si} className="mt-5">
+          <div className="flex items-center gap-2">
+            <input
+              value={section.label}
+              onChange={(e) => onChange(setSectionLabel(chart, si, e.target.value))}
+              className="rounded bg-transparent text-sm font-bold uppercase tracking-wide text-neutral-300 underline decoration-neutral-700 outline-none focus:decoration-sky-600"
+            />
+            {section.ref && <span className="text-[10px] uppercase text-neutral-600">repeat</span>}
+            <span className="ml-auto flex items-center gap-0.5 text-neutral-600">
+              <button onClick={() => onChange(moveSection(chart, si, -1))} title="Move up" className="px-1 hover:text-neutral-300">↑</button>
+              <button onClick={() => onChange(moveSection(chart, si, 1))} title="Move down" className="px-1 hover:text-neutral-300">↓</button>
+              <button onClick={() => onChange(removeSection(chart, si))} title="Delete section" className="px-1 hover:text-red-400">✕</button>
+            </span>
+          </div>
+
+          {!section.ref && (
+            <div className="mt-1">
+              {section.lines.map((line, li) => {
+                const k = `${si}:${li}`;
+                const raw = rawEditing.has(k);
+                const isEmptyLyric = line.kind === "lyric" && line.pairs.every((p) => !p.text && !p.chord);
+                if (raw || isEmptyLyric || line.kind !== "lyric") {
+                  // raw ChordPro input (also the default for empty/new and non-lyric lines)
+                  return (
+                    <div key={li} className="group flex items-center gap-1">
+                      <input
+                        autoFocus={raw}
+                        defaultValue={lineToSource(line)}
+                        placeholder={line.kind === "bars" ? "| G | D |" : "Type a lyric line…"}
+                        onBlur={(e) => {
+                          const next = parseLineSource(e.target.value);
+                          const lines = section.lines.map((l, idx) => (idx === li ? next : l));
+                          onChange({ ...chart, sections: chart.sections.map((s, idx) => (idx === si ? { ...s, lines } : s)) });
+                          if (raw) toggleRaw(k);
+                        }}
+                        className="w-full rounded bg-neutral-950/60 px-2 py-1 font-mono text-sm text-neutral-200 outline-none focus:bg-neutral-900"
+                      />
+                      <button onClick={() => onChange(removeLine(chart, si, li))} className="px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete line">✕</button>
+                    </div>
+                  );
+                }
+                // interactive lyric line: click a word to add a chord, a chord to edit it
+                const edit = pairsToEditLine(line.pairs);
+                const { slots, trailing } = layout(edit.text, edit.chords);
+                return (
+                  <div key={li} className="group flex items-start gap-1">
+                    <div className="cc-edit-line flex flex-1 flex-wrap items-end gap-x-1.5 py-0.5">
+                      {slots.map((s, wi) => (
+                        <span key={wi} className="inline-flex flex-col items-start">
+                          <span className="flex h-4 items-end gap-1">
+                            {s.chords.length ? (
+                              s.chords.map((c, ci) => (
+                                <button
+                                  key={ci}
+                                  onClick={(e) => openPicker(si, li, c.at, c.chord, e)}
+                                  className="text-xs font-bold leading-none text-sky-400 hover:text-sky-300"
+                                >
+                                  {c.chord}
+                                </button>
+                              ))
+                            ) : (
+                              <button
+                                onClick={(e) => openPicker(si, li, s.start, null, e)}
+                                className="text-xs leading-none text-transparent hover:text-neutral-600"
+                                title="Add chord"
+                              >
+                                ＋
+                              </button>
+                            )}
+                          </span>
+                          <button
+                            onClick={(e) => openPicker(si, li, s.start, s.chords[0]?.chord ?? null, e)}
+                            className="text-left leading-snug text-neutral-200 hover:text-white"
+                          >
+                            {s.w}
+                          </button>
+                        </span>
+                      ))}
+                      {/* trailing chord slot after the last word */}
+                      <span className="inline-flex flex-col items-start">
+                        <span className="flex h-4 items-end gap-1">
+                          {trailing.length ? (
+                            trailing.map((c, ci) => (
+                              <button key={ci} onClick={(e) => openPicker(si, li, c.at, c.chord, e)} className="text-xs font-bold leading-none text-sky-400 hover:text-sky-300">
+                                {c.chord}
+                              </button>
+                            ))
+                          ) : (
+                            <button onClick={(e) => openPicker(si, li, edit.text.length, null, e)} className="text-xs leading-none text-neutral-700 hover:text-neutral-500" title="Trailing chord">
+                              ＋
+                            </button>
+                          )}
+                        </span>
+                        <span className="h-4" />
+                      </span>
+                    </div>
+                    <button onClick={() => toggleRaw(k)} className="px-1 text-neutral-700 opacity-0 hover:text-neutral-300 group-hover:opacity-100" title="Edit text">✎</button>
+                    <button onClick={() => onChange(removeLine(chart, si, li))} className="px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete line">✕</button>
+                  </div>
+                );
+              })}
+              <button onClick={() => onChange(addLine(chart, si))} className="mt-1 text-xs text-neutral-600 hover:text-sky-400">
+                + line
+              </button>
+            </div>
+          )}
+        </section>
+      ))}
+
+      {/* Add section / repeat */}
+      <div className="mt-6 flex flex-wrap gap-2 border-t border-neutral-800 pt-4">
+        {["Verse", "Pre-Chorus", "Chorus", "Bridge", "Intro", "Tag", "Ending"].map((label) => (
+          <button key={label} onClick={() => onChange(addSection(chart, label))} className="rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-200">
+            + {label}
+          </button>
+        ))}
+        <button onClick={() => onChange(addRepeat(chart, "Chorus"))} className="rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-500 hover:border-neutral-600 hover:text-neutral-300">
+          ↻ repeat reference
+        </button>
+      </div>
+
+      {picker && (
+        <ChordPicker
+          x={picker.x}
+          y={picker.y}
+          value={picker.value}
+          onPick={(c) => applyChord(c)}
+          onRemove={() => applyChord(null)}
+          onClose={() => setPicker(null)}
+        />
+      )}
+    </div>
+  );
+}
