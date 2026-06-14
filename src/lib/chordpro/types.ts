@@ -44,6 +44,9 @@ export type Section = {
   // a {column_break} directive). In the 2-column chart this starts the section
   // at the top of the next column.
   breakBefore?: boolean;
+  // Force a page break before this section (PAGE_BREAK / {page_break}) — the
+  // section starts a new printed page.
+  pageBreakBefore?: boolean;
   lines: ChartLine[];
 };
 

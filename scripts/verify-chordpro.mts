@@ -172,6 +172,11 @@ check("renders a column break on the section", cbHtml.includes("cc-break"));
 // the bare Planning Center "COLUMN_BREAK" token is honored like the directive
 const pcStyle = parseChordPro("{section: A}\nx\nCOLUMN_BREAK\n{section: B}\ny");
 check("bare COLUMN_BREAK token honored", pcStyle.sections.find((s) => s.label === "B")?.breakBefore === true);
+// page breaks (Sharpen My Sword has a PAGE_BREAK before the Bridge)
+const pb = parseChordPro("{section: A}\nx\nPAGE_BREAK\n{section: Bridge}\ny");
+check("bare PAGE_BREAK sets pageBreakBefore on the next section", pb.sections.find((s) => s.label === "Bridge")?.pageBreakBefore === true);
+check("page break round-trips", roundTrips("{section: A}\nx\n\n{page_break}\n{section: Bridge}\ny"));
+check("page break renders cc-page-break", chartToHtml(pb).includes("cc-page-break"));
 
 // ── 11. Word grouping: chord-above vs trailing, no word splitting ─────────────
 // chord BEFORE a syllable stacks above it; a mid-word chord keeps the word whole.
@@ -190,7 +195,7 @@ check("word units are emitted", above.includes('class="cc-word"'));
 // a chord with no following text is a trailing chord, hugging the prior word.
 const trail = chartToHtml(parseChordPro("{section: X}\nHill [D]"));
 check("trailing chord marked cc-trail", trail.includes("cc-trail"));
-check("trailing chord carries the chord, no syllable", trail.includes('<span class="cc-chord">D</span><span class="cc-text"></span>'));
+check("trailing chord carries the chord at chord height", trail.includes('cc-cell cc-trail"><span class="cc-chord">D</span>'));
 check(
   "trailing chord stays inside the word it follows",
   trail.includes('cc-text">Hill</span></span><span class="cc-cell cc-trail">')

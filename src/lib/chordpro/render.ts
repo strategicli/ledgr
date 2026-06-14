@@ -105,7 +105,10 @@ function lyricLineHtml(pairs: ChordPair[], opts: RenderOptions): string {
       ? chordHtml(c.chord, opts)
       : `<span class="cc-chord"></span>`;
     const cls = c.text === "" ? "cc-cell cc-trail" : "cc-cell";
-    return `<span class="${cls}">${chord}<span class="cc-text">${esc(c.text)}</span></span>`;
+    // A trailing chord has no syllable; a zero-width space reserves the lyric
+    // line so the chord still sits up at chord height, not on the baseline.
+    const text = c.text === "" ? "​" : esc(c.text);
+    return `<span class="${cls}">${chord}<span class="cc-text">${text}</span></span>`;
   };
   const html = units
     .map((u) =>
@@ -119,7 +122,9 @@ function lyricLineHtml(pairs: ChordPair[], opts: RenderOptions): string {
 
 function sectionHtml(section: Section, opts: RenderOptions): string {
   const kindClass = `cc-${section.kind}`;
-  const breakClass = section.breakBefore ? " cc-break" : "";
+  const breakClass =
+    (section.pageBreakBefore ? " cc-page-break" : "") +
+    (section.breakBefore ? " cc-break" : "");
   const label = section.label
     ? `<div class="cc-label">${esc(section.label)}</div>`
     : "";

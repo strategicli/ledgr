@@ -67,6 +67,7 @@ export function parseChordPro(text: string): ChordChart {
   const sections: Section[] = [];
   let current: Section | null = null;
   let pendingBreak = false;
+  let pendingPageBreak = false;
 
   const openSection = (label: string, ref = false) => {
     if (current) sections.push(current);
@@ -74,6 +75,10 @@ export function parseChordPro(text: string): ChordChart {
     if (pendingBreak) {
       current.breakBefore = true;
       pendingBreak = false;
+    }
+    if (pendingPageBreak) {
+      current.pageBreakBefore = true;
+      pendingPageBreak = false;
     }
     if (ref) {
       sections.push(current);
@@ -92,10 +97,15 @@ export function parseChordPro(text: string): ChordChart {
     const line = raw.trim();
     if (line === "") continue;
 
-    // Planning Center emits a bare COLUMN_BREAK token; treat it the same as a
-    // {column_break} directive — the next section starts the next column.
+    // Planning Center emits bare COLUMN_BREAK / PAGE_BREAK tokens; treat them
+    // like the {column_break} / {page_break} directives — the next section
+    // starts the next column / page.
     if (line.toUpperCase() === "COLUMN_BREAK") {
       pendingBreak = true;
+      continue;
+    }
+    if (line.toUpperCase() === "PAGE_BREAK") {
+      pendingPageBreak = true;
       continue;
     }
 
@@ -136,6 +146,10 @@ export function parseChordPro(text: string): ChordChart {
         case "column_break":
         case "colb":
           pendingBreak = true;
+          break;
+        case "page_break":
+        case "new_page":
+          pendingPageBreak = true;
           break;
         case "ccli":
           meta.ccli = value;
@@ -201,6 +215,7 @@ export function serializeChordChart(chart: ChordChart): string {
   }
   for (const section of chart.sections) {
     if (out.length > 0) out.push("");
+    if (section.pageBreakBefore) out.push("{page_break}");
     if (section.breakBefore) out.push("{column_break}");
     if (section.ref) {
       out.push(`{repeat: ${section.label}}`);

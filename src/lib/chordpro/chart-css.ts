@@ -11,9 +11,14 @@ export const CHART_CSS = `
 .cc-artist{color:#a3a3a3;font-size:.95rem;margin-top:.1rem}
 .cc-meta{color:#a3a3a3;font-size:.9rem;margin-top:.25rem}
 .cc-arrangement{color:#737373;font-size:.85rem;margin-top:.35rem;font-weight:600}
+/* Print is two columns on the letter page; the in-app canvas (.cc-canvas) is a
+   single full-width column so lines fit and don't wrap mid-phrase — digital
+   practice view ≠ the printed chart. */
 .cc-body{column-count:2;column-gap:2rem}
+.cc-canvas .cc-body{column-count:1}
 .cc-section{break-inside:avoid;margin:0 0 1rem;display:block}
 .cc-break{break-before:column}
+.cc-page-break{break-before:page}
 .cc-label{font-weight:700;text-decoration:underline;margin-bottom:.25rem}
 .cc-ref .cc-label{color:#737373;font-weight:600}
 .cc-line{margin-bottom:.1rem}
@@ -28,11 +33,6 @@ export const CHART_CSS = `
 .cc-pipe{color:#737373;margin:0 .35rem}
 .cc-beat{color:#737373}
 .cc-comment{font-style:italic;color:#a3a3a3;margin:.15rem 0}
-/* On-screen the canvas can be narrow (e.g. a modal); drop to one column so
-   chords aren't cramped. Print overrides this back to two columns on the page. */
-@media screen and (max-width:640px){
-  .cc-body{column-count:1}
-}
 @media print{
   .cc-head{border-color:#bbb}
   .cc-title{color:#111}
