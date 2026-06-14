@@ -21,6 +21,11 @@ export default async function PaperCanvas({ item, ownerId }: CanvasProps) {
         initialTitle={item.title}
         initialBody={item.body}
         initialProperties={item.properties}
+        createdAt={
+          item.createdAt instanceof Date
+            ? item.createdAt.toISOString()
+            : String(item.createdAt)
+        }
       />
       <RelatedPanel ownerId={ownerId} itemId={item.id} itemType={item.type} />
       <SaveOffline itemId={item.id} />

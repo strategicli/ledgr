@@ -54,6 +54,27 @@ export function citeIbid(source: Source, page?: string): string {
   return "Ibid.";
 }
 
+// Invert "First Last" → "Last, First" for a bibliography entry. Best-effort:
+// falls back to the full string when the surname isn't a clean suffix.
+function invertAuthor(author: string, authorLast: string): string {
+  const idx = author.lastIndexOf(authorLast);
+  if (idx <= 0) return author;
+  const first = author.slice(0, idx).trim().replace(/,$/, "");
+  return first ? `${authorLast}, ${first}` : authorLast;
+}
+
+// One MSM bibliography entry (alphabetical-list form, no page): books invert the
+// author and end with the facts of publication; videos mirror the footnote shape
+// without a page. Markdown italics like the footnote forms.
+export function bibliographyEntry(source: Source): string {
+  const author = invertAuthor(source.author, source.authorLast);
+  if (source.kind === "book") {
+    const editor = source.editor ? ` Edited by ${source.editor}.` : "";
+    return `${author}. *${source.title}*.${editor} ${source.city}: ${source.publisher}, ${source.year}.`;
+  }
+  return `${author}. "${source.title}." YouTube video. Accessed ${source.accessed}. ${source.url}.`;
+}
+
 export function citationForms(source: Source, page?: string): CitationForms {
   return {
     full: citeFull(source, page),
