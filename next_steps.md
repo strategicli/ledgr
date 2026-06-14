@@ -255,6 +255,35 @@ The second workflow module on the M5/M6 foundation. A `paper` type with a **mark
 
 ---
 
+## Known mobile bugs & UX gaps
+
+Captured 2026-06-14 from real mobile use. Fix against priority, not all at once.
+
+**Bugs:**
+- **Saving a link from Android creates 2 copies.** The share-target → link creation produces a duplicate item.
+
+**UX fixes (hover-dependent UI doesn't work on mobile):**
+- **Delete button is hover-only.** The Trash affordance appears on hover, which has no equivalent on touch. Needs a persistent or long-press-triggered control on mobile.
+- **Build button overlaps content on mobile.** The floating `BuildModeButton` is positioned for desktop hover interaction and covers page content or other controls at small viewport sizes.
+- **Canvas too narrow on mobile.** Excess margin on the item canvas; should be full-width or near-full-width.
+- **Close button is small and at the top of the canvas.** It exists but is easy to miss on mobile; worth considering a more prominent or thumb-reachable dismiss control.
+- **Text wrapping on mobile.** Long lines don't wrap well; consider forcing word-wrap by default or adding a view-settings toggle.
+
+**Missing features / gaps:**
+- **Kanban drag-and-drop not implemented.** Board views have no DnD on any platform; items can't be moved between columns by dragging.
+- **`@`-mention links aren't tappable in read/share view.** Mentions render as `.mention` spans (not `<a>` tags) in `markdown-render.ts`, so they're not clickable in the print view or share page. Should resolve to `/items/[id]`.
+- **No undo button on the canvas toolbar.** Tiptap history is active (Ctrl+Z works on desktop) but there's no undo button in the toolbar itself — not accessible on mobile at all.
+
+**Explorations opened (2026-06-14):** `explorations/mobile-swipe-navigation.md`, `explorations/notes-organization.md`, `explorations/meeting-recording.md`, `explorations/canvas-drag-and-drop.md`, `explorations/rich-export-and-theming.md`.
+
+**Build surface follow-up (2026-06-14) — custom properties on system types:**
+The infrastructure for this already exists: `updateType` allows editing system types (adding properties is explicitly permitted in the code comment), and the `TypeBuilder` already shows "System type — can be extended, not deleted" when you open one via `/build/types/[key]/edit`. What's missing is **discoverability and framing**:
+- The types list in `/build/types` should make it clearer that system types are editable (an "Add property" shortcut or a more inviting edit link, not just a greyed-out system badge).
+- In the property editor for a system type, distinguish between **built-in properties** (connected to plumbing — Todoist sync, calendar fields, etc.) and **custom properties** (organizational only — sorting, grouping, filtering). A visual divider or a label like "Custom properties" below the system ones would set the right expectation.
+- No schema change needed — custom properties on system types ride `properties` jsonb the same way they do on user types.
+
+---
+
 ## Next up (in order)
 
 **Slices 30–32 shipped this session (push notifications, public share links, provider-interface confirmation) — see the session-3 summary above and "Recently done."** Phase 2 is code-complete; what remains is the §1c-blocked matcher UIs below and Phase 3.
