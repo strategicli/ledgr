@@ -24,7 +24,9 @@ function detectHeader(line: string): { label: string; kind: SectionKind } | null
   const cleaned = line.replace(/^\[/, "").replace(/\]$/, "").replace(/:\s*$/, "").trim();
   if (!cleaned || cleaned.length > 24) return null;
   for (const { re, kind } of SECTION_KEYWORDS) {
-    if (re.test(cleaned)) return { label: cleaned, kind };
+    // Normalize every label to uppercase so the styling is consistent (e.g.
+    // "[tag]" → "TAG", "Chorus" → "CHORUS", "VERSE 1" stays "VERSE 1").
+    if (re.test(cleaned)) return { label: cleaned.toUpperCase(), kind };
   }
   return null;
 }
@@ -60,8 +62,8 @@ export function lyricsToSections(lyrics: string): Section[] {
     }
     if (skipping) continue;
     if (!current) {
-      current = { label: "Verse 1", kind: "verse", ref: false, lines: [] };
-      seen.add(key("Verse 1"));
+      current = { label: "VERSE 1", kind: "verse", ref: false, lines: [] };
+      seen.add(key("VERSE 1"));
       sections.push(current);
     }
     current.lines.push({ kind: "lyric", pairs: [{ chord: null, text: line }] });

@@ -37,7 +37,7 @@ A genuinely different chorus`;
 
 const sections = lyricsToSections(lyrics);
 const labels = sections.map((s) => `${s.label}${s.ref ? "*" : ""}`);
-check("section order + refs", labels.join(" | ") === "VERSE 1 | CHORUS | VERSE 2 | CHORUS* | BRIDGE | tag | CHORUS 2", labels.join(" | "));
+check("section order + refs (labels uppercased)", labels.join(" | ") === "VERSE 1 | CHORUS | VERSE 2 | CHORUS* | BRIDGE | TAG | CHORUS 2", labels.join(" | "));
 
 const verse1 = sections.find((s) => s.label === "VERSE 1")!;
 check("verse 1 has its 2 lyric lines", verse1.lines.length === 2 && verse1.lines[0].kind === "lyric");
@@ -47,7 +47,7 @@ const choruses = sections.filter((s) => s.label === "CHORUS");
 check("first CHORUS has content", choruses[0].lines.length === 2 && !choruses[0].ref);
 check("repeated CHORUS is a ref with no lines", choruses[1].ref === true && choruses[1].lines.length === 0);
 check("CHORUS 2 is its own content section", sections.find((s) => s.label === "CHORUS 2")?.lines.length === 1);
-check("[tag] header detected as a tag section", sections.find((s) => s.label === "tag")?.kind === "tag");
+check("[tag] header detected + uppercased to TAG", sections.find((s) => s.label === "TAG")?.kind === "tag");
 
 // kinds
 check("VERSE 1 kind=verse, CHORUS kind=chorus, BRIDGE kind=bridge", verse1.kind === "verse" && choruses[0].kind === "chorus" && sections.find((s) => s.label === "BRIDGE")?.kind === "bridge");
