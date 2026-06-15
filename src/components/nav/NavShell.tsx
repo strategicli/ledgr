@@ -20,9 +20,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import BuildSidebar from "@/components/nav/BuildSidebar";
 import CaptureModal from "@/components/capture/CaptureModal";
-import SearchModal from "@/components/search/SearchModal";
-import { RAIL_PX } from "@/lib/nav-layout";
+import CommandPalette from "@/components/search/CommandPalette";
+import { isBuildPath } from "@/lib/build-nav";
+import { BUILD_SIDEBAR_PX, navPadVars, RAIL_PX } from "@/lib/nav-layout";
 import { navIconPaths } from "@/lib/nav-icons";
 import type { NavDensity, NavPosition, RailAnchor, RailSize } from "@/lib/settings";
 
@@ -93,17 +95,6 @@ function WrenchIcon() {
   );
 }
 
-// "Back to Work" leaves the Build surface — an arrow returning to a workspace,
-// distinct from Build's wrench.
-function BackToWorkIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 5 4 12l7 7" />
-      <path d="M4 12h12.5a3.5 3.5 0 0 1 3.5 3.5V19" />
-    </svg>
-  );
-}
-
 // The Ledgr wordmark; --font-logo is set on <html> by the layout. The full
 // mark ends its "r" in the accent color; the compact mark (thin rail, where the
 // wordmark won't fit) is a single accented "L".
@@ -151,11 +142,28 @@ function Chevron({ dir, size = 16 }: { dir: "left" | "right"; size?: number }) {
   );
 }
 
-function CornerBadge({ count }: { count: number | null }) {
+// The count bubble sits directly on top of the icon, overlapping its upper-right
+// (Brandon's preference — the number reads as "in the box," not floating above
+// it), so the icon must be wrapped in a relative element. Used for every slot in
+// every layout.
+function CountBubble({ count }: { count: number | null }) {
   if (count == null || count <= 0) return null;
   return (
-    <span className="absolute right-1 top-0.5 rounded-full bg-[var(--accent)] px-1.5 py-px text-[10px] font-medium leading-tight text-white">
+    <span
+      className="absolute right-0 top-0 rounded-full px-1 py-px text-[9px] font-medium leading-none text-white"
+      style={{ background: "var(--accent-gradient, var(--accent))" }}
+    >
       {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+// The icon with its count bubble overlaid on the corner.
+function IconWithCount({ icon, count }: { icon: string; count: number | null }) {
+  return (
+    <span className="relative inline-flex">
+      <Icon icon={icon} />
+      <CountBubble count={count} />
     </span>
   );
 }
@@ -188,6 +196,7 @@ export default function NavShell({
   slots,
   mobileSlots,
   typeOptions,
+  buildTypes,
   navPosition,
   railSize: railSizeProp,
   navDensity: navDensityProp,
@@ -196,6 +205,8 @@ export default function NavShell({
   slots: ShellSlot[];
   mobileSlots: ShellSlot[];
   typeOptions: { key: string; label: string }[];
+  // The owner's types, for the Build sidebar's Types & Properties dropdown.
+  buildTypes: { key: string; label: string; icon: string | null }[];
   navPosition: NavPosition;
   railSize: RailSize;
   navDensity: NavDensity;
@@ -212,7 +223,10 @@ export default function NavShell({
   const [anchor, setAnchor] = useState<RailAnchor>(railAnchorProp);
 
   const isRail = navPosition === "left" || navPosition === "right";
-  const inBuild = pathname.startsWith("/build") || pathname.startsWith("/views");
+  // Build mode is `/build*` only. `/views` is now the Work-side consumer surface
+  // (the builder/manager moved to /build/views — ADR-063 producer/consumer split),
+  // so it no longer reads as Build.
+  const inBuild = isBuildPath(pathname);
 
   // Re-adopt server values if a refresh changes them (adjust-during-render
   // pattern; an effect would double-render).
@@ -232,14 +246,28 @@ export default function NavShell({
     setAnchor(railAnchorProp);
   }
 
-  // Keep the body's side padding in lock-step with the rail width so the
-  // collapse feels instant (the CSS transition on body smooths it). Only the
-  // docked side that's actually in use is touched.
+  // Keep the body's nav padding in lock-step with whatever chrome is showing.
+  // In Build mode the Work nav is replaced by the fixed left sidebar, so the body
+  // clears it on the left (desktop) regardless of the Work nav position. In Work
+  // mode the four vars follow the position + live rail width, so a rail collapse
+  // feels instant (the CSS transition on body smooths it) and crossing the
+  // Work/Build line resets the padding cleanly. The vars apply at sm+ only;
+  // mobile keeps its fixed bottom clearance (globals.css).
   useEffect(() => {
-    if (!isRail) return;
-    const prop = navPosition === "left" ? "--nav-pl" : "--nav-pr";
-    document.body.style.setProperty(prop, `${RAIL_PX[railSize]}px`);
-  }, [isRail, navPosition, railSize]);
+    const style = document.body.style;
+    if (inBuild) {
+      style.setProperty("--nav-pt", "0px");
+      style.setProperty("--nav-pb", "0px");
+      style.setProperty("--nav-pr", "0px");
+      style.setProperty("--nav-pl", `${BUILD_SIDEBAR_PX}px`);
+      return;
+    }
+    const vars = navPadVars(navPosition, railSize) as Record<string, string>;
+    style.setProperty("--nav-pt", vars["--nav-pt"]);
+    style.setProperty("--nav-pb", vars["--nav-pb"]);
+    style.setProperty("--nav-pl", vars["--nav-pl"]);
+    style.setProperty("--nav-pr", vars["--nav-pr"]);
+  }, [inBuild, isRail, navPosition, railSize]);
 
   // Shortcuts: q = quick capture, Ctrl/Cmd+K = search palette, Ctrl/Cmd+Shift+B
   // = Build. q/B stay inert while typing.
@@ -430,24 +458,19 @@ export default function NavShell({
   // One slot renderer for every layout: a destination (link, or the search
   // palette button), or a tools group button that toggles its popover.
   // `classNameFor` is the layout's class builder; `toolsPos` anchors the popover.
+  // The count always rides the icon's corner (CountBubble), in every layout.
   function renderSlot(
     slot: ShellSlot,
     id: string,
     classNameFor: (active: boolean) => string,
     showLabel: boolean,
-    badge: "corner" | "inline",
     toolsPos: string
   ) {
     const className = classNameFor(slotActive(slot));
     const inner = (
       <>
-        <Icon icon={slot.icon} />
+        <IconWithCount icon={slot.icon} count={slot.count} />
         {showLabel && <span className="truncate">{slot.label}</span>}
-        {badge === "inline" ? (
-          <InlineBadge count={slot.count} />
-        ) : (
-          <CornerBadge count={slot.count} />
-        )}
       </>
     );
 
@@ -503,14 +526,17 @@ export default function NavShell({
       role="menu"
       className={`absolute z-50 max-h-[calc(100vh-1rem)] w-48 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${posClass}`}
     >
+      {/* The Work-side door (destination-named "Build"). The More menu only
+          renders in Work mode — in Build the whole Work chrome is replaced by the
+          sidebar, whose "Back to Work" is the way out — so this is always Build. */}
       <Link
-        href={inBuild ? "/" : "/build"}
+        href="/build"
         role="menuitem"
         onClick={() => setMenuOpen(false)}
         className="mb-1 flex items-center gap-2 rounded-lg border border-[var(--accent)] bg-[var(--accent)]/15 px-2.5 py-2 text-sm font-semibold text-[var(--accent)] shadow-[0_0_16px_-3px_var(--accent)] transition hover:bg-[var(--accent)]/25"
       >
-        {inBuild ? <BackToWorkIcon /> : <WrenchIcon />}
-        {inBuild ? "Back to Work" : "Build"}
+        <WrenchIcon />
+        Build
       </Link>
       <Link href="/settings" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
         User Settings
@@ -593,7 +619,7 @@ export default function NavShell({
       } ${extraClass}`}
     >
       {barSlots.map(({ slot, id }) =>
-        renderSlot(slot, id, pillSlot, true, "corner", "bottom-full mb-2 left-1/2 -translate-x-1/2")
+        renderSlot(slot, id, pillSlot, true, "bottom-full mb-2 left-1/2 -translate-x-1/2")
       )}
       <button
         onClick={() => setCaptureOpen(true)}
@@ -619,21 +645,30 @@ export default function NavShell({
     </div>
   );
 
+  // In Build mode the Work nav is replaced by the fixed left sidebar (the clean
+  // paradigm break). Everything else — the four Work layouts — renders only on
+  // the Work side. The capture + command palette overlays are shared by both.
   return (
     <nav aria-label="Main">
+      {inBuild && (
+        <BuildSidebar types={buildTypes} onOpenSearch={() => setSearchOpen(true)} />
+      )}
+
       {/* Mobile: always the floating bottom bar, whatever the desktop position. */}
-      <div className="sm:hidden">
-        {floatingPill(mobileBarSlots, "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2")}
-      </div>
+      {!inBuild && (
+        <div className="sm:hidden">
+          {floatingPill(mobileBarSlots, "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2")}
+        </div>
+      )}
 
       {/* Desktop chrome (sm+). One of four layouts. */}
-      {navPosition === "bottom" && (
+      {!inBuild && navPosition === "bottom" && (
         <div className="hidden sm:block">
           {floatingPill(desktopSlots, "bottom-4 left-1/2 -translate-x-1/2", true)}
         </div>
       )}
 
-      {navPosition === "top" && (
+      {!inBuild && navPosition === "top" && (
         // The bar always spans the full top edge (background + border line all
         // the way across), like the rails span the full height. Only the content
         // cluster moves, mirroring the rails: spread pins logo + items to the
@@ -654,7 +689,7 @@ export default function NavShell({
           >
             <Logo className="-ml-1" />
             {desktopSlots.map(({ slot, id }) =>
-              renderSlot(slot, id, topSlot, true, "inline", "top-full mt-2 left-0")
+              renderSlot(slot, id, topSlot, true, "top-full mt-2 left-0")
             )}
             <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
               <button
@@ -690,7 +725,7 @@ export default function NavShell({
         </header>
       )}
 
-      {isRail && railSize === "hidden" && (
+      {!inBuild && isRail && railSize === "hidden" && (
         <button
           onClick={() => cycleRail("fat")}
           aria-label="Show menu"
@@ -703,7 +738,7 @@ export default function NavShell({
         </button>
       )}
 
-      {isRail && railSize !== "hidden" && (
+      {!inBuild && isRail && railSize !== "hidden" && (
         <aside
           className={`fixed inset-y-0 z-40 hidden flex-col gap-1 bg-neutral-900/95 p-2 shadow-xl shadow-black/30 backdrop-blur sm:flex ${
             navPosition === "left" ? "left-0 border-r border-neutral-800" : "right-0 border-l border-neutral-800"
@@ -750,7 +785,6 @@ export default function NavShell({
                 id,
                 railSize === "fat" ? railFatSlot : railThinSlot,
                 railSize === "fat",
-                railSize === "fat" ? "inline" : "corner",
                 `${navPosition === "left" ? "left-full ml-2" : "right-full mr-2"} top-0`
               )
             )}
@@ -806,7 +840,7 @@ export default function NavShell({
       {captureOpen && (
         <CaptureModal typeOptions={typeOptions} onClose={() => setCaptureOpen(false)} />
       )}
-      {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
+      {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} />}
     </nav>
   );
 }

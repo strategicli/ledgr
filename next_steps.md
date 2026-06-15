@@ -26,6 +26,25 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Tyler's lane — Build-mode restructure: left sidebar + System Overview + universal command palette (2026-06-15, ADR-063)
+
+**Build mode went from a flat card grid to a real, scannable left sidebar; `/build` home became a bird's-eye System Overview; and there's now one ⌘K command palette searching everything from both modes.** From `build-mode-restructure-spec.md`. **Mostly non-core** (nav chrome + new Build pages + a search component); one additive Work-nav touch (the destination picker's "Build tools" category). Shipped solo; two small items flagged to Brandon in `COLLAB.md`.
+
+- **Two modes, one rule** (written into CLAUDE.md): *Work is for using the system; Build is for building and maintaining it.* The separation is the **default, not a wall** — any route is a valid nav destination, and a power user can pull a Build tool into their Work nav. Opt-in, invisible by default.
+- **Build mode left sidebar** (`src/components/nav/BuildSidebar.tsx`): replaces the Work bar/rail in `/build*`. Three groups under three verbs — **DATA** (Types & Properties, Templates, Workflows & Wikis, Bespoke Tools), **INTERFACE** (Views, Work Surface), **MAINTAIN** (Model Overview, Data Hygiene, Import & Migration, Claude & MCP, User Settings). Dropdowns sparingly — only **Types & Properties** expands (lists the user's types for a quick edit-jump). Desktop-first; mobile = a hamburger drawer (not a focus this phase). Glowing **"Build Mode"** wordmark; **⌘K** box; **Back to Work**. Structure lives in **`src/lib/build-nav.ts`** (single source of truth for the sidebar *and* the picker category *and* the palette's section index).
+- **`/build` home → System (Model) Overview** (`src/app/build/page.tsx`): the card grid is retired (the sidebar navigates). Informational v1 — type/item/view/template counts, which views are on Work, and a "Needs attention" seed (zero-item types → the start of Data Hygiene). New `itemCountsByType` in `items.ts`.
+- **Producer/consumer view split:** `/views` stays Work-side (browse/open); new **`/build/views`** is the builder/manager. Builder routes (`/views/new`, `/views/[id]/edit`) stay put; the manager links in. **(Brandon to confirm — see COLLAB.)**
+- **Universal command palette** (`src/components/search/CommandPalette.tsx`, pure ranking in `src/lib/command-index.ts`): one ⌘K surface in both modes over items (FTS API) + pages + views + types + Build/Maintain sections + named settings; grouped, context-aware ranking (content-first in Work, structure-first in Build). Result model is a **`destination | action` union** (only destinations this phase — the populate-later seam). Replaces `SearchModal`. New `GET /api/command-index` feeds the dynamic (types/views/templates) entries.
+- **"Build tools" category** in the Work-nav destination picker (`nav-slot-options.ts` + `NavSlotEditor`), so the cross-the-line capability is discoverable.
+- **Stubs** (`/build/hygiene`, `/build/import`, `/build/claude`): real routes + a one-paragraph plan-note each (`BuildStub.tsx`), so the sidebar never dead-links.
+- **Chrome/naming:** the Work More-menu door is destination-named "Build"; `/settings` H1 is now "User Settings" (the one both-places entry); `isBuildPath` = `/build*` only (`/views` no longer reads as Build). Deleted the dead `BuildModeButton.tsx` and the superseded `SearchModal.tsx`. No DB migration.
+
+`scripts/verify-build-mode.mts` **31/31** (build-nav taxonomy + `isBuildPath`, command-index match scoring + context-aware ranking + mode-aware hrefs, the "Build tools" category); `tsc` + full `next build` + eslint all clean. **Pending:** in-browser eyeball — enter Build and watch the Work bar crossfade to the glowing sidebar, expand Types & Properties, ⌘K from both Work and Build (note the ranking shift), open a stub, and drop a Build tool into a Work nav slot. Mobile Build (the drawer) is deliberately minimal — revisit later.
+
+**Follow-ups parked (not built):** the action-result side of the palette ("New Sermon", "New Type", "Clean up unused"); the real Data Hygiene / Notion importer / Claude-MCP management behind the stubs; "views that return nothing" + "templates never applied" flags on the Overview (need an apply-counter / per-view count); the polished Work↔Build crossfade; live sub-nav dropdowns for Claude & MCP / Import / User Settings.
+
+---
+
 ## ⟢ Session summary — editor parity: inline image paste (regression) + GFM tables (2026-06-15)
 
 **Two editor-parity items off the carried-from-M3 list (ADR-040): the inline-image-paste regression is fixed, and the editor now does GFM tables.** Non-core (editor internals + two pure helper libs); shipped solo, flagged to Tyler in `COLLAB.md`. The R2 attachment backend was fully intact, so image paste was a re-wire, not a rebuild.

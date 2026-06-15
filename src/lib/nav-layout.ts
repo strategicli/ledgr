@@ -22,6 +22,12 @@ export const RAIL_PX: Record<RailSize, number> = {
 export const TOP_BAR_PX = 56;
 export const BOTTOM_CLEARANCE = "6rem";
 
+// Width of the fixed Build-mode left sidebar (ADR-063). In Build mode this
+// replaces the Work nav entirely, so the body clears it on the left regardless
+// of the owner's chosen Work nav position. Desktop only — mobile Build uses a
+// drawer over the content, no persistent clearance.
+export const BUILD_SIDEBAR_PX = 240;
+
 // The four padding vars for a given position + rail size. NavShell mutates just
 // the relevant one on collapse; the layout sets all four for the first paint.
 export function navPadVars(

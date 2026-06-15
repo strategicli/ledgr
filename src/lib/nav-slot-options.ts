@@ -7,10 +7,11 @@
 // Only routes that actually exist are offered, so a configured slot never
 // dead-links. `badgeEligible` marks the one destination (Inbox) that can show a
 // count badge for now.
+import { BUILD_ENTRIES } from "@/lib/build-nav";
 import { isNavIcon } from "@/lib/nav-icons";
 import type { NavDestKind } from "@/lib/settings";
 
-export type DestGroup = "Built-in" | "Views" | "Types";
+export type DestGroup = "Built-in" | "Views" | "Types" | "Build tools";
 
 export type DestOption = {
   group: DestGroup;
@@ -34,12 +35,28 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/changelog", label: "Changelog", icon: "changelog", badgeEligible: false },
 ];
 
+// The Build/Maintain tools as nav destinations (ADR-063): the same hardcoded
+// sidebar entries (build-nav.ts), offered as a "Build tools" category so a power
+// user can pull a Build tool into their daily Work nav — a "Clean" (Data Hygiene)
+// slot, a "New Type" shortcut, etc. This is what makes the cross-the-line
+// capability *discoverable* (the separation is the default, not a wall). No route
+// is artificially excluded; the picker doesn't enforce the use/build line.
+export const BUILD_TOOL_DESTS: DestOption[] = BUILD_ENTRIES.map((e) => ({
+  group: "Build tools" as const,
+  kind: "builtin" as const,
+  href: e.href,
+  label: e.label,
+  icon: e.icon,
+  badgeEligible: false,
+}));
+
 export function buildDestOptions(
   views: { id: string; name: string }[],
   types: { key: string; label: string; icon: string | null }[]
 ): DestOption[] {
   return [
     ...BUILTIN_DESTS,
+    ...BUILD_TOOL_DESTS,
     ...views.map((v) => ({
       group: "Views" as const,
       kind: "view" as const,

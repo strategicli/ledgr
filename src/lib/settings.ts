@@ -28,6 +28,30 @@ export const HIGHLIGHT_COLORS = [
   { name: "Slate", value: "#475569" },
 ] as const;
 
+// Gradient accents (an alternative to the solid HIGHLIGHT_COLORS). A CSS
+// gradient is an image, not a color, so it can't drive `color`/`border-color`/
+// box-shadow/`color-mix` the way a solid hex can. Each gradient therefore ships
+// a representative solid `accent` (used for `--accent`, so text/borders/glows
+// stay valid) alongside the gradient `value` (used for `--accent-gradient`,
+// applied to accent *fills* like checkboxes and count badges).
+export const HIGHLIGHT_GRADIENTS = [
+  { name: "Sunset", value: "linear-gradient(135deg, #fb923c 0%, #ec4899 100%)", accent: "#f472b6" },
+  { name: "Ember", value: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)", accent: "#fb6a3c" },
+  { name: "Gold", value: "linear-gradient(135deg, #fbbf24 0%, #f97316 100%)", accent: "#f59e0b" },
+  { name: "Emerald", value: "linear-gradient(135deg, #34d399 0%, #0d9488 100%)", accent: "#10b981" },
+  { name: "Lagoon", value: "linear-gradient(135deg, #2dd4bf 0%, #3b82f6 100%)", accent: "#0ea5e9" },
+  { name: "Ocean", value: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)", accent: "#3b82f6" },
+  { name: "Aurora", value: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)", accent: "#818cf8" },
+  { name: "Grape", value: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", accent: "#c026d3" },
+] as const;
+
+// Every accent solid that's valid for `--accent`: the named solids plus each
+// gradient's representative accent (chosen when a gradient is active).
+const ALLOWED_ACCENTS = new Set<string>([
+  ...HIGHLIGHT_COLORS.map((c) => c.value),
+  ...HIGHLIGHT_GRADIENTS.map((g) => g.accent),
+]);
+
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
@@ -100,7 +124,10 @@ export type NavSlotConfig =
     };
 
 export type UserSettings = {
-  highlightColor: string; // hex from HIGHLIGHT_COLORS
+  highlightColor: string; // solid hex (a HIGHLIGHT_COLORS value, or a gradient's representative accent)
+  // When set, an accent gradient (a HIGHLIGHT_GRADIENTS value) layered over fills;
+  // null = a plain solid accent. highlightColor still holds the representative solid.
+  highlightGradient: string | null;
   trashRetentionDays: number; // 1..365
   navPosition: NavPosition;
   railSize: RailSize;
@@ -127,6 +154,7 @@ export const DEFAULT_NAV_SLOTS: NavSlotConfig[] = [
 
 export const DEFAULT_SETTINGS: UserSettings = {
   highlightColor: "#2563eb",
+  highlightGradient: null,
   trashRetentionDays: 30,
   navPosition: "bottom",
   railSize: "fat",
@@ -191,9 +219,14 @@ function parseNavSlots(raw: unknown, max: number, fallback: NavSlotConfig[]): Na
 
 export function parseSettings(raw: unknown): UserSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const highlightColor = HIGHLIGHT_COLORS.some((c) => c.value === r.highlightColor)
-    ? (r.highlightColor as string)
-    : DEFAULT_SETTINGS.highlightColor;
+  const highlightColor =
+    typeof r.highlightColor === "string" && ALLOWED_ACCENTS.has(r.highlightColor)
+      ? r.highlightColor
+      : DEFAULT_SETTINGS.highlightColor;
+  // Keep the gradient only if it's a known one (else fall back to a solid accent).
+  const highlightGradient = HIGHLIGHT_GRADIENTS.some((g) => g.value === r.highlightGradient)
+    ? (r.highlightGradient as string)
+    : DEFAULT_SETTINGS.highlightGradient;
   const days = typeof r.trashRetentionDays === "number" && r.trashRetentionDays > 0
     ? Math.min(Math.round(r.trashRetentionDays), 365)
     : DEFAULT_SETTINGS.trashRetentionDays;
@@ -219,6 +252,7 @@ export function parseSettings(raw: unknown): UserSettings {
       : parseNavSlots(r.mobileNavSlots, NAV_SLOTS_HARD_CAP, []);
   return {
     highlightColor,
+    highlightGradient,
     trashRetentionDays: days,
     navPosition,
     railSize,

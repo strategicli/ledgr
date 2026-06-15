@@ -1,6 +1,7 @@
-// Views index (slice 27, PRD §4.2/§4.9): the saved View Definitions, with a
-// link into each and a way to build a new one. System views (none seeded yet)
-// would sort to the top; today every row is a user view.
+// Views index — the Work-side *consumer* surface (ADR-063 producer/consumer
+// split): browse and open your saved views to run them. Creating, editing, and
+// managing views lives on the Build side (/build/views). System views (none
+// seeded yet) would sort to the top; today every row is a user view.
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
@@ -21,24 +22,20 @@ export default async function Views() {
           <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
             Views
           </h1>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/build"
-              className="text-sm text-neutral-500 hover:text-neutral-300"
-            >
-              ← Build
-            </Link>
-            <Link
-              href="/views/new"
-              className="rounded bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white"
-            >
-              New view
-            </Link>
-          </div>
+          <Link
+            href="/build/views"
+            className="text-sm text-neutral-500 hover:text-neutral-300"
+          >
+            Manage in Build →
+          </Link>
         </div>
         <p className="mt-1 text-sm text-neutral-500">
           Saved ways to slice your items: list, table, board, calendar, or
-          agenda.
+          agenda. Open one to run it; create and edit them in{" "}
+          <Link href="/build/views" className="text-neutral-400 hover:text-neutral-200">
+            Build
+          </Link>
+          .
         </p>
 
         {views.length > 0 ? (

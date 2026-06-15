@@ -59,6 +59,9 @@ export default async function RootLayout({
   // to the defaults. The padding is set as CSS vars (--nav-pt/pb/pl/pr) that
   // globals.css applies; NavShell updates the rail var instantly on collapse.
   let accent = DEFAULT_SETTINGS.highlightColor;
+  // The gradient laid over accent *fills*; defaults to the solid so non-gradient
+  // accents resolve to a plain color anywhere `--accent-gradient` is used.
+  let accentGradient = DEFAULT_SETTINGS.highlightColor;
   let navPosition = DEFAULT_SETTINGS.navPosition;
   let railSize = DEFAULT_SETTINGS.railSize;
   try {
@@ -66,6 +69,7 @@ export default async function RootLayout({
     if (owner) {
       const s = await getSettings(owner.id);
       accent = s.highlightColor;
+      accentGradient = s.highlightGradient ?? s.highlightColor;
       navPosition = s.navPosition;
       railSize = s.railSize;
     }
@@ -80,7 +84,7 @@ export default async function RootLayout({
       >
         <body
           className="min-h-full flex flex-col"
-          style={{ "--accent": accent, ...navPadVars(navPosition, railSize) } as CSSProperties}
+          style={{ "--accent": accent, "--accent-gradient": accentGradient, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           {children}
           <Nav />

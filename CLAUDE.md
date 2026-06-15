@@ -30,6 +30,12 @@ These come straight from the PRD's design principles. Breaking one is a design r
 8. **Fast for the user, cheap on the back end.** Weigh both on every choice (see `runbook.md` perf rules): optimistic UI, stale-while-revalidate, lazy editor, virtualized lists; pooled connections, no `body` in list queries, incremental syncs, right-sized crons.
 9. **Observable and debuggable.** Structured JSON logs with correlation ids, a toggleable debug mode, captured-and-surfaced cron/webhook errors (no silent failures), and docs kept current.
 
+## Two modes, one rule (ADR-063)
+
+**Work is for *using* the system. Build is for *building and maintaining* the system.** Every feature sorts onto one side of that line. **Work** is glanceable, mobile-friendly, a configurable bottom bar/rail of the user's daily destinations. **Build** is deliberate, desktop-first, a fixed left sidebar of system tools, grouped under three verbs: **DATA** (build the data model), **INTERFACE** (build how you see and reach it), **MAINTAIN** (understand and care for what exists).
+
+**The separation is the default, not a wall.** Any navigable route — Work pages, saved views, type lists, *and* every Build/Maintain section — is a valid nav destination. A power user can pull a Build tool into their Work nav (a "Clean" button pointing at Data Hygiene, a "New Sermon" shortcut). We draw the use/build line for clarity of defaults; the user is free to punch through it deliberately (the destination picker's "Build tools" category makes it discoverable). Most users never will, and that's fine — the power is opt-in. The Build sidebar is a hardcoded system surface (`src/lib/build-nav.ts`, the single source of truth for the sidebar and the picker category); the Work nav is owner-configurable.
+
 ## Stack
 
 - **App:** Next.js (single app) on Vercel

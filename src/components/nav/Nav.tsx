@@ -18,6 +18,7 @@ import {
   type NavSlotConfig,
 } from "@/lib/settings";
 import { compareTypeKeys } from "@/lib/type-order";
+import { listTypes } from "@/lib/types";
 
 export default async function Nav() {
   const owner = await resolveOwner();
@@ -26,7 +27,7 @@ export default async function Nav() {
   // Quick-capture types are data-driven and opt-in (type-and-kind-ux §2): only
   // types flagged show_in_quick_capture appear, so a custom type can be
   // captured into and a "data only" one can stay out of the dropdown.
-  const [inboxCount, typeRows, settings] = await Promise.all([
+  const [inboxCount, typeRows, settings, buildTypes] = await Promise.all([
     countInbox(owner.id),
     getDb()
       .select({ key: types.key, label: types.label })
@@ -39,6 +40,9 @@ export default async function Nav() {
         )
       ),
     getSettings(owner.id),
+    // The owner's live types (non-hidden, non-deleted) for the Build sidebar's
+    // Types & Properties dropdown. Tiny instance-global table; cheap to read.
+    listTypes(),
   ]);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
 
@@ -86,6 +90,7 @@ export default async function Nav() {
       slots={slots}
       mobileSlots={mobileSlots}
       typeOptions={typeRows}
+      buildTypes={buildTypes.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
       navPosition={settings.navPosition}
       railSize={settings.railSize}
       navDensity={settings.navDensity}

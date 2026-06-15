@@ -10,6 +10,10 @@
   --foreground: #d4d4d4;
   /* Highlight accent (v5). Overridden per-owner on <body> from user settings. */
   --accent: #2563eb;
+  /* The accent as a fill (solid by default; a gradient when the owner picks one
+     in settings). Used for accent *fills* — checkbox checks, count badges — since
+     a CSS gradient can't drive color/border/shadow. Falls back to the solid. */
+  --accent-gradient: var(--accent);
 }
 
 @theme inline {
@@ -62,7 +66,7 @@ body {
   transition: background-color 0.12s, border-color 0.12s;
 }
 .ledgr-check:checked {
-  background: var(--accent, #2563eb);
+  background: var(--accent-gradient, var(--accent, #2563eb));
   border-color: var(--accent, #2563eb);
 }
 .ledgr-check:checked::after {
@@ -81,6 +85,31 @@ body {
 .ledgr-check-sm {
   width: 0.875rem;
   height: 0.875rem;
+}
+
+/* Build-mode wordmark glow (ADR-063). The "Build Mode" wordmark in the Build
+   sidebar breathes a slow accent glow — a "you are here" signal subtle enough
+   for a long Build session, unmistakable on entry. A slow oscillation of the
+   text-shadow intensity, not a blink. Respects reduced-motion. */
+@keyframes build-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    text-shadow:
+      0 0 14px color-mix(in srgb, var(--accent) 70%, transparent),
+      0 0 4px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+}
+.build-wordmark {
+  animation: build-glow 3.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .build-wordmark {
+    animation: none;
+    text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
 }
 
 /* The markdown editor (Tiptap) and its @-mention chip carry their own styles

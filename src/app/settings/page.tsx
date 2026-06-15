@@ -1,10 +1,13 @@
-// User settings (v5). Per-owner UI preferences — highlight color, Trash
-// retention, nav position. Reached from the nav kebab.
-import Link from "next/link";
+// User Settings (v5). Per-owner UI preferences — highlight color, Trash
+// retention, nav position. The one deliberate both-places surface (ADR-063):
+// reached from the Work kebab *and* listed under the Build sidebar's MAINTAIN
+// group, so personal/cosmetic settings don't require entering Build. The label
+// stays "User Settings" everywhere (never bare "Settings").
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import SettingsForm from "@/components/settings/SettingsForm";
+import BackButton from "@/components/ui/BackButton";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +20,8 @@ export default async function SettingsPage() {
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
         <div className="flex items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-100">Settings</h1>
-          <Link href="/" className="text-sm text-neutral-500 hover:text-neutral-300">
-            ← Back
-          </Link>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-100">User Settings</h1>
+          <BackButton />
         </div>
         <SettingsForm initial={settings} />
       </div>

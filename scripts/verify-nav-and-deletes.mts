@@ -44,11 +44,21 @@ const {
   DEFAULT_NAV_SLOTS,
   NAV_SLOTS_HARD_CAP,
   MAX_TOOLS_CHILDREN,
+  HIGHLIGHT_GRADIENTS,
 } = await import("../src/lib/settings");
 
 const base = parseSettings({});
 check("empty settings yield the default nav slots", base.navSlots.length === DEFAULT_NAV_SLOTS.length && base.navSlots[0].type === "destination" && (base.navSlots[0] as { href: string }).href === "/inbox");
 check("empty settings mirror mobile (null)", base.mobileNavSlots === null);
+
+// Accent: gradient round-trip + its representative solid, and rejection of junk.
+check("default accent has no gradient", base.highlightGradient === null);
+const grad = HIGHLIGHT_GRADIENTS[0];
+const gradParsed = parseSettings({ highlightColor: grad.accent, highlightGradient: grad.value });
+check("a known gradient is kept", gradParsed.highlightGradient === grad.value);
+check("a gradient's representative accent is kept as the solid", gradParsed.highlightColor === grad.accent);
+check("an unknown gradient is dropped to null", parseSettings({ highlightGradient: "linear-gradient(1deg, red, blue)" }).highlightGradient === null);
+check("an unknown accent falls back to the default solid", parseSettings({ highlightColor: "#abcabc" }).highlightColor === base.highlightColor);
 check(
   "garbage navSlots falls back to default",
   parseSettings({ navSlots: "nope" }).navSlots.length === DEFAULT_NAV_SLOTS.length
@@ -122,9 +132,8 @@ check("mobile slots are not hard-capped at the recommended count (6 kept)", mobi
 check("explicit null mobileNavSlots stays null", parseSettings({ mobileNavSlots: null }).mobileNavSlots === null);
 
 // --- 1. Pure: nav-slot destination options ---------------------------------
-const { buildDestOptions, findDestOption, BUILTIN_DESTS } = await import(
-  "../src/lib/nav-slot-options"
-);
+const { buildDestOptions, findDestOption, BUILTIN_DESTS, BUILD_TOOL_DESTS } =
+  await import("../src/lib/nav-slot-options");
 const opts = buildDestOptions(
   [{ id: "v1", name: "My View" }],
   [
@@ -132,7 +141,11 @@ const opts = buildDestOptions(
     { key: "weird", label: "Weird", icon: "no_such_icon" },
   ]
 );
-check("buildDestOptions includes builtins + 1 view + 2 types", opts.length === BUILTIN_DESTS.length + 3);
+// builtins + the Build-tools category (ADR-063) + 1 view + 2 types.
+check(
+  "buildDestOptions includes builtins + build tools + 1 view + 2 types",
+  opts.length === BUILTIN_DESTS.length + BUILD_TOOL_DESTS.length + 3
+);
 check("a view option maps to /views/<id>", !!findDestOption(opts, "/views/v1"));
 check("a type option maps to /list/<key>", findDestOption(opts, "/list/song")?.icon === "song");
 check("a type with an unknown icon falls back to 'items'", findDestOption(opts, "/list/weird")?.icon === "items");

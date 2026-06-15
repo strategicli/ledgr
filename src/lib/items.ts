@@ -144,6 +144,20 @@ export async function countInbox(ownerId: string): Promise<number> {
   return rows[0].count;
 }
 
+// Live (non-deleted) item counts grouped by type, for the Build → Model Overview
+// (ADR-063): which types are populated and which sit empty. Owner-scoped; a type
+// with no live items is simply absent from the map (callers default to 0).
+export async function itemCountsByType(
+  ownerId: string
+): Promise<Record<string, number>> {
+  const rows = await getDb()
+    .select({ type: items.type, count: sql<number>`count(*)::int` })
+    .from(items)
+    .where(and(eq(items.ownerId, ownerId), isNull(items.deletedAt)))
+    .groupBy(items.type);
+  return Object.fromEntries(rows.map((r) => [r.type, r.count]));
+}
+
 export async function getItem(ownerId: string, id: string) {
   const rows = await getDb()
     .select(itemColumns)

@@ -6,7 +6,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import NavGlyph from "@/components/nav/NavGlyph";
 import NavSlotEditor from "@/components/build/NavSlotEditor";
 import ConfirmButton from "@/components/ui/ConfirmButton";
@@ -20,25 +20,46 @@ import {
 
 type ListKey = "desktop" | "mobile";
 
-// One chip in the live preview bar.
+// The real nav's New (a plus-in-a-circle) and More (vertical kebab) glyphs, so
+// the preview matches the actual bar rather than stand-in icon keys.
+function PreviewPlus() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 8.5v7M8.5 12h7" />
+    </svg>
+  );
+}
+function PreviewKebab() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="5" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="12" cy="19" r="1.6" />
+    </svg>
+  );
+}
+
+// One chip in the live preview bar. `glyph` overrides the keyed icon (for the
+// New/More buttons, which use bespoke SVGs in the real nav, not icon keys).
 function PreviewChip({
   icon,
+  glyph,
   label,
   accent = false,
-  dim = false,
 }: {
-  icon: string;
+  icon?: string;
+  glyph?: ReactNode;
   label: string;
   accent?: boolean;
-  dim?: boolean;
 }) {
   return (
     <div
       className={`flex shrink-0 flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] ${
         accent ? "text-[var(--accent)]" : "text-neutral-400"
-      } ${dim ? "opacity-30" : ""}`}
+      }`}
     >
-      <NavGlyph icon={icon} size={18} />
+      {glyph ?? <NavGlyph icon={icon ?? "items"} size={18} />}
       <span className="max-w-[3.5rem] truncate">{label}</span>
     </div>
   );
@@ -46,11 +67,9 @@ function PreviewChip({
 
 function PreviewBar({
   slots,
-  recommended,
   phone = false,
 }: {
   slots: NavSlotConfig[];
-  recommended: number;
   phone?: boolean;
 }) {
   return (
@@ -61,15 +80,10 @@ function PreviewBar({
     >
       <PreviewChip icon="home" label="Home" />
       {slots.map((s, i) => (
-        <PreviewChip
-          key={i}
-          icon={s.icon}
-          label={s.label}
-          dim={i >= recommended}
-        />
+        <PreviewChip key={i} icon={s.icon} label={s.label} />
       ))}
-      <PreviewChip icon="tools" label="New" accent />
-      <PreviewChip icon="items" label="More" />
+      <PreviewChip glyph={<PreviewPlus />} label="New" accent />
+      <PreviewChip glyph={<PreviewKebab />} label="More" />
     </div>
   );
 }
@@ -240,11 +254,11 @@ export default function NavSlotsEditor({
         <p className="pb-1 text-xs font-medium text-neutral-500">
           Preview {activeKey === "mobile" ? "(phone bottom bar)" : ""}
         </p>
-        <PreviewBar slots={previewSlots} recommended={recommended} phone={activeKey === "mobile"} />
+        <PreviewBar slots={previewSlots} phone={activeKey === "mobile"} />
         <p className="pt-1 text-xs text-neutral-600">
           {activeKey === "mobile"
-            ? `The phone bottom bar fits about ${recommended} slots; the dimmed ones overflow it.`
-            : `About ${recommended} fit the floating bottom bar (dimmed beyond that). A left/right rail or the top bar fit many more, so add as many as you need for those layouts.`}
+            ? `The phone bottom bar fits about ${recommended} slots; more than that will scroll.`
+            : `About ${recommended} fit the floating bottom bar; a left/right rail or the top bar fit many more, so add as many as you need for those layouts.`}
         </p>
       </div>
 
