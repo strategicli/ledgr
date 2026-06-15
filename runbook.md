@@ -36,6 +36,9 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `VAPID_SUBJECT` | Push contact (RFC 8292 `sub`): `mailto:` or https URL | fixed value, optional (defaults to a localhost mailto) |
 | `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks): comma-separated `name:scope1+scope2:sha256hex` entries, hashes only | `node scripts/make-token.mjs <name> <scopes>` (§3) |
 | `CRON_SECRET` | Raw `cron`-scoped machine token; Vercel sends it as the Bearer token on scheduled cron requests (§2a) | same generator as `LEDGR_API_TOKENS`; production only |
+| `GITHUB_TOKEN` | PAT for the Changelog (reads commit history) + shared collab notes (commits a repo file). Without it the Changelog page shows "not connected". `repo` scope, or fine-grained Contents read+write | GitHub → Developer settings → PATs (§1g) |
+| `GITHUB_REPO` / `GITHUB_BRANCH` | `owner/repo` (default `brandonscollins/ledgr`) and the commit-history branch (default `main`) | fixed value, optional |
+| `GITHUB_NOTES_BRANCH` / `GITHUB_NOTES_PATH` | branch + path for the shared notes file. Branch defaults to `GITHUB_BRANCH`; set to e.g. `collab-notes` (auto-created) so a note Save doesn't trigger a rebuild. Path defaults to `COLLAB_NOTES.md` | fixed value, optional |
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
 | `LEDGR_TIMEZONE` | IANA timezone that defines "today" (Today view, day-scoped queries); defaults to `America/New_York` when unset. The server runs in UTC, never assume its clock | env flag |
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
@@ -146,6 +149,15 @@ The MCP server (ADR-047) makes Claude a first-class client: from Claude desktop/
 4. **Verify:** `/health` `checks.mcp` should read `{configured:true, hasToken:true, ownerResolves:true}`. From the client, ask Claude to "list my Ledgr types" (`list_types`) or "what tasks are open" (`list_items`). The six tools: `search_items`, `list_items`, `get_item`, `create_item`, `update_item`, `list_types`.
 5. **Revoke:** delete the `claude-mcp` entry from `LEDGR_API_TOKENS`, redeploy (same flow as any machine token, §3). Rotate on any suspicion of leak — a token is the only credential on this endpoint.
 
+## 1g. Changelog + shared collab notes (one-time, per builder — ADR-053)
+The Changelog page (in the kebab "More" menu) reads the repo's commit history live, and a shared notes scratchpad beside it reads and commits a notes file in the repo. Git is the shared medium across the two separate deploys, so both builders see each other's pushes and notes. Until a token is set the page shows a "not connected" note; `/health` `checks.github` is the canary.
+
+1. **Issue a token:** GitHub → Settings → Developer settings → Personal access tokens. A classic token with `repo` scope, or a fine-grained token scoped to `brandonscollins/ledgr` with **Contents: Read and write** (read powers the changelog, write powers the notes commits).
+2. **Set env:** `GITHUB_TOKEN` in Vercel (and `.env.local`). `GITHUB_REPO` defaults to `brandonscollins/ledgr` and `GITHUB_BRANCH` to `main`; set them only if yours differ. Redeploy.
+3. **Avoid rebuild churn (optional):** every notes Save commits the notes file, and a commit to the deploy branch triggers a Vercel build. To keep note edits from redeploying, set `GITHUB_NOTES_BRANCH="collab-notes"` (auto-created from `GITHUB_BRANCH` on first write, not deployed). Default leaves notes on the deploy branch.
+4. **Verify:** `/health` `checks.github` reads `{configured:true, ok:true, repo:"…"}`. Open the Changelog from the kebab — recent commits list with file/line counts; the notes panel loads, Save commits, Clear empties.
+5. **Rotate/revoke:** delete or regenerate the PAT on GitHub and update `GITHUB_TOKEN`, redeploy (§3).
+
 ---
 
 ## 2. Health and monitoring
@@ -157,6 +169,7 @@ The MCP server (ADR-047) makes Claude a first-class client: from Claude desktop/
 - **`lastEmailImportAt` / `lastEmailRunAt`** (slice 26) are the same pair for email-in. Both null = `Mail.ReadWrite` not granted / the `Ledgr Import` folder missing (§1c, the 403/404→503 path) or the poll never reaches the endpoint. `error_log` source `email-import`.
 - **`lastAgendaNotifyAt` / `lastPrepNotifyAt`** (slice 30) are the last clean morning-agenda send and meeting-prep-ready run. Both null = VAPID keys unset (§1e, the 503 path) or the crons never reach the endpoint (agenda needs `CRON_SECRET`, prep needs `LEDGR_CRON_TOKEN`). `error_log` sources `notify-agenda` / `notify-prep`.
 - **`checks.mcp`** (slice 36, ADR-047) is the MCP-server canary: `{configured:true, hasToken:true, ownerResolves:true}` once an `mcp`-scoped token exists and the owner UPN resolves to a `users` row (§1f). Both false until setup; like `checks.graph` it never changes overall `/health` status. `error_log` source `mcp`.
+- **`checks.github`** (ADR-053) is the canary for the Changelog + collab notes: `{configured:false}` until `GITHUB_TOKEN` is set (§1g), `{configured:true, ok:true, repo}` when a repo read succeeds (token valid, repo reachable), `{configured:true, ok:false, detail}` when it fails (expired/revoked token or wrong repo). Like `checks.graph`/`checks.mcp` it never changes overall `/health` status.
 - **`checks.healthCheck`** (slice 37, ADR-052) is the weekly self-monitor's record: `{lastRunAt, lastSuccessAt, lastAlertAt, alerts[]}`. `alerts` holds the most recent run's findings (empty when green); `lastSuccessAt` advances only on a clean run, `lastAlertAt` only when something needed attention. The weekly job (`/api/machine/health-check`, §2a) reads the same canaries above, decides what genuinely needs attention (DB down → critical; captured errors over the last 7 days; a Graph-secret-expiry; a *stalled* — not merely unconfigured — cron), and pushes Brandon **only on failure** (PRD §6.2; delivery is Web Push, the channel Ledgr already has — `email-out` isn't built). Findings are recorded to `job_state`, never `error_log`, so the "captured errors" rule can't feed back on itself. `error_log` source `health-check` is only the route's own unexpected faults.
 - The export-timestamp check is the canary for a **silently stalled sync** (see §6, GitHub Actions auto-disable).
 - **Structured logs (ADR-020):** every server-side event is one JSON line `{ts, level, source, correlationId, message, ...}` via `src/lib/log.ts`; read them in Vercel → Project → Logs. One correlation id covers one request/job run, and 500 responses echo it (`{"error":"internal error","correlationId":"…"}`), so a screenshot of a failure can be grepped straight to its lines and its `error_log` row.
