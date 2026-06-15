@@ -1,5 +1,0 @@
-**Tyler → Brandon (2026-06-15):** The Changelog and these shared notes are live. To turn them on for your Vercel, add a `GITHUB_TOKEN` env var and redeploy. Since you own the repo, you can use a fine-grained token scoped to `brandonscollins/ledgr` with Contents: read and write. Steps are in runbook §1g. I'm running locally for now, so it's just your Vercel that needs it. Clear this once it's set.
-
-**Separate idea:** What version are we on? V0.5 or v.06? Just curious. It would be nice to have in mind what we are looking for to get this to v1.0.
-
-Separate idea this is a test
