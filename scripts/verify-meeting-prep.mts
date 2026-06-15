@@ -1,6 +1,6 @@
 // Slice 24 verification: meeting prep assembly + action-item promotion against
-// the live Neon DB under a throwaway owner. Covers entity gathering (confirmed
-// only), the person's open tasks (done/other-entity tasks excluded), recent
+// the live Neon DB under a throwaway owner. Covers person gathering (confirmed
+// only), the person's open tasks (done/other-person tasks excluded), recent
 // meetings (this one excluded, capped, newest first), default agenda, and
 // promotion (task created + related to the meeting and its people, so it then
 // shows up in prep). Run: npx tsx scripts/verify-meeting-prep.mts
@@ -39,8 +39,8 @@ const relate = (s: string, t: string, state: "confirmed" | "suggested" = "confir
   db.insert(relations).values({ sourceId: s, targetId: t, role: "related", matchState: state });
 
 try {
-  const roger = await mk({ type: "entity", title: "Roger", kind: "person" });
-  const other = await mk({ type: "entity", title: "Someone Else", kind: "person" });
+  const roger = await mk({ type: "person", title: "Roger" });
+  const other = await mk({ type: "person", title: "Someone Else" });
   const meeting = await mk({ type: "meeting", title: "Roger 1:1", meetingAt: new Date("2026-06-20T15:00:00Z") });
 
   // Roger's tasks: one open (should appear), one done (excluded), plus a task
@@ -66,9 +66,9 @@ try {
   // (meeting already related above.)
 
   const prep = await getMeetingPrep(ownerId, meeting);
-  check("gathers the confirmed entity", prep.entities.length === 1 && prep.entities[0].id === roger);
+  check("gathers the confirmed person", prep.people.length === 1 && prep.people[0].id === roger);
   check(
-    "open tasks: only Roger's open task (done/other-entity/suggested excluded)",
+    "open tasks: only Roger's open task (done/other-person/suggested excluded)",
     prep.openTasks.length === 1 && prep.openTasks[0].id === openTask,
     prep.openTasks.map((t) => t.title).join(", ")
   );
@@ -80,10 +80,10 @@ try {
   );
   check("default agenda present", prep.agenda.length > 0);
 
-  // --- empty prep (no related entity) -------------------------------------
+  // --- empty prep (no related person) -------------------------------------
   const lonelyMeeting = await mk({ type: "meeting", title: "Solo block" });
   const emptyPrep = await getMeetingPrep(ownerId, lonelyMeeting);
-  check("a meeting with no entities yields empty prep + default agenda", emptyPrep.entities.length === 0 && emptyPrep.openTasks.length === 0 && emptyPrep.agenda.length > 0);
+  check("a meeting with no people yields empty prep + default agenda", emptyPrep.people.length === 0 && emptyPrep.openTasks.length === 0 && emptyPrep.agenda.length > 0);
 
   // --- action-item -> task promotion --------------------------------------
   const task = await promoteActionItem(ownerId, meeting, "  Follow up on the memo  ");
@@ -104,7 +104,7 @@ try {
   let crossOwnerEmpty = false;
   try {
     const cross = await getMeetingPrep(otherUser.id, meeting);
-    crossOwnerEmpty = cross.entities.length === 0 && cross.openTasks.length === 0;
+    crossOwnerEmpty = cross.people.length === 0 && cross.openTasks.length === 0;
   } finally {
     await db.delete(users).where(eq(users.id, otherUser.id));
   }

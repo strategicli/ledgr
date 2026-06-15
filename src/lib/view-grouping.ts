@@ -15,7 +15,6 @@ import type { GroupField, ViewGrouping } from "@/lib/views";
 export type GroupableItem = {
   status: string;
   urgency: string | null;
-  kind: string | null;
   type: string;
   dueDate: Date | null;
   properties: unknown;
@@ -60,8 +59,6 @@ export function groupValueFor(
       return item.status;
     case "urgency":
       return item.urgency ?? NONE_GROUP;
-    case "kind":
-      return item.kind ?? NONE_GROUP;
     case "type":
       return item.type;
     case "due":
@@ -86,7 +83,6 @@ export function orderedGroups(
       status: ITEM_STATUSES,
       urgency: [...URGENCIES, NONE_GROUP],
       due: DUE_ORDER,
-      kind: [] as readonly string[],
       type: [] as readonly string[],
     }[field];
   }

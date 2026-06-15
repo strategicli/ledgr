@@ -7,8 +7,7 @@ export type CanvasField =
   | "dueDate"
   | "urgency"
   | "meetingAt"
-  | "url"
-  | "kind";
+  | "url";
 
 // Baked-in fields stay core to their type (ADR-018): status, due date, and
 // urgency belong to tasks only. Other types surface nothing task-shaped;
@@ -18,7 +17,6 @@ const TOP_STRIP: Record<string, CanvasField[]> = {
   meeting: ["meetingAt"],
   note: [],
   link: ["url"],
-  entity: ["kind"],
 };
 
 // Custom types (§3.6) get no built-in strip until the Build surface lets
@@ -41,7 +39,6 @@ type FooterItem = {
   urgency: string | null;
   meetingAt: Date | null;
   url: string | null;
-  kind: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -65,7 +62,6 @@ export function footerFieldsFor(item: FooterItem): FooterField[] {
   }
   maybe("meetingAt", "When", item.meetingAt ? tsFmt.format(item.meetingAt) : null);
   maybe("url", "URL", item.url);
-  maybe("kind", "Kind", item.kind);
   out.push({ label: "Created", value: tsFmt.format(item.createdAt) });
   out.push({ label: "Updated", value: tsFmt.format(item.updatedAt) });
   return out;

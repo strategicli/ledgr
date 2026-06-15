@@ -6,7 +6,7 @@
 import { and, eq, gt, isNull, lte, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, jobState } from "@/db/schema";
-import { getMeetingEntities } from "@/lib/meetings/prep";
+import { getMeetingPeople } from "@/lib/meetings/prep";
 import { getTodayData, APP_TIMEZONE, ymdInZone } from "@/lib/today";
 import { listSubscriptions, pruneSubscription } from "./store";
 import type { PushMessage, PushSender } from "./types";
@@ -153,11 +153,11 @@ export async function runPrepNotify(
   const tally: SendTally = { sent: 0, pruned: 0, failed: 0 };
   let notified = 0;
   for (const m of candidates) {
-    const entities = await getMeetingEntities(ownerId, m.id);
-    if (entities.length === 0) continue; // no prep worth surfacing yet
+    const people = await getMeetingPeople(ownerId, m.id);
+    if (people.length === 0) continue; // no prep worth surfacing yet
 
     const when = m.meetingAt ? ` at ${timeFmt.format(m.meetingAt)}` : "";
-    const who = entities.map((e) => e.title).slice(0, 2).join(", ");
+    const who = people.map((e) => e.title).slice(0, 2).join(", ");
     const t = await sendToOwner(ownerId, sender, {
       title: `Prep ready: ${m.title || "Untitled"}`,
       body: `${when ? `${when.trim()}.` : ""}${who ? ` With ${who}.` : ""}`.trim() || "Open meeting prep.",

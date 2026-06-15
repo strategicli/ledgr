@@ -11,7 +11,7 @@ import {
 export const dynamic = "force-dynamic";
 
 // GET /api/items — owner-scoped list, never includes body. Filters:
-// ?type= &status= &kind= &parentId= &inbox= &q= &trash=true &limit= &offset=
+// ?type= &status= &parentId= &inbox= &q= &trash=true &limit= &offset=
 // q is a title substring match (the @-mention picker); trash=true is the
 // Trash view: deleted items only, newest deletion first.
 export async function GET(request: Request) {
@@ -22,7 +22,6 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const opts: ListOptions = {
       type: params.get("type") ?? undefined,
-      kind: params.get("kind") ?? undefined,
       parentId: params.get("parentId") ?? undefined,
       q: params.get("q") ?? undefined,
       trash: params.get("trash") === "true",

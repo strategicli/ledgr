@@ -1,7 +1,7 @@
 // Per-row triage controls for the Inbox: retype the item or clear it out of
 // the Inbox. Deliberately explicit (rule 3): nothing leaves the Inbox unless
 // a control here said so, so the flag never changes behind Brandon's back.
-// Deeper triage (due date, urgency, entities) happens in the item canvas,
+// Deeper triage (due date, urgency, relations) happens in the item canvas,
 // one click away on the row title.
 "use client";
 

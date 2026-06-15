@@ -23,7 +23,7 @@ const systemTypes = [
   ["meeting", "Meeting", "users"],
   ["note", "Note", "file-text"],
   ["link", "Link", "link"],
-  ["entity", "Entity", "tag"],
+  ["person", "Person", "user"],
 ];
 
 for (const [key, label, icon] of systemTypes) {

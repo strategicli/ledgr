@@ -11,12 +11,15 @@ import { types } from "@/db/schema";
 // Active tab is identified by a string: a system tab key, a type key, or "all".
 export type ListTabKey = string;
 
+// `person` is a system type but has no bespoke page; it rides the generic
+// /list/<key> route like custom types do (its tab key is the type key, which
+// the generic page sets as the active tab).
 const SYSTEM_TABS = [
   { key: "tasks", label: "Tasks", href: "/tasks" },
   { key: "meetings", label: "Meetings", href: "/meetings" },
   { key: "notes", label: "Notes", href: "/notes" },
   { key: "links", label: "Links", href: "/links" },
-  { key: "entities", label: "Entities", href: "/entities" },
+  { key: "person", label: "People", href: "/list/person" },
 ];
 
 export default async function ListTabs({ active }: { active: ListTabKey }) {

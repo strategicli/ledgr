@@ -1,10 +1,10 @@
 // Action-item -> task promotion (slice 24, PRD §5.1). Turning a line in a
 // meeting into a task: create the task, relate it to the meeting and to the
-// meeting's confirmed entities (so it shows up in that person's open tasks,
+// meeting's confirmed people (so it shows up in that person's open tasks,
 // which is exactly what next time's prep reads). Owner-scoped throughout.
 import { createItem, getItem, ItemError } from "@/lib/items";
 import { relateItems } from "@/lib/relations";
-import { getMeetingEntities } from "./prep";
+import { getMeetingPeople } from "./prep";
 
 export async function promoteActionItem(
   ownerId: string,
@@ -27,16 +27,16 @@ export async function promoteActionItem(
   });
 
   // Relate task -> meeting (confirmed; it's a deliberate manual-equivalent
-  // act), then task -> each of the meeting's entities, so the task lands in
-  // that person's open-task list. Edge failures (a since-deleted entity)
+  // act), then task -> each of the meeting's people, so the task lands in
+  // that person's open-task list. Edge failures (a since-deleted person)
   // don't undo the task.
   await relateItems(ownerId, task.id, meetingId);
-  const entities = await getMeetingEntities(ownerId, meetingId);
-  for (const e of entities) {
+  const people = await getMeetingPeople(ownerId, meetingId);
+  for (const e of people) {
     try {
       await relateItems(ownerId, task.id, e.id);
     } catch {
-      /* skip an entity that can't be related; the task + meeting link stand */
+      /* skip a person that can't be related; the task + meeting link stand */
     }
   }
   return task;

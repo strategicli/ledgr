@@ -119,12 +119,10 @@ const POSITIONS: { value: NavPosition; label: string }[] = [
 export default function NavShell({
   slots,
   typeOptions,
-  entityKinds,
   navPosition,
 }: {
   slots: ShellSlot[];
   typeOptions: { key: string; label: string }[];
-  entityKinds: string[];
   navPosition: NavPosition;
 }) {
   const pathname = usePathname();
@@ -285,7 +283,7 @@ export default function NavShell({
       </div>
 
       {captureOpen && (
-        <CaptureModal typeOptions={typeOptions} entityKinds={entityKinds} onClose={() => setCaptureOpen(false)} />
+        <CaptureModal typeOptions={typeOptions} onClose={() => setCaptureOpen(false)} />
       )}
       {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
     </nav>

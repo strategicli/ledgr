@@ -18,7 +18,7 @@ const { items, relations, users } = await import("../src/db/schema");
 const { createItem, softDeleteItem } = await import("../src/lib/items");
 const { makeMarkdownBody } = await import("../src/lib/body");
 const { todayBounds } = await import("../src/lib/today");
-const { listEntityOptions, queryViewItems, viewItemsQuery } = await import(
+const { listPersonOptions, queryViewItems, viewItemsQuery } = await import(
   "../src/lib/views"
 );
 const { searchItems, searchItemsQuery } = await import("../src/lib/search");
@@ -60,8 +60,8 @@ try {
   // 2. Fixtures.
   const bounds = todayBounds();
   const dayMs = 24 * 60 * 60 * 1000;
-  const entity = await createItem(ownerId, { type: "entity", title: "V12 Entity Alpha", kind: "person" });
-  const entityB = await createItem(ownerId, { type: "entity", title: "V12 Entity Beta", kind: "org" });
+  const entity = await createItem(ownerId, { type: "person", title: "V12 Person Alpha" });
+  const entityB = await createItem(ownerId, { type: "person", title: "V12 Person Beta" });
   const tOverdue = await createItem(ownerId, { type: "task", title: "V12 overdue", dueDate: new Date(bounds.dueToday.getTime() - dayMs) });
   const tToday = await createItem(ownerId, { type: "task", title: "V12 due today", dueDate: bounds.dueToday, urgency: "high" });
   const tWeek = await createItem(ownerId, { type: "task", title: "V12 due in 3 days", dueDate: new Date(bounds.dueToday.getTime() + 3 * dayMs) });
@@ -122,15 +122,15 @@ try {
     none.some((t) => t.id === tUndated.id) && !none.some((t) => t.id === tToday.id)
   );
 
-  const byEntity = await queryViewItems(ownerId, { type: "task", entityId: entity.id });
+  const byEntity = await queryViewItems(ownerId, { type: "task", relatedTo: entity.id });
   check(
     "entity filter: confirmed edge matches, suggested excluded",
     byEntity.some((t) => t.id === tToday.id) &&
       !byEntity.some((t) => t.id === tWeek.id)
   );
-  const reverse = await queryViewItems(ownerId, { type: "note", entityId: entity.id });
+  const reverse = await queryViewItems(ownerId, { type: "note", relatedTo: entity.id });
   check("entity filter matches the reverse direction", reverse.some((n) => n.id === note.id));
-  const byEntityB = await queryViewItems(ownerId, { type: "task", entityId: entityB.id });
+  const byEntityB = await queryViewItems(ownerId, { type: "task", relatedTo: entityB.id });
   check("entity filter: unrelated entity matches nothing", !byEntityB.some((t) => created.includes(t.id)));
 
   const dueSorted = await queryViewItems(ownerId, { type: "task", status: "open" }, { field: "dueDate", dir: "asc" });
@@ -142,9 +142,9 @@ try {
     fixturesInOrder.join(",")
   );
 
-  const options = await listEntityOptions(ownerId);
+  const options = await listPersonOptions(ownerId);
   check(
-    "entity options include fixtures, alphabetical",
+    "person options include fixtures, alphabetical",
     options.findIndex((e) => e.id === entity.id) >= 0 &&
       options.findIndex((e) => e.id === entity.id) <
         options.findIndex((e) => e.id === entityB.id)
@@ -190,8 +190,8 @@ try {
 
   const typed = await searchItems(ownerId, "xylophone", { type: "task" });
   check("type filter narrows search", !typed.some((r) => r.id === note.id));
-  const viaEntity = await searchItems(ownerId, "xylophone", { entityId: entity.id });
-  const viaEntityB = await searchItems(ownerId, "xylophone", { entityId: entityB.id });
+  const viaEntity = await searchItems(ownerId, "xylophone", { relatedTo: entity.id });
+  const viaEntityB = await searchItems(ownerId, "xylophone", { relatedTo: entityB.id });
   check(
     "entity filter narrows search",
     viaEntity.some((r) => r.id === note.id) && !viaEntityB.some((r) => r.id === note.id)
@@ -214,13 +214,12 @@ try {
   const scoped = await searchItems(ownerId, "xylophone");
   check("cross-owner search isolation", !scoped.some((r) => r.id === foreignNote.id));
 
-  // 6. Coverage beyond title+body (ADR-014): url, kind, properties; weighting.
+  // 6. Coverage beyond title+body (ADR-014): url, properties; weighting.
   const link = await createItem(ownerId, { type: "link", title: "V14 a saved video", url: "https://www.youtube.com/watch?v=xylovid123" });
   const propped = await createItem(ownerId, { type: "task", title: "V14 propped task", properties: { campus: "Xylocampus North" } });
-  const kindEntity = await createItem(ownerId, { type: "entity", title: "V14 Xyloplex Org", kind: "xylokind" });
   const quokkaTitle = await createItem(ownerId, { type: "note", title: "V14 quokka in the title" });
   const quokkaBody = await createItem(ownerId, { type: "note", title: "V14 plain note", body: para("A quokka appears only in the body.") });
-  created.push(link.id, propped.id, kindEntity.id, quokkaTitle.id, quokkaBody.id);
+  created.push(link.id, propped.id, quokkaTitle.id, quokkaBody.id);
 
   const byUrl = await searchItems(ownerId, "youtube");
   check("url words are searchable (punctuation split)", byUrl.some((r) => r.id === link.id));
@@ -228,8 +227,6 @@ try {
   check("url path tokens are searchable", byUrlId.some((r) => r.id === link.id));
   const byProp = await searchItems(ownerId, "xylocampus");
   check("custom property string values are searchable", byProp.some((r) => r.id === propped.id));
-  const byKind = await searchItems(ownerId, "xylokind");
-  check("entity kind is searchable", byKind.some((r) => r.id === kindEntity.id));
   const byStatus = await searchItems(ownerId, "open");
   check(
     "status enum is NOT a search word",

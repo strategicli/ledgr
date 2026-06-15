@@ -55,7 +55,6 @@ export type ItemInput = {
   urgency?: Urgency | null;
   meetingAt?: Date | null;
   url?: string | null;
-  kind?: string | null;
   parentId?: string | null;
   properties?: Record<string, unknown> | null;
   // Untriaged flag (PRD §4.2 Inbox): arrival paths set it, triage clears it.
@@ -67,7 +66,6 @@ export type ItemPatch = Partial<ItemInput>;
 export type ListOptions = {
   type?: string;
   status?: ItemStatus;
-  kind?: string;
   parentId?: string;
   inbox?: boolean;
   // Title substring match (powers the @-mention picker). Full-text search
@@ -91,7 +89,6 @@ export const listColumns = {
   urgency: items.urgency,
   meetingAt: items.meetingAt,
   url: items.url,
-  kind: items.kind,
   parentId: items.parentId,
   inbox: items.inbox,
   todoistId: items.todoistId,
@@ -111,7 +108,6 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   where.push(opts.trash ? isNotNull(items.deletedAt) : isNull(items.deletedAt));
   if (opts.type) where.push(eq(items.type, opts.type));
   if (opts.status) where.push(eq(items.status, opts.status));
-  if (opts.kind) where.push(eq(items.kind, opts.kind));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
   if (opts.inbox !== undefined) where.push(eq(items.inbox, opts.inbox));
   if (opts.q) {
@@ -263,7 +259,6 @@ export async function createItem(ownerId: string, input: ItemInput) {
       urgency: input.urgency ?? null,
       meetingAt: input.meetingAt ?? null,
       url: input.url ?? null,
-      kind: input.kind ?? null,
       parentId: input.parentId ?? null,
       properties: input.properties ?? null,
       inbox: input.inbox ?? false,
@@ -304,7 +299,6 @@ export async function updateItem(
   if (patch.urgency !== undefined) set.urgency = patch.urgency;
   if (patch.meetingAt !== undefined) set.meetingAt = patch.meetingAt;
   if (patch.url !== undefined) set.url = patch.url;
-  if (patch.kind !== undefined) set.kind = patch.kind;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;
   if (patch.properties !== undefined) set.properties = patch.properties;
   if (patch.inbox !== undefined) set.inbox = patch.inbox;

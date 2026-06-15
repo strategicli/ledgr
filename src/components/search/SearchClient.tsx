@@ -49,14 +49,14 @@ const selectClass =
 
 export default function SearchClient({
   types,
-  entities,
+  people,
 }: {
   types: Option[];
-  entities: Option[];
+  people: Option[];
 }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
-  const [entity, setEntity] = useState("");
+  const [person, setPerson] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [fetched, setFetched] = useState<ResultRow[] | null>(null);
@@ -73,7 +73,7 @@ export default function SearchClient({
       try {
         const params = new URLSearchParams({ q });
         if (type) params.set("type", type);
-        if (entity) params.set("entity", entity);
+        if (person) params.set("person", person);
         if (from) params.set("from", from);
         if (to) params.set("to", to);
         const res = await fetch(`/api/search?${params}`, {
@@ -91,7 +91,7 @@ export default function SearchClient({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [q, type, entity, from, to]);
+  }, [q, type, person, from, to]);
 
   const active = q.trim().length > 0;
   const results = active ? fetched : null;
@@ -125,16 +125,16 @@ export default function SearchClient({
           </select>
         </label>
         <label className="flex items-center gap-1.5 text-xs text-neutral-500">
-          Entity
+          Person
           <select
-            value={entity}
-            onChange={(e) => setEntity(e.target.value)}
+            value={person}
+            onChange={(e) => setPerson(e.target.value)}
             className={selectClass}
           >
             <option value="">any</option>
-            {entities.map((e) => (
-              <option key={e.value} value={e.value}>
-                {e.label}
+            {people.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
               </option>
             ))}
           </select>

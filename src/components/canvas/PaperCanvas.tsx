@@ -27,7 +27,7 @@ export default async function PaperCanvas({ item, ownerId }: CanvasProps) {
             : String(item.createdAt)
         }
       />
-      <RelatedPanel ownerId={ownerId} itemId={item.id} itemType={item.type} />
+      <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <SaveOffline itemId={item.id} />
       <ShareLink itemId={item.id} />
     </>

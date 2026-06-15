@@ -76,8 +76,8 @@ try {
     body,
     dueDate: new Date("2026-06-19T00:00:00Z"),
   });
-  const entity = await mkItem({ type: "entity", title: "Verify Person", kind: "person" });
-  const distractor = await mkItem({ type: "entity", title: "Suggested Person", kind: "person" });
+  const entity = await mkItem({ type: "person", title: "Verify Person" });
+  const distractor = await mkItem({ type: "person", title: "Suggested Person" });
   const untitled = await mkItem({ type: "note", title: "" });
   await db.insert(relations).values([
     { sourceId: task.id, targetId: entity.id, role: "related", matchState: "confirmed" },
@@ -122,8 +122,8 @@ try {
   check("frontmatter carries id/type/status", md.includes(`id: "${task.id}"`) && md.includes(`type: "task"`) && md.includes(`status: "open"`));
   check("title is JSON-escaped YAML", md.includes(`title: ${JSON.stringify(task.title)}`));
   check("due date present", md.includes(`due: "2026-06-19T00:00:00.000Z"`));
-  check("confirmed entity listed, suggested excluded",
-    md.includes(`entities: ["Verify Person"]`) && !md.includes("Suggested Person"));
+  check("confirmed person listed, suggested excluded",
+    md.includes(`people: ["Verify Person"]`) && !md.includes("Suggested Person"));
   check("attachment path listed",
     md.includes(`_attachments/${task.id}/`) && md.includes("-chart.png"));
   check("markdown body serialized", md.includes("Sermon outline body text"));

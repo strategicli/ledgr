@@ -1,6 +1,6 @@
 // Slice 33 verification: the type registry store — parse/validate of
-// types + property schemas, the CRUD store, system-type protection, the
-// in-use delete guard, and the entity-kind vocabulary. Against live Neon.
+// types + property schemas, the CRUD store, system-type protection, and the
+// in-use delete guard. Against live Neon.
 // Types are instance-global (no owner_id), so the script tracks the keys it
 // creates and deletes them in finally. Run: npx tsx scripts/verify-types.mts
 // Safe to delete once the slice is closed.
@@ -23,9 +23,7 @@ const {
   listTypes,
   updateType,
   deleteType,
-  distinctEntityKinds,
   PROPERTY_KINDS,
-  DEFAULT_ENTITY_KINDS,
 } = await import("../src/lib/types");
 const { ItemError } = await import("../src/lib/items");
 const { eq, inArray } = await import("drizzle-orm");
@@ -56,10 +54,6 @@ const [tempUser] = await db
   .values({ email: `verify-types-${stamp}@example.invalid` })
   .returning({ id: users.id });
 const ownerId = tempUser.id;
-const [otherUser] = await db
-  .insert(users)
-  .values({ email: `verify-types-other-${stamp}@example.invalid` })
-  .returning({ id: users.id });
 
 try {
   // --- parseTypeInput ---
@@ -156,22 +150,11 @@ try {
   await db.delete(items).where(eq(items.type, k2));
   await deleteType(k2);
   await throws("deleted type is gone", () => getType(k2), "not_found");
-
-  // --- entity kinds vocabulary ---
-  await db.insert(items).values({ ownerId, type: "entity", title: "Acme", kind: `vk${stamp}` });
-  await db.insert(items).values({ ownerId: otherUser.id, type: "entity", title: "Other", kind: `ok${stamp}` });
-  const kinds = await distinctEntityKinds(ownerId);
-  check("kinds include the built-in vocabulary", DEFAULT_ENTITY_KINDS.every((k) => kinds.includes(k)));
-  check("kinds include the owner's used kind", kinds.includes(`vk${stamp}`));
-  check("kinds are owner-scoped (no other owner's kind)", !kinds.includes(`ok${stamp}`));
-  check("kinds are unique + sorted", kinds.length === new Set(kinds).size && [...kinds].sort().join() === kinds.join());
 } finally {
   // items FK to users + types; delete items first, then the test types, then users.
   await db.delete(items).where(eq(items.ownerId, ownerId));
-  await db.delete(items).where(eq(items.ownerId, otherUser.id));
   await db.delete(types).where(inArray(types.key, createdKeys));
   await db.delete(users).where(eq(users.id, ownerId));
-  await db.delete(users).where(eq(users.id, otherUser.id));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

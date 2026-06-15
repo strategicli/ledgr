@@ -37,16 +37,16 @@ export default async function MeetingPrep({
         )}
       </div>
 
-      {prep.entities.length === 0 ? (
+      {prep.people.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
-          Relate a person or entity to see their open tasks and recent meetings here.
+          Relate a person to see their open tasks and recent meetings here.
         </p>
       ) : (
         <div className="mt-3 flex flex-col gap-4">
           <div>
             <div className="px-2 text-xs text-neutral-500">
               With{" "}
-              {prep.entities.map((e, i) => (
+              {prep.people.map((e, i) => (
                 <span key={e.id}>
                   {i > 0 && ", "}
                   <Link href={`/items/${e.id}`} className="text-neutral-300 hover:underline">

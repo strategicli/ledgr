@@ -141,7 +141,7 @@ export const coreModule: ModuleManifest = {
     { key: "meeting", label: "Meeting", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
     { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
     { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "link" },
-    { key: "entity", label: "Entity", icon: "tag", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "person", label: "Person", icon: "user", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
   ],
   exporters: [],
 };

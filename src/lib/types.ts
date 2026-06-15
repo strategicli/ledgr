@@ -13,7 +13,7 @@
 // (modules.ts resolvers fall back for any unregistered type), so the builder
 // never touches code — it writes label/icon/property_schema, and the registry
 // owns code behavior (ADR-043).
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { ItemError } from "@/lib/items";
@@ -78,17 +78,6 @@ export type TypeInput = {
   capability: string | null; // SPIKE: attached bespoke-tool capability id
 };
 export type TypeCreateInput = TypeInput & { key: string };
-
-// Built-in entity kinds (schema.md items.kind), offered alongside whatever
-// kinds the owner has already used so the Kind picker reuses an existing
-// vocabulary instead of fragmenting it (exploration type-and-kind-ux §1).
-export const DEFAULT_ENTITY_KINDS = [
-  "person",
-  "org",
-  "project",
-  "topic",
-  "campus",
-] as const;
 
 // Lowercase slug: starts with a letter, then letters/digits/underscore. Used
 // for both a type key and a property key (both end up as map keys / FK values,
@@ -321,25 +310,4 @@ export async function deleteType(key: string): Promise<void> {
     bad(`type '${key}' is used by ${count} item(s); reassign or trash them first`);
   }
   await getDb().delete(types).where(eq(types.key, key));
-}
-
-// The kinds offered in the entity Kind picker (exploration type-and-kind-ux
-// §1): the built-in vocabulary merged with the distinct kinds this owner has
-// already used, so the dropdown reuses kinds instead of fragmenting them.
-// Owner-scoped (kinds live on the owner's items), live items only.
-export async function distinctEntityKinds(ownerId: string): Promise<string[]> {
-  const rows = await getDb()
-    .selectDistinct({ kind: items.kind })
-    .from(items)
-    .where(
-      and(
-        eq(items.ownerId, ownerId),
-        eq(items.type, "entity"),
-        isNull(items.deletedAt)
-      )
-    );
-  const used = rows
-    .map((r) => r.kind)
-    .filter((k): k is string => !!k);
-  return Array.from(new Set([...DEFAULT_ENTITY_KINDS, ...used])).sort();
 }

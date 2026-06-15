@@ -1,6 +1,10 @@
 # Exploration: entities vs. custom types — is the boundary right, or just confusing?
 
-**Status:** parked for discussion (Brandon, 2026-06-14). Not a decision to change anything. The posture is **ponder, discuss, and confirm** the model we want — the leaning is *keep entities as a bespoke type*, but the implementation may be confusing in ways worth clearing up before we commit.
+**Status:** ✅ **RESOLVED (2026-06-14, ADR-055 — Brandon + Tyler agreed).** The conclusion went the *other* way from this doc's original leaning: rather than keep `entity` as a bespoke type, we **retired the `entity` meta-type entirely**. It became a single bespoke **`person`** system type; the `kind` column was dropped (sub-classification is now a `select` property); the entity-only interactive view became universal (every item's `RelatedPanel` is now interactive); and the `entityId` filter was renamed `relatedTo`. The **`relation` property kind stays deferred** — this doc's key finding held: it was *not* required to remove `entity`. See ADR-055 for the full decision and scope. The analysis below is kept as the record of how we got there.
+
+---
+
+_Original exploration (pre-decision), kept for the record:_
 
 ## The question that prompted this
 

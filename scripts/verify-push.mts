@@ -166,8 +166,8 @@ try {
   check("agenda is skipped on a second same-day run (day guard)", agenda2.skipped === true && agendaSender2.calls.length === 0);
 
   // --- 6. meeting-prep-ready ----------------------------------------------
-  const person = await mk({ type: "entity", title: "Roger", kind: "person" });
-  // In-window meeting WITH a confirmed entity -> notified.
+  const person = await mk({ type: "person", title: "Roger" });
+  // In-window meeting WITH a confirmed person -> notified.
   const soon = await mk({ type: "meeting", title: "Roger 1:1", meetingAt: new Date(Date.now() + 30 * 60_000) });
   await db.insert(relations).values({ sourceId: soon, targetId: person, role: "related", matchState: "confirmed" });
   // In-window meeting with NO entity -> not notified.

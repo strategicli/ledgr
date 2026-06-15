@@ -7,7 +7,7 @@ import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getTemplate } from "@/lib/templates";
 import { listTypes } from "@/lib/types";
-import { listEntityOptions } from "@/lib/views";
+import { listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -20,13 +20,13 @@ export default async function EditTemplate({
   if (!owner) redirect("/sign-in");
 
   const { id } = await params;
-  const [template, types, entities] = await Promise.all([
+  const [template, types, people] = await Promise.all([
     getTemplate(owner.id, id).catch((err) => {
       if (err instanceof ItemError && err.code === "not_found") notFound();
       throw err;
     }),
     listTypes(),
-    listEntityOptions(owner.id),
+    listPersonOptions(owner.id),
   ]);
 
   return (
@@ -43,7 +43,7 @@ export default async function EditTemplate({
             ← All templates
           </Link>
         </div>
-        <TemplateBuilder types={types} entities={entities} initial={template} />
+        <TemplateBuilder types={types} people={people} initial={template} />
       </div>
     </main>
   );
