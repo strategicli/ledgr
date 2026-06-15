@@ -14,7 +14,9 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
     const next = { ...settings, ...patch };
     setSettings(next);
     if (patch.highlightColor) {
-      document.documentElement.style.setProperty("--accent", patch.highlightColor);
+      // The layout sets --accent inline on <body>, which wins for its
+      // descendants — so override it there, not on <html>, for an instant change.
+      document.body.style.setProperty("--accent", patch.highlightColor);
     }
     try {
       await fetch("/api/settings", {
