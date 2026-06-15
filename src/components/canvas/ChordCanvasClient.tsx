@@ -9,7 +9,7 @@ import { bodyMarkdown } from "@/lib/body";
 import { CHART_CSS } from "@/lib/chordpro/chart-css";
 import { toPlanningCenterChordPro } from "@/lib/chordpro/export";
 import { parseChordPro, serializeChordChart } from "@/lib/chordpro/parse";
-import { appendLyrics, chartToLyricsMarkdown } from "@/lib/chordpro/lyrics";
+import { chartToLyricsMarkdown, chartToLyricsText, mergeLyricsIntoChart } from "@/lib/chordpro/lyrics";
 import { chartToHtml } from "@/lib/chordpro/render";
 import { CHORDPRO_FORMAT, type ChordChart } from "@/lib/chordpro/types";
 import ChordEditor from "@/components/chord-editor/ChordEditor";
@@ -32,10 +32,10 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
   const [title, setTitle] = useState(initialTitle);
   // A song with content opens in Preview (you read/perform more than you edit);
   // an empty one opens in Lyrics so you can paste a set in to start (v5).
-  const [mode, setMode] = useState<Mode>(() =>
-    parseChordPro(bodyMarkdown(initialBody)).sections.length ? "preview" : "lyrics"
-  );
-  const [lyricsText, setLyricsText] = useState("");
+  const [mode, setMode] = useState<Mode>(() => (chart.sections.length ? "preview" : "lyrics"));
+  // The Lyrics tab is a live plain-text view of the song's words — pre-filled
+  // from the chart, re-derived whenever you open it.
+  const [lyricsText, setLyricsText] = useState(() => chartToLyricsText(chart));
   const [copied, setCopied] = useState(false);
   const { patch, saveState } = useItemAutosave(itemId);
 
@@ -61,13 +61,15 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
     patch({ title: t, body: { format: CHORDPRO_FORMAT, text: serializeChordChart(next) } });
   };
 
-  // Paste lyrics → sections (chorus de-dup), append to the chart, jump to Edit
-  // to add chords. Non-destructive: existing sections stay.
-  const addLyrics = () => {
-    if (!lyricsText.trim()) return;
-    commitChart(appendLyrics(chart, lyricsText));
-    setLyricsText("");
-    setMode("edit");
+  // Persist lyric edits into the chart (preserving chords on unchanged lines),
+  // re-deriving the textarea when you open the Lyrics tab. Leaving the tab saves
+  // any pending edits, so lyrics and chords can be edited independently.
+  const goMode = (next: Mode) => {
+    if (mode === "lyrics" && next !== "lyrics" && lyricsText !== chartToLyricsText(chart)) {
+      commitChart(mergeLyricsIntoChart(chart, lyricsText));
+    }
+    if (next === "lyrics") setLyricsText(chartToLyricsText(chart));
+    setMode(next);
   };
 
   // Save the song's lyrics (chords stripped, refs expanded) as a markdown file.
@@ -92,7 +94,7 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
           {(["lyrics", "edit", "preview"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => goMode(m)}
               className={`px-3 py-1 capitalize ${
                 mode === m ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"
               }`}
@@ -128,7 +130,8 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
           <p className="mb-2 text-sm text-neutral-500">
             Paste a full set of lyrics. Section headers (Verse 1, Chorus, Bridge, [Tag]…) start a section; every
             other line is a lyric line. A repeated section name is recalled, not duplicated, so a chorus isn&apos;t
-            repeated &mdash; label it &ldquo;Chorus 2&rdquo; for a different one. Add to the song, then add chords in Edit.
+            repeated &mdash; label it &ldquo;Chorus 2&rdquo; for a different one. Edit lyrics here anytime; saving keeps
+            the chords you&apos;ve added on unchanged lines.
           </p>
           <textarea
             value={lyricsText}
@@ -138,11 +141,11 @@ export default function ChordCanvasClient({ itemId, initialTitle, initialBody }:
           />
           <div className="mt-2 flex justify-end">
             <button
-              onClick={addLyrics}
+              onClick={() => goMode("edit")}
               disabled={!lyricsText.trim()}
               className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110 disabled:opacity-40"
             >
-              Add to song
+              Save lyrics
             </button>
           </div>
         </div>

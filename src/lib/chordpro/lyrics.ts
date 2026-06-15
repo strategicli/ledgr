@@ -3,7 +3,7 @@
 // "Chorus", "[Bridge]", "Pre-Chorus:") start a new section; every other non-blank
 // line becomes a chord-less lyric line (one `{chord:null}` pair). Deterministic,
 // pure (no React/DB) so it's node-testable and runs the same in the client.
-import type { ChordChart, Section, SectionKind } from "@/lib/chordpro/types";
+import type { ChartLine, ChordChart, LyricLine, Section, SectionKind } from "@/lib/chordpro/types";
 
 const SECTION_KEYWORDS: { re: RegExp; kind: SectionKind }[] = [
   { re: /^pre[\s-]?chorus\b/i, kind: "prechorus" },
@@ -18,16 +18,17 @@ const SECTION_KEYWORDS: { re: RegExp; kind: SectionKind }[] = [
   { re: /^(refrain|hook)\b/i, kind: "chorus" },
 ];
 
-// A section header: a short line (strip [ ] wrapping + a trailing colon) that
-// starts with a known section word. Long lines are lyrics, never headers.
+// A section header: a short line that either is fully [bracketed] (always a
+// header, any label) or starts with a known section word. Long unbracketed lines
+// are lyrics. Labels normalize to uppercase for consistent styling ("[tag]" →
+// "TAG", "Chorus" → "CHORUS", "VERSE 1" stays "VERSE 1").
 function detectHeader(line: string): { label: string; kind: SectionKind } | null {
+  const bracketed = /^\[.+\]$/.test(line.trim());
   const cleaned = line.replace(/^\[/, "").replace(/\]$/, "").replace(/:\s*$/, "").trim();
   if (!cleaned || cleaned.length > 24) return null;
-  for (const { re, kind } of SECTION_KEYWORDS) {
-    // Normalize every label to uppercase so the styling is consistent (e.g.
-    // "[tag]" → "TAG", "Chorus" → "CHORUS", "VERSE 1" stays "VERSE 1").
-    if (re.test(cleaned)) return { label: cleaned.toUpperCase(), kind };
-  }
+  const kind = SECTION_KEYWORDS.find((k) => k.re.test(cleaned))?.kind;
+  if (kind) return { label: cleaned.toUpperCase(), kind };
+  if (bracketed) return { label: cleaned.toUpperCase(), kind: "other" }; // any [Label]
   return null;
 }
 
@@ -71,10 +72,62 @@ export function lyricsToSections(lyrics: string): Section[] {
   return sections;
 }
 
-// Append the pasted lyrics' sections to an existing chart (non-destructive), so
-// pasting adds to the song rather than wiping chords already entered.
-export function appendLyrics(chart: ChordChart, lyrics: string): ChordChart {
-  return { meta: chart.meta, sections: [...chart.sections, ...lyricsToSections(lyrics)] };
+const lyricTextOf = (l: LyricLine) => l.pairs.map((p) => p.text).join("");
+
+// The song's lyrics as editable plain text for the Lyrics tab — the same format
+// the user pastes. Each section is a header line (a known kind stays bare, e.g.
+// "CHORUS"; any other label is [bracketed] so it round-trips as a header) then
+// its lyric lines, sections blank-separated. Refs expand to the recalled words.
+export function chartToLyricsText(chart: ChordChart): string {
+  const linesFor = (s: Section) =>
+    s.ref
+      ? chart.sections.find((o) => !o.ref && o.label.trim().toLowerCase() === s.label.trim().toLowerCase())?.lines ?? []
+      : s.lines;
+  return chart.sections
+    .map((s) => {
+      const header = detectHeader(s.label) ? s.label : `[${s.label}]`;
+      const lyrics = linesFor(s)
+        .filter((l): l is LyricLine => l.kind === "lyric")
+        .map(lyricTextOf)
+        .join("\n");
+      return lyrics ? `${header}\n${lyrics}` : header;
+    })
+    .join("\n\n");
+}
+
+// Re-sync edited lyrics back into the chart WITHOUT losing chords: re-parse the
+// lyrics to sections, then for each section (matched to the old one by label)
+// restore each unchanged lyric line's chords (matched by exact text), leaving
+// edited/new lines chord-less. Old non-lyric lines (bars/comments) are carried
+// over. So lyrics and chords can be edited independently. For an empty chart this
+// is just the parsed lyrics (nothing to preserve).
+export function mergeLyricsIntoChart(chart: ChordChart, lyrics: string): ChordChart {
+  const parsed = lyricsToSections(lyrics);
+  const oldByLabel = new Map<string, Section[]>();
+  for (const s of chart.sections) {
+    const k = s.label.trim().toLowerCase();
+    (oldByLabel.get(k) ?? oldByLabel.set(k, []).get(k)!).push(s);
+  }
+  const sections = parsed.map((ns) => {
+    if (ns.ref) return ns;
+    const old = oldByLabel.get(ns.label.trim().toLowerCase())?.shift();
+    if (!old) return ns;
+    const oldLyrics = old.lines.filter((l): l is LyricLine => l.kind === "lyric");
+    const used = new Set<number>();
+    const lines: ChartLine[] = ns.lines.map((nl) => {
+      if (nl.kind !== "lyric") return nl;
+      const text = lyricTextOf(nl);
+      const i = oldLyrics.findIndex((ol, idx) => !used.has(idx) && lyricTextOf(ol) === text);
+      if (i >= 0) {
+        used.add(i);
+        return oldLyrics[i]; // unchanged line → keep its chords
+      }
+      return nl; // edited/new line → chord-less
+    });
+    const extras = old.lines.filter((l) => l.kind !== "lyric"); // bars/comments/keychange
+    return { ...ns, breakBefore: old.breakBefore, pageBreakBefore: old.pageBreakBefore, lines: [...lines, ...extras] };
+  });
+  return { meta: chart.meta, sections };
 }
 
 // Lyrics-only markdown of the song (chords stripped) — a savable plain-text

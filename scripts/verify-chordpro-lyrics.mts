@@ -1,6 +1,6 @@
 // Song module (v5) verification: pasted-lyrics → sections, chorus de-dup (ref),
 // and lyrics→markdown. Pure, no DB. Run: npx tsx scripts/verify-chordpro-lyrics.mts
-import { appendLyrics, chartToLyricsMarkdown, lyricsToSections } from "../src/lib/chordpro/lyrics";
+import { chartToLyricsMarkdown, chartToLyricsText, lyricsToSections, mergeLyricsIntoChart } from "../src/lib/chordpro/lyrics";
 import type { ChordChart } from "../src/lib/chordpro/types";
 
 let failures = 0;
@@ -52,10 +52,30 @@ check("[tag] header detected + uppercased to TAG", sections.find((s) => s.label 
 // kinds
 check("VERSE 1 kind=verse, CHORUS kind=chorus, BRIDGE kind=bridge", verse1.kind === "verse" && choruses[0].kind === "chorus" && sections.find((s) => s.label === "BRIDGE")?.kind === "bridge");
 
-// append to an existing chart is non-destructive
-const existing: ChordChart = { meta: { title: "Song" }, sections: [{ label: "INTRO", kind: "intro", ref: false, lines: [] }] };
-const merged = appendLyrics(existing, lyrics);
-check("appendLyrics keeps existing INTRO first", merged.sections[0].label === "INTRO" && merged.sections.length === 1 + sections.length);
+// merge preserves chords on unchanged lines, drops them on edited lines
+const withChords: ChordChart = {
+  meta: {},
+  sections: [
+    {
+      label: "VERSE 1",
+      kind: "verse",
+      ref: false,
+      lines: [
+        { kind: "lyric", pairs: [{ chord: "G", text: "Amazing grace" }] },
+        { kind: "lyric", pairs: [{ chord: "C", text: "how sweet the sound" }] },
+      ],
+    },
+  ],
+};
+const remerged = mergeLyricsIntoChart(withChords, "VERSE 1\nAmazing grace\nhow sweet the SOUND");
+const v1 = remerged.sections[0];
+check("merge keeps the unchanged line's chord", v1.lines[0].kind === "lyric" && v1.lines[0].pairs[0].chord === "G");
+check("merge drops chord on the edited line", v1.lines[1].kind === "lyric" && v1.lines[1].pairs[0].chord === null && v1.lines[1].pairs[0].text === "how sweet the SOUND");
+
+// chartToLyricsText round-trips through lyricsToSections
+const text = chartToLyricsText(withChords);
+check("chartToLyricsText shows header + words", text.includes("VERSE 1") && text.includes("Amazing grace"));
+check("round-trips to one section, 2 lines", lyricsToSections(text).length === 1 && lyricsToSections(text)[0].lines.length === 2);
 
 // lyrics markdown expands the ref chorus to the original's words
 const md = chartToLyricsMarkdown({ meta: { title: "Waiting for Heaven" }, sections });
