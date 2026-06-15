@@ -52,6 +52,8 @@ Recommendation: if the event-model generalization lands, Stage B (block = event 
 
 ## Getting blocks onto Brandon's real calendar: Todoist feed, not Graph write-back
 
+> **Contingent on keeping Todoist.** The recommendation below assumes direction (A) of `explorations/tasks-todoist-vs-native.md` (keep Todoist). If Brandon and Tyler decide to drop Todoist and make Ledgr the task manager, this external-calendar + notification path is replaced by the **Ledgr-published ICS calendar feed** described in that doc. The two explorations are one conversation.
+
 Brandon wants scheduled work to show on his actual calendar (the calendar app in the screenshot), and he floated a middle-ground: "maybe Ledgr publishes its own calendar I can toggle on/off in Outlook, like Todoist does now." Research (2026-06-15) shows that path is **already most of the way built**, and it does not need a Microsoft write scope.
 
 The notification/calendar-surfacing options:
