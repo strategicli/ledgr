@@ -3,3 +3,5 @@
 **Separate idea:** What version are we on? V0.5 or v.06? Just curious. It would be nice to have in mind what we are looking for to get this to 
 
 **Tyler · Jun 15 at 12:16 PM:** New UI changes to the menu. You should try them out. Look under more and then based on what type of menu you pick (top, left/right, bottom) you'll get more options for the look.
+
+**Tyler · Jun 15 at 4:26 PM:** UI updates added to Build! 
