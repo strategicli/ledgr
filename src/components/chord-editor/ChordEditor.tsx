@@ -86,7 +86,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           title="Add / edit chord here"
         >
           {chordAt.has(i) ? (
-            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(i)}</span>
+            <span className="px-0.5 text-[0.72rem] font-bold text-[var(--accent)]">{chordAt.get(i)}</span>
           ) : (
             <span className="text-[0.72rem] text-neutral-600 opacity-0 group-hover/ch:opacity-100">+</span>
           )}
@@ -106,7 +106,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           title="Chord before the line"
         >
           {leading.length ? (
-            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{leading[0].chord}</span>
+            <span className="px-0.5 text-[0.72rem] font-bold text-[var(--accent)]">{leading[0].chord}</span>
           ) : (
             <span className="text-[0.72rem] text-neutral-700">＋</span>
           )}
@@ -140,7 +140,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           title="Trailing chord"
         >
           {chordAt.has(end) ? (
-            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(end)}</span>
+            <span className="px-0.5 text-[0.72rem] font-bold text-[var(--accent)]">{chordAt.get(end)}</span>
           ) : (
             <span className="text-[0.72rem] text-neutral-700">＋</span>
           )}
