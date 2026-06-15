@@ -22,7 +22,6 @@ export type ViewItem = {
   urgency: string | null;
   meetingAt: Date | null;
   url: string | null;
-  kind: string | null;
   properties: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -115,7 +114,6 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
   type: "Type",
   status: "Status",
   urgency: "Urgency",
-  kind: "Kind",
   dueDate: "Due",
   meetingAt: "When",
   createdAt: "Created",
@@ -153,8 +151,6 @@ function columnText(item: ViewItem, col: ViewColumn): string {
       return item.status;
     case "urgency":
       return item.urgency ?? "";
-    case "kind":
-      return item.kind ?? "";
     case "url":
       return item.url ?? "";
     case "dueDate":

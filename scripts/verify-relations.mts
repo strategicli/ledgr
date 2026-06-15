@@ -58,8 +58,8 @@ try {
   check("related SQL selects no body", !/"body"|body_text/.test(qSql), qSql.slice(0, 120));
   check("related SQL filters deleted", qSql.includes("deleted_at"));
 
-  // 2. Fixture: entity E plus one item of each other type, linked all ways.
-  const E = await createItem(ownerId, { type: "entity", title: "Verify Entity", kind: "person" });
+  // 2. Fixture: person E plus one item of each other type, linked all ways.
+  const E = await createItem(ownerId, { type: "person", title: "Verify Person" });
   const T = await createItem(ownerId, { type: "task", title: "Verify Task" });
   const N = await createItem(ownerId, { type: "note", title: "Verify Note" });
   const L = await createItem(ownerId, { type: "link", title: "Verify Link", url: "https://example.com" });

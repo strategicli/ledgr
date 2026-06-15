@@ -4,7 +4,7 @@ import { ItemError } from "@/lib/items";
 import { promoteActionItem } from "@/lib/meetings/promote";
 
 // Promote a meeting action item into a task (slice 24, PRD §5.1). User-authed,
-// owner-scoped. The new task is related to the meeting and its entities.
+// owner-scoped. The new task is related to the meeting and its people.
 export const dynamic = "force-dynamic";
 
 export async function POST(

@@ -114,10 +114,10 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - Minor: a **strikethrough toolbar button** (Strike already round-trips via StarterKit; just no button).
 
 **Build-meeting decisions (2026-06-14 Brandon + Tyler) feeding Phase 3 + the post-foundation modules — tracked in `next_steps.md` "Build-meeting follow-ups":**
-- [ ] Per-property **"include in share?"** toggle; Share/Print renders the canvas + opted-in fields (ADR-057).
+- [ ] Per-property **"include in share?"** toggle; Share/Print renders the canvas + opted-in fields (ADR-058).
 - [ ] Quick Capture defaults to a **catch-all type**, not `task`.
-- [ ] **Notes module attachable to every type**; relations are the primary organizing principle (ADR-056). Post-foundation module work.
-- [ ] **Bible/passage relational DB + RefTagger auto-tagger** (ADR-055) — the keystone module; book→chapter→verse, verse atomic. Post-foundation module work.
+- [ ] **Notes module attachable to every type**; relations are the primary organizing principle (ADR-057). Post-foundation module work.
+- [ ] **Bible/passage relational DB + RefTagger auto-tagger** (ADR-056) — the keystone module; book→chapter→verse, verse atomic. Post-foundation module work.
 - Polish carried from the meeting (mouse click-drag canvas scroll, Songs lyrics paste-convert, Papers section drag-and-drop + page-count, highlight color everywhere, chord-width jitter) — see `next_steps.md`.
 
 ---

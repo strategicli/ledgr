@@ -21,7 +21,7 @@ function dayStart(value: string, nextDay = false): Date | null {
   );
 }
 
-// GET /api/search?q=&type=&entity=&from=&to=&limit= — owner-scoped FTS over
+// GET /api/search?q=&type=&person=&from=&to=&limit= — owner-scoped FTS over
 // titles and bodies; results are body-free list rows plus a snippet.
 export async function GET(request: Request) {
   const owner = await requireOwner();
@@ -33,15 +33,15 @@ export async function GET(request: Request) {
     if (!q) return NextResponse.json({ items: [] });
 
     const opts: SearchOptions = { type: params.get("type") ?? undefined };
-    const entity = params.get("entity");
-    if (entity) {
-      if (!UUID_RE.test(entity)) {
+    const person = params.get("person");
+    if (person) {
+      if (!UUID_RE.test(person)) {
         return NextResponse.json(
-          { error: "entity must be a UUID" },
+          { error: "person must be a UUID" },
           { status: 400 }
         );
       }
-      opts.entityId = entity;
+      opts.relatedTo = person;
     }
     for (const [param, key, nextDay] of [
       ["from", "from", false],

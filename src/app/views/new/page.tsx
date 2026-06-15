@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import ViewBuilder from "@/components/views/ViewBuilder";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
-import { listEntityOptions } from "@/lib/views";
+import { listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +13,8 @@ export default async function NewView() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [entities, types] = await Promise.all([
-    listEntityOptions(owner.id),
+  const [people, types] = await Promise.all([
+    listPersonOptions(owner.id),
     listTypes(),
   ]);
 
@@ -30,7 +30,7 @@ export default async function NewView() {
           </Link>
         </div>
         <ViewBuilder
-          entities={entities.map((e) => ({ id: e.id, title: e.title }))}
+          people={people.map((p) => ({ id: p.id, title: p.title }))}
           types={types.map((t) => ({
             key: t.key,
             label: t.label,

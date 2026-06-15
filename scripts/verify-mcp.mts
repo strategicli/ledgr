@@ -102,9 +102,8 @@ const itemsOf = (j: Json) => (j.items ?? []) as Json[];
 try {
   const dueStr = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 
-  const entity = await callJson(ownerId, "create_item", { type: "entity", title: `Roger Zentaur ${stamp}`, kind: "person" });
+  const entity = await callJson(ownerId, "create_item", { type: "person", title: `Roger Zentaur ${stamp}` });
   check("create_item returns an id", typeof entity.id === "string");
-  check("create_item set the entity kind", entity.kind === "person");
   check("create_item defaults inbox=false (filed, not captured)", entity.inbox === false);
 
   const task = await callJson(ownerId, "create_item", {
@@ -121,15 +120,15 @@ try {
 
   const got = await callJson(ownerId, "get_item", { id: task.id as string });
   check("get_item returns the markdown body verbatim", got.body === "Discuss the Zentaur **budget**.");
-  check("get_item lists the related entity as confirmed", (got.related as Json[]).some((r) => r.id === entity.id && r.matchState === "confirmed"));
+  check("get_item lists the related person as confirmed", (got.related as Json[]).some((r) => r.id === entity.id && r.matchState === "confirmed"));
 
   const search = await callJson(ownerId, "search_items", { query: "Zentaur" });
   check("search_items finds the items (FTS over title+body)", (search.count as number) >= 2 && itemsOf(search).some((i) => i.id === task.id));
-  const searchEntity = await callJson(ownerId, "search_items", { query: "Zentaur", type: "entity" });
-  check("search_items filters by type", itemsOf(searchEntity).length >= 1 && itemsOf(searchEntity).every((i) => i.type === "entity"));
+  const searchEntity = await callJson(ownerId, "search_items", { query: "Zentaur", type: "person" });
+  check("search_items filters by type", itemsOf(searchEntity).length >= 1 && itemsOf(searchEntity).every((i) => i.type === "person"));
 
-  const byEntity = await callJson(ownerId, "list_items", { type: "task", status: "open", entityId: entity.id as string });
-  check("list_items by entity returns the open task", itemsOf(byEntity).some((i) => i.id === task.id));
+  const byEntity = await callJson(ownerId, "list_items", { type: "task", status: "open", relatedTo: entity.id as string });
+  check("list_items by person returns the open task", itemsOf(byEntity).some((i) => i.id === task.id));
 
   const byWeek = await callJson(ownerId, "list_items", { type: "task", due: "week", dateField: "dueDate" });
   check("list_items due=week includes the +2d task", itemsOf(byWeek).some((i) => i.id === task.id));
@@ -138,11 +137,11 @@ try {
 
   const updated = await callJson(ownerId, "update_item", { id: task.id as string, status: "done" });
   check("update_item set status=done", updated.status === "done");
-  const stillOpen = await callJson(ownerId, "list_items", { type: "task", status: "open", entityId: entity.id as string });
+  const stillOpen = await callJson(ownerId, "list_items", { type: "task", status: "open", relatedTo: entity.id as string });
   check("list_items open no longer returns the done task", !itemsOf(stillOpen).some((i) => i.id === task.id));
 
   const typesOut = await callJson(ownerId, "list_types", {});
-  check("list_types lists the five system types", ["task", "meeting", "note", "link", "entity"].every((k) => (typesOut.types as Json[]).some((t) => t.key === k)));
+  check("list_types lists the five system types", ["task", "meeting", "note", "link", "person"].every((k) => (typesOut.types as Json[]).some((t) => t.key === k)));
 
   // Full transport path: a tools/call routed through the dispatcher.
   const dispatched = await handleMcpMessage({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "list_types", arguments: {} } }, ownerId);

@@ -142,9 +142,6 @@ export const items = pgTable(
     urgency: urgency("urgency"),
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
     url: text("url"),
-    // Entities only: person | org | project | topic | campus. Text rather
-    // than an enum so new kinds don't need a migration (ADR-003).
-    kind: text("kind"),
     // Untriaged flag (PRD §4.2 Inbox): set by arrival paths (quick capture
     // now; email-in/Todoist/share-target later), cleared by triage. A real
     // column, not a properties key: it is hot (nav badge counts it on every
@@ -170,12 +167,12 @@ export const items = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
     // Weighted FTS document (ADR-014): title (A) outranks body (B) outranks
-    // metadata (C: url + kind + custom property string values). URLs/kinds
-    // are split on punctuation so "youtube" matches a youtube.com link;
-    // status/urgency/dates stay out on purpose (they're filters, not prose).
+    // metadata (C: url + custom property string values). The URL is split on
+    // punctuation so "youtube" matches a youtube.com link; status/urgency/
+    // dates stay out on purpose (they're filters, not prose).
     search: tsvector("search").generatedAlwaysAs(
       (): SQL =>
-        sql`setweight(to_tsvector('english', coalesce(${items.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${items.bodyText}, '')), 'B') || setweight(to_tsvector('english', regexp_replace(coalesce(${items.url}, '') || ' ' || coalesce(${items.kind}, ''), '[^a-zA-Z0-9]+', ' ', 'g')), 'C') || setweight(jsonb_to_tsvector('english', coalesce(${items.properties}, '{}'::jsonb), '["string"]'), 'C')`
+        sql`setweight(to_tsvector('english', coalesce(${items.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${items.bodyText}, '')), 'B') || setweight(to_tsvector('english', regexp_replace(coalesce(${items.url}, ''), '[^a-zA-Z0-9]+', ' ', 'g')), 'C') || setweight(jsonb_to_tsvector('english', coalesce(${items.properties}, '{}'::jsonb), '["string"]'), 'C')`
     ),
   },
   (t) => [
@@ -194,9 +191,9 @@ export const items = pgTable(
   ]
 );
 
-// Unified tag + link system: one generic item-to-item edge table. Tags are
-// edges to entity items. suggested edges are provisional and excluded from
-// trusted queries until confirmed.
+// Unified tag + link system: one generic item-to-item edge table. Any item
+// can link to any item (e.g. tagging a task with a person). suggested edges
+// are provisional and excluded from trusted queries until confirmed.
 export const relations = pgTable(
   "relations",
   {

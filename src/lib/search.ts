@@ -2,7 +2,7 @@
 // generated tsvector (title + body_text, ADR-003), riding items_search_gin.
 // websearch_to_tsquery parses Google-ish syntax (words, "quoted phrases",
 // OR, -exclusions) and never throws on user input, so the raw query string
-// binds straight in. Filters: type, entity (confirmed relations, either
+// binds straight in. Filters: type, relatedTo (confirmed relations, either
 // direction), and an updated-at date window.
 import { and, desc, eq, gte, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -11,7 +11,7 @@ import { listColumns } from "@/lib/items";
 
 export type SearchOptions = {
   type?: string;
-  entityId?: string;
+  relatedTo?: string;
   // updated_at window: from inclusive, to exclusive (the route turns
   // calendar days into these instants in the app timezone).
   from?: Date;
@@ -39,12 +39,12 @@ export function searchItemsQuery(
     sql`${items.search} @@ ${query}`,
   ];
   if (opts.type) where.push(eq(items.type, opts.type));
-  if (opts.entityId) {
+  if (opts.relatedTo) {
     where.push(sql`exists (
       select 1 from relations r
       where r.match_state = 'confirmed'
-        and ((r.source_id = ${items.id} and r.target_id = ${opts.entityId})
-          or (r.target_id = ${items.id} and r.source_id = ${opts.entityId}))
+        and ((r.source_id = ${items.id} and r.target_id = ${opts.relatedTo})
+          or (r.target_id = ${items.id} and r.source_id = ${opts.relatedTo}))
     )`);
   }
   if (opts.from) where.push(gte(items.updatedAt, opts.from));

@@ -1,8 +1,10 @@
 # Exploration: entities vs. custom types — is the boundary right, or just confusing?
 
-**Status:** 🔍 **actively being resolved (raised again in the 6.14 Brandon + Tyler meeting; one of us is taking the investigate-and-report-back).** Not a decision yet. The posture is **ponder, discuss, and confirm** the model we want — the leaning is *keep entities as a bespoke type*, but the implementation may be confusing in ways worth clearing up before we commit. The meeting confirmed the confusion is real (Claude's terse rationale didn't fully land); the agreed next step is to settle the mental model and the `relation`-property-kind question (below) and report back. ADR-055 (the pre-built Bible/passage hub) interacts with this but does not wait on it.
+**Status:** ✅ **RESOLVED (2026-06-14, ADR-055 — Brandon + Tyler agreed; the 6.14 build meeting re-raised the confusion and Brandon closed it that evening).** The conclusion went the *other* way from this doc's original leaning: rather than keep `entity` as a bespoke type, we **retired the `entity` meta-type entirely**. It became a single bespoke **`person`** system type; the `kind` column was dropped (sub-classification is now a `select` property); the entity-only interactive view became universal (every item's `RelatedPanel` is now interactive); and the `entityId` filter was renamed `relatedTo`. The **`relation` property kind stays deferred** — this doc's key finding held: it was *not* required to remove `entity`. See ADR-055 for the full decision and scope. The analysis below is kept as the record of how we got there.
 
-> **Meeting note (2026-06-14):** the live framing surfaced verbatim — entity pages and embedded views "key off `type == entity` rather than off a capability." The question to resolve: can a custom type simply declare a **`relation` property**, which would let entity shrink to its honest core (the type that ships with calendar-matching matchers + the `kind` vocabulary)? See the fork below — the meeting did not change the analysis, it re-tasked someone to close it.
+---
+
+_Original exploration (pre-decision), kept for the record:_
 
 ## The question that prompted this
 

@@ -123,7 +123,6 @@ function rowView(r: {
   type: string;
   title: string;
   status: string;
-  kind: string | null;
   urgency: string | null;
   dueDate: Date | null;
   meetingAt: Date | null;
@@ -139,7 +138,6 @@ function rowView(r: {
     type: r.type,
     title: r.title,
     status: r.status,
-    kind: r.kind,
     urgency: r.urgency,
     dueDate: r.dueDate,
     meetingAt: r.meetingAt,
@@ -192,15 +190,15 @@ const TOOLS: McpTool[] = [
     title: "Search items",
     description:
       "Full-text search across the owner's items (titles and bodies). Use this " +
-      "to find an item or an entity by words — e.g. find the 'Roger' person " +
-      "entity, or notes mentioning a topic. Returns matching items with a " +
-      "highlighted snippet. To then list everything related to an entity, pass " +
-      "its id as entityId to list_items.",
+      "to find an item or a person by words — e.g. find the 'Roger' person, " +
+      "or notes mentioning a topic. Returns matching items with a " +
+      "highlighted snippet. To then list everything related to a person, pass " +
+      "its id as relatedTo to list_items.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Search words (supports \"quoted phrases\", OR, -exclude)." },
-        type: { type: "string", description: "Optional: restrict to one type key (e.g. task, meeting, note, entity)." },
+        type: { type: "string", description: "Optional: restrict to one type key (e.g. task, meeting, note, person)." },
         limit: { type: "integer", description: "Max results (1–50, default 50).", minimum: 1, maximum: 50 },
       },
       required: ["query"],
@@ -222,19 +220,18 @@ const TOOLS: McpTool[] = [
     name: "list_items",
     title: "List items",
     description:
-      "List the owner's items with structured filters — by type, status, kind, " +
-      "due-date window, or related entity. This is the 'list by entity/date' " +
+      "List the owner's items with structured filters — by type, status, " +
+      "due-date window, or related item. This is the 'list by person/date' " +
       "tool: e.g. open tasks related to a person (type=task, status=open, " +
-      "entityId=<person>), or meetings in the next 7 days (type=meeting, " +
+      "relatedTo=<person>), or meetings in the next 7 days (type=meeting, " +
       "dateField=meetingAt, withinDays=7). Bodies are not included; open an item " +
       "with get_item for its body.",
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", description: "Type key (e.g. task, meeting, note, link, entity, or a custom type)." },
+        type: { type: "string", description: "Type key (e.g. task, meeting, note, link, person, or a custom type)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Item status filter." },
-        kind: { type: "string", description: "Entity kind filter (person, org, project, …)." },
-        entityId: { type: "string", description: "Only items with a confirmed relation to this entity id (either direction)." },
+        relatedTo: { type: "string", description: "Only items with a confirmed relation to this item id (either direction)." },
         due: { type: "string", enum: [...DUE_WINDOWS], description: "Date window: overdue | today | week | none (no date)." },
         withinDays: { type: "integer", description: "Items dated today through N days out (1–366). Wins over `due`.", minimum: 1, maximum: 366 },
         dateField: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date `due`/`withinDays` apply to (default dueDate; use meetingAt for meetings)." },
@@ -251,10 +248,8 @@ const TOOLS: McpTool[] = [
       if (type) filter.type = type;
       const status = optEnum(args, "status", ITEM_STATUSES);
       if (status) filter.status = status;
-      const kind = optString(args, "kind");
-      if (kind) filter.kind = kind;
-      const entityId = args.entityId != null ? asUuid(args.entityId, "entityId") : undefined;
-      if (entityId) filter.entityId = entityId;
+      const relatedTo = args.relatedTo != null ? asUuid(args.relatedTo, "relatedTo") : undefined;
+      if (relatedTo) filter.relatedTo = relatedTo;
       const dateField = optEnum<DateProperty>(args, "dateField", DATE_PROPERTIES);
       if (dateField) filter.dateField = dateField;
       const due = optEnum<DueWindow>(args, "due", DUE_WINDOWS);
@@ -279,7 +274,7 @@ const TOOLS: McpTool[] = [
     description:
       "Read one item in full by id: its fields, its markdown body, and its " +
       "related items (the relations graph — backlinks, mentions, tagged " +
-      "entities, with each edge's role and whether it's confirmed or only " +
+      "people, with each edge's role and whether it's confirmed or only " +
       "suggested). Use after search_items/list_items to read an item's contents.",
     inputSchema: {
       type: "object",
@@ -316,13 +311,13 @@ const TOOLS: McpTool[] = [
       "Create a new item of a given type. Common uses: 'file this as a task due " +
       "Friday' (type=task, title, dueDate), or capture a note. Body is markdown " +
       "(bodyMarkdown). Use relateTo to link the new item to existing items by id " +
-      "(e.g. relate a task to a person entity). Items default to filed (not in " +
+      "(e.g. relate a task to a person). Items default to filed (not in " +
       "the inbox); set inbox=true to capture for later triage. Call list_types " +
       "first if unsure which type or custom properties exist.",
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", description: "Type key (task, meeting, note, link, entity, or a custom type — see list_types)." },
+        type: { type: "string", description: "Type key (task, meeting, note, link, person, or a custom type — see list_types)." },
         title: { type: "string", description: "Item title." },
         bodyMarkdown: { type: "string", description: "Body as markdown." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
@@ -330,7 +325,6 @@ const TOOLS: McpTool[] = [
         meetingAt: { type: "string", description: "Meeting time, ISO 8601 date-time. Meetings only." },
         urgency: { type: "string", enum: [...URGENCIES], description: "Urgency (tasks)." },
         url: { type: "string", description: "URL (links)." },
-        kind: { type: "string", description: "Entity kind (person, org, …) for entity items." },
         properties: { type: "object", description: "Custom property values keyed by the type's property keys (see list_types)." },
         inbox: { type: "boolean", description: "true = capture into the inbox for later triage; default false (filed)." },
         relateTo: { type: "array", items: { type: "string" }, description: "Item ids to relate this new item to (confirmed edges)." },
@@ -369,7 +363,6 @@ const TOOLS: McpTool[] = [
         meetingAt: { type: "string", description: "New meeting time (ISO 8601), or null to clear." },
         urgency: { type: "string", enum: [...URGENCIES], description: "New urgency, or null to clear." },
         url: { type: "string", description: "New URL, or null to clear." },
-        kind: { type: "string", description: "New entity kind, or null to clear." },
         properties: { type: "object", description: "Custom property values to set (replaces the properties object)." },
         inbox: { type: "boolean", description: "Move into (true) or out of (false) the inbox." },
       },
@@ -389,7 +382,7 @@ const TOOLS: McpTool[] = [
     title: "List types",
     description:
       "List every item type in this Ledgr (the five system types — task, " +
-      "meeting, note, link, entity — plus any custom types) with each type's " +
+      "meeting, note, link, person — plus any custom types) with each type's " +
       "custom properties (key, label, kind, and select options). Call this " +
       "before create_item/list_items when you need the exact type key or the " +
       "property keys to set.",

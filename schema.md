@@ -28,7 +28,7 @@ Extensible type registry. `items.type` is a FK to `types.key`. Five system rows 
 
 | Field | Type | Notes |
 |---|---|---|
-| `key` | text PK | stable key: `task`, `meeting`, `note`, `link`, `entity`, then user keys. **Immutable** (PK + FK target; the builder never lets it change). Slug-shaped: `^[a-z][a-z0-9_]*$` |
+| `key` | text PK | stable key: `task`, `meeting`, `note`, `link`, `person`, then user keys. **Immutable** (PK + FK target; the builder never lets it change). Slug-shaped: `^[a-z][a-z0-9_]*$` |
 | `label` | text | display name |
 | `icon` | text | optional icon name |
 | `is_system` | boolean | true for the five built-ins; code keys bespoke behavior off system keys. System types are extendable in the builder but never deletable |
@@ -37,7 +37,9 @@ Extensible type registry. `items.type` is a FK to `types.key`. Five system rows 
 | `default_view_id` | uuid | FK to `views.id`, nullable |
 | `created_at` | timestamptz | |
 
-Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system = true`. Deleting a user type is blocked while any item references it (the FK, plus a counted pre-check in the store).
+Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `person`, all `is_system = true`. Deleting a user type is blocked while any item references it (the FK, plus a counted pre-check in the store).
+
+> **`person` replaced `entity` (ADR-055).** The former `entity` meta-type — a single type subdivided by a `kind` column into person/org/project/topic/campus — was retired once the Build surface let any type carry its own properties and relate freely. `person` is now just a bespoke system type like the others (calendar attendee matching points at it); org/project/topic/campus are no longer built in (create them as types if needed). The `items.kind` column was dropped with it.
 
 ---
 
@@ -56,7 +58,6 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `urgency` | enum | `low` \| `normal` \| `high` \| `critical`; nullable |
 | `meeting_at` | timestamptz | meetings only |
 | `url` | text | links only; original web address |
-| `kind` | text | entities only: `person` \| `org` \| `project` \| `topic` \| `campus` |
 | `inbox` | boolean | not null, default false; untriaged flag (PRD §4.2 Inbox). Arrival paths (quick capture; later email-in/Todoist/share-target) set it, triage clears it |
 | `todoist_id` | text | nullable; set when synced to Todoist |
 | `ms_event_id` | text | nullable; set when created from a calendar event (dedupe key) |
@@ -69,8 +70,7 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `entity`, all `is_system
 | `updated_at` | timestamptz | |
 
 Notes:
-- `kind` is a real column (decided at build, ADR-003): a hot filterable field, plain text rather than an enum so new kinds need no migration. The PRD describes it as "a `kind` field on entity items."
-- Entities are items with `type = 'entity'`. They have bodies, so "Roger" can hold notes about Roger.
+- People are items with `type = 'person'`. They have bodies, so "Roger" can hold notes about Roger, and relate to his meetings/tasks/prayer through the `relations` table. (Sub-classifying people — staff/volunteer — is a `select` property on the type, not a built-in column; the former `kind` column was dropped with the entity type, ADR-055.)
 
 ### Hierarchy (parent/child)
 - Single parent: an item has at most one `parent_id` (its container).
@@ -82,13 +82,13 @@ Notes:
 ---
 
 ## `relations` (the unified tag + link system)
-A single generic page-to-page edge table. Tags are edges to entity items; item-to-item references use the same table.
+A single generic page-to-page edge table with no type restriction: any item links to any item. Tagging a task with a person is an edge; item-to-item references use the same table.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | |
 | `source_id` | uuid | FK `items.id`; edge start |
-| `target_id` | uuid | FK `items.id`; edge end (often an entity, but any item is valid) |
+| `target_id` | uuid | FK `items.id`; edge end (often a person, but any item is valid) |
 | `role` | text | default `'related'`; optional label: `tagged`, `attendee`, `references`, ... |
 | `match_state` | enum | `confirmed` \| `suggested`; default `confirmed` |
 | | | **unique (`source_id`, `target_id`, `role`)** |
@@ -221,9 +221,9 @@ No silent failures. Failed crons/webhooks captured here and surfaced through `/h
 ---
 
 ## Property kinds (for `types.property_schema` and `items.properties`)
-A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):** `text`, `number`, `date`, `checkbox`, `url`, `select`, `multi_select` (the last two carry an `options: string[]`). `property_schema` is an **ordered array** of `{key, label, kind, options?}` (`key` is a stable slug, immutable once created, so renaming a label never orphans `items.properties` values). **`relation` is deferred** in the builder — item-to-item links already have the `@`-mention + Related panel, so a relation "property" would duplicate that surface (it can be added later if a distinct use appears). **The `relation` kind is the gating question being actively resolved** (`explorations/entity-vs-custom-type.md`, reaffirmed in the 6.14 meeting): if a custom type could declare a relation property, the entity-only affordances (entity pages, embedded views) could generalize to any opted-in type. The pre-built Bible/passage hub (ADR-055) is its first real use. Formulas and rollups are out of scope (parking lot), except the deterministic subtask progress rollup.
+A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):** `text`, `number`, `date`, `checkbox`, `url`, `select`, `multi_select` (the last two carry an `options: string[]`). `property_schema` is an **ordered array** of `{key, label, kind, options?}` (`key` is a stable slug, immutable once created, so renaming a label never orphans `items.properties` values). **`relation` is deferred** in the builder — item-to-item links already have the `@`-mention + Related panel, so a relation "property" would duplicate that surface (it can be added later if a distinct use appears). **ADR-055 confirmed the `relation` kind was *not* needed to retire the `entity` meta-type** — the universal interactive `RelatedPanel` and the type-agnostic `relations` table cover the critical needs — so it stays deferred. It lands later for *typed* relation fields (a Meeting's "Attendees", `@`-relate-at-capture). The pre-built Bible/passage hub (ADR-056) is built on plain item-to-item relations, not this kind. Formulas and rollups are out of scope (parking lot), except the deterministic subtask progress rollup.
 
-**`include_in_share` (forthcoming, ADR-057):** a per-`PropertyDef` flag deciding whether a property is exposed when an item is shared/printed — Share/Print renders the canvas plus the opted-in fields. Mirrors the type-level `show_in_quick_capture` toggle but lives on the property. Per-type default field sets are decided type by type.
+**`include_in_share` (forthcoming, ADR-058):** a per-`PropertyDef` flag deciding whether a property is exposed when an item is shared/printed — Share/Print renders the canvas plus the opted-in fields. Mirrors the type-level `show_in_quick_capture` toggle but lives on the property. Per-type default field sets are decided type by type.
 
 ---
 
@@ -231,18 +231,18 @@ A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):*
 - B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`; partial on `items.owner_id where inbox and deleted_at is null` (nav badge count + Inbox view).
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
-- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url + kind (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained: it strips markdown syntax from `body.text`. Generating the tsvector straight from the raw `body` jsonb would index structural noise, ADR-003; with markdown canonical the extraction is a light strip rather than a JSON walk.)
+- FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained: it strips markdown syntax from `body.text`. Generating the tsvector straight from the raw `body` jsonb would index structural noise, ADR-003; with markdown canonical the extraction is a light strip rather than a JSON walk.)
 - B-tree on `push_subscriptions.owner_id` and `share_tokens.owner_id`/`share_tokens.item_id` (slices 30/31); `endpoint` and `token` are unique constraints.
 - Composite indexes as query patterns prove them out; log additions in `decisions.md`.
 
 ## Phase 2+ structures, noted ahead (don't build in Phase 1)
 - **Dashboard widgets (PRD §4.11):** a widget references a `views` row plus per-widget config (item count N, position, badge on/off). Likely a small `widgets` table (owner_id, view_id, position, item_count, show_badge) or a JSONB layout doc per user; decide at Phase 2 and log it.
 - **Navigation slots (PRD §4.12):** 4-5 ordered slots per user (target view/type/item, badge source). Small enough to be a JSONB config on `users` or a tiny `nav_slots` table; decide at Phase 2.
-- **Bible/passage relational structure (ADR-055, 2026-06-14 meeting; post-foundation module):** the canon pre-built as a relational structure — **book → chapter → verse, verse atomic**. Any item relates to one or more verses via the existing `relations` table (no new edge mechanism); a passage range links each verse in the range. A deterministic RefTagger-style auto-tagger (cron, no model) wires references in many surface forms. Modeled as the `passage` entity/structure anticipated by `explorations/scripture-passages-as-entities.md`; the exact row shape (one row per verse + chapter/book containers) is decided at build, but the relations + FTS reuse is the point. Touches core invariants (relations/search), so it's both-agree + ADR (done: ADR-055); the build itself is module-level.
-- **Per-owner settings/profile store (cross-cutting; partly shipped):** the V5 UI work added owner settings (accent/highlight color, trash retention; migration 0012). The Papers "enter author/school once" (next_steps P2) and any future per-user module config (paragraph-titles on/off, etc.) want the same store. Consolidate on one settings surface rather than per-feature columns; the author-name piece is core-adjacent (flag for an ADR when the profile surface is formalized).
+- **Bible/passage relational structure (ADR-056, 2026-06-14 meeting; post-foundation module):** the canon pre-built as a relational structure — **book → chapter → verse, verse atomic**. Any item relates to one or more verses via the existing `relations` table (no new edge mechanism); a passage range links each verse in the range. A deterministic RefTagger-style auto-tagger (cron, no model) wires references in many surface forms. Modeled as a **bespoke `passage` type** (a verse is an item of that type), **not** as a `kind` of a generic entity — the `entity` meta-type and `kind` column were retired in ADR-055, so the old "passage as an `entity.kind`" framing in `explorations/scripture-passages-as-entities.md` is superseded. The exact row shape (one row per verse + chapter/book containers) is decided at build, but the relations + FTS reuse is the point. Touches core invariants (relations/search), so it's both-agree + ADR (done: ADR-056); the build itself is module-level.
+- **Per-owner settings/profile store (cross-cutting; mostly shipped, ADR-053):** the V5 UI work added a `users.settings` jsonb (accent/highlight color, trash retention, nav position; migration 0012, ADR-053). The Papers "enter author/school once" (next_steps P2) and any future per-user module config (paragraph-titles on/off, etc.) want the same store. Consolidate on that one settings blob rather than per-feature columns; the author-name piece is core-adjacent (flag for an ADR when the profile surface is formalized).
 - **Meeting AI (PRD §4.15):** needs no new tables. Audio is an `attachments` row; transcript/summary are sections in the meeting `body`; suggested tasks are task items related to the meeting with `match_state = 'suggested'`.
 
 ## Known schema-adjacent gaps (track, don't block)
-- ~~Custom property values aren't full-text searched~~ resolved 2026-06-12: `properties` string values, link URLs, and entity kinds joined the FTS document at weight `C` (ADR-014, migration 0002).
+- ~~Custom property values aren't full-text searched~~ resolved 2026-06-12: `properties` string values and link URLs joined the FTS document at weight `C` (ADR-014, migration 0002). The entity-kind term was dropped from the document when the column was removed (ADR-055, migration 0013).
 - **Embedded query-view blocks have no faithful markdown form.** They export as a static snapshot/placeholder, not a live view (fine for the pulpit fallback since sermons are prose).
-- ~~Entity `kind` placement~~ resolved: column on `items` (ADR-003).
+- ~~Entity `kind` placement~~ resolved: column on `items` (ADR-003); later removed with the entity type (ADR-055) — sub-classification is now a `select` property on a type.

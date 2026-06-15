@@ -7,7 +7,7 @@ import ViewBuilder from "@/components/views/ViewBuilder";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
-import { getView, listEntityOptions } from "@/lib/views";
+import { getView, listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +27,8 @@ export default async function EditView({ params }: Context) {
   }
   if (view.isSystem) redirect(`/views/${view.id}`);
 
-  const [entities, types] = await Promise.all([
-    listEntityOptions(owner.id),
+  const [people, types] = await Promise.all([
+    listPersonOptions(owner.id),
     listTypes(),
   ]);
 
@@ -48,7 +48,7 @@ export default async function EditView({ params }: Context) {
         </div>
         <ViewBuilder
           initial={view}
-          entities={entities.map((e) => ({ id: e.id, title: e.title }))}
+          people={people.map((p) => ({ id: p.id, title: p.title }))}
           types={types.map((t) => ({
             key: t.key,
             label: t.label,

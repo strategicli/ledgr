@@ -2,7 +2,7 @@
 // owner-scoped, body-free rows (slice 28/29). Powers interactive embedded
 // views and dashboard widgets, which need to refetch after an inline edit
 // without a full page load. Static segment, so it wins over /api/items/[id].
-// Params: ?type= &status= &urgency= &due= &kind= &entityId= &sort= &dir= &limit=
+// Params: ?type= &status= &urgency= &due= &relatedTo= &sort= &dir= &limit=
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import {
@@ -27,8 +27,7 @@ export async function GET(request: Request) {
       "status",
       "urgency",
       "due",
-      "kind",
-      "entityId",
+      "relatedTo",
       "dateField",
       "withinDays",
     ]) {

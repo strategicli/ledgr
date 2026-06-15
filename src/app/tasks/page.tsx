@@ -1,6 +1,6 @@
 // Tasks list (PRD §4.2): filterable by status, urgency, due window, and
-// entity. The URL carries the filter (FilterBar contract); absent status
-// means open, the daily-driver default. Sorted by due date, undated last.
+// related person. The URL carries the filter (FilterBar contract); absent
+// status means open, the daily-driver default. Sorted by due date, undated last.
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import FilterBar, { type FilterSelect } from "@/components/lists/FilterBar";
@@ -18,7 +18,7 @@ import { resolveOwner } from "@/lib/owner";
 import { todayBounds } from "@/lib/today";
 import {
   DUE_WINDOWS,
-  listEntityOptions,
+  listPersonOptions,
   queryViewItems,
   type DueWindow,
   type ViewFilter,
@@ -104,12 +104,12 @@ export default async function Tasks({
   }
   const due = param("due");
   if (DUE_WINDOWS.includes(due as DueWindow)) filter.due = due as DueWindow;
-  const entity = param("entity");
-  if (entity && UUID_RE.test(entity)) filter.entityId = entity;
+  const person = param("person");
+  if (person && UUID_RE.test(person)) filter.relatedTo = person;
 
-  const [tasks, entities] = await Promise.all([
+  const [tasks, people] = await Promise.all([
     queryViewItems(owner.id, filter, { field: "dueDate", dir: "asc" }),
-    listEntityOptions(owner.id),
+    listPersonOptions(owner.id),
   ]);
   const { dueToday } = todayBounds();
 
@@ -143,13 +143,13 @@ export default async function Tasks({
       ],
     },
     {
-      param: "entity",
-      label: "Entity",
+      param: "person",
+      label: "Person",
       options: [
         { value: "", label: "any" },
-        ...entities.map((e) => ({
-          value: e.id,
-          label: e.title || "Untitled",
+        ...people.map((p) => ({
+          value: p.id,
+          label: p.title || "Untitled",
         })),
       ],
     },

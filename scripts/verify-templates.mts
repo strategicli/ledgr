@@ -160,8 +160,8 @@ try {
   check("apply of an empty template still makes a typed item", blankish.type === typeKey && blankish.body == null);
 
   // --- relation defaults: apply pre-relates the listed items ---
-  const alice = await createItem(owner.id, { type: "entity", title: "Alice", kind: "person" });
-  const bob = await createItem(owner.id, { type: "entity", title: "Bob", kind: "person" });
+  const alice = await createItem(owner.id, { type: "person", title: "Alice" });
+  const bob = await createItem(owner.id, { type: "person", title: "Bob" });
   const ghost = "33333333-3333-3333-3333-333333333333"; // valid uuid, no such item
   const tRel = await createTemplate(owner.id, {
     type: typeKey,
@@ -187,7 +187,7 @@ try {
   check("apply skipped the stale target, item still created", !relatedIds.includes(ghost) && meetingItem.type === typeKey);
 
   // a foreign target can't be related through a template (owner-scoping holds)
-  const otherEntity = await createItem(other.id, { type: "entity", title: "Carol", kind: "person" });
+  const otherEntity = await createItem(other.id, { type: "person", title: "Carol" });
   const tForeign = await createTemplate(owner.id, {
     type: typeKey,
     name: "Cross-owner",

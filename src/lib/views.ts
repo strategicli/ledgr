@@ -22,7 +22,6 @@ export type ViewFilter = {
   type?: string;
   status?: ItemStatus;
   urgency?: Urgency;
-  kind?: string;
   // Which date the window applies to (default "dueDate"). "meetingAt" lets a
   // meeting view filter by its "When"; due-date semantics are UTC-midnight
   // calendar days, the timestamp fields use real timezone midnights.
@@ -31,10 +30,10 @@ export type ViewFilter = {
   // Range window: today through today + N days (exclusive). Wins over `due`
   // when both are set. Powers "meetings in the next N days".
   withinDays?: number;
-  // Related-to filter (tasks by entity, PRD §4.2): confirmed relations
-  // edges only, either direction. Suggested edges are provisional and stay
-  // out of trusted queries (PRD §3.3).
-  entityId?: string;
+  // Related-to filter (e.g. tasks related to a person, PRD §4.2): confirmed
+  // relations edges only, either direction. Suggested edges are provisional
+  // and stay out of trusted queries (PRD §3.3).
+  relatedTo?: string;
 };
 
 export const SORT_FIELDS = [
@@ -65,7 +64,6 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
   if (filter.type) where.push(eq(items.type, filter.type));
   if (filter.status) where.push(eq(items.status, filter.status));
   if (filter.urgency) where.push(eq(items.urgency, filter.urgency));
-  if (filter.kind) where.push(eq(items.kind, filter.kind));
 
   if (filter.due || filter.withinDays != null) {
     const field = filter.dateField ?? "dueDate";
@@ -97,12 +95,12 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
     } else if (filter.due === "none") where.push(isNull(col));
   }
 
-  if (filter.entityId) {
+  if (filter.relatedTo) {
     where.push(sql`exists (
       select 1 from relations r
       where r.match_state = 'confirmed'
-        and ((r.source_id = ${items.id} and r.target_id = ${filter.entityId})
-          or (r.target_id = ${items.id} and r.source_id = ${filter.entityId}))
+        and ((r.source_id = ${items.id} and r.target_id = ${filter.relatedTo})
+          or (r.target_id = ${items.id} and r.source_id = ${filter.relatedTo}))
     )`);
   }
   return where;
@@ -166,7 +164,7 @@ export const VIEW_LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as 
 export type ViewLayout = (typeof VIEW_LAYOUTS)[number];
 
 // Fields a board/agenda can group rows by. due buckets reuse DUE_WINDOWS.
-export const GROUP_FIELDS = ["status", "urgency", "kind", "type", "due"] as const;
+export const GROUP_FIELDS = ["status", "urgency", "type", "due"] as const;
 export type GroupField = (typeof GROUP_FIELDS)[number];
 // A board groups by a built-in field, or by a custom select/multi_select
 // property (a workflow's "Stage", slice 35) named by its property_schema key.
@@ -185,7 +183,6 @@ export const COLUMN_FIELDS = [
   "type",
   "status",
   "urgency",
-  "kind",
   "dueDate",
   "meetingAt",
   "createdAt",
@@ -241,7 +238,6 @@ export function parseViewFilter(raw: unknown): ViewFilter {
   const r = raw as Record<string, unknown>;
   const out: ViewFilter = {};
   if (r.type != null) out.type = String(r.type);
-  if (r.kind != null) out.kind = String(r.kind);
   if (r.status != null) {
     if (!ITEM_STATUSES.includes(r.status as ItemStatus)) bad("filter.status invalid");
     out.status = r.status as ItemStatus;
@@ -267,9 +263,9 @@ export function parseViewFilter(raw: unknown): ViewFilter {
     }
     out.withinDays = n;
   }
-  if (r.entityId != null) {
-    if (!UUID_RE.test(String(r.entityId))) bad("filter.entityId must be a UUID");
-    out.entityId = String(r.entityId);
+  if (r.relatedTo != null) {
+    if (!UUID_RE.test(String(r.relatedTo))) bad("filter.relatedTo must be a UUID");
+    out.relatedTo = String(r.relatedTo);
   }
   return out;
 }
@@ -509,16 +505,16 @@ export async function setDashboardOrder(
   );
 }
 
-// Options for the entity filter selects (tasks list, search): live
-// entities, title order. Body-free by construction.
-export async function listEntityOptions(ownerId: string) {
+// Options for the person filter selects (tasks list, search, templates): live
+// people, title order. Body-free by construction.
+export async function listPersonOptions(ownerId: string) {
   return getDb()
-    .select({ id: items.id, title: items.title, kind: items.kind })
+    .select({ id: items.id, title: items.title })
     .from(items)
     .where(
       and(
         eq(items.ownerId, ownerId),
-        eq(items.type, "entity"),
+        eq(items.type, "person"),
         isNull(items.deletedAt)
       )
     )

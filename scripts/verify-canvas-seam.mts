@@ -23,7 +23,7 @@ function check(name: string, ok: boolean, detail = "") {
 check("the default canvas id is 'markdown'", DEFAULT_CANVAS === "markdown");
 check("link resolves to its own canvas", canvasIdForType("link") === "link");
 check("link is not the default", canvasIdForType("link") !== DEFAULT_CANVAS);
-for (const t of ["note", "task", "meeting", "entity"]) {
+for (const t of ["note", "task", "meeting", "person"]) {
   check(`${t} falls back to the default canvas`, canvasIdForType(t) === DEFAULT_CANVAS);
 }
 check("an unregistered module type falls back to the default", canvasIdForType("song") === DEFAULT_CANVAS);
@@ -40,7 +40,6 @@ const note = {
   urgency: null,
   meetingAt: null,
   url: null,
-  kind: null,
   createdAt: t0,
   updatedAt: t0,
 };
@@ -73,11 +72,9 @@ check(
 const noteWithUrl = { ...note, url: "https://example.com" };
 check("a note's URL surfaces in the footer (not in its strip)", labels(noteWithUrl).includes("URL"));
 
-// link/entity keep their distinguishing field in the strip, not the footer.
+// link keeps its distinguishing field in the strip, not the footer.
 const link = { ...note, type: "link", url: "https://example.com" };
 check("a link's URL lives in the strip, not the footer", !labels(link).includes("URL"), labels(link).join(","));
-const entity = { ...note, type: "entity", kind: "person" };
-check("an entity's Kind lives in the strip, not the footer", !labels(entity).includes("Kind"), labels(entity).join(","));
 
 check(
   "Type is always first, Created/Updated always last",

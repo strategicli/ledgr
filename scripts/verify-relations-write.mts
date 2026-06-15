@@ -67,7 +67,7 @@ async function edgesBetween(a: string, b: string) {
 }
 
 try {
-  const E = await createItem(ownerId, { type: "entity", title: "WriteVerify Entity", kind: "person" });
+  const E = await createItem(ownerId, { type: "person", title: "WriteVerify Person" });
   const T = await createItem(ownerId, { type: "task", title: "WriteVerify Task" });
   const N = await createItem(ownerId, { type: "note", title: "WriteVerify Note" });
   created.push(E.id, T.id, N.id);
@@ -78,7 +78,7 @@ try {
   check("relate defaults to role 'related'", edge.role === "related");
   check("relate defaults to confirmed", edge.matchState === "confirmed");
   const listed = await listRelatedItems(ownerId, E.id);
-  check("related item lists on the entity", listed.some((r) => r.id === T.id));
+  check("related item lists on the person", listed.some((r) => r.id === T.id));
 
   // 2. Idempotent: relating again leaves exactly one row.
   await relateItems(ownerId, T.id, E.id);

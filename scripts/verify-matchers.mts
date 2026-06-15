@@ -55,8 +55,8 @@ const [tempUser] = await db
   .returning({ id: users.id });
 const ownerId = tempUser.id;
 
-const mkEntity = async (title: string, kind: string) =>
-  (await db.insert(items).values({ ownerId, type: "entity", title, kind }).returning({ id: items.id }))[0].id;
+const mkPerson = async (title: string) =>
+  (await db.insert(items).values({ ownerId, type: "person", title }).returning({ id: items.id }))[0].id;
 
 const relState = async (sourceId: string, targetId: string) =>
   (
@@ -67,9 +67,9 @@ const relState = async (sourceId: string, targetId: string) =>
   )[0]?.matchState ?? null;
 
 try {
-  const roger = await mkEntity("Roger", "person");
-  const staff = await mkEntity("Staff Team", "org");
-  const vision = await mkEntity("Vision", "project");
+  const roger = await mkPerson("Roger");
+  const staff = await mkPerson("Staff Team");
+  const vision = await mkPerson("Vision");
 
   // --- save-time validation -----------------------------------------------
   let rejectedBadRegex = false;

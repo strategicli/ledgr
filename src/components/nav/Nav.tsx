@@ -10,7 +10,6 @@ import { countInbox } from "@/lib/items";
 import { NAV_SLOTS, type BadgeSource } from "@/lib/nav";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
-import { distinctEntityKinds } from "@/lib/types";
 import { compareTypeKeys } from "@/lib/type-order";
 
 export default async function Nav() {
@@ -20,13 +19,12 @@ export default async function Nav() {
   // Quick-capture types are data-driven and opt-in (type-and-kind-ux §2): only
   // types flagged show_in_quick_capture appear, so a custom type can be
   // captured into and a "data only" one can stay out of the dropdown.
-  const [inboxCount, typeRows, entityKinds, settings] = await Promise.all([
+  const [inboxCount, typeRows, settings] = await Promise.all([
     countInbox(owner.id),
     getDb()
       .select({ key: types.key, label: types.label })
       .from(types)
       .where(eq(types.showInQuickCapture, true)),
-    distinctEntityKinds(owner.id),
     getSettings(owner.id),
   ]);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
@@ -45,7 +43,6 @@ export default async function Nav() {
     <NavShell
       slots={slots}
       typeOptions={typeRows}
-      entityKinds={entityKinds}
       navPosition={settings.navPosition}
     />
   );

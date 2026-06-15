@@ -71,7 +71,7 @@ type ItemRow = typeof items.$inferSelect;
 
 function buildFrontmatter(
   item: ItemRow,
-  entities: string[],
+  people: string[],
   attachmentPaths: string[]
 ): string {
   const lines: string[] = ["---"];
@@ -85,22 +85,21 @@ function buildFrontmatter(
   // Status is a task field (ADR-018); "status: open" on every note would be
   // frontmatter noise. Archived non-tasks still land under /_archive/.
   if (item.type === "task") add("status", item.status);
-  add("kind", item.kind);
   add("url", item.url);
   add("due", item.dueDate?.toISOString());
   add("meeting_at", item.meetingAt?.toISOString());
   add("created", item.createdAt.toISOString());
   add("updated", item.updatedAt.toISOString());
-  add("entities", entities);
+  add("people", people);
   add("attachments", attachmentPaths);
   if (item.deletedAt) add("deleted", true);
   lines.push("---");
   return lines.join("\n");
 }
 
-// Confirmed entity edges in both directions (suggested edges stay out of
-// trusted reads, PRD §3.3); titles only, for the frontmatter.
-async function listEntityTitles(
+// Confirmed related-person edges in both directions (suggested edges stay out
+// of trusted reads, PRD §3.3); titles only, for the frontmatter.
+async function listPersonTitles(
   ownerId: string,
   itemId: string
 ): Promise<string[]> {
@@ -111,7 +110,7 @@ async function listEntityTitles(
       on e.id = case when r.source_id = ${itemId} then r.target_id else r.source_id end
     where (r.source_id = ${itemId} or r.target_id = ${itemId})
       and r.match_state = 'confirmed'
-      and e.type = 'entity'
+      and e.type = 'person'
       and e.owner_id = ${ownerId}
       and e.deleted_at is null
     order by e.title
@@ -216,13 +215,13 @@ export async function runExport(
       const name = `${slugify(item.title)}-${item.id.slice(0, 8)}.md`;
       const desired = `${inArchive ? "_archive/" : ""}${item.type}/${year}/${name}`;
 
-      const [entities, atts] = [
-        await listEntityTitles(ownerId, item.id),
+      const [people, atts] = [
+        await listPersonTitles(ownerId, item.id),
         await exportAttachments(item, target),
       ];
       result.attachmentsCopied += atts.copied;
 
-      const content = `${buildFrontmatter(item, entities, atts.paths)}\n\n${bodyMarkdown(item.body)}\n`;
+      const content = `${buildFrontmatter(item, people, atts.paths)}\n\n${bodyMarkdown(item.body)}\n`;
       await target.putFile(desired, content);
       // A rename, retype, or live<->archive move leaves a stale file at the
       // old path; the put above already wrote the replacement.

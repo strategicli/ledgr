@@ -95,7 +95,6 @@ async function insertItem({
   urgency = null,
   meetingAt = null,
   url: itemUrl = null,
-  kind = null,
   inbox = false,
   parentId = null,
   properties = null,
@@ -113,7 +112,7 @@ async function insertItem({
       id, owner_id, type, title,
       body, body_text,
       status, due_date, urgency,
-      meeting_at, url, kind,
+      meeting_at, url,
       inbox, parent_id, properties,
       created_at, updated_at
     ) VALUES (
@@ -122,7 +121,7 @@ async function insertItem({
       ${status}::item_status,
       ${dueDate},
       ${urgency}::urgency,
-      ${meetingAt}, ${itemUrl}, ${kind},
+      ${meetingAt}, ${itemUrl},
       ${inbox}, ${parentId},
       ${propsJson}::jsonb,
       ${created}, ${updated}
@@ -150,7 +149,7 @@ console.log("Inserting entities...");
 const E = {}; // entity id map
 
 E.roger = await insertItem({
-  type: "entity", kind: "person", title: "Roger Martinez",
+  type: "person", title: "Roger Martinez",
   body: md(
     "## Roger Martinez\n\nWorship Pastor. At Edgewood since 2019.\n\n" +
     "**Email:** roger.martinez@edgewoodcommunity.org\n\n" +
@@ -164,7 +163,7 @@ E.roger = await insertItem({
 });
 
 E.sarah = await insertItem({
-  type: "entity", kind: "person", title: "Sarah Chen",
+  type: "person", title: "Sarah Chen",
   body: md(
     "## Sarah Chen\n\nChildren's Ministry Director.\n\n" +
     "**Email:** sarah.chen@edgewoodcommunity.org\n\n" +
@@ -177,7 +176,7 @@ E.sarah = await insertItem({
 });
 
 E.mike = await insertItem({
-  type: "entity", kind: "person", title: "Mike Thompson",
+  type: "person", title: "Mike Thompson",
   body: md(
     "## Mike Thompson\n\nFacilities Director.\n\n" +
     "**Email:** mike.thompson@edgewoodcommunity.org\n\n" +
@@ -191,7 +190,7 @@ E.mike = await insertItem({
 });
 
 E.lisa = await insertItem({
-  type: "entity", kind: "person", title: "Lisa Park",
+  type: "person", title: "Lisa Park",
   body: md(
     "## Lisa Park\n\nYouth Pastor (middle school + high school).\n\n" +
     "**Email:** lisa.park@edgewoodcommunity.org\n\n" +
@@ -205,7 +204,7 @@ E.lisa = await insertItem({
 });
 
 E.tom = await insertItem({
-  type: "entity", kind: "person", title: "Tom Bradley",
+  type: "person", title: "Tom Bradley",
   body: md(
     "## Tom Bradley\n\nSenior Pastor. Primary preacher (40+ Sundays/year).\n\n" +
     "### Notes\n\n" +
@@ -218,7 +217,7 @@ E.tom = await insertItem({
 });
 
 E.emma = await insertItem({
-  type: "entity", kind: "person", title: "Emma Wilson",
+  type: "person", title: "Emma Wilson",
   body: md(
     "## Emma Wilson\n\nCandidate: Communications Coordinator\n\n" +
     "**Status:** Interview scheduled — June 16\n\n" +
@@ -233,7 +232,7 @@ E.emma = await insertItem({
 });
 
 E.edgewood = await insertItem({
-  type: "entity", kind: "org", title: "Edgewood Community Church",
+  type: "note", title: "Edgewood Community Church",
   body: md(
     "## Edgewood Community Church\n\n" +
     "**Location:** 4200 Oak Street, Riverside\n\n" +
@@ -250,7 +249,7 @@ E.edgewood = await insertItem({
 });
 
 E.crossroads = await insertItem({
-  type: "entity", kind: "org", title: "Crossroads Fellowship",
+  type: "note", title: "Crossroads Fellowship",
   body: md(
     "## Crossroads Fellowship\n\nPartner church, metro area.\n\n" +
     "**Lead Pastor:** David Kim\n\n" +
@@ -264,7 +263,7 @@ E.crossroads = await insertItem({
 });
 
 E.buildingReno = await insertItem({
-  type: "entity", kind: "project", title: "Building Renovation 2026",
+  type: "note", title: "Building Renovation 2026",
   body: md(
     "## Building Renovation 2026\n\n" +
     "**Budget:** $280,000\n\n" +
@@ -282,7 +281,7 @@ E.buildingReno = await insertItem({
 });
 
 E.summerCamp = await insertItem({
-  type: "entity", kind: "project", title: "Summer Family Camp 2026",
+  type: "note", title: "Summer Family Camp 2026",
   body: md(
     "## Summer Family Camp 2026\n\n" +
     "**Dates:** August 10-14\n\n" +
@@ -302,7 +301,7 @@ E.summerCamp = await insertItem({
 });
 
 E.kingdomCome = await insertItem({
-  type: "entity", kind: "topic", title: "Kingdom Come Sermon Series",
+  type: "note", title: "Kingdom Come Sermon Series",
   body: md(
     "## Kingdom Come\n\n" +
     "**Season:** Fall 2026 (September 7 - October 18)\n\n" +
@@ -323,7 +322,7 @@ E.kingdomCome = await insertItem({
 });
 
 E.staffDev = await insertItem({
-  type: "entity", kind: "topic", title: "Staff Development Initiative",
+  type: "note", title: "Staff Development Initiative",
   body: md(
     "## Staff Development Initiative 2026\n\n" +
     "**Goal:** Invest in each staff member's professional and spiritual growth.\n\n" +

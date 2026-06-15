@@ -13,7 +13,6 @@ import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 const STATUSES = ["open", "done", "archived"];
 const URGENCIES = ["low", "normal", "high", "critical"];
-const ENTITY_KINDS = ["person", "org", "project", "topic", "campus"];
 
 // Friendly labels for the "by which field" selects.
 const DATE_LABELS: Record<string, string> = {
@@ -25,7 +24,6 @@ const DATE_LABELS: Record<string, string> = {
 const GROUP_LABELS: Record<string, string> = {
   status: "status",
   urgency: "urgency",
-  kind: "kind",
   type: "type",
   due: "due window",
 };
@@ -39,21 +37,19 @@ function dateFieldsFor(type: string): string[] {
   if (type === "task") return ["dueDate", "createdAt", "updatedAt"];
   if (type === "meeting") return ["meetingAt", "createdAt", "updatedAt"];
   if (type === "") return ["dueDate", "meetingAt", "createdAt", "updatedAt"];
-  return ["createdAt", "updatedAt"]; // note / link / entity
+  return ["createdAt", "updatedAt"]; // note / link / person
 }
 function sortFieldsFor(type: string): string[] {
   return [...dateFieldsFor(type), "title"];
 }
-// urgency + due window are task-only in the UI (ADR-018); kind is entity-only.
+// urgency + due window are task-only in the UI (ADR-018).
 function groupFieldsFor(type: string): string[] {
   if (type === "task") return ["status", "urgency", "due", "type"];
   if (type === "meeting") return ["status", "type"];
-  if (type === "entity") return ["status", "kind", "type"];
-  if (type === "") return ["status", "urgency", "kind", "due", "type"];
-  return ["status", "type"]; // note / link
+  if (type === "") return ["status", "urgency", "due", "type"];
+  return ["status", "type"]; // note / link / person
 }
 const showsUrgency = (type: string) => type === "task" || type === "";
-const showsKind = (type: string) => type === "entity" || type === "";
 
 // Columns are offered for the row-based layouts (list/table/agenda); board and
 // calendar have their own card shapes and ignore the column choice.
@@ -66,7 +62,6 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
   type: "Type",
   status: "Status",
   urgency: "Urgency",
-  kind: "Kind",
   dueDate: "Due date",
   meetingAt: "When",
   createdAt: "Created",
@@ -76,13 +71,12 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
 function fieldColumnsFor(type: string): ColumnField[] {
   const cols: ColumnField[] = ["type", "status"];
   if (showsUrgency(type)) cols.push("urgency");
-  if (showsKind(type)) cols.push("kind");
   for (const d of dateFieldsFor(type)) cols.push(d as ColumnField);
   if (type === "link" || type === "") cols.push("url");
   return cols;
 }
 
-type EntityOption = { id: string; title: string };
+type PersonOption = { id: string; title: string };
 
 function Field({
   label,
@@ -111,11 +105,11 @@ function Opt({ value, label }: { value: string; label?: string }) {
 
 export default function ViewBuilder({
   initial,
-  entities,
+  people,
   types,
 }: {
   initial?: ViewDefinition;
-  entities: EntityOption[];
+  people: PersonOption[];
   // The full type registry (system + custom), so a view can filter to a
   // user-created type, not just the five system ones. propertySchema rides
   // along so a board can group by the type's select properties (a workflow's
@@ -174,8 +168,7 @@ export default function ViewBuilder({
   const [withinDays, setWithinDays] = useState<string>(
     initial?.filter.withinDays != null ? String(initial.filter.withinDays) : "7"
   );
-  const [kind, setKind] = useState(showsKind(t0) ? initial?.filter.kind ?? "" : "");
-  const [entityId, setEntityId] = useState(initial?.filter.entityId ?? "");
+  const [relatedTo, setRelatedTo] = useState(initial?.filter.relatedTo ?? "");
   const [sortField, setSortField] = useState<string>(
     pick(sortFieldsFor(t0), initial?.sort.field, "updatedAt")
   );
@@ -220,7 +213,6 @@ export default function ViewBuilder({
     setSortField((v) => (sortFieldsFor(t).includes(v) ? v : "updatedAt"));
     setGroupField((v) => validGroup(t, v));
     if (!showsUrgency(t)) setUrgency("");
-    if (!showsKind(t)) setKind("");
     // Drop any column the new type doesn't have (a stale field or a property
     // key that isn't in the new type's schema).
     const okFields = new Set<string>(fieldColumnsFor(t));
@@ -244,8 +236,7 @@ export default function ViewBuilder({
     if (type) filter.type = type;
     if (status) filter.status = status;
     if (urgency) filter.urgency = urgency;
-    if (kind) filter.kind = kind;
-    if (entityId) filter.entityId = entityId;
+    if (relatedTo) filter.relatedTo = relatedTo;
     if (dateWindow) {
       if (dateField) filter.dateField = dateField;
       if (dateWindow === "within") {
@@ -428,29 +419,15 @@ export default function ViewBuilder({
             )}
           </div>
         </Field>
-        {showsKind(type) && (
-          <Field label="Entity kind">
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value)}
-              className={selectClass}
-            >
-              <Opt value="" label="any" />
-              {ENTITY_KINDS.map((k) => (
-                <Opt key={k} value={k} />
-              ))}
-            </select>
-          </Field>
-        )}
-        <Field label="Related to entity">
+        <Field label="Related to person">
           <select
-            value={entityId}
-            onChange={(e) => setEntityId(e.target.value)}
+            value={relatedTo}
+            onChange={(e) => setRelatedTo(e.target.value)}
             className={selectClass}
           >
             <Opt value="" label="any" />
-            {entities.map((e) => (
-              <Opt key={e.id} value={e.id} label={e.title || "Untitled"} />
+            {people.map((p) => (
+              <Opt key={p.id} value={p.id} label={p.title || "Untitled"} />
             ))}
           </select>
         </Field>

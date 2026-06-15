@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import TemplateBuilder from "@/components/build/TemplateBuilder";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
-import { listEntityOptions } from "@/lib/views";
+import { listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +18,10 @@ export default async function NewTemplate({
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [{ type }, types, entities] = await Promise.all([
+  const [{ type }, types, people] = await Promise.all([
     searchParams,
     listTypes(),
-    listEntityOptions(owner.id),
+    listPersonOptions(owner.id),
   ]);
   const defaultType = type && types.some((t) => t.key === type) ? type : undefined;
 
@@ -39,7 +39,7 @@ export default async function NewTemplate({
             ← All templates
           </Link>
         </div>
-        <TemplateBuilder types={types} entities={entities} defaultType={defaultType} />
+        <TemplateBuilder types={types} people={people} defaultType={defaultType} />
       </div>
     </main>
   );

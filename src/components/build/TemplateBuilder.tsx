@@ -13,7 +13,7 @@ import LazyMarkdownEditor from "@/components/markdown-editor/LazyMarkdownEditor"
 import type { ItemTemplate, RelationDefault } from "@/lib/templates";
 import type { PropertyDef, TypeDefinition } from "@/lib/types";
 
-type EntityOption = { id: string; title: string };
+type PersonOption = { id: string; title: string };
 
 const fieldClass =
   "rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
@@ -136,15 +136,15 @@ function DefaultControl({
 
 export default function TemplateBuilder({
   types,
-  entities,
+  people,
   initial,
   defaultType,
 }: {
   types: TypeDefinition[];
-  // The owner's entities (people/orgs/…), so a template can pre-select the
-  // related items a new item should start with — e.g. a meeting's usual
-  // attendees (Brandon feedback, 2026-06-14).
-  entities: EntityOption[];
+  // The owner's people, so a template can pre-select the related items a new
+  // item should start with — e.g. a meeting's usual attendees (Brandon
+  // feedback, 2026-06-14).
+  people: PersonOption[];
   initial?: ItemTemplate;
   defaultType?: string;
 }) {
@@ -166,10 +166,10 @@ export default function TemplateBuilder({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const entityTitle = (id: string) =>
-    entities.find((e) => e.id === id)?.title || "Untitled";
-  // Entities not yet picked, for the "add" select.
-  const available = entities.filter(
+  const personTitle = (id: string) =>
+    people.find((e) => e.id === id)?.title || "Untitled";
+  // People not yet picked, for the "add" select.
+  const available = people.filter(
     (e) => !relations.some((r) => r.targetId === e.id)
   );
   function addRelation(targetId: string) {
@@ -330,10 +330,10 @@ export default function TemplateBuilder({
                 key={r.targetId}
                 className="flex items-center gap-1.5 rounded bg-neutral-800 px-2 py-1 text-sm text-neutral-200"
               >
-                {entityTitle(r.targetId)}
+                {personTitle(r.targetId)}
                 <button
                   type="button"
-                  aria-label={`Remove ${entityTitle(r.targetId)}`}
+                  aria-label={`Remove ${personTitle(r.targetId)}`}
                   onClick={() => removeRelation(r.targetId)}
                   className="text-neutral-500 hover:text-neutral-200"
                 >
@@ -359,9 +359,9 @@ export default function TemplateBuilder({
           </select>
         ) : (
           <p className="text-xs text-neutral-600">
-            {entities.length === 0
-              ? "No entities yet — create people/orgs to relate them here."
-              : "All entities added."}
+            {people.length === 0
+              ? "No people yet — create people to relate them here."
+              : "All people added."}
           </p>
         )}
       </fieldset>

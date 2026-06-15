@@ -1,5 +1,5 @@
 // Meeting prep assembly (slice 24, PRD §5.1). Deterministic, no model in the
-// loop: given a meeting, gather the related person/entity's open tasks, the
+// loop: given a meeting, gather the related person's open tasks, the
 // last few meetings with them, and agenda headings. This is the Phase 2
 // forerunner of the general per-type item template (roadmap Phase 3). Reads
 // only — owner-scoped, body-free (listColumns), confirmed edges only (a
@@ -10,11 +10,11 @@ import { items } from "@/db/schema";
 import { listColumns } from "@/lib/items";
 import { queryViewItems } from "@/lib/views";
 
-export type PrepEntity = { id: string; title: string; kind: string | null };
+export type PrepPerson = { id: string; title: string };
 type ListRow = Awaited<ReturnType<typeof queryViewItems>>[number];
 
 export type MeetingPrep = {
-  entities: PrepEntity[];
+  people: PrepPerson[];
   openTasks: ListRow[];
   recentMeetings: ListRow[];
   agenda: string[];
@@ -28,24 +28,24 @@ export type MeetingPrep = {
 const DEFAULT_AGENDA = ["Agenda", "Discussion", "Action items", "Follow-ups"];
 const RECENT_MEETINGS = 3;
 
-// The meeting's confirmed related entities (both directions), title order.
-export async function getMeetingEntities(
+// The meeting's confirmed related people (both directions), title order.
+export async function getMeetingPeople(
   ownerId: string,
   meetingId: string
-): Promise<PrepEntity[]> {
+): Promise<PrepPerson[]> {
   const rows = await getDb().execute(sql`
-    select distinct e.id, e.title, e.kind
+    select distinct e.id, e.title
     from relations r
     join items e
       on e.id = case when r.source_id = ${meetingId} then r.target_id else r.source_id end
     where (r.source_id = ${meetingId} or r.target_id = ${meetingId})
       and r.match_state = 'confirmed'
-      and e.type = 'entity'
+      and e.type = 'person'
       and e.owner_id = ${ownerId}
       and e.deleted_at is null
     order by e.title
   `);
-  return rows.rows as PrepEntity[];
+  return rows.rows as PrepPerson[];
 }
 
 function dedupeById(rows: ListRow[]): ListRow[] {
@@ -72,28 +72,28 @@ export async function getMeetingPrep(
     ((self[0]?.properties as { match?: { templateName?: string | null } } | null)?.match
       ?.templateName) ?? null;
 
-  const entities = await getMeetingEntities(ownerId, meetingId);
-  if (entities.length === 0) {
-    return { entities, openTasks: [], recentMeetings: [], agenda: DEFAULT_AGENDA, templateName };
+  const people = await getMeetingPeople(ownerId, meetingId);
+  if (people.length === 0) {
+    return { people, openTasks: [], recentMeetings: [], agenda: DEFAULT_AGENDA, templateName };
   }
 
-  // Per-entity queries (entities per meeting are few) reusing the tested
-  // viewItemsQuery entity filter; merge + dedupe across entities.
+  // Per-person queries (people per meeting are few) reusing the tested
+  // viewItemsQuery relatedTo filter; merge + dedupe across people.
   const openTasksNested = await Promise.all(
-    entities.map((e) =>
+    people.map((e) =>
       queryViewItems(
         ownerId,
-        { type: "task", status: "open", entityId: e.id },
+        { type: "task", status: "open", relatedTo: e.id },
         { field: "dueDate", dir: "asc" },
         50
       )
     )
   );
   const recentNested = await Promise.all(
-    entities.map((e) =>
+    people.map((e) =>
       queryViewItems(
         ownerId,
-        { type: "meeting", entityId: e.id },
+        { type: "meeting", relatedTo: e.id },
         { field: "meetingAt", dir: "desc" },
         RECENT_MEETINGS + 1 // room to drop this meeting before slicing
       )
@@ -106,5 +106,5 @@ export async function getMeetingPrep(
     .sort((a, b) => (b.meetingAt?.getTime() ?? 0) - (a.meetingAt?.getTime() ?? 0))
     .slice(0, RECENT_MEETINGS);
 
-  return { entities, openTasks, recentMeetings, agenda: DEFAULT_AGENDA, templateName };
+  return { people, openTasks, recentMeetings, agenda: DEFAULT_AGENDA, templateName };
 }

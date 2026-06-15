@@ -1,9 +1,9 @@
-// Slice 28 verification: the embedded-view contract end to end against live
-// Neon under a throwaway owner. The component is UI, but its four behaviors
-// rest on a backend chain worth proving: a created item related to a host
-// appears in the host's entity-filtered query (create-inherits), a status
-// toggle moves it across a status filter (inline check-off), and un-relating
-// drops it from the view without deleting it (remove = un-relate).
+// Slice 28 verification: the interactive related-list contract end to end
+// against live Neon under a throwaway owner. The component is UI, but its
+// behaviors rest on a backend chain worth proving: a created item related to a
+// host appears in the host's relatedTo-filtered query (create-inherits), a
+// status toggle moves it across a status filter (inline check-off), and
+// un-relating drops it from the view without deleting it (remove = un-relate).
 // Run: npx tsx scripts/verify-embedded-views.mts  — safe to delete when closed.
 import { readFileSync } from "node:fs";
 
@@ -36,31 +36,31 @@ const [tempUser] = await db
 const ownerId = tempUser.id;
 
 try {
-  const host = await createItem(ownerId, { type: "entity", title: "Roger", kind: "person" });
+  const host = await createItem(ownerId, { type: "person", title: "Roger" });
   const task = await createItem(ownerId, { type: "task", title: "Prep 1:1 agenda" });
 
-  // create-inherits: relate the new task to the host entity.
+  // create-inherits: relate the new task to the host person.
   await relateItems(ownerId, host.id, task.id);
-  const related = await queryViewItems(ownerId, { type: "task", entityId: host.id });
+  const related = await queryViewItems(ownerId, { type: "task", relatedTo: host.id });
   check("related task appears in host view", has(related, task.id));
 
   // an unrelated task must not appear.
   const stray = await createItem(ownerId, { type: "task", title: "Unrelated" });
-  const related2 = await queryViewItems(ownerId, { type: "task", entityId: host.id });
+  const related2 = await queryViewItems(ownerId, { type: "task", relatedTo: host.id });
   check("unrelated task stays out", !has(related2, stray.id));
 
   // inline check-off: marking done moves it across a status filter.
-  const open = await queryViewItems(ownerId, { type: "task", status: "open", entityId: host.id });
+  const open = await queryViewItems(ownerId, { type: "task", status: "open", relatedTo: host.id });
   check("task shows under status=open", has(open, task.id));
   await updateItem(ownerId, task.id, { status: "done" });
-  const stillOpen = await queryViewItems(ownerId, { type: "task", status: "open", entityId: host.id });
+  const stillOpen = await queryViewItems(ownerId, { type: "task", status: "open", relatedTo: host.id });
   check("done task drops from status=open", !has(stillOpen, task.id));
-  const done = await queryViewItems(ownerId, { type: "task", status: "done", entityId: host.id });
+  const done = await queryViewItems(ownerId, { type: "task", status: "done", relatedTo: host.id });
   check("done task shows under status=done", has(done, task.id));
 
   // remove = un-relate: drops from the view, item survives.
   await unrelateItems(ownerId, host.id, task.id);
-  const afterRemove = await queryViewItems(ownerId, { type: "task", entityId: host.id });
+  const afterRemove = await queryViewItems(ownerId, { type: "task", relatedTo: host.id });
   check("un-related task leaves the view", !has(afterRemove, task.id));
   const survivor = await getItem(ownerId, task.id);
   check("the item itself still exists", survivor.id === task.id && survivor.deletedAt == null);

@@ -102,7 +102,6 @@ export function parseItemPayload(
     out.meetingAt = asNullableDate(input.meetingAt, "meetingAt");
   }
   if (input.url !== undefined) out.url = asNullableString(input.url, "url");
-  if (input.kind !== undefined) out.kind = asNullableString(input.kind, "kind");
   if (input.parentId !== undefined) {
     out.parentId =
       input.parentId === null ? null : asUuid(input.parentId, "parentId");
