@@ -1,6 +1,8 @@
 # Exploration: entities vs. custom types — is the boundary right, or just confusing?
 
-**Status:** parked for discussion (Brandon, 2026-06-14). Not a decision to change anything. The posture is **ponder, discuss, and confirm** the model we want — the leaning is *keep entities as a bespoke type*, but the implementation may be confusing in ways worth clearing up before we commit.
+**Status:** 🔍 **actively being resolved (raised again in the 6.14 Brandon + Tyler meeting; one of us is taking the investigate-and-report-back).** Not a decision yet. The posture is **ponder, discuss, and confirm** the model we want — the leaning is *keep entities as a bespoke type*, but the implementation may be confusing in ways worth clearing up before we commit. The meeting confirmed the confusion is real (Claude's terse rationale didn't fully land); the agreed next step is to settle the mental model and the `relation`-property-kind question (below) and report back. ADR-055 (the pre-built Bible/passage hub) interacts with this but does not wait on it.
+
+> **Meeting note (2026-06-14):** the live framing surfaced verbatim — entity pages and embedded views "key off `type == entity` rather than off a capability." The question to resolve: can a custom type simply declare a **`relation` property**, which would let entity shrink to its honest core (the type that ships with calendar-matching matchers + the `kind` vocabulary)? See the fork below — the meeting did not change the analysis, it re-tasked someone to close it.
 
 ## The question that prompted this
 

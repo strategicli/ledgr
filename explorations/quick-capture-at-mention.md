@@ -1,6 +1,6 @@
 # Exploration: @mention association in quick capture
 
-**Status:** parked (Brandon, 2026-06-13). Explicitly post-v1.0. Not intent, not a decision.
+**Status:** parked (Brandon, 2026-06-13; **reaffirmed as wanted in the 6.14 meeting**). Explicitly post-v1.0. Not intent, not a decision. The 6.14 framing extended the wish to the body canvas too: "be able to just type `@` and then whatever in the midst of the canvas" to relate items mid-document without going to a specific field — the same resolution logic, applied inline anywhere.
 
 ## The idea
 

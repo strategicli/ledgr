@@ -1,6 +1,6 @@
 # Exploration: web clipper (browser extension + mobile content capture)
 
-**Status:** parked (Brandon, 2026-06-13). Post-v1.0. Not intent, not a decision.
+**Status:** parked (Brandon, 2026-06-13; **reaffirmed as wanted in the 6.14 meeting** — "Evernote-style, save a web article as Markdown into Ledgr"). Post-v1.0. Not intent, not a decision.
 
 ## What's already in v1
 

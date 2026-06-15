@@ -638,3 +638,40 @@ Six issues surfaced clicking through the shipped slice; all fixed, same slice/po
 **Why live-from-commits, not a manual changelog file:** the source of truth for "what was pushed" *is* git; deriving from commits means zero authoring step and it's always current. Notes are the one thing that needs runtime read/write, so they're the committed file (cleared = a commit of empty content).
 **Trade-off (documented):** a notes Save commits to the repo, and a commit on the deploy branch triggers a Vercel build. `GITHUB_NOTES_BRANCH` (e.g. `collab-notes`, auto-created, not deployed) opts out of that churn; default leaves notes on the deploy branch (fine during alpha, where pushes deploy constantly anyway).
 **Affects:** new `src/lib/github/client.ts`, `src/app/changelog/page.tsx`, `src/components/changelog/CollabNotes.tsx`, `src/app/api/collab/notes/route.ts`, `scripts/verify-changelog.mts` (21/21); edits to `src/components/nav/NavShell.tsx` (kebab link), `src/lib/health.ts` (+ `github` canary; `verify-health-check.mts` synthetic updated), `.env.example`/`runbook.md` (§1g + env table + `checks.github`); new `COLLAB_NOTES.md` seed. **Brandon-step (to use it live):** set `GITHUB_TOKEN` per runbook §1g; until then both surfaces show a clean "not connected" state.
+
+---
+
+## ADR-055: Pre-built Bible/passage relational database — verse is the atomic unit
+**Date:** 2026-06-14 (Brandon + Tyler build meeting)
+**Status:** accepted. **Core** — a data-model/relational decision (the `passage` entity hub, how references resolve into the relation graph). Both agreed in the 6.14 session. Adopts and closes `explorations/scripture-passages-as-entities.md`. The module *build* (the table seed, the auto-tagger) is non-core module work and lives in the build queue, not the foundational rework.
+**Context:** A long debate over how scripture references should connect to content. Tyler argued for **pre-shipping** the whole Bible as a relational structure so every reference auto-connects; Brandon initially argued free-typed tags (Notion-style "type a tag, press Enter to create") already covered it. The resolution went to pre-built: a free-typed tag does not guarantee correct *shape* and only tags *one side* of the relation, so you'd still have to visit every other item to tag it consistently ("did I tag it with generosity or giving?"). A pre-built relational table removes the two-sided tagging burden entirely and makes "show me everything I have on Hebrews 11:1" a graph query, not a tag-hygiene exercise.
+**Decision:**
+1. **Ship the Bible as a pre-built relational structure: book → chapter → verse, with the verse as the atomic unit.** A chapter is the container of its verses; a single-verse reference and a multi-verse passage (e.g. Luke 11:35-36) both resolve through the same structure, with a **passage range linking each individual verse in the range**. Sub-verse granularity (11:35a/b) is explicitly **rejected** as too far.
+2. **A deterministic, RefTagger-style auto-tagger** recognizes reference patterns in many surface forms ("Luke 11:35", "LK 11.35", "Luke 1135") and wires the relation automatically. **It is plain code / a cron job, no model in the loop** (Principle 3). Any remaining representation edge cases get resolved with Claude's help during the build, not at runtime.
+3. This is the relational hub anticipated by `scripture-passages-as-entities.md`; it interacts with the open `relation`-property-kind question (ADR-pending, see `entity-vs-custom-type.md`) but does not wait on it.
+**Why pre-built over tag-on-demand:** the relational table does the work once for everyone; content connects without retroactive tagging of existing items, and there is no tag-inconsistency drift. Storage cost is negligible (Markdown + relations).
+**Affects:** `schema.md` (a `passage` entity/structure + its relations; forthcoming), the relations engine, a new bespoke Bible/passage module + auto-tagger (build queue). Feeds future passage-organized inputs (Quiet Time Journal API, Logos).
+
+---
+
+## ADR-056: Notes are a module attachable to every type; relations are the primary organizing principle
+**Date:** 2026-06-14 (Brandon + Tyler build meeting)
+**Status:** accepted. **Core** — touches the type/module model and how content is organized (part of `explorations/storage-organization.md`). Both agreed in the 6.14 session.
+**Context:** Brandon's prior sermon-prep workflow used nested notes (a parent note plus ~3 children: messy brain-dump, quotes/references, a staging/draft). Examining it showed it largely duplicates the Papers module shape. The broader question: are notes organized as **files/folders** or as **notes-inside-notes**, and how does either map to Ledgr's relation graph?
+**Decision:**
+1. **Notes are a built-in module that can attach to every type** (e.g. notes on a sermon, notes on a meeting), not a standalone silo. This is the same bespoke-module-attaches-to-any-item pattern the rest of the system already uses.
+2. **Relational databases (tags, categories, relations) are the primary organizing principle** for how content is organized in Ledgr — chosen over a files/folders model. Even "folder" is reframed relationally ("a child of that folder"). This settles the organize-in-app half of `storage-organization.md`; the export-to-MD-file-tree mapping (one primary parent → folder path, the rest → wiki-links) remains the open part of that exploration.
+3. **A "project" is not a functional type** — it is a relational connection across tasks/meetings/notes. Confirmed against live test data: nothing functionally changes about a task when it gains subtasks or a parent project; it just needs relations. Confirms `explorations/project-items.md`.
+**Affects:** the notes module design, the type/canvas model docs, `explorations/storage-organization.md` and `project-items.md` (org half resolved here).
+
+---
+
+## ADR-057: Share/Print renders the canvas; a per-property "include in share" flag decides what's exposed
+**Date:** 2026-06-14 (Brandon + Tyler build meeting)
+**Status:** accepted. **Core-adjacent** — extends the property schema and the export/share contract (renders-from-Markdown is unchanged; ADR-019/028 lineage). Both agreed in the 6.14 session.
+**Context:** Reviewing Share and Print: a meeting's share showed only the canvas, omitting attendees/date/topics, which raised "what exactly should a share include, and who decides?" A Papers Print failed where preview worked, because Print/Share pull from the **canvas**, and that note type's canvas differed from what was expected.
+**Decision:**
+1. **Share and Print always render the item's canvas/draft — the final product.** This reaffirms the canonical principle: every output renders *from* Markdown, the canvas is the rendered artifact, nothing is stored as a second source.
+2. **Each content type decides which fields/properties appear in a share, via a per-property "include in share?" toggle** set when a property is added — mirroring the existing "show in Quick Capture" toggle. The per-type field choices themselves are answered type by type as modules are built (open, not blocking).
+**Open (tracked, not blocking):** whether multiple share links per item is intentional (the "new share link" UI implies more than one) — to investigate. The default per-type field sets are unresolved and decided per module.
+**Affects:** the property schema (a per-property share flag), the Share/Print render path, `schema.md` (note the flag).

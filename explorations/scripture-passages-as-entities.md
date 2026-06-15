@@ -1,6 +1,6 @@
 # Exploration: Scripture passages as first-class entities
 
-**Status:** parked, open for Brandon + Tyler. Core (a new entity kind + relations/search), so both-agree + ADR before it builds.
+**Status:** ✅ **DECIDED — ADR-055 (2026-06-14, Brandon + Tyler accepted).** Ship the Bible as a pre-built relational structure (book → chapter → verse, **verse atomic**); a passage range links each verse in the range; sub-verse (11:35a/b) rejected. A deterministic RefTagger-style auto-tagger (cron, no AI) wires references in many surface forms ("Luke 11:35", "LK 11.35", "Luke 1135"). The 6.14 debate landed on **pre-built over tag-on-demand**: a free-typed tag doesn't guarantee correct shape and only tags one side of the relation. This doc is kept for the fuller framing; the build (table seed + auto-tagger) is non-core module work in the build queue. The granularity fork below is resolved (verse-atomic).
 **Source:** cherry-picked from Tyler's `tyler/additions-for-review` branch (`ty-additions/tyler-additions-overview.md` §4, `ty-additions/integrations-savor-atlas.md`). The fuller framing lives there.
 **Related:** the `next_steps.md` "Bespoke module backlog" item "Bible books / chapters / verses, the relational hub" (this is the entity-shaped cut of that keystone), and [[entity-vs-custom-type]] (passages are a strong case for keeping a real entity model).
 
