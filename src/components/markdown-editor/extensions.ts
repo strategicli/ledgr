@@ -7,8 +7,10 @@
 // (ADR-037), so every renderMarkdown here is part of the canonical contract.
 "use client";
 
-import { Mark, mergeAttributes } from "@tiptap/core";
+import { Mark, mergeAttributes, type JSONContent } from "@tiptap/core";
 import Mention from "@tiptap/extension-mention";
+import Image from "@tiptap/extension-image";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import {
   BLOCKNOTE_COLORS,
   highlightColorName,
@@ -21,6 +23,12 @@ import {
   MENTION_URI_PREFIX,
   mentionToMarkdown,
 } from "@/lib/editor/mention-markdown";
+import {
+  imageAttrsFromToken,
+  imageToMarkdown,
+  type ImageToken,
+} from "@/lib/editor/image-markdown";
+import { tableToGfm } from "@/lib/editor/table-markdown";
 
 // Text color → <span style="color:#hex"> (markdown) / styled span (editor DOM).
 export const TextColor = Mark.create({
@@ -181,6 +189,89 @@ export const LedgrMention = Mention.extend({
     });
   },
 });
+
+// Inline image node. inline:true is required, not cosmetic: marked emits a
+// `![]()` as an inline token inside a paragraph, and @tiptap/markdown dispatches
+// that token to this node's parseMarkdown — a block image would violate the
+// paragraph's content schema. The markdown shape (![alt](src)) lives in the
+// pure helper; the bytes are uploaded to R2 by the editor's paste/drop handler.
+// Params are untyped so @tiptap/markdown's augmented hook signatures infer
+// them (the color/mention extensions above do the same); we cast to the precise
+// shapes inside, where the structure is known.
+export const LedgrImage = Image.extend({
+  inline: true,
+  group: "inline",
+
+  renderMarkdown(node) {
+    const a = (node as { attrs?: Record<string, unknown> }).attrs ?? {};
+    return imageToMarkdown({
+      src: typeof a.src === "string" ? a.src : "",
+      alt: typeof a.alt === "string" ? a.alt : "",
+      title: typeof a.title === "string" ? a.title : null,
+    });
+  },
+
+  parseMarkdown(token, helpers) {
+    return helpers.createNode("image", imageAttrsFromToken(token as ImageToken));
+  },
+});
+
+// The table node carries the whole-table markdown contract; the row/header/cell
+// nodes are registered as-is (re-exported below) and walked by these hooks.
+// On serialize the node arrives as Tiptap JSON (content is a JSONContent[]); on
+// parse, marked hands one table block token (header[] + rows[][], each cell
+// holding inline tokens), so parseMarkdown rebuilds the subtree and
+// renderMarkdown flattens it to GFM via the pure assembler. The server renderer
+// (markdown-it) already renders GFM tables, so print/share/export are covered.
+type MarkedTableCell = { tokens?: unknown[]; text?: string };
+type MarkedTableToken = { header: MarkedTableCell[]; rows: MarkedTableCell[][] };
+type JsonNode = { content?: JsonNode[] };
+
+export const LedgrTable = Table.extend({
+  renderMarkdown(node, helpers) {
+    const rows: string[][] = [];
+    for (const rowNode of (node as JsonNode).content ?? []) {
+      const cells: string[] = [];
+      for (const cellNode of rowNode.content ?? []) {
+        cells.push(helpers.renderChildren(cellNode));
+      }
+      rows.push(cells);
+    }
+    return tableToGfm(rows);
+  },
+
+  parseMarkdown(token, helpers) {
+    const t = token as unknown as MarkedTableToken;
+    const cellContent = (cell: MarkedTableCell): JSONContent[] => {
+      if (cell.tokens && cell.tokens.length) {
+        return helpers.parseInline(
+          cell.tokens as Parameters<typeof helpers.parseInline>[0]
+        ) as JSONContent[];
+      }
+      if (cell.text) return [helpers.createTextNode(cell.text) as JSONContent];
+      return [];
+    };
+    const makeCell = (cell: MarkedTableCell, header: boolean) =>
+      helpers.createNode(header ? "tableHeader" : "tableCell", null, [
+        helpers.createNode("paragraph", null, cellContent(cell)),
+      ]);
+    const headerRow = helpers.createNode(
+      "tableRow",
+      null,
+      t.header.map((c) => makeCell(c, true))
+    );
+    const bodyRows = t.rows.map((r) =>
+      helpers.createNode(
+        "tableRow",
+        null,
+        r.map((c) => makeCell(c, false))
+      )
+    );
+    return helpers.createNode("table", null, [headerRow, ...bodyRows]);
+  },
+});
+
+export { TableRow, TableHeader, TableCell };
 
 // The "ledgr://item/" prefix is the load-bearing piece of the round-trip;
 // re-exported so the editor and any consumer reference one constant.

@@ -26,6 +26,21 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Session summary — editor parity: inline image paste (regression) + GFM tables (2026-06-15)
+
+**Two editor-parity items off the carried-from-M3 list (ADR-040): the inline-image-paste regression is fixed, and the editor now does GFM tables.** Non-core (editor internals + two pure helper libs); shipped solo, flagged to Tyler in `COLLAB.md`. The R2 attachment backend was fully intact, so image paste was a re-wire, not a rebuild.
+
+- **Inline image paste/drop — REGRESSION fixed.** The M3 cutover dropped BlockNote's file blocks; the Tiptap canvas had zero image handling. Re-wired the proven presigned-upload handshake (`uploadImage` in `ItemEditor`, byte-for-byte the old `/api/attachments` → R2 PUT → public URL flow) and added Tiptap `handlePaste`/`handleDrop` handlers + a toolbar Image button (hidden file picker) that upload and insert a markdown image at the cursor. Only intercepts when an image file is actually present and an uploader is wired, so text/markdown paste still falls through; controlled hosts with no backing item (scratch route, Changelog notes) pass no `uploadImage`, so image insertion is simply absent there.
+- **GFM tables.** Added the first-party `@tiptap/extension-image` + `@tiptap/extension-table` (same `@tiptap/*` vendor already in use; pre-blessed by the roadmap, low resilience risk — markdown is canonical, tables serialize to standard GFM). New `LedgrImage`/`LedgrTable` extensions bind `@tiptap/markdown`'s `renderMarkdown`/`parseMarkdown` hooks: image ↔ `![alt](src)`, table ↔ GFM grid (parse rebuilds the row/cell subtree from marked's one table token; render flattens JSON back to GFM). Toolbar "Table" insert (3×3, header row). Server render was already covered (markdown-it has GFM tables + images on; print/share doc already styles `table`/`img`).
+- **Bonus: strikethrough toolbar button** (the trivial sibling on the parity list — Strike already round-tripped via StarterKit, it just had no button).
+- **Discipline:** the tricky encode/decode lives in node-testable pure libs (`src/lib/editor/image-markdown.ts`, `table-markdown.ts`), the extensions only bind hooks — same split colors.ts/mention-markdown.ts use. `verify-editor-media.mts` **17/17** (pure helpers + a real `marked` round-trip proving the table grid + image link survive encode→decode); `verify-tiptap-markdown` still green; `tsc` + full `next build` + eslint all clean.
+
+**Pending (same posture as prior editor slices):** the in-browser eyeball — paste a screenshot into a real item (uploads to R2, renders inline, autosaves as `![](url)`), insert/edit a table and confirm it round-trips to GFM and back. The pure logic, the `@tiptap/markdown` dispatch contract (read from source), the marked token shapes (checked against real marked), and the build are all proven; only the live editor mount is unverified here.
+
+**Also recorded this session (no code):** Brandon's decisions on **inline action items** (the next mid-size feature) are now in `explorations/block-linked-action-items.md` — one line ↔ one task, promote *badges* the line and the badge links to the task, the badge/anchors never render on the shared/printed document (a "clean share" acceptance criterion), and the one real spike before building is confirming Tiptap round-trips a trailing `^id` marker.
+
+---
+
 ## ⟢ Session summary — nav v6 (docked rail / top bar) + circular checkboxes (2026-06-15)
 
 **The nav chrome got a real desktop redesign and every checkbox in the app became a dark-mode circle.** UI/UX polish (not core), shipped solo. Two builders share the file, so the change is presentational only: the slot list, settings shape contract, and API are untouched apart from one additive setting.
