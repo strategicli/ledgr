@@ -51,7 +51,15 @@ Yes. BlockNote blocks carry stable `id`s in the document JSON. The pieces:
 
 ## Open questions
 
-- One block ↔ one task, or allow several? What happens to the link if the block is deleted or edited after promotion?
-- Does promoting also strike or badge the source line, or leave it untouched?
-- Should the `/items/[id]/print` (Save Offline) render show promoted-task markers, or stay clean?
-- Is this the moment the meeting-prep "Agenda" frame becomes an *insertable* template (drop the agenda headings into the body as real blocks), tying #3 and #4 together?
+**Resolved (Brandon, 2026-06-15) — design direction set; build still pending behind dashboards/views + image-paste.**
+
+- **One block ↔ one or many tasks?** → **One line is one task.** Keep the model simple; no fan-out from a single line.
+- **Badge or strike the promoted line?** → **Badge it, and the badge links to the task.** Reading the meeting notes, a promoted line shows a small marker; clicking it jumps to the task. (Not a strike — the line still reads as part of the notes.)
+- **Show promote markers in the Save Offline / print / share render?** → **No, stay clean.** Promotion is a "me thing," a private workflow aid, not something to publish. The badge is editor-only.
+- **Does the agenda frame become an insertable template here?** → still open; revisit when this is built.
+
+**Clean-share constraint (Brandon, 2026-06-15) — note for the build.** The promotion machinery (the `^id` markers and the editor-only badges) must never get in the way of sharing a *clean* version of meeting notes with people who don't use Ledgr, whether via a share link or a PDF/Word export. Two implications already point this way and must hold: (1) the `^id` anchor markers should be invisible in reading view and stripped (or rendered as nothing) in the print/share/export output, not shown as literal `^a1b2c3` text; (2) the promoted-task badges are an editor-only affordance and never render on the shared/printed document (the "stay clean" answer above). Treat "the shared artifact looks like ordinary, clean notes" as an acceptance criterion for this feature.
+
+## Implementation note (the anchor mechanic) — 2026-06-15
+
+The one load-bearing technical risk is that **Tiptap (`@tiptap/markdown`) must round-trip a trailing `^id` marker** through serialize/parse without mangling it (and ideally hide it in WYSIWYG view). Verify this with a small spike before committing to the build. The rest reuses existing paths: `promoteActionItem` + the relations write path (ADR-025), `properties.source.blockRef` for the anchor (no schema change), and the editor host's jump-to-line on a `#^id` hash.
