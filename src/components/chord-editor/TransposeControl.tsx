@@ -106,7 +106,7 @@ export default function TransposeControl({ chart, onChange }: Props) {
       <Stepper label="Capo" value={String(capo)} onDown={() => setCapo(capo - 1)} onUp={() => setCapo(capo + 1)} />
       {shapes && capo > 0 && (
         <span className="text-xs text-neutral-500">
-          shapes: <span className="font-semibold text-sky-400">{shapes}</span>
+          shapes: <span className="font-semibold text-[var(--accent)]">{shapes}</span>
         </span>
       )}
       <button
@@ -114,7 +114,7 @@ export default function TransposeControl({ chart, onChange }: Props) {
         aria-pressed={lockShapes}
         className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs ${
           lockShapes
-            ? "border-sky-700 bg-sky-950/60 text-sky-300"
+            ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
             : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
         }`}
         title="Lock shapes: keep the chord shapes and let the capo set the key"

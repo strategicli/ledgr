@@ -77,7 +77,7 @@ function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
       )}
       <span
         className={`shrink-0 text-xs ${
-          overdue ? "text-red-400" : "text-neutral-600"
+          overdue ? "text-[var(--accent)]" : "text-neutral-600"
         }`}
       >
         {task.dueDate ? dueFmt.format(task.dueDate) : ""}

@@ -35,7 +35,7 @@ export const CHART_CSS = `
 .cc-space{white-space:pre}
 .cc-cell{display:inline-flex;flex-direction:column;white-space:pre}
 .cc-trail .cc-chord{padding-left:.15rem}
-.cc-chord{font-weight:700;color:#7cb3ff;font-size:.8em;line-height:1.1;min-height:1.1em;white-space:pre}
+.cc-chord{font-weight:700;color:var(--accent,#7cb3ff);font-size:.8em;line-height:1.1;min-height:1.1em;white-space:pre}
 .cc-text{line-height:1.25}
 .cc-bars{font-family:ui-monospace,Consolas,monospace;color:#d4d4d4}
 .cc-pipe{color:#737373;margin:0 .35rem}

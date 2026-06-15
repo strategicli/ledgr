@@ -26,6 +26,19 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Tyler's lane — Changelog + shared collab notes (2026-06-14, ADR-054)
+
+**A Changelog page in the kebab "More" menu so Brandon and Tyler can see what each other shipped, plus a shared notes scratchpad beside it.** The page is 3/4 commit list + 1/4 markdown notes. Not core (a new page + a per-instance integration); shipped solo, flagged to Brandon in `COLLAB.md`.
+
+- **The cross-deploy problem + the call:** separate single-tenant deploys (separate Vercel + Neon) mean a DB row is never shared. **GitHub is the shared medium** (git already is for `COLLAB.md`/`decisions.md`): the Changelog **reads commit history live** via the REST API; the notes live in a **committed file** (`COLLAB_NOTES.md`) read/written via the Contents API. One PAT, plain `fetch`, no Octokit (Principle 5).
+- **`src/lib/github/client.ts`** — config (null = not configured), `getChangelog` (cached list + per-commit immutable detail → file/line counts), `readNotes`/`writeNotes` (sha-guarded so a stale Save 409s instead of clobbering; auto-creates a non-deploy notes branch if configured), `checkGithub` canary. Pure `toChangelogEntry`/`decodeContent` seams.
+- **`/changelog`** (server component, 3/4 + 1/4 grid) with **`CollabNotes`** client panel (reuses `LazyMarkdownEditor` controlled; Save/Clear; 409→reload prompt). **`GET`/`PUT /api/collab/notes`**, owner-guarded. Kebab gained a Changelog link; `checks.github` added to `gatherHealth`.
+- **`GITHUB_NOTES_BRANCH`** opts notes onto a non-deployed branch so a note Save doesn't trigger a Vercel rebuild (default: deploy branch, fine during alpha).
+
+`verify-changelog.mts` **21/21**; `verify-health-check` still green (synthetic updated for the new canary); `tsc` + full `next build` + eslint clean. **Brandon-step (to use it live):** set `GITHUB_TOKEN` per runbook **§1g**; until then both surfaces show a clean "not connected" state. **In-browser live check is pending** the token (same posture as the other integration-blocked slices) — the not-configured render, the build, and the pure logic are proven.
+
+---
+
 ## ⟢ Session summary — the MCP server (2026-06-13, ADR-047, slice 36)
 
 **Phase 3, Tier 3 opens: Claude is now a first-class client.** A thin MCP server exposes Ledgr's items to Claude over a personal API token (PRD §5.5) — "what's open with Roger," "file this as a task due Friday," "prep tomorrow's 1:1." **CORE** (the machine/MCP API contract); shipped solo per Brandon's Tier direction, flagged to Tyler in `COLLAB.md`.

@@ -12,6 +12,7 @@ import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
 import { getExportState } from "@/lib/export/engine";
 import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
+import { checkGithub, type GithubHealth } from "@/lib/github/client";
 import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
 import { getPushState } from "@/lib/push/notify";
 import { getTodoistState } from "@/lib/todoist/sync";
@@ -44,6 +45,7 @@ export type HealthReport = {
     lastPrepNotifyAt: string | null;
     mcp: McpCanary;
     graph: GraphHealth;
+    github: GithubHealth;
     healthCheck: HealthCheckCanary;
     errors: ErrorsCheck;
   };
@@ -177,6 +179,16 @@ export async function gatherHealth(): Promise<HealthReport> {
     // checkGraphAuth swallows its own errors; this is belt-and-suspenders.
   }
 
+  // GitHub canary (changelog + collab notes): a failed repo read is the
+  // token-expiry / wrong-repo signal. Like Graph, it never changes overall
+  // status — GitHub being down must not make the app itself look unhealthy.
+  let github: GithubHealth = { configured: false };
+  try {
+    github = await checkGithub();
+  } catch {
+    // checkGithub swallows its own errors; belt-and-suspenders.
+  }
+
   return {
     status: database.ok ? "ok" : "degraded",
     checks: {
@@ -193,6 +205,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastPrepNotifyAt,
       mcp,
       graph,
+      github,
       healthCheck,
       errors,
     },

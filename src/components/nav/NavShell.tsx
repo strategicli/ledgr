@@ -262,6 +262,9 @@ export default function NavShell({
               <Link href="/trash" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
                 Trash
               </Link>
+              <Link href="/changelog" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
+                Changelog
+              </Link>
               <div className="my-1 border-t border-neutral-800" />
               <p className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-600">Move menu</p>
               <div className="grid grid-cols-2 gap-1 p-1">

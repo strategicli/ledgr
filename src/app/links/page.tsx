@@ -59,7 +59,7 @@ export default async function Links() {
                   href={link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="max-w-40 shrink-0 truncate rounded bg-neutral-800 px-1.5 text-xs text-blue-400 hover:text-blue-300"
+                  className="max-w-40 shrink-0 truncate rounded bg-neutral-800 px-1.5 text-xs text-[var(--accent)] hover:brightness-110"
                   title={link.url}
                 >
                   {hostOf(link.url)} ↗

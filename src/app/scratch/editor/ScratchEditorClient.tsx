@@ -121,7 +121,7 @@ export default function ScratchEditorClient() {
         <button
           type="button"
           onClick={save}
-          className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+          className="rounded bg-[var(--accent)] px-3 py-1 text-sm text-white hover:brightness-110"
         >
           Save
         </button>

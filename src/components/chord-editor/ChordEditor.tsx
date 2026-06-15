@@ -86,7 +86,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           title="Add / edit chord here"
         >
           {chordAt.has(i) ? (
-            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(i)}</span>
+            <span className="px-0.5 text-[0.72rem] font-bold text-[var(--accent)]">{chordAt.get(i)}</span>
           ) : (
             <span className="text-[0.72rem] text-neutral-600 opacity-0 group-hover/ch:opacity-100">+</span>
           )}
@@ -106,7 +106,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           title="Chord before the line"
         >
           {leading.length ? (
-            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{leading[0].chord}</span>
+            <span className="px-0.5 text-[0.72rem] font-bold text-[var(--accent)]">{leading[0].chord}</span>
           ) : (
             <span className="text-[0.72rem] text-neutral-700">＋</span>
           )}
@@ -140,7 +140,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
           title="Trailing chord"
         >
           {chordAt.has(end) ? (
-            <span className="px-0.5 text-[0.72rem] font-bold text-sky-400">{chordAt.get(end)}</span>
+            <span className="px-0.5 text-[0.72rem] font-bold text-[var(--accent)]">{chordAt.get(end)}</span>
           ) : (
             <span className="text-[0.72rem] text-neutral-700">＋</span>
           )}
@@ -184,7 +184,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
                     })
                   );
                 }}
-                className={`${f.width} rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-100 outline-none focus:border-sky-700`}
+                className={`${f.width} rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-100 outline-none focus:border-[var(--accent)]`}
               />
             </label>
           ))}
@@ -194,7 +194,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
               value={chart.meta.arrangement ?? ""}
               onChange={(e) => onChange(updateMeta(chart, { arrangement: e.target.value || undefined }))}
               placeholder="Intro, V1, C1, …"
-              className="w-44 rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-300 outline-none focus:border-sky-700 placeholder:text-neutral-700"
+              className="w-44 rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-300 outline-none focus:border-[var(--accent)] placeholder:text-neutral-700"
             />
           </label>
         </div>
@@ -208,7 +208,7 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
               value={section.label}
               size={Math.max(section.label.length + 1, 6)}
               onChange={(e) => onChange(setSectionLabel(chart, si, e.target.value))}
-              className="max-w-full rounded bg-transparent text-sm font-bold uppercase tracking-wide text-neutral-300 underline decoration-neutral-700 outline-none focus:decoration-sky-600"
+              className="max-w-full rounded bg-transparent text-sm font-bold uppercase tracking-wide text-neutral-300 underline decoration-neutral-700 outline-none focus:decoration-[var(--accent)]"
             />
             {section.ref && <span className="text-[10px] uppercase text-neutral-600">repeat</span>}
             <span className="ml-auto flex items-center gap-0.5 text-neutral-600">
@@ -273,12 +273,12 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
                 return (
                   <div key={li} className="group flex items-start gap-1">
                     <div className="flex-1 py-0.5">{lyricCells(edit.text, edit.chords, si, li)}</div>
-                    <button onClick={() => toggleRaw(k)} className="shrink-0 rounded px-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-sky-400" title="Edit lyrics text">✎</button>
+                    <button onClick={() => toggleRaw(k)} className="shrink-0 rounded px-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-[var(--accent)]" title="Edit lyrics text">✎</button>
                     <button onClick={() => onChange(removeLine(chart, si, li))} className="shrink-0 px-1 text-neutral-700 opacity-0 hover:text-red-400 group-hover:opacity-100" title="Delete line">✕</button>
                   </div>
                 );
               })}
-              <button onClick={() => onChange(addLine(chart, si))} className="mt-1 text-xs text-neutral-600 hover:text-sky-400">
+              <button onClick={() => onChange(addLine(chart, si))} className="mt-1 text-xs text-neutral-600 hover:text-[var(--accent)]">
                 + line
               </button>
               <button onClick={() => onChange(addKeyChange(chart, si))} className="ml-3 mt-1 text-xs text-neutral-600 hover:text-orange-300">

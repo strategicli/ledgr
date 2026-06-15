@@ -53,7 +53,7 @@ export default function ChordPicker({ x, y, value, onPick, onRemove, onClose }: 
             }
           }}
           placeholder="Chord (e.g. G/B)"
-          className="mb-2 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-sky-600"
+          className="mb-2 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-[var(--accent)]"
         />
         <div className="flex flex-wrap gap-1">
           {COMMON_CHORDS.map((c) => (
@@ -61,7 +61,7 @@ export default function ChordPicker({ x, y, value, onPick, onRemove, onClose }: 
               key={c}
               type="button"
               onClick={() => commit(c)}
-              className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-semibold text-sky-300 hover:bg-neutral-700"
+              className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)] hover:bg-neutral-700"
             >
               {c}
             </button>

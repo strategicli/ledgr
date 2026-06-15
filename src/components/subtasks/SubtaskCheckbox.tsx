@@ -44,7 +44,7 @@ export default function SubtaskCheckbox({
       type="checkbox"
       checked={checked}
       onChange={toggle}
-      className="size-4 shrink-0 cursor-pointer accent-blue-600"
+      className="size-4 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-neutral-500 bg-transparent transition-colors checked:border-[var(--accent)] checked:bg-[var(--accent)]"
       aria-label={checked ? "Mark not done" : "Mark done"}
     />
   );

@@ -60,6 +60,7 @@ function baseReport(): HealthReport {
       lastPrepNotifyAt: iso(1),
       mcp: { configured: true, hasToken: true, ownerResolves: true },
       graph: { configured: true, ok: true },
+      github: { configured: true, ok: true, repo: "brandonscollins/ledgr" },
       healthCheck: { lastRunAt: null, lastSuccessAt: null, lastAlertAt: null, alerts: [] },
       errors: { last24h: 0 },
     },
