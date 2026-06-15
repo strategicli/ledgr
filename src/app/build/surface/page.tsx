@@ -1,14 +1,17 @@
 // Work surface wiring (slice 35, PRD §4.10/§4.14): choose which views appear on
-// Work. The dashboard-widget half is real today — pin/unpin reuses the slice-29
-// machinery (PinButton → /api/dashboard). Navigation slots are shown read-only
-// (the nav is still the hardcoded NAV_SLOTS stand-in; making it data-driven is
-// its own slice). "Surface it, then retire it" = pin here, unpin to retire —
-// the data always stays.
+// Work, and configure the nav slots. The dashboard-widget half reuses the
+// slice-29 machinery (PinButton → /api/dashboard). The navigation half is now a
+// live editor (ADR-056): the middle nav slots are owner config stored in
+// users.settings and edited here. "Surface it, then retire it" = pin here, unpin
+// to retire — the data always stays.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import NavSlotsEditor from "@/components/build/NavSlotsEditor";
 import PinButton from "@/components/views/PinButton";
-import { NAV_SLOTS } from "@/lib/nav";
+import { buildDestOptions } from "@/lib/nav-slot-options";
 import { resolveOwner } from "@/lib/owner";
+import { getSettings } from "@/lib/settings";
+import { listTypes } from "@/lib/types";
 import { listViews } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +20,16 @@ export default async function WorkSurface() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const views = await listViews(owner.id);
+  const [views, types, settings] = await Promise.all([
+    listViews(owner.id),
+    listTypes(),
+    getSettings(owner.id),
+  ]);
   const pinned = views.filter((v) => v.dashboardOrder != null).length;
+  const destOptions = buildDestOptions(
+    views.map((v) => ({ id: v.id, name: v.name })),
+    types.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))
+  );
 
   return (
     <main className="min-h-screen">
@@ -80,24 +91,15 @@ export default async function WorkSurface() {
           )}
         </section>
 
-        <section className="mt-8">
+        <section className="mt-10">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Navigation slots
+            Navigation
           </h2>
-          <p className="mt-1 text-sm text-neutral-600">
-            The bottom-bar slots, in order. Editing these from Build is a later
-            slice; for now they’re the built-in set.
-          </p>
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {NAV_SLOTS.map((slot) => (
-              <li
-                key={slot.key}
-                className="rounded border border-neutral-800 px-2.5 py-1 text-sm text-neutral-400"
-              >
-                {slot.label}
-              </li>
-            ))}
-          </ul>
+          <NavSlotsEditor
+            initialDesktop={settings.navSlots}
+            initialMobile={settings.mobileNavSlots}
+            options={destOptions}
+          />
         </section>
       </div>
     </main>

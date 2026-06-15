@@ -7,6 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import type { PropertyDef, PropertyKind, TypeDefinition } from "@/lib/types";
 
 // Mirrors PROPERTY_KINDS in src/lib/types.ts (validation lives there).
@@ -66,19 +67,28 @@ function Field({
 export default function TypeBuilder({
   initial,
   attached,
+  itemCount = 0,
 }: {
   initial?: TypeDefinition;
   // SPIKE (bespoke-tool catalog): the bespoke tool this type borrows, resolved
   // server-side to {id, label} so this client form never imports the registry.
   // Set when arriving from the catalog (new) or editing a type that has one.
   attached?: { id: string; label: string } | null;
+  // How many items currently use this type — drives the delete confirmation's
+  // "also delete its items" option.
+  itemCount?: number;
 }) {
   const router = useRouter();
   const editing = !!initial;
   const isSystem = initial?.isSystem ?? false;
   const capability = attached?.id ?? null;
+  const hasItems = itemCount > 0;
+  const [deleteItems, setDeleteItems] = useState(false);
 
-  const nextId = useRef(0);
+  // Ref counter for stable React keys on new rows. Seeded past the initial
+  // rows' count so a freshly-added row never collides with a seeded one. Only
+  // read in event handlers (makeRow), never during render.
+  const nextId = useRef(initial?.propertySchema.length ?? 0);
   const makeRow = (p?: PropertyDef): Row => ({
     id: nextId.current++,
     key: p?.key ?? "",
@@ -94,8 +104,15 @@ export default function TypeBuilder({
   const [showInQuickCapture, setShowInQuickCapture] = useState(
     initial?.showInQuickCapture ?? true
   );
-  const [rows, setRows] = useState<Row[]>(
-    initial?.propertySchema.map((p) => makeRow(p)) ?? []
+  // Seed rows from the existing schema with index ids (no ref read in render).
+  const [rows, setRows] = useState<Row[]>(() =>
+    (initial?.propertySchema ?? []).map((p, i) => ({
+      id: i,
+      key: p.key,
+      label: p.label,
+      kind: p.kind,
+      optionsText: p.options?.join(", ") ?? "",
+    }))
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,26 +219,19 @@ export default function TypeBuilder({
     }
   }
 
-  async function remove() {
-    if (!editing || busy) return;
-    if (!confirm(`Delete the "${initial!.label}" type? This can't be undone.`)) {
-      return;
+  // The in-context delete (ConfirmButton owns the confirm popover + its own
+  // busy/error). Throwing surfaces the message inside the popover; success
+  // navigates away. With `deleteItems`, the type's items are taken too
+  // (?withItems=1), otherwise the server blocks while items still reference it.
+  async function confirmDelete() {
+    const url = `/api/types/${initial!.key}${deleteItems ? "?withItems=1" : ""}`;
+    const res = await fetch(url, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? `delete failed (${res.status})`);
     }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/types/${initial!.key}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `delete failed (${res.status})`);
-        setBusy(false);
-        return;
-      }
-      router.push("/build/types");
-      router.refresh();
-    } catch {
-      setError("delete failed (offline?)");
-      setBusy(false);
-    }
+    router.push("/build/types");
+    router.refresh();
   }
 
   return (
@@ -382,13 +392,44 @@ export default function TypeBuilder({
           {busy ? "Saving…" : editing ? "Save changes" : "Create type"}
         </button>
         {editing && !isSystem && (
-          <button
-            onClick={() => void remove()}
-            disabled={busy}
-            className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50"
+          <ConfirmButton
+            onConfirm={confirmDelete}
+            title={`Delete the “${initial!.label}” type?`}
+            description={
+              hasItems
+                ? `${itemCount} item${itemCount === 1 ? "" : "s"} use this type.`
+                : "This can't be undone."
+            }
+            confirmLabel={
+              hasItems && deleteItems ? `Delete type + ${itemCount}` : "Delete type"
+            }
+            triggerClassName="text-sm text-red-400 hover:text-red-300"
+            trigger="Delete"
           >
-            Delete
-          </button>
+            {hasItems && (
+              <>
+                <label className="flex items-start gap-2 text-xs text-neutral-200">
+                  <input
+                    type="checkbox"
+                    checked={deleteItems}
+                    onChange={(e) => setDeleteItems(e.target.checked)}
+                    className="ledgr-check mt-0.5"
+                  />
+                  <span>
+                    Also move the {itemCount} item{itemCount === 1 ? "" : "s"}{" "}
+                    using this type to Trash. You can restore the type and its
+                    items from Trash.
+                  </span>
+                </label>
+                {!deleteItems && (
+                  <p className="mt-1.5 text-xs text-neutral-500">
+                    Leave unchecked to keep the items — the type can&rsquo;t be
+                    deleted while they exist.
+                  </p>
+                )}
+              </>
+            )}
+          </ConfirmButton>
         )}
         {isSystem && (
           <span className="text-xs text-neutral-600">

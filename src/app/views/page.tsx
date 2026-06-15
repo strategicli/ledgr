@@ -23,10 +23,10 @@ export default async function Views() {
           </h1>
           <div className="flex items-center gap-3">
             <Link
-              href="/dashboard"
+              href="/build"
               className="text-sm text-neutral-500 hover:text-neutral-300"
             >
-              Dashboard →
+              ← Build
             </Link>
             <Link
               href="/views/new"

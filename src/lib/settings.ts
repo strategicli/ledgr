@@ -6,6 +6,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
+import { isNavIcon, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
 // straight into the `--accent` CSS variable.
@@ -30,16 +31,59 @@ export type RailSize = (typeof RAIL_SIZES)[number];
 
 // How the nav items pack into the bar/rail. "spread" pins them to the edges
 // (nav slots one end, the New/More utilities the other, filling the space);
-// "compact" groups everything together. On the top bar, compact also constrains
-// the content to the ~40rem canvas width. The bottom bar is always compact.
+// "compact" groups everything together and anchors the cluster (see
+// RailAnchor). The bottom bar is always compact.
 export const NAV_DENSITIES = ["spread", "compact"] as const;
 export type NavDensity = (typeof NAV_DENSITIES)[number];
 
-// For a compact left/right rail: where the grouped cluster sits vertically —
-// the top edge, the bottom edge, or centered. Ignored when spread, and on the
-// top/bottom bars.
+// For a compact rail or top bar: where the grouped cluster sits along the bar's
+// long axis. On a left/right rail that axis is vertical (top / center / bottom
+// edge); on the top bar it's horizontal, where top/center/bottom read as
+// left/center/right (the same start/center/end idea). Ignored when spread, and
+// on the bottom bar.
 export const RAIL_ANCHORS = ["top", "bottom", "center"] as const;
 export type RailAnchor = (typeof RAIL_ANCHORS)[number];
+
+// --- Configurable nav slots (ADR-056) -------------------------------------
+// The nav bar has three zones: a locked Home (always first), the configurable
+// middle slots stored here, then locked New + More (added at render time, never
+// stored). A middle slot is either a single `destination` (one route) or a
+// `tools` group (a button that opens a popover of child destinations).
+//
+// Stored in the users.settings jsonb (no migration). parseNavSlots is tolerant:
+// a malformed slot is dropped and an unknown icon falls back, so a hand-edited
+// blob still yields a safe, complete list rather than throwing.
+
+// How many middle slots fit before the bar feels crowded. Desktop allows 5;
+// the mobile bottom bar is tighter, so 4.
+export const MAX_NAV_SLOTS = 5;
+export const MAX_MOBILE_NAV_SLOTS = 4;
+export const MAX_TOOLS_CHILDREN = 8;
+
+// A destination points at one route. `builtin` is a hardcoded app page, `view`
+// a saved view (/views/[id]), `type` a type's list (/list/[key]). The kind is
+// metadata for the editor; the nav only needs href/label/icon to render.
+export const NAV_DEST_KINDS = ["builtin", "view", "type"] as const;
+export type NavDestKind = (typeof NAV_DEST_KINDS)[number];
+
+export type NavBadge = "inbox";
+
+export type NavDestination = {
+  kind: NavDestKind;
+  href: string;
+  label: string;
+  icon: string;
+  badge?: NavBadge; // optional count badge; only the inbox count for now
+};
+
+export type NavSlotConfig =
+  | ({ type: "destination" } & NavDestination)
+  | {
+      type: "tools";
+      label: string;
+      icon: string;
+      children: NavDestination[]; // up to MAX_TOOLS_CHILDREN; no nesting
+    };
 
 export type UserSettings = {
   highlightColor: string; // hex from HIGHLIGHT_COLORS
@@ -48,10 +92,24 @@ export type UserSettings = {
   railSize: RailSize;
   navDensity: NavDensity;
   railAnchor: RailAnchor;
+  // The configurable middle nav slots (Home/New/More are added at render time).
+  navSlots: NavSlotConfig[];
+  // Mobile override: null mirrors the desktop slots; an array is a distinct
+  // mobile list (capped tighter, see MAX_MOBILE_NAV_SLOTS).
+  mobileNavSlots: NavSlotConfig[] | null;
   // How this owner signs shared content (the Changelog notes "Sign" stamp).
   // Empty falls back to the email's local part (see effectiveDisplayName).
   displayName: string;
 };
+
+// The starting middle slots: Inbox (with its count badge), Tasks, Search. The
+// developer/admin destinations (Views, Items) that used to live in the nav are
+// intentionally not here — they belong in Build, not daily nav.
+export const DEFAULT_NAV_SLOTS: NavSlotConfig[] = [
+  { type: "destination", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badge: "inbox" },
+  { type: "destination", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks" },
+  { type: "destination", kind: "builtin", href: "/search", label: "Search", icon: "search" },
+];
 
 export const DEFAULT_SETTINGS: UserSettings = {
   highlightColor: "#2563eb",
@@ -60,8 +118,62 @@ export const DEFAULT_SETTINGS: UserSettings = {
   railSize: "fat",
   navDensity: "spread",
   railAnchor: "top",
+  navSlots: DEFAULT_NAV_SLOTS,
+  mobileNavSlots: null,
   displayName: "",
 };
+
+// Validate one destination, returning null if it's unusable. An unknown icon
+// falls back rather than failing; the locked Home route ("/") is stripped so it
+// can never be duplicated into the middle zone. badge keeps only "inbox".
+function parseNavDestination(raw: unknown): NavDestination | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const href = typeof r.href === "string" ? r.href.trim() : "";
+  if (!href || href === "/") return null; // empty or the locked Home slot
+  const label = typeof r.label === "string" ? r.label.trim().slice(0, 40) : "";
+  if (!label) return null;
+  const kind = (NAV_DEST_KINDS as readonly string[]).includes(r.kind as string)
+    ? (r.kind as NavDestKind)
+    : "builtin";
+  const icon = isNavIcon(r.icon) ? r.icon : NAV_ICON_FALLBACK;
+  const dest: NavDestination = { kind, href, label, icon };
+  if (r.badge === "inbox") dest.badge = "inbox";
+  return dest;
+}
+
+// Validate one middle slot. A `tools` group flattens its children to plain
+// destinations (so a nested group can't sneak in) and caps the count; an empty
+// group is dropped. Returns null for anything unusable.
+function parseNavSlot(raw: unknown): NavSlotConfig | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.type === "tools") {
+    const label = typeof r.label === "string" ? r.label.trim().slice(0, 40) : "";
+    if (!label) return null;
+    const icon = isNavIcon(r.icon) ? r.icon : "tools";
+    const children = (Array.isArray(r.children) ? r.children : [])
+      .map(parseNavDestination)
+      .filter((c): c is NavDestination => c !== null)
+      .slice(0, MAX_TOOLS_CHILDREN);
+    if (children.length === 0) return null;
+    return { type: "tools", label, icon, children };
+  }
+  // Anything else is treated as a destination (the common case).
+  const dest = parseNavDestination(r);
+  return dest ? { type: "destination", ...dest } : null;
+}
+
+// Parse a stored slot list, dropping malformed entries and capping the count.
+// Returns the fallback when `raw` isn't an array at all (an empty array is a
+// legitimate "no middle slots" choice and is preserved).
+function parseNavSlots(raw: unknown, max: number, fallback: NavSlotConfig[]): NavSlotConfig[] {
+  if (!Array.isArray(raw)) return fallback;
+  return raw
+    .map(parseNavSlot)
+    .filter((s): s is NavSlotConfig => s !== null)
+    .slice(0, max);
+}
 
 export function parseSettings(raw: unknown): UserSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -85,7 +197,23 @@ export function parseSettings(raw: unknown): UserSettings {
     : DEFAULT_SETTINGS.railAnchor;
   const displayName =
     typeof r.displayName === "string" ? r.displayName.trim().slice(0, 60) : DEFAULT_SETTINGS.displayName;
-  return { highlightColor, trashRetentionDays: days, navPosition, railSize, navDensity, railAnchor, displayName };
+  const navSlots = parseNavSlots(r.navSlots, MAX_NAV_SLOTS, DEFAULT_NAV_SLOTS);
+  // null (or absent) means mirror desktop; an array is a distinct mobile list.
+  const mobileNavSlots =
+    r.mobileNavSlots == null
+      ? null
+      : parseNavSlots(r.mobileNavSlots, MAX_MOBILE_NAV_SLOTS, []);
+  return {
+    highlightColor,
+    trashRetentionDays: days,
+    navPosition,
+    railSize,
+    navDensity,
+    railAnchor,
+    navSlots,
+    mobileNavSlots,
+    displayName,
+  };
 }
 
 // The name to sign with: the explicit setting, else a readable fallback from

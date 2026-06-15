@@ -1,0 +1,1 @@
+ALTER TABLE "types" ADD COLUMN "hidden" boolean DEFAULT false NOT NULL;

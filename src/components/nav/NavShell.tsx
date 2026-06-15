@@ -1,5 +1,6 @@
-// The client nav chrome (v6 redesign). One set of slots + a "+ New" quick
-// capture + a "More" kebab, rendered four ways by the owner's navPosition:
+// The client nav chrome (v6 redesign + ADR-056 configurable slots). A locked
+// Home slot, then the owner's configurable middle slots, then a "+ New" quick
+// capture and a "More" kebab. Rendered four ways by the owner's navPosition:
 //
 //   • bottom  — a floating pill, centered on the bottom edge (also the mobile
 //               default on every position).
@@ -9,11 +10,11 @@
 //               hidden (a reopen tab at the edge). The kebab uses horizontal
 //               dots on the rail.
 //
-// Search is a command-palette modal (Ctrl/Cmd+K); Build has a global shortcut
-// (Ctrl/Cmd+Shift+B) and a highlighted, glowing entry in the More menu. The
-// owner's navPosition + railSize arrive as props (the layout reads them
-// server-side and pads the body to match); the rail collapse updates both the
-// body padding and the persisted setting on the fly.
+// Middle slots come from settings.navSlots (resolved server-side by Nav.tsx into
+// ShellSlot[]). A slot is either a single `destination` or a `tools` group that
+// opens a popover of child destinations. A destination pointing at /search opens
+// the command palette instead of navigating (parity with the old Search slot).
+// Build has a global shortcut (Ctrl/Cmd+Shift+B) and a glowing entry in More.
 "use client";
 
 import Link from "next/link";
@@ -22,74 +23,57 @@ import { useEffect, useState } from "react";
 import CaptureModal from "@/components/capture/CaptureModal";
 import SearchModal from "@/components/search/SearchModal";
 import { RAIL_PX } from "@/lib/nav-layout";
+import { navIconPaths } from "@/lib/nav-icons";
 import type { NavDensity, NavPosition, RailAnchor, RailSize } from "@/lib/settings";
 
-export type ShellSlot = {
-  key: string;
+// A single nav destination, resolved for render (icon key + any badge count).
+export type ShellDest = {
   label: string;
   href: string;
+  icon: string;
   count: number | null;
 };
 
-// Hand-rolled 20px stroke icons; an icon library for a handful of glyphs would
-// be a dependency we don't need (Principle 5).
-function Icon({ slot }: { slot: string }) {
-  const common = {
-    width: 20,
-    height: 20,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  switch (slot) {
-    case "home":
-      return (
-        <svg {...common}>
-          <path d="M3 11.5 12 4l9 7.5" />
-          <path d="M5.5 9.5V20h13V9.5" />
-        </svg>
-      );
-    case "inbox":
-      return (
-        <svg {...common}>
-          <path d="M3 13h5l1.5 2.5h5L16 13h5" />
-          <path d="M4.5 6.5h15L21 13v6H3v-6l1.5-6.5Z" />
-        </svg>
-      );
-    case "tasks":
-      return (
-        <svg {...common}>
-          <rect x="4" y="4" width="16" height="16" rx="3" />
-          <path d="m8.5 12.5 2.5 2.5 4.5-5" />
-        </svg>
-      );
-    case "search":
-      return (
-        <svg {...common}>
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="m16 16 4.5 4.5" />
-        </svg>
-      );
-    case "views": // distinct from items: a stack of saved slices
-      return (
-        <svg {...common}>
-          <rect x="4" y="4" width="16" height="6" rx="1.5" />
-          <rect x="4" y="14" width="16" height="6" rx="1.5" />
-        </svg>
-      );
-    default: // items / anything else: a list
-      return (
-        <svg {...common}>
-          <path d="M8 6h12M8 12h12M8 18h12" />
-          <circle cx="4" cy="6" r="0.5" />
-          <circle cx="4" cy="12" r="0.5" />
-          <circle cx="4" cy="18" r="0.5" />
-        </svg>
-      );
-  }
+// A configured middle slot: one destination, or a named group of them.
+export type ShellSlot =
+  | ({ kind: "destination" } & ShellDest)
+  | {
+      kind: "tools";
+      label: string;
+      icon: string;
+      count: number | null;
+      children: ShellDest[];
+    };
+
+// Home is always the first slot and never configurable; prepended at render.
+const HOME_SLOT: ShellSlot = {
+  kind: "destination",
+  label: "Home",
+  href: "/",
+  icon: "home",
+  count: null,
+};
+
+// A destination at /search opens the command palette rather than navigating.
+const isSearchHref = (href: string) => href === "/search";
+
+// Icon glyphs come from the shared NAV_ICONS library (key -> SVG paths); an
+// unknown key falls back to a generic list glyph. Hand-rolled 20px strokes, no
+// icon-library dependency (Principle 5).
+function Icon({ icon }: { icon: string }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      dangerouslySetInnerHTML={{ __html: navIconPaths(icon) }}
+    />
+  );
 }
 
 function PlusIcon() {
@@ -121,8 +105,8 @@ function BackToWorkIcon() {
 }
 
 // The Ledgr wordmark; --font-logo is set on <html> by the layout. The full
-// mark ends its "r" in the accent for a small brand touch; the compact mark
-// (thin rail, where the wordmark won't fit) is a single accented "L".
+// mark ends its "r" in the accent color; the compact mark (thin rail, where the
+// wordmark won't fit) is a single accented "L".
 function Logo({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
   return (
     <Link
@@ -202,6 +186,7 @@ const RAIL_NEXT_LABEL: Record<RailSize, string> = {
 
 export default function NavShell({
   slots,
+  mobileSlots,
   typeOptions,
   navPosition,
   railSize: railSizeProp,
@@ -209,6 +194,7 @@ export default function NavShell({
   railAnchor: railAnchorProp,
 }: {
   slots: ShellSlot[];
+  mobileSlots: ShellSlot[];
   typeOptions: { key: string; label: string }[];
   navPosition: NavPosition;
   railSize: RailSize;
@@ -220,6 +206,7 @@ export default function NavShell({
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openTools, setOpenTools] = useState<string | null>(null);
   const [railSize, setRailSize] = useState<RailSize>(railSizeProp);
   const [density, setDensity] = useState<NavDensity>(navDensityProp);
   const [anchor, setAnchor] = useState<RailAnchor>(railAnchorProp);
@@ -293,7 +280,21 @@ export default function NavShell({
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
+  // Same outside-click close for an open tools-group popover.
+  useEffect(() => {
+    if (!openTools) return;
+    function onClick(e: MouseEvent) {
+      if (!(e.target as Element).closest?.("[data-nav-tools]")) setOpenTools(null);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [openTools]);
+
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const slotActive = (slot: ShellSlot): boolean =>
+    slot.kind === "tools"
+      ? slot.children.some((c) => !isSearchHref(c.href) && isActive(c.href))
+      : !isSearchHref(slot.href) && isActive(slot.href);
 
   const move = async (pos: NavPosition) => {
     setMenuOpen(false);
@@ -333,54 +334,17 @@ export default function NavShell({
     persistSettings(patch);
   };
 
-  // Search moves to the end, next to New (v5).
-  const orderedSlots = [
-    ...slots.filter((s) => s.key !== "search"),
-    ...slots.filter((s) => s.key === "search"),
-  ];
-
-  // One slot renderer for every layout: className, whether the label shows, and
-  // how the count badge sits (inline alongside a label, or in the corner for
-  // icon-only / stacked layouts). Search is a button (opens the palette); the
-  // rest are links.
-  function renderSlot(
-    slot: ShellSlot,
-    className: string,
-    showLabel: boolean,
-    badge: "corner" | "inline"
-  ) {
-    const inner = (
-      <>
-        <Icon slot={slot.key} />
-        {showLabel && <span className="truncate">{slot.label}</span>}
-        {badge === "inline" ? <InlineBadge count={slot.count} /> : <CornerBadge count={slot.count} />}
-      </>
-    );
-    if (slot.key === "search") {
-      return (
-        <button
-          key={slot.key}
-          onClick={() => setSearchOpen(true)}
-          aria-label="Search"
-          title="Search (⌘K)"
-          className={className}
-        >
-          {inner}
-        </button>
-      );
-    }
-    return (
-      <Link
-        key={slot.key}
-        href={slot.href}
-        aria-label={slot.label}
-        aria-current={isActive(slot.href) ? "page" : undefined}
-        className={className}
-      >
-        {inner}
-      </Link>
-    );
-  }
+  // The locked Home slot leads every layout, then the configured middle slots.
+  // Mobile and desktop bars get distinct id prefixes so a tools popover open on
+  // one never bleeds into the other (both are in the DOM, one visible).
+  const desktopSlots = [HOME_SLOT, ...slots].map((slot, i) => ({
+    slot,
+    id: i === 0 ? "home" : `d${i}`,
+  }));
+  const mobileBarSlots = [HOME_SLOT, ...mobileSlots].map((slot, i) => ({
+    slot,
+    id: i === 0 ? "home" : `m${i}`,
+  }));
 
   const itemColors = (active: boolean) =>
     active
@@ -403,6 +367,134 @@ export default function NavShell({
     `relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${itemColors(active)}`;
   const railThinSlot = (active: boolean) =>
     `relative flex items-center justify-center rounded-lg p-2.5 ${itemColors(active)}`;
+
+  // A child row inside a tools popover (always icon + label + inline badge).
+  function renderToolsChild(child: ShellDest, key: string) {
+    const active = !isSearchHref(child.href) && isActive(child.href);
+    const cls = `flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm ${itemColors(active)}`;
+    const inner = (
+      <>
+        <Icon icon={child.icon} />
+        <span className="truncate">{child.label}</span>
+        <InlineBadge count={child.count} />
+      </>
+    );
+    if (isSearchHref(child.href)) {
+      return (
+        <button
+          key={key}
+          role="menuitem"
+          onClick={() => {
+            setOpenTools(null);
+            setSearchOpen(true);
+          }}
+          className={cls}
+        >
+          {inner}
+        </button>
+      );
+    }
+    return (
+      <Link
+        key={key}
+        role="menuitem"
+        href={child.href}
+        onClick={() => setOpenTools(null)}
+        aria-current={active ? "page" : undefined}
+        className={cls}
+      >
+        {inner}
+      </Link>
+    );
+  }
+
+  // The popover a tools group opens; `posClass` anchors it relative to the slot.
+  function toolsPopover(
+    slot: Extract<ShellSlot, { kind: "tools" }>,
+    id: string,
+    posClass: string
+  ) {
+    return (
+      <div
+        role="menu"
+        className={`absolute z-50 max-h-[calc(100vh-1rem)] w-52 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${posClass}`}
+      >
+        <p className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
+          {slot.label}
+        </p>
+        {slot.children.map((c, i) => renderToolsChild(c, `${id}-c${i}`))}
+      </div>
+    );
+  }
+
+  // One slot renderer for every layout: a destination (link, or the search
+  // palette button), or a tools group button that toggles its popover.
+  // `classNameFor` is the layout's class builder; `toolsPos` anchors the popover.
+  function renderSlot(
+    slot: ShellSlot,
+    id: string,
+    classNameFor: (active: boolean) => string,
+    showLabel: boolean,
+    badge: "corner" | "inline",
+    toolsPos: string
+  ) {
+    const className = classNameFor(slotActive(slot));
+    const inner = (
+      <>
+        <Icon icon={slot.icon} />
+        {showLabel && <span className="truncate">{slot.label}</span>}
+        {badge === "inline" ? (
+          <InlineBadge count={slot.count} />
+        ) : (
+          <CornerBadge count={slot.count} />
+        )}
+      </>
+    );
+
+    if (slot.kind === "tools") {
+      const open = openTools === id;
+      return (
+        <div key={id} data-nav-tools className="relative">
+          <button
+            onClick={() => setOpenTools((o) => (o === id ? null : id))}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label={slot.label}
+            title={slot.label}
+            className={className}
+          >
+            {inner}
+          </button>
+          {open && toolsPopover(slot, id, toolsPos)}
+        </div>
+      );
+    }
+
+    if (isSearchHref(slot.href)) {
+      return (
+        <button
+          key={id}
+          onClick={() => setSearchOpen(true)}
+          aria-label={slot.label}
+          title={`${slot.label} (⌘K)`}
+          className={className}
+        >
+          {inner}
+        </button>
+      );
+    }
+    return (
+      <Link
+        key={id}
+        href={slot.href}
+        aria-label={slot.label}
+        aria-current={isActive(slot.href) ? "page" : undefined}
+        className={className}
+      >
+        {inner}
+      </Link>
+    );
+  }
 
   // The shared More dropdown. `posClass` anchors it relative to the kebab; the
   // Build entry is the highlighted, glowing primary action.
@@ -445,74 +537,63 @@ export default function NavShell({
         ))}
       </div>
 
-      {/* Density (+ rail anchor). Hidden for the bottom bar, which is always
-          compact. Rails get the three-way Spread / Compact-top / Compact-bottom
-          choice; the top bar gets Compact (40rem) vs Spread (full width). */}
+      {/* Density (+ anchor). Hidden for the bottom bar, which is always compact.
+          Both the rails and the top bar offer the same four-way choice — Spread
+          plus three Compact anchors — so they mirror each other. The anchor is
+          stored as top/center/bottom; on the top bar those read left/center/
+          right (the same start/center/end idea, just on the horizontal axis). */}
       {navPosition !== "bottom" && (
         <>
           <p className="px-2 pt-1.5 text-[10px] uppercase tracking-wide text-neutral-600">
             Spacing
           </p>
-          {isRail ? (
-            <div className="grid grid-cols-1 gap-1 p-1">
-              <button
-                onClick={() => chooseDensity("spread")}
-                className={densityBtn(density === "spread")}
-              >
-                Spread
-              </button>
-              <button
-                onClick={() => chooseDensity("compact", "top")}
-                className={densityBtn(density === "compact" && anchor === "top")}
-              >
-                Compact (top)
-              </button>
-              <button
-                onClick={() => chooseDensity("compact", "center")}
-                className={densityBtn(density === "compact" && anchor === "center")}
-              >
-                Compact (center)
-              </button>
-              <button
-                onClick={() => chooseDensity("compact", "bottom")}
-                className={densityBtn(density === "compact" && anchor === "bottom")}
-              >
-                Compact (bottom)
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-1 p-1">
-              <button
-                onClick={() => chooseDensity("compact")}
-                className={densityBtn(density === "compact")}
-              >
-                Compact
-              </button>
-              <button
-                onClick={() => chooseDensity("spread")}
-                className={densityBtn(density === "spread")}
-              >
-                Spread
-              </button>
-            </div>
-          )}
+          <div className="grid grid-cols-1 gap-1 p-1">
+            <button
+              onClick={() => chooseDensity("spread")}
+              className={densityBtn(density === "spread")}
+            >
+              Spread
+            </button>
+            <button
+              onClick={() => chooseDensity("compact", "top")}
+              className={densityBtn(density === "compact" && anchor === "top")}
+            >
+              {isRail ? "Compact (top)" : "Compact (left)"}
+            </button>
+            <button
+              onClick={() => chooseDensity("compact", "center")}
+              className={densityBtn(density === "compact" && anchor === "center")}
+            >
+              Compact (center)
+            </button>
+            <button
+              onClick={() => chooseDensity("compact", "bottom")}
+              className={densityBtn(density === "compact" && anchor === "bottom")}
+            >
+              {isRail ? "Compact (bottom)" : "Compact (right)"}
+            </button>
+          </div>
         </>
       )}
     </div>
   );
 
   // The floating pill (mobile on every position; desktop when navPosition is
-  // bottom). Identical to the v5 bar.
-  // `fill` widens the desktop bottom bar to the ~40rem canvas width and spreads
-  // its items across, so it reads with the same presence as the other layouts.
-  const floatingPill = (extraClass: string, fill = false) => (
+  // bottom). `fill` widens the desktop bottom bar to the ~40rem canvas width and
+  // spreads its items across, so it reads with the same presence as the others.
+  // Tools popovers open upward (the pill sits at the bottom edge).
+  const floatingPill = (
+    barSlots: { slot: ShellSlot; id: string }[],
+    extraClass: string,
+    fill = false
+  ) => (
     <div
       className={`fixed z-40 flex items-center rounded-2xl border border-neutral-800 bg-neutral-900/95 shadow-xl shadow-black/40 backdrop-blur ${
         fill ? "w-[40rem] max-w-[calc(100vw-2rem)] justify-between gap-1 p-2 [&_svg]:h-6 [&_svg]:w-6" : "gap-1 p-1.5"
       } ${extraClass}`}
     >
-      {orderedSlots.map((slot) =>
-        renderSlot(slot, pillSlot(slot.key !== "search" && isActive(slot.href)), true, "corner")
+      {barSlots.map(({ slot, id }) =>
+        renderSlot(slot, id, pillSlot, true, "corner", "bottom-full mb-2 left-1/2 -translate-x-1/2")
       )}
       <button
         onClick={() => setCaptureOpen(true)}
@@ -542,36 +623,40 @@ export default function NavShell({
     <nav aria-label="Main">
       {/* Mobile: always the floating bottom bar, whatever the desktop position. */}
       <div className="sm:hidden">
-        {floatingPill("bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2")}
+        {floatingPill(mobileBarSlots, "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2")}
       </div>
 
       {/* Desktop chrome (sm+). One of four layouts. */}
       {navPosition === "bottom" && (
         <div className="hidden sm:block">
-          {floatingPill("bottom-4 left-1/2 -translate-x-1/2", true)}
+          {floatingPill(desktopSlots, "bottom-4 left-1/2 -translate-x-1/2", true)}
         </div>
       )}
 
       {navPosition === "top" && (
         // The bar always spans the full top edge (background + border line all
-        // the way across), like the rails span the full height. Compact centers
-        // the *content* within a ~40rem band (mx-auto); spread lets it use the
-        // full width. Inside both: logo + items left, New/More right (ml-auto).
+        // the way across), like the rails span the full height. Only the content
+        // cluster moves, mirroring the rails: spread pins logo + items to the
+        // left and pushes New/More to the right (ml-auto); compact groups the
+        // whole cluster together and anchors it left / center / right via the
+        // stored top / center / bottom anchor (start / center / end).
         <header className="fixed inset-x-0 top-0 z-40 hidden h-14 border-b border-neutral-800 bg-neutral-900/95 backdrop-blur sm:block">
-          {/* Compact uses the SAME container as the page content (mx-auto
-              max-w-3xl px-6 sm:px-12, see app/page.tsx) so the logo lines up
-              with the page heading and New/More align with the content's right
-              edge. Spread spreads across the full width. */}
           <div
-            className={`mx-auto flex h-full items-center gap-1 ${
-              density === "compact" ? "w-full max-w-3xl px-6 sm:px-12" : "px-3"
+            className={`flex h-full items-center gap-1 px-3 ${
+              density === "compact"
+                ? anchor === "center"
+                  ? "justify-center"
+                  : anchor === "bottom"
+                    ? "justify-end"
+                    : "justify-start"
+                : ""
             }`}
           >
             <Logo className="-ml-1" />
-            {orderedSlots.map((slot) =>
-              renderSlot(slot, topSlot(slot.key !== "search" && isActive(slot.href)), true, "inline")
+            {desktopSlots.map(({ slot, id }) =>
+              renderSlot(slot, id, topSlot, true, "inline", "top-full mt-2 left-0")
             )}
-            <div className="ml-auto flex items-center gap-1">
+            <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
               <button
                 onClick={() => setCaptureOpen(true)}
                 title="Quick capture (q)"
@@ -590,7 +675,15 @@ export default function NavShell({
                 >
                   <KebabIcon horizontal={false} />
                 </button>
-                {menuOpen && renderMenu("right-0 top-full mt-2")}
+                {/* Open toward the screen, away from the kebab: when the cluster
+                    hugs the left edge (compact-left) the menu aligns left so it
+                    doesn't run off-screen; otherwise it aligns right. */}
+                {menuOpen &&
+                  renderMenu(
+                    `top-full mt-2 ${
+                      density === "compact" && anchor === "top" ? "left-0" : "right-0"
+                    }`
+                  )}
               </div>
             </div>
           </div>
@@ -631,8 +724,6 @@ export default function NavShell({
                 <Chevron dir={navPosition === "left" ? "left" : "right"} size={railSize === "fat" ? 16 : 22} />
               </button>
             );
-            // Fat: logo on the left, arrow at the docked edge. Thin: just the
-            // arrow (no room for even the compact mark), a little larger.
             return railSize === "fat" ? (
               <div className="flex items-center justify-between px-1 pb-1">
                 <Logo />
@@ -651,16 +742,16 @@ export default function NavShell({
             <div className="flex-1" />
           )}
 
-          {/* Slots. */}
+          {/* Slots. The rail's tools popovers open to the docked side. */}
           <div className="flex flex-col gap-1">
-            {orderedSlots.map((slot) =>
+            {desktopSlots.map(({ slot, id }) =>
               renderSlot(
                 slot,
-                railSize === "fat"
-                  ? railFatSlot(slot.key !== "search" && isActive(slot.href))
-                  : railThinSlot(slot.key !== "search" && isActive(slot.href)),
+                id,
+                railSize === "fat" ? railFatSlot : railThinSlot,
                 railSize === "fat",
-                railSize === "fat" ? "inline" : "corner"
+                railSize === "fat" ? "inline" : "corner",
+                `${navPosition === "left" ? "left-full ml-2" : "right-full mr-2"} top-0`
               )
             )}
           </div>

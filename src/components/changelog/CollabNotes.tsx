@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import LazyMarkdownEditor from "@/components/markdown-editor/LazyMarkdownEditor";
 
 type LoadState = "loading" | "ready" | "notconfigured" | "error";
@@ -104,10 +105,9 @@ export default function CollabNotes({ configured, authorName }: { configured: bo
     [sha]
   );
 
-  const onClear = useCallback(() => {
-    if (!window.confirm("Clear all shared notes? This commits an empty notes file.")) return;
-    void commit("", true);
-  }, [commit]);
+  // Clearing the shared notes is confirmed in-context (the Clear button is a
+  // ConfirmButton); this just commits the empty file.
+  const clearNotes = useCallback(() => commit("", true), [commit]);
 
   // Insert a bold "<name> · <when>:" stamp at the cursor so a note carries who
   // left it. Uses the editor directly when available (lands at the caret and
@@ -191,13 +191,16 @@ export default function CollabNotes({ configured, authorName }: { configured: bo
             >
               {saving ? "Saving…" : "Save"}
             </button>
-            <button
-              onClick={onClear}
+            <ConfirmButton
+              onConfirm={clearNotes}
+              title="Clear all shared notes?"
+              description="This commits an empty notes file for both of you."
+              confirmLabel="Clear"
+              align="right"
               disabled={saving}
-              className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-40"
-            >
-              Clear
-            </button>
+              triggerClassName="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-40"
+              trigger="Clear"
+            />
             {message && <span className="text-[11px] text-neutral-500">{message}</span>}
           </div>
         </>

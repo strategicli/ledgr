@@ -8,6 +8,7 @@ import {
   desc,
   eq,
   ilike,
+  inArray,
   isNull,
   isNotNull,
   sql,
@@ -153,10 +154,12 @@ export async function getItem(ownerId: string, id: string) {
 }
 
 async function assertTypeExists(type: string) {
+  // A soft-deleted type (ADR-058) is excluded: you can't create or retype an
+  // item into a type that's sitting in Trash.
   const rows = await getDb()
     .select({ key: types.key })
     .from(types)
-    .where(eq(types.key, type));
+    .where(and(eq(types.key, type), isNull(types.deletedAt)));
   if (rows.length === 0) {
     throw new ItemError("bad_request", `unknown type '${type}'`);
   }
@@ -360,10 +363,21 @@ export async function restoreItem(ownerId: string, id: string) {
     )
     update items set deleted_at = null, updated_at = now()
     where id in (select id from unit)
-    returning id
+    returning id, type
   `);
   if (res.rows.length === 0) {
     throw new ItemError("not_found", "item not found in trash");
+  }
+  // An active item can't reference a soft-deleted type (ADR-058): if restoring
+  // these items revived something whose type is in Trash, revive the type too.
+  const restoredTypes = Array.from(
+    new Set(res.rows.map((r) => (r as { type: string }).type))
+  );
+  if (restoredTypes.length > 0) {
+    await getDb()
+      .update(types)
+      .set({ deletedAt: null })
+      .where(and(inArray(types.key, restoredTypes), isNotNull(types.deletedAt)));
   }
   return { restored: res.rows.length };
 }
@@ -428,5 +442,15 @@ export async function purgeExpiredTrash() {
   const purged = await db.execute(sql`
     delete from items where deleted_at < ${cutoff} returning id
   `);
-  return { purged: purged.rows.length, detached: detached.rows.length };
+  // Soft-deleted types past the window are hard-purged too (ADR-058). Their
+  // items were trashed in the same operation, so they've just been purged above
+  // — the FK is now clear. The type's templates cascade with the row.
+  const purgedTypes = await db.execute(sql`
+    delete from types where deleted_at < ${cutoff} returning key
+  `);
+  return {
+    purged: purged.rows.length,
+    detached: detached.rows.length,
+    purgedTypes: purgedTypes.rows.length,
+  };
 }
