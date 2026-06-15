@@ -72,7 +72,7 @@ export default function Modal({
             ✕
           </button>
         </div>
-        <div className="min-h-0 overflow-y-auto pb-2">{children}</div>
+        <div className="min-h-0 overflow-y-auto pb-12">{children}</div>
       </div>
     </div>
   );

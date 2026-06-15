@@ -61,7 +61,7 @@ export default async function BuildTypes() {
                   )}
                   {t.isSystem && (
                     <span className="shrink-0 text-xs text-neutral-600">
-                      system
+                      built-in
                     </span>
                   )}
                 </Link>

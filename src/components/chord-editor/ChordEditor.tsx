@@ -153,47 +153,51 @@ export default function ChordEditor({ chart, onChange, title, onTitleChange }: P
 
   return (
     <div className="cc-editor mx-auto w-full max-w-3xl px-6 py-4 text-neutral-200">
-      {/* Header: title + metadata */}
-      <input
-        value={title}
-        onChange={(e) => onTitleChange(e.target.value)}
-        placeholder="Song title"
-        className="w-full bg-transparent text-2xl font-bold text-neutral-100 outline-none placeholder:text-neutral-600"
-      />
-      <input
-        value={chart.meta.artist ?? ""}
-        onChange={(e) => onChange(updateMeta(chart, { artist: e.target.value }))}
-        placeholder="Artist / credits"
-        className="mt-1 w-full bg-transparent text-sm text-neutral-400 outline-none placeholder:text-neutral-700"
-      />
-      <div className="mt-3 flex flex-wrap items-end gap-3 border-b border-neutral-800 pb-3">
-        {META_FIELDS.map((f) => (
-          <label key={f.key} className="flex flex-col text-[10px] uppercase tracking-wide text-neutral-500">
-            {f.label}
+      {/* Header: title + artist on the left, metadata to the right (v5). */}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-neutral-800 pb-3">
+        <div className="min-w-0 flex-1">
+          <input
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder="Song title"
+            className="w-full bg-transparent text-2xl font-bold text-neutral-100 outline-none placeholder:text-neutral-600"
+          />
+          <input
+            value={chart.meta.artist ?? ""}
+            onChange={(e) => onChange(updateMeta(chart, { artist: e.target.value }))}
+            placeholder="Artist / credits"
+            className="mt-1 w-full bg-transparent text-sm text-neutral-400 outline-none placeholder:text-neutral-700"
+          />
+        </div>
+        <div className="flex flex-wrap items-end justify-end gap-3">
+          {META_FIELDS.map((f) => (
+            <label key={f.key} className="flex flex-col text-[10px] uppercase tracking-wide text-neutral-500">
+              {f.label}
+              <input
+                value={chart.meta[f.key] != null ? String(chart.meta[f.key]) : ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const num = f.key === "capo" || f.key === "tempo";
+                  onChange(
+                    updateMeta(chart, {
+                      [f.key]: v === "" ? undefined : num ? Number(v) || undefined : v,
+                    })
+                  );
+                }}
+                className={`${f.width} rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-100 outline-none focus:border-sky-700`}
+              />
+            </label>
+          ))}
+          <label className="flex flex-col text-[10px] uppercase tracking-wide text-neutral-500">
+            Arrangement
             <input
-              value={chart.meta[f.key] != null ? String(chart.meta[f.key]) : ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                const num = f.key === "capo" || f.key === "tempo";
-                onChange(
-                  updateMeta(chart, {
-                    [f.key]: v === "" ? undefined : num ? Number(v) || undefined : v,
-                  })
-                );
-              }}
-              className={`${f.width} rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-100 outline-none focus:border-sky-700`}
+              value={chart.meta.arrangement ?? ""}
+              onChange={(e) => onChange(updateMeta(chart, { arrangement: e.target.value || undefined }))}
+              placeholder="Intro, V1, C1, …"
+              className="w-44 rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-300 outline-none focus:border-sky-700 placeholder:text-neutral-700"
             />
           </label>
-        ))}
-        <label className="flex flex-1 flex-col text-[10px] uppercase tracking-wide text-neutral-500">
-          Arrangement
-          <input
-            value={chart.meta.arrangement ?? ""}
-            onChange={(e) => onChange(updateMeta(chart, { arrangement: e.target.value || undefined }))}
-            placeholder="Intro, V1, C1, …"
-            className="min-w-[8rem] rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-sm text-neutral-300 outline-none focus:border-sky-700 placeholder:text-neutral-700"
-          />
-        </label>
+        </div>
       </div>
 
       {/* Sections */}

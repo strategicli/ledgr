@@ -8,6 +8,8 @@
 :root {
   --background: #191919;
   --foreground: #d4d4d4;
+  /* Highlight accent (v5). Overridden per-owner on <body> from user settings. */
+  --accent: #2563eb;
 }
 
 @theme inline {

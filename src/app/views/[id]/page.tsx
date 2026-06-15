@@ -6,6 +6,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import PinButton from "@/components/views/PinButton";
 import ViewRenderer from "@/components/views/ViewRenderer";
+import NewItemButton from "@/components/home/NewItemButton";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
@@ -63,6 +64,7 @@ export default async function ViewPage({ params }: Context) {
             <Link href="/views" className="text-neutral-500 hover:text-neutral-300">
               ← All views
             </Link>
+            {view.filter.type && <NewItemButton type={view.filter.type} />}
             <PinButton viewId={view.id} pinned={view.dashboardOrder != null} />
             {!view.isSystem && (
               <Link
