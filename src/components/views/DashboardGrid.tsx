@@ -92,7 +92,7 @@ export default function DashboardGrid({
             type="checkbox"
             checked={equalHeight}
             onChange={toggleEqual}
-            className="h-3.5 w-3.5 accent-neutral-400"
+            className="ledgr-check ledgr-check-sm"
           />
           Equal heights
         </label>

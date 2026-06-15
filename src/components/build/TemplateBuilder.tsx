@@ -88,7 +88,7 @@ function DefaultControl({
       return (
         <input
           type="checkbox"
-          className="h-4 w-4 accent-neutral-300"
+          className="ledgr-check"
           checked={value === true}
           onChange={(e) => onChange(e.target.checked ? true : null)}
         />
@@ -116,7 +116,7 @@ function DefaultControl({
             <label key={o} className="flex items-center gap-1 text-sm text-neutral-300">
               <input
                 type="checkbox"
-                className="h-3.5 w-3.5 accent-neutral-300"
+                className="ledgr-check ledgr-check-sm"
                 checked={selected.includes(o)}
                 onChange={(e) => {
                   const next = e.target.checked

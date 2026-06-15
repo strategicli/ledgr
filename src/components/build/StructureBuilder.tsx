@@ -342,7 +342,7 @@ export default function StructureBuilder({
           type="checkbox"
           checked={addToDashboard}
           onChange={(e) => setAddToDashboard(e.target.checked)}
-          className="h-4 w-4 accent-neutral-300"
+          className="ledgr-check"
         />
         Add {isWorkflow ? "the board" : "it"} to my Work dashboard
       </label>

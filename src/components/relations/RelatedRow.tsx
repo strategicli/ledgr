@@ -87,7 +87,7 @@ export default function RelatedRow({
           type="checkbox"
           checked={done}
           onChange={toggle}
-          className="h-4 w-4 shrink-0 cursor-pointer accent-neutral-400"
+          className="ledgr-check"
           aria-label={done ? "Mark open" : "Mark done"}
         />
       )}

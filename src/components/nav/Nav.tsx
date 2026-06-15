@@ -44,6 +44,9 @@ export default async function Nav() {
       slots={slots}
       typeOptions={typeRows}
       navPosition={settings.navPosition}
+      railSize={settings.railSize}
+      navDensity={settings.navDensity}
+      railAnchor={settings.railAnchor}
     />
   );
 }

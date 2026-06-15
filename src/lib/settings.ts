@@ -21,10 +21,33 @@ export const HIGHLIGHT_COLORS = [
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
+// Width of the left/right side rail. Only meaningful when navPosition is
+// left or right: "fat" shows icons + names, "thin" is an icon-only rail,
+// "hidden" rolls it up to a sliver tab at the screen edge. The nav's collapse
+// arrow cycles fat → thin → hidden.
+export const RAIL_SIZES = ["fat", "thin", "hidden"] as const;
+export type RailSize = (typeof RAIL_SIZES)[number];
+
+// How the nav items pack into the bar/rail. "spread" pins them to the edges
+// (nav slots one end, the New/More utilities the other, filling the space);
+// "compact" groups everything together. On the top bar, compact also constrains
+// the content to the ~40rem canvas width. The bottom bar is always compact.
+export const NAV_DENSITIES = ["spread", "compact"] as const;
+export type NavDensity = (typeof NAV_DENSITIES)[number];
+
+// For a compact left/right rail: where the grouped cluster sits vertically —
+// the top edge, the bottom edge, or centered. Ignored when spread, and on the
+// top/bottom bars.
+export const RAIL_ANCHORS = ["top", "bottom", "center"] as const;
+export type RailAnchor = (typeof RAIL_ANCHORS)[number];
+
 export type UserSettings = {
   highlightColor: string; // hex from HIGHLIGHT_COLORS
   trashRetentionDays: number; // 1..365
   navPosition: NavPosition;
+  railSize: RailSize;
+  navDensity: NavDensity;
+  railAnchor: RailAnchor;
   // How this owner signs shared content (the Changelog notes "Sign" stamp).
   // Empty falls back to the email's local part (see effectiveDisplayName).
   displayName: string;
@@ -34,6 +57,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   highlightColor: "#2563eb",
   trashRetentionDays: 30,
   navPosition: "bottom",
+  railSize: "fat",
+  navDensity: "spread",
+  railAnchor: "top",
   displayName: "",
 };
 
@@ -48,9 +74,18 @@ export function parseSettings(raw: unknown): UserSettings {
   const navPosition = (NAV_POSITIONS as readonly string[]).includes(r.navPosition as string)
     ? (r.navPosition as NavPosition)
     : DEFAULT_SETTINGS.navPosition;
+  const railSize = (RAIL_SIZES as readonly string[]).includes(r.railSize as string)
+    ? (r.railSize as RailSize)
+    : DEFAULT_SETTINGS.railSize;
+  const navDensity = (NAV_DENSITIES as readonly string[]).includes(r.navDensity as string)
+    ? (r.navDensity as NavDensity)
+    : DEFAULT_SETTINGS.navDensity;
+  const railAnchor = (RAIL_ANCHORS as readonly string[]).includes(r.railAnchor as string)
+    ? (r.railAnchor as RailAnchor)
+    : DEFAULT_SETTINGS.railAnchor;
   const displayName =
     typeof r.displayName === "string" ? r.displayName.trim().slice(0, 60) : DEFAULT_SETTINGS.displayName;
-  return { highlightColor, trashRetentionDays: days, navPosition, displayName };
+  return { highlightColor, trashRetentionDays: days, navPosition, railSize, navDensity, railAnchor, displayName };
 }
 
 // The name to sign with: the explicit setting, else a readable fallback from

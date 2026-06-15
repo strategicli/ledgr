@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import type { CSSProperties } from "react";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import Nav from "@/components/nav/Nav";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import { AppAuthProvider } from "@/lib/auth/provider";
+import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
 import { DEFAULT_SETTINGS, getSettings } from "@/lib/settings";
 import "./globals.css";
@@ -16,6 +17,15 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Wordmark face for the "Ledgr" logo (nav). Bricolage Grotesque is a
+// contemporary display grotesque with more character than the UI type; exposed
+// as --font-logo so only the logo opts in.
+const logoFont = Bricolage_Grotesque({
+  variable: "--font-logo",
+  subsets: ["latin"],
+  weight: ["600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -45,36 +55,32 @@ export default async function RootLayout({
   modal: React.ReactNode;
 }>) {
   // The owner's settings drive the app-wide `--accent` var and the body padding
-  // that clears the nav bar (v5). Best-effort: signed-out / pre-DB renders fall
-  // back to the defaults. Mobile always keeps the bottom bar (pb-24); the nav
-  // position only reflows the desktop padding.
+  // that clears the nav (v6). Best-effort: signed-out / pre-DB renders fall back
+  // to the defaults. The padding is set as CSS vars (--nav-pt/pb/pl/pr) that
+  // globals.css applies; NavShell updates the rail var instantly on collapse.
   let accent = DEFAULT_SETTINGS.highlightColor;
   let navPosition = DEFAULT_SETTINGS.navPosition;
+  let railSize = DEFAULT_SETTINGS.railSize;
   try {
     const owner = await resolveOwner();
     if (owner) {
       const s = await getSettings(owner.id);
       accent = s.highlightColor;
       navPosition = s.navPosition;
+      railSize = s.railSize;
     }
   } catch {
     /* defaults */
   }
-  const navPad: Record<typeof navPosition, string> = {
-    bottom: "pb-24",
-    top: "pb-24 sm:pb-0 sm:pt-24",
-    left: "pb-24 sm:pb-0 sm:pl-28",
-    right: "pb-24 sm:pb-0 sm:pr-28",
-  };
   return (
     <AppAuthProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${logoFont.variable} h-full antialiased`}
       >
         <body
-          className={`min-h-full flex flex-col ${navPad[navPosition]}`}
-          style={{ "--accent": accent } as CSSProperties}
+          className="min-h-full flex flex-col"
+          style={{ "--accent": accent, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           {children}
           <Nav />

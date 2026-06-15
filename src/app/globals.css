@@ -25,6 +25,64 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Nav clearance (v6). The nav writes --nav-pt/pb/pl/pr on <body> (see
+   nav-layout.ts). Mobile always uses the floating bottom bar, so it gets a
+   fixed bottom clearance; the docked top bar / side rail padding only applies
+   at the sm+ breakpoint where those positions render. */
+body {
+  padding-bottom: 6rem;
+}
+@media (min-width: 640px) {
+  body {
+    padding-top: var(--nav-pt, 0px);
+    padding-bottom: var(--nav-pb, 0px);
+    padding-left: var(--nav-pl, 0px);
+    padding-right: var(--nav-pr, 0px);
+    transition: padding 0.18s ease;
+  }
+}
+
+/* Circular checkbox used across the app — task done-toggles and Build/config
+   form checkboxes alike. Dark-mode friendly: a gray ring on a dark fill that
+   turns the highlight accent with a white check when ticked. Mirrors the
+   editor's task-list checkbox (markdown-editor.css). Apply to a native
+   <input type="checkbox">; add .ledgr-check-sm for compact form rows. */
+.ledgr-check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  border: 1.5px solid #6b7280;
+  border-radius: 9999px;
+  background: #171717;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.ledgr-check:checked {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+}
+.ledgr-check:checked::after {
+  content: "";
+  width: 0.3rem;
+  height: 0.55rem;
+  margin-top: -0.08rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.ledgr-check:focus-visible {
+  outline: 2px solid var(--accent, #2563eb);
+  outline-offset: 2px;
+}
+.ledgr-check-sm {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
 /* The markdown editor (Tiptap) and its @-mention chip carry their own styles
    in src/components/markdown-editor/markdown-editor.css, loaded with the lazy
    editor bundle; nothing editor-specific belongs here. */

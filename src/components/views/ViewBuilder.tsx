@@ -491,7 +491,7 @@ export default function ViewBuilder({
                 <label key={`field:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5 accent-neutral-300"
+                    className="ledgr-check ledgr-check-sm"
                     checked={hasColumn(col)}
                     onChange={() => toggleColumn(col)}
                   />
@@ -505,7 +505,7 @@ export default function ViewBuilder({
                 <label key={`property:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5 accent-neutral-300"
+                    className="ledgr-check ledgr-check-sm"
                     checked={hasColumn(col)}
                     onChange={() => toggleColumn(col)}
                   />

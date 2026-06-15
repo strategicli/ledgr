@@ -282,7 +282,7 @@ export default function TypeBuilder({
             type="checkbox"
             checked={showInQuickCapture}
             onChange={(e) => setShowInQuickCapture(e.target.checked)}
-            className="h-4 w-4 accent-neutral-300"
+            className="ledgr-check"
           />
           Show in quick capture
         </label>
