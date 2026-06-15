@@ -37,6 +37,12 @@ This is distinct from item templates (slice 34 / ADR-045), which pre-fill proper
 - **Pandoc reference `.docx` files.** Pandoc supports a `--reference-doc` flag; different reference files give different looks. Store reference files in R2 or as static assets; the export API picks one based on the selected template.
 - **CSS print templates.** For the print/PDF path, a per-template stylesheet (or a theme class on the print body) controls the visual output. Simpler, no pandoc required.
 
+## 3b. A Markdown → styled-HTML re-render engine + a Presentations type (6.14 meeting)
+
+The 6.14 Brandon + Tyler meeting added a sharper framing of the same renders-from-Markdown idea: a per-purpose **"reading engine" / re-render engine** that takes the stored Markdown and re-renders styled HTML to whatever structure and CSS you specify for a given output. You tell the engine the HTML shape/CSS you want; it produces the presentation layer, the Markdown stays the single source.
+
+The strongest concrete use raised was a **bespoke Presentations type**: Markdown source pushed to HTML/JS as the actual slides/presentation. This sits cleanly inside the existing model (a type declares its canvas; its exporter renders from Markdown — ADR-041/043) and is the natural home for the "engine" idea. Treat it as a candidate bespoke module, not core. Storage caveat noted in the meeting: presentation **images** (~2MB each) are the real storage cost; the Markdown itself is trivial.
+
 ## 4. CSS snippets (Obsidian-style)
 
 Obsidian lets users paste custom CSS into a `custom.css` file that overrides how the app and its exports look. Brandon is interested in the same for Ledgr — either for the canvas display (how notes look while editing/reading) or for exports.

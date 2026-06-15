@@ -160,6 +160,17 @@ The Changelog page (in the kebab "More" menu) reads the repo's commit history li
 
 ---
 
+## 1h. Running Ledgr locally (the dev loop)
+The whole app runs on your own machine — Next.js + the codebase on disk, the DB on Neon (or local Postgres) via `DATABASE_URL`. This is the everyday build loop (watch Claude's edits live without waiting on a Vercel deploy) and is also the seed of the "the app and the data are user-owned, this can't be taken" posture (`explorations/local-first-split.md`). Vercel auto-deploys `main`; running locally just means you see changes before they ship.
+
+1. **First time:** clone the repo, `npm install`, copy `.env.example` → `.env.local` and fill it (at minimum `DATABASE_URL`; `DEV_USER_EMAIL` lets you sign in without Microsoft/Clerk locally — §1, ADR-006). If your machine has no local login yet, the dev-auth stand-in creates one from `DEV_USER_EMAIL`.
+2. **Run it:** `npm run dev` (default `http://localhost:3000`; if 3000 is taken by another app it serves on `3001`, etc.).
+3. **After every `git pull`:** `npm run db:migrate` — migrations are committed but each machine applies them to its own DB separately (this is the §7 `templates`/`relation does not exist` failure mode; same discipline as §1a).
+4. **Offline / mobile caching (design note, "Netflix model"):** the PWA's offline reach is meant to be **user-selectable per type** (pick which types are cached for offline — e.g. always cache sermons before Sunday), with desktop caching everything. This sharpens the Sunday-proof story (rule #2); it's a caching-strategy direction, not yet a built setting.
+5. **Storage watch:** Markdown is tiny (thousands of notes ≈ ~1GB), so the only meaningful storage cost is **images** (presentation images ~2MB each, scanned PDFs) — keep those on R2/CDN, not inline, and watch the per-user quota.
+
+---
+
 ## 2. Health and monitoring
 - **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome), `graph` (app-only Graph token grant; see below), and `errors.last24h` (count of `error_log` rows captured in the last 24 hours; should be 0). The Todoist API check joins once that integration exists.
 - **`checks.graph`** (slice 21, ADR-022) is the canary for every unattended Graph job (export, calendar, email-in): `{configured:false}` until the registration is set (§1b), `{configured:true, ok:true}` when an app-only token grant succeeds (proving the client secret is valid and unexpired), `{configured:true, ok:false, detail}` when it fails — the **secret-expiry / revoked-consent alarm**. It is a token grant only, not a resource call, so it stays green even before the calendar permission is granted (§1c); it never changes overall `/health` status (Graph down must not make the app look unhealthy — the DB is what "healthy" means).

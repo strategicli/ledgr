@@ -2,6 +2,8 @@
 
 **Status:** parked (Brandon, 2026-06-12). Not intent, not a decision; revisit in a later phase.
 
+> **Meeting note (2026-06-14, ADR-061):** confirmed in practice that **a project is *not* a functional type — it's a relational connection** across tasks/meetings/notes. Live test data created a "project" entity linking items, and both agreed nothing functionally changes about a task when it gains subtasks or a parent; it just needs relations ("relational connections... that's all you really need"). So any future "project treatment" is purely a presentation/behavior layer over a related item (the constraint already noted below), never a new type or table.
+
 ## The idea
 
 When a task accumulates subtasks, it's often really a *project*. Ledgr could notice that and treat it differently:

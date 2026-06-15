@@ -445,11 +445,48 @@ Several items below need a **per-owner settings/profile store** that doesn't exi
 
 ---
 
+## Build-meeting follow-ups (2026-06-14 Brandon + Tyler session)
+
+New items from the 6.14 build meeting (the summary + full transcript). Kept general — whoever picks up a session takes what fits. Tags as above ([solo]/[shared]/[CORE]).
+
+**Decided this meeting (now ADRs — see `decisions.md`). Note: ADR-055 was claimed by the entity→person retirement (committed to main the same evening), so the meeting ADRs are 056–058:**
+- **Bible/passage relational DB + RefTagger auto-tagger — ADR-060.** Build details under "Bespoke module backlog" below.
+- **Notes are a module attachable to every type; relations are the primary organizing principle (over files/folders) — ADR-061.** A "project" is just relations, not a type. **Build:** a notes module that can attach to any type (notes on a sermon, on a meeting); no folder silo. [CORE decided — build is module-level]
+- **Share/Print renders the canvas; per-property "include in share?" toggle — ADR-062.** [CORE-adjacent decided — build below]
+
+**New build items:**
+- **Per-property "include in share?" toggle [CORE-adjacent, ADR-062].** When a property is added to a type, let it carry an "include in share?" flag (mirrors the existing "show in Quick Capture" toggle); Share/Print renders the canvas plus the opted-in fields. Per-type default field sets are decided type by type, not blocking.
+- **Quick Capture default type = a catch-all "undefined", not "task" [solo].** Capture currently auto-applies `task`; it should default to an unassigned/catch-all type and let the user pick (the catch-all tier already exists, Principle 6).
+- **Click-and-drag canvas scrolling for mouse users [solo].** Horizontal canvas scroll is painful with a mouse (fine on a trackpad); add click-drag to pan.
+- **Songs: Lyrics step + paste-and-convert parser [solo].** Pasting full lyrics today collapses into one "verse" and treats bracketed text as superscript. Add a Lyrics step with a "paste and convert" button that parses pasted lyrics into individual lines (deterministic — detect line breaks / line-start capitals; no AI). Flagged as possibly a **big rewrite** of the lyrics handling. **⚠️ Likely already shipped on main** — commits "Song Lyrics tab: persistent, two-way lyrics editing (preserves chords)" + "normalize all section labels to uppercase" landed after the meeting; verify against current main before building.
+- **Papers: drag-and-drop section reorder + page-count-per-section field [solo].** Already noted as the Papers "next step" (dnd-kit) and as P4; reconfirmed in the meeting. Page-count-per-section drives the suggested paragraph count (currently assumes ~2-3 pages/section).
+- **Highlight/accent color applied everywhere [solo].** The chosen highlight color isn't used in all UI locations yet; finish wiring it (delete/Critical intentionally stay red).
+- **Songs: fix chord-width jitter [solo].** Changing a chord shifts width and makes the line jump; stabilize it.
+- **Investigate: multiple share links per item — intentional? [solo].** The "new share link" UI implies more than one link per item; confirm whether that's wanted (tracked in ADR-062).
+
+**Brandon-built integrations / apps (per-instance, provider-seam; whoever's instance wants them):**
+- **Quiet Time Journal → Ledgr API** — push journal entries in, pre-tagged by book/chapter/verse (lands on the Bible hub + an `IntegrationDef`, direction: pull). Also in the module backlog (Quiet-time journals).
+- **Logos API integration** — auto-push Logos notes into Ledgr organized by passage (possibly two-way later); replaces the current manual every-2-3-months export. Per-instance integration behind the provider seam.
+
+**Future / exploratory (parked, not queued):**
+- **MCP voice/text commands** — extend the shipped MCP (ADR-047) so Claude can add/move/complete tasks, fetch songs, "grab a PDF and save it in the key of G," etc., from voice/dictation. A later extension to `src/lib/mcp/tools.ts`, not new core.
+- **Bulk-convert legacy archives → Markdown** (old Word docs, Evernote, scanned image PDFs) via Claude + OCR, with AI smoothing OCR errors and optionally modernizing language. One-time import tooling, not a runtime feature.
+- **In-canvas `@`-mention to relate items mid-document** — see `explorations/quick-capture-at-mention.md` (reaffirmed).
+- **Web clipper** (Evernote-style, save an article as Markdown) — see `explorations/web-clipper.md` (reaffirmed).
+- **Markdown → styled-HTML re-render engine + a Presentations type** — see `explorations/rich-export-and-theming.md` §3b and the Presentations backlog item.
+- **GraphRAG / code-indexing tool** to speed up Claude's codebase scans — considered, deferred ("not that big yet").
+
+**Watch:** **image storage** is the recognized scaling risk (presentation images ~2MB each, scanned PDFs); everything else (Markdown) is trivially small.
+
+**Already shipped from this meeting's action items:** the **Changelog / Updates page** under the kebab "More" menu (ADR-054, 2026-06-14).
+
+---
+
 ## Bespoke module backlog (ideas, not built — captured 2026-06-14)
 
 Modules to build on top of the M6 boundary (and, where it fits, offered through the **bespoke-tool catalog** spec at line 94 so a user can attach the behavior to a type they name). Most are **non-core module internals** = whoever-wants-it, move fast solo; the cross-cutting one (Bible passages) is flagged. Ordered loosely by how much they interconnect, not strictly by priority.
 
-- **Bible books / chapters / verses — the relational hub (build this early; it's the keystone).** A reference model of the canon so any other item can point at a passage, and one search surfaces *every* sermon, paper, devotional, song, or lesson that touches it. **Why it's first among these:** Sermons/Lessons, Songs, Quiet-time journals, and Papers all want to relate *to* it, so building it first lets the others wire in as they land. **Architectural flag (likely Brandon + ADR):** this is the first real use of the **`relation` property kind** — still deferred (ADR-055 confirmed it wasn't needed for the entity→person collapse; it lands when a typed-relation use like this, or a Meeting's "Attendees" field, arrives) and noted in the catalog spec. It touches `relations` + FTS/search (core invariants), so it's not a pure solo module: land the `relation` kind first, then decide the passage model (one item per book? per chapter? a parsed `Book c:v–v` reference value?) in a short ADR. The payoff (passage → all related work) is the thing that makes the whole "second brain" click.
+- **Bible books / chapters / verses — the relational hub (build this early; it's the keystone). ✅ DECIDED — ADR-060 (2026-06-14).** A reference model of the canon so any other item can point at a passage, and one search surfaces *every* sermon, paper, devotional, song, or lesson that touches it. **Why it's first among these:** Sermons/Lessons, Songs, Quiet-time journals, and Papers all want to relate *to* it, so building it first lets the others wire in as they land. **Model is settled (ADR-060):** pre-build the whole canon as a relational structure, **book → chapter → verse, verse atomic**; a passage range (e.g. Luke 11:35-36) links each verse in the range; sub-verse (11:35a/b) rejected. Plus a **deterministic RefTagger-style auto-tagger** (cron, no AI) that recognizes references in many surface forms ("Luke 11:35", "LK 11.35", "Luke 1135") and wires the relation automatically. The decision went **pre-built over tag-on-demand** because a free-typed tag doesn't guarantee correct shape and only tags one side. **Shape:** a bespoke `passage` type related to via the existing `relations` table — **not** the deferred `relation` property kind (ADR-055 confirmed item-to-item relations already cover this; the `relation` kind lands later for typed fields like a Meeting's "Attendees"). **Remaining = the build** (seed the canon as a `passage` type + relations, the auto-tagger) — non-core module work, whoever-wants-it.
 - **Sermons & Bible Lessons.** A preaching/teaching workspace tied to **one primary passage** plus **many referenced passages** (most sermons cross-reference widely) — both via relations to the Bible model above. Canvas akin to Papers (notes → manuscript), with the Pulpit-Ready/offline + export paths the PRD already wants. Connects to Songs (same-passage worship) once both relate to passages.
 - **Songs ↔ passages (extend the existing Songs module).** Let a song relate to Bible passages so "songs on this passage" shows up beside sermons and papers. Small addition to the shipped Songs module once the Bible hub exists; not a new module.
 - **People / relational growth.** Track relationships you're intentionally investing in and *where each one is at* — clients, discipleship relationships, a pastor learning a congregation, wife and kids, friends to stay in touch with. Shape: a **`stage` select property on the `person` type** + a board-by-stage view (ADR-046). `person` is now a first-class bespoke type (ADR-055), not an entity kind, so this leans on the type/property model directly. **Why:** turns "I mean to invest in people" into something with state you can actually see and act on. (Seeing "people at stage X" as a *list* needs the list-filter-by-property item under Views.)
@@ -468,7 +505,10 @@ Modules to build on top of the M6 boundary (and, where it fits, offered through 
 - ~~Error capture~~: decided, `error_log` table over Sentry (ADR-020).
 - Desktop navigation: floating bottom bar vs right sidebar (PRD Q9). Both built behind the same slot model; Brandon picks, loser gets deleted.
 - Per-type item templates (tasks/meetings/notes storing property choices + starter content) parked for a later phase (roadmap Phase 3); the meeting-prep template is the Phase 2 forerunner.
-- "Project" treatment for subtask-having items: parked in `explorations/project-items.md`.
+- ~~"Project" treatment for subtask-having items~~: confirmed a project is **relations, not a type** (ADR-061); a project treatment, if built, is a presentation layer only. Still parked in `explorations/project-items.md`.
+- ~~Notes organization (files/folders vs sub-pages vs tags)~~: decided **relations-primary, notes-as-a-module-on-every-type** (ADR-061). The remaining open piece is the **export → MD-file-tree mapping** (`explorations/storage-organization.md`).
+- ~~What does Share output~~: decided **Share/Print renders the canvas**, with a per-property "include in share?" toggle (ADR-062). Per-type field sets still decided type by type.
+- ~~Entity vs. custom type~~: **RESOLVED** — the `entity` meta-type was retired → bespoke `person`, `kind` dropped, the related list made universal (ADR-055); the `relation` property kind stays deferred. See `explorations/entity-vs-custom-type.md`.
 - See `decisions.md` for the running log and PRD §10/§11 for what's already frozen vs still open.
 
 ---

@@ -114,6 +114,13 @@ The goal: a usable single-user tool Brandon can capture into and write in, with 
 - [ ] **Paste / embed documents (files).** BlockNote had file blocks; the markdown canvas doesn't. Decide the markdown representation (a link to the R2-stored file vs an inline embed) and wire paste/drop → R2 → markdown. (Brandon, 2026-06-13 — recorded for later; lower priority than image paste.) **Open direction (Brandon + Tyler, 2026-06-15):** prefer **converting docs to markdown on ingest** (pandoc-style) over storing heavy binaries (e.g. large PDFs) in R2 — keeps content searchable/portable and fits the ~$0/quota goals. Needs its own small design pass (what converts deterministically, what happens to the original binary, scanned PDFs).
 - [x] Minor: a **strikethrough toolbar button** (Strike already round-trips via StarterKit; just no button). **(2026-06-15: added alongside the image/table work.)**
 
+**Build-meeting decisions (2026-06-14 Brandon + Tyler) feeding Phase 3 + the post-foundation modules — tracked in `next_steps.md` "Build-meeting follow-ups":**
+- [ ] Per-property **"include in share?"** toggle; Share/Print renders the canvas + opted-in fields (ADR-062).
+- [ ] Quick Capture defaults to a **catch-all type**, not `task`.
+- [ ] **Notes module attachable to every type**; relations are the primary organizing principle (ADR-061). Post-foundation module work.
+- [ ] **Bible/passage relational DB + RefTagger auto-tagger** (ADR-060) — the keystone module; book→chapter→verse, verse atomic. Post-foundation module work.
+- Polish carried from the meeting (mouse click-drag canvas scroll, Songs lyrics paste-convert, Papers section drag-and-drop + page-count, highlight color everywhere, chord-width jitter) — see `next_steps.md`.
+
 ---
 
 ## Phase 4: Packageable local / self-hosted build (exploratory)
