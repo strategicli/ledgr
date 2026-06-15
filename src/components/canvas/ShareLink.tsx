@@ -102,7 +102,7 @@ export default function ShareLink({ itemId }: { itemId: string }) {
               </button>
               <button
                 onClick={() => void revoke(t.token)}
-                className="shrink-0 text-neutral-600 hover:text-red-400"
+                className="shrink-0 text-neutral-600 hover:text-[var(--accent)]"
               >
                 revoke
               </button>
