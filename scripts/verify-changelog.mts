@@ -3,7 +3,7 @@
 // No network — these are the deterministic seams the page and notes API ride.
 // Run: npx tsx scripts/verify-changelog.mts  — safe to delete when closed.
 
-const { toChangelogEntry, decodeContent, getGithubConfig } = await import("../src/lib/github/client");
+const { toChangelogEntry, decodeContent, getGithubConfig, isNotesCommit, NOTES_COMMIT_PREFIX } = await import("../src/lib/github/client");
 
 let failures = 0;
 function check(label: string, cond: boolean) {
@@ -49,6 +49,11 @@ check("single-line message → empty body", single.subject === "Quick fix" && si
 const empty = toChangelogEntry({ ...listItem, commit: { message: "", author: null }, author: null });
 check("empty message → placeholder subject", empty.subject === "(no message)");
 check("missing author → 'unknown'", empty.authorName === "unknown" && empty.authorLogin === null);
+
+// ── isNotesCommit (changelog filter) ──────────────────────────────────────────
+check("a notes-Save commit is flagged", isNotesCommit(`${NOTES_COMMIT_PREFIX}, tyler@bethanycentral.org)`));
+check("a real commit is not flagged", !isNotesCommit("Add changelog page (ADR-054)"));
+check("an empty message is not flagged", !isNotesCommit(""));
 
 // ── decodeContent ─────────────────────────────────────────────────────────────
 const md = "# Notes\n\nLeave each other notes here. ✓";

@@ -7,7 +7,7 @@
 // extensions; the rest is StarterKit + the first-party Markdown extension.
 "use client";
 
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
@@ -26,6 +26,9 @@ export type MarkdownEditorProps = {
   initialMarkdown: string;
   // Fired with the full markdown string on every edit; the host debounces.
   onChange: (markdown: string) => void;
+  // Optional: hands the live editor up once ready, so a host can drive
+  // imperative inserts (e.g. the Changelog notes "Sign" stamp). No-op when unset.
+  onEditorReady?: (editor: Editor) => void;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -62,6 +65,7 @@ export default function MarkdownEditor({
   itemId,
   initialMarkdown,
   onChange,
+  onEditorReady,
 }: MarkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -127,6 +131,11 @@ export default function MarkdownEditor({
         .forEach((n) => n.remove());
     };
   }, []);
+
+  // Hand the editor up once it exists, for hosts that drive imperative inserts.
+  useEffect(() => {
+    if (editor && onEditorReady) onEditorReady(editor);
+  }, [editor, onEditorReady]);
 
   // If the host swaps in a different document (e.g. "reload from saved" on the
   // scratch route), reset the editor to it without firing onUpdate.

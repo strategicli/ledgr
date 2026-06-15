@@ -1,13 +1,15 @@
 // Changelog: a shared, live view of what's been pushed to the repo, so Brandon
 // and Tyler can see what each other shipped (the two deploys are separate, so
-// git is the shared medium — see src/lib/github/client.ts). 3/4 of the canvas is
-// the commit list (each entry shows roughly how much changed); 1/4 is the shared
-// collab notes scratchpad both builders can read, write, and clear.
+// git is the shared medium — see src/lib/github/client.ts). The canvas splits in
+// half: the commit list on the left (each entry hides its file/line counts and
+// sha behind a "Details" toggle), the shared collab notes scratchpad on the
+// right (both builders can read, write, and clear it).
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getChangelog, getGithubConfig, GithubError, type ChangelogEntry } from "@/lib/github/client";
 import { APP_TIMEZONE } from "@/lib/today";
+import { getSettings, effectiveDisplayName } from "@/lib/settings";
 import CollabNotes from "@/components/changelog/CollabNotes";
 
 export const dynamic = "force-dynamic";
@@ -49,19 +51,28 @@ function CommitRow({ entry }: { entry: ChangelogEntry }) {
       )}
       <div className="min-w-0 flex-1">
         <p className="text-sm text-neutral-100">{entry.subject}</p>
-        {entry.body && (
-          <p className="mt-0.5 whitespace-pre-wrap text-xs text-neutral-500">{entry.body}</p>
-        )}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-500">
           <span className="text-neutral-400">{entry.authorName}</span>
           <span>{entry.date ? timeFmt.format(new Date(entry.date)) : ""}</span>
-          <StatBadge value={entry.filesChanged} kind="files" />
-          <StatBadge value={entry.additions} kind="add" />
-          <StatBadge value={entry.deletions} kind="del" />
-          <a href={entry.url} target="_blank" rel="noreferrer" className="font-mono text-neutral-600 hover:text-[var(--accent)]">
-            {entry.shortSha}
-          </a>
         </div>
+        {/* Fine details tucked behind a click — native <details>, no client JS. */}
+        <details className="group mt-1">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-neutral-600 hover:text-neutral-400 [&::-webkit-details-marker]:hidden">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90">
+              <path d="m9 6 6 6-6 6" />
+            </svg>
+            Details
+          </summary>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-500">
+            <StatBadge value={entry.filesChanged} kind="files" />
+            <StatBadge value={entry.additions} kind="add" />
+            <StatBadge value={entry.deletions} kind="del" />
+            <a href={entry.url} target="_blank" rel="noreferrer" className="font-mono text-neutral-600 hover:text-[var(--accent)]">
+              {entry.shortSha}
+            </a>
+          </div>
+          {entry.body && <p className="mt-1.5 whitespace-pre-wrap text-xs text-neutral-500">{entry.body}</p>}
+        </details>
       </div>
     </li>
   );
@@ -84,6 +95,7 @@ export default async function ChangelogPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
+  const authorName = effectiveDisplayName(await getSettings(owner.id), owner.email);
   const configured = getGithubConfig() !== null;
   let entries: ChangelogEntry[] = [];
   let loadError: string | null = null;
@@ -109,9 +121,9 @@ export default async function ChangelogPage() {
           </Link>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-4">
-          {/* 3/4 — the commit history */}
-          <section className="lg:col-span-3">
+        <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
+          {/* 1/2 — the commit history */}
+          <section>
             {!configured ? (
               <NotConfigured />
             ) : loadError ? (
@@ -139,9 +151,9 @@ export default async function ChangelogPage() {
             )}
           </section>
 
-          {/* 1/4 — the shared notes scratchpad */}
-          <aside className="lg:col-span-1">
-            <CollabNotes configured={configured} />
+          {/* 1/2 — the shared notes scratchpad */}
+          <aside>
+            <CollabNotes configured={configured} authorName={authorName} />
           </aside>
         </div>
       </div>

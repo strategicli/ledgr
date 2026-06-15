@@ -25,12 +25,16 @@ export type UserSettings = {
   highlightColor: string; // hex from HIGHLIGHT_COLORS
   trashRetentionDays: number; // 1..365
   navPosition: NavPosition;
+  // How this owner signs shared content (the Changelog notes "Sign" stamp).
+  // Empty falls back to the email's local part (see effectiveDisplayName).
+  displayName: string;
 };
 
 export const DEFAULT_SETTINGS: UserSettings = {
   highlightColor: "#2563eb",
   trashRetentionDays: 30,
   navPosition: "bottom",
+  displayName: "",
 };
 
 export function parseSettings(raw: unknown): UserSettings {
@@ -44,7 +48,18 @@ export function parseSettings(raw: unknown): UserSettings {
   const navPosition = (NAV_POSITIONS as readonly string[]).includes(r.navPosition as string)
     ? (r.navPosition as NavPosition)
     : DEFAULT_SETTINGS.navPosition;
-  return { highlightColor, trashRetentionDays: days, navPosition };
+  const displayName =
+    typeof r.displayName === "string" ? r.displayName.trim().slice(0, 60) : DEFAULT_SETTINGS.displayName;
+  return { highlightColor, trashRetentionDays: days, navPosition, displayName };
+}
+
+// The name to sign with: the explicit setting, else a readable fallback from
+// the email's local part ("tyler@…" -> "Tyler"). Each instance is one owner.
+export function effectiveDisplayName(settings: UserSettings, email: string): string {
+  if (settings.displayName) return settings.displayName;
+  const local = (email.split("@")[0] || "").replace(/[._-]+/g, " ").trim();
+  if (!local) return "Someone";
+  return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
 export async function getSettings(ownerId: string): Promise<UserSettings> {
