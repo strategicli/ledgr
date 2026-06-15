@@ -52,7 +52,7 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Highlight color</h2>
         <p className="mt-0.5 text-sm text-neutral-500">The accent used for primary buttons and highlights.</p>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex max-w-md flex-wrap gap-2">
           {HIGHLIGHT_COLORS.map((c) => (
             <button
               key={c.value}

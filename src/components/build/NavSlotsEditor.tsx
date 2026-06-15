@@ -12,8 +12,9 @@ import NavSlotEditor from "@/components/build/NavSlotEditor";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import type { DestOption } from "@/lib/nav-slot-options";
 import {
-  MAX_MOBILE_NAV_SLOTS,
-  MAX_NAV_SLOTS,
+  NAV_SLOTS_HARD_CAP,
+  RECOMMENDED_MOBILE_NAV_SLOTS,
+  RECOMMENDED_NAV_SLOTS,
   type NavSlotConfig,
 } from "@/lib/settings";
 
@@ -45,11 +46,11 @@ function PreviewChip({
 
 function PreviewBar({
   slots,
-  max,
+  recommended,
   phone = false,
 }: {
   slots: NavSlotConfig[];
-  max: number;
+  recommended: number;
   phone?: boolean;
 }) {
   return (
@@ -64,7 +65,7 @@ function PreviewBar({
           key={i}
           icon={s.icon}
           label={s.label}
-          dim={i >= max}
+          dim={i >= recommended}
         />
       ))}
       <PreviewChip icon="tools" label="New" accent />
@@ -89,7 +90,7 @@ export default function NavSlotsEditor({
   // The custom mobile list is seeded from the desktop list the first time the
   // user switches to custom (so they start from something, not empty).
   const [mobile, setMobile] = useState<NavSlotConfig[]>(
-    initialMobile ?? initialDesktop.slice(0, MAX_MOBILE_NAV_SLOTS)
+    initialMobile ?? initialDesktop.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS)
   );
   const [tab, setTab] = useState<ListKey>("desktop");
   // The add/edit panel: which list + which index (null = adding a new slot).
@@ -100,7 +101,8 @@ export default function NavSlotsEditor({
 
   const activeKey: ListKey = mobileMode === "custom" ? tab : "desktop";
   const list = activeKey === "mobile" ? mobile : desktop;
-  const max = activeKey === "mobile" ? MAX_MOBILE_NAV_SLOTS : MAX_NAV_SLOTS;
+  const recommended =
+    activeKey === "mobile" ? RECOMMENDED_MOBILE_NAV_SLOTS : RECOMMENDED_NAV_SLOTS;
 
   // Persist the whole config (always the full arrays — no partial updates), then
   // router.refresh() so the live nav (a server component) re-renders with the
@@ -142,7 +144,7 @@ export default function NavSlotsEditor({
       persist(desktop, "mirror", mobile);
     } else {
       // Seed the mobile list from desktop if it's empty (first switch).
-      const seeded = mobile.length ? mobile : desktop.slice(0, MAX_MOBILE_NAV_SLOTS);
+      const seeded = mobile.length ? mobile : desktop.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS);
       setMobile(seeded);
       persist(desktop, "custom", seeded);
     }
@@ -151,7 +153,7 @@ export default function NavSlotsEditor({
   function saveSlot(slot: NavSlotConfig) {
     const next =
       editor?.index == null
-        ? [...list, slot].slice(0, max)
+        ? [...list, slot].slice(0, NAV_SLOTS_HARD_CAP)
         : list.map((s, i) => (i === editor!.index ? slot : s));
     commit(next);
     setEditor(null);
@@ -161,14 +163,32 @@ export default function NavSlotsEditor({
     commit(list.filter((_, idx) => idx !== i));
   }
 
-  // Native drag reorder within the active list.
-  function onDrop(target: number) {
-    if (dragIndex == null || dragIndex === target) return;
+  // Write the active list locally without persisting (used for the live drag
+  // reorder, which only saves once on release).
+  function setActiveList(next: NavSlotConfig[]) {
+    if (activeKey === "mobile") setMobile(next);
+    else setDesktop(next);
+  }
+
+  // Native drag reorder with live displacement: as the dragged slot moves over
+  // another row, the working list reorders immediately so that row makes room
+  // (no translucent ghost). `dragIndex` follows the slot to its new position so
+  // re-entering the same spot is a no-op and the held row stays highlighted.
+  function onDragEnterRow(target: number) {
+    if (dragIndex === null || dragIndex === target) return;
     const next = [...list];
     const [moved] = next.splice(dragIndex, 1);
     next.splice(target, 0, moved);
+    setActiveList(next);
+    setDragIndex(target);
+  }
+
+  // Commit the order arrived at by displacement. Fires on drop and on drag end,
+  // so an off-row release still saves; the guard makes the second call a no-op.
+  function endDrag() {
+    if (dragIndex === null) return;
     setDragIndex(null);
-    commit(next);
+    persist(desktop, mobileMode, mobile);
   }
 
   const previewSlots = activeKey === "mobile" ? mobile : desktop;
@@ -220,12 +240,12 @@ export default function NavSlotsEditor({
         <p className="pb-1 text-xs font-medium text-neutral-500">
           Preview {activeKey === "mobile" ? "(phone bottom bar)" : ""}
         </p>
-        <PreviewBar slots={previewSlots} max={max} phone={activeKey === "mobile"} />
-        {activeKey === "mobile" && (
-          <p className="pt-1 text-xs text-neutral-600">
-            The mobile bottom bar fits about {MAX_MOBILE_NAV_SLOTS} slots.
-          </p>
-        )}
+        <PreviewBar slots={previewSlots} recommended={recommended} phone={activeKey === "mobile"} />
+        <p className="pt-1 text-xs text-neutral-600">
+          {activeKey === "mobile"
+            ? `The phone bottom bar fits about ${recommended} slots; the dimmed ones overflow it.`
+            : `About ${recommended} fit the floating bottom bar (dimmed beyond that). A left/right rail or the top bar fit many more, so add as many as you need for those layouts.`}
+        </p>
       </div>
 
       {/* Slot list. */}
@@ -236,10 +256,16 @@ export default function NavSlotsEditor({
             draggable
             onDragStart={() => setDragIndex(i)}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={() => onDrop(i)}
-            onDragEnd={() => setDragIndex(null)}
-            className={`flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 ${
-              dragIndex === i ? "opacity-50" : ""
+            onDragEnter={() => onDragEnterRow(i)}
+            onDrop={(e) => {
+              e.preventDefault();
+              endDrag();
+            }}
+            onDragEnd={endDrag}
+            className={`flex items-center gap-3 rounded-lg border bg-neutral-900/40 px-3 py-2 transition-colors ${
+              dragIndex === i
+                ? "border-[var(--accent)] bg-neutral-800/60"
+                : "border-neutral-800"
             }`}
           >
             <span className="cursor-grab select-none text-neutral-600" aria-hidden>
@@ -293,14 +319,20 @@ export default function NavSlotsEditor({
           <button
             type="button"
             onClick={() => setEditor({ index: null })}
-            disabled={list.length >= max}
+            disabled={list.length >= NAV_SLOTS_HARD_CAP}
             className="self-start rounded border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 hover:border-neutral-600 hover:bg-neutral-800/60 disabled:opacity-40"
           >
             + Add slot
           </button>
-          {list.length >= max && (
-            <span className="text-xs text-neutral-600">Maximum {max} slots.</span>
-          )}
+          {list.length >= NAV_SLOTS_HARD_CAP ? (
+            <span className="text-xs text-neutral-600">
+              Maximum {NAV_SLOTS_HARD_CAP} slots.
+            </span>
+          ) : list.length > recommended ? (
+            <span className="text-xs text-neutral-600">
+              {list.length} slots, over the recommended {recommended} for the floating bar.
+            </span>
+          ) : null}
           {saved && <span className="text-xs text-neutral-600">Saved.</span>}
         </div>
       )}

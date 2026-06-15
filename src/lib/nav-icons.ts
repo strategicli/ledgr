@@ -47,6 +47,7 @@ export const NAV_ICONS = {
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
   bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   // Misc
+  changelog: '<circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/>',
   calendar: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   compass: '<circle cx="12" cy="12" r="9"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
@@ -68,7 +69,7 @@ export const NAV_ICON_GROUPS: { label: string; keys: NavIconKey[] }[] = [
   { label: "Content", keys: ["notes", "document", "meetings", "links", "people", "person", "song", "sermon", "paper", "book", "bookmark"] },
   { label: "Organization", keys: ["folder", "tag", "collection", "filter", "layers", "grid", "table", "board"] },
   { label: "Tools", keys: ["tools", "bolt", "flag", "bell"] },
-  { label: "Misc", keys: ["calendar", "compass", "target", "heart", "trophy"] },
+  { label: "Misc", keys: ["changelog", "calendar", "compass", "target", "heart", "trophy"] },
 ];
 
 // Whether a string is a known icon key.

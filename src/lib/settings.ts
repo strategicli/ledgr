@@ -11,11 +11,20 @@ import { isNavIcon, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 // The accent palette offered in settings. Stored as the hex so it can drop
 // straight into the `--accent` CSS variable.
 export const HIGHLIGHT_COLORS = [
-  { name: "Blue", value: "#2563eb" },
-  { name: "Violet", value: "#7c3aed" },
-  { name: "Emerald", value: "#059669" },
-  { name: "Amber", value: "#d97706" },
+  { name: "Red", value: "#dc2626" },
   { name: "Rose", value: "#e11d48" },
+  { name: "Pink", value: "#db2777" },
+  { name: "Fuchsia", value: "#c026d3" },
+  { name: "Violet", value: "#7c3aed" },
+  { name: "Indigo", value: "#4f46e5" },
+  { name: "Blue", value: "#2563eb" },
+  { name: "Sky", value: "#0ea5e9" },
+  { name: "Cyan", value: "#0891b2" },
+  { name: "Teal", value: "#0d9488" },
+  { name: "Emerald", value: "#059669" },
+  { name: "Lime", value: "#65a30d" },
+  { name: "Amber", value: "#d97706" },
+  { name: "Orange", value: "#ea580c" },
   { name: "Slate", value: "#475569" },
 ] as const;
 
@@ -54,10 +63,15 @@ export type RailAnchor = (typeof RAIL_ANCHORS)[number];
 // a malformed slot is dropped and an unknown icon falls back, so a hand-edited
 // blob still yields a safe, complete list rather than throwing.
 
-// How many middle slots fit before the bar feels crowded. Desktop allows 5;
-// the mobile bottom bar is tighter, so 4.
-export const MAX_NAV_SLOTS = 5;
-export const MAX_MOBILE_NAV_SLOTS = 4;
+// Recommended slot counts — guidance, not hard limits. They're sized for the
+// tight surfaces: the desktop floating pill and the phone bottom bar. A left/
+// right rail or the top bar have far more room, so the editor surfaces these as
+// advice (dims the overflow in the preview, shows a hint) and lets the user
+// exceed them rather than blocking. A single generous hard ceiling still bounds
+// the stored array so a hand-edited blob can't produce an unbounded nav.
+export const RECOMMENDED_NAV_SLOTS = 5;
+export const RECOMMENDED_MOBILE_NAV_SLOTS = 4;
+export const NAV_SLOTS_HARD_CAP = 20;
 export const MAX_TOOLS_CHILDREN = 8;
 
 // A destination points at one route. `builtin` is a hardcoded app page, `view`
@@ -95,7 +109,7 @@ export type UserSettings = {
   // The configurable middle nav slots (Home/New/More are added at render time).
   navSlots: NavSlotConfig[];
   // Mobile override: null mirrors the desktop slots; an array is a distinct
-  // mobile list (capped tighter, see MAX_MOBILE_NAV_SLOTS).
+  // mobile list (recommended tighter, see RECOMMENDED_MOBILE_NAV_SLOTS).
   mobileNavSlots: NavSlotConfig[] | null;
   // How this owner signs shared content (the Changelog notes "Sign" stamp).
   // Empty falls back to the email's local part (see effectiveDisplayName).
@@ -197,12 +211,12 @@ export function parseSettings(raw: unknown): UserSettings {
     : DEFAULT_SETTINGS.railAnchor;
   const displayName =
     typeof r.displayName === "string" ? r.displayName.trim().slice(0, 60) : DEFAULT_SETTINGS.displayName;
-  const navSlots = parseNavSlots(r.navSlots, MAX_NAV_SLOTS, DEFAULT_NAV_SLOTS);
+  const navSlots = parseNavSlots(r.navSlots, NAV_SLOTS_HARD_CAP, DEFAULT_NAV_SLOTS);
   // null (or absent) means mirror desktop; an array is a distinct mobile list.
   const mobileNavSlots =
     r.mobileNavSlots == null
       ? null
-      : parseNavSlots(r.mobileNavSlots, MAX_MOBILE_NAV_SLOTS, []);
+      : parseNavSlots(r.mobileNavSlots, NAV_SLOTS_HARD_CAP, []);
   return {
     highlightColor,
     trashRetentionDays: days,

@@ -42,8 +42,7 @@ check(
 const {
   parseSettings,
   DEFAULT_NAV_SLOTS,
-  MAX_NAV_SLOTS,
-  MAX_MOBILE_NAV_SLOTS,
+  NAV_SLOTS_HARD_CAP,
   MAX_TOOLS_CHILDREN,
 } = await import("../src/lib/settings");
 
@@ -64,8 +63,11 @@ const dest = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const capped = parseSettings({ navSlots: Array.from({ length: 8 }, () => dest()) });
-check(`desktop slots cap at ${MAX_NAV_SLOTS}`, capped.navSlots.length === MAX_NAV_SLOTS);
+const many = parseSettings({ navSlots: Array.from({ length: 8 }, () => dest()) });
+check("desktop slots are not hard-capped at the recommended count (8 kept)", many.navSlots.length === 8);
+
+const overHard = parseSettings({ navSlots: Array.from({ length: NAV_SLOTS_HARD_CAP + 5 }, () => dest()) });
+check(`desktop slots are bounded by the hard cap (${NAV_SLOTS_HARD_CAP})`, overHard.navSlots.length === NAV_SLOTS_HARD_CAP);
 
 const homeStripped = parseSettings({ navSlots: [dest({ href: "/" }), dest()] });
 check("a slot pointing at Home ('/') is stripped", homeStripped.navSlots.length === 1);
@@ -115,8 +117,8 @@ const nestedChild = parseSettings({
 const flatChild = (nestedChild.navSlots[0] as { children: Record<string, unknown>[] }).children[0];
 check("a nested tools child is flattened to a destination", flatChild != null && !("children" in flatChild));
 
-const mobileCap = parseSettings({ mobileNavSlots: Array.from({ length: 6 }, () => dest()) });
-check(`mobile slots cap at ${MAX_MOBILE_NAV_SLOTS}`, mobileCap.mobileNavSlots?.length === MAX_MOBILE_NAV_SLOTS);
+const mobileMany = parseSettings({ mobileNavSlots: Array.from({ length: 6 }, () => dest()) });
+check("mobile slots are not hard-capped at the recommended count (6 kept)", mobileMany.mobileNavSlots?.length === 6);
 check("explicit null mobileNavSlots stays null", parseSettings({ mobileNavSlots: null }).mobileNavSlots === null);
 
 // --- 1. Pure: nav-slot destination options ---------------------------------

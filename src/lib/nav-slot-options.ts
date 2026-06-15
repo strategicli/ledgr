@@ -31,6 +31,7 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/dashboard", label: "Dashboard", icon: "dashboard", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/items", label: "Items", icon: "items", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/views", label: "Views", icon: "views", badgeEligible: false },
+  { group: "Built-in", kind: "builtin", href: "/changelog", label: "Changelog", icon: "changelog", badgeEligible: false },
 ];
 
 export function buildDestOptions(
