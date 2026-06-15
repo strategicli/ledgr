@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
-import { deleteType, getType, parseTypeInput, updateType } from "@/lib/types";
+import {
+  deleteType,
+  getType,
+  parseTypeInput,
+  softDeleteTypeWithItems,
+  updateType,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -35,13 +41,21 @@ export async function PATCH(request: Request, context: Context) {
   }
 }
 
-// DELETE /api/types/[key] — blocked for system types and for types still in
-// use (the store throws bad_request in both cases).
-export async function DELETE(_request: Request, context: Context) {
+// DELETE /api/types/[key] — soft-delete to Trash (ADR-058). Blocked for system
+// types. By default it's blocked while live items reference the type (the store
+// names how many). With ?withItems=1 it moves the type AND its items to Trash
+// together (recoverable for the retention window; see softDeleteTypeWithItems).
+export async function DELETE(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
     const { key } = await context.params;
+    const withItems =
+      new URL(request.url).searchParams.get("withItems") === "1";
+    if (withItems) {
+      const { deletedItems } = await softDeleteTypeWithItems(owner.id, key);
+      return NextResponse.json({ ok: true, deletedItems });
+    }
     await deleteType(key);
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -1,7 +1,16 @@
 // Types index (slice 33, PRD §3.6/§4.10): the type registry, system rows first
-// then custom, each linking into its builder. Part of the Build surface.
+// then custom, each linking into its builder. Part of the Build surface. Hidden
+// types (ADR-059) are shown here too (dimmed, with a show/hide eye) — this is
+// the one place you manage visibility. Below the list: a subtle "Create new
+// type" affordance and a pointer to the bespoke-tool catalog.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import TypeQuickCaptureToggle from "@/components/build/TypeQuickCaptureToggle";
+import TypeVisibilityToggle from "@/components/build/TypeVisibilityToggle";
+import { attachableCapabilities } from "@/lib/modules";
+// Side-effect: register the workflow modules so their capabilities show in the
+// hint card below (same import the catalog page uses).
+import "@/lib/modules/register";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
 
@@ -11,7 +20,9 @@ export default async function BuildTypes() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const types = await listTypes();
+  // includeHidden so hidden types appear here (dimmed) to be un-hidden.
+  const types = await listTypes({ includeHidden: true });
+  const capabilities = attachableCapabilities(owner.id);
 
   return (
     <main className="min-h-screen">
@@ -20,33 +31,54 @@ export default async function BuildTypes() {
           <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
             Types
           </h1>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/build"
-              className="text-sm text-neutral-500 hover:text-neutral-300"
-            >
-              ← Build
-            </Link>
-            <Link
-              href="/build/types/new"
-              className="rounded bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white"
-            >
-              New type
-            </Link>
-          </div>
+          <Link
+            href="/build"
+            className="text-sm text-neutral-500 hover:text-neutral-300"
+          >
+            ← Build
+          </Link>
         </div>
         <p className="mt-1 text-sm text-neutral-500">
           The shapes your items take. Each type carries its own custom fields.
+          Hide a built-in you don&rsquo;t use with the eye; it stays out of
+          capture, menus, and tabs without deleting anything.
         </p>
 
-        <ul className="mt-6 flex flex-col gap-1">
+        {/* Column header — gives the list its table feel and labels the two
+            control columns. */}
+        <div className="mt-6 flex items-center gap-3 px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+          <span className="min-w-0 flex-1">Type</span>
+          {/* Hover tooltip explaining the column (CSS group-hover, no JS). */}
+          <span className="group relative flex w-24 cursor-help items-center justify-center text-center">
+            <span className="underline decoration-dotted decoration-neutral-600 underline-offset-2">
+              Quick capture
+            </span>
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-60 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-left text-xs font-normal normal-case leading-snug tracking-normal text-neutral-300 opacity-0 shadow-xl shadow-black/50 transition-opacity duration-150 group-hover:opacity-100"
+            >
+              Checked types show in the{" "}
+              <span className="font-medium text-neutral-100">New (+)</span>{" "}
+              quick-capture menu, so you can jot one down in a tap. Uncheck a type
+              to keep it out of that menu.
+            </span>
+          </span>
+          <span className="w-10 text-center">Show</span>
+        </div>
+
+        <ul className="flex flex-col gap-1">
           {types.map((t) => {
             const count = t.propertySchema.length;
             return (
-              <li key={t.key}>
+              <li
+                key={t.key}
+                className={`flex items-center gap-3 rounded px-2 py-2 hover:bg-neutral-800/60 ${
+                  t.hidden ? "opacity-50" : ""
+                }`}
+              >
                 <Link
                   href={`/build/types/${t.key}/edit`}
-                  className="group flex items-center gap-3 rounded px-2 py-2 hover:bg-neutral-800/60"
+                  className="group flex min-w-0 flex-1 items-center gap-3"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">
                     {t.label}
@@ -64,11 +96,64 @@ export default async function BuildTypes() {
                       built-in
                     </span>
                   )}
+                  {t.hidden && (
+                    <span className="shrink-0 text-xs text-neutral-500">
+                      hidden
+                    </span>
+                  )}
                 </Link>
+                <span className="flex w-24 justify-center">
+                  <TypeQuickCaptureToggle
+                    typeKey={t.key}
+                    showInQuickCapture={t.showInQuickCapture}
+                  />
+                </span>
+                <span className="flex w-10 justify-center">
+                  <TypeVisibilityToggle typeKey={t.key} hidden={t.hidden} />
+                </span>
               </li>
             );
           })}
         </ul>
+
+        {/* Subtle "create" affordance at the foot of the list — quiet until you
+            hover it. */}
+        <Link
+          href="/build/types/new"
+          className="mt-2 flex items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-800 px-3 py-2.5 text-sm text-neutral-600 transition hover:border-neutral-600 hover:bg-neutral-800/40 hover:text-neutral-200"
+        >
+          <span className="text-base leading-none">+</span> Create new type
+        </Link>
+
+        {/* Pointer to the bespoke-tool catalog so a user building a plain type
+            knows there are richer, pre-built capabilities to borrow. */}
+        <Link
+          href="/build/tools"
+          className="mt-4 block rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition hover:border-neutral-700 hover:bg-neutral-900/70"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-neutral-100">
+              Check our bespoke data types
+            </h2>
+            <span className="text-xs text-[var(--accent)]">Browse →</span>
+          </div>
+          <p className="mt-1 text-sm text-neutral-500">
+            A new type starts plain. Some come with extra powers built in
+            {capabilities.length > 0 ? (
+              <>
+                {" "}
+                — like{" "}
+                <span className="text-neutral-300">
+                  {capabilities.slice(0, 3).map((c) => c.label).join(", ")}
+                </span>
+                {capabilities.length > 3 ? ", and more" : ""}.
+              </>
+            ) : (
+              ": a chord-chart editor, a paper workspace, and more."
+            )}{" "}
+            Attach one to a type you name yourself.
+          </p>
+        </Link>
       </div>
     </main>
   );

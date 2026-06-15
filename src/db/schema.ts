@@ -105,6 +105,13 @@ export const types = pgTable("types", {
   // capturable; the builder toggles it so a "data only" custom type can stay
   // out of the curated dropdown.
   showInQuickCapture: boolean("show_in_quick_capture").notNull().default(true),
+  // Hidden from everyday surfaces (ADR-059): a hidden type still exists and its
+  // items still work, but it drops out of quick capture, the +New menus, the
+  // list tabs, and the nav destination options. Lets the user turn off built-in
+  // types they don't use (e.g. Link) without deleting them. Toggled from the
+  // Build → Types page; distinct from show_in_quick_capture (capture-only) and
+  // deleted_at (in Trash).
+  hidden: boolean("hidden").notNull().default(false),
   // SPIKE (bespoke-tool catalog, next_steps.md:94): the id of an attached
   // module capability (ModuleCapability.id, e.g. "chord-chart"). When set, the
   // registry resolves this user type's canvas/format/exporters from the
@@ -112,6 +119,11 @@ export const types = pgTable("types", {
   // behavior from a fixed type key. Null for a plain custom type.
   capability: text("capability"),
   defaultViewId: uuid("default_view_id").references(() => views.id),
+  // Soft-delete (ADR-058): a deleted type stays as a row (its trashed items'
+  // FK still points here) but drops out of the registry/pickers. Restored from
+  // Trash, or hard-purged with its items after the retention window. Null =
+  // live.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

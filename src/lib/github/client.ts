@@ -148,19 +148,32 @@ export function toChangelogEntry(item: CommitListItem, detail?: CommitDetail): C
   };
 }
 
+// The commit message the notes-file writes use. Exported so the changelog can
+// filter them out: a notes Save is a commit, but it isn't a "change" anyone
+// wants in the changelog (and they'd otherwise flood the top of the list).
+export const NOTES_COMMIT_PREFIX = "Collab notes update (via Ledgr";
+
+export function isNotesCommit(message: string): boolean {
+  return message.startsWith(NOTES_COMMIT_PREFIX);
+}
+
 // Recent commits on the deploy branch, each enriched with its file/line counts
 // (the "roughly how many things changed" in Tyler's ask). The list call is one
 // request, cached briefly so the page stays fresh without hammering; per-commit
 // detail is immutable, so it's cached indefinitely and fetched once per commit.
+// App-generated notes commits are filtered out, so we over-fetch to still land
+// ~limit real entries.
 export async function getChangelog(limit = 25): Promise<ChangelogEntry[]> {
   const cfg = requireConfig();
+  const fetchN = Math.min(limit * 3, 100);
   const list = await ghJson<CommitListItem[]>(
     cfg,
-    `/repos/${cfg.repo}/commits?sha=${encodeURIComponent(cfg.branch)}&per_page=${limit}`,
+    `/repos/${cfg.repo}/commits?sha=${encodeURIComponent(cfg.branch)}&per_page=${fetchN}`,
     { revalidate: 60 }
   );
+  const real = list.filter((item) => !isNotesCommit(item.commit.message ?? "")).slice(0, limit);
   return Promise.all(
-    list.map(async (item) => {
+    real.map(async (item) => {
       try {
         const detail = await ghJson<CommitDetail>(
           cfg,
@@ -194,19 +207,33 @@ export function decodeContent(res: ContentsResponse): string {
   return res.content;
 }
 
-export async function readNotes(): Promise<CollabNotes> {
-  const cfg = requireConfig();
+// Reads the notes file on a given ref. Null when the file/branch isn't there.
+async function readContents(cfg: GithubConfig, ref: string, revalidate: number): Promise<{ markdown: string; sha: string } | null> {
   const res = await gh(
     cfg,
-    `/repos/${cfg.repo}/contents/${encodeURIComponent(cfg.notesPath)}?ref=${encodeURIComponent(cfg.notesBranch)}`,
-    { revalidate: 10 }
+    `/repos/${cfg.repo}/contents/${encodeURIComponent(cfg.notesPath)}?ref=${encodeURIComponent(ref)}`,
+    { revalidate }
   );
-  if (res.status === 404) return { markdown: "", sha: null };
+  if (res.status === 404) return null;
   if (!res.ok) {
     throw new GithubError(`GitHub read notes ${res.status}`, res.status === 401 || res.status === 403 ? "auth" : "request", res.status);
   }
   const data = (await res.json()) as ContentsResponse;
   return { markdown: decodeContent(data), sha: data.sha };
+}
+
+export async function readNotes(): Promise<CollabNotes> {
+  const cfg = requireConfig();
+  const onBranch = await readContents(cfg, cfg.notesBranch, 10);
+  if (onBranch) return onBranch;
+  // Notes branch/file not there yet. When notes live on a separate branch, show
+  // the deploy-branch copy for continuity (the notes branch is created from it
+  // on first write); sha is null so the next write resolves the real sha.
+  if (cfg.notesBranch !== cfg.branch) {
+    const onDeploy = await readContents(cfg, cfg.branch, 10);
+    if (onDeploy) return { markdown: onDeploy.markdown, sha: null };
+  }
+  return { markdown: "", sha: null };
 }
 
 // Ensures the notes branch exists, creating it from the deploy branch's head if
@@ -242,16 +269,22 @@ export async function writeNotes(
 ): Promise<{ sha: string }> {
   const cfg = requireConfig();
   await ensureNotesBranch(cfg);
+  // priorSha drives optimistic concurrency for normal edits. When it's null
+  // (first write, or just after the notes branch was created carrying the file
+  // from the deploy branch), resolve the file's current sha so the PUT updates
+  // the existing file instead of 422-ing on an unknown sha.
+  let sha = priorSha;
+  if (!sha) sha = (await readContents(cfg, cfg.notesBranch, 0))?.sha ?? null;
   const data = await ghJson<{ content: { sha: string } }>(
     cfg,
     `/repos/${cfg.repo}/contents/${encodeURIComponent(cfg.notesPath)}`,
     {
       method: "PUT",
       body: JSON.stringify({
-        message: `Collab notes update (via Ledgr, ${authorEmail})`,
+        message: `${NOTES_COMMIT_PREFIX}, ${authorEmail})`,
         content: Buffer.from(markdown, "utf8").toString("base64"),
         branch: cfg.notesBranch,
-        ...(priorSha ? { sha: priorSha } : {}),
+        ...(sha ? { sha } : {}),
       }),
     }
   );

@@ -7,6 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import type { PropertyDef } from "@/lib/types";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 
@@ -289,24 +290,17 @@ export default function ViewBuilder({
     }
   }
 
-  async function remove() {
-    if (!initial || busy) return;
-    if (!confirm("Delete this view? This can't be undone.")) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/views/${initial.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `delete failed (${res.status})`);
-        setBusy(false);
-        return;
-      }
-      router.push("/views");
-      router.refresh();
-    } catch {
-      setError("delete failed (offline?)");
-      setBusy(false);
+  // In-context delete (ConfirmButton owns the confirm popover). Throwing keeps
+  // the message visible in the popover; success navigates away.
+  async function confirmDelete() {
+    if (!initial) return;
+    const res = await fetch(`/api/views/${initial.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? `delete failed (${res.status})`);
     }
+    router.push("/views");
+    router.refresh();
   }
 
   return (
@@ -491,7 +485,7 @@ export default function ViewBuilder({
                 <label key={`field:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5 accent-neutral-300"
+                    className="ledgr-check ledgr-check-sm"
                     checked={hasColumn(col)}
                     onChange={() => toggleColumn(col)}
                   />
@@ -505,7 +499,7 @@ export default function ViewBuilder({
                 <label key={`property:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5 accent-neutral-300"
+                    className="ledgr-check ledgr-check-sm"
                     checked={hasColumn(col)}
                     onChange={() => toggleColumn(col)}
                   />
@@ -546,13 +540,13 @@ export default function ViewBuilder({
           {busy ? "Saving…" : initial ? "Save changes" : "Create view"}
         </button>
         {initial && !initial.isSystem && (
-          <button
-            onClick={() => void remove()}
-            disabled={busy}
-            className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50"
-          >
-            Delete
-          </button>
+          <ConfirmButton
+            onConfirm={confirmDelete}
+            title="Delete this view?"
+            description="This can't be undone. The items it lists aren't affected."
+            triggerClassName="text-sm text-red-400 hover:text-red-300"
+            trigger="Delete"
+          />
         )}
       </div>
     </div>

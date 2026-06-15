@@ -13,7 +13,7 @@
 // (modules.ts resolvers fall back for any unregistered type), so the builder
 // never touches code — it writes label/icon/property_schema, and the registry
 // owns code behavior (ADR-043).
-import { eq, sql } from "drizzle-orm";
+import { eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { ItemError } from "@/lib/items";
@@ -65,6 +65,11 @@ export type TypeDefinition = {
   // The registry (modules.ts) resolves this type's canvas/format/exporters from
   // it when set — see canvasIdForType's third arg.
   capability: string | null;
+  // Hidden from everyday surfaces (ADR-059); the type still exists and works.
+  hidden: boolean;
+  // Soft-delete stamp (ADR-058); null = live. A deleted type is hidden from the
+  // registry/pickers but its row stays so trashed items keep a valid FK.
+  deletedAt: Date | null;
   createdAt: Date;
 };
 
@@ -223,14 +228,24 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     propertySchema,
     showInQuickCapture: row.showInQuickCapture,
     capability: row.capability,
+    hidden: row.hidden,
+    deletedAt: row.deletedAt,
     createdAt: row.createdAt,
   };
 }
 
 // System types sort first, then alphabetical by label — the same order the nav
 // uses (compareTypeKeys), so the Build list reads like the rest of the app.
-export async function listTypes(): Promise<TypeDefinition[]> {
-  const rows = await getDb().select().from(types);
+// Soft-deleted types always drop out. Hidden types (ADR-059) drop out of the
+// everyday surfaces too — pass includeHidden:true on the Build → Types page,
+// where the whole point is to see and un-hide them.
+export async function listTypes(
+  opts: { includeHidden?: boolean } = {}
+): Promise<TypeDefinition[]> {
+  const where = opts.includeHidden
+    ? isNull(types.deletedAt)
+    : sql`${types.deletedAt} is null and ${types.hidden} = false`;
+  const rows = await getDb().select().from(types).where(where);
   return rows
     .map(rowToDefinition)
     .sort(
@@ -295,19 +310,161 @@ export async function updateType(
   return rowToDefinition(rows[0]);
 }
 
-// Blocked for system types, and for any type still in use — the FK would
-// reject it anyway, but a counted pre-check gives a message that names how many
-// items hold it. The count spans all owners because the type is instance-global
-// (any item referencing it blocks the delete).
-export async function deleteType(key: string): Promise<void> {
-  const def = await getType(key);
-  if (def.isSystem) bad("system types can't be deleted");
+// Toggle a type's hidden flag (ADR-059). Works for system and user types alike
+// — hiding a built-in like Link is the headline use. A no-op-safe single update;
+// editing a type through the builder never touches this column, so the hidden
+// state survives edits.
+export async function setTypeHidden(key: string, hidden: boolean): Promise<void> {
+  await getType(key); // existence (throws not_found)
+  await getDb().update(types).set({ hidden }).where(eq(types.key, key));
+}
+
+// Toggle whether a type appears in the quick-capture dropdown (the Build → Types
+// "Quick Capture" column). A standalone setter so the column can flip it without
+// resending the whole definition; the builder's "Show in quick capture" checkbox
+// writes the same column through the full PATCH. (A hidden type stays out of
+// capture regardless — the Nav query requires both.)
+export async function setTypeQuickCapture(
+  key: string,
+  showInQuickCapture: boolean
+): Promise<void> {
+  await getType(key); // existence (throws not_found)
+  await getDb().update(types).set({ showInQuickCapture }).where(eq(types.key, key));
+}
+
+// How many items reference this type (across all owners — the type is
+// instance-global). Surfaced in the builder so the in-context confirm can offer
+// to take the items too.
+export async function countItemsOfType(key: string): Promise<number> {
   const [{ count }] = await getDb()
     .select({ count: sql<number>`count(*)::int` })
     .from(items)
     .where(eq(items.type, key));
-  if (count > 0) {
-    bad(`type '${key}' is used by ${count} item(s); reassign or trash them first`);
+  return count;
+}
+
+// Live (non-trashed) items of a type — the set that blocks a plain delete (a
+// type can be soft-deleted once nothing live points at it; already-trashed items
+// keep their valid FK to the soft-deleted row).
+export async function countLiveItemsOfType(key: string): Promise<number> {
+  const [{ count }] = await getDb()
+    .select({ count: sql<number>`count(*)::int` })
+    .from(items)
+    .where(sql`${items.type} = ${key} and ${items.deletedAt} is null`);
+  return count;
+}
+
+// Soft-delete to Trash (ADR-058), not a hard delete: deletes move to Trash
+// everywhere in Ledgr, and a type is no exception. Blocked for system types.
+// Blocked while live items still reference it (reassign them or take the
+// withItems path so they go to Trash together) — without that, deleting the
+// type would leave live items pointing at a hidden type. An empty type (or one
+// whose items are already trashed separately) just gets its deleted_at stamped;
+// the row stays so any trashed items keep a valid FK, and it surfaces in Trash
+// as a restorable entry.
+export async function deleteType(key: string): Promise<void> {
+  const def = await getType(key);
+  if (def.isSystem) bad("system types can't be deleted");
+  const live = await countLiveItemsOfType(key);
+  if (live > 0) {
+    bad(`type '${key}' is used by ${live} item(s); reassign them or delete the type with its items`);
   }
-  await getDb().delete(types).where(eq(types.key, key));
+  await getDb().update(types).set({ deletedAt: sql`now()` }).where(eq(types.key, key));
+}
+
+// Soft-delete a type AND its live items in one operation (the "take its items
+// too" path). The type and every taken item share one deleted_at timestamp, so
+// restoreType can revive exactly the set that went to Trash together. Items go
+// to Trash (recoverable for the retention window), not hard-deleted; relations/
+// revisions/attachments are untouched until the eventual purge. Descendants of a
+// taken item are taken too (recursive on parent_id), matching softDeleteItem's
+// parent-cascade. Owner-scoped (the owner-scope invariant; one user per deploy).
+export async function softDeleteTypeWithItems(
+  ownerId: string,
+  key: string
+): Promise<{ deletedItems: number }> {
+  const def = await getType(key);
+  if (def.isSystem) bad("system types can't be deleted");
+
+  const res = await getDb().execute(sql`
+    with recursive doomed as (
+      select id from items
+      where type = ${key} and owner_id = ${ownerId} and deleted_at is null
+      union
+      select i.id from items i join doomed d on i.parent_id = d.id
+      where i.owner_id = ${ownerId} and i.deleted_at is null
+    ),
+    ts as (select now() as t),
+    upd_items as (
+      update items
+      set deleted_at = (select t from ts), updated_at = (select t from ts)
+      where id in (select id from doomed)
+      returning id
+    ),
+    upd_type as (
+      update types set deleted_at = (select t from ts) where key = ${key}
+      returning key
+    )
+    select
+      (select count(*) from upd_items)::int as items,
+      (select count(*) from upd_type)::int as types
+  `);
+  return { deletedItems: Number((res.rows[0] as { items: number }).items) };
+}
+
+// Restore a soft-deleted type and the items trashed alongside it (matched on the
+// shared deleted_at). Items the owner trashed separately keep their own stamp
+// and stay put — same "deletion unit" rule as restoreItem.
+export async function restoreType(
+  ownerId: string,
+  key: string
+): Promise<{ restoredItems: number }> {
+  const res = await getDb().execute(sql`
+    with t as (
+      select deleted_at as ts from types where key = ${key} and deleted_at is not null
+    ),
+    upd_items as (
+      update items set deleted_at = null, updated_at = now()
+      where owner_id = ${ownerId} and deleted_at = (select ts from t)
+      returning id
+    ),
+    upd_type as (
+      update types set deleted_at = null
+      where key = ${key} and deleted_at is not null
+      returning key
+    )
+    select
+      (select count(*) from upd_items)::int as items,
+      (select count(*) from upd_type)::int as types
+  `);
+  if (Number((res.rows[0] as { types: number }).types) === 0) {
+    throw new ItemError("not_found", "type not found in trash");
+  }
+  return { restoredItems: Number((res.rows[0] as { items: number }).items) };
+}
+
+// Soft-deleted types for the Trash UI, newest-deleted first, each with a count
+// of its trashed items so the page can show "Hiring Candidate · 3 items".
+export async function listDeletedTypes(): Promise<
+  { key: string; label: string; icon: string | null; deletedAt: Date; itemCount: number }[]
+> {
+  const rows = await getDb()
+    .select({
+      key: types.key,
+      label: types.label,
+      icon: types.icon,
+      deletedAt: types.deletedAt,
+      // Trashed items of this type — the count shown on the Trash entry.
+      // (restoreType also revives their descendants of other types; the label
+      // just names the type's own items.)
+      itemCount: sql<number>`(select count(*)::int from ${items} where ${items.type} = ${types.key} and ${items.deletedAt} is not null)`,
+    })
+    .from(types)
+    .where(sql`${types.deletedAt} is not null`)
+    .orderBy(sql`${types.deletedAt} desc`);
+  return rows.map((r) => ({
+    ...r,
+    deletedAt: r.deletedAt as Date,
+    itemCount: Number(r.itemCount),
+  }));
 }

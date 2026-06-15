@@ -34,9 +34,25 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-6">
       <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Display name</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          How you sign shared notes on the Changelog. Leave blank to use your email name.
+        </p>
+        <input
+          type="text"
+          maxLength={60}
+          placeholder="e.g. Tyler"
+          value={settings.displayName}
+          onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
+          onBlur={() => void save({ displayName: settings.displayName })}
+          className="mt-2 w-48 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+        />
+      </section>
+
+      <section>
         <h2 className="text-sm font-semibold text-neutral-200">Highlight color</h2>
         <p className="mt-0.5 text-sm text-neutral-500">The accent used for primary buttons and highlights.</p>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex max-w-md flex-wrap gap-2">
           {HIGHLIGHT_COLORS.map((c) => (
             <button
               key={c.value}
@@ -52,7 +68,7 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
 
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Trash retention</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">Days a trashed item is kept before it's purged.</p>
+        <p className="mt-0.5 text-sm text-neutral-500">Days a trashed item is kept before it is purged.</p>
         <input
           type="number"
           min={1}

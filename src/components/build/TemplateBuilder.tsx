@@ -9,6 +9,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import LazyMarkdownEditor from "@/components/markdown-editor/LazyMarkdownEditor";
 import type { ItemTemplate, RelationDefault } from "@/lib/templates";
 import type { PropertyDef, TypeDefinition } from "@/lib/types";
@@ -88,7 +89,7 @@ function DefaultControl({
       return (
         <input
           type="checkbox"
-          className="h-4 w-4 accent-neutral-300"
+          className="ledgr-check"
           checked={value === true}
           onChange={(e) => onChange(e.target.checked ? true : null)}
         />
@@ -116,7 +117,7 @@ function DefaultControl({
             <label key={o} className="flex items-center gap-1 text-sm text-neutral-300">
               <input
                 type="checkbox"
-                className="h-3.5 w-3.5 accent-neutral-300"
+                className="ledgr-check ledgr-check-sm"
                 checked={selected.includes(o)}
                 onChange={(e) => {
                   const next = e.target.checked
@@ -241,24 +242,16 @@ export default function TemplateBuilder({
     }
   }
 
-  async function remove() {
-    if (!editing || busy) return;
-    if (!confirm(`Delete the "${initial!.name}" template?`)) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/templates/${initial!.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `delete failed (${res.status})`);
-        setBusy(false);
-        return;
-      }
-      router.push("/build/templates");
-      router.refresh();
-    } catch {
-      setError("delete failed (offline?)");
-      setBusy(false);
+  // In-context delete (ConfirmButton owns the confirm popover). Throwing keeps
+  // the message visible in the popover; success navigates away.
+  async function confirmDelete() {
+    const res = await fetch(`/api/templates/${initial!.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? `delete failed (${res.status})`);
     }
+    router.push("/build/templates");
+    router.refresh();
   }
 
   return (
@@ -381,13 +374,13 @@ export default function TemplateBuilder({
           {busy ? "Saving…" : editing ? "Save changes" : "Create template"}
         </button>
         {editing && (
-          <button
-            onClick={() => void remove()}
-            disabled={busy}
-            className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50"
-          >
-            Delete
-          </button>
+          <ConfirmButton
+            onConfirm={confirmDelete}
+            title={`Delete the “${initial!.name}” template?`}
+            description="This can't be undone. Items already created from it aren't affected."
+            triggerClassName="text-sm text-red-400 hover:text-red-300"
+            trigger="Delete"
+          />
         )}
       </div>
     </div>

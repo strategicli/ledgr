@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
 import { capabilityById } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
-import { getType } from "@/lib/types";
+import { countItemsOfType, getType } from "@/lib/types";
 import { ItemError } from "@/lib/items";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +30,7 @@ export default async function EditType({
     ? capabilityById(type.capability, owner.id)
     : undefined;
   const attached = cap ? { id: cap.id, label: cap.label } : null;
+  const itemCount = await countItemsOfType(key);
 
   return (
     <main className="min-h-screen">
@@ -45,7 +46,7 @@ export default async function EditType({
             ← All types
           </Link>
         </div>
-        <TypeBuilder initial={type} attached={attached} />
+        <TypeBuilder initial={type} attached={attached} itemCount={itemCount} />
       </div>
     </main>
   );
