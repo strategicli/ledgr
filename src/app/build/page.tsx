@@ -44,7 +44,7 @@ function BuildCard({
     </>
   );
   const border = highlight
-    ? "border-blue-500/60 shadow-[0_0_18px_-2px_rgba(59,130,246,0.45)]"
+    ? "border-[var(--accent)] shadow-[0_0_18px_-2px_var(--accent)]"
     : "border-neutral-800";
   const base = `block rounded-xl border ${border} p-4 text-left transition-colors`;
   if (soon || !href) {

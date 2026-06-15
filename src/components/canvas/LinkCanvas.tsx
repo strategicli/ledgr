@@ -19,7 +19,7 @@ export default function LinkCanvas(props: CanvasProps) {
             href={item.url}
             target="_blank"
             rel="noreferrer"
-            className="flex max-w-full items-center gap-1.5 rounded border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-sm text-sky-400 hover:border-neutral-600 hover:text-sky-300"
+            className="flex max-w-full items-center gap-1.5 rounded border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-sm text-[var(--accent)] hover:border-neutral-600 hover:brightness-110"
             title={item.url}
           >
             <span className="truncate">{item.url}</span>
