@@ -48,7 +48,8 @@ export const BUILD_NAV: BuildGroup[] = [
     label: "INTERFACE",
     entries: [
       { label: "Views", href: "/build/views", icon: "views" },
-      { label: "Work Surface", href: "/build/surface", icon: "grid" },
+      { label: "Dashboards", href: "/dashboards", icon: "dashboard" },
+      { label: "Navigation", href: "/build/navigation", icon: "navigation" },
     ],
   },
   {
@@ -58,7 +59,10 @@ export const BUILD_NAV: BuildGroup[] = [
       { label: "Model Overview", href: "/build", icon: "compass" },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
       { label: "Import & Migration", href: "/build/import", icon: "folder" },
-      { label: "Claude & MCP", href: "/build/claude", icon: "bolt" },
+      // Labelled "AI & MCP", not "Claude": the MCP server is client-agnostic
+      // (any MCP-speaking AI can connect), so the surface name stays generic
+      // even though Claude is the reference client. Route slug stays /claude.
+      { label: "AI & MCP", href: "/build/claude", icon: "bolt" },
       // The one deliberate both-places entry: also reachable from the Work kebab
       // so personal/cosmetic settings don't require entering Build. Label stays
       // "User Settings" everywhere (never bare "Settings").
@@ -71,11 +75,20 @@ export const BUILD_NAV: BuildGroup[] = [
 // picker's "Build tools" category and the command palette's section index.
 export const BUILD_ENTRIES: BuildEntry[] = BUILD_NAV.flatMap((g) => g.entries);
 
-// True for any route that lives under the Build surface. Model Overview is
-// `/build` exactly; everything else is a `/build/...` child. `/settings` is
-// reachable from both sides, so it is NOT treated as Build chrome (it keeps the
-// Work nav when reached from the Work kebab); the sidebar's User Settings entry
-// links out to it deliberately.
+// True for any route that renders within the Build surface (so NavShell shows
+// the Build sidebar). Model Overview is `/build` exactly; everything else is a
+// `/build/...` child. Dashboards (`/dashboards*`) are an INTERFACE-building
+// surface reached from the Build sidebar, so they keep the Build chrome too —
+// you manage/build a dashboard in Build. (A dashboard *assigned* as the Home or
+// Today surface renders at `/` or `/today`, which stay Work chrome — that's the
+// "using it" context, not the "building it" one.) `/settings` is reachable from
+// both sides, so it is NOT treated as Build chrome (it keeps the Work nav when
+// reached from the Work kebab); the sidebar's User Settings entry links to it.
 export function isBuildPath(pathname: string): boolean {
-  return pathname === "/build" || pathname.startsWith("/build/");
+  return (
+    pathname === "/build" ||
+    pathname.startsWith("/build/") ||
+    pathname === "/dashboards" ||
+    pathname.startsWith("/dashboards/")
+  );
 }

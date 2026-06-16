@@ -16,6 +16,7 @@ export const NAV_ICONS = {
   dashboard:
     '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
   views: '<rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/>',
+  navigation: '<polygon points="3 11 22 2 13 21 11 13 3 11"/>',
   items: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   recent: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 3.5"/>',
   starred: '<path d="M12 2l2.9 6.3 6.9.8-5 4.8 1.2 6.9-6-3.3-6 3.3 1.2-6.9-5-4.8 6.9-.8z"/>',
@@ -65,7 +66,7 @@ export const NAV_ICON_FALLBACK: NavIconKey = "items";
 // Categorized icon keys for the Build-surface picker (labeled rows). The order
 // here is the order the picker shows; every key in NAV_ICONS appears once.
 export const NAV_ICON_GROUPS: { label: string; keys: NavIconKey[] }[] = [
-  { label: "Navigation", keys: ["home", "inbox", "tasks", "search", "dashboard", "views", "items", "recent", "starred", "archive"] },
+  { label: "Navigation", keys: ["home", "inbox", "tasks", "search", "dashboard", "views", "navigation", "items", "recent", "starred", "archive"] },
   { label: "Content", keys: ["notes", "document", "meetings", "links", "people", "person", "song", "sermon", "paper", "book", "bookmark"] },
   { label: "Organization", keys: ["folder", "tag", "collection", "filter", "layers", "grid", "table", "board"] },
   { label: "Tools", keys: ["tools", "bolt", "flag", "bell"] },

@@ -15,7 +15,8 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, types, users, views } = await import("../src/db/schema");
+const { dashboards, items, types, users, views } = await import("../src/db/schema");
+const { usedViewIds } = await import("../src/lib/dashboards");
 const {
   planStructure,
   applyStructurePlan,
@@ -149,11 +150,13 @@ try {
   check("two views persisted", viewRows.length === 2);
   const boardRow = viewRows.find((v) => v.layout === "board");
   check("board persisted its property grouping", JSON.stringify(boardRow?.grouping) === JSON.stringify({ propertyKey: STAGE_KEY }));
-  check("primary view is pinned (dashboard_order set)", viewRows.some((v) => v.id === result.pinnedViewId && v.dashboardOrder != null));
+  const used = await usedViewIds(owner.id);
+  check("primary view is a widget on a dashboard", result.pinnedViewId != null && used.has(result.pinnedViewId));
 
   await throws("apply rejects a duplicate type key", () =>
     applyStructurePlan(owner.id, plan), "bad_request");
 } finally {
+  await db.delete(dashboards).where(eq(dashboards.ownerId, owner.id));
   await db.delete(items).where(eq(items.ownerId, owner.id));
   await db.delete(views).where(eq(views.ownerId, owner.id));
   await db.delete(types).where(eq(types.key, typeKey));

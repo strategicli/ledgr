@@ -8,7 +8,8 @@
 // on screen (stage-friendly, app-consistent), black-on-white in print.
 //
 // The body is canonical markdown (ADR-037/ADR-040); markdownToHtml turns it
-// into the body markup (mentions as flat names, color HTML preserved, headings
+// into the body markup (mentions as tappable /items/<id> links, color HTML
+// preserved, headings
 // shifted under the title's <h1>). This module owns only the document shell and
 // its styles.
 import { BLOCKNOTE_COLORS } from "@/lib/colors";

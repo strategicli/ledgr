@@ -3,7 +3,7 @@
 // columns store exactly these shapes, so today's hardcoded list pages become
 // stored system views later without a query rewrite. Same discipline as
 // every list read: owner-scoped, body-free listColumns, live items only.
-import { and, asc, desc, eq, isNotNull, isNull, lt, gte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, gte, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, views } from "@/db/schema";
 import { ITEM_STATUSES, URGENCIES, type ItemStatus, type Urgency } from "@/lib/item-enums";
@@ -54,7 +54,7 @@ const SORT_COLUMNS = {
   title: items.title,
 } as const;
 
-const VIEW_LIMIT = 200;
+export const VIEW_LIMIT = 200;
 
 // The WHERE clause for a filter, shared by the list query and the count so a
 // dashboard badge can never disagree with the view it labels. Owner-scoped
@@ -206,8 +206,6 @@ export type ViewDefinition = {
   columns: ViewColumn[] | null;
   layout: ViewLayout;
   dateProperty: DateProperty | null;
-  // null = not on the dashboard; a number is its widget position (slice 29).
-  dashboardOrder: number | null;
   createdAt: Date;
 };
 
@@ -222,7 +220,7 @@ export type ViewInput = {
   dateProperty: DateProperty | null;
 };
 
-const UUID_RE =
+export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function bad(message: string): never {
@@ -270,7 +268,7 @@ export function parseViewFilter(raw: unknown): ViewFilter {
   return out;
 }
 
-function parseSort(raw: unknown): ViewSort {
+export function parseSort(raw: unknown): ViewSort {
   if (raw == null) return { field: "updatedAt", dir: "desc" };
   if (typeof raw !== "object" || Array.isArray(raw)) bad("sort must be an object");
   const r = raw as Record<string, unknown>;
@@ -372,7 +370,6 @@ function rowToDefinition(row: typeof views.$inferSelect): ViewDefinition {
     columns: parseColumns(row.columns),
     layout: row.layout as ViewLayout,
     dateProperty: (row.dateProperty as DateProperty | null) ?? null,
-    dashboardOrder: row.dashboardOrder,
     createdAt: row.createdAt,
   };
 }
@@ -449,61 +446,10 @@ export async function deleteView(ownerId: string, id: string): Promise<void> {
     .where(and(eq(views.id, id), eq(views.ownerId, ownerId)));
 }
 
-// --- Dashboard (slice 29, PRD §4.11) -------------------------------------
-// The dashboard is the owner's pinned views in order. dashboard_order is the
-// whole config: non-null = pinned, the number = grid position.
-
-export async function listDashboardViews(
-  ownerId: string
-): Promise<ViewDefinition[]> {
-  const rows = await getDb()
-    .select()
-    .from(views)
-    .where(and(eq(views.ownerId, ownerId), isNotNull(views.dashboardOrder)))
-    .orderBy(asc(views.dashboardOrder), asc(views.name));
-  return rows.map(rowToDefinition);
-}
-
-// Pin a view to the end of the dashboard (no-op if already pinned).
-export async function pinView(ownerId: string, id: string): Promise<void> {
-  const view = await getView(ownerId, id); // ownership + existence
-  if (view.dashboardOrder != null) return;
-  const rows = await getDb()
-    .select({ max: sql<number | null>`max(${views.dashboardOrder})` })
-    .from(views)
-    .where(eq(views.ownerId, ownerId));
-  const next = (rows[0].max ?? -1) + 1;
-  await getDb()
-    .update(views)
-    .set({ dashboardOrder: next })
-    .where(and(eq(views.id, id), eq(views.ownerId, ownerId)));
-}
-
-export async function unpinView(ownerId: string, id: string): Promise<void> {
-  await getView(ownerId, id); // ownership + existence
-  await getDb()
-    .update(views)
-    .set({ dashboardOrder: null })
-    .where(and(eq(views.id, id), eq(views.ownerId, ownerId)));
-}
-
-// Persist a drag-reorder: the ids are the pinned views in their new order.
-// Each gets its index as dashboard_order; ids not owned by the caller are
-// skipped, so a stale client can't reorder someone else's views.
-export async function setDashboardOrder(
-  ownerId: string,
-  orderedIds: string[]
-): Promise<void> {
-  const db = getDb();
-  await Promise.all(
-    orderedIds.map((id, i) =>
-      db
-        .update(views)
-        .set({ dashboardOrder: i })
-        .where(and(eq(views.id, id), eq(views.ownerId, ownerId)))
-    )
-  );
-}
+// (The single-dashboard pin model — listDashboardViews / pinView / unpinView /
+// setDashboardOrder + the views.dashboard_order column — was retired in the
+// dashboards epoch, ADR-064. Dashboards are now first-class rows; see
+// src/lib/dashboards.ts.)
 
 // Options for the person filter selects (tasks list, search, templates): live
 // people, title order. Body-free by construction.

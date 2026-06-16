@@ -11,7 +11,7 @@ import { BUILD_ENTRIES } from "@/lib/build-nav";
 import { isNavIcon } from "@/lib/nav-icons";
 import type { NavDestKind } from "@/lib/settings";
 
-export type DestGroup = "Built-in" | "Views" | "Types" | "Build tools";
+export type DestGroup = "Built-in" | "Dashboards" | "Views" | "Types" | "Build tools";
 
 export type DestOption = {
   group: DestGroup;
@@ -29,7 +29,7 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badgeEligible: true },
   { group: "Built-in", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/search", label: "Search", icon: "search", badgeEligible: false },
-  { group: "Built-in", kind: "builtin", href: "/dashboard", label: "Dashboard", icon: "dashboard", badgeEligible: false },
+  { group: "Built-in", kind: "builtin", href: "/dashboards", label: "Dashboards", icon: "dashboard", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/items", label: "Items", icon: "items", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/views", label: "Views", icon: "views", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/changelog", label: "Changelog", icon: "changelog", badgeEligible: false },
@@ -52,11 +52,20 @@ export const BUILD_TOOL_DESTS: DestOption[] = BUILD_ENTRIES.map((e) => ({
 
 export function buildDestOptions(
   views: { id: string; name: string }[],
-  types: { key: string; label: string; icon: string | null }[]
+  types: { key: string; label: string; icon: string | null }[],
+  dashboards: { id: string; name: string }[] = []
 ): DestOption[] {
   return [
     ...BUILTIN_DESTS,
     ...BUILD_TOOL_DESTS,
+    ...dashboards.map((d) => ({
+      group: "Dashboards" as const,
+      kind: "dashboard" as const,
+      href: `/dashboards/${d.id}`,
+      label: d.name,
+      icon: "dashboard",
+      badgeEligible: false,
+    })),
     ...views.map((v) => ({
       group: "Views" as const,
       kind: "view" as const,

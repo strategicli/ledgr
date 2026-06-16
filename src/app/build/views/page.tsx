@@ -9,7 +9,7 @@
 // later. The view engine + definitions are shared surfaces.
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import PinButton from "@/components/views/PinButton";
+import { usedViewIds } from "@/lib/dashboards";
 import { resolveOwner } from "@/lib/owner";
 import { listViews } from "@/lib/views";
 
@@ -19,7 +19,7 @@ export default async function BuildViews() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const views = await listViews(owner.id);
+  const [views, used] = await Promise.all([listViews(owner.id), usedViewIds(owner.id)]);
 
   return (
     <main className="min-h-screen">
@@ -37,7 +37,12 @@ export default async function BuildViews() {
         </div>
         <p className="mt-1 text-sm text-neutral-500">
           Create and manage saved views: list, table, board, calendar, or agenda.
-          Pin one to surface it on Work as a dashboard widget. Open a view from{" "}
+          Add a view to a{" "}
+          <Link href="/dashboards" className="text-neutral-400 hover:text-neutral-200">
+            dashboard
+          </Link>{" "}
+          (from its Edit → Add widget menu) to surface it on Work as a widget. Open a view
+          from{" "}
           <Link href="/views" className="text-neutral-400 hover:text-neutral-200">
             Work → Views
           </Link>
@@ -54,13 +59,17 @@ export default async function BuildViews() {
                 <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">
                   {view.name}
                 </span>
+                {used.has(view.id) && (
+                  <span className="shrink-0 rounded-full border border-[var(--accent)] px-1.5 py-0.5 text-xs text-[var(--accent)]">
+                    widget
+                  </span>
+                )}
                 <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
                   {view.layout}
                 </span>
                 {view.isSystem && (
                   <span className="shrink-0 text-xs text-neutral-600">system</span>
                 )}
-                <PinButton viewId={view.id} pinned={view.dashboardOrder != null} />
                 <Link
                   href={`/views/${view.id}/edit`}
                   className="shrink-0 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"

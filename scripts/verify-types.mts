@@ -149,7 +149,9 @@ try {
   await throws("deleteType blocked while items use it", () => deleteType(k2), "bad_request");
   await db.delete(items).where(eq(items.type, k2));
   await deleteType(k2);
-  await throws("deleted type is gone", () => getType(k2), "not_found");
+  // ADR-058: deleteType soft-deletes — the type drops out of listTypes/pickers
+  // but getType still resolves it (so trashed items keep their label).
+  check("deleted type is gone from listTypes", !(await listTypes()).some((t) => t.key === k2));
 } finally {
   // items FK to users + types; delete items first, then the test types, then users.
   await db.delete(items).where(eq(items.ownerId, ownerId));

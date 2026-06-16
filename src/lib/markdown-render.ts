@@ -16,7 +16,7 @@
 // It is never imported by a client component — print, export, and FTS are all
 // server paths, so the editor bundle never pays for it.
 import MarkdownIt from "markdown-it";
-import { MENTION_URI_PREFIX } from "@/lib/editor/mention-markdown";
+import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
 
 // html:true passes raw inline HTML through, which is required: the editor
 // encodes sermon colors/highlights as <span style>/<mark class> (colors.ts).
@@ -42,14 +42,28 @@ md.core.ruler.push("ledgr_transforms", (state) => {
       token.tag = "h" + Math.min(level + 1, 6);
       continue;
     }
-    // Mention links → <span class="mention">@Title</span>. Links never nest in
-    // markdown, so the first link_close after a mention link_open is its match.
+    // Mention links → <a href="/items/<id>" class="mention">@Title</a>. The
+    // ledgr://item/<id> URI means nothing to a reader, so rewrite the href to
+    // the in-app item route: a tappable link on the print/share view (the
+    // hover-target span was dead on touch). Links never nest in markdown, so the
+    // first link_close after a mention link_open is its match.
     if (token.type === "inline" && token.children) {
       const kids = token.children;
       for (let j = 0; j < kids.length; j++) {
         if (kids[j].type !== "link_open") continue;
         const href = kids[j].attrGet("href") ?? "";
         if (!href.startsWith(MENTION_URI_PREFIX)) continue;
+        const id = mentionItemId(href);
+        if (id) {
+          // Tappable in-app link, with the mention styling preserved.
+          kids[j].attrs = [
+            ["href", `/items/${id}`],
+            ["class", "mention"],
+          ];
+          continue;
+        }
+        // Malformed mention (empty id): flatten to a plain span so no broken
+        // anchor or ledgr:// URI ever reaches the page.
         kids[j].tag = "span";
         kids[j].attrs = [["class", "mention"]];
         for (let k = j + 1; k < kids.length; k++) {

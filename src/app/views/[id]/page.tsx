@@ -4,7 +4,6 @@
 // can never select a body or leak across owners.
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import PinButton from "@/components/views/PinButton";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import NewItemButton from "@/components/home/NewItemButton";
 import { ItemError } from "@/lib/items";
@@ -65,7 +64,6 @@ export default async function ViewPage({ params }: Context) {
               ← All views
             </Link>
             {view.filter.type && <NewItemButton type={view.filter.type} />}
-            <PinButton viewId={view.id} pinned={view.dashboardOrder != null} />
             {!view.isSystem && (
               <Link
                 href={`/views/${view.id}/edit`}

@@ -77,15 +77,43 @@ export const views = pgTable("views", {
   columns: jsonb("columns"),
   layout: viewLayout("layout").notNull().default("list"),
   dateProperty: text("date_property"),
-  // Dashboard placement (slice 29, PRD §4.11): null means the view isn't a
-  // dashboard widget; a number is its position in the widget grid. A nullable
-  // ordering column keeps the dashboard config owner-scoped on the view it
-  // shows, with no separate table for one dashboard per user.
-  dashboardOrder: integer("dashboard_order"),
+  // (views.dashboard_order was retired in the dashboards epoch, ADR-064 —
+  // dashboards are now first-class rows in the dashboards table.)
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
+// Customizable dashboards (dashboards epoch). Supersedes the single-dashboard
+// views.dashboard_order model: an owner has many named dashboards, each a
+// resizable/draggable grid of widgets. A widget references a saved view (or is
+// a non-view action block) and carries its own display settings + per-breakpoint
+// grid layout — all in one jsonb array, matching how views store filter/sort as
+// jsonb and keeping a dashboard load to one row + a batched per-widget fan-out.
+// Shape parsed/defaulted in src/lib/dashboards.ts. focus_item_id is an optional
+// dashboard-level scope: when set, every view/stat widget merges relatedTo into
+// its query (confirmed edges only). ON DELETE SET NULL so deleting the focus
+// item just clears focus, never drops the dashboard.
+export const dashboards = pgTable(
+  "dashboards",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    name: text("name").notNull(),
+    // Order in the dashboard switcher / nav (lower first; ties broken by name).
+    position: integer("position").notNull().default(0),
+    focusItemId: uuid("focus_item_id").references((): AnyPgColumn => items.id, {
+      onDelete: "set null",
+    }),
+    widgets: jsonb("widgets"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("dashboards_owner_idx").on(t.ownerId)]
+);
 
 // Extensible type registry (Gmail system-vs-user-label pattern). Five system
 // rows are seeded; user types are more rows the Build surface writes (slice 33,
