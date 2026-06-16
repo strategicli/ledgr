@@ -1,6 +1,6 @@
 # Exploration: drag-and-drop interactions on the canvas and properties
 
-**Status:** partly built. **Item 3 (× to clear a property) shipped** (2026-06-16, ADR-068, as a ride-along on item-view inline editing). **Item 4 (rearrange canvas panels) is being elevated** into "Feature B" — an arrangeable, responsive, per-type item canvas layout (2D `react-grid-layout` grid; see `next_steps.md` / the forthcoming ADR), no longer lowest-priority. Items 1 (drag-to-mention) and 2 (drag-to-reorder-properties) remain parked. Original notes kept below.
+**Status:** partly built. **Item 3 (× to clear a property) shipped** (2026-06-16, ADR-068, as a ride-along on item-view inline editing). **Item 4 (rearrange canvas panels) is being elevated** into "Feature B" — an arrangeable, responsive, per-type item canvas layout (2D `react-grid-layout` grid), no longer lowest-priority. **Full decided build brief: `explorations/item-canvas-layout.md`** (field-level cards, per-type, default-not-forced, spike-first; ADR-069 when built). Items 1 (drag-to-mention) and 2 (drag-to-reorder-properties) remain parked. Original notes kept below.
 
 ## Ideas
 
