@@ -5,3 +5,5 @@
 **Tyler · Jun 15 at 12:16 PM:** New UI changes to the menu. You should try them out. Look under more and then based on what type of menu you pick (top, left/right, bottom) you'll get more options for the look.
 
 **Tyler · Jun 15 at 4:26 PM:** UI updates added to Build! 
+
+**Tyler · Jun 15 at 9:17 PM:** Dashboards are here. They need work, more son on the inside, as far as adding code to allow them to do stuff, but they layouts work well and are easy to change. 
