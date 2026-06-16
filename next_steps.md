@@ -63,6 +63,20 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Session summary — AI & MCP management page; "Claude" → "AI & MCP" rename; external HTTP API (2026-06-15, ADR-066)
+
+**The `/build/claude` stub became a real management surface for the already-built MCP server (ADR-047), the sidebar label is now "AI & MCP" instead of "Claude & MCP," and a new external HTTP API (`/api/machine/items`) lets app integrations/crons push items in and read them out with a token** (ADR-066 — the trigger was wiring up Savor's journal-push cron). The MCP/page work is **non-core**; the API endpoint **touches core** (the machine/API contract) — additive only, shipped solo, **flagged to Brandon in `COLLAB.md` to ratify.**
+
+- **External HTTP API (ADR-066)** — new `src/app/api/machine/items/route.ts`: `POST` creates one item or a `{items:[...]}` batch (max 100; a bad entry is reported + skipped, not fatal), `GET` lists items body-free. Token-authed under a new **`api` scope**, Clerk-bypassed (same door as the other `/api/machine/*` jobs). Writes reuse `parseItemPayload`/`createItem` so the surface can't drift from `/api/items` or skip owner-scoping. New `src/lib/machine/owner.ts` `resolveMachineOwner()` (optional `LEDGR_API_OWNER_UPN`, same fallbacks as MCP). `.env.example` documents the `api` scope. Type is the integrator's choice (send a `type` key). **Pending:** `verify-machine-items.mts` + curl smoke; **a `journal` type (or use `note`) to receive Savor's entries**; optional `externalId` dedup; the Savor-side cron (its own codebase).
+
+- **Label** — `build-nav.ts` MAINTAIN entry renamed `"Claude & MCP"` → `"AI & MCP"`; route slug stays `/build/claude` (internal, invisible to users). The rename flows automatically to the destination picker's "Build tools" category (same source of truth).
+- **Page** (`src/app/build/claude/page.tsx`, now a server component) surfaces the live connection rather than describing a plan: **status** (reuses the `/health` canary's `hasScopedToken("mcp")` + `resolveMcpOwner()` — green when both hold, amber otherwise, and names the acting UPN); **connection details** (endpoint URL derived from request headers so it's correct on prod/preview/localhost without an env var, server name/version from `SERVER_INFO`, supported protocol versions, Bearer-token auth); **how to connect** (the `make-token.mjs … mcp` command, the `LEDGR_API_TOKENS` env step, and a copyable `claude mcp add --transport http … --header "Authorization: Bearer <token>"` for Claude Code, plus a note for claude.ai/Desktop custom connectors); and the **live tool list** straight from `listToolDefs()` (read/write badge per tool) so it can never drift from what the server serves.
+- **New** `src/components/build/CopyField.tsx` — a small `"use client"` copy-to-clipboard code field (mirrors `ShareLink`'s copy affordance, no dependency).
+- `tsc` + eslint clean. **Pending: in-browser eyeball** — open Build → AI & MCP, confirm the status reflects whether an mcp token is set, copy buttons work, and the six tools list.
+- **Possible follow-ups (not built):** a "test connection" button that POSTs an `initialize`/`tools/list` to `/api/mcp` from the page; surfacing scheduled Claude tasks (ADR-052) and briefing config here as the original stub plan imagined; listing configured token names/scopes (read from `LEDGR_API_TOKENS` server-side).
+
+---
+
 ## ⟢ Tyler's lane — Build-mode restructure: left sidebar + System Overview + universal command palette (2026-06-15, ADR-063)
 
 **Build mode went from a flat card grid to a real, scannable left sidebar; `/build` home became a bird's-eye System Overview; and there's now one ⌘K command palette searching everything from both modes.** From `build-mode-restructure-spec.md`. **Mostly non-core** (nav chrome + new Build pages + a search component); one additive Work-nav touch (the destination picker's "Build tools" category). Shipped solo; two small items flagged to Brandon in `COLLAB.md`.

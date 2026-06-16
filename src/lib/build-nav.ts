@@ -59,7 +59,10 @@ export const BUILD_NAV: BuildGroup[] = [
       { label: "Model Overview", href: "/build", icon: "compass" },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
       { label: "Import & Migration", href: "/build/import", icon: "folder" },
-      { label: "Claude & MCP", href: "/build/claude", icon: "bolt" },
+      // Labelled "AI & MCP", not "Claude": the MCP server is client-agnostic
+      // (any MCP-speaking AI can connect), so the surface name stays generic
+      // even though Claude is the reference client. Route slug stays /claude.
+      { label: "AI & MCP", href: "/build/claude", icon: "bolt" },
       // The one deliberate both-places entry: also reachable from the Work kebab
       // so personal/cosmetic settings don't require entering Build. Label stays
       // "User Settings" everywhere (never bare "Settings").
