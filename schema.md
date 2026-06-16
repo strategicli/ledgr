@@ -39,6 +39,8 @@ Extensible type registry. `items.type` is a FK to `types.key`. Five system rows 
 
 Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `person`, all `is_system = true`. Deleting a user type is blocked while any item references it (the FK, plus a counted pre-check in the store).
 
+> **`unmarked` system type (ADR-064).** A sixth seeded `is_system` type, **hidden** (so it stays out of quick capture, +New menus, list tabs, and nav options), whose display **label is a glyph** (a small dash/dot, not the word "unmarked"; the key is code-facing only). It is the placeholder for "not yet typed": create-on-miss from a free-text `@`-mention or the generic + Relate picker makes an `unmarked` item with `inbox = true`. Triaging it out of the Inbox is a **retype** (the item PATCH path) plus clearing `inbox`, so the row/links/body survive intact. A null `items.type` was rejected for this (type drives canvas, export path, FTS, and queries); the placeholder type gives the same "typeless until I say" feel with no downstream special-casing, and it is the Principle-6 catch-all.
+
 > **`person` replaced `entity` (ADR-055).** The former `entity` meta-type — a single type subdivided by a `kind` column into person/org/project/topic/campus — was retired once the Build surface let any type carry its own properties and relate freely. `person` is now just a bespoke system type like the others (calendar attendee matching points at it); org/project/topic/campus are no longer built in (create them as types if needed). The `items.kind` column was dropped with it.
 
 ---
@@ -89,7 +91,7 @@ A single generic page-to-page edge table with no type restriction: any item link
 | `id` | uuid PK | |
 | `source_id` | uuid | FK `items.id`; edge start |
 | `target_id` | uuid | FK `items.id`; edge end (often a person, but any item is valid) |
-| `role` | text | default `'related'`; optional label: `tagged`, `attendee`, `references`, ... |
+| `role` | text | default `'related'`; optional label: `tagged`, `attendee`, `references`, ... For a **typed relation property** (ADR-064) the role is the field's `key`, so a type's Author/Attendees box is just edges with that role; `'mention'` is reserved for body-owned `@`-mention edges (ADR-015). |
 | `match_state` | enum | `confirmed` \| `suggested`; default `confirmed` |
 | | | **unique (`source_id`, `target_id`, `role`)** |
 
@@ -221,7 +223,9 @@ No silent failures. Failed crons/webhooks captured here and surfaced through `/h
 ---
 
 ## Property kinds (for `types.property_schema` and `items.properties`)
-A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):** `text`, `number`, `date`, `checkbox`, `url`, `select`, `multi_select` (the last two carry an `options: string[]`). `property_schema` is an **ordered array** of `{key, label, kind, options?}` (`key` is a stable slug, immutable once created, so renaming a label never orphans `items.properties` values). **`relation` is deferred** in the builder — item-to-item links already have the `@`-mention + Related panel, so a relation "property" would duplicate that surface (it can be added later if a distinct use appears). **ADR-055 confirmed the `relation` kind was *not* needed to retire the `entity` meta-type** — the universal interactive `RelatedPanel` and the type-agnostic `relations` table cover the critical needs — so it stays deferred. It lands later for *typed* relation fields (a Meeting's "Attendees", `@`-relate-at-capture). The pre-built Bible/passage hub (ADR-060) is built on plain item-to-item relations, not this kind. Formulas and rollups are out of scope (parking lot), except the deterministic subtask progress rollup.
+A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):** `text`, `number`, `date`, `checkbox`, `url`, `select`, `multi_select` (the last two carry an `options: string[]`). `property_schema` is an **ordered array** of `{key, label, kind, options?}` (`key` is a stable slug, immutable once created, so renaming a label never orphans `items.properties` values). Formulas and rollups are out of scope (parking lot), except the deterministic subtask progress rollup.
+
+**`relation` (un-deferred, ADR-064).** A property any type can declare in the builder, a typed link box on the form (a Book's "Author", a Meeting's "Attendees"). Its `PropertyDef` carries two extra fields: `targetType` (the type its links accept, e.g. `person`; optional, unset means any type) and `cardinality` (`single` | `many`). **Its value is NOT stored in `items.properties`; it is stored as `relations` edges with `role` set to the field's `key`** (the Author box = edges from this item with role `author`). So one source of truth for links (the relations table, the schema rule), and typed-field links show in the generic Related panel for free. Cardinality is enforced in the app layer (a `single` field replaces its edge on a new pick), not by a DB constraint; the existing unique `(source_id, target_id, role)` already lets several typed fields connect the same pair. *(Was deferred through ADR-044/ADR-055 because the universal `@`-mention + `RelatedPanel` covered ad hoc links; un-deferred once Brandon's attendees/author boxes proved a recurring typed need, ADR-064.)* The pre-built Bible/passage hub (ADR-060) is built on plain item-to-item relations, not this kind.
 
 **`include_in_share` (forthcoming, ADR-062):** a per-`PropertyDef` flag deciding whether a property is exposed when an item is shared/printed — Share/Print renders the canvas plus the opted-in fields. Mirrors the type-level `show_in_quick_capture` toggle but lives on the property. Per-type default field sets are decided type by type.
 
