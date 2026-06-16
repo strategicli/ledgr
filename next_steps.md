@@ -26,6 +26,21 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ Session summary — item-view inline editing (Feature A) ✅ DONE; arrangeable item layout (Feature B) NEXT (2026-06-16, ADR-068)
+
+**A two-feature item-view UX push Brandon asked for (2026-06-16). Feature A is built end-to-end this session; Feature B is scoped and queued.** Non-core (UI over existing APIs, no schema change); flagged to Tyler in `COLLAB.md`.
+
+**Feature A — inline editing on the item view (ADR-068), DONE:**
+- **A1 — edit a related item's title in place.** New `src/components/relations/InlineTitle.tsx`: a hover-revealed pencil (off to one side, desktop only) on Related-panel rows (`RelatedRow`) and typed relation-field chips (`RelationField`) swaps the title link for an input, optimistic PATCH + revert + `router.refresh()`. The title stays a click-through to the item for anything deeper.
+- **A2 — labels-only structure fixes, by right-click ("punch through the line," ADR-063).** New `src/components/build/InlineLabel.tsx`: right-click a type label (Related-panel type-group heading) or a property/field label (field-section heading, Properties/Relations panel `dt`) → a small menu with **Rename** (inline) or **Edit in builder…** (`/build/types/[key]/edit`). Renames move only the display label via a new lightweight `PATCH /api/types/[key]/rename` over `renameTypeLabel`/`renamePropertyLabel` (`src/lib/types.ts`); the key/role is immutable, so values and relation edges are untouched.
+- **Ride-along — × to clear a property value** (`canvas-drag-and-drop.md` item 3): a hover × on a filled scalar property in `CustomProperties`, with a remount key so the uncontrolled text/url/number boxes empty visibly.
+- **Mobile:** inline edit is desktop-only (no pencil/right-click on touch); tap-through is the fallback (long-press rejected — fights scroll/selection).
+- **Verified:** `tsc` (app) + full `next build` + eslint all clean. New `scripts/verify-inline-rename.mts` proves the label-moves-not-the-key invariant (a typed relation edge survives a field rename) **— pending a live Neon run** (no `DATABASE_URL` in this container, same posture as other integration-gated slices). **In-browser eyeball pending:** pencil-edit a related title, right-click-rename a field/type label, × to clear a property.
+
+**Feature B — arrangeable, responsive, per-type item canvas layout, NEXT (CORE → needs ADR + COLLAB):** a 2D drag/resize grid (reusing the dashboards' `react-grid-layout` v1.5.3) over the default `MarkdownCanvas` zones (title, body, properties, relations, related, subtasks/meeting-prep, save/share, footer). **Per breakpoint** (full-width `lg` arranged by hand; small/modal `md` and mobile `sm` auto-derived, overridable per breakpoint), **per type** (stored as a new nullable `canvas_layout jsonb` on `types`; null = today's order), with a per-type "Customize layout" toggle at type creation. Each zone is **flow** (auto-height, the default — the body especially) or **fixed** (a pinned, drag/resize-locked cell). Phasing: **B1** zone grid (de-risk the body-in-grid auto-height first), **B2** per-field top-strip/footer placement (delivers PRD §4.13's "fields configurable per type"). Bespoke module canvases (Chord/Paper) opt in at the module level. Full scoping in this session's chat; ADR to be written when B1 lands.
+
+---
+
 ## ⟢ Session summary — Relations chunk: typed relation properties + create-on-miss ✅ DONE (ADR-067, branch `relations-typed-properties`)
 
 **Built end-to-end this session (R1–R4; Brandon + Tyler already agreed the design, core, ADR-067).** Two things: (1) **un-defer the `relation` property kind** so any type can carry a typed link box the user adds in the builder (a Book's "Author", a Meeting's "Attendees") — fully configurable from Build Mode alongside the other property kinds (Brandon's ask this session); (2) make **inline create-on-miss** the way you add a link to something that does not exist yet, without leaving the item you are in.

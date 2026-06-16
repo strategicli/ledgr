@@ -57,13 +57,19 @@ export default async function MarkdownCanvas({ item, ownerId }: CanvasProps) {
       {propertySchema.length > 0 && (
         <CustomProperties
           itemId={item.id}
+          typeKey={item.type}
           schema={propertySchema}
           initial={(item.properties as Record<string, unknown>) ?? {}}
         />
       )}
       {/* Typed relation fields (ADR-067): the type's `relation` properties as
           link boxes, reading/writing relations edges with role = the field key. */}
-      <RelationProperties ownerId={ownerId} itemId={item.id} props={propertySchema} />
+      <RelationProperties
+        ownerId={ownerId}
+        itemId={item.id}
+        typeKey={item.type}
+        props={propertySchema}
+      />
       {/* Related panel (PRD §4.9): every item shows what links here, with
           related tasks check-off-able and due-dates editable in place — the
           actionable "tag as dashboard" surface, now universal (ADR-055). */}

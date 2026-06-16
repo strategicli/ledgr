@@ -23,11 +23,17 @@ export default async function ChordCanvas({ item, ownerId }: CanvasProps) {
       {propertySchema.length > 0 && (
         <CustomProperties
           itemId={item.id}
+          typeKey={item.type}
           schema={propertySchema}
           initial={(item.properties as Record<string, unknown>) ?? {}}
         />
       )}
-      <RelationProperties ownerId={ownerId} itemId={item.id} props={propertySchema} />
+      <RelationProperties
+        ownerId={ownerId}
+        itemId={item.id}
+        typeKey={item.type}
+        props={propertySchema}
+      />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <SaveOffline itemId={item.id} />
       <ShareLink itemId={item.id} />

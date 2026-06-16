@@ -25,6 +25,7 @@ import {
 } from "@/lib/relations";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
+import InlineLabel from "@/components/build/InlineLabel";
 import AddRelation from "./AddRelation";
 import NewRelatedTask from "./NewRelatedTask";
 import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
@@ -140,7 +141,11 @@ export default async function RelatedPanel({
       {fieldSections.map(({ field, rows }) => (
         <div key={`field:${field.key}`} className="mt-4">
           <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            {field.label}
+            <InlineLabel
+              typeKey={hostType!}
+              propertyKey={field.key}
+              label={field.label}
+            />
             <span className="ml-2 font-normal text-neutral-600">{rows.length}</span>
           </h3>
           <ul className="mt-1">{rows.map((item) => renderRow(item, field.key))}</ul>
@@ -150,7 +155,7 @@ export default async function RelatedPanel({
       {typeGroups.map((key) => (
         <div key={key} className="mt-4">
           <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            {labels.get(key) ?? key}
+            <InlineLabel typeKey={key} label={labels.get(key) ?? key} />
             <span className="ml-2 font-normal text-neutral-600">
               {byType.get(key)!.length}
             </span>
