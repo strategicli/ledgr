@@ -25,11 +25,22 @@ check("bold", markdownToHtml("**b**").includes("<strong>b</strong>"));
 check("italic", markdownToHtml("*i*").includes("<em>i</em>"));
 check("strikethrough", markdownToHtml("~~x~~").includes("<s>x</s>"));
 
-// --- mention link renders as a flat span, never an anchor ------------------
+// --- mention renders as a tappable /items/<id> anchor ----------------------
 const id = "9f8c2b14-0000-4abc-8def-112233445566";
 const mHtml = markdownToHtml(`Prep with ${mentionToMarkdown(id, "Roger 1:1")}.`);
-check('mention → <span class="mention">', mHtml.includes('<span class="mention">@Roger 1:1</span>'), mHtml);
-check("mention drops the ledgr:// href (no anchor)", !mHtml.includes("ledgr://") && !mHtml.includes("<a "), mHtml);
+check(
+  'mention → <a href="/items/<id>" class="mention">',
+  mHtml.includes(`<a href="/items/${id}" class="mention">@Roger 1:1</a>`),
+  mHtml,
+);
+check("mention drops the ledgr:// href (resolves to in-app route)", !mHtml.includes("ledgr://"), mHtml);
+// A malformed mention (empty id) must never leak a broken anchor or URI.
+const badHtml = markdownToHtml("See [@Ghost](ledgr://item/).");
+check(
+  "empty-id mention flattens to <span class=\"mention\">",
+  badHtml.includes('<span class="mention">@Ghost</span>') && !badHtml.includes("ledgr://"),
+  badHtml,
+);
 
 // --- color / highlight inline HTML passes through --------------------------
 const colorMd = `${textColorTag("red").open}covenant${textColorTag("red").close}`;

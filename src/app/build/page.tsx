@@ -8,6 +8,8 @@
 // is the dashboard of the model, not the tools.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { listDashboards } from "@/lib/dashboards";
+import { usedViewIds } from "@/lib/dashboards";
 import { itemCountsByType } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { listTemplates } from "@/lib/templates";
@@ -29,16 +31,18 @@ export default async function BuildHome() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [types, views, templates, counts] = await Promise.all([
+  const [types, views, templates, counts, dashboards, usedViews] = await Promise.all([
     listTypes(),
     listViews(owner.id),
     listTemplates(owner.id),
     itemCountsByType(owner.id),
+    listDashboards(owner.id),
+    usedViewIds(owner.id),
   ]);
 
   const customTypes = types.filter((t) => !t.isSystem).length;
   const totalItems = Object.values(counts).reduce((a, b) => a + b, 0);
-  const pinnedViews = views.filter((v) => v.dashboardOrder != null).length;
+  const pinnedViews = views.filter((v) => usedViews.has(v.id)).length;
   const zeroItemTypes = types.filter((t) => (counts[t.key] ?? 0) === 0);
 
   const templatesByType = new Map<string, number>();
@@ -57,11 +61,12 @@ export default async function BuildHome() {
           sidebar.
         </p>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat value={types.length} label={`Types${customTypes ? ` · ${customTypes} custom` : ""}`} />
           <Stat value={totalItems} label="Items" />
-          <Stat value={views.length} label={`Views${pinnedViews ? ` · ${pinnedViews} on Work` : ""}`} />
+          <Stat value={views.length} label={`Views${pinnedViews ? ` · ${pinnedViews} as widgets` : ""}`} />
           <Stat value={templates.length} label="Templates" />
+          <Stat value={dashboards.length} label="Dashboards" />
         </div>
 
         {/* Types with item counts */}
@@ -138,8 +143,8 @@ export default async function BuildHome() {
                   <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
                     {v.layout}
                   </span>
-                  {v.dashboardOrder != null && (
-                    <span className="shrink-0 text-xs text-[var(--accent)]">on Work</span>
+                  {usedViews.has(v.id) && (
+                    <span className="shrink-0 text-xs text-[var(--accent)]">widget</span>
                   )}
                 </li>
               ))}

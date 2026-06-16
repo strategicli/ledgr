@@ -101,7 +101,7 @@ export const MAX_TOOLS_CHILDREN = 8;
 // A destination points at one route. `builtin` is a hardcoded app page, `view`
 // a saved view (/views/[id]), `type` a type's list (/list/[key]). The kind is
 // metadata for the editor; the nav only needs href/label/icon to render.
-export const NAV_DEST_KINDS = ["builtin", "view", "type"] as const;
+export const NAV_DEST_KINDS = ["builtin", "view", "type", "dashboard"] as const;
 export type NavDestKind = (typeof NAV_DEST_KINDS)[number];
 
 export type NavBadge = "inbox";
@@ -141,6 +141,11 @@ export type UserSettings = {
   // How this owner signs shared content (the Changelog notes "Sign" stamp).
   // Empty falls back to the email's local part (see effectiveDisplayName).
   displayName: string;
+  // Optional: a custom dashboard assigned as the Home (/) and/or Today surface.
+  // null = render the fixed built-in layout (the default). A deleted/unowned id
+  // parses back to null, so a removed dashboard silently falls back.
+  homeDashboardId: string | null;
+  todayDashboardId: string | null;
 };
 
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
@@ -163,7 +168,12 @@ export const DEFAULT_SETTINGS: UserSettings = {
   navSlots: DEFAULT_NAV_SLOTS,
   mobileNavSlots: null,
   displayName: "",
+  homeDashboardId: null,
+  todayDashboardId: null,
 };
+
+const SETTINGS_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Validate one destination, returning null if it's unusable. An unknown icon
 // falls back rather than failing; the locked Home route ("/") is stripped so it
@@ -244,6 +254,10 @@ export function parseSettings(raw: unknown): UserSettings {
     : DEFAULT_SETTINGS.railAnchor;
   const displayName =
     typeof r.displayName === "string" ? r.displayName.trim().slice(0, 60) : DEFAULT_SETTINGS.displayName;
+  const dashRef = (v: unknown) =>
+    typeof v === "string" && SETTINGS_UUID_RE.test(v) ? v : null;
+  const homeDashboardId = dashRef(r.homeDashboardId);
+  const todayDashboardId = dashRef(r.todayDashboardId);
   const navSlots = parseNavSlots(r.navSlots, NAV_SLOTS_HARD_CAP, DEFAULT_NAV_SLOTS);
   // null (or absent) means mirror desktop; an array is a distinct mobile list.
   const mobileNavSlots =
@@ -261,6 +275,8 @@ export function parseSettings(raw: unknown): UserSettings {
     navSlots,
     mobileNavSlots,
     displayName,
+    homeDashboardId,
+    todayDashboardId,
   };
 }
 

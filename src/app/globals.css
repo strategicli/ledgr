@@ -115,3 +115,47 @@ body {
 /* The markdown editor (Tiptap) and its @-mention chip carry their own styles
    in src/components/markdown-editor/markdown-editor.css, loaded with the lazy
    editor bundle; nothing editor-specific belongs here. */
+
+/* react-grid-layout (customizable dashboards). The library's own CSS loads with
+   the grid's dynamic bundle — AFTER globals.css — so at equal specificity it
+   would win. Scoping these under .dash-edit (the grid-container class RglInner
+   sets only in edit mode) both raises specificity above the library's bare
+   selectors AND ties the affordances to edit mode. */
+
+/* Drag placeholder: an accent wash instead of the library's pink. */
+.dash-edit .react-grid-item.react-grid-placeholder {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 0.5rem;
+  opacity: 0.5;
+}
+
+/* Every cell gets a faint accent outline so widget bounds are visible while
+   editing (stronger on hover). */
+.dash-edit .react-grid-item {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: -1px;
+  border-radius: 0.5rem;
+}
+.dash-edit .react-grid-item:hover {
+  outline-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* The resize grab corner: the default is a tiny near-invisible gray arrow on
+   dark. Drop the faint SVG and draw a big accent corner-arrow with a glow, so
+   it's obvious where to grab to resize. */
+.dash-edit .react-grid-item > .react-resizable-handle {
+  background-image: none;
+  width: 24px;
+  height: 24px;
+}
+.dash-edit .react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 15px;
+  height: 15px;
+  border-right: 3px solid var(--accent);
+  border-bottom: 3px solid var(--accent);
+  filter: drop-shadow(0 0 3px var(--accent));
+}

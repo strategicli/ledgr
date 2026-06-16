@@ -43,6 +43,12 @@ check("isBuildPath false for / (home)", !isBuildPath("/"));
 check("isBuildPath false for /views (now Work-side)", !isBuildPath("/views"));
 check("isBuildPath false for /settings (both-places)", !isBuildPath("/settings"));
 check("isBuildPath false for a /buildfoo lookalike", !isBuildPath("/buildfoo"));
+// Dashboards keep Build chrome (an INTERFACE-building surface); a dashboard
+// assigned as Home/Today renders at / or /today, which stay Work chrome.
+check("isBuildPath true for /dashboards", isBuildPath("/dashboards"));
+check("isBuildPath true for /dashboards/[id]", isBuildPath("/dashboards/abc"));
+check("isBuildPath false for /today (Work surface)", !isBuildPath("/today"));
+check("isBuildPath false for a /dashboardsfoo lookalike", !isBuildPath("/dashboardsfoo"));
 
 // --- 2. command-index ------------------------------------------------------
 const {

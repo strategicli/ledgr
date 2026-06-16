@@ -55,7 +55,7 @@ export type DestinationResult = Extract<CommandResult, { kind: "destination" }>;
 const BUILTIN_PAGES: { label: string; href: string; icon: string }[] = [
   { label: "Inbox", href: "/inbox", icon: "inbox" },
   { label: "Tasks", href: "/tasks", icon: "tasks" },
-  { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
+  { label: "Dashboards", href: "/dashboards", icon: "dashboard" },
   { label: "All items", href: "/items", icon: "items" },
   { label: "Trash", href: "/trash", icon: "archive" },
   { label: "Changelog", href: "/changelog", icon: "changelog" },

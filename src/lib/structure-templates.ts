@@ -5,7 +5,8 @@
 // half is pure + deterministic (no model in the loop, Principle 3): it maps the
 // guided answers to a type + properties + starter views via the §3.6 machinery,
 // reusing parseTypeInput/parseViewInput so validation has one home. The apply
-// half persists the plan over createType/createView/pinView.
+// half persists the plan over createType/createView and, when asked, adds the
+// primary view to a dashboard (addViewToDefaultDashboard, dashboards epoch).
 import { ItemError } from "@/lib/items";
 import {
   parseTypeInput,
@@ -13,12 +14,8 @@ import {
   type TypeCreateInput,
 } from "@/lib/types";
 import { createType } from "@/lib/types";
-import {
-  createView,
-  parseViewInput,
-  pinView,
-  type ViewInput,
-} from "@/lib/views";
+import { addViewToDefaultDashboard } from "@/lib/dashboards";
+import { createView, parseViewInput, type ViewInput } from "@/lib/views";
 
 export const STRUCTURE_KINDS = ["workflow", "wiki"] as const;
 export type StructureKind = (typeof STRUCTURE_KINDS)[number];
@@ -192,7 +189,9 @@ export async function applyStructurePlan(
   const primary = created.find((v) => v.name === plan.primaryViewName) ?? null;
   let pinnedViewId: string | null = null;
   if (opts.addToDashboard && primary) {
-    await pinView(ownerId, primary.id);
+    // Dashboards epoch (ADR-064): add the generated primary view as a widget on
+    // the owner's default dashboard (creating "Home" if they have none).
+    await addViewToDefaultDashboard(ownerId, primary.id);
     pinnedViewId = primary.id;
   }
 

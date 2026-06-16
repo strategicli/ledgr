@@ -10,7 +10,7 @@
 // from @-mentions on every save (src/lib/mentions.ts), so the write path
 // refuses to create or delete them — a manually deleted mention edge would
 // silently resurrect on the next body save.
-import { and, desc, eq, ne, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, isNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
@@ -81,6 +81,58 @@ export async function listRelatedItems(
     }
   }
   return [...out.values()];
+}
+
+// Confirmed related items for a SET of anchor ids, in one pair of indexed
+// queries (not N+1) — for the dashboard's compact list, which shows a small
+// "associated with" chip per row. Either direction, owner-scoped, live-only,
+// self-edges and the anchor itself excluded; deduped per anchor, capped small.
+export async function relatedSummaryFor(
+  ownerId: string,
+  itemIds: string[]
+): Promise<Map<string, { id: string; title: string; type: string }[]>> {
+  const out = new Map<string, { id: string; title: string; type: string }[]>();
+  if (itemIds.length === 0) return out;
+  const db = getDb();
+  const anchors = new Set(itemIds);
+  const cols = { id: items.id, title: items.title, type: items.type };
+  // Two passes: anchor is the source (related = target), then anchor is the
+  // target (related = source). Confirmed edges only.
+  const [asSource, asTarget] = await Promise.all([
+    db
+      .select({ anchor: relations.sourceId, ...cols })
+      .from(relations)
+      .innerJoin(items, eq(items.id, relations.targetId))
+      .where(
+        and(
+          inArray(relations.sourceId, itemIds),
+          eq(relations.matchState, "confirmed"),
+          eq(items.ownerId, ownerId),
+          isNull(items.deletedAt)
+        )
+      ),
+    db
+      .select({ anchor: relations.targetId, ...cols })
+      .from(relations)
+      .innerJoin(items, eq(items.id, relations.sourceId))
+      .where(
+        and(
+          inArray(relations.targetId, itemIds),
+          eq(relations.matchState, "confirmed"),
+          eq(items.ownerId, ownerId),
+          isNull(items.deletedAt)
+        )
+      ),
+  ]);
+  for (const r of [...asSource, ...asTarget]) {
+    if (r.id === r.anchor || !anchors.has(r.anchor)) continue;
+    const arr = out.get(r.anchor) ?? [];
+    if (!arr.some((x) => x.id === r.id) && arr.length < 4) {
+      arr.push({ id: r.id, title: r.title, type: r.type });
+    }
+    out.set(r.anchor, arr);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

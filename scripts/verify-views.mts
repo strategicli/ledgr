@@ -60,8 +60,8 @@ try {
   await throws("rejects bad layout", () => parseViewInput({ name: "x", layout: "grid" }), "bad_request");
   await throws("rejects bad status", () =>
     parseViewInput({ name: "x", layout: "list", filter: { status: "nope" } }), "bad_request");
-  await throws("rejects non-uuid entityId", () =>
-    parseViewInput({ name: "x", layout: "list", filter: { entityId: "abc" } }), "bad_request");
+  await throws("rejects non-uuid relatedTo", () =>
+    parseViewInput({ name: "x", layout: "list", filter: { relatedTo: "abc" } }), "bad_request");
 
   const calendarDef = parseViewInput({ name: "Cal", layout: "calendar", filter: {} });
   check("calendar defaults dateProperty to dueDate", calendarDef.dateProperty === "dueDate");

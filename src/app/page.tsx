@@ -2,11 +2,13 @@
 // quick capture, today's meetings, due/overdue tasks, recent items. One
 // batched fetch via getTodayData; widgets and user arrangement are Phase 2.
 import Link from "next/link";
+import DashboardView from "@/components/dashboards/DashboardView";
 import QuickCapture from "@/components/today/QuickCapture";
 import PushToggle from "@/components/pwa/PushToggle";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { listItems } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE, getTodayData } from "@/lib/today";
 
 export const dynamic = "force-dynamic";
@@ -86,7 +88,28 @@ function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
   );
 }
 
-export default async function Today() {
+// The Work home (/). If the owner has assigned a dashboard as Home, render it;
+// otherwise the fixed Today layout below (the default + fallback). The Today
+// surface (/today) mirrors this with todayDashboardId.
+export default async function Home() {
+  const owner = await resolveOwner();
+  if (!owner) return <TodayHome />;
+  const settings = await getSettings(owner.id);
+  if (settings.homeDashboardId) {
+    // Renders the dashboard, or falls back to the fixed Today layout if the
+    // assigned dashboard was since deleted.
+    return (
+      <DashboardView
+        ownerId={owner.id}
+        dashboardId={settings.homeDashboardId}
+        fallback={<TodayHome />}
+      />
+    );
+  }
+  return <TodayHome />;
+}
+
+export async function TodayHome() {
   const owner = await resolveOwner();
   if (!owner) {
     return (
@@ -194,8 +217,8 @@ export default async function Today() {
         </Section>
 
         <p className="mt-10 flex flex-wrap items-center gap-4 text-sm">
-          <Link href="/dashboard" className="text-neutral-500 hover:text-neutral-300">
-            Dashboard →
+          <Link href="/dashboards" className="text-neutral-500 hover:text-neutral-300">
+            Dashboards →
           </Link>
           <Link href="/items" className="text-neutral-500 hover:text-neutral-300">
             All items →

@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import {
+  countViewItems,
   parseViewFilter,
   queryViewItems,
   SORT_FIELDS,
@@ -35,6 +36,11 @@ export async function GET(request: Request) {
       if (v) raw[key] = v;
     }
     const filter = parseViewFilter(raw);
+
+    // Stat/count widgets ask for just the number, body-free and one query.
+    if (p.get("count")) {
+      return NextResponse.json({ count: await countViewItems(owner.id, filter) });
+    }
 
     const sortField = p.get("sort");
     const sort: ViewSort = {
