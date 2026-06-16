@@ -112,6 +112,15 @@ function asTrimmedString(value: unknown, field: string): string {
   return value.trim();
 }
 
+// A display label (type label or property label): required, trimmed, capped at
+// 80. Shared by the full builder parse and the inline-rename path (ADR-068).
+function parseLabel(raw: unknown): string {
+  const label = asTrimmedString(raw, "label");
+  if (!label) bad("label is required");
+  if (label.length > 80) bad("label too long");
+  return label;
+}
+
 // A type or property key: slug-shaped and length-capped, normalized to
 // lowercase so "Author" and "author" can't both exist.
 function parseKey(raw: unknown, field: string): string {
@@ -221,9 +230,7 @@ function parseCommon(raw: unknown): {
     bad("request body must be a JSON object");
   }
   const r = raw as Record<string, unknown>;
-  const label = asTrimmedString(r.label, "label");
-  if (!label) bad("label is required");
-  if (label.length > 80) bad("label too long");
+  const label = parseLabel(r.label);
   const icon =
     r.icon == null || r.icon === "" ? null : asTrimmedString(r.icon, "icon");
   const propertySchema = parsePropertySchema(r.propertySchema);
@@ -374,6 +381,50 @@ export async function setTypeQuickCapture(
 ): Promise<void> {
   await getType(key); // existence (throws not_found)
   await getDb().update(types).set({ showInQuickCapture }).where(eq(types.key, key));
+}
+
+// Inline label fix (ADR-068): rename a type's display label in place from the
+// item view, without opening the full builder. Only the label moves — the key
+// (PK/FK) is untouched, so nothing is orphaned. System types are allowed (a
+// label is harmless; only delete is blocked for them), matching updateType.
+export async function renameTypeLabel(
+  key: string,
+  rawLabel: unknown
+): Promise<TypeDefinition> {
+  const label = parseLabel(rawLabel);
+  await getType(key); // existence (throws not_found)
+  const rows = await getDb()
+    .update(types)
+    .set({ label })
+    .where(eq(types.key, key))
+    .returning();
+  return rowToDefinition(rows[0]);
+}
+
+// Inline label fix (ADR-068): rename one property/relation field's display label
+// in place. The property `key` (the items.properties key, or a relation edge's
+// `role`) never changes, so stored values and relation edges are untouched — it's
+// a pure display rename. The rest of the schema is read back and rewritten as-is.
+export async function renamePropertyLabel(
+  key: string,
+  propertyKey: string,
+  rawLabel: unknown
+): Promise<TypeDefinition> {
+  const label = parseLabel(rawLabel);
+  const def = await getType(key); // existence + parsed schema
+  let found = false;
+  const propertySchema = def.propertySchema.map((p) => {
+    if (p.key !== propertyKey) return p;
+    found = true;
+    return { ...p, label };
+  });
+  if (!found) bad(`type '${key}' has no property '${propertyKey}'`);
+  const rows = await getDb()
+    .update(types)
+    .set({ propertySchema })
+    .where(eq(types.key, key))
+    .returning();
+  return rowToDefinition(rows[0]);
 }
 
 // How many items reference this type (across all owners — the type is

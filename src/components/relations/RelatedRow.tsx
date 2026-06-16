@@ -6,8 +6,8 @@
 // is computed server-side and passed in, so this stays a thin client leaf.
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import InlineTitle from "./InlineTitle";
 import RelationActions from "./RelationActions";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", {
@@ -95,14 +95,15 @@ export default function RelatedRow({
           aria-label={done ? "Mark open" : "Mark done"}
         />
       )}
-      <Link
-        href={`/items/${item.id}`}
-        className={`min-w-0 flex-1 truncate text-sm ${
+      <InlineTitle
+        id={item.id}
+        title={item.title}
+        done={done}
+        className="flex-1"
+        linkClassName={`text-sm ${
           item.title ? "text-neutral-200" : "text-neutral-500"
-        } ${done ? "line-through opacity-60" : ""}`}
-      >
-        {item.title || "Untitled"}
-      </Link>
+        }`}
+      />
       {error && <span className="shrink-0 text-xs text-red-400">failed</span>}
       {mention && (
         <span

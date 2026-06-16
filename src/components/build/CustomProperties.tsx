@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import type { PropertyDef } from "@/lib/types";
+import InlineLabel from "./InlineLabel";
 
 const inputClass =
   "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
@@ -18,15 +19,22 @@ type Values = Record<string, unknown>;
 
 export default function CustomProperties({
   itemId,
+  typeKey,
   schema,
   initial,
 }: {
   itemId: string;
+  typeKey: string;
   schema: PropertyDef[];
   initial: Values;
 }) {
   const [values, setValues] = useState<Values>(initial ?? {});
   const [error, setError] = useState(false);
+  // Remount key per field, bumped when the × clears a value. The text/url/number
+  // inputs are uncontrolled (defaultValue, to avoid per-keystroke re-render), so
+  // clearing state alone wouldn't empty the visible box — remounting reads the
+  // now-null state as a fresh empty defaultValue. Controlled kinds ignore it.
+  const [rev, setRev] = useState<Record<string, number>>({});
 
   // Merge the change into the full object and PATCH the whole thing (updateItem
   // replaces properties wholesale). Revert to the prior object on failure.
@@ -54,6 +62,7 @@ export default function CustomProperties({
       case "text":
         return (
           <input
+            key={`${prop.key}:${rev[prop.key] ?? 0}`}
             type="text"
             className={`${inputClass} w-56`}
             defaultValue={typeof v === "string" ? v : ""}
@@ -69,6 +78,7 @@ export default function CustomProperties({
       case "url":
         return (
           <input
+            key={`${prop.key}:${rev[prop.key] ?? 0}`}
             type="url"
             className={`${inputClass} w-56`}
             placeholder="https://"
@@ -85,6 +95,7 @@ export default function CustomProperties({
       case "number":
         return (
           <input
+            key={`${prop.key}:${rev[prop.key] ?? 0}`}
             type="number"
             className={`${inputClass} w-32`}
             defaultValue={typeof v === "number" ? String(v) : ""}
@@ -173,12 +184,44 @@ export default function CustomProperties({
         Properties
       </h2>
       <dl className="flex flex-col gap-2">
-        {scalarSchema.map((prop) => (
-          <div key={prop.key} className="flex items-center gap-3 text-sm">
-            <dt className="w-32 shrink-0 text-neutral-500">{prop.label}</dt>
-            <dd className="min-w-0">{control(prop)}</dd>
-          </div>
-        ))}
+        {scalarSchema.map((prop) => {
+          const v = values[prop.key];
+          // A value worth offering an explicit clear for. Checkbox has no
+          // "empty" state (the toggle is the control), so it's excluded.
+          const filled =
+            prop.kind !== "checkbox" &&
+            v != null &&
+            v !== "" &&
+            !(Array.isArray(v) && v.length === 0);
+          return (
+            <div key={prop.key} className="group flex items-center gap-3 text-sm">
+              <dt className="w-32 shrink-0 text-neutral-500">
+                <InlineLabel
+                  typeKey={typeKey}
+                  propertyKey={prop.key}
+                  label={prop.label}
+                />
+              </dt>
+              <dd className="flex min-w-0 items-center gap-1">
+                {control(prop)}
+                {filled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void save({ [prop.key]: null });
+                      setRev((r) => ({ ...r, [prop.key]: (r[prop.key] ?? 0) + 1 }));
+                    }}
+                    aria-label={`Clear ${prop.label}`}
+                    title="Clear"
+                    className="shrink-0 rounded px-0.5 text-xs text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 max-sm:opacity-100"
+                  >
+                    ✕
+                  </button>
+                )}
+              </dd>
+            </div>
+          );
+        })}
       </dl>
       {error && (
         <p className="mt-2 text-xs text-red-400">Save failed, change reverted</p>

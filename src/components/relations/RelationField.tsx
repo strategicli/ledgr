@@ -10,10 +10,10 @@
 // the generic Related panel below in sync.
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { RelationCardinality } from "@/lib/types";
+import InlineTitle from "./InlineTitle";
 
 type Chip = { id: string; title: string };
 type Hit = { id: string; type: string; title: string };
@@ -177,12 +177,11 @@ export default function RelationField({
           key={chip.id}
           className="group/chip inline-flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800/60 py-0.5 pl-2 pr-1 text-sm"
         >
-          <Link
-            href={`/items/${chip.id}`}
-            className={`max-w-[12rem] truncate ${chip.title ? "text-neutral-200" : "text-neutral-500"} hover:underline`}
-          >
-            {chip.title || "Untitled"}
-          </Link>
+          <InlineTitle
+            id={chip.id}
+            title={chip.title}
+            linkClassName={`max-w-[12rem] ${chip.title ? "text-neutral-200" : "text-neutral-500"} hover:underline`}
+          />
           <button
             onClick={() => void onRemove(chip)}
             disabled={busy}
