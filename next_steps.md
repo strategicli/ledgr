@@ -22,7 +22,29 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 - **M5 — Per-type canvas seam** ✓ **done (2026-06-13, ADR-041).** `ItemCanvas` split into a thin **shell** (owner check, item load, guards, breadcrumb → resolves + renders the type's canvas) and the default **`MarkdownCanvas`** (editor + panels + chrome). Pure policy `canvasIdForType` in `src/lib/canvas-registry.ts` (default `"markdown"`, no component imports → testable), wiring `Record` in the shell with a `?? MarkdownCanvas` fallback. Proof: `link` → `LinkCanvas` (URL chip over the default — the module compose-pattern). `footerFieldsFor` extracted pure (pins the ADR-018 invariant). `tsc` + `next build` clean; **16/16** in `verify-canvas-seam.mts`; in-browser confirmed.
 - **M6 — Module registration boundary** ✓ **done (2026-06-13, ADR-043).** `src/lib/modules.ts` (pure policy/contract: `ModuleManifest`/`ModuleTypeDef`/`ExporterDef`/`IntegrationDef`, the registry + `isModuleEnabled` seam, and the resolvers core dispatches through — `canvasIdForType`/`canonicalFormatForType`/`exportersForType`/`moduleForType`, import-pure so it's node-testable) + `src/lib/module-wiring.tsx` (impure canvasId→component, `?? MarkdownCanvas` fallback). **Core is the first module** (`coreModule`), so the whole app resolves type behavior through one boundary, unchanged. Canonical-body-format-per-type resolves (Tyler decision #1); per-user enable is an owner-threaded, default-on seam. Proven by `referenceModule` (exported example) + `verify-module-registry.mts` **38/38**; `canvas-registry.ts` folded in + deleted, `verify-canvas-seam.mts` still **16/16**; `tsc` + `next build` clean; in-browser link-chip + default-note both route through the boundary, no errors. **The modules themselves (Papers, Songs, …) are explicitly out of the foundational build** (ADR-042) — they come after, on top of this capability (mostly Tyler's lane). Tyler's PR #1 specs were the design input.
 
-**🎉 Phase M is complete.** The Markdown-epoch foundation rework is done end-to-end (M1–M3 markdown cutover, M5 canvas seam, M6 module boundary). **Next: Phase 3, Tier 1 — the Build surface UX** (see below).
+**🎉 Phase M is complete.** The Markdown-epoch foundation rework is done end-to-end (M1–M3 markdown cutover, M5 canvas seam, M6 module boundary).
+
+---
+
+## ⟢ NEXT UP — Relations chunk: typed relation properties + create-on-miss (ADR-067, 2026-06-16)
+
+**Decided this session (Brandon + Tyler agreed; core, ADR-067 — docs written, code not started).** Two things: (1) **un-defer the `relation` property kind** so any type can carry a typed link box the user adds in the builder (a Book's "Author", a Meeting's "Attendees"); (2) make **inline create-on-miss** the way you add a link to something that does not exist yet, without leaving the item you are in.
+
+**The settled model:**
+- **One generic edge table underneath** (`relations`, unchanged). A typed relation field is just edges with `role` = the field's `key`, so typed links also show in the generic Related panel. Relation values are **not** stored in `items.properties`.
+- **A relation field's config:** `targetType` (the accepted type, optional) + `cardinality` (`single`|`many`). This is the only place "classification" is declared — once per field, never per link. Hierarchy stays the separate `parent_id` tree; plain links stay unlabeled.
+- **One create-on-miss rule: if the box tells us the type, use it; otherwise it's `unmarked` and goes to the Inbox.**
+  - Typed field (Author box) → create-on-miss makes the field's `targetType` (eager, no prompt).
+  - Free-text `@` on the canvas + generic + Relate → create an `unmarked` item, `inbox = true`, link it, stay in place. (Dropped the earlier "person by default" idea for this uniform rule.)
+- **`unmarked`** is a new seeded hidden `is_system` type whose label is a **glyph** (the user never reads the word). Triage out of the Inbox = retype + clear inbox; nothing recreated. (A null `type` and Obsidian-style lazy/unresolved links were both rejected — see ADR-067.)
+
+**Build order (roadmap R1–R4):**
+- **R1** — `relation` in `PROPERTY_KINDS`; `PropertyDef` gains `targetType`/`cardinality` (+ `parsePropertySchema` validation); `TypeBuilder` authors it; writes/reads go to `relations` edges (role = key) via `src/lib/relations.ts`, not `items.properties`.
+- **R2** — the typed relation input on the canvas (typeahead filtered to `targetType`, chips, cardinality enforced app-side; eager typed create-on-miss).
+- **R3** — seed the hidden `unmarked` type (migration + `seed.mjs`); create-on-miss row in `mention-suggestion.ts` (free-text `@`) and `AddRelation.tsx` (+ Relate) → `unmarked` + `inbox`.
+- **R4** — `RelatedPanel`: unmarked group under the glyph; role section headings (Attendees/References) where set.
+
+**Watch-fors:** keep `mention` edges body-owned (ADR-015) — don't let create-on-miss in free text fight the diff-sync; the `unmarked` glyph label must not break type-order/label lookups (`compareTypeKeys`, and list tabs already filter hidden); cardinality is app-enforced (no DB constraint). Verification: extend `verify-types.mts` plus a relations-focused script for the new kind and the role-as-key reads.
 
 ---
 
