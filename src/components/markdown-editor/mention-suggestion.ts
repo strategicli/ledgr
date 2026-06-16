@@ -4,6 +4,12 @@
 // library, keeping the dependency count down (CLAUDE.md rule 5). The items
 // returned are { id, label }, which Mention's default command maps straight
 // onto the node's attrs.
+//
+// Create-on-miss (ADR-067): when the typed name matches nothing, a "Create"
+// row makes an `unmarked` item (inbox=true, triaged later) and inserts a
+// mention to it. The relation edge is NOT written here — mention edges are
+// body-owned and diff-synced on save (src/lib/mentions.ts); inserting the
+// mention node and letting the save create the edge keeps that contract.
 "use client";
 
 import type { MentionOptions } from "@tiptap/extension-mention";
@@ -24,6 +30,25 @@ async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
     .map((it) => ({ id: it.id, label: it.title || "Untitled" }));
 }
 
+// Create an `unmarked` item (the type is unknown from a free-text @) flagged
+// for the Inbox, returning it as a mention Item.
+async function createUnmarked(title: string): Promise<Item | null> {
+  try {
+    const res = await fetch(`/api/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "unmarked", title, inbox: true }),
+    });
+    if (!res.ok) return null;
+    const { item } = (await res.json()) as {
+      item: { id: string; title: string };
+    };
+    return { id: item.id, label: item.title || title };
+  } catch {
+    return null;
+  }
+}
+
 export function createMentionSuggestion(
   selfId?: string
 ): MentionOptions["suggestion"] {
@@ -33,9 +58,20 @@ export function createMentionSuggestion(
     render: () => {
       let popup: HTMLDivElement | null = null;
       let items: Item[] = [];
+      let query = "";
       let selected = 0;
+      let creating = false;
       let cmd: SuggestionProps<Item>["command"] | null = null;
       let onDocPointer: ((e: MouseEvent) => void) | null = null;
+
+      // Whether to show the create-on-miss row: a non-empty query with no
+      // exact (case-insensitive) title match among the hits.
+      const showCreate = () =>
+        query.trim() !== "" &&
+        !items.some(
+          (it) => it.label.trim().toLowerCase() === query.trim().toLowerCase()
+        );
+      const rowCount = () => items.length + (showCreate() ? 1 : 0);
 
       // One place to tear the popup down so every exit path (onExit, Escape,
       // click-away) also unregisters the document listener — otherwise a stray
@@ -52,10 +88,22 @@ export function createMentionSuggestion(
         }
       };
 
+      // Create the unmarked item, then insert the mention to it. Guarded
+      // against double-submit; cmd is captured at call time.
+      const runCreate = async () => {
+        if (creating || !query.trim()) return;
+        creating = true;
+        const insert = cmd;
+        const made = await createUnmarked(query.trim());
+        creating = false;
+        if (made && insert) insert(made);
+        else if (!made) paint(); // surface that nothing happened; let them retry
+      };
+
       const paint = () => {
         if (!popup) return;
         popup.innerHTML = "";
-        if (items.length === 0) {
+        if (items.length === 0 && !showCreate()) {
           const empty = document.createElement("div");
           empty.className = "ledgr-mention-empty";
           empty.textContent = "No matches";
@@ -74,6 +122,22 @@ export function createMentionSuggestion(
           });
           popup!.appendChild(row);
         });
+        if (showCreate()) {
+          const i = items.length;
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className =
+            "ledgr-mention-item ledgr-mention-create" +
+            (i === selected ? " is-selected" : "");
+          row.textContent = creating
+            ? `Creating “${query.trim()}”…`
+            : `Create “${query.trim()}”`;
+          row.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            void runCreate();
+          });
+          popup!.appendChild(row);
+        }
       };
 
       const place = (rect: DOMRect | null) => {
@@ -90,7 +154,9 @@ export function createMentionSuggestion(
             .querySelectorAll(".ledgr-mention-popup")
             .forEach((n) => n.remove());
           items = props.items;
+          query = props.query;
           selected = 0;
+          creating = false;
           cmd = props.command;
           popup = document.createElement("div");
           popup.className = "ledgr-mention-popup";
@@ -110,27 +176,31 @@ export function createMentionSuggestion(
         },
         onUpdate: (props: SuggestionProps<Item>) => {
           items = props.items;
+          query = props.query;
           selected = 0;
           cmd = props.command;
           paint();
           place(props.clientRect?.() ?? null);
         },
         onKeyDown: ({ event }) => {
+          const count = Math.max(rowCount(), 1);
           if (event.key === "ArrowDown") {
-            selected = (selected + 1) % Math.max(items.length, 1);
+            selected = (selected + 1) % count;
             paint();
             return true;
           }
           if (event.key === "ArrowUp") {
-            selected =
-              (selected - 1 + Math.max(items.length, 1)) %
-              Math.max(items.length, 1);
+            selected = (selected - 1 + count) % count;
             paint();
             return true;
           }
           if (event.key === "Enter") {
-            const it = items[selected];
-            if (it) cmd?.(it);
+            if (selected < items.length) {
+              const it = items[selected];
+              if (it) cmd?.(it);
+            } else if (showCreate()) {
+              void runCreate();
+            }
             return true;
           }
           if (event.key === "Escape") {

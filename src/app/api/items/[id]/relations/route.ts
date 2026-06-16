@@ -67,9 +67,11 @@ export async function PATCH(request: Request, context: Context) {
   }
 }
 
-// DELETE /api/items/[id]/relations?targetId=&suggested=true — un-relate the
-// pair (both directions, mention edges excluded; the body owns those).
+// DELETE /api/items/[id]/relations?targetId=&suggested=true&role= — un-relate
+// the pair (both directions, mention edges excluded; the body owns those).
 // suggested=true is the reject gesture: it removes only provisional edges.
+// role scopes removal to one relation-field edge (ADR-067), so a typed field
+// only clears its own link.
 export async function DELETE(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
@@ -79,8 +81,10 @@ export async function DELETE(request: Request, context: Context) {
     const params = new URL(request.url).searchParams;
     const targetId = asUuid(params.get("targetId"), "targetId");
     const suggestedOnly = params.get("suggested") === "true";
+    const roleParam = params.get("role");
+    const role = roleParam && roleParam.trim() ? roleParam.trim() : undefined;
     return NextResponse.json(
-      await unrelateItems(owner.id, id, targetId, { suggestedOnly })
+      await unrelateItems(owner.id, id, targetId, { suggestedOnly, role })
     );
   } catch (err) {
     return errorResponse(err);

@@ -7,6 +7,7 @@
 import ChordCanvasClient from "@/components/canvas/ChordCanvasClient";
 import CustomProperties from "@/components/build/CustomProperties";
 import RelatedPanel from "@/components/relations/RelatedPanel";
+import RelationProperties from "@/components/relations/RelationProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import { getType } from "@/lib/types";
@@ -26,6 +27,7 @@ export default async function ChordCanvas({ item, ownerId }: CanvasProps) {
           initial={(item.properties as Record<string, unknown>) ?? {}}
         />
       )}
+      <RelationProperties ownerId={ownerId} itemId={item.id} props={propertySchema} />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <SaveOffline itemId={item.id} />
       <ShareLink itemId={item.id} />

@@ -34,6 +34,16 @@ for (const [key, label, icon] of systemTypes) {
   `;
 }
 
+// The `unmarked` placeholder type (ADR-067): hidden + system, label is a glyph.
+// create-on-miss makes items of this type (inbox=true) when the target type is
+// unknown; the user never reads the word "unmarked" (the key is code-facing).
+// Mirrors drizzle/0018_unmarked_type.sql for fresh databases.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden)
+  VALUES ('unmarked', '◌', NULL, true, false, true)
+  ON CONFLICT (key) DO NOTHING
+`;
+
 await sql`
   INSERT INTO users (email)
   VALUES ('brandoncollins@edgewoodcommunity.org')

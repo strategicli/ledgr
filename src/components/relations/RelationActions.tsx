@@ -16,11 +16,16 @@ export default function RelationActions({
   otherId,
   suggested,
   removable,
+  removalRole,
 }: {
   itemId: string;
   otherId: string;
   suggested: boolean;
   removable: boolean;
+  // When set (a typed relation-field section, ADR-067), removal is scoped to
+  // this role so it only clears the field's own edge, not other links to the
+  // same item. Unset = the generic both-direction un-relate.
+  removalRole?: string;
 }) {
   const router = useRouter();
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
@@ -39,7 +44,7 @@ export default function RelationActions({
           : await fetch(
               `/api/items/${itemId}/relations?targetId=${otherId}${
                 action === "reject" ? "&suggested=true" : ""
-              }`,
+              }${action === "remove" && removalRole ? `&role=${encodeURIComponent(removalRole)}` : ""}`,
               { method: "DELETE" }
             );
       if (!res.ok) throw new Error(String(res.status));

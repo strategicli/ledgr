@@ -14,6 +14,7 @@ import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import RelatedPanel from "@/components/relations/RelatedPanel";
+import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, footerFieldsFor } from "@/lib/canvas-fields";
 import { getType } from "@/lib/types";
@@ -50,8 +51,9 @@ export default async function MarkdownCanvas({ item, ownerId }: CanvasProps) {
       {/* Meeting prep (PRD §5.1): the person's open tasks, recent meetings,
           agenda, and action-item -> task promotion. */}
       {item.type === "meeting" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
-      {/* Custom properties (PRD §3.6): the type's Build-surface fields, edited
-          in place. Renders only when the type declares a property schema. */}
+      {/* Custom properties (PRD §3.6): the type's scalar Build-surface fields,
+          edited in place over items.properties. CustomProperties skips relation
+          kinds (their value is edges, not properties). */}
       {propertySchema.length > 0 && (
         <CustomProperties
           itemId={item.id}
@@ -59,6 +61,9 @@ export default async function MarkdownCanvas({ item, ownerId }: CanvasProps) {
           initial={(item.properties as Record<string, unknown>) ?? {}}
         />
       )}
+      {/* Typed relation fields (ADR-067): the type's `relation` properties as
+          link boxes, reading/writing relations edges with role = the field key. */}
+      <RelationProperties ownerId={ownerId} itemId={item.id} props={propertySchema} />
       {/* Related panel (PRD §4.9): every item shows what links here, with
           related tasks check-off-able and due-dates editable in place — the
           actionable "tag as dashboard" surface, now universal (ADR-055). */}

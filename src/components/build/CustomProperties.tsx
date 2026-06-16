@@ -160,13 +160,20 @@ export default function CustomProperties({
     }
   }
 
+  // Relation kinds (ADR-067) don't live in items.properties — their value is a
+  // set of relations edges with role = the field key, rendered by the typed
+  // relation input (RelationProperties), not here. Skip them so this scalar
+  // panel doesn't draw an empty control for them.
+  const scalarSchema = schema.filter((p) => p.kind !== "relation");
+  if (scalarSchema.length === 0) return null;
+
   return (
     <section className="mx-auto w-full max-w-3xl px-12 pb-6 pt-2">
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
         Properties
       </h2>
       <dl className="flex flex-col gap-2">
-        {schema.map((prop) => (
+        {scalarSchema.map((prop) => (
           <div key={prop.key} className="flex items-center gap-3 text-sm">
             <dt className="w-32 shrink-0 text-neutral-500">{prop.label}</dt>
             <dd className="min-w-0">{control(prop)}</dd>
