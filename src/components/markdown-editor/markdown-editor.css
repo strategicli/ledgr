@@ -252,3 +252,13 @@
   color: #737373;
   font-size: 0.85rem;
 }
+
+/* Create-on-miss row (ADR-067): set off from the matches with a top divider
+   and a muted "create" affordance. */
+.ledgr-mention-create {
+  color: #a3a3a3;
+  border-top: 1px solid #2a2a2a;
+  border-radius: 0;
+  margin-top: 0.15rem;
+  padding-top: 0.4rem;
+}

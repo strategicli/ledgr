@@ -31,12 +31,16 @@ export default function RelatedRow({
   suggested,
   mention,
   mentionOnly,
+  removalRole,
 }: {
   hostId: string;
   item: RelatedRowItem;
   suggested: boolean;
   mention: boolean;
   mentionOnly: boolean;
+  // In a typed relation-field section (ADR-067), removal is scoped to the
+  // field's role so it doesn't drop other links to the same item.
+  removalRole?: string;
 }) {
   const [status, setStatus] = useState(item.status);
   const [dueDate, setDueDate] = useState(item.dueDate);
@@ -141,6 +145,7 @@ export default function RelatedRow({
         otherId={item.id}
         suggested={suggested}
         removable={!mentionOnly}
+        removalRole={removalRole}
       />
     </li>
   );

@@ -26,10 +26,19 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
-## ⟢ NEXT UP — Relations chunk: typed relation properties + create-on-miss (ADR-067, 2026-06-16)
+## ⟢ Session summary — Relations chunk: typed relation properties + create-on-miss ✅ DONE (ADR-067, branch `relations-typed-properties`)
 
-**Decided this session (Brandon + Tyler agreed; core, ADR-067 — docs written, code not started).** Two things: (1) **un-defer the `relation` property kind** so any type can carry a typed link box the user adds in the builder (a Book's "Author", a Meeting's "Attendees"); (2) make **inline create-on-miss** the way you add a link to something that does not exist yet, without leaving the item you are in.
+**Built end-to-end this session (R1–R4; Brandon + Tyler already agreed the design, core, ADR-067).** Two things: (1) **un-defer the `relation` property kind** so any type can carry a typed link box the user adds in the builder (a Book's "Author", a Meeting's "Attendees") — fully configurable from Build Mode alongside the other property kinds (Brandon's ask this session); (2) make **inline create-on-miss** the way you add a link to something that does not exist yet, without leaving the item you are in.
 
+**What shipped (by slice):**
+- **R1** — `relation` is the 8th `PROPERTY_KINDS`; `PropertyDef` gained `targetType` (null = any) + `cardinality` (single|many), validated shape-only in `parsePropertySchema` (defaults + a guard that a relation key can't be the reserved roles `mention`/`related`). `TypeBuilder` authors it inline per property row — a "Links to" type dropdown (fed by `listTypes()` from both type pages as `availableTypes`) + a "How many" cardinality select. `CustomProperties` skips relation kinds (their value isn't in `items.properties`).
+- **R2** — `RelationField` (client) + `RelationProperties` (server) render typed link boxes after the scalar Properties panel: chips, typeahead filtered to `targetType`, cardinality enforced (single replaces), eager typed create-on-miss. New directional read `outgoingRelationsByRole` batches each field's current links; `unrelateItems` + the relations DELETE endpoint gained a `role` param so a field clears only its own edge.
+- **R3** — migration **0018** + `seed.mjs` seed the hidden `is_system` `unmarked` type (glyph label `◌`, Brandon's to repick), applied to Neon. Create-on-miss rows in `AddRelation` (+Relate) and `mention-suggestion` (free-text `@`) make an `unmarked` item with `inbox=true` and link in place; an untyped `RelationField` does the same. **Mention edges stay body-owned (ADR-015):** the `@` create row only creates the item + inserts the mention node — the save-time diff-sync writes the edge, so create-on-miss never fights it.
+- **R4** — `RelatedPanel` surfaces the host type's relation fields as labeled sections first (schema order, authoritative `outgoingRelationsByRole` set, role-scoped removal threaded through `RelatedRow`/`RelationActions`), then the plain type groups with `unmarked` under its `◌` glyph, sorted last.
+
+**Verified:** `tsc` + full `next build` + eslint all clean; `verify-types.mts` extended (relation kind validation, reserved-key rejection, the unmarked type) ALL PASS; new `verify-relations-typed.mts` ALL PASS (directional role reads, role-scoped removal leaves generic edges intact, create-on-miss server path); migration 0018 applied + the `unmarked` row confirmed on Neon. **Pending:** the in-browser eyeball — add a relation field in Build → Types, open an item, exercise link + create-on-miss + cardinality, confirm the Related panel sections. **Glyph `◌` is Brandon's to repick** (ADR-067 point 4).
+
+**Original design notes (kept for the record):**
 **The settled model:**
 - **One generic edge table underneath** (`relations`, unchanged). A typed relation field is just edges with `role` = the field's `key`, so typed links also show in the generic Related panel. Relation values are **not** stored in `items.properties`.
 - **A relation field's config:** `targetType` (the accepted type, optional) + `cardinality` (`single`|`many`). This is the only place "classification" is declared — once per field, never per link. Hierarchy stays the separate `parent_id` tree; plain links stay unlabeled.

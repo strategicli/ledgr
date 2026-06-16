@@ -57,7 +57,34 @@ const ownerId = tempUser.id;
 
 try {
   // --- parseTypeInput ---
-  check("PROPERTY_KINDS has the scalar + option kinds", PROPERTY_KINDS.length === 7);
+  check("PROPERTY_KINDS has the scalar + option + relation kinds", PROPERTY_KINDS.length === 8);
+  check("PROPERTY_KINDS includes relation", PROPERTY_KINDS.includes("relation"));
+
+  // --- relation kind validation (ADR-067 R1) ---
+  {
+    const [rel] = parsePropertySchema([
+      { key: "author", label: "Author", kind: "relation", targetType: "person", cardinality: "single" },
+    ]);
+    check("relation field keeps targetType + cardinality", rel.kind === "relation" && rel.targetType === "person" && rel.cardinality === "single");
+  }
+  {
+    const [rel] = parsePropertySchema([{ key: "refs", label: "References", kind: "relation" }]);
+    check("relation defaults: targetType null (any), cardinality many", rel.targetType === null && rel.cardinality === "many");
+  }
+  {
+    const [rel] = parsePropertySchema([
+      { key: "att", label: "Attendees", kind: "relation", targetType: "Person", cardinality: "bogus" },
+    ]);
+    check("relation normalizes targetType lowercase + bad cardinality -> many", rel.targetType === "person" && rel.cardinality === "many");
+  }
+  await throws("relation rejects a non-slug targetType", () => parsePropertySchema([{ key: "x", label: "X", kind: "relation", targetType: "1bad" }]), "bad_request");
+  await throws("relation rejects reserved key 'mention'", () => parsePropertySchema([{ key: "mention", label: "M", kind: "relation" }]), "bad_request");
+  await throws("relation rejects reserved key 'related'", () => parsePropertySchema([{ key: "related", label: "R", kind: "relation" }]), "bad_request");
+  {
+    // A reserved key is fine for a NON-relation kind (it's not used as a role).
+    const [scal] = parsePropertySchema([{ key: "related", label: "Related notes", kind: "text" }]);
+    check("reserved key is allowed for a scalar kind", scal.kind === "text" && scal.key === "related");
+  }
   await throws("rejects missing label", () => parseTypeInput({ key: "x" }, "create"), "bad_request");
   await throws("rejects missing key on create", () => parseTypeInput({ label: "X" }, "create"), "bad_request");
   await throws("rejects non-slug key", () => parseTypeInput({ key: "1bad", label: "X" }, "create"), "bad_request");
@@ -141,6 +168,16 @@ try {
     await throws("system types can't be deleted", () => deleteType("note"), "bad_request");
   } else {
     check("note system type present (run db:seed)", false, "no 'note' row");
+  }
+
+  // --- the `unmarked` placeholder type (ADR-067 R3) ---
+  const unmarked = await getType("unmarked").catch(() => null);
+  if (unmarked) {
+    check("unmarked is a hidden system type", unmarked.isSystem === true && unmarked.hidden === true);
+    check("unmarked is excluded from listTypes()", !(await listTypes()).some((t) => t.key === "unmarked"));
+    check("unmarked shows when includeHidden", (await listTypes({ includeHidden: true })).some((t) => t.key === "unmarked"));
+  } else {
+    check("unmarked type present (run db:migrate / db:seed)", false, "no 'unmarked' row");
   }
 
   // --- in-use delete guard ---

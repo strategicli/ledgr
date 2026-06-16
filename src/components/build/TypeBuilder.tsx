@@ -8,7 +8,12 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
-import type { PropertyDef, PropertyKind, TypeDefinition } from "@/lib/types";
+import type {
+  PropertyDef,
+  PropertyKind,
+  RelationCardinality,
+  TypeDefinition,
+} from "@/lib/types";
 
 // Mirrors PROPERTY_KINDS in src/lib/types.ts (validation lives there).
 const KINDS: { kind: PropertyKind; label: string }[] = [
@@ -19,6 +24,7 @@ const KINDS: { kind: PropertyKind; label: string }[] = [
   { kind: "url", label: "URL" },
   { kind: "select", label: "Select (one)" },
   { kind: "multi_select", label: "Multi-select" },
+  { kind: "relation", label: "Relation (link to items)" },
 ];
 const NEEDS_OPTIONS: PropertyKind[] = ["select", "multi_select"];
 
@@ -37,13 +43,17 @@ function slugify(s: string): string {
 }
 
 // Editor row: a stable local id for React, the (immutable once set) property
-// key, the editable label/kind, and options as raw comma-separated text.
+// key, the editable label/kind, and options as raw comma-separated text. For a
+// `relation` kind, targetType (a type key, "" = any) and cardinality also apply;
+// they're ignored for the other kinds.
 type Row = {
   id: number;
   key: string; // "" for a new row; derived at save so a rename never orphans values
   label: string;
   kind: PropertyKind;
   optionsText: string;
+  targetType: string;
+  cardinality: RelationCardinality;
 };
 
 function Field({
@@ -68,6 +78,7 @@ export default function TypeBuilder({
   initial,
   attached,
   itemCount = 0,
+  availableTypes = [],
 }: {
   initial?: TypeDefinition;
   // SPIKE (bespoke-tool catalog): the bespoke tool this type borrows, resolved
@@ -77,6 +88,10 @@ export default function TypeBuilder({
   // How many items currently use this type — drives the delete confirmation's
   // "also delete its items" option.
   itemCount?: number;
+  // The live types (key + label), to populate a relation field's target-type
+  // dropdown. Server-resolved (listTypes) so this client form never imports the
+  // DB-backed registry; hidden types are already excluded upstream.
+  availableTypes?: { key: string; label: string }[];
 }) {
   const router = useRouter();
   const editing = !!initial;
@@ -95,6 +110,8 @@ export default function TypeBuilder({
     label: p?.label ?? "",
     kind: p?.kind ?? "text",
     optionsText: p?.options?.join(", ") ?? "",
+    targetType: p?.targetType ?? "",
+    cardinality: p?.cardinality ?? "many",
   });
 
   const [label, setLabel] = useState(initial?.label ?? "");
@@ -112,6 +129,8 @@ export default function TypeBuilder({
       label: p.label,
       kind: p.kind,
       optionsText: p.options?.join(", ") ?? "",
+      targetType: p.targetType ?? "",
+      cardinality: p.cardinality ?? "many",
     }))
   );
   const [busy, setBusy] = useState(false);
@@ -164,6 +183,10 @@ export default function TypeBuilder({
           return { schema, error: `"${propLabel}" needs at least one option.` };
         }
         def.options = options;
+      }
+      if (r.kind === "relation") {
+        def.targetType = r.targetType || null; // "" = any type
+        def.cardinality = r.cardinality;
       }
       schema.push(def);
     }
@@ -370,6 +393,44 @@ export default function TypeBuilder({
                 aria-label="Options"
                 className={`${selectClass} w-full`}
               />
+            )}
+            {row.kind === "relation" && (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+                  Links to
+                  <select
+                    value={row.targetType}
+                    onChange={(e) =>
+                      updateRow(row.id, { targetType: e.target.value })
+                    }
+                    aria-label="Target type"
+                    className={selectClass}
+                  >
+                    <option value="">Any type</option>
+                    {availableTypes.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+                  How many
+                  <select
+                    value={row.cardinality}
+                    onChange={(e) =>
+                      updateRow(row.id, {
+                        cardinality: e.target.value as RelationCardinality,
+                      })
+                    }
+                    aria-label="Cardinality"
+                    className={selectClass}
+                  >
+                    <option value="many">Many</option>
+                    <option value="single">One</option>
+                  </select>
+                </label>
+              </div>
             )}
           </div>
         ))}

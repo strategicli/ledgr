@@ -135,6 +135,44 @@ export async function relatedSummaryFor(
   return out;
 }
 
+// Typed relation fields (ADR-067): a relation property's value is the set of
+// edges FROM this item with role = the field's key. Read all such edges for a
+// set of roles in one query and bucket them by role, so the canvas can render
+// each typed field (Author, Attendees) with its current links. Directional on
+// purpose — the field's owner is the source — unlike the direction-blind
+// Related panel. Body-free, owner-scoped (on the targets), live items only.
+export async function outgoingRelationsByRole(
+  ownerId: string,
+  itemId: string,
+  roles: string[]
+): Promise<Map<string, { id: string; title: string; type: string }[]>> {
+  const out = new Map<string, { id: string; title: string; type: string }[]>();
+  for (const r of roles) out.set(r, []);
+  if (roles.length === 0) return out;
+  const rows = await getDb()
+    .select({
+      role: relations.role,
+      id: items.id,
+      title: items.title,
+      type: items.type,
+    })
+    .from(relations)
+    .innerJoin(items, eq(items.id, relations.targetId))
+    .where(
+      and(
+        eq(relations.sourceId, itemId),
+        inArray(relations.role, roles),
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt)
+      )
+    )
+    .orderBy(desc(items.updatedAt));
+  for (const row of rows) {
+    out.get(row.role)?.push({ id: row.id, title: row.title, type: row.type });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Write path (slice 15). Every entry point validates both ids against the
 // owner before touching relations, because relations rows carry no owner_id
@@ -232,17 +270,21 @@ export async function addMatchEdge(
 
 // Un-relate, never delete (PRD §4.9): removes every non-mention edge between
 // the pair in both directions; both items stay. suggestedOnly is the reject
-// gesture for provisional matches — it leaves confirmed edges alone.
+// gesture for provisional matches — it leaves confirmed edges alone. role
+// scopes the removal to one role (ADR-067): a typed relation field removes only
+// its own edge (role = the field key), so clearing an Author chip can't also
+// drop a generic +Relate link to the same person.
 export async function unrelateItems(
   ownerId: string,
   itemId: string,
   otherId: string,
-  opts: { suggestedOnly?: boolean } = {}
+  opts: { suggestedOnly?: boolean; role?: string } = {}
 ) {
   await assertOwned(ownerId, itemId);
   await assertOwned(ownerId, otherId);
   const where = [pairFilter(itemId, otherId), ne(relations.role, MENTION_ROLE)];
   if (opts.suggestedOnly) where.push(eq(relations.matchState, "suggested"));
+  if (opts.role) where.push(eq(relations.role, opts.role));
   const rows = await getDb()
     .delete(relations)
     .where(and(...where))

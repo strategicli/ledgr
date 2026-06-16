@@ -25,11 +25,13 @@ import { capabilityById } from "@/lib/modules";
 // module-wiring; this is the type-validation path's counterpart.
 import "@/lib/modules/register";
 
-// The core property kinds (schema.md "Property kinds"). `relation` is
-// deliberately omitted from the builder for now: item-to-item links already
-// have the @-mention + Related panel, so a relation "property" would duplicate
-// that surface. text/number/date/checkbox/url are scalar; select/multi_select
-// carry an options list.
+// The core property kinds (schema.md "Property kinds"). text/number/date/
+// checkbox/url are scalar; select/multi_select carry an options list. `relation`
+// is a typed item-to-item link the user adds in the builder (ADR-067, un-deferred
+// from ADR-044/055): unlike the scalar kinds it stores no value in
+// items.properties — its value lives as `relations` edges whose `role` is the
+// field's `key` (an "Author" field => edges with role 'author'). It carries a
+// targetType (which type the links accept; null = any) and a cardinality.
 export const PROPERTY_KINDS = [
   "text",
   "number",
@@ -38,20 +40,31 @@ export const PROPERTY_KINDS = [
   "url",
   "select",
   "multi_select",
+  "relation",
 ] as const;
 export type PropertyKind = (typeof PROPERTY_KINDS)[number];
 
 const KINDS_WITH_OPTIONS: PropertyKind[] = ["select", "multi_select"];
 
-// One custom field on a type. `key` is the stable identifier used in
-// items.properties (never changes once created, so renaming the label doesn't
-// orphan values); `label` is the display name; `options` lists the choices for
-// select/multi_select.
+// A relation field's link count rule (ADR-067). `single` replaces its edge on a
+// new pick (one Author); `many` accumulates (several Attendees). Enforced in the
+// app layer (the typed-relation input), not by a DB constraint.
+export const RELATION_CARDINALITIES = ["single", "many"] as const;
+export type RelationCardinality = (typeof RELATION_CARDINALITIES)[number];
+
+// One custom field on a type. `key` is the stable identifier (never changes once
+// created, so renaming the label doesn't orphan values — for scalar kinds it's
+// the items.properties key, for a relation it's the edge `role`); `label` is the
+// display name; `options` lists the choices for select/multi_select. For a
+// `relation` kind, `targetType` is the type its links accept (null = any type)
+// and `cardinality` is single/many; both are unset for the other kinds.
 export type PropertyDef = {
   key: string;
   label: string;
   kind: PropertyKind;
   options?: string[];
+  targetType?: string | null;
+  cardinality?: RelationCardinality;
 };
 
 export type TypeDefinition = {
@@ -111,6 +124,18 @@ function parseKey(raw: unknown, field: string): string {
   return key;
 }
 
+// A relation field's targetType: a type key (slug-shaped), or null for "any
+// type". Shape-only (see the caller for why existence isn't checked here).
+function parseRelationTarget(raw: unknown, key: string): string | null {
+  if (raw == null || raw === "") return null;
+  const t = asTrimmedString(raw, `property '${key}' targetType`).toLowerCase();
+  if (!t) return null;
+  if (t.length > 40 || !SLUG_RE.test(t)) {
+    bad(`property '${key}' has an invalid targetType`);
+  }
+  return t;
+}
+
 // Validate the property list: each def has a slug key, a label, a known kind,
 // and (for select/multi_select) a non-empty options list. Duplicate keys are
 // rejected so item values never collide. Returns a normalized PropertyDef[].
@@ -148,6 +173,25 @@ export function parsePropertySchema(raw: unknown): PropertyDef[] {
       if (options.length === 0) bad(`property '${key}' needs at least one option`);
       if (options.length > 100) bad(`property '${key}' has too many options`);
       def.options = options;
+    }
+    if (def.kind === "relation") {
+      // A relation field's value is stored as edges with role = this key
+      // (ADR-067), so the key can't be one of the reserved roles: 'mention'
+      // (body-owned, diff-synced — src/lib/mentions.ts MENTION_ROLE) or
+      // 'related' (the generic +Relate default). Either would mix typed-field
+      // links with edges the field doesn't own.
+      if (key === "mention" || key === "related") {
+        bad(`property '${key}' uses a reserved relation role; pick another key`);
+      }
+      // targetType is a type key (optional; null = links accept any type). We
+      // validate its *shape* only, not existence: parsePropertySchema is pure
+      // and also runs on every read (rowToDefinition), so it can't hit the DB,
+      // and a target type that's later deleted should degrade to "any", not
+      // make the whole schema unreadable. The builder's dropdown only offers
+      // real, live types, so a bad shape here means a hand-edited row.
+      def.targetType = parseRelationTarget(e.targetType, key);
+      def.cardinality =
+        e.cardinality === "single" ? "single" : "many"; // default many
     }
     out.push(def);
   }

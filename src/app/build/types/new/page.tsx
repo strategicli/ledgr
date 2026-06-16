@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
 import { capabilityById } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
+import { listTypes } from "@/lib/types";
 // Side-effect: register the workflow modules so a capability id resolves here.
 import "@/lib/modules/register";
 
@@ -25,6 +26,12 @@ export default async function NewType({
   const cap = capability ? capabilityById(capability, owner.id) : undefined;
   const attached = cap ? { id: cap.id, label: cap.label } : null;
 
+  // Live types feed a relation field's target-type dropdown (ADR-067).
+  const availableTypes = (await listTypes()).map((t) => ({
+    key: t.key,
+    label: t.label,
+  }));
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
@@ -39,7 +46,7 @@ export default async function NewType({
             ← All types
           </Link>
         </div>
-        <TypeBuilder attached={attached} />
+        <TypeBuilder attached={attached} availableTypes={availableTypes} />
       </div>
     </main>
   );
