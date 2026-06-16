@@ -132,17 +132,14 @@ export default function InlineLabel({
           >
             Rename
           </button>
-          <button
-            type="button"
+          <a
             role="menuitem"
-            onClick={() => {
-              setMenuOpen(false);
-              router.push(`/build/types/${encodeURIComponent(typeKey)}/edit`);
-            }}
+            href={`/build/types/${encodeURIComponent(typeKey)}/edit`}
+            onClick={() => setMenuOpen(false)}
             className="px-3 py-1.5 text-left text-sm normal-case tracking-normal text-neutral-200 hover:bg-neutral-800"
           >
             Edit in builder…
-          </button>
+          </a>
         </span>
       )}
     </span>
