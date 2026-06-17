@@ -47,6 +47,22 @@ export default async function ViewPage({ params }: Context) {
     )?.options;
   }
 
+  // A board's cards can be dragged between columns only when a drop maps to a
+  // single clean value: a status/urgency field (the default board groups by
+  // status), or a single-select property. Computed `due` buckets, `type`, and
+  // multi_select stay read-only.
+  const groupPropKind =
+    grouping && "propertyKey" in grouping
+      ? type?.propertySchema.find((p) => p.key === grouping.propertyKey)?.kind
+      : null;
+  const fieldGroup =
+    !grouping || "field" in grouping ? grouping?.field ?? "status" : null;
+  const boardDraggable =
+    view.layout === "board" &&
+    (fieldGroup === "status" ||
+      fieldGroup === "urgency" ||
+      groupPropKind === "select");
+
   // key → label for the type's custom properties, so a property column reads
   // "Stage", not "stage".
   const propertyLabels: Record<string, string> = {};
@@ -83,6 +99,7 @@ export default async function ViewPage({ params }: Context) {
           items={items}
           groupOrder={groupOrder}
           propertyLabels={propertyLabels}
+          boardDraggable={boardDraggable}
         />
       </div>
     </main>

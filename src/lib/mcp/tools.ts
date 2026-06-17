@@ -20,13 +20,16 @@ import {
   getItem,
   updateItem,
 } from "@/lib/items";
-import { listRelatedItems, relateItems } from "@/lib/relations";
+import { listRelatedItems, relateItems, unrelateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
+import { createItemFromTemplate, listTemplates } from "@/lib/templates";
 import { listTypes } from "@/lib/types";
 import {
   DATE_PROPERTIES,
   DUE_WINDOWS,
   SORT_FIELDS,
+  getView,
+  listViews,
   queryViewItems,
   type DateProperty,
   type DueWindow,
@@ -363,7 +366,8 @@ const TOOLS: McpTool[] = [
         meetingAt: { type: "string", description: "New meeting time (ISO 8601), or null to clear." },
         urgency: { type: "string", enum: [...URGENCIES], description: "New urgency, or null to clear." },
         url: { type: "string", description: "New URL, or null to clear." },
-        properties: { type: "object", description: "Custom property values to set (replaces the properties object)." },
+        properties: { type: "object", description: "Replace the whole custom-properties object. Prefer propertyPatch to change one key without clobbering the rest." },
+        propertyPatch: { type: "object", description: "Merge these custom-property keys into the existing properties (atomic per-key; other keys untouched). Set a key to null to clear it." },
         inbox: { type: "boolean", description: "Move into (true) or out of (false) the inbox." },
       },
       required: ["id"],
@@ -372,7 +376,7 @@ const TOOLS: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
       const id = asUuid(args.id, "id");
-      const patch = parseItemPayload(buildWriteRaw(args, []), "patch");
+      const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"]), "patch");
       const updated = await updateItem(ownerId, id, patch);
       return rowView(updated);
     },
@@ -383,9 +387,9 @@ const TOOLS: McpTool[] = [
     description:
       "List every item type in this Ledgr (the five system types — task, " +
       "meeting, note, link, person — plus any custom types) with each type's " +
-      "custom properties (key, label, kind, and select options). Call this " +
-      "before create_item/list_items when you need the exact type key or the " +
-      "property keys to set.",
+      "custom properties (key, label, kind, select options, and a relation " +
+      "field's target type + cardinality). Call this before create_item/" +
+      "list_items when you need the exact type key or the property keys to set.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async () => {
@@ -401,9 +405,174 @@ const TOOLS: McpTool[] = [
             label: p.label,
             kind: p.kind,
             ...(p.options ? { options: p.options } : {}),
+            // Relation fields (kind "relation") carry their target type + how
+            // many they accept, so the model knows what create_item /
+            // relate_items should link (ADR-067).
+            ...(p.targetType != null ? { targetType: p.targetType } : {}),
+            ...(p.cardinality ? { cardinality: p.cardinality } : {}),
           })),
         })),
       };
+    },
+  },
+  {
+    name: "relate_items",
+    title: "Relate items",
+    description:
+      "Create a link (relation) between two existing items — e.g. tag a task " +
+      "with a person, or relate a note to a meeting. Relating an already-" +
+      "suggested pair confirms it (relating is the confirm gesture). The " +
+      "optional role names a typed relation field (a type's 'author' or " +
+      "'attendees' field, see list_types); omit it for a plain link.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceId: { type: "string", description: "The item the link is from (UUID)." },
+        targetId: { type: "string", description: "The item the link is to (UUID)." },
+        role: { type: "string", description: "Optional relation-field key (default 'related'). Can't be 'mention' (those are body-managed)." },
+      },
+      required: ["sourceId", "targetId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const sourceId = asUuid(args.sourceId, "sourceId");
+      const targetId = asUuid(args.targetId, "targetId");
+      const row = await relateItems(ownerId, sourceId, targetId, optString(args, "role"));
+      return { related: true, sourceId, targetId, role: row.role, matchState: row.matchState };
+    },
+  },
+  {
+    name: "unrelate_items",
+    title: "Unrelate items",
+    description:
+      "Remove the link(s) between two existing items — both items stay, nothing " +
+      "is deleted. By default removes every non-mention edge between the pair in " +
+      "both directions; pass role to remove only one typed field's edge, or " +
+      "suggestedOnly=true to reject a provisional match while keeping confirmed " +
+      "links.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        itemId: { type: "string", description: "One item (UUID)." },
+        otherId: { type: "string", description: "The other item (UUID)." },
+        role: { type: "string", description: "Optional: remove only edges with this role." },
+        suggestedOnly: { type: "boolean", description: "Only remove suggested (provisional) edges — the 'reject match' gesture." },
+      },
+      required: ["itemId", "otherId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const itemId = asUuid(args.itemId, "itemId");
+      const otherId = asUuid(args.otherId, "otherId");
+      const res = await unrelateItems(ownerId, itemId, otherId, {
+        role: optString(args, "role"),
+        suggestedOnly: args.suggestedOnly === true,
+      });
+      return { removed: res.removed };
+    },
+  },
+  {
+    name: "list_views",
+    title: "List views",
+    description:
+      "List the owner's saved views (the filtered/sorted/grouped lists they've " +
+      "built — 'This week's tasks', a workflow board, etc.). Returns each view's " +
+      "id, name, layout, and its filter/sort/grouping so you know what it shows; " +
+      "use run_view to get a view's current items.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    handler: async (ownerId) => {
+      const defs = await listViews(ownerId);
+      return {
+        views: defs.map((v) => ({
+          id: v.id,
+          name: v.name,
+          isSystem: v.isSystem,
+          layout: v.layout,
+          filter: v.filter,
+          sort: v.sort,
+          grouping: v.grouping,
+        })),
+      };
+    },
+  },
+  {
+    name: "run_view",
+    title: "Run view",
+    description:
+      "Run a saved view by id and return its current items (body-free), using " +
+      "the view's own filter and sort. Get the id from list_views. This answers " +
+      "'what's in my <view>' without rebuilding the filters.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The view id (UUID), from list_views." },
+        limit: { type: "integer", description: "Max items (1–200).", minimum: 1, maximum: 200 },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const view = await getView(ownerId, asUuid(args.id, "id"));
+      const rows = await queryViewItems(ownerId, view.filter, view.sort, optInt(args, "limit"));
+      return {
+        view: { id: view.id, name: view.name, layout: view.layout },
+        count: rows.length,
+        items: rows.map(rowView),
+      };
+    },
+  },
+  {
+    name: "list_templates",
+    title: "List templates",
+    description:
+      "List the owner's item templates — reusable starting points for new items " +
+      "(preset properties, a starter body, preset related people). Optionally " +
+      "filter by type. Use apply_template to create an item from one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        type: { type: "string", description: "Optional: only templates for this type key." },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const defs = await listTemplates(ownerId, optString(args, "type"));
+      return {
+        templates: defs.map((t) => ({
+          id: t.id,
+          type: t.type,
+          name: t.name,
+          propertyDefaults: t.propertyDefaults,
+          relationCount: t.relationDefaults.length,
+        })),
+      };
+    },
+  },
+  {
+    name: "apply_template",
+    title: "Apply template",
+    description:
+      "Create a new item from a template (its starter body, preset properties, " +
+      "and preset related people). The new item has a blank title — set it (and " +
+      "any other fields) with a follow-up update_item. Get the id from " +
+      "list_templates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The template id (UUID), from list_templates." },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const created = await createItemFromTemplate(ownerId, asUuid(args.id, "id"));
+      return rowView(created);
     },
   },
 ];

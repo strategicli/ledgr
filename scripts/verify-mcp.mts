@@ -16,11 +16,13 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, users } = await import("../src/db/schema");
+const { items, users, views: viewsTable, templates: templatesTable } = await import("../src/db/schema");
 const { eq } = await import("drizzle-orm");
 const protocol = await import("../src/lib/mcp/protocol");
 const { handleMcpMessage } = await import("../src/lib/mcp/server");
 const { listToolDefs, callTool } = await import("../src/lib/mcp/tools");
+const { createView, parseViewInput } = await import("../src/lib/views");
+const { createTemplate } = await import("../src/lib/templates");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -62,12 +64,19 @@ check("initialize includes instructions", typeof initResult.instructions === "st
 
 const listRes = await handleMcpMessage({ jsonrpc: "2.0", id: 2, method: "tools/list" }, DUMMY);
 const toolList = (resultOf(listRes).tools ?? []) as { name: string; description: string; inputSchema: { type: string; properties: unknown }; annotations: { readOnlyHint?: boolean } }[];
-const EXPECTED = ["search_items", "list_items", "get_item", "create_item", "update_item", "list_types"];
-check("tools/list returns all six tools", EXPECTED.every((n) => toolList.some((t) => t.name === n)));
+const EXPECTED = [
+  "search_items", "list_items", "get_item", "create_item", "update_item",
+  "list_types", "relate_items", "unrelate_items", "list_views", "run_view",
+  "list_templates", "apply_template",
+];
+check(
+  "tools/list returns all twelve tools",
+  EXPECTED.every((n) => toolList.some((t) => t.name === n)) && toolList.length === EXPECTED.length
+);
 check("every tool has an object inputSchema", toolList.every((t) => t.inputSchema?.type === "object" && !!t.inputSchema.properties));
 check("every tool has a non-empty description", toolList.every((t) => typeof t.description === "string" && t.description.length > 0));
-check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
-check("write tools are not readOnly", ["create_item", "update_item"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
+check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
+check("write tools are not readOnly", ["create_item", "update_item", "relate_items", "unrelate_items", "apply_template"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
 check("listToolDefs strips the handler", listToolDefs().every((d) => !("handler" in (d as Record<string, unknown>))));
 
 const pingRes = await handleMcpMessage({ jsonrpc: "2.0", id: 3, method: "ping" }, DUMMY);
@@ -148,6 +157,60 @@ try {
   const dispatchedContent = (resultOf(dispatched).content ?? []) as { type: string; text: string }[];
   check("dispatcher tools/call returns text content", dispatchedContent[0]?.type === "text" && dispatchedContent[0].text.includes("\"task\""));
 
+  // --- new tools (ADR-071): propertyPatch, relations, views, templates -----
+
+  // propertyPatch merges one key without clobbering siblings (ADR-069).
+  const propItem = await callJson(ownerId, "create_item", {
+    type: "task",
+    title: `Patch me ${stamp}`,
+    properties: { area: "ops", priority: "p2" },
+  });
+  await callJson(ownerId, "update_item", { id: propItem.id as string, propertyPatch: { priority: "p1" } });
+  const patched = await callJson(ownerId, "get_item", { id: propItem.id as string });
+  const patchedProps = patched.properties as Json;
+  check("update_item propertyPatch merges one key, keeps the rest", patchedProps.priority === "p1" && patchedProps.area === "ops");
+
+  // relate_items / unrelate_items on existing items (both items stay).
+  const note = await callJson(ownerId, "create_item", { type: "note", title: `Note re Zentaur ${stamp}` });
+  const rel = await callJson(ownerId, "relate_items", { sourceId: note.id as string, targetId: entity.id as string });
+  check("relate_items reports a confirmed edge", rel.related === true && rel.matchState === "confirmed");
+  const noteGot = await callJson(ownerId, "get_item", { id: note.id as string });
+  check("relate_items shows on get_item.related", (noteGot.related as Json[]).some((r) => r.id === entity.id));
+  const unrel = await callJson(ownerId, "unrelate_items", { itemId: note.id as string, otherId: entity.id as string });
+  check("unrelate_items removes the edge", (unrel.removed as number) >= 1);
+  const noteAfter = await callJson(ownerId, "get_item", { id: note.id as string });
+  check("unrelate_items leaves no edge but keeps both items", typeof noteAfter.id === "string" && !(noteAfter.related as Json[]).some((r) => r.id === entity.id));
+
+  // list_views / run_view over a view made through the lib (task was set done).
+  const view = await createView(ownerId, parseViewInput({
+    name: `Done tasks ${stamp}`,
+    layout: "list",
+    filter: { type: "task", status: "done" },
+    sort: { field: "updatedAt", dir: "desc" },
+  }));
+  const viewsOut = await callJson(ownerId, "list_views", {});
+  check("list_views includes the new view", (viewsOut.views as Json[]).some((v) => v.id === view.id));
+  const ran = await callJson(ownerId, "run_view", { id: view.id });
+  check("run_view returns the view's items (the done task)", itemsOf(ran).some((i) => i.id === task.id));
+
+  // list_templates / apply_template over a template made through the lib.
+  const template = await createTemplate(ownerId, {
+    type: "task",
+    name: `Standup ${stamp}`,
+    body: null,
+    propertyDefaults: { area: "ops" },
+  });
+  const tmpls = await callJson(ownerId, "list_templates", { type: "task" });
+  check("list_templates lists the template", (tmpls.templates as Json[]).some((t) => t.id === template.id));
+  const fromTemplate = await callJson(ownerId, "apply_template", { id: template.id });
+  check("apply_template creates a filed item of the template's type", fromTemplate.type === "task" && fromTemplate.inbox === false);
+  const fromTemplateGot = await callJson(ownerId, "get_item", { id: fromTemplate.id as string });
+  check("apply_template seeded the property defaults", (fromTemplateGot.properties as Json)?.area === "ops");
+
+  // owner scoping holds for the new tools too.
+  await expectErr("owner2 cannot run_view owner1's view", owner2Id, "run_view", { id: view.id });
+  await expectErr("owner2 cannot relate owner1's items", owner2Id, "relate_items", { sourceId: note.id as string, targetId: entity.id as string });
+
   // Validation / error surfacing (isError results, not thrown).
   await expectErr("create_item with an unknown type errors", ownerId, "create_item", { type: `nope_${stamp}`, title: "x" });
   await expectErr("create_item missing type errors", ownerId, "create_item", { title: "x" });
@@ -163,6 +226,8 @@ try {
 } finally {
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(items).where(eq(items.ownerId, owner2Id));
+  await db.delete(viewsTable).where(eq(viewsTable.ownerId, ownerId));
+  await db.delete(templatesTable).where(eq(templatesTable.ownerId, ownerId));
   await db.delete(users).where(eq(users.id, ownerId));
   await db.delete(users).where(eq(users.id, owner2Id));
 }

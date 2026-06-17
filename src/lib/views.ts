@@ -34,6 +34,12 @@ export type ViewFilter = {
   // relations edges only, either direction. Suggested edges are provisional
   // and stay out of trusted queries (PRD §3.3).
   relatedTo?: string;
+  // Filter by a type's own select/multi_select property (the filter
+  // counterpart to board grouping, slice 35): one predicate per property key.
+  // A non-null value matches a scalar select or an element of a multi_select
+  // array via top-level jsonb containment, so the items_properties_gin index
+  // serves it; value null means "not set".
+  propertyFilters?: { key: string; value: string | null }[];
 };
 
 export const SORT_FIELDS = [
@@ -102,6 +108,26 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
         and ((r.source_id = ${items.id} and r.target_id = ${filter.relatedTo})
           or (r.target_id = ${items.id} and r.source_id = ${filter.relatedTo}))
     )`);
+  }
+
+  // Custom-property predicates. A set value matches either a scalar select
+  // (`{key: value}`) or one element of a multi_select array (`{key: [value]}`);
+  // both are top-level jsonb containments, so the items_properties_gin index
+  // serves them. value null = "not set" (key absent or empty string).
+  for (const pf of filter.propertyFilters ?? []) {
+    if (pf.value === null) {
+      where.push(
+        sql`(${items.properties} -> ${pf.key} is null or ${items.properties} ->> ${pf.key} = '')`
+      );
+    } else {
+      where.push(
+        sql`(${items.properties} @> ${JSON.stringify({
+          [pf.key]: pf.value,
+        })}::jsonb or ${items.properties} @> ${JSON.stringify({
+          [pf.key]: [pf.value],
+        })}::jsonb)`
+      );
+    }
   }
   return where;
 }
@@ -264,6 +290,60 @@ export function parseViewFilter(raw: unknown): ViewFilter {
   if (r.relatedTo != null) {
     if (!UUID_RE.test(String(r.relatedTo))) bad("filter.relatedTo must be a UUID");
     out.relatedTo = String(r.relatedTo);
+  }
+  if (r.propertyFilters != null) {
+    if (!Array.isArray(r.propertyFilters)) {
+      bad("filter.propertyFilters must be an array");
+    }
+    const pfs: { key: string; value: string | null }[] = [];
+    const seen = new Set<string>();
+    for (const entry of r.propertyFilters) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const e = entry as Record<string, unknown>;
+      const key = String(e.key ?? "").trim();
+      // One predicate per property; a malformed entry is dropped, not rejected.
+      if (!key || key.length > 40 || seen.has(key)) continue;
+      seen.add(key);
+      pfs.push({ key, value: e.value == null ? null : String(e.value) });
+    }
+    if (pfs.length) out.propertyFilters = pfs;
+  }
+  return out;
+}
+
+// Sentinel option value meaning "not set" in a property-filter dropdown
+// (distinct from "" = "any", which omits the filter). Maps to value null.
+export const PROPERTY_FILTER_NONE = "__none__";
+
+type FilterableProp = { key: string; label: string; kind: string; options?: string[] };
+
+// The select/multi_select properties a type offers as list filters, with their
+// option lists — the filter counterpart to ViewBuilder's groupPropsFor. Other
+// kinds aren't offered (a free-text/number filter needs a different control);
+// keep it to the classification fields.
+export function propertyFilterOptions(
+  schema: FilterableProp[]
+): { key: string; label: string; options: string[] }[] {
+  return schema
+    .filter((p) => p.kind === "select" || p.kind === "multi_select")
+    .map((p) => ({ key: p.key, label: p.label, options: p.options ?? [] }));
+}
+
+// Read `prop_<key>` URL params into a propertyFilters array, scoped to the
+// type's select/multi_select properties (so a stray param can't inject a
+// predicate). PROPERTY_FILTER_NONE → value null ("not set"); any other
+// non-empty value is matched as-is.
+export function propertyFiltersFromParams(
+  sp: Record<string, string | string[] | undefined>,
+  schema: FilterableProp[]
+): { key: string; value: string | null }[] {
+  const out: { key: string; value: string | null }[] = [];
+  for (const p of schema) {
+    if (p.kind !== "select" && p.kind !== "multi_select") continue;
+    const raw = sp[`prop_${p.key}`];
+    const v = typeof raw === "string" ? raw : undefined;
+    if (!v) continue;
+    out.push({ key: p.key, value: v === PROPERTY_FILTER_NONE ? null : v });
   }
   return out;
 }

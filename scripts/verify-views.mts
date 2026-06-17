@@ -23,8 +23,12 @@ const {
   deleteView,
   queryViewItems,
   viewItemsQuery,
+  propertyFilterOptions,
+  propertyFiltersFromParams,
+  PROPERTY_FILTER_NONE,
 } = await import("../src/lib/views");
 const { ItemError } = await import("../src/lib/items");
+const { boardDropPatch, NONE_GROUP } = await import("../src/lib/view-grouping");
 const { and, eq } = await import("drizzle-orm");
 
 let failures = 0;
@@ -133,6 +137,84 @@ try {
   await throws("rejects blank propertyKey grouping", () =>
     parseViewInput({ name: "x", layout: "board", grouping: { propertyKey: "   " } }), "bad_request");
 
+  // Property filters (the filter counterpart to grouping): an array of
+  // {key, value}, value null = "not set". Malformed dropped, deduped by key.
+  const pf = parseViewInput({
+    name: "x",
+    layout: "list",
+    filter: {
+      type: "paper",
+      propertyFilters: [
+        { key: "stage", value: "drafting" },
+        { key: "role", value: null },
+        { key: "stage", value: "review" }, // dupe key → dropped
+        { key: "", value: "x" },            // empty key → dropped
+        "garbage",                          // non-object → dropped
+      ],
+    },
+  }).filter.propertyFilters;
+  check(
+    "propertyFilters: keeps valid, dedupes by key, drops malformed",
+    JSON.stringify(pf) ===
+      JSON.stringify([
+        { key: "stage", value: "drafting" },
+        { key: "role", value: null },
+      ])
+  );
+  await throws("rejects non-array propertyFilters", () =>
+    parseViewInput({ name: "x", layout: "list", filter: { propertyFilters: { key: "stage" } } }), "bad_request");
+
+  // The list-bar helpers: offer only select/multi_select; map params + the
+  // not-set sentinel; ignore other kinds and unknown keys.
+  const fpSchema = [
+    { key: "stage", label: "Stage", kind: "select", options: ["drafting", "review"] },
+    { key: "tags", label: "Tags", kind: "multi_select", options: ["x", "y"] },
+    { key: "note", label: "Note", kind: "text" },
+  ];
+  check(
+    "propertyFilterOptions keeps only select/multi_select",
+    JSON.stringify(propertyFilterOptions(fpSchema).map((o) => o.key)) ===
+      JSON.stringify(["stage", "tags"])
+  );
+  check(
+    "propertyFiltersFromParams maps params + sentinel, ignores text + unknown",
+    JSON.stringify(
+      propertyFiltersFromParams(
+        { prop_stage: "drafting", prop_tags: PROPERTY_FILTER_NONE, prop_note: "hi", prop_bogus: "z" },
+        fpSchema
+      )
+    ) ===
+      JSON.stringify([
+        { key: "stage", value: "drafting" },
+        { key: "tags", value: null },
+      ])
+  );
+
+  // Board DnD: the drop→PATCH mapping (status/urgency field, single-select
+  // property); computed `due` and `type` groupings aren't draggable (null).
+  check(
+    "board drop: status field → {status}",
+    JSON.stringify(boardDropPatch({ field: "status" }, "done")) ===
+      JSON.stringify({ status: "done" })
+  );
+  check(
+    "board drop: urgency 'none' clears urgency",
+    JSON.stringify(boardDropPatch({ field: "urgency" }, NONE_GROUP)) ===
+      JSON.stringify({ urgency: null })
+  );
+  check(
+    "board drop: property → {propertyPatch}",
+    JSON.stringify(boardDropPatch({ propertyKey: "stage" }, "drafting")) ===
+      JSON.stringify({ propertyPatch: { stage: "drafting" } })
+  );
+  check(
+    "board drop: property 'none' clears the key",
+    JSON.stringify(boardDropPatch({ propertyKey: "stage" }, NONE_GROUP)) ===
+      JSON.stringify({ propertyPatch: { stage: null } })
+  );
+  check("board drop: due grouping isn't draggable", boardDropPatch({ field: "due" }, "today") === null);
+  check("board drop: type grouping isn't draggable", boardDropPatch({ field: "type" }, "task") === null);
+
   // --- store CRUD ---
   const created = await createView(ownerId, parseViewInput({
     name: "My tasks",
@@ -223,6 +305,45 @@ try {
   // have no due date — which is exactly the gap this fixes.
   const onDue = await queryViewItems(ownerId, { type: "meeting", due: "today" });
   check("dueDate=today misses meetings (no due date)", !has(onDue, mToday));
+
+  // --- property filtering: scalar select, multi_select element, "not set" ---
+  const mkProp = async (title: string, properties: Record<string, unknown>) =>
+    (
+      await db
+        .insert(items)
+        .values({ ownerId, type: "task", title, properties })
+        .returning({ id: items.id })
+    )[0].id;
+  const pDraft = await mkProp("p drafting", { stage: "drafting" });
+  const pReview = await mkProp("p review", { stage: "review" });
+  const pNone = await mkProp("p none", {});
+  const pTags = await mkProp("p tags", { tags: ["x", "y"] });
+
+  const byProp = (filters: { key: string; value: string | null }[]) =>
+    queryViewItems(ownerId, { type: "task", propertyFilters: filters });
+
+  const draftOnly = await byProp([{ key: "stage", value: "drafting" }]);
+  check(
+    "propertyFilter scalar select matches exactly",
+    has(draftOnly, pDraft) && !has(draftOnly, pReview) && !has(draftOnly, pNone)
+  );
+  const tagX = await byProp([{ key: "tags", value: "x" }]);
+  check("propertyFilter matches a multi_select element", has(tagX, pTags));
+  const tagZ = await byProp([{ key: "tags", value: "z" }]);
+  check("propertyFilter excludes a missing multi_select element", !has(tagZ, pTags));
+  const stageUnset = await byProp([{ key: "stage", value: null }]);
+  check(
+    "propertyFilter null = not set",
+    has(stageUnset, pNone) &&
+      has(stageUnset, pTags) &&
+      !has(stageUnset, pDraft) &&
+      !has(stageUnset, pReview)
+  );
+  const propSql = viewItemsQuery(ownerId, {
+    type: "task",
+    propertyFilters: [{ key: "stage", value: "drafting" }],
+  }).toSQL();
+  check("property filter targets properties column", propSql.sql.includes("properties"));
 
   // --- the view query stays body-free + owner-scoped ---
   void queryViewItems;
