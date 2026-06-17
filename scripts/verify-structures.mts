@@ -27,7 +27,7 @@ const { groupValueFor, orderedGroups, dueBucket, NONE_GROUP } = await import(
   "../src/lib/view-grouping"
 );
 const { ItemError } = await import("../src/lib/items");
-const { eq, inArray } = await import("drizzle-orm");
+const { eq } = await import("drizzle-orm");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

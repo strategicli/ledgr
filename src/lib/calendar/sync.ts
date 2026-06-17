@@ -4,7 +4,7 @@
 // flags the item (prep survives) and never deletes. Entity/template matching
 // is the next slice (23); this slice stores attendees + metadata in
 // properties.calendar so those matchers have structured data to read.
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, jobState } from "@/db/schema";
 import type { CalendarEvent, CalendarSource } from "./types";

@@ -2,12 +2,11 @@
 // loop: given a meeting, gather the related person's open tasks, the
 // last few meetings with them, and agenda headings. This is the Phase 2
 // forerunner of the general per-type item template (roadmap Phase 3). Reads
-// only — owner-scoped, body-free (listColumns), confirmed edges only (a
-// provisional calendar match must not shape prep, PRD §3.3).
+// only — owner-scoped, body-free, confirmed edges only (a provisional calendar
+// match must not shape prep, PRD §3.3).
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
-import { listColumns } from "@/lib/items";
 import { queryViewItems } from "@/lib/views";
 
 export type PrepPerson = { id: string; title: string };
