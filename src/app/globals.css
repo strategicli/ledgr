@@ -159,3 +159,30 @@ body {
   border-bottom: 3px solid var(--accent);
   filter: drop-shadow(0 0 3px var(--accent));
 }
+
+/* Item canvas grid (ADR-069, Feature B). The grid reuses the .dash-edit
+   affordances above (set on the grid in arrange mode). The card contents are the
+   standard canvas panels (FieldStrip, CustomProperties, Related, Subtasks, …),
+   which were authored for the full-width classic canvas and wrap themselves in
+   `mx-auto max-w-3xl px-12` plus generous top padding. Inside a grid cell the
+   card supplies the frame, so strip that horizontal chrome (scoped to card
+   content) and let each panel fill its cell. !important because these override
+   utility classes of equal specificity loaded after globals.css. */
+.canvas-card-content > * {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  max-width: none !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Full-page item view is wider than the modal (Brandon, 2026-06-17). The classic
+   canvas blocks (editor, panels, footer) are authored at max-w-3xl for a readable
+   modal column; on the full page we widen them to ~5xl so "expand" gains real
+   room and matches the grid's width (so entering Arrange doesn't jump). Scoped to
+   the full-page wrapper ItemCanvas sets only for variant="page"; the modal is
+   untouched. Specificity (.canvas-wide .max-w-3xl) beats the bare utility. */
+.canvas-wide .max-w-3xl {
+  max-width: 64rem;
+}

@@ -17,8 +17,11 @@ export default async function ItemModal({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  // Widen the modal for canvases that need it (a song's two-column chart).
-  // Best-effort: any failure just yields the default-width modal, and
+  // Widen the modal only for a canvas that needs the room (a song's two-column
+  // chart). The default modal width is the "Tablet" surface (ADR-069, Brandon
+  // 2026-06-17): a saved item layout renders its `md` arrangement here, while the
+  // full-page expand is the wider "Desktop" surface — so each maps to a
+  // breakpoint. Best-effort: any failure just yields the default-width modal, and
   // ItemCanvas surfaces the real not-found/auth handling.
   let wide = false;
   try {
@@ -28,8 +31,7 @@ export default async function ItemModal({
       // Resolve through the capability too (SPIKE), so a user type borrowing the
       // chord chart widens the modal like a real song.
       const typeDef = await getType(item.type).catch(() => null);
-      wide =
-        canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
+      wide = canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
     }
   } catch {
     // ignore — render the default modal width

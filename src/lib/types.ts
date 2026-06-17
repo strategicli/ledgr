@@ -16,6 +16,7 @@
 import { eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
+import { parseCanvasLayout, type CanvasLayout } from "@/lib/canvas-layout";
 import { ItemError } from "@/lib/items";
 import { capabilityById } from "@/lib/modules";
 // SPIKE (bespoke-tool catalog): registers the workflow modules (Songs, Papers)
@@ -80,6 +81,10 @@ export type TypeDefinition = {
   capability: string | null;
   // Hidden from everyday surfaces (ADR-059); the type still exists and works.
   hidden: boolean;
+  // Arrangeable item-canvas layout (ADR-069, Feature B); null = the generated
+  // default (classic stacked render). Parsed tolerantly — a malformed value reads
+  // as null, mirroring how a bad property_schema degrades to [].
+  canvasLayout: CanvasLayout | null;
   // Soft-delete stamp (ADR-058); null = live. A deleted type is hidden from the
   // registry/pickers but its row stays so trashed items keep a valid FK.
   deletedAt: Date | null;
@@ -280,6 +285,7 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     showInQuickCapture: row.showInQuickCapture,
     capability: row.capability,
     hidden: row.hidden,
+    canvasLayout: parseCanvasLayout(row.canvasLayout),
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
   };
@@ -422,6 +428,32 @@ export async function renamePropertyLabel(
   const rows = await getDb()
     .update(types)
     .set({ propertySchema })
+    .where(eq(types.key, key))
+    .returning();
+  return rowToDefinition(rows[0]);
+}
+
+// Save (or reset) a type's item-canvas layout (ADR-069, Feature B). Mirrors the
+// focused-endpoint setters (setTypeQuickCapture, renameTypeLabel): a small
+// dedicated path the arrange UI PATCHes, never the whole-definition builder, so
+// it can't clobber a concurrent schema edit. A null layout resets to the default
+// (classic render). A non-null layout is run through parseCanvasLayout so a
+// client can't store junk — an unparseable shape is a bad request, not a silent
+// corrupt row. Types are instance-global, so this is owner-agnostic (guarded by
+// requireOwner at the route).
+export async function setTypeCanvasLayout(
+  key: string,
+  rawLayout: unknown
+): Promise<TypeDefinition> {
+  await getType(key); // existence (throws not_found)
+  let value: CanvasLayout | null = null;
+  if (rawLayout != null) {
+    value = parseCanvasLayout(rawLayout);
+    if (!value) bad("invalid canvas layout");
+  }
+  const rows = await getDb()
+    .update(types)
+    .set({ canvasLayout: value })
     .where(eq(types.key, key))
     .returning();
   return rowToDefinition(rows[0]);

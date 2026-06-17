@@ -7,8 +7,17 @@
 // Every type without a bespoke canvas renders through this (the per-type
 // canvas seam, ADR-041). A module canvas (a chord grid, a paper workspace)
 // either replaces it or, like LinkCanvas, wraps it.
+//
+// Per-type layout (ADR-069, Feature B): a type with no saved canvas_layout
+// renders the classic stacked canvas below, untouched (the common case, zero
+// risk). A type WITH a saved layout — or any type while arranging (?arrange=1) —
+// renders the same content as field-level cards in an arrangeable react-grid
+// layout: MarkdownCanvas builds each card's content into a Record<CardId,
+// ReactNode> and hands it to the client ItemLayoutGrid, which only positions it.
+import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
+import ItemLayoutGrid from "@/components/canvas/ItemLayoutGrid";
 import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
@@ -16,11 +25,18 @@ import MeetingPrep from "@/components/meetings/MeetingPrep";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
-import { topStripFields, footerFieldsFor } from "@/lib/canvas-fields";
+import { topStripFields, footerFieldsFor, type CanvasField } from "@/lib/canvas-fields";
+import {
+  cardLabel,
+  cardVocabulary,
+  defaultLayout,
+  reconcile,
+  type CardId,
+} from "@/lib/canvas-layout";
 import { getType } from "@/lib/types";
 import type { CanvasProps } from "@/lib/modules";
 
-export default async function MarkdownCanvas({ item, ownerId }: CanvasProps) {
+export default async function MarkdownCanvas({ item, ownerId, arrange = false }: CanvasProps) {
   const fields = topStripFields(item.type);
   const strip: StripValues = {
     status: item.status,
@@ -34,9 +50,134 @@ export default async function MarkdownCanvas({ item, ownerId }: CanvasProps) {
   // default canvas, so this is where its properties get an editable surface.
   const typeDef = await getType(item.type).catch(() => null);
   const propertySchema = typeDef?.propertySchema ?? [];
+  const savedLayout = typeDef?.canvasLayout ?? null;
 
+  // Dispatch: render the grid when arranging OR when this type has a saved layout
+  // (field-level placement can't be a vertical stack). Otherwise the classic
+  // stacked canvas, exactly as before.
+  const useGrid = arrange || savedLayout != null;
+
+  if (useGrid) {
+    const propsObj = (item.properties as Record<string, unknown>) ?? {};
+    // The read-only system footer (Type/Created/Updated + non-strip fields) as a
+    // bare definition list — the card header already labels it "Details".
+    const metaNode = (
+      <dl className="flex flex-col gap-1 px-2">
+        {footerFields.map(({ label, value }) => (
+          <div key={label} className="flex gap-3 text-sm">
+            <dt className="w-20 shrink-0 text-neutral-600">{label}</dt>
+            <dd className="min-w-0 break-words text-neutral-400">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+
+    const nodeFor = (id: CardId): ReactNode => {
+      if (id === "title")
+        return (
+          <ItemEditor
+            item={{ id: item.id, title: item.title, body: item.body }}
+            slot="title"
+          />
+        );
+      if (id === "body")
+        return (
+          <ItemEditor
+            item={{ id: item.id, title: item.title, body: item.body }}
+            slot="body"
+          />
+        );
+      if (id.startsWith("sys:")) {
+        const f = id.slice(4) as CanvasField;
+        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} />;
+      }
+      if (id === "subtasks") return <Subtasks ownerId={ownerId} itemId={item.id} />;
+      if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} />;
+      if (id.startsWith("prop:")) {
+        const key = id.slice(5);
+        const def = propertySchema.find((p) => p.key === key);
+        return def ? (
+          <CustomProperties
+            itemId={item.id}
+            typeKey={item.type}
+            schema={[def]}
+            initial={propsObj}
+            hideHeading
+          />
+        ) : null;
+      }
+      if (id.startsWith("rel:")) {
+        const key = id.slice(4);
+        const def = propertySchema.find((p) => p.key === key);
+        return def ? (
+          <RelationProperties
+            ownerId={ownerId}
+            itemId={item.id}
+            typeKey={item.type}
+            props={[def]}
+            hideHeading
+          />
+        ) : null;
+      }
+      if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} />;
+      if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
+      if (id === "share") return <ShareLink itemId={item.id} />;
+      if (id === "meta") return metaNode;
+      return null;
+    };
+
+    const order = cardVocabulary(item.type, propertySchema);
+    const nodes: Record<CardId, ReactNode> = {};
+    const labels: Record<CardId, string> = {};
+    for (const id of order) {
+      const node = nodeFor(id);
+      if (node != null) {
+        nodes[id] = node;
+        labels[id] = cardLabel(id, propertySchema);
+      }
+    }
+    const initialLayout = savedLayout
+      ? reconcile(savedLayout, item.type, propertySchema)
+      : defaultLayout(item.type, propertySchema);
+
+    return (
+      <>
+        {!arrange && (
+          <div className="flex w-full justify-end px-6 pt-4 sm:px-10">
+            {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
+            <a
+              href={`/items/${item.id}?arrange=1`}
+              className="text-xs text-neutral-600 hover:text-neutral-400"
+            >
+              Customize layout
+            </a>
+          </div>
+        )}
+        <ItemLayoutGrid
+          itemId={item.id}
+          typeKey={item.type}
+          order={order}
+          nodes={nodes}
+          labels={labels}
+          initialLayout={initialLayout}
+          arrange={arrange}
+        />
+      </>
+    );
+  }
+
+  // Classic stacked canvas (null layout, not arranging) — unchanged.
   return (
     <>
+      <div className="mx-auto flex w-full max-w-3xl justify-end px-12 pt-4">
+        {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
+        <a
+          href={`/items/${item.id}?arrange=1`}
+          className="text-xs text-neutral-600 hover:text-neutral-400"
+        >
+          Customize layout
+        </a>
+      </div>
       <ItemEditor
         item={{ id: item.id, title: item.title, body: item.body }}
         fields={

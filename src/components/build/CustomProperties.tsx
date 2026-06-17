@@ -8,7 +8,8 @@
 // wipe a system key the schema doesn't know about.
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { beginSave, endSave } from "@/lib/save-status";
 import type { PropertyDef } from "@/lib/types";
 import InlineLabel from "./InlineLabel";
 
@@ -17,16 +18,38 @@ const inputClass =
 
 type Values = Record<string, unknown>;
 
+// An uncontrolled textarea whose height tracks its content, for the wrapping
+// `text` property (Brandon, 2026-06-17). Uncontrolled (defaultValue) so a parent
+// re-render never collapses it; grows on input.
+function AutoGrowTextarea(
+  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>
+) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const grow = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+  useLayoutEffect(grow, []);
+  return <textarea ref={ref} rows={1} onInput={grow} {...props} />;
+}
+
 export default function CustomProperties({
   itemId,
   typeKey,
   schema,
   initial,
+  hideHeading = false,
 }: {
   itemId: string;
   typeKey: string;
   schema: PropertyDef[];
   initial: Values;
+  // Drop the "Properties" section heading when rendered as a single per-field
+  // card (ADR-069) — the field's own label already names it, so the category
+  // heading on every card was noise (Brandon, 2026-06-17).
+  hideHeading?: boolean;
 }) {
   const [values, setValues] = useState<Values>(initial ?? {});
   const [error, setError] = useState(false);
@@ -36,23 +59,28 @@ export default function CustomProperties({
   // now-null state as a fresh empty defaultValue. Controlled kinds ignore it.
   const [rev, setRev] = useState<Record<string, number>>({});
 
-  // Merge the change into the full object and PATCH the whole thing (updateItem
-  // replaces properties wholesale). Revert to the prior object on failure.
+  // Update the changed key and PATCH it as a per-key merge (propertyPatch),
+  // not a wholesale properties replace — so an instance rendering only a subset
+  // of the schema (a single per-property canvas card, ADR-069) can't clobber the
+  // keys it doesn't own. Revert to the prior object on failure.
   async function save(patch: Values) {
     const before = values;
     const next = { ...values, ...patch };
     setValues(next);
     setError(false);
+    beginSave();
     try {
       const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ properties: next }),
+        body: JSON.stringify({ propertyPatch: patch }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      endSave(true);
     } catch {
       setValues(before);
       setError(true);
+      endSave(false);
     }
   }
 
@@ -60,18 +88,16 @@ export default function CustomProperties({
     const v = values[prop.key];
     switch (prop.kind) {
       case "text":
+        // A wrapping, auto-growing field (Brandon, 2026-06-17) so long text shows
+        // in full instead of scrolling in a single line. Commits on blur.
         return (
-          <input
+          <AutoGrowTextarea
             key={`${prop.key}:${rev[prop.key] ?? 0}`}
-            type="text"
-            className={`${inputClass} w-56`}
+            className={`${inputClass} w-56 resize-none overflow-hidden leading-snug`}
             defaultValue={typeof v === "string" ? v : ""}
             onBlur={(e) => {
               const nv = e.target.value.trim() || null;
               if (nv !== (v ?? null)) void save({ [prop.key]: nv });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
             }}
           />
         );
@@ -180,9 +206,11 @@ export default function CustomProperties({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-12 pb-6 pt-2">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
-        Properties
-      </h2>
+      {!hideHeading && (
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
+          Properties
+        </h2>
+      )}
       <dl className="flex flex-col gap-2">
         {scalarSchema.map((prop) => {
           const v = values[prop.key];

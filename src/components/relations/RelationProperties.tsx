@@ -17,11 +17,15 @@ export default async function RelationProperties({
   itemId,
   typeKey,
   props,
+  hideHeading = false,
 }: {
   ownerId: string;
   itemId: string;
   typeKey: string;
   props: PropertyDef[];
+  // Drop the "Relations" section heading when rendered as a single per-field
+  // card (ADR-069) — the field's own label names it (Brandon, 2026-06-17).
+  hideHeading?: boolean;
 }) {
   const relationProps = props.filter((p) => p.kind === "relation");
   if (relationProps.length === 0) return null;
@@ -38,9 +42,11 @@ export default async function RelationProperties({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-12 pb-6 pt-2">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
-        Relations
-      </h2>
+      {!hideHeading && (
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
+          Relations
+        </h2>
+      )}
       <dl className="flex flex-col gap-2">
         {relationProps.map((prop) => (
           <div key={prop.key} className="flex items-start gap-3 text-sm">

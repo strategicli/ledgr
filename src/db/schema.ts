@@ -146,6 +146,13 @@ export const types = pgTable("types", {
   // capability instead of the default markdown canvas — decoupling a module's
   // behavior from a fixed type key. Null for a plain custom type.
   capability: text("capability"),
+  // Per-type item canvas layout (ADR-069, Feature B): an arrangeable, field-level
+  // 2D grid (react-grid-layout) describing where each card — title, body, each
+  // system/custom/relation field, related panel — sits, per breakpoint, plus its
+  // flow/fixed mode. null = the generated default arrangement (today's stacked
+  // render is untouched). Shape parsed/defaulted in src/lib/canvas-layout.ts;
+  // applies only to the default markdown canvas, not bespoke module canvases.
+  canvasLayout: jsonb("canvas_layout"),
   defaultViewId: uuid("default_view_id").references(() => views.id),
   // Soft-delete (ADR-058): a deleted type stays as a row (its trashed items'
   // FK still points here) but drops out of the registry/pickers. Restored from

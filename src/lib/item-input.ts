@@ -119,6 +119,18 @@ export function parseItemPayload(
     }
     out.properties = input.properties as Record<string, unknown> | null;
   }
+  // Per-key merge into items.properties (ADR-069 canvas cards): an object whose
+  // keys are merged, not replaced. Patch-only — create uses `properties`.
+  if (input.propertyPatch !== undefined) {
+    if (
+      input.propertyPatch === null ||
+      typeof input.propertyPatch !== "object" ||
+      Array.isArray(input.propertyPatch)
+    ) {
+      bad("propertyPatch must be an object");
+    }
+    out.propertyPatch = input.propertyPatch as Record<string, unknown>;
+  }
 
   return mode === "create" ? (out as ItemInput) : out;
 }
