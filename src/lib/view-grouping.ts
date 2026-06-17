@@ -66,6 +66,27 @@ export function groupValueFor(
   }
 }
 
+// The /api/items PATCH body that moves a card into board column `col`, given
+// the grouping (board DnD, the kanban drop). Only the groupings the board lets
+// you drag — a status/urgency field, or a single-select property — are
+// expressible; anything else (computed `due`, `type`, multi_select) returns
+// null and the drop is a no-op. The page gates which boards drag; this is the
+// backstop + the single place the drop→write mapping lives. NONE_GROUP clears.
+export function boardDropPatch(
+  grouping: ViewGrouping,
+  col: string
+): Record<string, unknown> | null {
+  if (grouping && "propertyKey" in grouping) {
+    return {
+      propertyPatch: { [grouping.propertyKey]: col === NONE_GROUP ? null : col },
+    };
+  }
+  const field: GroupField = grouping?.field ?? "status";
+  if (field === "status") return { status: col };
+  if (field === "urgency") return { urgency: col === NONE_GROUP ? null : col };
+  return null;
+}
+
 // Column order: a known order first (the enum's canonical order for a built-in
 // field, or the property's option order for a property grouping), then any
 // remaining present values alphabetically, with NONE_GROUP always last.

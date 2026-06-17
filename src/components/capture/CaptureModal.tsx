@@ -1,5 +1,6 @@
-// Global quick capture (PRD §4.4): title-only creation, type defaults to
-// task, date, urgency, and a related person optional inline. Captures always
+// Global quick capture (PRD §4.4): title-only creation, type defaults to the
+// catch-all "Unsorted" (the hidden `unmarked` type, ADR-067); date, urgency,
+// and a related person optional inline. Captures always
 // arrive untriaged (inbox: true) even with fields set: per ADR-010, leaving the
 // Inbox is a deliberate act, never a side effect. The relate picker rides the
 // relations write path (slice 15): the capture POSTs the item, then relates it
@@ -24,7 +25,12 @@ export default function CaptureModal({
 }) {
   const router = useRouter();
   const titleRef = useRef<HTMLInputElement>(null);
-  const [type, setType] = useState("task");
+  // Default to the catch-all "Unsorted" so capture never pre-assumes a task
+  // (the hidden `unmarked` type, ADR-067; ADR-062 follow-up). It's prepended
+  // here because the nav filters hidden types out of the quick-capture
+  // options; an unchanged capture lands in the Inbox as untyped, triaged later.
+  const captureOptions = [{ key: "unmarked", label: "Unsorted" }, ...typeOptions];
+  const [type, setType] = useState("unmarked");
   const [due, setDue] = useState("");
   const [urgency, setUrgency] = useState("");
   const [person, setPerson] = useState<PersonHit | null>(null);
@@ -161,7 +167,7 @@ export default function CaptureModal({
             aria-label="Type"
             className={fieldClass}
           >
-            {typeOptions.map((t) => (
+            {captureOptions.map((t) => (
               <option key={t.key} value={t.key}>
                 {t.label}
               </option>

@@ -14,6 +14,9 @@ import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 const STATUSES = ["open", "done", "archived"];
 const URGENCIES = ["low", "normal", "high", "critical"];
+// Mirrors views.ts PROPERTY_FILTER_NONE (kept local so this client form never
+// imports the DB-backed views module). "" = any (no filter); this = "not set".
+const FILTER_NONE = "__none__";
 
 // Friendly labels for the "by which field" selects.
 const DATE_LABELS: Record<string, string> = {
@@ -131,6 +134,16 @@ export default function ViewBuilder({
     const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
     return schema.map((p) => ({ key: p.key, label: p.label }));
   }
+  // A type's select/multi_select properties offered as list filters, with their
+  // option lists (the filter counterpart to groupPropsFor).
+  function filterPropsFor(
+    typeKey: string
+  ): { key: string; label: string; options: string[] }[] {
+    const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
+    return schema
+      .filter((p) => p.kind === "select" || p.kind === "multi_select")
+      .map((p) => ({ key: p.key, label: p.label, options: p.options ?? [] }));
+  }
   const validGroup = (typeKey: string, val: string | undefined): string => {
     if (!val) return "";
     const ok =
@@ -170,6 +183,15 @@ export default function ViewBuilder({
     initial?.filter.withinDays != null ? String(initial.filter.withinDays) : "7"
   );
   const [relatedTo, setRelatedTo] = useState(initial?.filter.relatedTo ?? "");
+  // Property filters as a key→value map ("" = any; FILTER_NONE = not set; else
+  // an option string). Seeded from the stored array.
+  const [propFilters, setPropFilters] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const pf of initial?.filter.propertyFilters ?? []) {
+      m[pf.key] = pf.value === null ? FILTER_NONE : pf.value;
+    }
+    return m;
+  });
   const [sortField, setSortField] = useState<string>(
     pick(sortFieldsFor(t0), initial?.sort.field, "updatedAt")
   );
@@ -223,6 +245,11 @@ export default function ViewBuilder({
         c.source === "field" ? okFields.has(c.key) : okProps.has(c.key)
       )
     );
+    // Drop property filters for properties the new type doesn't have.
+    const okFilterProps = new Set(filterPropsFor(t).map((p) => p.key));
+    setPropFilters((pf) =>
+      Object.fromEntries(Object.entries(pf).filter(([k]) => okFilterProps.has(k)))
+    );
   }
 
   async function save() {
@@ -233,7 +260,7 @@ export default function ViewBuilder({
       return;
     }
     setBusy(true);
-    const filter: Record<string, string> = {};
+    const filter: Record<string, unknown> = {};
     if (type) filter.type = type;
     if (status) filter.status = status;
     if (urgency) filter.urgency = urgency;
@@ -252,6 +279,13 @@ export default function ViewBuilder({
         filter.due = dateWindow;
       }
     }
+    const propertyFilters = filterPropsFor(type)
+      .filter((p) => propFilters[p.key])
+      .map((p) => ({
+        key: p.key,
+        value: propFilters[p.key] === FILTER_NONE ? null : propFilters[p.key],
+      }));
+    if (propertyFilters.length) filter.propertyFilters = propertyFilters;
     const payload = {
       name: name.trim(),
       layout,
@@ -425,6 +459,23 @@ export default function ViewBuilder({
             ))}
           </select>
         </Field>
+        {filterPropsFor(type).map((p) => (
+          <Field key={p.key} label={p.label}>
+            <select
+              value={propFilters[p.key] ?? ""}
+              onChange={(e) =>
+                setPropFilters((pf) => ({ ...pf, [p.key]: e.target.value }))
+              }
+              className={selectClass}
+            >
+              <Opt value="" label="any" />
+              {p.options.map((o) => (
+                <Opt key={o} value={o} />
+              ))}
+              <Opt value={FILTER_NONE} label="not set" />
+            </select>
+          </Field>
+        ))}
       </fieldset>
 
       <div className="flex gap-3">

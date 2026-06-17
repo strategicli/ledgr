@@ -16,9 +16,13 @@ import {
 } from "@/lib/item-enums";
 import { resolveOwner } from "@/lib/owner";
 import { todayBounds } from "@/lib/today";
+import { getType } from "@/lib/types";
 import {
   DUE_WINDOWS,
   listPersonOptions,
+  PROPERTY_FILTER_NONE,
+  propertyFilterOptions,
+  propertyFiltersFromParams,
   queryViewItems,
   type DueWindow,
   type ViewFilter,
@@ -107,6 +111,14 @@ export default async function Tasks({
   const person = param("person");
   if (person && UUID_RE.test(person)) filter.relatedTo = person;
 
+  // The task type's own custom select/multi_select properties become filters
+  // too (e.g. a "context" or "area" the user added). Scoped to the schema so a
+  // stray prop_ param can't inject a predicate.
+  const taskType = await getType("task");
+  const filterProps = propertyFilterOptions(taskType.propertySchema);
+  const propFilters = propertyFiltersFromParams(sp, taskType.propertySchema);
+  if (propFilters.length) filter.propertyFilters = propFilters;
+
   const [tasks, people] = await Promise.all([
     queryViewItems(owner.id, filter, { field: "dueDate", dir: "asc" }),
     listPersonOptions(owner.id),
@@ -153,6 +165,15 @@ export default async function Tasks({
         })),
       ],
     },
+    ...filterProps.map((fp) => ({
+      param: `prop_${fp.key}`,
+      label: fp.label,
+      options: [
+        { value: "", label: "any" },
+        ...fp.options.map((o) => ({ value: o, label: o })),
+        { value: PROPERTY_FILTER_NONE, label: "not set" },
+      ],
+    })),
   ];
 
   return (

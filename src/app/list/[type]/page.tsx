@@ -5,12 +5,19 @@
 // strip. notFound() for an unknown type key.
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import FilterBar, { type FilterSelect } from "@/components/lists/FilterBar";
 import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
-import { ItemError, listItems } from "@/lib/items";
+import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
+import {
+  PROPERTY_FILTER_NONE,
+  propertyFilterOptions,
+  propertyFiltersFromParams,
+  queryViewItems,
+} from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +28,10 @@ const dateFmt = new Intl.DateTimeFormat("en-US", {
 
 export default async function TypeList({
   params,
+  searchParams,
 }: {
   params: Promise<{ type: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
@@ -33,7 +42,26 @@ export default async function TypeList({
     throw err;
   });
 
-  const items = await listItems(owner.id, { type, limit: 200 });
+  // The type's select/multi_select properties become list filters (the
+  // filter counterpart to board grouping). queryViewItems with just {type}
+  // matches the old listItems read; a property filter narrows it.
+  const sp = await searchParams;
+  const filterProps = propertyFilterOptions(typeDef.propertySchema);
+  const propFilters = propertyFiltersFromParams(sp, typeDef.propertySchema);
+  const items = await queryViewItems(owner.id, {
+    type,
+    ...(propFilters.length ? { propertyFilters: propFilters } : {}),
+  });
+
+  const selects: FilterSelect[] = filterProps.map((fp) => ({
+    param: `prop_${fp.key}`,
+    label: fp.label,
+    options: [
+      { value: "", label: "any" },
+      ...fp.options.map((o) => ({ value: o, label: o })),
+      { value: PROPERTY_FILTER_NONE, label: "not set" },
+    ],
+  }));
 
   return (
     <ListPage
@@ -42,6 +70,11 @@ export default async function TypeList({
       subtitle={`${items.length} item${items.length === 1 ? "" : "s"}`}
       actions={<NewItemButton type={type} />}
     >
+      {selects.length > 0 && (
+        <div className="mt-4">
+          <FilterBar selects={selects} />
+        </div>
+      )}
       {items.length > 0 ? (
         <ul className="mt-4">
           {items.map((item) => (
@@ -66,7 +99,9 @@ export default async function TypeList({
         </ul>
       ) : (
         <p className="mt-6 px-2 text-sm text-neutral-600">
-          No {typeDef.label.toLowerCase()} items yet.
+          {propFilters.length
+            ? "No items match these filters."
+            : `No ${typeDef.label.toLowerCase()} items yet.`}
         </p>
       )}
     </ListPage>

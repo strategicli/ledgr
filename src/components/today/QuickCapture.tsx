@@ -1,5 +1,6 @@
-// Quick-capture box (PRD §4.2): title-only, type defaults to task (§4.4),
-// Enter submits and keeps focus for rapid entry. Captures arrive untriaged
+// Quick-capture box (PRD §4.2): title-only, type defaults to the catch-all
+// `unmarked` (§4.4, ADR-067) so it never pre-assumes a task; Enter submits and
+// keeps focus for rapid entry. Captures arrive untriaged
 // (inbox: true) so they queue in the Inbox until assigned a date/entity.
 // The global affordance, desktop shortcut, and share target are the
 // quick-capture slice; this is just the box.
@@ -21,7 +22,7 @@ export default function QuickCapture() {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "task", title, inbox: true }),
+        body: JSON.stringify({ type: "unmarked", title, inbox: true }),
       });
       if (!res.ok) throw new Error(String(res.status));
       if (inputRef.current) inputRef.current.value = "";
@@ -38,7 +39,7 @@ export default function QuickCapture() {
       <input
         ref={inputRef}
         type="text"
-        placeholder="Capture a task…"
+        placeholder="Capture anything…"
         aria-label="Quick capture"
         className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
         onKeyDown={(e) => {

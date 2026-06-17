@@ -5,7 +5,8 @@ import { createItem } from "@/lib/items";
 // PWA share target (slice 16; the quick-capture path ADR-013 deferred here).
 // The manifest points Android's share sheet at this page as a GET, so a
 // share is just a navigation: a shared URL lands as a link item, bare text
-// as a task (capture's default type), both inbox: true — capture never
+// as the catch-all `unmarked` (capture's default type, ADR-067), both
+// inbox: true — capture never
 // auto-triages (ADR-010). Middleware keeps the route signed-in-only; Clerk
 // bounces a signed-out share through /sign-in and back.
 export const dynamic = "force-dynamic";
@@ -98,7 +99,7 @@ export default async function SharePage({
     const itemTitle = [title, text].filter(Boolean).join(" ").trim();
     if (!itemTitle) redirect("/"); // empty share: nothing to capture
     const item = await createItem(owner.id, {
-      type: "task",
+      type: "unmarked",
       title: itemTitle.slice(0, 300),
       inbox: true,
     });

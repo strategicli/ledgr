@@ -5,6 +5,7 @@
 // re-queries or reaches for a body. Task rows carry the shared check-off
 // control so a view of tasks behaves like the Tasks list.
 import Link from "next/link";
+import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
@@ -335,12 +336,31 @@ function BoardLayout({
   items,
   view,
   groupOrder,
+  draggable,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   groupOrder?: string[];
+  draggable?: boolean;
 }) {
   const now = new Date();
+  // When the page deems the grouping safe to set by a drop (status, urgency, or
+  // a single-select property), hand off to the client DnD board; the cards
+  // carry a precomputed date label so the client needn't reimplement the
+  // calendars. Otherwise the board stays the read-only server render.
+  if (draggable) {
+    const cards: BoardCard[] = items.map((i) => ({
+      id: i.id,
+      title: i.title,
+      status: i.status,
+      urgency: i.urgency,
+      type: i.type,
+      dueDate: i.dueDate,
+      properties: i.properties,
+      dateLabel: rowDate(i, view.dateProperty),
+    }));
+    return <BoardDnd cards={cards} grouping={view.grouping} groupOrder={groupOrder} />;
+  }
   const present = new Set(items.map((i) => groupValueFor(i, view.grouping, now)));
   const columns = orderedGroups(view.grouping, present, groupOrder);
   return (
@@ -558,6 +578,7 @@ export default function ViewRenderer({
   items,
   groupOrder,
   propertyLabels = {},
+  boardDraggable = false,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -567,6 +588,10 @@ export default function ViewRenderer({
   // Labels for the type's custom properties, so a property column shows its
   // label rather than its key. Resolved by the page from the type's schema.
   propertyLabels?: Record<string, string>;
+  // Whether a board's cards can be dragged between columns to set their group
+  // value. The page decides (only safe for status/urgency/single-select);
+  // dashboards leave it false, so a board widget stays read-only.
+  boardDraggable?: boolean;
 }) {
   if (items.length === 0) {
     return (
@@ -579,7 +604,14 @@ export default function ViewRenderer({
     case "table":
       return <TableLayout items={items} view={view} propertyLabels={propertyLabels} />;
     case "board":
-      return <BoardLayout items={items} view={view} groupOrder={groupOrder} />;
+      return (
+        <BoardLayout
+          items={items}
+          view={view}
+          groupOrder={groupOrder}
+          draggable={boardDraggable}
+        />
+      );
     case "calendar":
       return <CalendarLayout items={items} view={view} />;
     case "agenda":
