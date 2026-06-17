@@ -70,7 +70,10 @@ export default function StructureBuilder({
   const router = useRouter();
   const isWorkflow = kind === "workflow";
 
-  const nextId = useRef(0);
+  // Row ids: a monotonic counter. Seeded past any preset rows so makeRow()
+  // (used by the "Add field" handler) never collides with the index-seeded
+  // initial rows below.
+  const nextId = useRef(preset?.properties.length ?? 0);
   const makeRow = (p?: PropertyDef): Row => ({
     id: nextId.current++,
     key: p?.key ?? "",
@@ -83,8 +86,16 @@ export default function StructureBuilder({
   const [stages, setStages] = useState<string[]>(
     isWorkflow ? preset?.stages ?? ["", "", ""] : []
   );
-  const [rows, setRows] = useState<Row[]>(
-    preset?.properties.map((p) => makeRow(p)) ?? []
+  // Seed preset rows by index, not makeRow(), so the counter ref isn't read
+  // during render (react-hooks/refs).
+  const [rows, setRows] = useState<Row[]>(() =>
+    (preset?.properties ?? []).map((p, i) => ({
+      id: i,
+      key: p.key ?? "",
+      label: p.label ?? "",
+      kind: p.kind ?? "text",
+      optionsText: p.options?.join(", ") ?? "",
+    }))
   );
   const [addToDashboard, setAddToDashboard] = useState(true);
   const [busy, setBusy] = useState(false);

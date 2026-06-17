@@ -11,7 +11,7 @@
 // with the body + property defaults filled in.
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items, templates, types } from "@/db/schema";
+import { templates, types } from "@/db/schema";
 import { isItemBody, makeMarkdownBody, type ItemBody } from "@/lib/body";
 import { createItem, ItemError } from "@/lib/items";
 import { relateItems } from "@/lib/relations";

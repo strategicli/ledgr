@@ -8,7 +8,7 @@
 // table, no BlockNote. A dev surface, not a product screen — deleted at M4/M5.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import LazyMarkdownEditor from "@/components/markdown-editor/LazyMarkdownEditor";
 
 const STORAGE_KEY = "ledgr.scratch.editor.md";
@@ -40,20 +40,24 @@ export default function ScratchEditorClient() {
   const [seed, setSeed] = useState("");
   const [epoch, setEpoch] = useState(0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const markdownRef = useRef("");
-  markdownRef.current = markdown;
 
+  // Client-only init: localStorage is unavailable during SSR, so read it on
+  // mount, behind the "Loading…" gate below, to avoid a hydration mismatch.
+  // The setState batch is the whole point here (a deliberate deferral), so the
+  // effect-setState rule doesn't apply.
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     const initial = stored ?? SAMPLE;
+    /* eslint-disable react-hooks/set-state-in-effect */
     setSeed(initial);
     setMarkdown(initial);
     setLoaded(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   // Re-seed the visual editor from the latest markdown (after editing source).
   const reseedVisual = () => {
-    setSeed(markdownRef.current);
+    setSeed(markdown);
     setEpoch((n) => n + 1);
   };
 
@@ -64,7 +68,7 @@ export default function ScratchEditorClient() {
   };
 
   const save = () => {
-    window.localStorage.setItem(STORAGE_KEY, markdownRef.current);
+    window.localStorage.setItem(STORAGE_KEY, markdown);
     setSavedAt(new Date().toLocaleTimeString());
   };
 

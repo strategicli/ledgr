@@ -82,6 +82,10 @@ export default async function ItemCanvas({
             ))}
           </div>
         )}
+        {/* canvasComponentFor is a registry lookup (module-wiring.tsx) returning a
+            stable, module-registered component, not one created per render — its
+            identity is constant across renders, so React won't remount it. */}
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
       </div>
       {/* One always-visible autosave indicator for the whole canvas. */}

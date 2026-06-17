@@ -32,7 +32,7 @@ const { sendToOwner, runAgendaNotify, runPrepNotify, AGENDA_JOB_KEY, PREP_JOB_KE
 type PushSender = import("../src/lib/push/types").PushSender;
 type PushMessage = import("../src/lib/push/types").PushMessage;
 type PushSubscriptionRecord = import("../src/lib/push/types").PushSubscriptionRecord;
-const { and, eq, inArray } = await import("drizzle-orm");
+const { eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -171,7 +171,7 @@ try {
   const soon = await mk({ type: "meeting", title: "Roger 1:1", meetingAt: new Date(Date.now() + 30 * 60_000) });
   await db.insert(relations).values({ sourceId: soon, targetId: person, role: "related", matchState: "confirmed" });
   // In-window meeting with NO entity -> not notified.
-  const soonNoEntity = await mk({ type: "meeting", title: "Solo block", meetingAt: new Date(Date.now() + 30 * 60_000) });
+  await mk({ type: "meeting", title: "Solo block", meetingAt: new Date(Date.now() + 30 * 60_000) });
   // Out-of-window meeting (5h out) WITH an entity -> not notified.
   const later = await mk({ type: "meeting", title: "Later 1:1", meetingAt: new Date(Date.now() + 5 * 60 * 60_000) });
   await db.insert(relations).values({ sourceId: later, targetId: person, role: "related", matchState: "confirmed" });

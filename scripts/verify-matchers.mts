@@ -82,8 +82,8 @@ try {
 
   // --- rules ---------------------------------------------------------------
   const mAttendee = await createMatcher(ownerId, { priority: 5, condition: { kind: "attendeeEmail", email: "roger@example.invalid" }, action: { entityIds: [roger], templateName: "roger-1on1" } });
-  const mSeries = await createMatcher(ownerId, { priority: 1, condition: { kind: "seriesId", seriesMasterId: "series-vision" }, action: { entityIds: [vision] } });
-  const mRegex = await createMatcher(ownerId, { priority: 2, condition: { kind: "titleRegex", pattern: "staff", flags: "i" }, action: { entityIds: [staff] } });
+  await createMatcher(ownerId, { priority: 1, condition: { kind: "seriesId", seriesMasterId: "series-vision" }, action: { entityIds: [vision] } });
+  await createMatcher(ownerId, { priority: 2, condition: { kind: "titleRegex", pattern: "staff", flags: "i" }, action: { entityIds: [staff] } });
   const mFuzzyVision = await createMatcher(ownerId, { priority: 9, condition: { kind: "titleFuzzy", pattern: "Vision Retreat", threshold: 0.3 }, action: { entityIds: [vision] } });
   const mFuzzyGated = await createMatcher(ownerId, { priority: 9, condition: { kind: "titleFuzzy", pattern: "Weekly Staff Sync", threshold: 0.2 }, action: { entityIds: [roger] } });
   const mSeriesRoger = await createMatcher(ownerId, { priority: 1, condition: { kind: "seriesId", seriesMasterId: "series-roger" }, action: { entityIds: [roger] } });

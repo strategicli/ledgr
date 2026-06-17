@@ -30,7 +30,7 @@ type HealthReport = import("../src/lib/health").HealthReport;
 type PushSender = import("../src/lib/push/types").PushSender;
 type PushMessage = import("../src/lib/push/types").PushMessage;
 type PushSubscriptionRecord = import("../src/lib/push/types").PushSubscriptionRecord;
-const { and, eq } = await import("drizzle-orm");
+const { eq } = await import("drizzle-orm");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

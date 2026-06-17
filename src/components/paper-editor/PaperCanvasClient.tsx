@@ -109,29 +109,31 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
   const [title, setTitle] = useState(initialTitle);
   const [draft, setDraft] = useState(() => bodyMarkdown(initialBody));
   // Migrate older scaffolds once on load (recovers pre-rebuild sections + quote
-  // assignments) — computed once via a ref so section/paragraph ids are stable.
-  const migratedRef = useRef<ReturnType<typeof migrateScaffold>>(undefined);
-  if (!migratedRef.current) migratedRef.current = migrateScaffold(initialProps);
-  const [sections, setSections] = useState<OutlineSection[]>(migratedRef.current.sections);
-  const [quotes, setQuotes] = useState<QuoteEntry[]>(migratedRef.current.quotes);
-  // True when this paper had no stored date and we seeded it from createdAt (P1,
-  // v5) — used to persist that seed once on mount so it sticks.
-  const seededDateRef = useRef(false);
-  const [meta, setMeta] = useState<Meta>(() => {
+  // assignments) — a lazy initializer runs exactly once, so section/paragraph
+  // ids stay stable across renders without reading a ref during render.
+  const [migrated] = useState(() => migrateScaffold(initialProps));
+  const [sections, setSections] = useState<OutlineSection[]>(migrated.sections);
+  const [quotes, setQuotes] = useState<QuoteEntry[]>(migrated.quotes);
+  // Seed the title-page date from createdAt when this paper has none (P1, v5).
+  // meta + the seeded flag are computed together in one lazy initializer so
+  // neither touches a ref during render; `dateSeeded` drives persist-on-mount.
+  const [init] = useState(() => {
     const m: Meta = {};
     for (const k of META_KEYS) {
       const v = initialProps[k];
       if (typeof v === "string") m[k] = v;
     }
+    let dateSeeded = false;
     if (!m.paper_date) {
       const seeded = formatPaperDate(createdAt);
       if (seeded) {
         m.paper_date = seeded;
-        seededDateRef.current = true;
+        dateSeeded = true;
       }
     }
-    return m;
+    return { meta: m, dateSeeded };
   });
+  const [meta, setMeta] = useState<Meta>(init.meta);
 
   const basePropsRef = useRef(initialProps);
   const draftRef = useRef<HTMLTextAreaElement>(null);
@@ -149,9 +151,8 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
   // Persist once on mount when we seeded the date and/or upgraded an older
   // scaffold, so the recovered sections + assignments (and the auto-date) stick.
   useEffect(() => {
-    if (seededDateRef.current || migratedRef.current?.changed) {
+    if (init.dateSeeded || migrated.changed) {
       patch({ properties: buildProps() });
-      seededDateRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
