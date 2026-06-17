@@ -6,8 +6,9 @@
 // { format, text } shape the API and DB store.
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
+import { beginSave, endSave } from "@/lib/save-status";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
 
 const SAVE_DEBOUNCE_MS = 1500;
@@ -40,20 +41,23 @@ async function uploadImage(itemId: string, file: File): Promise<string> {
   return publicUrl;
 }
 
-type SaveState = "saved" | "dirty" | "saving" | "error";
-
 export type ItemEditorProps = {
   item: { id: string; title: string; body: unknown };
   // Canvas top strip (PRD §4.13), rendered between the title and the body.
   fields?: React.ReactNode;
+  // Which block to render (ADR-069 field-level canvas cards). "full" is the
+  // classic stacked editor (title + fields + body). "title"/"body" render just
+  // that block, bare (no canvas chrome), so each can live in its own grid card;
+  // each instance keeps its own debounced autosave for the field it owns.
+  slot?: "full" | "title" | "body";
 };
 
-export default function ItemEditor({ item, fields }: ItemEditorProps) {
+export default function ItemEditor({ item, fields, slot = "full" }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
-  const [saveState, setSaveState] = useState<SaveState>("saved");
   const pending = useRef<{ title?: string; body?: unknown }>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
 
   const flush = useCallback(async () => {
     if (timer.current) {
@@ -64,7 +68,9 @@ export default function ItemEditor({ item, fields }: ItemEditorProps) {
     if (Object.keys(patch).length === 0 || inFlight.current) return;
     pending.current = {};
     inFlight.current = true;
-    setSaveState("saving");
+    // Report to the app-wide save signal (the floating SaveStatusIndicator);
+    // the per-editor "Saved" badge was retired for it (Brandon, 2026-06-17).
+    beginSave();
     try {
       const res = await fetch(`/api/items/${item.id}`, {
         method: "PATCH",
@@ -72,12 +78,11 @@ export default function ItemEditor({ item, fields }: ItemEditorProps) {
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(String(res.status));
-      // Edits made while the request was out stay queued; pick them up.
-      setSaveState(Object.keys(pending.current).length ? "dirty" : "saved");
+      endSave(true);
     } catch {
       // Re-queue what failed under anything newer, retry on the next tick.
       pending.current = { ...patch, ...pending.current };
-      setSaveState("error");
+      endSave(false);
     } finally {
       inFlight.current = false;
       if (Object.keys(pending.current).length) schedule();
@@ -86,10 +91,19 @@ export default function ItemEditor({ item, fields }: ItemEditorProps) {
   }, [item.id]);
 
   const schedule = useCallback(() => {
-    setSaveState("dirty");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
   }, [flush]);
+
+  // Title wraps and grows with content (Brandon, 2026-06-17): keep the textarea's
+  // height matched to its content after every edit, so a long title shows in full
+  // instead of scrolling in one line.
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [title]);
 
   // A tab close inside the debounce window shouldn't lose the last edit.
   useEffect(() => {
@@ -125,46 +139,51 @@ export default function ItemEditor({ item, fields }: ItemEditorProps) {
     };
   }, [item.id]);
 
-  const statusLabel = {
-    saved: "Saved",
-    dirty: "Unsaved changes",
-    saving: "Saving…",
-    error: "Save failed, retrying",
-  }[saveState];
+  const titleInput = (
+    <textarea
+      ref={titleRef}
+      rows={1}
+      className="w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-neutral-100 outline-none placeholder:text-neutral-600"
+      placeholder="Untitled"
+      value={title}
+      onChange={(e) => {
+        setTitle(e.target.value);
+        pending.current.title = e.target.value;
+        schedule();
+      }}
+      // A title is one logical line that wraps; Enter commits (blurs) rather than
+      // inserting a newline.
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+  const bodyEditor = (
+    <LazyMarkdownEditor
+      itemId={item.id}
+      initialMarkdown={bodyMarkdown(item.body)}
+      uploadImage={(file) => uploadImage(item.id, file)}
+      onChange={(markdown) => {
+        pending.current.body = makeMarkdownBody(markdown);
+        schedule();
+      }}
+    />
+  );
 
+  // Field-level cards (ADR-069): render just the title or just the body, bare,
+  // so each sits in its own grid cell with its own autosave.
+  if (slot === "title") return titleInput;
+  if (slot === "body") return bodyEditor;
+
+  // Classic stacked editor (the default canvas, unchanged).
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="flex items-baseline justify-between px-12 pt-8 pb-2">
-        <input
-          className="w-full bg-transparent text-3xl font-bold text-neutral-100 outline-none placeholder:text-neutral-600"
-          placeholder="Untitled"
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            pending.current.title = e.target.value;
-            schedule();
-          }}
-        />
-        <span
-          className={`shrink-0 pl-4 text-xs ${
-            saveState === "error" ? "text-red-400" : "text-neutral-500"
-          }`}
-        >
-          {statusLabel}
-        </span>
-      </div>
+      <div className="px-12 pt-8 pb-2">{titleInput}</div>
       {fields}
-      <div className="px-12 pt-2">
-        <LazyMarkdownEditor
-          itemId={item.id}
-          initialMarkdown={bodyMarkdown(item.body)}
-          uploadImage={(file) => uploadImage(item.id, file)}
-          onChange={(markdown) => {
-            pending.current.body = makeMarkdownBody(markdown);
-            schedule();
-          }}
-        />
-      </div>
+      <div className="px-12 pt-2">{bodyEditor}</div>
     </div>
   );
 }

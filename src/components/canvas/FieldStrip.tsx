@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { CanvasField } from "@/lib/canvas-fields";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
+import { beginSave, endSave } from "@/lib/save-status";
 
 export type StripValues = {
   status: string;
@@ -47,6 +48,7 @@ export default function FieldStrip({
     const before = values;
     setValues((v) => ({ ...v, ...patch }));
     setError(false);
+    beginSave();
     try {
       const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
@@ -54,9 +56,11 @@ export default function FieldStrip({
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(String(res.status));
+      endSave(true);
     } catch {
       setValues(before);
       setError(true);
+      endSave(false);
     }
   }
 

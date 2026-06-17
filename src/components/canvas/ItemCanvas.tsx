@@ -14,13 +14,17 @@ import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
 import { getType } from "@/lib/types";
+import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
 
 export default async function ItemCanvas({
   id,
   variant,
+  arrange = false,
 }: {
   id: string;
   variant: "page" | "modal";
+  // Per-type layout arrange mode (ADR-069); full-page ?arrange=1 only.
+  arrange?: boolean;
 }) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
@@ -51,29 +55,37 @@ export default async function ItemCanvas({
 
   return (
     <>
-      {showBreadcrumb && (
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-1 px-12 pt-6 text-sm text-neutral-500">
-          {variant === "page" && (
-            <Link href="/items" className="hover:text-neutral-300">
-              ← All items
-            </Link>
-          )}
-          {ancestors.map((a, i) => (
-            <span key={a.id} className="flex min-w-0 items-center gap-1">
-              {(variant === "page" || i > 0) && (
-                <span className="text-neutral-700">/</span>
-              )}
-              <Link
-                href={`/items/${a.id}`}
-                className="truncate hover:text-neutral-300"
-              >
-                {a.title || "Untitled"}
+      {/* The full-page view is wider than the modal (Brandon, 2026-06-17):
+          `canvas-wide` widens the standard max-w-3xl canvas blocks so "expand"
+          actually gains room, and matches the grid width so entering Arrange
+          doesn't jump. The modal stays the narrow quick reader. */}
+      <div className={variant === "page" ? "canvas-wide" : undefined}>
+        {showBreadcrumb && (
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-1 px-12 pt-6 text-sm text-neutral-500">
+            {variant === "page" && (
+              <Link href="/items" className="hover:text-neutral-300">
+                ← All items
               </Link>
-            </span>
-          ))}
-        </div>
-      )}
-      <Canvas item={item} ownerId={owner.id} variant={variant} />
+            )}
+            {ancestors.map((a, i) => (
+              <span key={a.id} className="flex min-w-0 items-center gap-1">
+                {(variant === "page" || i > 0) && (
+                  <span className="text-neutral-700">/</span>
+                )}
+                <Link
+                  href={`/items/${a.id}`}
+                  className="truncate hover:text-neutral-300"
+                >
+                  {a.title || "Untitled"}
+                </Link>
+              </span>
+            ))}
+          </div>
+        )}
+        <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
+      </div>
+      {/* One always-visible autosave indicator for the whole canvas. */}
+      <SaveStatusIndicator />
     </>
   );
 }

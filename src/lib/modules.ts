@@ -33,6 +33,9 @@ export type CanvasProps = {
   item: CanvasItem;
   ownerId: string;
   variant: "page" | "modal";
+  // Arrange mode for the default canvas's per-type layout (ADR-069, Feature B):
+  // true only on the full-page ?arrange=1 route. Module canvases ignore it.
+  arrange?: boolean;
 };
 
 // Canvases are (often async) server components — a function returning rendered

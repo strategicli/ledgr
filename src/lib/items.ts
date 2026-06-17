@@ -62,7 +62,13 @@ export type ItemInput = {
   inbox?: boolean;
 };
 
-export type ItemPatch = Partial<ItemInput>;
+export type ItemPatch = Partial<ItemInput> & {
+  // Merge these keys into items.properties without touching the rest — an atomic
+  // jsonb `||` in updateItem. Used by the per-property canvas cards (ADR-069),
+  // where each card owns one property key and must not clobber its siblings.
+  // Distinct from `properties`, which replaces the whole object wholesale.
+  propertyPatch?: Record<string, unknown>;
+};
 
 export type ListOptions = {
   type?: string;
@@ -318,6 +324,16 @@ export async function updateItem(
   if (patch.url !== undefined) set.url = patch.url;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;
   if (patch.properties !== undefined) set.properties = patch.properties;
+  // Per-key merge (ADR-069): overwrite only these keys, keep the rest. Atomic at
+  // the DB level (no read-modify-write race), and the generated search tsvector
+  // recomputes from the merged jsonb automatically. Applied after `properties`
+  // so a caller sending both lands on the merge (they're mutually exclusive in
+  // practice — the canvas sends one or the other).
+  if (patch.propertyPatch !== undefined) {
+    set.properties = sql`coalesce(${items.properties}, '{}'::jsonb) || ${JSON.stringify(
+      patch.propertyPatch
+    )}::jsonb`;
+  }
   if (patch.inbox !== undefined) set.inbox = patch.inbox;
   if (patch.body !== undefined) {
     set.body = patch.body;

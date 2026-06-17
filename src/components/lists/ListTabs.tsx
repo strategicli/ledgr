@@ -36,8 +36,15 @@ export default async function ListTabs({ active }: { active: ListTabKey }) {
   const systemTabs = SYSTEM_TABS.filter(
     (t) => visible.has(t.typeKey) || t.key === active
   );
+  // Custom tabs are every other type. Exclude any type a SYSTEM_TAB already
+  // covers, so it can't render twice (a system tab plus a custom one) and
+  // collide on a duplicate React key. `!isSystem` covers the five base types
+  // (person included, once ADR-070's corrective migration has run), but keep the
+  // explicit key guard as a backstop: a SYSTEM_TAB type that somehow isn't
+  // flagged is_system would otherwise leak into the custom list.
+  const systemTypeKeys = new Set(SYSTEM_TABS.map((t) => t.typeKey));
   const custom = rows
-    .filter((r) => !r.isSystem)
+    .filter((r) => !r.isSystem && !systemTypeKeys.has(r.key))
     .sort((a, b) => a.label.localeCompare(b.label))
     .map((c) => ({ key: c.key, label: c.label, href: `/list/${c.key}` }));
 
