@@ -158,7 +158,19 @@ Brandon's toward-1.0 pass settled four things and lined up one build chunk. Deci
 
 **Other committed 1.0 work:** selective Notion migration (Phase 3 Tier 3, above); the §1c-gated matcher UIs (Phase 2); the **alpha → v1.0 production flip** (record in `decisions.md` — turns on migration-caution + no-Saturday-deploys).
 
-**Candidate (not committed):** meeting audio capture → transcription → AI minutes/action-items to the Inbox (`explorations/meeting-recording.md`). **Design converged + specced 2026-06-18:** upload-only for v1, transcript-as-pivot (paste OR upload→transcribe), audio transient (compress-on-ingest + purge-after-confirm), and minutes/action-items via a **Claude-over-MCP workflow** (no in-app LLM call). 3 core flags (transcription seam, audio-retention schema touch, Principle-3 interpretation) need Tyler-agree + ADR before build.
+**🎙️ Meeting recording chunk — Tyler pre-approved 2026-06-18 (`explorations/meeting-recording.md`).** Transcript-as-pivot, upload/paste-only for v1, minutes/action-items via a **Claude-over-MCP workflow** (no in-app LLM call). v1a (paste-first) then v1b (transcription seam + storage). 3 core touches (transcription seam, audio-retention column, Principle-3 interpretation) pre-approved; ADR each at build.
+
+**v1a — paste-first (✅ COMPLETE 2026-06-18, ADR-087):**
+- [x] V1a-1 — Data layer: the `transcript` child type (migration 0023 + seed; `minutes` select none/draft/done) + the "Transcripts awaiting minutes" saved view (`scripts/seed-meeting-views.mts`). `verify-meeting-transcripts.mts` 16/16 on Neon.
+- [x] V1a-2 — The Transcript panel on the meeting canvas: paste-to-create (writes the child + a confirmed `transcript`-role edge so it's MCP-discoverable), list with minutes badge + word count, opens the transcript for full editing. Classic + grid card. In-browser verified.
+- [x] V1a-3 — The Claude-over-MCP minutes automation: `docs/meeting-minutes-automation.md` (the prompt + manual/scheduled use + the meeting↔transcript traversal) surfaced on Build → AI & MCP; the **Principle-3 interpretation** ratified (ADR-087, the core element).
+
+**v1b — convenience transcription (✅ COMPLETE 2026-06-18, ADR-088/089):**
+- [x] V1b-1 — the `transcription` provider seam + AssemblyAI adapter (ADR-088, core): null-safe/env-selected, submit+poll, pure response mapping, no SDK; `/health` `checks.transcription`. `verify-transcription` ALL PASS.
+- [x] V1b-2 — audio upload (`audio/*`/`video/*`, 2GB cap) + auto-transcribe (ADR-089): `startAudioTranscription`/`advanceTranscription`, client-poll (`TranscriptionPoller`) + cron backstop (`transcription-poll.yml`); fills the diarized transcript → awaiting-minutes view. Compression deferred (a seam knob). `verify-transcription-flow` 20/20.
+- [x] V1b-3 — audio retention (ADR-089, core schema touch): `attachments.purge_after` (migration 0024), stamped now()+30d on transcript-produced, reclaimed by the daily purge; `DELETE /api/attachments/[id]` = delete-now. `verify-audio-retention` 10/10.
+
+In-app recording stays deferred. **Live audio→transcript eyeball gated on a configured `ASSEMBLYAI_API_KEY` (runbook §1i)** — pipeline proven against a fake provider + fixtures + in-browser (panel renders, upload hidden without a key, `/health` `transcription: none`).
 
 ---
 

@@ -17,6 +17,7 @@ import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check"
 import { getPushState } from "@/lib/push/notify";
 import { getTodoistState } from "@/lib/todoist/sync";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
+import { transcriptionAdapter, type TranscriptionAdapterId } from "@/lib/transcription/provider";
 import { createLogger, isDebugMode } from "@/lib/log";
 
 export type DatabaseCheck =
@@ -42,6 +43,9 @@ export type HealthReport = {
     // no sync) or "todoist" (the optional sync). The lastTodoist* fields below
     // are only meaningful when the adapter is "todoist".
     tasksAdapter: TasksAdapterId;
+    // The active transcription adapter (ADR-088): "none" (paste-only, the v1a
+    // default) or "assemblyai" (audio upload → auto-transcribe enabled).
+    transcription: TranscriptionAdapterId;
     lastTodoistSyncAt: string | null;
     lastTodoistRunAt: string | null;
     lastEmailImportAt: string | null;
@@ -203,6 +207,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastCalendarSyncAt,
       lastCalendarRunAt,
       tasksAdapter: tasksAdapter(),
+      transcription: transcriptionAdapter(),
       lastTodoistSyncAt,
       lastTodoistRunAt,
       lastEmailImportAt,

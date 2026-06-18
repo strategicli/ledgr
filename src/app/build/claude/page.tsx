@@ -79,6 +79,15 @@ export default async function AiAndMcp() {
   -d '{"items":[{"type":"note","title":"Journal — 2026-06-15",
     "body":{"format":"markdown","text":"Today I…"},"inbox":true}]}'`;
 
+  // Meeting minutes automation (ADR-087): a Claude-over-MCP workflow, not an
+  // in-app LLM call. The manual trigger; the full prompt + scheduling live in
+  // docs/meeting-minutes-automation.md.
+  const minutesTrigger =
+    "Process my meeting transcripts awaiting minutes: run the \"Transcripts " +
+    "awaiting minutes\" view, draft minutes into each meeting's body, file the " +
+    "action items as Inbox tasks related to the meeting, and mark each " +
+    "transcript's minutes draft. Don't auto-commit anything — I review it.";
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
@@ -237,6 +246,34 @@ export default async function AiAndMcp() {
               );
             })}
           </ul>
+        </section>
+
+        {/* Automations — Claude-over-MCP workflows (ADR-087) */}
+        <section className="mt-10">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Automations
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+            Workflows run by Claude over the tools above (not an in-app model
+            call). Nothing auto-commits: outputs are staged for review.
+          </p>
+          <div className="mt-4 rounded-xl border border-neutral-800 p-3.5">
+            <p className="text-sm font-semibold text-neutral-100">
+              Meeting minutes
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-neutral-500">
+              Turns transcripts awaiting minutes into draft minutes (in the
+              meeting body) and suggested tasks (in the Inbox, related to the
+              meeting). Run it manually after a meeting, or on a schedule. Full
+              prompt + scheduling in{" "}
+              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+                docs/meeting-minutes-automation.md
+              </code>
+              .
+            </p>
+            <p className="mb-1 mt-3 text-xs text-neutral-500">Manual trigger</p>
+            <CopyField value={minutesTrigger} label="minutes trigger" />
+          </div>
         </section>
 
         {/* External HTTP API — app integrations, not AI (ADR-066) */}

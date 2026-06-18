@@ -1,0 +1,1 @@
+ALTER TABLE "attachments" ADD COLUMN "purge_after" timestamp with time zone;
