@@ -1,6 +1,6 @@
 # Exploration: the daily focus layer ("Top 3" / in-focus) — T3 brainstorm
 
-**Status:** open, brainstorm for the Native Tasks chunk (**T3**, ADR-073). **Mostly non-core** (a planning/presentation layer over tasks), but it lightly touches the task model (how "focus" is stored), so worth aligning before building. Pairs with `calendar-time-blocking.md` (focus is the lightweight cousin of time-blocking) and the Tier-4 **planning rhythms** (a morning "set today's focus" ritual).
+**Status:** ✅ **RESOLVED — ADR-078 (2026-06-17), built as T3.** The recommended shape shipped: a day-stamped `properties.focus = {date, order?}` marker (auto-clears overnight, no carryover), a "Today's Focus" zone atop Today, a star affordance on task rows, a soft cap of 3. Kept for the record. Follow-ups still open: the star on the item canvas + list/board rows, a Top-3 dashboard widget, drag-reorder, and the morning re-pick prompt (the Tier-4 planning-rhythm tie-in). *(Was: open brainstorm for T3.)* Pairs with `calendar-time-blocking.md` (focus is the lightweight cousin of time-blocking).
 **Source:** Brandon, 2026-06-17 — "layers like 'in-focus' or 'top 3' (where people choose 3 tasks that are vital for the day)."
 
 **Leaning (Brandon, 2026-06-17):** the **day-stamped marker** (option (b) below) — a dated focus flag that auto-clears overnight, rendered as an ordered Top 3 with a soft cap, fronted by a "Today's Focus" zone on Today.
