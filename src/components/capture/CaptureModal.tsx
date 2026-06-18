@@ -8,9 +8,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { URGENCIES } from "@/lib/item-enums";
-import { parseNaturalDate } from "@/lib/nl-date";
+import { parseNaturalDate, parseTaskTitle } from "@/lib/nl-date";
+import { describeRule, type RecurrenceRule } from "@/lib/recurrence";
 import { enqueueCapture } from "@/lib/outbox";
 
 // Today as YYYY-MM-DD in the user's local zone (single-user = the app zone), for
@@ -40,8 +41,32 @@ export default function CaptureModal({
   // options; an unchanged capture lands in the Inbox as untyped, triaged later.
   const captureOptions = [{ key: "unmarked", label: "Unsorted" }, ...typeOptions];
   const [type, setType] = useState("unmarked");
+  const [title, setTitle] = useState("");
+  const [scheduled, setScheduled] = useState(""); // YYYY-MM-DD, from NL parse
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(null);
   const [due, setDue] = useState("");
   const [urgency, setUrgency] = useState("");
+
+  // Live natural-language detection from the title (S4, ADR-084), task-only —
+  // recurrence/scheduled/urgency are task fields. Shows what Apply (or Create)
+  // will pull out; an explicit token grammar (nl-date.ts), never a guess.
+  const preview = useMemo(
+    () => (type === "task" && title.trim() ? parseTaskTitle(title, localTodayYmd()) : null),
+    [type, title]
+  );
+
+  // Apply the parse: strip the tokens from the title and commit the fields. The
+  // manual trigger; Create also parses (parse-on-save) so this is optional.
+  function applyParse() {
+    const p = parseTaskTitle(title, localTodayYmd());
+    if (p.detections.length === 0) return;
+    setTitle(p.title);
+    if (p.scheduledDate) setScheduled(p.scheduledDate);
+    if (p.dueDate) setDue(p.dueDate);
+    if (p.urgency) setUrgency(p.urgency);
+    if (p.recurrence) setRecurrence(p.recurrence);
+    titleRef.current?.focus();
+  }
   const [person, setPerson] = useState<PersonHit | null>(null);
   const [personQ, setPersonQ] = useState("");
   const [personHits, setPersonHits] = useState<PersonHit[]>([]);
@@ -113,15 +138,25 @@ export default function CaptureModal({
   }
 
   async function capture() {
-    const title = titleRef.current?.value.trim();
-    if (!title || state === "busy") return;
+    const raw = title.trim();
+    if (!raw || state === "busy") return;
+    // Parse-on-save (S4): catch tokens typed but not yet Applied; committed
+    // fields (set via Apply or the controls) win over a fresh parse.
+    const p = type === "task" ? parseTaskTitle(raw, localTodayYmd()) : null;
+    const finalTitle = p && p.title ? p.title : raw;
+    const sched = scheduled || p?.scheduledDate || "";
+    const dueDay = due || p?.dueDate || "";
+    const urg = urgency || p?.urgency || "";
+    const rec = recurrence || p?.recurrence || null;
     setState("busy");
-    const body: Record<string, unknown> = { type, title, inbox: true };
-    // Due dates are calendar days stored as UTC midnight (ADR-008). Due and
-    // urgency are task fields (ADR-018); a non-task capture ignores them
-    // even if they were filled before the type changed.
-    if (type === "task" && due) body.dueDate = `${due}T00:00:00.000Z`;
-    if (type === "task" && urgency) body.urgency = urgency;
+    const body: Record<string, unknown> = { type, title: finalTitle, inbox: true };
+    // Dates are calendar days stored as UTC midnight (ADR-008). Scheduled/due/
+    // urgency/recurrence are task fields (ADR-018/076); a non-task capture
+    // ignores them even if they were filled before the type changed.
+    if (type === "task" && sched) body.scheduledDate = `${sched}T00:00:00.000Z`;
+    if (type === "task" && dueDay) body.dueDate = `${dueDay}T00:00:00.000Z`;
+    if (type === "task" && urg) body.urgency = urg;
+    if (type === "task" && rec) body.properties = { recurrence: rec };
     try {
       const res = await fetch("/api/items", {
         method: "POST",
@@ -166,7 +201,9 @@ export default function CaptureModal({
         <input
           ref={titleRef}
           type="text"
-          placeholder="Capture…"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={type === "task" ? "e.g. Call Bob tomorrow p1 every week" : "Capture…"}
           aria-label="Title"
           disabled={state === "busy"}
           onKeyDown={(e) => {
@@ -174,6 +211,32 @@ export default function CaptureModal({
           }}
           className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
         />
+        {/* Live NL detection (S4): a confirm-by-visibility preview + Apply (the
+            manual trigger). Create also parses, so Apply is optional. */}
+        {preview && preview.detections.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-neutral-500">Detected</span>
+            {preview.detections.map((d, i) => (
+              <span
+                key={`${d.field}-${i}`}
+                className="rounded border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-1.5 py-0.5 text-neutral-300"
+              >
+                {d.field === "scheduled" ? "📅" : d.field === "due" ? "⏰" : d.field === "recurrence" ? "🔁" : "❗"}{" "}
+                {d.label}
+              </span>
+            ))}
+            <span className="text-neutral-600">
+              → “{preview.title || "…"}”
+            </span>
+            <button
+              type="button"
+              onClick={applyParse}
+              className="ml-auto rounded bg-neutral-800 px-2 py-0.5 font-medium text-neutral-200 hover:bg-neutral-700"
+            >
+              ✨ Apply
+            </button>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <select
             value={type}
@@ -232,6 +295,30 @@ export default function CaptureModal({
                   </option>
                 ))}
               </select>
+              {scheduled && (
+                <span className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-xs text-neutral-200">
+                  📅 {scheduled}
+                  <button
+                    onClick={() => setScheduled("")}
+                    aria-label="Clear scheduled date"
+                    className="text-neutral-500 hover:text-neutral-200"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
+              {recurrence && (
+                <span className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-xs text-neutral-200">
+                  🔁 {describeRule(recurrence)}
+                  <button
+                    onClick={() => setRecurrence(null)}
+                    aria-label="Clear repeat"
+                    className="text-neutral-500 hover:text-neutral-200"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
             </>
           )}
           {person ? (

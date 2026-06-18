@@ -12,10 +12,16 @@ import {
   addDaysYmd,
   addMonthsYmd,
   isYmd,
+  makeRecurrence,
+  nextOccurrenceOnOrAfter,
   WEEKDAYS,
+  WEEKDAY_LABELS,
   weekdayOf,
+  type Frequency,
+  type RecurrenceRule,
   type Weekday,
 } from "@/lib/recurrence";
+import { type Urgency } from "@/lib/item-enums";
 
 const WEEKDAY_NAMES: Record<string, Weekday> = {
   sun: "SU", sunday: "SU",
@@ -131,4 +137,224 @@ export function parseNaturalDate(input: string, todayYmd: string): string | null
   }
 
   return null;
+}
+
+// ===========================================================================
+// Natural-language quick-add: parse date + recurrence + urgency OUT OF a task
+// TITLE (Tasks Polish S4, ADR-084). Todoist-style strip-and-confirm — the
+// recognized tokens are detected and removed, leaving a clean title. Pure +
+// client-safe (the caller passes today), the same constrained-grammar discipline
+// as parseNaturalDate (Principle 3 — explicit tokens, never an NLP guess; the
+// UI shows what was detected so a false positive is one click to reject).
+
+const MONTH_ALT =
+  "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+
+// Date-phrase patterns scanned anywhere in the title, most specific first. Bare
+// 3-letter weekday abbreviations (mon/tue/…) are deliberately EXCLUDED — they
+// collide with ordinary words ("sat", "wed", "sun") and parse-on-save can't ask;
+// full weekday names + the explicit numeric/relative forms are unambiguous.
+const DATE_PATTERNS: RegExp[] = [
+  /\b\d{4}-\d{2}-\d{2}\b/,
+  /\bin \d{1,3} (?:days?|weeks?|months?)\b/,
+  /\bnext (?:week|month|weekend)\b/,
+  /\b(?:this )?weekend\b/,
+  new RegExp(`\\b(?:${MONTH_ALT}) \\d{1,2}(?:,? \\d{4})?\\b`),
+  new RegExp(`\\b\\d{1,2} (?:${MONTH_ALT})\\b`),
+  /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/,
+  /\b(?:next |this )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
+  /\b(?:today|tomorrow|tonight|yesterday|tmrw)\b/,
+];
+
+const WEEKDAY_ALT =
+  "monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun";
+
+// p1..p4 (Todoist) and !1..!4 → Ledgr urgencies. p1 = most urgent.
+const URGENCY_BY_LEVEL: Record<string, Urgency> = {
+  "1": "critical",
+  "2": "high",
+  "3": "normal",
+  "4": "low",
+};
+
+export type TaskTitleDetection = {
+  field: "scheduled" | "due" | "recurrence" | "urgency";
+  label: string; // human chip label, e.g. "Tomorrow", "Weekly", "Critical"
+  source: string; // the exact text removed from the title
+};
+
+export type ParsedTaskTitle = {
+  title: string; // cleaned title (detected tokens stripped)
+  scheduledDate: string | null;
+  dueDate: string | null;
+  recurrence: RecurrenceRule | null;
+  urgency: Urgency | null;
+  detections: TaskTitleDetection[];
+};
+
+// Remove the first match of `re` from BOTH the lowercase (matching) and original
+// (output) strings at the same span, keeping them length-synced. Returns the
+// matched (trimmed, lowercased) text, or null.
+function stripFirst(
+  state: { lower: string; orig: string },
+  re: RegExp
+): string | null {
+  const m = state.lower.match(re);
+  if (!m || m.index === undefined) return null;
+  const i = m.index;
+  const len = m[0].length;
+  const text = m[0].trim();
+  state.lower = `${state.lower.slice(0, i)} ${state.lower.slice(i + len)}`;
+  state.orig = `${state.orig.slice(0, i)} ${state.orig.slice(i + len)}`;
+  return text;
+}
+
+type RecMatch = {
+  freq: Frequency;
+  interval: number;
+  byDay?: Weekday[];
+  label: string;
+};
+
+const SHORT_WEEKDAY: Record<string, Weekday> = {
+  mon: "MO", monday: "MO",
+  tue: "TU", tues: "TU", tuesday: "TU",
+  wed: "WE", weds: "WE", wednesday: "WE",
+  thu: "TH", thur: "TH", thurs: "TH", thursday: "TH",
+  fri: "FR", friday: "FR",
+  sat: "SA", saturday: "SA",
+  sun: "SU", sunday: "SU",
+};
+
+// Match + strip a recurrence phrase. Returns the rule shape (interval/byDay) plus
+// a human label; the caller supplies dtstart.
+function matchRecurrence(state: { lower: string; orig: string }): RecMatch | null {
+  // "every weekday" / "weekdays" → Mon–Fri
+  if (stripFirst(state, /\b(?:every weekday|weekdays)\b/)) {
+    return { freq: "weekly", interval: 1, byDay: ["MO", "TU", "WE", "TH", "FR"], label: "Every weekday" };
+  }
+  // "every <weekday>" → that weekday
+  const wd = state.lower.match(new RegExp(`\\bevery (${WEEKDAY_ALT})\\b`));
+  if (wd && wd.index !== undefined) {
+    stripFirst(state, new RegExp(`\\bevery (?:${WEEKDAY_ALT})\\b`));
+    const day = SHORT_WEEKDAY[wd[1]];
+    return { freq: "weekly", interval: 1, byDay: [day], label: `Every ${WEEKDAY_LABELS[day]}` };
+  }
+  // "every N days|weeks|months|years"
+  const everyN = state.lower.match(/\bevery (\d{1,3}) (day|week|month|year)s?\b/);
+  if (everyN && everyN.index !== undefined) {
+    const n = Number(everyN[1]);
+    const unit = everyN[2] as "day" | "week" | "month" | "year";
+    stripFirst(state, /\bevery \d{1,3} (?:day|week|month|year)s?\b/);
+    const freq: Frequency = unit === "day" ? "daily" : unit === "week" ? "weekly" : unit === "month" ? "monthly" : "yearly";
+    return { freq, interval: n, label: `Every ${n} ${unit}s` };
+  }
+  // single-word + "every day/week/month/year"
+  const simple: [RegExp, Frequency, string][] = [
+    [/\b(?:every day|daily)\b/, "daily", "Daily"],
+    [/\b(?:every week|weekly)\b/, "weekly", "Weekly"],
+    [/\b(?:every month|monthly)\b/, "monthly", "Monthly"],
+    [/\b(?:every year|yearly|annually)\b/, "yearly", "Yearly"],
+  ];
+  for (const [re, freq, label] of simple) {
+    if (stripFirst(state, re)) return { freq, interval: 1, label };
+  }
+  return null;
+}
+
+// Match + strip a date phrase, optionally requiring a `by ` prefix (→ a due
+// deadline). Returns the resolved YMD + the removed text.
+function matchDate(
+  state: { lower: string; orig: string },
+  todayYmd: string,
+  withBy: boolean
+): { ymd: string; source: string } | null {
+  for (const pat of DATE_PATTERNS) {
+    const re = withBy
+      ? new RegExp(`\\bby ${pat.source.replace(/^\\b/, "")}`)
+      : pat;
+    const m = state.lower.match(re);
+    if (!m || m.index === undefined) continue;
+    const phrase = m[0].replace(/^by /, "").trim();
+    const ymd = parseNaturalDate(phrase, todayYmd);
+    if (!ymd) continue;
+    stripFirst(state, re);
+    return { ymd, source: phrase };
+  }
+  return null;
+}
+
+function matchUrgency(
+  state: { lower: string; orig: string }
+): { urgency: Urgency; source: string } | null {
+  // pN is word-boundary safe; !N is not (`!` is non-word, so `\b` never sits
+  // before it) — anchor it on a preceding space/start instead.
+  let re = /\bp([1-4])\b/;
+  let m = state.lower.match(re);
+  if (!m) {
+    re = /(?:^|\s)!([1-4])\b/;
+    m = state.lower.match(re);
+  }
+  if (!m || m.index === undefined) return null;
+  const level = m[1];
+  const source = m[0].trim();
+  stripFirst(state, re);
+  return { urgency: URGENCY_BY_LEVEL[level], source };
+}
+
+// Parse a task title into a clean title + detected scheduled date, due deadline
+// ("by <date>"), recurrence (→ a stored RRULE via makeRecurrence), and urgency
+// (p1..p4 / !1..!4). Unmatched text is left untouched. Order matters: recurrence
+// is stripped before dates so "every monday" isn't also read as a weekday date.
+export function parseTaskTitle(input: string, todayYmd: string): ParsedTaskTitle {
+  const empty: ParsedTaskTitle = {
+    title: input.trim(),
+    scheduledDate: null,
+    dueDate: null,
+    recurrence: null,
+    urgency: null,
+    detections: [],
+  };
+  if (!isYmd(todayYmd) || !input.trim()) return empty;
+
+  // Pad with spaces so \b patterns at the very ends still match cleanly.
+  const state = { lower: ` ${input.toLowerCase()} `, orig: ` ${input} ` };
+  const detections: TaskTitleDetection[] = [];
+
+  const rec = matchRecurrence(state);
+  const due = matchDate(state, todayYmd, true);
+  if (due) detections.push({ field: "due", label: `By ${formatChipDate(due.ymd)}`, source: due.source });
+  const sched = matchDate(state, todayYmd, false);
+  if (sched) detections.push({ field: "scheduled", label: formatChipDate(sched.ymd), source: sched.source });
+  const urg = matchUrgency(state);
+  if (urg) detections.push({ field: "urgency", label: capitalize(urg.urgency), source: urg.source });
+
+  let scheduledDate = sched?.ymd ?? null;
+  let recurrence: RecurrenceRule | null = null;
+  if (rec) {
+    const dtstart = scheduledDate ?? todayYmd;
+    recurrence = makeRecurrence({ freq: rec.freq, interval: rec.interval, byDay: rec.byDay, dtstart });
+    // No explicit date with a repeat: schedule the first occurrence.
+    if (!scheduledDate) scheduledDate = nextOccurrenceOnOrAfter(recurrence, todayYmd) ?? dtstart;
+    detections.unshift({ field: "recurrence", label: rec.label, source: rec.label });
+  }
+
+  return {
+    title: state.orig.replace(/\s+/g, " ").trim(),
+    scheduledDate,
+    dueDate: due?.ymd ?? null,
+    recurrence,
+    urgency: urg?.urgency ?? null,
+    detections,
+  };
+}
+
+// "2026-06-20" → "Jun 20" (short chip label; the date field shows the full date).
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function formatChipDate(ymd: string): string {
+  const [, m, d] = ymd.split("-").map(Number);
+  return `${MONTH_ABBR[m - 1]} ${d}`;
+}
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
