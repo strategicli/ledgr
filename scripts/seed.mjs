@@ -34,6 +34,20 @@ for (const [key, label, icon] of systemTypes) {
   `;
 }
 
+// The `transcript` child type (meeting recording v1a, ADR-087): a meeting's
+// transcript is its own item (parent_id = the meeting), is_system + visible but
+// show_in_quick_capture=false. Its `minutes` select (none|draft|done) is the
+// "needs minutes" signal the awaiting-minutes view filters on. Mirrors
+// drizzle/0023_meeting_transcript_type.sql for fresh databases.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, property_schema)
+  VALUES (
+    'transcript', 'Transcript', 'file-text', true, false,
+    '[{"key": "minutes", "label": "Minutes", "kind": "select", "options": ["none", "draft", "done"]}]'::jsonb
+  )
+  ON CONFLICT (key) DO NOTHING
+`;
+
 // The `unmarked` placeholder type (ADR-067): hidden + system, label is a glyph.
 // create-on-miss makes items of this type (inbox=true) when the target type is
 // unknown; the user never reads the word "unmarked" (the key is code-facing).

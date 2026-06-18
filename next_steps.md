@@ -53,6 +53,25 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ NOW BUILDING — Meeting Recording (v1a COMPLETE; v1b next, 2026-06-18)
+
+The meeting recording → transcription → AI minutes chunk (`explorations/meeting-recording.md`; Tyler pre-approved incl. the 3 core touches). Transcript-as-pivot, upload/paste-only for v1, minutes via a **Claude-over-MCP workflow, not an in-app LLM call**. Building v1a (paste-first) first, then v1b (audio transcription).
+
+**Decisions settled (Brandon's leanings + the build):** transcript = its own `transcript` item (parent_id + a confirmed `transcript`-role edge to the meeting, so the LLM/MCP path "recent meetings → their transcripts" is one hop, not a title search — Brandon's concern); the "needs minutes" signal = a `minutes` select (none/draft/done) on the transcript; minutes land in the **meeting body**; suggested actions = real **`task`** items (inbox, related to the meeting); AssemblyAI first + 30-day retention for v1b.
+
+- [x] **V1a-1 — Data layer. ✅ DONE (2026-06-18, ADR-087; non-core).** The `transcript` system type (migration 0023 + `seed.mjs`; `is_system`, visible, not in quick-capture; `minutes` select none/draft/done). `src/lib/meetings/transcripts.ts` (`createTranscript` writes the child + the confirmed meeting→transcript edge in one place; `listMeetingTranscripts` with SQL word count). The "Transcripts awaiting minutes" saved view via `scripts/seed-meeting-views.mts` (idempotent, seeded for the owner). `verify-meeting-transcripts.mts` **16/16 on Neon** (create + edge + minutes=none, MCP discovery both directions, word counts, the awaiting filter none-in/draft-done-out, guards). `tsc`/eslint clean.
+- [x] **V1a-2 — Transcript panel on the meeting canvas. ✅ DONE (2026-06-18, ADR-087; non-core).** `MeetingTranscripts` (server) lists a meeting's transcripts (minutes badge + word count + open link) + `AddTranscript` (client paste box → `POST /api/meetings/[id]/transcripts` → `createTranscript`). Wired into `MarkdownCanvas` (classic block + a `meetingTranscripts` grid card added to `canvas-layout.ts`). Editing a transcript opens the item (full editor + the Minutes dropdown). **In-browser on Neon:** paste → "No minutes yet · 66 words" → open → editor + Minutes select → awaiting view lists it → set `done` (via the canvas `propertyPatch`) drops it. `next build` clean.
+- [x] **V1a-3 — Claude-over-MCP minutes automation + Principle-3 ADR. ✅ DONE (2026-06-18, ADR-087; the CORE element).** `docs/meeting-minutes-automation.md` — the exact prompt (run the awaiting view → draft minutes into the meeting body → file action items as Inbox tasks → set transcript `minutes=draft`), manual + scheduled use, the meeting↔transcript traversal, the no-auto-commit safeguard. Surfaced as an "Automations" section on **Build → AI & MCP** (in-browser verified). **ADR-087 ratifies the Principle-3 reading**: a scheduled external Claude-over-MCP automation producing *staged* suggestions is consistent with "no AI in Ledgr's own cron" because Ledgr's backend stays model-free and nothing auto-commits.
+
+**🎉 v1a (paste-first) is complete — ADR-087.** No new infra, no outbound LLM call: the existing 12 MCP tools express the whole flow.
+
+**v1b — convenience transcription (next):**
+- [ ] **V1b-1 — the `transcription` provider seam + AssemblyAI adapter** (mirrors storage/tasks: env-selected, null-safe; `transcribe(audioUrl) → {text, segments}` submit+poll). → ADR-088 (core).
+- [ ] **V1b-2 — audio upload + auto-transcribe** (allow `audio/*`/`video/*` in the presign flow, raise the per-file cap; fire transcription on upload completion; fill a transcript child; status indicator). Compress-on-ingest deferred as a seam knob (AssemblyAI takes long files by URL; no ffmpeg on Vercel) — confirm with Brandon at build.
+- [ ] **V1b-3 — audio retention** (`attachments.purge_after` column + migration; daily Trash-purge cron also removes audio past `purge_after`; 30-day default from transcript-exists, "delete now" override). → ADR-089 (core schema touch).
+
+---
+
 ## ⟢ NOW BUILDING — Tasks Polish (finishing touches on Native Tasks, S1–S6, 2026-06-18)
 
 Brandon's finishing-touches pass on the just-shipped Native Tasks chunk (the dual due/scheduled dates, recurrence, statuses, capture). Direction set 2026-06-18; **Tyler greenlit all of it** (including the core items: configurable statuses, the done-checkbox semantics, relative subtasks). ADRs get written per slice as they land.

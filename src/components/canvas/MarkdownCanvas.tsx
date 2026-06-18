@@ -22,6 +22,7 @@ import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
+import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import ReminderControl from "@/components/canvas/ReminderControl";
@@ -151,6 +152,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
         );
       if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} />;
+      if (id === "meetingTranscripts")
+        return <MeetingTranscripts ownerId={ownerId} itemId={item.id} />;
       if (id.startsWith("prop:")) {
         const key = id.slice(5);
         const def = propertySchema.find((p) => p.key === key);
@@ -260,6 +263,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Meeting prep (PRD §5.1): the person's open tasks, recent meetings,
           agenda, and action-item -> task promotion. */}
       {item.type === "meeting" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
+      {/* Transcripts (meeting recording v1a, ADR-087): paste/list a meeting's
+          transcripts (each its own item), the pivot for Claude-over-MCP minutes. */}
+      {item.type === "meeting" && <MeetingTranscripts ownerId={ownerId} itemId={item.id} />}
       {/* Custom properties (PRD §3.6): the type's scalar Build-surface fields,
           edited in place over items.properties. CustomProperties skips relation
           kinds (their value is edges, not properties). */}
