@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import Nav from "@/components/nav/Nav";
 import PwaRegister from "@/components/pwa/PwaRegister";
+import OutboxSync from "@/components/pwa/OutboxSync";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
@@ -90,6 +91,7 @@ export default async function RootLayout({
           <Nav />
           {modal}
           <PwaRegister />
+          <OutboxSync />
         </body>
       </html>
     </AppAuthProvider>

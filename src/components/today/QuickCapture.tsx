@@ -8,21 +8,23 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { enqueueCapture } from "@/lib/outbox";
 
 export default function QuickCapture() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "error" | "offline">("idle");
 
   async function capture() {
     const title = inputRef.current?.value.trim();
     if (!title || state === "busy") return;
+    const payload = { type: "unmarked", title, inbox: true };
     setState("busy");
     try {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "unmarked", title, inbox: true }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(String(res.status));
       if (inputRef.current) inputRef.current.value = "";
@@ -30,7 +32,13 @@ export default function QuickCapture() {
       router.refresh();
       inputRef.current?.focus();
     } catch {
-      setState("error");
+      // Offline (or a transient failure): queue locally; the outbox syncs on
+      // reconnect (T5, ADR-080) — capture never loses the thought.
+      enqueueCapture(payload);
+      window.dispatchEvent(new Event("ledgr:outbox"));
+      if (inputRef.current) inputRef.current.value = "";
+      setState("offline");
+      inputRef.current?.focus();
     }
   }
 
@@ -49,6 +57,11 @@ export default function QuickCapture() {
       {state === "error" && (
         <span className="shrink-0 text-xs text-red-400">
           Failed, press Enter to retry
+        </span>
+      )}
+      {state === "offline" && (
+        <span className="shrink-0 text-xs text-neutral-500">
+          Saved offline · will sync
         </span>
       )}
     </div>

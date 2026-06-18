@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { URGENCIES } from "@/lib/item-enums";
 import { parseNaturalDate } from "@/lib/nl-date";
+import { enqueueCapture } from "@/lib/outbox";
 
 // Today as YYYY-MM-DD in the user's local zone (single-user = the app zone), for
 // natural-language date parsing on capture (T2). Local getters, no UTC shift.
@@ -141,7 +142,12 @@ export default function CaptureModal({
       router.refresh();
       onClose();
     } catch {
-      setState("error");
+      // Offline (or a transient failure): queue the item locally and close; the
+      // outbox syncs it on reconnect (T5, ADR-080). The optional person link is
+      // skipped offline — the item still lands in the Inbox for triage.
+      enqueueCapture(body);
+      window.dispatchEvent(new Event("ledgr:outbox"));
+      onClose();
     }
   }
 
