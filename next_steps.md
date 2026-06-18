@@ -65,10 +65,14 @@ The meeting recording → transcription → AI minutes chunk (`explorations/meet
 
 **🎉 v1a (paste-first) is complete — ADR-087.** No new infra, no outbound LLM call: the existing 12 MCP tools express the whole flow.
 
-**v1b — convenience transcription (next):**
-- [ ] **V1b-1 — the `transcription` provider seam + AssemblyAI adapter** (mirrors storage/tasks: env-selected, null-safe; `transcribe(audioUrl) → {text, segments}` submit+poll). → ADR-088 (core).
-- [ ] **V1b-2 — audio upload + auto-transcribe** (allow `audio/*`/`video/*` in the presign flow, raise the per-file cap; fire transcription on upload completion; fill a transcript child; status indicator). Compress-on-ingest deferred as a seam knob (AssemblyAI takes long files by URL; no ffmpeg on Vercel) — confirm with Brandon at build.
-- [ ] **V1b-3 — audio retention** (`attachments.purge_after` column + migration; daily Trash-purge cron also removes audio past `purge_after`; 30-day default from transcript-exists, "delete now" override). → ADR-089 (core schema touch).
+**v1b — convenience transcription (✅ COMPLETE 2026-06-18, ADR-088/089). Open points settled with Brandon: defer compression, client-poll + cron backstop.**
+- [x] **V1b-1 — the `transcription` provider seam + AssemblyAI adapter. ✅ DONE (ADR-088; CORE).** `src/lib/transcription/{types,provider,assemblyai}.ts`: null-safe, env-selected (`ASSEMBLYAI_API_KEY` enables; `TRANSCRIPTION_ADAPTER` selects), submit+poll job model, pure `mapTranscriptResponse` + `transcriptToMarkdown`, no SDK (two fetch calls). `/health` `checks.transcription`. `verify-transcription.mts` ALL PASS (pure fixtures, no key).
+- [x] **V1b-2 — audio upload + auto-transcribe. ✅ DONE (ADR-089; non-core plumbing).** `audio/*`/`video/*` allowed with a 2GB cap; `AudioUpload` (presign → PUT → `POST /api/meetings/[id]/transcribe`); `startAudioTranscription`/`advanceTranscription` (`transcription-service.ts`, provider injected for testability) create the transcript child + edge, submit, and fill the diarized body on completion → enters the awaiting-minutes view. **Delivery = client-poll** (`TranscriptionPoller` → `GET /api/transcription/[id]/status`) **+ cron backstop** (`.github/workflows/transcription-poll.yml` → `/api/machine/transcription-poll`, every 15m). **Compression deferred** (knob behind the seam). `verify-transcription-flow.mts` 20/20 on Neon (fake provider).
+- [x] **V1b-3 — audio retention. ✅ DONE (ADR-089; CORE schema touch).** `attachments.purge_after` (migration 0024); a completed transcription stamps the audio `now()+30d` (`markAudioForPurge`); the daily purge runs `purgeExpiredAudio` (R2 bytes + row); `deleteAttachment` + `DELETE /api/attachments/[id]` = delete-now. `verify-audio-retention.mts` 10/10 on Neon (spy storage).
+
+**🎉 Meeting recording chunk complete (v1a paste + v1b audio).** In-app recording stays deferred. **Live audio→transcript eyeball is gated on a configured `ASSEMBLYAI_API_KEY` + a real recording (runbook §1i) — the pipeline is proven against a fake provider + fixtures + in-browser (panel renders, upload control correctly hidden without a key, `/health` shows `transcription: none`).**
+
+**Possible follow-ups (not built):** surface audio attachments + their retention status ("kept until <date> · delete now") in the panel; in-app recording (the deferred capture path); a client-side WASM Whisper adapter behind the seam (free/private); compress-on-ingest as a real seam knob if storage bites.
 
 ---
 

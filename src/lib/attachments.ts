@@ -10,9 +10,17 @@ import { ItemError } from "@/lib/items";
 import { getStorage } from "@/lib/storage";
 
 // PRD §3.4: per-user quota ~10GB. Per-file cap keeps one paste from eating
-// the quota; raise it when meeting audio (§4.15) actually needs more.
+// the quota. Audio/video (meeting recording v1b, ADR-088) gets a larger cap —
+// a multi-hour recording is hundreds of MB, and the audio-retention purge
+// (ADR-089) reclaims it after the transcript is produced, so it doesn't sit in
+// the quota forever. (R2 presigned single PUT supports up to 5GB.)
 const QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_AV_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+
+function maxFileBytesFor(contentType: string): number {
+  return /^(audio|video)\//i.test(contentType) ? MAX_AV_FILE_BYTES : MAX_FILE_BYTES;
+}
 
 export type AttachmentRequest = {
   itemId: string;
@@ -50,10 +58,11 @@ export async function createAttachment(
   if (!Number.isFinite(req.sizeBytes) || req.sizeBytes <= 0) {
     throw new ItemError("bad_request", "sizeBytes must be a positive number");
   }
-  if (req.sizeBytes > MAX_FILE_BYTES) {
+  const maxFileBytes = maxFileBytesFor(req.contentType);
+  if (req.sizeBytes > maxFileBytes) {
     throw new ItemError(
       "bad_request",
-      `file exceeds the ${MAX_FILE_BYTES / (1024 * 1024)}MB per-file limit`
+      `file exceeds the ${Math.round(maxFileBytes / (1024 * 1024))}MB per-file limit`
     );
   }
 
@@ -116,4 +125,70 @@ export async function listAttachments(ownerId: string, itemId: string) {
         eq(attachments.parentItemId, itemId)
       )
     );
+}
+
+// --- audio retention (meeting recording v1b, ADR-089) ----------------------
+// Audio is transient: once a transcript is produced from it, the audio has done
+// its job (the transcript is the artifact Ledgr keeps), so it's marked for
+// purge and the daily cron reclaims the bytes. Default 30-day window (Brandon's
+// call) — a buffer to catch a bad transcription before the source is gone.
+export const AUDIO_RETENTION_DAYS = 30;
+
+// Stamp an attachment for purge N days out (owner-scoped). Called when a
+// transcript completes from the audio (transcription-service). Idempotent.
+export async function markAudioForPurge(
+  ownerId: string,
+  attachmentId: string,
+  days = AUDIO_RETENTION_DAYS
+): Promise<void> {
+  await getDb()
+    .update(attachments)
+    .set({ purgeAfter: sql`now() + make_interval(days => ${days})` })
+    .where(and(eq(attachments.id, attachmentId), eq(attachments.ownerId, ownerId)));
+}
+
+// Delete one attachment now: R2 bytes then the row (delete-now / purge share
+// this). Owner-scoped. Storage injected for testability (default getStorage()).
+export async function deleteAttachment(
+  ownerId: string,
+  id: string,
+  storage = getStorage()
+): Promise<void> {
+  const rows = await getDb()
+    .select({ id: attachments.id, storageKey: attachments.storageKey })
+    .from(attachments)
+    .where(and(eq(attachments.id, id), eq(attachments.ownerId, ownerId)));
+  if (rows.length === 0) throw new ItemError("not_found", "attachment not found");
+  // Bytes first: if the object delete fails the row stays and we retry, so we
+  // never orphan R2 bytes behind a deleted row.
+  if (storage) await storage.deleteObject(rows[0].storageKey);
+  await getDb()
+    .delete(attachments)
+    .where(and(eq(attachments.id, id), eq(attachments.ownerId, ownerId)));
+}
+
+// Purge every attachment whose retention window has passed (the daily cron).
+// R2 bytes then the row, per-item, so one failed object can't strand the rest.
+// Skips when storage is unconfigured (then there are no R2 bytes to reclaim).
+export async function purgeExpiredAudio(
+  storage = getStorage()
+): Promise<{ purgedAudio: number; failed: number }> {
+  if (!storage) return { purgedAudio: 0, failed: 0 };
+  const db = getDb();
+  const due = await db
+    .select({ id: attachments.id, storageKey: attachments.storageKey })
+    .from(attachments)
+    .where(sql`${attachments.purgeAfter} is not null and ${attachments.purgeAfter} < now()`);
+  let purgedAudio = 0;
+  let failed = 0;
+  for (const a of due) {
+    try {
+      await storage.deleteObject(a.storageKey);
+      await db.delete(attachments).where(eq(attachments.id, a.id));
+      purgedAudio += 1;
+    } catch {
+      failed += 1; // retried next run; the row + bytes stay
+    }
+  }
+  return { purgedAudio, failed };
 }

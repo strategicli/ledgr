@@ -324,6 +324,12 @@ export const attachments = pgTable(
     // Attachment bytes are immutable once uploaded, so one stamp marks the
     // export copy done forever (slice 17).
     exportedAt: timestamp("exported_at", { withTimezone: true }),
+    // Audio-retention marker (meeting recording v1b, ADR-089): when set, the
+    // daily purge deletes this attachment (R2 bytes + row) once now() passes
+    // it. Stamped now()+30d when a transcript is produced from the audio — the
+    // audio has done its job, the transcript is what Ledgr keeps. Null = keep
+    // (the default for every non-audio attachment).
+    purgeAfter: timestamp("purge_after", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

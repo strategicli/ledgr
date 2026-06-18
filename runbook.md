@@ -39,6 +39,8 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `GITHUB_TOKEN` | PAT for the Changelog (reads commit history) + shared collab notes (commits a repo file). Without it the Changelog page shows "not connected". `repo` scope, or fine-grained Contents read+write | GitHub → Developer settings → PATs (§1g) |
 | `GITHUB_REPO` / `GITHUB_BRANCH` | `owner/repo` (default `brandonscollins/ledgr`) and the commit-history branch (default `main`) | fixed value, optional |
 | `GITHUB_NOTES_BRANCH` / `GITHUB_NOTES_PATH` | branch + path for the shared notes file. Branch defaults to `GITHUB_BRANCH`; set to e.g. `collab-notes` (auto-created) so a note Save doesn't trigger a rebuild. Path defaults to `COLLAB_NOTES.md` | fixed value, optional |
+| `ASSEMBLYAI_API_KEY` | Enables audio→transcription on meetings (meeting recording v1b, ADR-088/089). Without it, transcripts are paste-only and the audio-upload control is hidden; `/health` `checks.transcription` is `none`. With it set, `none`→`assemblyai` and audio upload appears (§1i) | AssemblyAI dashboard, optional |
+| `TRANSCRIPTION_ADAPTER` | Selects the transcription adapter (default `assemblyai`); set to `none` to disable even with a key | fixed value, optional |
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
 | `LEDGR_TIMEZONE` | IANA timezone that defines "today" (Today view, day-scoped queries); defaults to `America/New_York` when unset. The server runs in UTC, never assume its clock | env flag |
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
@@ -162,6 +164,16 @@ The Changelog page (in the kebab "More" menu) reads the repo's commit history li
 
 ---
 
+## 1i. Meeting transcription setup (one-time, OPTIONAL — meeting recording v1b, ADR-088/089)
+Pasting a transcript onto a meeting needs no setup (v1a). To also **upload audio and have Ledgr transcribe it** (v1b), set a transcription adapter:
+
+1. **Get a key:** AssemblyAI dashboard → API key. Set `ASSEMBLYAI_API_KEY` (Vercel env + `.env.local`). `/health` `checks.transcription` flips `none`→`assemblyai`, and the meeting's Transcript panel shows **↑ Upload audio to transcribe**.
+2. **How it flows:** upload audio → it lands in R2 (presigned, same as image paste; 2GB AV cap) → a `transcript` child is created and the audio URL is submitted to AssemblyAI → the panel polls `/api/transcription/[id]/status` live while you're on the page, and `.github/workflows/transcription-poll.yml` (every 15 min, `LEDGR_CRON_TOKEN`) finishes any you navigated away from → the transcript body fills with diarized text and enters the **"Transcripts awaiting minutes"** view (then run the minutes automation, `docs/meeting-minutes-automation.md`).
+3. **Retention:** once a transcript is produced, the audio is stamped `purge_after = now()+30d` and the daily purge (`/api/machine/purge`) reclaims the bytes — audio is transient, the transcript is what's kept. `DELETE /api/attachments/[id]` deletes audio now. **Compression is deferred** (AssemblyAI takes long files by URL; no ffmpeg on Vercel) — a knob behind the seam if storage ever bites.
+4. **Disable:** unset `ASSEMBLYAI_API_KEY` (or set `TRANSCRIPTION_ADAPTER=none`). The upload control disappears, paste still works, the poll cron no-ops (`{skipped:true}`).
+
+---
+
 ## 1h. Running Ledgr locally (the dev loop)
 The whole app runs on your own machine — Next.js + the codebase on disk, the DB on Neon (or local Postgres) via `DATABASE_URL`. This is the everyday build loop (watch Claude's edits live without waiting on a Vercel deploy) and is also the seed of the "the app and the data are user-owned, this can't be taken" posture (`explorations/local-first-split.md`). Vercel auto-deploys `main`; running locally just means you see changes before they ship.
 
@@ -182,6 +194,7 @@ The whole app runs on your own machine — Next.js + the codebase on disk, the D
 - **`lastEmailImportAt` / `lastEmailRunAt`** (slice 26) are the same pair for email-in. Both null = `Mail.ReadWrite` not granted / the `Ledgr Import` folder missing (§1c, the 403/404→503 path) or the poll never reaches the endpoint. `error_log` source `email-import`.
 - **`lastAgendaNotifyAt` / `lastPrepNotifyAt`** (slice 30) are the last clean morning-agenda send and meeting-prep-ready run. Both null = VAPID keys unset (§1e, the 503 path) or the crons never reach the endpoint (agenda needs `CRON_SECRET`, prep needs `LEDGR_CRON_TOKEN`). `error_log` sources `notify-agenda` / `notify-prep`.
 - **`checks.mcp`** (slice 36, ADR-047) is the MCP-server canary: `{configured:true, hasToken:true, ownerResolves:true}` once an `mcp`-scoped token exists and the owner UPN resolves to a `users` row (§1f). Both false until setup; like `checks.graph` it never changes overall `/health` status. `error_log` source `mcp`.
+- **`checks.transcription`** (ADR-088) reports the active transcription adapter: `none` (paste-only, the default) or `assemblyai` (audio upload → auto-transcribe enabled, §1i). Informational, like `checks.tasksAdapter`; never changes overall status.
 - **`checks.github`** (ADR-053) is the canary for the Changelog + collab notes: `{configured:false}` until `GITHUB_TOKEN` is set (§1g), `{configured:true, ok:true, repo}` when a repo read succeeds (token valid, repo reachable), `{configured:true, ok:false, detail}` when it fails (expired/revoked token or wrong repo). Like `checks.graph`/`checks.mcp` it never changes overall `/health` status.
 - **`checks.healthCheck`** (slice 37, ADR-052) is the weekly self-monitor's record: `{lastRunAt, lastSuccessAt, lastAlertAt, alerts[]}`. `alerts` holds the most recent run's findings (empty when green); `lastSuccessAt` advances only on a clean run, `lastAlertAt` only when something needed attention. The weekly job (`/api/machine/health-check`, §2a) reads the same canaries above, decides what genuinely needs attention (DB down → critical; captured errors over the last 7 days; a Graph-secret-expiry; a *stalled* — not merely unconfigured — cron), and pushes Brandon **only on failure** (PRD §6.2; delivery is Web Push, the channel Ledgr already has — `email-out` isn't built). Findings are recorded to `job_state`, never `error_log`, so the "captured errors" rule can't feed back on itself. `error_log` source `health-check` is only the route's own unexpected faults.
 - The export-timestamp check is the canary for a **silently stalled sync** (see §6, GitHub Actions auto-disable).

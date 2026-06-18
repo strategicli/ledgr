@@ -1,0 +1,48 @@
+# Transcription poll backstop (meeting recording v1b, ADR-088). Sub-daily, so
+# it comes from GitHub Actions hitting the authenticated endpoint — the same
+# scheduler door (§6.1) as calendar/email/notify sync, swappable for a local
+# cron in Phase 4. The Transcript panel polls live while you're on the page;
+# this catches jobs that finished after you navigated away.
+#
+# Every 15 min. When transcription isn't configured the endpoint returns
+# {skipped:true} (200), so this is a cheap no-op until ASSEMBLYAI_API_KEY is set.
+#
+# Auth: the same LEDGR_CRON_TOKEN repo secret (a cron-scoped machine token) as
+# the other sync crons.
+name: transcription-poll
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger transcription poll
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          HTTP=$(curl -sS -o response.json -w "%{http_code}" -X GET \
+            "$APP_URL/api/machine/transcription-poll" \
+            -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+          echo "HTTP $HTTP"; cat response.json; echo
+          [ "$HTTP" = "200" ] || { echo "::error::transcription-poll returned $HTTP"; exit 1; }
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"transcription-poll\",\"message\":\"transcription poll workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true

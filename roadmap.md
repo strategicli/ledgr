@@ -165,7 +165,12 @@ Brandon's toward-1.0 pass settled four things and lined up one build chunk. Deci
 - [x] V1a-2 — The Transcript panel on the meeting canvas: paste-to-create (writes the child + a confirmed `transcript`-role edge so it's MCP-discoverable), list with minutes badge + word count, opens the transcript for full editing. Classic + grid card. In-browser verified.
 - [x] V1a-3 — The Claude-over-MCP minutes automation: `docs/meeting-minutes-automation.md` (the prompt + manual/scheduled use + the meeting↔transcript traversal) surfaced on Build → AI & MCP; the **Principle-3 interpretation** ratified (ADR-087, the core element).
 
-**v1b — convenience transcription (next; sketch in `explorations/meeting-recording.md` + ADR-087):** the `transcription` provider seam + an AssemblyAI adapter (→ ADR-088, core); audio upload (allow `audio/*`/`video/*`, raise the cap) + auto-transcribe on upload; the `attachments.purge_after` retention column + a purge cron, 30-day default (→ ADR-089, core schema touch). Compress-on-ingest is a deferred seam knob (AssemblyAI takes long files by URL; Vercel has no ffmpeg) — confirm at build.
+**v1b — convenience transcription (✅ COMPLETE 2026-06-18, ADR-088/089):**
+- [x] V1b-1 — the `transcription` provider seam + AssemblyAI adapter (ADR-088, core): null-safe/env-selected, submit+poll, pure response mapping, no SDK; `/health` `checks.transcription`. `verify-transcription` ALL PASS.
+- [x] V1b-2 — audio upload (`audio/*`/`video/*`, 2GB cap) + auto-transcribe (ADR-089): `startAudioTranscription`/`advanceTranscription`, client-poll (`TranscriptionPoller`) + cron backstop (`transcription-poll.yml`); fills the diarized transcript → awaiting-minutes view. Compression deferred (a seam knob). `verify-transcription-flow` 20/20.
+- [x] V1b-3 — audio retention (ADR-089, core schema touch): `attachments.purge_after` (migration 0024), stamped now()+30d on transcript-produced, reclaimed by the daily purge; `DELETE /api/attachments/[id]` = delete-now. `verify-audio-retention` 10/10.
+
+In-app recording stays deferred. **Live audio→transcript eyeball gated on a configured `ASSEMBLYAI_API_KEY` (runbook §1i)** — pipeline proven against a fake provider + fixtures + in-browser (panel renders, upload hidden without a key, `/health` `transcription: none`).
 
 ---
 

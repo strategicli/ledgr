@@ -37,10 +37,17 @@ export const MINUTES_PROP = "minutes";
 export const MINUTES_STATES = ["none", "draft", "done"] as const;
 export type MinutesState = (typeof MINUTES_STATES)[number];
 
+// The audio-transcription sub-state (v1b) read off properties.transcription, so
+// the panel can show "Transcribing…"/"Failed" before minutes are even relevant.
+// Read inline (not imported from transcription-service, which imports this file)
+// to avoid a cycle.
+export type TranscriptionPhase = "queued" | "processing" | "completed" | "error";
+
 export type TranscriptSummary = {
   id: string;
   title: string;
   minutes: MinutesState;
+  transcription: { status: TranscriptionPhase; error: string | null } | null;
   wordCount: number;
   updatedAt: Date;
 };
@@ -50,6 +57,17 @@ function minutesOf(properties: unknown): MinutesState {
   return (MINUTES_STATES as readonly string[]).includes(v as string)
     ? (v as MinutesState)
     : "none";
+}
+
+function transcriptionOf(
+  properties: unknown
+): { status: TranscriptionPhase; error: string | null } | null {
+  const t = (properties as Record<string, unknown> | null)?.transcription as
+    | Record<string, unknown>
+    | undefined;
+  const s = t?.status;
+  if (s !== "queued" && s !== "processing" && s !== "completed" && s !== "error") return null;
+  return { status: s, error: typeof t?.error === "string" ? t.error : null };
 }
 
 // The meeting's transcripts, newest-edited first. Body-free (the word count is
@@ -82,6 +100,7 @@ export async function listMeetingTranscripts(
     id: r.id,
     title: r.title,
     minutes: minutesOf(r.properties),
+    transcription: transcriptionOf(r.properties),
     wordCount: Number(r.wordCount ?? 0),
     updatedAt: r.updatedAt,
   }));
