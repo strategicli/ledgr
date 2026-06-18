@@ -58,6 +58,11 @@ function TaskRow({
   // red when it's in the past (a missed deadline, or a planned day gone by).
   const date = dateField === "scheduledDate" ? task.scheduledDate : task.dueDate;
   const overdue = !done && date != null && date < dueToday;
+  // "Planned" (S6, ADR-086): in the due dimension, a task with a plan date but no
+  // deadline is planned work, not deadline-driven — mark it so the empty due
+  // column doesn't read as "no date at all" (mirrors the Today marker, ADR-077).
+  const planned =
+    !done && dateField === "dueDate" && !task.dueDate && task.scheduledDate != null;
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
       <SubtaskCheckbox id={task.id} done={done} />
@@ -84,6 +89,14 @@ function TaskRow({
       {(task.urgency === "high" || task.urgency === "critical") && (
         <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
           {task.urgency}
+        </span>
+      )}
+      {planned && (
+        <span
+          className="shrink-0 text-xs text-neutral-600"
+          title={`Planned for ${dueFmt.format(task.scheduledDate as Date)} (no deadline)`}
+        >
+          planned {dueFmt.format(task.scheduledDate as Date)}
         </span>
       )}
       <span

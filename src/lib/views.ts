@@ -44,6 +44,11 @@ export type ViewFilter = {
   // array via top-level jsonb containment, so the items_properties_gin index
   // serves it; value null means "not set".
   propertyFilters?: { key: string; value: string | null }[];
+  // Today's focus only (S6, ADR-086): items day-stamped into today's focus
+  // (properties.focus.date == today). "Today" resolves at query time (the marker
+  // auto-clears overnight, ADR-078), so it can't be a stored date; the predicate
+  // is an index-backed `properties @>` containment. Powers the Top-3 widget.
+  focusedToday?: boolean;
 };
 
 export const SORT_FIELDS = [
@@ -147,6 +152,15 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
         })}::jsonb)`
       );
     }
+  }
+
+  // Focused-today (S6): day-stamped into today's focus. Today is resolved here,
+  // not stored, so the marker's overnight auto-clear (ADR-078) holds; the
+  // containment ignores the optional `order` and rides items_properties_gin.
+  if (filter.focusedToday) {
+    const t = todayBounds().today;
+    const ymd = `${t.y}-${String(t.m).padStart(2, "0")}-${String(t.d).padStart(2, "0")}`;
+    where.push(sql`${items.properties} @> ${JSON.stringify({ focus: { date: ymd } })}::jsonb`);
   }
   return where;
 }
@@ -337,6 +351,7 @@ export function parseViewFilter(raw: unknown): ViewFilter {
     }
     if (pfs.length) out.propertyFilters = pfs;
   }
+  if (r.focusedToday === true) out.focusedToday = true;
   return out;
 }
 

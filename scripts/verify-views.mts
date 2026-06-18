@@ -353,6 +353,23 @@ try {
   }).toSQL();
   check("property filter targets properties column", propSql.sql.includes("properties"));
 
+  // --- focusedToday (S6, ADR-086): items day-stamped into today's focus ---
+  const { appTodayYmd } = await import("../src/lib/recurrence-service");
+  const { addDaysYmd } = await import("../src/lib/recurrence");
+  const todayY = appTodayYmd();
+  const fToday = await mkProp("focus today", { focus: { date: todayY, order: 1 } });
+  const fYesterday = await mkProp("focus yesterday", { focus: { date: addDaysYmd(todayY, -1) } });
+  const focused = await queryViewItems(ownerId, { type: "task", focusedToday: true });
+  check(
+    "focusedToday returns today's focus, excludes other days",
+    has(focused, fToday) && !has(focused, fYesterday)
+  );
+  check(
+    "focusedToday parses",
+    parseViewInput({ name: "x", layout: "list", filter: { focusedToday: true } }).filter
+      .focusedToday === true
+  );
+
   // --- the view query stays body-free + owner-scoped ---
   void queryViewItems;
   const sql = viewItemsQuery(ownerId, { type: "task" }, { field: "updatedAt", dir: "desc" }).toSQL();

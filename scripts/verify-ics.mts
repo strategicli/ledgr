@@ -44,6 +44,22 @@ console.log("\n# Pure: ICS builder");
   check("recurring emits RRULE", ics.includes("RRULE:FREQ=WEEKLY;BYDAY=MO"));
 }
 {
+  // EXDATE drops completed/skipped occurrences (S6, ADR-086).
+  const ics = buildTaskCalendar(
+    [{ id: "66666666-6666-6666-6666-666666666666", title: "Standup", date: "2026-06-15", rrule: "FREQ=WEEKLY;BYDAY=MO", exdates: ["2026-06-15", "2026-06-22"] }],
+    { dtstamp: STAMP }
+  );
+  check("EXDATE excludes completed/skipped occurrences", ics.includes("EXDATE;VALUE=DATE:20260615,20260622"));
+}
+{
+  // EXDATE is meaningless without an RRULE → not emitted.
+  const ics = buildTaskCalendar(
+    [{ id: "77777777-7777-7777-7777-777777777777", title: "One-off", date: "2026-06-15", exdates: ["2026-06-15"] }],
+    { dtstamp: STAMP }
+  );
+  check("no EXDATE without an RRULE", !ics.includes("EXDATE"));
+}
+{
   const ics = buildTaskCalendar(
     [{ id: "33333333-3333-3333-3333-333333333333", title: "Pay invoice", date: "2026-06-17", reminderMinutes: 60 }],
     { dtstamp: STAMP }
@@ -96,7 +112,8 @@ try {
 
   const sched = await createItem(owner.id, { type: "task", title: "scheduled task", scheduledDate: ymdToUtc("2026-06-20") });
   const dueOnly = await createItem(owner.id, { type: "task", title: "due only", dueDate: ymdToUtc("2026-06-22") });
-  const recurring = await createItem(owner.id, { type: "task", title: "recurring", scheduledDate: ymdToUtc("2026-06-15"), properties: { recurrence: makeRecurrence({ freq: "weekly", byDay: ["MO"], dtstart: "2026-06-15" }) } });
+  const recRule = makeRecurrence({ freq: "weekly", byDay: ["MO"], dtstart: "2026-06-15" });
+  const recurring = await createItem(owner.id, { type: "task", title: "recurring", scheduledDate: ymdToUtc("2026-06-15"), properties: { recurrence: { ...recRule, completeInstances: ["2026-06-15"], skippedInstances: ["2026-06-22"] } } });
   await createItem(owner.id, { type: "task", title: "done", status: "done", scheduledDate: ymdToUtc("2026-06-20") });
   await createItem(owner.id, { type: "task", title: "no date" });
   await createItem(owner.id, { type: "note", title: "a note", dueDate: ymdToUtc("2026-06-20") });
@@ -112,6 +129,7 @@ try {
   const rec = tasks.find((t) => t.id === recurring.id)!;
   check("recurring carries the RRULE", rec.rrule === "FREQ=WEEKLY;BYDAY=MO");
   check("recurring anchors at dtstart", rec.date === "2026-06-15");
+  check("recurring exdates = completed ∪ skipped, sorted", JSON.stringify(rec.exdates) === JSON.stringify(["2026-06-15", "2026-06-22"]));
   check("due-only event date is the due day", tasks.find((t) => t.id === dueOnly.id)?.date === "2026-06-22");
   check("event url links back to the item", rec.url === `https://ledgr.test/items/${recurring.id}`);
 

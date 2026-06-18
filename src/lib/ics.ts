@@ -24,6 +24,10 @@ export type IcsTask = {
   // Reminder lead time in minutes before the event; when set, replaces the
   // default morning alarm. 0 = at the event start (midnight of the day).
   reminderMinutes?: number | null;
+  // Excluded occurrence dates (YYYY-MM-DD) for a recurring task — its completed
+  // and skipped/carved instances (S6, ADR-086). Emitted as RFC-5545 EXDATE so a
+  // subscribing calendar drops those days (no stale reminder for work done).
+  exdates?: string[];
 };
 
 // RFC-5545 TEXT escaping: backslash, semicolon, comma, and newlines.
@@ -92,6 +96,11 @@ function vevent(task: IcsTask, dtstamp: string): string[] {
     `SUMMARY:${escapeText(task.title || "Untitled task")}`,
   ];
   if (task.rrule) lines.push(`RRULE:${task.rrule}`);
+  // EXDATE only with an RRULE: drop completed/skipped occurrences from the
+  // expansion (one comma-joined all-day DATE list, RFC 5545).
+  if (task.rrule && task.exdates && task.exdates.length) {
+    lines.push(`EXDATE;VALUE=DATE:${task.exdates.map(ymdCompact).join(",")}`);
+  }
   if (task.url) lines.push(`URL:${escapeText(task.url)}`);
   lines.push(...alarm(task));
   lines.push("END:VEVENT");

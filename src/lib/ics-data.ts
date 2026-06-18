@@ -71,11 +71,17 @@ export async function listIcsTasks(ownerId: string, origin: string): Promise<Ics
           ? dateToYmdUtc(row.dueDate)
           : null;
     if (!date) continue;
+    // Drop completed + skipped/carved occurrences from a recurring feed (S6):
+    // the calendar shouldn't keep reminding for a day already done or carved out.
+    const exdates = rule
+      ? [...new Set([...rule.completeInstances, ...rule.skippedInstances])].sort()
+      : undefined;
     out.push({
       id: row.id,
       title: row.title,
       date,
       rrule: rule?.rrule ?? null,
+      exdates,
       url: `${origin}/items/${row.id}`,
       reminderMinutes: reminderMinutesOf(row.properties),
     });
