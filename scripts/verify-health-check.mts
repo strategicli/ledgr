@@ -53,6 +53,7 @@ function baseReport(): HealthReport {
       lastCalendarSyncAt: iso(3),
       lastCalendarRunAt: iso(3),
       tasksAdapter: "native",
+      transcription: "none",
       lastTodoistSyncAt: iso(2),
       lastTodoistRunAt: iso(2),
       lastEmailImportAt: iso(1),
