@@ -197,9 +197,9 @@ Action items checked or written during the meeting can be promoted to task items
 
 - Installable on iOS/Android, responsive layouts for all core screens
 - Web push notifications for: morning agenda summary, meeting-prep-ready notices
-- Task *reminders* remain Todoist's job (it is better at them than any PWA will be)
+- ~~Task *reminders* remain Todoist's job~~ **Reversed (ADR-073/079):** tasks are native; reminders come from a Ledgr-published **ICS subscription feed** (any calendar app fires them) plus the web push above. Todoist is now an optional adapter behind the `tasks` seam.
 - Offline: read-only cache of recently viewed items (best effort, not a sync engine)
-- Offline *capture* is explicitly Todoist's job (inbox pull-in, §5.2); the PWA does not promise offline writes
+- ~~Offline *capture* is explicitly Todoist's job~~ **Reversed (ADR-073/080):** offline capture is a native client outbox that syncs on reconnect (the PWA share-target + the Today/capture queue).
 
 ### 4.6 Revision history and soft deletes (v1)
 
@@ -366,6 +366,8 @@ Promoting a single match into a standing rule is always an explicit confirm, so 
 **Suggested vs confirmed matches.** Matches carry state so trust is visible (the `match_state` column on `relations`, §3.3). Manual and wizard-confirmed links are `confirmed` and render solid. Attendee-email and fuzzy-title matches land as `suggested` and render provisionally (dotted or grayed) with one-click confirm or reject. Nothing `suggested` enters the trusted, queried-against set until Brandon confirms it, and a confirmation is also the signal that can be promoted into a standing matcher rule.
 
 ### 5.2 Todoist — Phase 2
+
+> **⚠️ Reversed by ADR-073/081 (2026-06-17): tasks go fully native.** Ledgr owns tasks end to end — native recurrence (ADR-076), scheduling/reschedule + overdue auto-roll (ADR-077), a Top-3 focus layer (ADR-078), reminders via a published ICS feed + web push (ADR-079), and offline capture via a client outbox (ADR-080). **Todoist is now an OPTIONAL adapter behind the `tasks` provider seam** (`TASKS_ADAPTER=todoist`), not the engine; Brandon's instance runs native (sync off), Tyler can keep Todoist. The rules below describe that optional adapter; specifically **"recurrence delegated to Todoist" and "Todoist is the notification engine" no longer hold for the native default.** The §5.2 sync code is unchanged and still correct when the Todoist adapter is selected.
 
 - **Push rule:** any task item with a due date is pushed to Todoist automatically (content, due date, priority mapping, link back to the Ledgr item in the description). Undated tasks stay app-only.
 - Completions sync back (webhook preferred; polling fallback) and mark the item `done`

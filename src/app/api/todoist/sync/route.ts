@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
+import { isTodoistAdapterActive } from "@/lib/tasks/provider";
 import { getTodoistClient } from "@/lib/todoist/client";
 import { runTodoistSync } from "@/lib/todoist/sync";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
@@ -14,6 +15,11 @@ export async function POST() {
   if (owner instanceof NextResponse) return owner;
 
   const log = createLogger("todoist-sync-now");
+  // Native is the default tasks adapter (ADR-073/081); skip cleanly when Todoist
+  // isn't the active adapter.
+  if (!isTodoistAdapterActive()) {
+    return NextResponse.json({ ok: true, skipped: true, adapter: "native" });
+  }
   const client = getTodoistClient();
   if (!client) {
     log.warn("Todoist not configured (TODOIST_TOKEN unset)");
