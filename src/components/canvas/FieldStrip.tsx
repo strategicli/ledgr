@@ -12,6 +12,7 @@ import { beginSave, endSave } from "@/lib/save-status";
 export type StripValues = {
   status: string;
   dueDate: string | null; // ISO strings; Dates don't round-trip user edits
+  scheduledDate: string | null;
   urgency: string | null;
   meetingAt: string | null;
   url: string | null;
@@ -93,6 +94,19 @@ export default function FieldStrip({
             }
           />
         );
+      case "scheduledDate":
+        return (
+          <input
+            type="date"
+            className={inputClass}
+            // Scheduled is a calendar day like due (UTC midnight); slice, don't
+            // local-format, so the picked day stays put (native tasks, ADR-076).
+            value={values.scheduledDate ? values.scheduledDate.slice(0, 10) : ""}
+            onChange={(e) =>
+              void save({ scheduledDate: e.target.value || null })
+            }
+          />
+        );
       case "urgency":
         return (
           <select
@@ -148,6 +162,7 @@ export default function FieldStrip({
   const labels: Record<CanvasField, string> = {
     status: "Status",
     dueDate: "Due",
+    scheduledDate: "Scheduled",
     urgency: "Urgency",
     meetingAt: "When",
     url: "URL",

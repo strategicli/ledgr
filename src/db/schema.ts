@@ -186,6 +186,14 @@ export const items = pgTable(
     bodyText: text("body_text"),
     status: itemStatus("status").notNull().default("open"),
     dueDate: timestamp("due_date", { withTimezone: true }),
+    // The concrete date the task is planned for (native tasks, ADR-073/076),
+    // distinct from due_date (the deadline). A real column, not a property,
+    // because it is hot: Today, the focus layer, the ICS feed, and the overdue
+    // auto-roll all query it (schema rule "hot fields are columns"). Stored as a
+    // UTC-midnight calendar day like due_date (ADR-008). For a recurring task it
+    // auto-advances on completion to the next uncompleted occurrence; the rule +
+    // completion log live in properties.recurrence (src/lib/recurrence.ts).
+    scheduledDate: timestamp("scheduled_date", { withTimezone: true }),
     urgency: urgency("urgency"),
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
     url: text("url"),
@@ -227,6 +235,7 @@ export const items = pgTable(
     index("items_type_idx").on(t.type),
     index("items_status_idx").on(t.status),
     index("items_due_date_idx").on(t.dueDate),
+    index("items_scheduled_date_idx").on(t.scheduledDate),
     index("items_parent_idx").on(t.parentId),
     // Partial: the badge count and Inbox view only ever read live inbox
     // rows, and those should stay few by design.

@@ -70,6 +70,7 @@ type CardKind =
   | "meta"
   | "subtasks"
   | "meetingPrep"
+  | "recurrence"
   | "system"
   | "prop"
   | "relation";
@@ -87,6 +88,7 @@ function kindOf(id: CardId): CardKind {
     case "meta":
     case "subtasks":
     case "meetingPrep":
+    case "recurrence":
       return id;
     default:
       // Unknown id (a hand-edited row): treat as a small fixed field card. In
@@ -107,6 +109,7 @@ const SPECS: Record<CardKind, CardSpec> = {
   body: { mode: "flow", flowable: true, w: 12, h: 8 },
   subtasks: { mode: "flow", flowable: true, w: 12, h: 6 },
   meetingPrep: { mode: "flow", flowable: true, w: 12, h: 6 },
+  recurrence: { mode: "flow", flowable: true, w: 12, h: 2 },
   related: { mode: "flow", flowable: true, w: 12, h: 6 },
   relation: { mode: "flow", flowable: true, w: 6, h: 4 },
   saveOffline: { mode: "flow", flowable: true, w: 12, h: 2 },
@@ -139,7 +142,7 @@ export function cardVocabulary(
   const ids: CardId[] = ["title"];
   for (const f of topStripFields(type)) ids.push(`sys:${f}`);
   ids.push("body");
-  if (type === "task") ids.push("subtasks");
+  if (type === "task") ids.push("recurrence", "subtasks");
   if (type === "meeting") ids.push("meetingPrep");
   for (const p of propertySchema) {
     if (p.kind !== "relation") ids.push(`prop:${p.key}`);
@@ -160,8 +163,10 @@ const STATIC_LABELS: Record<string, string> = {
   meta: "Details",
   subtasks: "Subtasks",
   meetingPrep: "Meeting Prep",
+  recurrence: "Repeat",
   "sys:status": "Status",
   "sys:dueDate": "Due",
+  "sys:scheduledDate": "Scheduled",
   "sys:urgency": "Urgency",
   "sys:meetingAt": "When",
   "sys:url": "URL",

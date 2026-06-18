@@ -98,6 +98,9 @@ export function parseItemPayload(
   if (input.dueDate !== undefined) {
     out.dueDate = asNullableDate(input.dueDate, "dueDate");
   }
+  if (input.scheduledDate !== undefined) {
+    out.scheduledDate = asNullableDate(input.scheduledDate, "scheduledDate");
+  }
   if (input.meetingAt !== undefined) {
     out.meetingAt = asNullableDate(input.meetingAt, "meetingAt");
   }

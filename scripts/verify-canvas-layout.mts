@@ -34,14 +34,16 @@ function readingOrder(layout: CanvasLayout, bp: "lg" | "md" | "sm" = "lg"): stri
 const taskProps: PropertyDef[] = [];
 const taskVocab = cardVocabulary("task", taskProps);
 check(
-  "task vocabulary is title → system strip → body → subtasks → related → save → share → meta",
+  "task vocabulary is title → system strip → body → recurrence → subtasks → related → save → share → meta",
   JSON.stringify(taskVocab) ===
     JSON.stringify([
       "title",
       "sys:status",
+      "sys:scheduledDate",
       "sys:dueDate",
       "sys:urgency",
       "body",
+      "recurrence",
       "subtasks",
       "related",
       "saveOffline",
