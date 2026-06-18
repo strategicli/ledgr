@@ -20,9 +20,13 @@ import { cloneItemSubtree } from "@/lib/clone";
 import { getItem, ItemError } from "@/lib/items";
 import {
   addDaysYmd,
+  addSkippedInstance,
   completeOccurrence,
   dateToYmdUtc,
+  isOccurrence,
+  nextUncompletedOnOrAfter,
   parseRecurrence,
+  toggleCompleteInstance,
   ymdToUtcDate,
   type RecurrenceRule,
 } from "@/lib/recurrence";
@@ -233,4 +237,112 @@ export async function completeMaterializedOccurrence(
   if (result.next && (await liveOccurrenceCount(ownerId, seriesId)) === 0) {
     await materializeOccurrence(ownerId, series, result.next, result.rule);
   }
+}
+
+// ---------------------------------------------------------------------------
+// The completions calendar (S3, ADR-083). The month-grid lets the user tick or
+// untick ARBITRARY occurrence dates in any order — a direct edit of the per-date
+// log (recurrence.ts pure helpers), distinct from the checkbox "I did the current
+// occurrence" gesture. After any log edit, `scheduled_date` is recomputed to the
+// next uncompleted occurrence on/after TODAY (forward-looking — missed past dates
+// stay absent from the log, never resurrected as scheduled, ADR-076 §1/§8), and
+// the status follows (done when nothing remains forward, else not-started).
+//
+// Calendar editing is a VIRTUAL-series concept: a materialized series' occurrences
+// are their own items with their own checkboxes, so editing the series log there
+// would desync. The caller (canvas) only shows the calendar for virtual series;
+// these functions guard it too.
+
+// Write a series row's recurrence log + recomputed scheduled/status. Shared by the
+// toggle and carve paths. maintainDueOffset is intentionally NOT applied here — it
+// shifts the deadline by a completion *advance* delta (advanceSeriesRow), whereas a
+// calendar edit is a direct log change with no single "advance" to measure from.
+async function writeSeriesLogState(
+  ownerId: string,
+  series: ItemRow,
+  rule: RecurrenceRule,
+  now: Date
+): Promise<ItemRow> {
+  const today = appTodayYmd(now);
+  const next = nextUncompletedOnOrAfter(rule, today);
+  const props = {
+    ...((series.properties as Record<string, unknown> | null) ?? {}),
+    recurrence: rule,
+  };
+  const schema = await statusSchemaForType(series.type);
+  const status = next
+    ? defaultStatusKey(schema, "not_started") ?? "open"
+    : defaultStatusKey(schema, "done") ?? "done";
+  const [updated] = await getDb()
+    .update(items)
+    .set({
+      properties: props,
+      scheduledDate: next ? ymdToUtcDate(next) : null,
+      status,
+      statusCategory: next ? "not_started" : "done",
+      updatedAt: new Date(),
+    })
+    .where(and(eq(items.id, series.id), eq(items.ownerId, ownerId)))
+    .returning();
+  return updated as ItemRow;
+}
+
+// Toggle a single occurrence date's completion from the calendar. Returns the
+// advanced series row.
+export async function toggleOccurrenceCompletion(
+  ownerId: string,
+  seriesId: string,
+  date: string,
+  now = new Date()
+): Promise<ItemRow> {
+  const series = await getItem(ownerId, seriesId);
+  const rule = recurrenceOf(series);
+  if (!rule) throw new ItemError("bad_request", "item is not recurring");
+  if (rule.occurrenceMode !== "virtual") {
+    throw new ItemError("bad_request", "calendar applies to virtual recurrence only");
+  }
+  if (!isOccurrence(rule, date)) {
+    throw new ItemError("bad_request", "not an occurrence date");
+  }
+  return writeSeriesLogState(ownerId, series, toggleCompleteInstance(rule, date), now);
+}
+
+// Carve one occurrence out of the series into a fresh DETACHED one-off item (the
+// inverted occurrence edit, ADR-083). The clone is the pristine series prototype —
+// fresh unchecked subtasks, fresh body, carried relations, NO recurrence, and NOT
+// linked by the `occurrence` role (so the materialized machinery never fires on
+// it). The series SKIPS the date and advances past it. Editing the clone never
+// touches the series. Returns the new item id + the advanced series row.
+export async function carveOccurrence(
+  ownerId: string,
+  seriesId: string,
+  date: string,
+  now = new Date()
+): Promise<{ itemId: string; series: ItemRow }> {
+  const series = await getItem(ownerId, seriesId);
+  const rule = recurrenceOf(series);
+  if (!rule) throw new ItemError("bad_request", "item is not recurring");
+  if (rule.occurrenceMode !== "virtual") {
+    throw new ItemError("bad_request", "calendar applies to virtual recurrence only");
+  }
+  if (!isOccurrence(rule, date)) {
+    throw new ItemError("bad_request", "not an occurrence date");
+  }
+  const { rootId } = await cloneItemSubtree(
+    ownerId,
+    seriesId,
+    {
+      scheduledDate: ymdToUtcDate(date),
+      dueDate: series.dueDate,
+      inbox: false,
+    },
+    { stripPropertyKeys: ["recurrence", "occurrence"] }
+  );
+  const updated = await writeSeriesLogState(
+    ownerId,
+    series,
+    addSkippedInstance(rule, date),
+    now
+  );
+  return { itemId: rootId, series: updated };
 }
