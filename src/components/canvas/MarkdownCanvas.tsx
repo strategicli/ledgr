@@ -24,6 +24,9 @@ import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
+import ReminderControl from "@/components/canvas/ReminderControl";
+import FocusStar from "@/components/today/FocusStar";
+import { isFocusedOn } from "@/lib/focus";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
@@ -81,6 +84,25 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
     recurrenceRule && recurrenceRule.occurrenceMode === "virtual" ? (
       <RecurrenceCalendar itemId={item.id} initial={recurrenceRule} today={today} />
     ) : null;
+  // Task canvas extras (S6, ADR-086): a focus-today star + the per-task reminder
+  // lead-time picker (the ICS feed honors it). Classic-path only — the default
+  // canvas; a custom grid layout can add these later.
+  const reminderObj = (item.properties as Record<string, unknown> | null)?.reminder as
+    | Record<string, unknown>
+    | undefined;
+  const reminderMinutes =
+    typeof reminderObj?.minutesBefore === "number" ? reminderObj.minutesBefore : null;
+  const taskExtrasNode = (
+    <section className="mx-auto w-full max-w-3xl px-12 pb-1 pt-1">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <span className="flex items-center gap-1.5 text-xs text-neutral-500">
+          <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
+          Focus today
+        </span>
+        <ReminderControl itemId={item.id} initialMinutes={reminderMinutes} />
+      </div>
+    </section>
+  );
 
   // Dispatch: render the grid when arranging OR when this type has a saved layout
   // (field-level placement can't be a vertical stack). Otherwise the classic
@@ -228,6 +250,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Completions calendar (S3, ADR-083): tick occurrence dates in any order;
           ✎ a date to carve it into a detached one-off. Recurring virtual only. */}
       {item.type === "task" && recurrenceCalendarNode}
+      {/* Focus star + reminder lead-time (S6, ADR-086). */}
+      {item.type === "task" && taskExtrasNode}
       {/* Subtasks are a task feature (ADR-018); a future project treatment
           may widen this, but meetings and notes don't grow checklists. */}
       {item.type === "task" && (

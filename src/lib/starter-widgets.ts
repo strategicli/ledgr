@@ -29,6 +29,16 @@ const list = (
 
 export const STARTER_WIDGETS: StarterWidget[] = [
   {
+    id: "todays-focus",
+    label: "Today's Focus",
+    description: "The vital few you starred for today (Top 3)",
+    view: list(
+      "Today's Focus",
+      { type: "task", statusCategory: "active", focusedToday: true },
+      { field: "scheduledDate", dir: "asc" }
+    ),
+  },
+  {
     id: "tasks-due-today",
     label: "Tasks Due Today",
     description: "Open tasks due today",
