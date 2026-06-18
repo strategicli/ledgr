@@ -142,7 +142,7 @@ Brandon's toward-1.0 pass settled four things and lined up one build chunk. Deci
 
 **🥇 Native Tasks chunk (ADR-073) — THE #1 priority toward 1.0** (get tasks good enough to fully replace Todoist; detail in `next_steps.md` "NEXT UP"; pairs with `explorations/calendar-time-blocking.md`):
 - [x] T1 — Native recurrence engine (rule on task; complete → advance next; deterministic; no stacking). **DONE 2026-06-17, ADR-076.** Model (C) per-date completion log; first-class `scheduled_date` column (migration 0021); hand-rolled RRULE subset (no dep, Principle 5); virtual/materialized occurrence modes via the shared `cloneItemSubtree` primitive; fixed vs after-completion anchor; recurrence-aware completion in `updateItem`; `RecurrenceControl` + scheduled field on the task canvas. `verify-recurrence.mts` 60+ checks PASS. Un-defers ADR-026.
-- [ ] T2 — Scheduling + rescheduling (reschedule controls, defer/start date, overdue auto-roll, NL date entry).
+- [x] T2 — Scheduling + rescheduling. **DONE 2026-06-17, ADR-077.** Reschedule shortcuts + a hand-rolled NL date parser (`nl-date.ts`, no dep) on the scheduled field + capture; a deterministic overdue auto-roll (`scheduling.ts`, rolls effective-overdue non-recurring tasks to scheduled=today) as a Today button + `/api/tasks/roll-overdue` (+ optional machine cron); defer/start = future scheduled hidden from Today. `verify-scheduling.mts` PASS.
 - [ ] T3 — Daily focus layer ("Top 3" / in-focus), surfaced on Today + as a view/widget.
 - [ ] T4 — Reminders without Todoist (a published `webcal://` ICS feed + the existing ADR-034 web push).
 - [ ] T5 — Offline/quick capture without Todoist (PWA share-target + offline outbox).

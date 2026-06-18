@@ -107,7 +107,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         );
       if (id.startsWith("sys:")) {
         const f = id.slice(4) as CanvasField;
-        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} />;
+        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} today={today} />;
       }
       if (id === "recurrence") return item.type === "task" ? recurrenceNode : null;
       if (id === "subtasks") return <Subtasks ownerId={ownerId} itemId={item.id} />;
@@ -201,7 +201,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         item={{ id: item.id, title: item.title, body: item.body }}
         fields={
           fields.length > 0 ? (
-            <FieldStrip itemId={item.id} fields={fields} initial={strip} />
+            <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} />
           ) : null
         }
       />
