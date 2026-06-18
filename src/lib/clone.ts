@@ -14,6 +14,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { MENTION_ROLE } from "@/lib/mentions";
+import { dateToYmdUtc, ymdToUtcDate } from "@/lib/recurrence";
+import { applyOffset, relativeOffsetOf } from "@/lib/relative-subtask";
 import {
   createItem,
   getItem,
@@ -115,10 +117,25 @@ async function cloneNode(
   parentId: string | null,
   reset: CloneResetRules,
   overrides: CloneOverrides | null,
-  depth: number
+  depth: number,
+  parentScheduledYmd: string | null
 ): Promise<{ rootId: string; count: number }> {
   if (depth > 50) throw new ItemError("bad_request", "clone subtree too deep");
   const src = await getItem(ownerId, sourceId);
+
+  // Scheduled date: the root takes the explicit override (the occurrence date);
+  // a RELATIVE descendant (S5, ADR-085) derives its date from its parent clone's
+  // scheduled day + the carried offset (so a materialized occurrence's subtasks
+  // land N days out); any other descendant resets to no date (the old behavior).
+  const offset = relativeOffsetOf((src.properties as Record<string, unknown> | null) ?? null);
+  let scheduledDate: Date | null;
+  if (overrides) {
+    scheduledDate = overrides.scheduledDate ?? null;
+  } else if (offset !== null && parentScheduledYmd) {
+    scheduledDate = ymdToUtcDate(applyOffset(parentScheduledYmd, offset));
+  } else {
+    scheduledDate = null;
+  }
 
   const created = await createItem(ownerId, {
     type: src.type,
@@ -127,7 +144,7 @@ async function cloneNode(
     // Omitted status → createItem picks the type's not-started default (S2).
     status: reset.status,
     dueDate: overrides ? overrides.dueDate ?? null : null,
-    scheduledDate: overrides ? overrides.scheduledDate ?? null : null,
+    scheduledDate,
     urgency: src.urgency ?? null,
     url: src.url ?? null,
     parentId,
@@ -144,11 +161,12 @@ async function cloneNode(
   }
 
   let count = 1;
+  const createdYmd = scheduledDate ? dateToYmdUtc(scheduledDate) : null;
   const children = await liveChildren(ownerId, sourceId);
   for (const child of children) {
-    // Descendants get no overrides (they inherit the reset defaults); their own
-    // due/scheduled dates are occurrence-relative and reset to none.
-    const res = await cloneNode(ownerId, child.id, created.id, reset, null, depth + 1);
+    // Descendants get no overrides (they inherit the reset defaults); a relative
+    // child derives its date from this clone's scheduled day (threaded down).
+    const res = await cloneNode(ownerId, child.id, created.id, reset, null, depth + 1, createdYmd);
     count += res.count;
   }
   return { rootId: created.id, count };
@@ -160,5 +178,5 @@ export async function cloneItemSubtree(
   overrides: CloneOverrides = {},
   reset: CloneResetRules = {}
 ): Promise<{ rootId: string; count: number }> {
-  return cloneNode(ownerId, sourceId, overrides.parentId ?? null, reset, overrides, 0);
+  return cloneNode(ownerId, sourceId, overrides.parentId ?? null, reset, overrides, 0, null);
 }
