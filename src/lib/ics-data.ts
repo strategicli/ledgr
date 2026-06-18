@@ -1,7 +1,8 @@
 // Server side of the ICS task feed (T4, ADR-079): resolve the owner from the
 // feed token and assemble the body-free task list the pure builder (ics.ts)
 // turns into a VCALENDAR. Owner-scoped; reads no body.
-import { and, eq, isNull, or, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, isNotNull, sql } from "drizzle-orm";
+import { ACTIVE_CATEGORIES } from "@/lib/status";
 import { getDb } from "@/db";
 import { items, users } from "@/db/schema";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
@@ -44,7 +45,7 @@ export async function listIcsTasks(ownerId: string, origin: string): Promise<Ics
       and(
         eq(items.ownerId, ownerId),
         eq(items.type, "task"),
-        eq(items.status, "open"),
+        inArray(items.statusCategory, ACTIVE_CATEGORIES),
         isNull(items.deletedAt),
         or(
           isNotNull(items.scheduledDate),

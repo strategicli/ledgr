@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { CanvasField } from "@/lib/canvas-fields";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
+import type { StatusDef } from "@/lib/status";
 import { beginSave, endSave } from "@/lib/save-status";
 import { addDaysYmd } from "@/lib/recurrence";
 import { parseNaturalDate } from "@/lib/nl-date";
@@ -47,6 +48,7 @@ export default function FieldStrip({
   fields,
   initial,
   today,
+  statuses,
 }: {
   itemId: string;
   fields: CanvasField[];
@@ -55,6 +57,10 @@ export default function FieldStrip({
   // language date entry on the scheduled field (native tasks, T2). Absent → the
   // scheduled field is a plain date picker.
   today?: string;
+  // The item type's resolved statuses (S2): the dropdown options with their
+  // labels + colors, and a done-glyph on done-category statuses. Absent → the
+  // inherited default keys (a non-task field strip never shows status anyway).
+  statuses?: StatusDef[];
 }) {
   const [values, setValues] = useState(initial);
   const [error, setError] = useState(false);
@@ -83,20 +89,41 @@ export default function FieldStrip({
 
   function field(name: CanvasField) {
     switch (name) {
-      case "status":
+      case "status": {
+        const opts: StatusDef[] =
+          statuses && statuses.length
+            ? statuses
+            : ITEM_STATUSES.map((k) => ({
+                key: k,
+                label: k,
+                category: "not_started" as const,
+                color: "#64748b",
+              }));
+        const current = opts.find((s) => s.key === values.status);
         return (
-          <select
-            className={selectClass}
-            value={values.status}
-            onChange={(e) => void save({ status: e.target.value })}
-          >
-            {ITEM_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <span className="inline-flex items-center gap-1.5">
+            {/* A color dot for the current status; done-category options carry a
+                ✓ in their label (a native select can't style each option). */}
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: current?.color ?? "#64748b" }}
+            />
+            <select
+              className={selectClass}
+              value={values.status}
+              onChange={(e) => void save({ status: e.target.value })}
+            >
+              {opts.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                  {s.category === "done" ? " ✓" : ""}
+                </option>
+              ))}
+            </select>
+          </span>
         );
+      }
       case "dueDate":
         return (
           <input

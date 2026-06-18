@@ -10,6 +10,7 @@ import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
+import type { StatusDef } from "@/lib/status";
 
 // Structural shape of a listColumns row, narrowed to what the layouts use.
 // properties rides along so a board can group by a custom select field (the
@@ -19,6 +20,7 @@ export type ViewItem = {
   type: string;
   title: string;
   status: string;
+  statusCategory: string;
   dueDate: Date | null;
   scheduledDate: Date | null;
   urgency: string | null;
@@ -81,16 +83,23 @@ function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
   return (usesUtc(prop) ? utcKey : tzKey).format(date);
 }
 
-function StatusChip({ status }: { status: string }) {
-  if (status === "open") return null;
-  const tone =
-    status === "done"
-      ? "bg-green-950 text-green-400"
-      : status === "archived"
-        ? "bg-neutral-800 text-neutral-400"
-        : "bg-neutral-800 text-neutral-300";
+// A status chip showing the type's label + color (S2). The resting "not started"
+// status renders no chip (matches the old "hide open"); everything else shows.
+function StatusChip({ status, statuses }: { status: string; statuses?: StatusDef[] }) {
+  const def = statuses?.find((s) => s.key === status);
+  if (def?.category === "not_started") return null;
+  if (!def && status === "open") return null;
   return (
-    <span className={`shrink-0 rounded px-1.5 text-xs ${tone}`}>{status}</span>
+    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-300">
+      {def?.color && (
+        <span
+          aria-hidden
+          className="inline-block h-2 w-2 rounded-full"
+          style={{ backgroundColor: def.color }}
+        />
+      )}
+      {def?.label ?? status}
+    </span>
   );
 }
 
@@ -177,14 +186,16 @@ function ItemRow({
   prop,
   columns,
   propertyLabels = {},
+  statuses,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
   columns?: ViewColumn[] | null;
   propertyLabels?: Record<string, string>;
+  statuses?: StatusDef[];
 }) {
   const isTask = item.type === "task";
-  const done = item.status === "done";
+  const done = item.statusCategory === "done";
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
       {isTask ? (
@@ -208,7 +219,7 @@ function ItemRow({
         // nothing so the row doesn't fill with empty labels.
         columns.map((col) => {
           if (col.source === "field" && col.key === "status") {
-            return <StatusChip key="status" status={item.status} />;
+            return <StatusChip key="status" status={item.status} statuses={statuses} />;
           }
           if (col.source === "field" && col.key === "urgency") {
             return <UrgencyChip key="urgency" urgency={item.urgency} />;
@@ -227,7 +238,7 @@ function ItemRow({
         })
       ) : (
         <>
-          <StatusChip status={item.status} />
+          <StatusChip status={item.status} statuses={statuses} />
           <UrgencyChip urgency={item.urgency} />
           <span className="shrink-0 text-xs text-neutral-600">
             {rowDate(item, prop)}
@@ -245,10 +256,12 @@ function ListLayout({
   items,
   view,
   propertyLabels,
+  statuses,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
+  statuses?: StatusDef[];
 }) {
   return (
     <ul className="mt-4">
@@ -259,6 +272,7 @@ function ListLayout({
           prop={view.dateProperty}
           columns={view.columns}
           propertyLabels={propertyLabels}
+          statuses={statuses}
         />
       ))}
     </ul>
@@ -318,7 +332,7 @@ function TableLayout({
                   href={`/items/${item.id}`}
                   className={`hover:text-neutral-100 ${
                     item.title ? "text-neutral-200" : "text-neutral-500"
-                  } ${item.status === "done" ? "line-through opacity-60" : ""}`}
+                  } ${item.statusCategory === "done" ? "line-through opacity-60" : ""}`}
                 >
                   {item.title || "Untitled"}
                 </Link>
@@ -344,13 +358,18 @@ function BoardLayout({
   view,
   groupOrder,
   draggable,
+  statuses,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   groupOrder?: string[];
   draggable?: boolean;
+  statuses?: StatusDef[];
 }) {
   const now = new Date();
+  // A status board colors its column headers with the status colors (S2).
+  const statusBoard =
+    !view.grouping || ("field" in view.grouping && view.grouping.field === "status");
   // When the page deems the grouping safe to set by a drop (status, urgency, or
   // a single-select property), hand off to the client DnD board; the cards
   // carry a precomputed date label so the client needn't reimplement the
@@ -367,7 +386,7 @@ function BoardLayout({
       properties: i.properties,
       dateLabel: rowDate(i, view.dateProperty),
     }));
-    return <BoardDnd cards={cards} grouping={view.grouping} groupOrder={groupOrder} />;
+    return <BoardDnd cards={cards} grouping={view.grouping} groupOrder={groupOrder} statuses={statuses} />;
   }
   const present = new Set(items.map((i) => groupValueFor(i, view.grouping, now)));
   const columns = orderedGroups(view.grouping, present, groupOrder);
@@ -383,7 +402,21 @@ function BoardLayout({
             className="flex w-60 shrink-0 flex-col rounded-lg border border-neutral-800 bg-neutral-900/40"
           >
             <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-              <span className="truncate">{col}</span>
+              {(() => {
+                const sdef = statusBoard ? statuses?.find((s) => s.key === col) : undefined;
+                return (
+                  <span className="flex items-center gap-1.5 truncate">
+                    {sdef?.color && (
+                      <span
+                        aria-hidden
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: sdef.color }}
+                      />
+                    )}
+                    {sdef?.label ?? col}
+                  </span>
+                );
+              })()}
               <span className="text-neutral-600">{colItems.length}</span>
             </div>
             <ul className="flex flex-col gap-1.5 p-2">
@@ -393,7 +426,7 @@ function BoardLayout({
                     href={`/items/${item.id}`}
                     className={`block rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm hover:border-neutral-700 ${
                       item.title ? "text-neutral-200" : "text-neutral-500"
-                    } ${item.status === "done" ? "line-through opacity-60" : ""}`}
+                    } ${item.statusCategory === "done" ? "line-through opacity-60" : ""}`}
                   >
                     <span className="block truncate">
                       {item.title || "Untitled"}
@@ -418,10 +451,12 @@ function AgendaLayout({
   items,
   view,
   propertyLabels,
+  statuses,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
+  statuses?: StatusDef[];
 }) {
   const prop = view.dateProperty;
   const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
@@ -454,6 +489,7 @@ function AgendaLayout({
                 prop={prop}
                 columns={view.columns}
                 propertyLabels={propertyLabels}
+                statuses={statuses}
               />
             ))}
           </ul>
@@ -472,6 +508,7 @@ function AgendaLayout({
                 prop={prop}
                 columns={view.columns}
                 propertyLabels={propertyLabels}
+                statuses={statuses}
               />
             ))}
           </ul>
@@ -553,7 +590,7 @@ function CalendarLayout({ items, view }: { items: ViewItem[]; view: ViewDefiniti
                     href={`/items/${item.id}`}
                     title={item.title || "Untitled"}
                     className={`block truncate rounded bg-neutral-800 px-1 py-0.5 text-[11px] hover:bg-neutral-700 ${
-                      item.status === "done"
+                      item.statusCategory === "done"
                         ? "text-neutral-500 line-through"
                         : "text-neutral-300"
                     }`}
@@ -587,9 +624,13 @@ export default function ViewRenderer({
   groupOrder,
   propertyLabels = {},
   boardDraggable = false,
+  statuses,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
+  // The view type's resolved statuses (S2): status chips + board column labels/
+  // colors render from these. Resolved by the page from the type's schema.
+  statuses?: StatusDef[];
   // Column order for a board grouped by a custom property (the property's
   // option order); resolved by the page from the type's schema (ADR-046).
   groupOrder?: string[];
@@ -618,13 +659,28 @@ export default function ViewRenderer({
           view={view}
           groupOrder={groupOrder}
           draggable={boardDraggable}
+          statuses={statuses}
         />
       );
     case "calendar":
       return <CalendarLayout items={items} view={view} />;
     case "agenda":
-      return <AgendaLayout items={items} view={view} propertyLabels={propertyLabels} />;
+      return (
+        <AgendaLayout
+          items={items}
+          view={view}
+          propertyLabels={propertyLabels}
+          statuses={statuses}
+        />
+      );
     default:
-      return <ListLayout items={items} view={view} propertyLabels={propertyLabels} />;
+      return (
+        <ListLayout
+          items={items}
+          view={view}
+          propertyLabels={propertyLabels}
+          statuses={statuses}
+        />
+      );
   }
 }

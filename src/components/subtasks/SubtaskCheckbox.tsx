@@ -27,11 +27,9 @@ export default function SubtaskCheckbox({
     const next = !checked;
     setChecked(next);
     try {
-      const res = await fetch(`/api/items/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: next ? "done" : "open" }),
-      });
+      // The complete endpoint toggles to the item type's default done /
+      // not-started status (S2), so the checkbox needs no status schema.
+      const res = await fetch(`/api/items/${id}/complete`, { method: "POST" });
       if (!res.ok) throw new Error(String(res.status));
       router.refresh();
     } catch {

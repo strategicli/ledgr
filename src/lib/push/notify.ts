@@ -139,7 +139,7 @@ export async function runPrepNotify(
       and(
         eq(items.ownerId, ownerId),
         eq(items.type, "meeting"),
-        ne(items.status, "archived"),
+        ne(items.statusCategory, "archived"),
         isNull(items.deletedAt),
         gt(items.meetingAt, now),
         lte(items.meetingAt, windowEnd),

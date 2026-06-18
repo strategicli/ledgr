@@ -115,6 +115,7 @@ export default async function RelatedPanel({
       type: item.type,
       title: item.title,
       status: item.status,
+      statusCategory: item.statusCategory,
       dueDate: item.dueDate ? item.dueDate.toISOString() : null,
       updatedAt: item.updatedAt.toISOString(),
     };

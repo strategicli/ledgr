@@ -96,15 +96,18 @@ export function boardDropPatch(
 export function orderedGroups(
   grouping: ViewGrouping,
   present: Set<string>,
-  propertyOrder?: string[]
+  knownOrder?: string[]
 ): string[] {
   let known: readonly string[] = [];
   if (grouping && "propertyKey" in grouping) {
-    known = propertyOrder ?? [];
+    known = knownOrder ?? [];
   } else {
     const field: GroupField = grouping?.field ?? "status";
+    // status uses the type's resolved status keys (knownOrder) so a board shows
+    // every custom status as a column in schema order (S2); ITEM_STATUSES is the
+    // inherited-default fallback.
     known = {
-      status: ITEM_STATUSES,
+      status: knownOrder ?? ITEM_STATUSES,
       urgency: [...URGENCIES, NONE_GROUP],
       due: DUE_ORDER,
       scheduled: DUE_ORDER,

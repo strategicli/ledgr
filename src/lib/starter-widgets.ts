@@ -34,7 +34,7 @@ export const STARTER_WIDGETS: StarterWidget[] = [
     description: "Open tasks due today",
     view: list(
       "Tasks Due Today",
-      { type: "task", status: "open", dateField: "dueDate", due: "today" },
+      { type: "task", statusCategory: "active", dateField: "dueDate", due: "today" },
       { field: "dueDate", dir: "asc" }
     ),
   },
@@ -44,7 +44,7 @@ export const STARTER_WIDGETS: StarterWidget[] = [
     description: "Open tasks past their due date",
     view: list(
       "Overdue Tasks",
-      { type: "task", status: "open", dateField: "dueDate", due: "overdue" },
+      { type: "task", statusCategory: "active", dateField: "dueDate", due: "overdue" },
       { field: "dueDate", dir: "asc" }
     ),
   },
@@ -54,7 +54,7 @@ export const STARTER_WIDGETS: StarterWidget[] = [
     description: "Open tasks due in the next 7 days",
     view: list(
       "Upcoming Tasks",
-      { type: "task", status: "open", dateField: "dueDate", withinDays: 7 },
+      { type: "task", statusCategory: "active", dateField: "dueDate", withinDays: 7 },
       { field: "dueDate", dir: "asc" }
     ),
   },

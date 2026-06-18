@@ -35,6 +35,7 @@ import {
   type CardId,
 } from "@/lib/canvas-layout";
 import { getType } from "@/lib/types";
+import { resolveStatusSchema } from "@/lib/status";
 import { parseRecurrence } from "@/lib/recurrence";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import type { CanvasProps } from "@/lib/modules";
@@ -54,6 +55,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // default canvas, so this is where its properties get an editable surface.
   const typeDef = await getType(item.type).catch(() => null);
   const propertySchema = typeDef?.propertySchema ?? [];
+  // The type's resolved statuses (S2) for the status dropdown (labels + colors).
+  const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const savedLayout = typeDef?.canvasLayout ?? null;
   // Today (app timezone) anchors a newly-enabled repeat; computed once for both
   // the classic mount and the grid card.
@@ -107,7 +110,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         );
       if (id.startsWith("sys:")) {
         const f = id.slice(4) as CanvasField;
-        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} today={today} />;
+        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} today={today} statuses={statuses} />;
       }
       if (id === "recurrence") return item.type === "task" ? recurrenceNode : null;
       if (id === "subtasks") return <Subtasks ownerId={ownerId} itemId={item.id} />;
@@ -201,7 +204,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         item={{ id: item.id, title: item.title, body: item.body }}
         fields={
           fields.length > 0 ? (
-            <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} />
+            <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} statuses={statuses} />
           ) : null
         }
       />

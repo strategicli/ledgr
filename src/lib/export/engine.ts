@@ -210,7 +210,7 @@ export async function runExport(
 
   for (const item of candidates) {
     try {
-      const inArchive = item.deletedAt !== null || item.status === "archived";
+      const inArchive = item.deletedAt !== null || item.statusCategory === "archived";
       const year = yearInZone(item.createdAt);
       const name = `${slugify(item.title)}-${item.id.slice(0, 8)}.md`;
       const desired = `${inArchive ? "_archive/" : ""}${item.type}/${year}/${name}`;

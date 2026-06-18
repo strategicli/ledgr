@@ -62,8 +62,16 @@ try {
   // --- parseViewInput ---
   await throws("rejects missing name", () => parseViewInput({ layout: "list" }), "bad_request");
   await throws("rejects bad layout", () => parseViewInput({ name: "x", layout: "grid" }), "bad_request");
-  await throws("rejects bad status", () =>
-    parseViewInput({ name: "x", layout: "list", filter: { status: "nope" } }), "bad_request");
+  // Statuses are user-defined keys now (S2): the filter accepts any key (it
+  // simply matches nothing if no such status exists); the CATEGORY filter is
+  // what's validated against the fixed bucket set.
+  check(
+    "accepts any status key (S2)",
+    parseViewInput({ name: "x", layout: "list", filter: { status: "anything" } }).filter
+      .status === "anything"
+  );
+  await throws("rejects bad statusCategory", () =>
+    parseViewInput({ name: "x", layout: "list", filter: { statusCategory: "nope" } }), "bad_request");
   await throws("rejects non-uuid relatedTo", () =>
     parseViewInput({ name: "x", layout: "list", filter: { relatedTo: "abc" } }), "bad_request");
 

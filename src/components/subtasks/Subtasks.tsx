@@ -26,7 +26,7 @@ function ProgressBadge({ done, total }: { done: number; total: number }) {
 }
 
 function SubtaskRow({ node }: { node: SubtaskNode }) {
-  const done = node.type === "task" && node.status === "done";
+  const done = node.type === "task" && node.statusCategory === "done";
   return (
     <li>
       <div className="flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">

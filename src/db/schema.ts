@@ -32,6 +32,21 @@ const tsvector = customType<{ data: string }>({
   },
 });
 
+// The configurable status categories (Tasks Polish S2, ADR-082). Statuses
+// themselves are user-defined per type (types.status_schema); this fixed enum is
+// the *category* each status maps to — the bucket every hot query, the
+// done-checkbox, and recurrence-complete key off. items.status holds the user's
+// status key (text); items.status_category holds its bucket.
+export const statusCategory = pgEnum("status_category", [
+  "not_started",
+  "in_progress",
+  "done",
+  "archived",
+]);
+// Retired (Tasks Polish S2, ADR-082): items.status is now text (a user-defined
+// status key), not this enum. Kept defined-but-unused so the migration diff
+// stays additive — dropping the type would make drizzle-kit prompt to
+// disambiguate a rename. The Postgres type lingers harmlessly; no column uses it.
 export const itemStatus = pgEnum("item_status", ["open", "done", "archived"]);
 export const urgency = pgEnum("urgency", ["low", "normal", "high", "critical"]);
 export const matchState = pgEnum("match_state", ["confirmed", "suggested"]);
@@ -128,6 +143,11 @@ export const types = pgTable("types", {
   icon: text("icon"),
   isSystem: boolean("is_system").notNull().default(false),
   propertySchema: jsonb("property_schema"),
+  // Per-type configurable statuses (Tasks Polish S2, ADR-082): an ordered list
+  // of { key, label, category, color, isDefault } (src/lib/status.ts). null =
+  // inherit the system default (To Do / Done / Archived). The user adds/colors
+  // statuses here; each maps to a fixed category the plumbing keys off.
+  statusSchema: jsonb("status_schema"),
   // Whether this type appears in the quick-capture type dropdown (PRD §4.4,
   // exploration type-and-kind-ux §2). Default true keeps the five core types
   // capturable; the builder toggles it so a "data only" custom type can stay
@@ -184,7 +204,16 @@ export const items = pgTable(
     // save (body-text.ts), so the generated tsvector below indexes real words
     // instead of markup, URIs, or color hexes (ADR-003).
     bodyText: text("body_text"),
-    status: itemStatus("status").notNull().default("open"),
+    // The item's status KEY (Tasks Polish S2, ADR-082): a slug from its type's
+    // status_schema (open/done/archived in the inherited default). Free text, not
+    // an enum, because statuses are now user-defined per type.
+    status: text("status").notNull().default("open"),
+    // The fixed category that status key maps to — denormalized here so the hot
+    // queries (Today, the default filter, recurrence) and the done-checkbox key
+    // off an indexed enum, never the label. Kept in sync with `status` on every
+    // write (items.ts); re-synced for affected items when a type's schema
+    // recategorizes a status (types.ts setTypeStatusSchema).
+    statusCategory: statusCategory("status_category").notNull().default("not_started"),
     dueDate: timestamp("due_date", { withTimezone: true }),
     // The concrete date the task is planned for (native tasks, ADR-073/076),
     // distinct from due_date (the deadline). A real column, not a property,
@@ -234,6 +263,7 @@ export const items = pgTable(
     index("items_owner_idx").on(t.ownerId),
     index("items_type_idx").on(t.type),
     index("items_status_idx").on(t.status),
+    index("items_status_category_idx").on(t.statusCategory),
     index("items_due_date_idx").on(t.dueDate),
     index("items_scheduled_date_idx").on(t.scheduledDate),
     index("items_parent_idx").on(t.parentId),

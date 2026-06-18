@@ -25,6 +25,8 @@ import {
   ensureFirstOccurrence,
   occurrenceSeriesId,
 } from "@/lib/recurrence-service";
+import { categoryOfStatus, defaultStatusKey, type StatusCategory } from "@/lib/status";
+import { statusSchemaForType } from "@/lib/status-schema";
 
 // A new revision is skipped when the latest one is younger than this; the
 // editor autosaves often (slice 5) and one snapshot per burst is enough
@@ -103,6 +105,7 @@ export const listColumns = {
   type: items.type,
   title: items.title,
   status: items.status,
+  statusCategory: items.statusCategory,
   dueDate: items.dueDate,
   scheduledDate: items.scheduledDate,
   urgency: items.urgency,
@@ -280,6 +283,13 @@ export async function createItem(ownerId: string, input: ItemInput) {
   await assertTypeExists(input.type);
   if (input.parentId) await assertValidParent(ownerId, input.parentId);
 
+  // Status is a key from the type's schema (S2). Default to the type's "not
+  // started" status, and store its category alongside so the hot queries / the
+  // done-checkbox / recurrence key off the indexed bucket.
+  const schema = await statusSchemaForType(input.type);
+  const statusKey = input.status ?? defaultStatusKey(schema, "not_started") ?? "open";
+  const statusCat = categoryOfStatus(schema, statusKey);
+
   const body = input.body ?? null;
   const rows = await getDb()
     .insert(items)
@@ -289,7 +299,8 @@ export async function createItem(ownerId: string, input: ItemInput) {
       title: input.title ?? "",
       body,
       bodyText: extractBodyText(body),
-      status: input.status ?? "open",
+      status: statusKey,
+      statusCategory: statusCat,
       dueDate: input.dueDate ?? null,
       scheduledDate: input.scheduledDate ?? null,
       urgency: input.urgency ?? null,
@@ -315,7 +326,12 @@ export async function updateItem(
 ) {
   const db = getDb();
   const existing = await db
-    .select({ id: items.id, status: items.status })
+    .select({
+      id: items.id,
+      status: items.status,
+      statusCategory: items.statusCategory,
+      type: items.type,
+    })
     .from(items)
     .where(
       and(eq(items.id, id), eq(items.ownerId, ownerId), isNull(items.deletedAt))
@@ -327,12 +343,22 @@ export async function updateItem(
     await assertValidParent(ownerId, patch.parentId, id);
   }
 
+  // The category this status change moves into (if the patch changes status).
+  // Statuses are user-defined (S2), so "completing" means moving INTO the done
+  // category, not a literal "done" — resolved through the type's schema. Also
+  // the value written to status_category alongside the status key.
+  let nextCategory: StatusCategory | undefined;
+  if (patch.status !== undefined) {
+    const schema = await statusSchemaForType(patch.type ?? existing[0].type);
+    nextCategory = categoryOfStatus(schema, patch.status);
+  }
+
   // Recurrence-aware completion (ADR-076). Completing a recurring task is not a
   // plain status flip, so intercept the completing gesture before the normal
   // update. Runs for every caller (checkbox / MCP / REST) since they all land
-  // here. Only fires when this patch is the open→done transition.
+  // here. Only fires when this patch moves the item into the done category.
   let materializedOccurrencePost = false;
-  if (patch.status === "done" && existing[0].status !== "done") {
+  if (nextCategory === "done" && existing[0].statusCategory !== "done") {
     const current = await getItem(ownerId, id);
     const props = current.properties as Record<string, unknown> | null;
     const rule = parseRecurrence(props?.recurrence);
@@ -360,7 +386,10 @@ export async function updateItem(
   const set: Record<string, unknown> = {};
   if (patch.type !== undefined) set.type = patch.type;
   if (patch.title !== undefined) set.title = patch.title;
-  if (patch.status !== undefined) set.status = patch.status;
+  if (patch.status !== undefined) {
+    set.status = patch.status;
+    set.statusCategory = nextCategory;
+  }
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
   if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
   if (patch.urgency !== undefined) set.urgency = patch.urgency;
@@ -413,6 +442,20 @@ export async function updateItem(
     await ensureFirstOccurrence(ownerId, id).catch(() => {});
   }
   return updated;
+}
+
+// Toggle a task's completion from a checkbox (S2). Statuses are user-defined, so
+// a checkbox can't hardcode "done"/"open": resolve the item's type schema and
+// flip between its default done and not-started status. Routes through updateItem
+// so recurrence-complete fires when moving into the done category.
+export async function toggleItemDone(ownerId: string, id: string) {
+  const item = await getItem(ownerId, id);
+  const schema = await statusSchemaForType(item.type);
+  const next =
+    item.statusCategory === "done"
+      ? defaultStatusKey(schema, "not_started") ?? "open"
+      : defaultStatusKey(schema, "done") ?? "done";
+  return updateItem(ownerId, id, { status: next });
 }
 
 // Soft-deletes the item and every live descendant in one statement, all with

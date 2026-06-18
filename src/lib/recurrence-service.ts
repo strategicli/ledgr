@@ -27,6 +27,8 @@ import {
   type RecurrenceRule,
 } from "@/lib/recurrence";
 import { APP_TIMEZONE, ymdInZone } from "@/lib/today";
+import { defaultStatusKey } from "@/lib/status";
+import { statusSchemaForType } from "@/lib/status-schema";
 
 // The relation role that links a materialized occurrence (source) to its series
 // (target). A role, not parent_id, so the series' own canvas subtasks stay its
@@ -91,16 +93,24 @@ async function advanceSeriesRow(
     dueDate = ymdToUtcDate(addDaysYmd(dateToYmdUtc(series.dueDate), delta));
   }
 
+  // Pick the type's default statuses (S2): a continuing series resets to its
+  // "not started" status for the next occurrence; an ended series goes "done".
+  const schema = await statusSchemaForType(series.type);
+  const status = res.ended
+    ? defaultStatusKey(schema, "done") ?? "done"
+    : defaultStatusKey(schema, "not_started") ?? "open";
+
   const [updated] = await getDb()
     .update(items)
     .set({
       properties: props,
       scheduledDate: res.next ? ymdToUtcDate(res.next) : null,
       dueDate,
-      // The series row stays open while occurrences remain; the occurrence is
+      // The series row stays active while occurrences remain; the occurrence is
       // what got completed, not the definition. When the rule ends, the series
       // itself is done.
-      status: res.ended ? "done" : "open",
+      status,
+      statusCategory: res.ended ? "done" : "not_started",
       updatedAt: new Date(),
     })
     .where(and(eq(items.id, series.id), eq(items.ownerId, ownerId)))
@@ -136,7 +146,7 @@ async function liveOccurrenceCount(ownerId: string, seriesId: string): Promise<n
         eq(relations.role, OCCURRENCE_ROLE),
         eq(items.ownerId, ownerId),
         isNull(items.deletedAt),
-        sql`${items.status} <> 'done'`
+        sql`${items.statusCategory} <> 'done'`
       )
     );
   return rows.length;
@@ -163,7 +173,7 @@ async function materializeOccurrence(
       properties: { occurrence: { seriesId: series.id, date } },
       inbox: false,
     },
-    { status: "open", stripPropertyKeys: ["recurrence", "occurrence"] }
+    { stripPropertyKeys: ["recurrence", "occurrence"] }
   );
   // Link occurrence -> series. Direct insert (not relateItems) keeps the role and
   // skips the live-check; the pair is freshly created and owner-verified.

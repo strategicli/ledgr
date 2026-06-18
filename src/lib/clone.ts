@@ -27,7 +27,7 @@ import {
 const ALWAYS_STRIP = ["recurrence", "occurrence", "todoist", "focus"];
 
 export type CloneResetRules = {
-  // Status for every cloned item (default "open" — fresh + unchecked).
+  // Status for every cloned item; omitted = the type's not-started status (S2).
   status?: ItemStatus;
   // Re-create the prototype's outgoing non-mention edges from the clone
   // (default true): a 1:1's link to the person carries to each occurrence.
@@ -124,7 +124,8 @@ async function cloneNode(
     type: src.type,
     title: overrides?.title ?? src.title,
     body: src.body ?? null,
-    status: reset.status ?? "open",
+    // Omitted status → createItem picks the type's not-started default (S2).
+    status: reset.status,
     dueDate: overrides ? overrides.dueDate ?? null : null,
     scheduledDate: overrides ? overrides.scheduledDate ?? null : null,
     urgency: src.urgency ?? null,

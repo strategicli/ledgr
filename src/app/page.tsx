@@ -229,7 +229,7 @@ export async function TodayHome() {
                     href={`/items/${m.id}`}
                     className={`min-w-0 flex-1 truncate text-sm ${
                       m.title ? "text-neutral-200" : "text-neutral-500"
-                    } ${m.status === "done" ? "line-through opacity-60" : ""}`}
+                    } ${m.statusCategory === "done" ? "line-through opacity-60" : ""}`}
                   >
                     {m.title || "Untitled"}
                   </Link>
