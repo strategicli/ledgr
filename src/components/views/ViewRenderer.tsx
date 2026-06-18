@@ -20,6 +20,7 @@ export type ViewItem = {
   title: string;
   status: string;
   dueDate: Date | null;
+  scheduledDate: Date | null;
   urgency: string | null;
   meetingAt: Date | null;
   url: string | null;
@@ -60,6 +61,8 @@ function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | nu
   switch (prop) {
     case "dueDate":
       return item.dueDate;
+    case "scheduledDate":
+      return item.scheduledDate;
     case "meetingAt":
       return item.meetingAt;
     case "createdAt":
@@ -71,7 +74,8 @@ function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | nu
   }
 }
 
-const usesUtc = (prop: ViewDefinition["dateProperty"]) => prop === "dueDate";
+const usesUtc = (prop: ViewDefinition["dateProperty"]) =>
+  prop === "dueDate" || prop === "scheduledDate";
 
 function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
   return (usesUtc(prop) ? utcKey : tzKey).format(date);
@@ -116,6 +120,7 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
   status: "Status",
   urgency: "Urgency",
   dueDate: "Due",
+  scheduledDate: "Scheduled",
   meetingAt: "When",
   createdAt: "Created",
   updatedAt: "Updated",
@@ -156,6 +161,8 @@ function columnText(item: ViewItem, col: ViewColumn): string {
       return item.url ?? "";
     case "dueDate":
       return item.dueDate ? utcDay.format(item.dueDate) : "";
+    case "scheduledDate":
+      return item.scheduledDate ? utcDay.format(item.scheduledDate) : "";
     case "meetingAt":
       return item.meetingAt ? tzDay.format(item.meetingAt) : "";
     case "createdAt":
@@ -356,6 +363,7 @@ function BoardLayout({
       urgency: i.urgency,
       type: i.type,
       dueDate: i.dueDate,
+      scheduledDate: i.scheduledDate,
       properties: i.properties,
       dateLabel: rowDate(i, view.dateProperty),
     }));

@@ -17,6 +17,7 @@ export type GroupableItem = {
   urgency: string | null;
   type: string;
   dueDate: Date | null;
+  scheduledDate: Date | null;
   properties: unknown;
 };
 
@@ -63,6 +64,8 @@ export function groupValueFor(
       return item.type;
     case "due":
       return dueBucket(item.dueDate, now);
+    case "scheduled":
+      return dueBucket(item.scheduledDate, now);
   }
 }
 
@@ -104,6 +107,7 @@ export function orderedGroups(
       status: ITEM_STATUSES,
       urgency: [...URGENCIES, NONE_GROUP],
       due: DUE_ORDER,
+      scheduled: DUE_ORDER,
       type: [] as readonly string[],
     }[field];
   }

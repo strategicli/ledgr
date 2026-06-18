@@ -21,6 +21,7 @@ const FILTER_NONE = "__none__";
 // Friendly labels for the "by which field" selects.
 const DATE_LABELS: Record<string, string> = {
   dueDate: "due date",
+  scheduledDate: "scheduled date",
   meetingAt: "when",
   createdAt: "created",
   updatedAt: "updated",
@@ -30,6 +31,7 @@ const GROUP_LABELS: Record<string, string> = {
   urgency: "urgency",
   type: "type",
   due: "due window",
+  scheduled: "scheduled window",
 };
 
 // The whole point of Brandon's feedback: a field is only offered if it exists
@@ -38,9 +40,10 @@ const GROUP_LABELS: Record<string, string> = {
 // Every field select below draws from these, and changeType() reconciles the
 // current pick when the type changes.
 function dateFieldsFor(type: string): string[] {
-  if (type === "task") return ["dueDate", "createdAt", "updatedAt"];
+  if (type === "task") return ["dueDate", "scheduledDate", "createdAt", "updatedAt"];
   if (type === "meeting") return ["meetingAt", "createdAt", "updatedAt"];
-  if (type === "") return ["dueDate", "meetingAt", "createdAt", "updatedAt"];
+  if (type === "")
+    return ["dueDate", "scheduledDate", "meetingAt", "createdAt", "updatedAt"];
   return ["createdAt", "updatedAt"]; // note / link / person
 }
 function sortFieldsFor(type: string): string[] {
@@ -48,9 +51,9 @@ function sortFieldsFor(type: string): string[] {
 }
 // urgency + due window are task-only in the UI (ADR-018).
 function groupFieldsFor(type: string): string[] {
-  if (type === "task") return ["status", "urgency", "due", "type"];
+  if (type === "task") return ["status", "urgency", "due", "scheduled", "type"];
   if (type === "meeting") return ["status", "type"];
-  if (type === "") return ["status", "urgency", "due", "type"];
+  if (type === "") return ["status", "urgency", "due", "scheduled", "type"];
   return ["status", "type"]; // note / link / person
 }
 const showsUrgency = (type: string) => type === "task" || type === "";
@@ -67,6 +70,7 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
   status: "Status",
   urgency: "Urgency",
   dueDate: "Due date",
+  scheduledDate: "Scheduled date",
   meetingAt: "When",
   createdAt: "Created",
   updatedAt: "Updated",

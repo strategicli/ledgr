@@ -23,6 +23,7 @@ export type BoardCard = {
   urgency: string | null;
   type: string;
   dueDate: Date | null;
+  scheduledDate: Date | null;
   properties: unknown;
   dateLabel: string;
 };

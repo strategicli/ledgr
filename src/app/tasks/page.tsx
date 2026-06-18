@@ -1,6 +1,8 @@
-// Tasks list (PRD §4.2): filterable by status, urgency, due window, and
-// related person. The URL carries the filter (FilterBar contract); absent
-// status means open, the daily-driver default. Sorted by due date, undated last.
+// Tasks list (PRD §4.2): filterable by status, urgency, a date window, and
+// related person. The "Date" selector chooses which date — the due deadline or
+// the scheduled plan (ADR-076) — the window filters and the list sorts by; the
+// URL carries the filter (FilterBar contract). Absent status means open, the
+// daily-driver default. Sorted by the chosen date, undated last.
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import FilterBar, { type FilterSelect } from "@/components/lists/FilterBar";
@@ -46,12 +48,17 @@ const dueFmt = new Intl.DateTimeFormat("en-US", {
 function TaskRow({
   task,
   dueToday,
+  dateField,
 }: {
   task: ListedItem;
   dueToday: Date;
+  dateField: "dueDate" | "scheduledDate";
 }) {
   const done = task.status === "done";
-  const overdue = !done && task.dueDate != null && task.dueDate < dueToday;
+  // Show the date for the dimension the list is working in, and flag it
+  // red when it's in the past (a missed deadline, or a planned day gone by).
+  const date = dateField === "scheduledDate" ? task.scheduledDate : task.dueDate;
+  const overdue = !done && date != null && date < dueToday;
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
       <SubtaskCheckbox id={task.id} done={done} />
@@ -78,7 +85,7 @@ function TaskRow({
           overdue ? "text-red-400" : "text-neutral-600"
         }`}
       >
-        {task.dueDate ? dueFmt.format(task.dueDate) : ""}
+        {date ? dueFmt.format(date) : ""}
       </span>
       <RowAction id={task.id} action="trash" />
     </li>
@@ -106,8 +113,14 @@ export default async function Tasks({
   if (URGENCIES.includes(urgency as Urgency)) {
     filter.urgency = urgency as Urgency;
   }
-  const due = param("due");
-  if (DUE_WINDOWS.includes(due as DueWindow)) filter.due = due as DueWindow;
+  // Which date dimension this list works in: it drives both the date-window
+  // filter and the sort. Due (the deadline) is the default; scheduled (the
+  // planned date, ADR-076) is the "when I'll actually do it" lens.
+  const dateField =
+    param("datefield") === "scheduled" ? "scheduledDate" : "dueDate";
+  filter.dateField = dateField;
+  const when = param("when");
+  if (DUE_WINDOWS.includes(when as DueWindow)) filter.due = when as DueWindow;
   const person = param("person");
   if (person && UUID_RE.test(person)) filter.relatedTo = person;
 
@@ -120,7 +133,7 @@ export default async function Tasks({
   if (propFilters.length) filter.propertyFilters = propFilters;
 
   const [tasks, people] = await Promise.all([
-    queryViewItems(owner.id, filter, { field: "dueDate", dir: "asc" }),
+    queryViewItems(owner.id, filter, { field: dateField, dir: "asc" }),
     listPersonOptions(owner.id),
   ]);
   const { dueToday } = todayBounds();
@@ -144,8 +157,17 @@ export default async function Tasks({
       ],
     },
     {
-      param: "due",
-      label: "Due",
+      param: "datefield",
+      label: "Date",
+      defaultValue: "due",
+      options: [
+        { value: "due", label: "due" },
+        { value: "scheduled", label: "scheduled" },
+      ],
+    },
+    {
+      param: "when",
+      label: "When",
       options: [
         { value: "", label: "any" },
         { value: "overdue", label: "overdue" },
@@ -189,7 +211,12 @@ export default async function Tasks({
       {tasks.length > 0 ? (
         <ul className="mt-4">
           {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} dueToday={dueToday} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              dueToday={dueToday}
+              dateField={dateField}
+            />
           ))}
         </ul>
       ) : (

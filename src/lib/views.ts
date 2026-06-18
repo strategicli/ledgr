@@ -44,6 +44,7 @@ export type ViewFilter = {
 
 export const SORT_FIELDS = [
   "dueDate",
+  "scheduledDate",
   "meetingAt",
   "updatedAt",
   "createdAt",
@@ -54,6 +55,7 @@ export type ViewSort = { field: SortField; dir: "asc" | "desc" };
 
 const SORT_COLUMNS = {
   dueDate: items.dueDate,
+  scheduledDate: items.scheduledDate,
   meetingAt: items.meetingAt,
   updatedAt: items.updatedAt,
   createdAt: items.createdAt,
@@ -75,19 +77,20 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
     const field = filter.dateField ?? "dueDate";
     const col = {
       dueDate: items.dueDate,
+      scheduledDate: items.scheduledDate,
       meetingAt: items.meetingAt,
       createdAt: items.createdAt,
       updatedAt: items.updatedAt,
     }[field];
     const b = todayBounds();
-    // Due dates are UTC-midnight calendar days; the timestamp fields use real
-    // timezone midnights (same split as today.ts). cutoff(n) is the start of
-    // the day n days from today in the right calendar.
-    const isDue = field === "dueDate";
-    const startToday = isDue ? b.dueToday : b.dayStart;
-    const tomorrow = isDue ? b.dueCutoff : b.dayEnd;
+    // Due and scheduled dates are UTC-midnight calendar days (ADR-008); the
+    // timestamp fields use real timezone midnights (same split as today.ts).
+    // cutoff(n) is the start of the day n days from today in the right calendar.
+    const isCalendarDay = field === "dueDate" || field === "scheduledDate";
+    const startToday = isCalendarDay ? b.dueToday : b.dayStart;
+    const tomorrow = isCalendarDay ? b.dueCutoff : b.dayEnd;
     const cutoff = (n: number) =>
-      isDue
+      isCalendarDay
         ? new Date(Date.UTC(b.today.y, b.today.m - 1, b.today.d + n))
         : zonedMidnightUtc({ ...b.today, d: b.today.d + n }, APP_TIMEZONE);
 
@@ -189,15 +192,16 @@ export async function countViewItems(
 export const VIEW_LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 export type ViewLayout = (typeof VIEW_LAYOUTS)[number];
 
-// Fields a board/agenda can group rows by. due buckets reuse DUE_WINDOWS.
-export const GROUP_FIELDS = ["status", "urgency", "type", "due"] as const;
+// Fields a board/agenda can group rows by. due/scheduled buckets reuse the
+// date-window labels (overdue/today/this week/later/no date).
+export const GROUP_FIELDS = ["status", "urgency", "type", "due", "scheduled"] as const;
 export type GroupField = (typeof GROUP_FIELDS)[number];
 // A board groups by a built-in field, or by a custom select/multi_select
 // property (a workflow's "Stage", slice 35) named by its property_schema key.
 export type ViewGrouping = { field: GroupField } | { propertyKey: string } | null;
 
 // Which date a calendar/agenda places an item on.
-export const DATE_PROPERTIES = ["dueDate", "meetingAt", "createdAt", "updatedAt"] as const;
+export const DATE_PROPERTIES = ["dueDate", "scheduledDate", "meetingAt", "createdAt", "updatedAt"] as const;
 export type DateProperty = (typeof DATE_PROPERTIES)[number];
 
 // Columns the list + table layouts can show (Brandon feedback, 2026-06-14:
@@ -210,6 +214,7 @@ export const COLUMN_FIELDS = [
   "status",
   "urgency",
   "dueDate",
+  "scheduledDate",
   "meetingAt",
   "createdAt",
   "updatedAt",

@@ -102,6 +102,7 @@ const mk = (props: Record<string, unknown> | null) => ({
   kind: null,
   type: "hiring_candidate",
   dueDate: null,
+  scheduledDate: null,
   properties: props,
 });
 const stageGrouping = { propertyKey: STAGE_KEY };
