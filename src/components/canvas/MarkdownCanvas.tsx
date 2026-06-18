@@ -29,6 +29,8 @@ import Link from "next/link";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import ReminderControl from "@/components/canvas/ReminderControl";
+import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
+import { parseScheduledTime } from "@/lib/scheduled-time";
 import FocusStar from "@/components/today/FocusStar";
 import { isFocusedOn } from "@/lib/focus";
 import RelatedPanel from "@/components/relations/RelatedPanel";
@@ -116,6 +118,10 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
     | undefined;
   const reminderMinutes =
     typeof reminderObj?.minutesBefore === "number" ? reminderObj.minutesBefore : null;
+  // Stage A time-blocking: a start time + length on the scheduled day, only
+  // meaningful when there IS a scheduled day (a date or a recurrence anchor).
+  const scheduledTime = parseScheduledTime(item.properties);
+  const hasSchedule = item.scheduledDate != null || recurrenceRule != null;
   const taskExtrasNode = (
     <section className="mx-auto w-full max-w-3xl px-12 pb-1 pt-1">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -123,6 +129,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
           Focus today
         </span>
+        <ScheduledTimeControl itemId={item.id} initial={scheduledTime} hasSchedule={hasSchedule} />
         <ReminderControl itemId={item.id} initialMinutes={reminderMinutes} />
       </div>
     </section>

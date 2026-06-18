@@ -6,6 +6,7 @@ import { ACTIVE_CATEGORIES } from "@/lib/status";
 import { getDb } from "@/db";
 import { items, users } from "@/db/schema";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
+import { parseScheduledTime } from "@/lib/scheduled-time";
 import type { IcsTask } from "@/lib/ics";
 
 // Resolve the single owner whose published feed token matches, or null. The
@@ -76,10 +77,18 @@ export async function listIcsTasks(ownerId: string, origin: string): Promise<Ics
     const exdates = rule
       ? [...new Set([...rule.completeInstances, ...rule.skippedInstances])].sort()
       : undefined;
+    // A scheduled start time (Stage A time-blocking) turns the event into a timed
+    // block. It refines the *scheduled* day, so it only applies when the date came
+    // from the scheduled column or the recurrence anchor — not a due-date-only
+    // event (a deadline has no time, by design).
+    const scheduledTime =
+      rule || row.scheduledDate ? parseScheduledTime(row.properties) : null;
     out.push({
       id: row.id,
       title: row.title,
       date,
+      startTime: scheduledTime?.start ?? null,
+      durationMinutes: scheduledTime?.durationMinutes ?? null,
       rrule: rule?.rrule ?? null,
       exdates,
       url: `${origin}/items/${row.id}`,
