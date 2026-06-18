@@ -24,6 +24,7 @@ export type SubtaskNode = {
   title: string;
   status: ItemStatus;
   dueDate: Date | null;
+  scheduledDate: Date | null;
   urgency: Urgency | null;
   parentId: string;
   createdAt: Date;
@@ -44,6 +45,7 @@ type RawRow = {
   title: string;
   status: ItemStatus;
   due_date: string | Date | null;
+  scheduled_date: string | Date | null;
   urgency: Urgency | null;
   parent_id: string;
   created_at: string | Date;
@@ -80,14 +82,14 @@ export async function listSubtree(
   // their parent's owner in practice, but every query carries the scope.
   const res = await getDb().execute(sql`
     with recursive subtree as (
-      select id, type, title, status, due_date, urgency, parent_id,
-             created_at, updated_at
+      select id, type, title, status, due_date, scheduled_date, urgency,
+             parent_id, created_at, updated_at
       from items
       where parent_id = ${rootId} and owner_id = ${ownerId}
         and deleted_at is null
       union
-      select i.id, i.type, i.title, i.status, i.due_date, i.urgency,
-             i.parent_id, i.created_at, i.updated_at
+      select i.id, i.type, i.title, i.status, i.due_date, i.scheduled_date,
+             i.urgency, i.parent_id, i.created_at, i.updated_at
       from items i join subtree s on i.parent_id = s.id
       where i.owner_id = ${ownerId} and i.deleted_at is null
     )
@@ -102,6 +104,8 @@ export async function listSubtree(
       title: raw.title,
       status: raw.status,
       dueDate: raw.due_date == null ? null : new Date(raw.due_date),
+      scheduledDate:
+        raw.scheduled_date == null ? null : new Date(raw.scheduled_date),
       urgency: raw.urgency,
       parentId: raw.parent_id,
       createdAt: new Date(raw.created_at),

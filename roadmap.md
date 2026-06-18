@@ -148,6 +148,14 @@ Brandon's toward-1.0 pass settled four things and lined up one build chunk. Deci
 - [x] T5 — Offline/quick capture without Todoist. **DONE 2026-06-17, ADR-080.** An offline outbox (`outbox.ts`, localStorage) — capture enqueues on network failure and an app-wide `OutboxSync` flushes on reconnect/visibility/load; the PWA share-target (ADR-016) already exists. `verify-outbox.mts` PASS + in-browser end-to-end.
 - [x] T6 — Seam + retire Todoist on Brandon's instance. **DONE 2026-06-17, ADR-081.** A `tasks` provider seam (`provider.ts`): native default, Todoist opt-in via `TASKS_ADAPTER=todoist`; the Todoist sync routes skip cleanly when native; `/health` `checks.tasksAdapter`; `.env`/runbook/PRD §4.5/§5.2 reversal notes; Todoist code untouched (Tyler keeps it). `verify-tasks-seam.mts` PASS. **Native Tasks chunk (ADR-073) complete.**
 
+**🔧 Tasks Polish chunk — finishing touches on Native Tasks (S1–S6, started 2026-06-18; Tyler greenlit all).** Brandon's polish pass: fully integrate due/scheduled, configurable statuses, a recurrence completions calendar, NL quick-add, relative subtasks. Decisions in `next_steps.md`.
+- [x] S1 — Both dates in sort/filter/board + subtask rows. **DONE 2026-06-18.** `scheduledDate` added across the view engine (sort/filter/group/column), the Tasks list **Date (due|scheduled) + When** selectors, and subtask rows (scheduled + due, UTC-correct). Non-core. `tsc`/eslint clean; in-browser verified.
+- [ ] S2 — Configurable statuses (category-backed, per-type + inherit) + done-checkbox/glyph (CORE, ADR). `items.status` → status key + `status_category` (Not Started/In Progress/Done/Closed); `types.statusSchema`; ClickUp-style Build editor; kanban/filters read it; checkbox ↔ Done category.
+- [ ] S3 — Recurrence completions calendar + occurrence carve-out (month grid toggles the per-date log; "edit this occurrence" carves a detached copy).
+- [ ] S4 — NL quick-add: parse dates + recurrence + urgency from the task title (strip-and-confirm).
+- [ ] S5 — Relative subtasks: stored offset (N days after parent scheduled), set by calendar-pick; recomputed per occurrence.
+- [ ] S6 — Loose ends: focus stars on canvas/list/board + Top-3 widget; per-task reminder picker; ICS EXDATE; "planned" marker.
+
 **Other committed 1.0 work:** selective Notion migration (Phase 3 Tier 3, above); the §1c-gated matcher UIs (Phase 2); the **alpha → v1.0 production flip** (record in `decisions.md` — turns on migration-caution + no-Saturday-deploys).
 
 **Candidate (not committed):** meeting audio capture → transcription → AI minutes/action-items to the Inbox (`explorations/meeting-recording.md`, elevated 2026-06-17).

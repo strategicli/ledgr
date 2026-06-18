@@ -9,9 +9,12 @@ import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import AddSubtask from "./AddSubtask";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 
+// Due and scheduled dates are UTC-midnight calendar days (ADR-008); format in
+// UTC so the shown day can't shift with the viewer's timezone.
 const dateFmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
+  timeZone: "UTC",
 });
 
 function ProgressBadge({ done, total }: { done: number; total: number }) {
@@ -46,6 +49,11 @@ function SubtaskRow({ node }: { node: SubtaskNode }) {
           </span>
         )}
         {node.progress && <ProgressBadge {...node.progress} />}
+        {node.scheduledDate && (
+          <span className="shrink-0 text-xs text-neutral-500">
+            scheduled {dateFmt.format(node.scheduledDate)}
+          </span>
+        )}
         {node.dueDate && (
           <span className="shrink-0 text-xs text-neutral-500">
             due {dateFmt.format(node.dueDate)}

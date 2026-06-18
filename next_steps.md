@@ -53,6 +53,28 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ NOW BUILDING — Tasks Polish (finishing touches on Native Tasks, S1–S6, 2026-06-18)
+
+Brandon's finishing-touches pass on the just-shipped Native Tasks chunk (the dual due/scheduled dates, recurrence, statuses, capture). Direction set 2026-06-18; **Tyler greenlit all of it** (including the core items: configurable statuses, the done-checkbox semantics, relative subtasks). ADRs get written per slice as they land.
+
+**Decisions locked (2026-06-18):**
+- **Today stays dual-date** — a task lands on Today if it's due *or* scheduled by today (unchanged, Brandon's call). Scheduled is the "when I'll do it" lens everywhere else.
+- **Configurable statuses = ClickUp-style, category-backed.** Baked-in categories the plumbing keys off; the user defines labels + colors inside each and marks which count as done. **Add an "In Progress" category** → Not Started / In Progress / Done / Closed. **Per type, with an inherited owner default** (ClickUp's "Inherit from Space" analog). The done-checkbox + recurrence-complete key off the Done category; a check glyph is woven into done-state statuses in the dropdown.
+- **Recurrence completions = a month-calendar** (TaskNotes "Completions"): tick whichever specific occurrence dates are done, any order (maps to the per-date completion log).
+- **Inverted occurrence edit** (replaces "this & future"): editing a recurring task edits the series; to shape one date, pick that occurrence → a fresh detached copy is carved out (clone machinery), the series skips that date, edits never touch the parent.
+- **Relative subtasks** = a stored offset (N days after the parent's scheduled date), recomputed per occurrence — but **set by picking the date on a calendar**, Ledgr back-calculates the offset.
+- **NL quick-add** = parse dates + recurrence + urgency from the task title (Todoist-style strip-and-confirm, on save + a manual trigger).
+- Dropped: the "N missed" badge.
+
+- [x] **S1 — Both dates in sort / filter / board + subtask rows. ✅ DONE (2026-06-18, branch `tasks-polish-s1-dates`).** `scheduledDate` is now a first-class sort field, date-filter field, board/agenda group bucket, and list/table column across the view engine (`views.ts`: `SORT_FIELDS`/`SORT_COLUMNS`/`DATE_PROPERTIES`/`GROUP_FIELDS`/`COLUMN_FIELDS` + `viewWhere` calendar-day handling), the grouping helpers (`view-grouping.ts` scheduled bucket reuses `dueBucket`), the renderer (`ViewRenderer` dateOf/usesUtc/columnText/labels + `ViewItem`), the board card (`BoardDnd`), and the builder (`ViewBuilder` date/sort/group/column options + labels). The **Tasks list** gained a **Date (due | scheduled)** selector that drives both the window filter and the sort, with the window relabeled **When**; rows show the chosen date (overdue-red on either). **Subtask rows** now show scheduled + due, UTC-formatted (an ADR-008 correctness fix — the old formatter had no `timeZone`). Non-core (UI + view defs). `tsc`/eslint clean; in-browser verified (scheduled sort nulls-last, scheduled+today filter narrows to one, subtask shows "scheduled … due …").
+- [ ] **S2 — Configurable statuses (category-backed, per-type + inherit) + done-checkbox/glyph (CORE, ADR).** Move `items.status` off the hardcoded enum to a status key + a `status_category` (Not Started / In Progress / Done / Closed) every hot query keys off; status sets defined per type (`types.statusSchema`) with an owner default inherited when a type doesn't customize; a Build editor (ClickUp-style) to author labels/colors/category/order; kanban + filters read the schema; the row checkbox ↔ Done category; recurrence-complete keys off Done. Migration converts open/done/archived. **Flag the status + machine/MCP contract change in COLLAB** (Tyler greenlit).
+- [ ] **S3 — Recurrence completions calendar + occurrence carve-out.** A month-calendar on the recurring task showing occurrence dates, each individually checkable (toggle the completion log); plus "edit this occurrence" → carve out a detached copy (clone, series skips the date). Small ADR for the toggle-occurrence API + carve-out semantics.
+- [ ] **S4 — Natural-language quick-add.** Extend `nl-date.ts` to also parse recurrence (→ RRULE) and urgency, and parse from the task title (strip-and-confirm, on save + a manual trigger).
+- [ ] **S5 — Relative subtasks.** Store a subtask offset (N days after the parent's scheduled date), set by calendar-pick (Ledgr derives the offset), recomputed on parent date change / occurrence materialize. Likely a short ADR (subtask date semantics).
+- [ ] **S6 — Loose-end follow-ups.** Focus stars on the item canvas + list/board rows + a Top-3 dashboard widget + drag-reorder; a per-task reminder picker UI; ICS EXDATE for completed/closed occurrences; a "planned" marker for future-scheduled tasks.
+
+---
+
 ## ⟢ Session summary — item-view UX push: inline editing (Feature A, ADR-068) ✅ DONE + arrangeable per-type canvas layout (Feature B, ADR-069) ✅ DONE
 
 **A two-feature item-view UX push Brandon asked for (2026-06-16). Feature A shipped 2026-06-16 (ADR-068); Feature B B1 shipped 2026-06-17 (ADR-069, CORE).** Feature A is non-core; Feature B is core (a `types.canvas_layout` column + the canvas model) — both flagged to Tyler in `COLLAB.md`.
