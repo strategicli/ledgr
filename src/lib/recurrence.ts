@@ -448,6 +448,67 @@ function withinSeries(
 }
 
 // ---------------------------------------------------------------------------
+// Direct completion-log edits (the completions calendar — S3, ADR-083). The
+// calendar lets the user tick/untick ARBITRARY occurrence dates in any order;
+// these are pure log mutations that DON'T compute a next date (the service
+// recomputes `scheduled` after the edit, forward-looking, ADR-076 §8). Distinct
+// from completeOccurrence/skipOccurrence, which are the "I just did the current
+// occurrence" gesture and branch on the anchor mode.
+
+// Is `date` an occurrence of this rule (inside the RRULE calendar projection +
+// any COUNT/UNTIL bound)? Used to validate a calendar toggle/carve and to paint
+// occurrence cells. Enumerates from dtstart up to `date` (bounded by the cap).
+export function isOccurrence(
+  rule: Pick<RecurrenceRule, "rrule" | "dtstart">,
+  date: string
+): boolean {
+  if (!isYmd(date)) return false;
+  return enumerateOccurrences(rule, { from: date, to: date, max: 1 }).length > 0;
+}
+
+// Toggle `date` in the completion log: complete it if it isn't, un-complete it if
+// it is. Completing a date clears any "skipped" stamp on it (a date is done OR
+// skipped OR neither, never both).
+export function toggleCompleteInstance(
+  rule: RecurrenceRule,
+  date: string
+): RecurrenceRule {
+  const has = rule.completeInstances.includes(date);
+  const completeInstances = has
+    ? rule.completeInstances.filter((d) => d !== date)
+    : [...new Set([...rule.completeInstances, date])].sort(compareYmd);
+  const skippedInstances = has
+    ? rule.skippedInstances
+    : rule.skippedInstances.filter((d) => d !== date);
+  return { ...rule, completeInstances, skippedInstances };
+}
+
+// Mark `date` skipped (and no longer complete) — used when an occurrence is
+// carved out into its own detached item (the series stops counting that date).
+export function addSkippedInstance(
+  rule: RecurrenceRule,
+  date: string
+): RecurrenceRule {
+  const skippedInstances = [...new Set([...rule.skippedInstances, date])].sort(
+    compareYmd
+  );
+  const completeInstances = rule.completeInstances.filter((d) => d !== date);
+  return { ...rule, skippedInstances, completeInstances };
+}
+
+export type InstanceState = "complete" | "skipped" | "none";
+
+// The logged state of one occurrence date (the calendar cell painter).
+export function instanceState(
+  rule: Pick<RecurrenceRule, "completeInstances" | "skippedInstances">,
+  date: string
+): InstanceState {
+  if (rule.completeInstances.includes(date)) return "complete";
+  if (rule.skippedInstances.includes(date)) return "skipped";
+  return "none";
+}
+
+// ---------------------------------------------------------------------------
 // Human-readable description (for the canvas chip + the ICS SUMMARY suffix).
 
 export const WEEKDAY_LABELS: Record<Weekday, string> = {

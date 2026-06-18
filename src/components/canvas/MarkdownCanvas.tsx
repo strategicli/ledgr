@@ -23,6 +23,7 @@ import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
+import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
@@ -61,17 +62,25 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // Today (app timezone) anchors a newly-enabled repeat; computed once for both
   // the classic mount and the grid card.
   const today = appTodayYmd();
+  const recurrenceRule = parseRecurrence(
+    (item.properties as Record<string, unknown> | null)?.recurrence
+  );
   const recurrenceNode = (
     <RecurrenceControl
       itemId={item.id}
-      initial={parseRecurrence(
-        (item.properties as Record<string, unknown> | null)?.recurrence
-      )}
+      initial={recurrenceRule}
       scheduledDate={item.scheduledDate?.toISOString() ?? null}
       dueDate={item.dueDate?.toISOString() ?? null}
       today={today}
     />
   );
+  // The completions calendar (S3): only for a recurring VIRTUAL series — a
+  // materialized series' occurrences are their own items with their own
+  // checkboxes, so editing the series log there would desync.
+  const recurrenceCalendarNode =
+    recurrenceRule && recurrenceRule.occurrenceMode === "virtual" ? (
+      <RecurrenceCalendar itemId={item.id} initial={recurrenceRule} today={today} />
+    ) : null;
 
   // Dispatch: render the grid when arranging OR when this type has a saved layout
   // (field-level placement can't be a vertical stack). Otherwise the classic
@@ -113,6 +122,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         return <FieldStrip itemId={item.id} fields={[f]} initial={strip} today={today} statuses={statuses} />;
       }
       if (id === "recurrence") return item.type === "task" ? recurrenceNode : null;
+      if (id === "recurrenceCalendar")
+        return item.type === "task" ? recurrenceCalendarNode : null;
       if (id === "subtasks") return <Subtasks ownerId={ownerId} itemId={item.id} />;
       if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} />;
       if (id.startsWith("prop:")) {
@@ -211,6 +222,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Repeat control (native tasks, ADR-073/076): sets the task's recurrence
           rule; completion then advances the schedule deterministically. */}
       {item.type === "task" && recurrenceNode}
+      {/* Completions calendar (S3, ADR-083): tick occurrence dates in any order;
+          ✎ a date to carve it into a detached one-off. Recurring virtual only. */}
+      {item.type === "task" && recurrenceCalendarNode}
       {/* Subtasks are a task feature (ADR-018); a future project treatment
           may widen this, but meetings and notes don't grow checklists. */}
       {item.type === "task" && <Subtasks ownerId={ownerId} itemId={item.id} />}
