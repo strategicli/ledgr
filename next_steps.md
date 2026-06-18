@@ -481,8 +481,8 @@ The second workflow module on the M5/M6 foundation. A `paper` type with a **mark
 
 **Review follow-ups (2026-06-13, ADR-032 + two explorations):** acted on Brandon's review of the views features.
 - **Fixed:** date filters now name a `dateField` (due date / **When** / created / updated) so "meetings today" works, plus a **within-N-days** range ("meetings in the next N days"); the builder auto-switches to "When" for meeting views; the embedded view follows the type. `verify-views` extended to 33 checks, green.
-- **Clarified in-product:** the meeting "Agenda" section got a one-line hint (it's a default frame; editable templates come later).
-- **Parked for future phases (documented):** inline action-item → linked task with a backlink to the specific body line (`explorations/block-linked-action-items.md`; note ADR-037 — markdown has no native block ids, so the anchor mechanism needs rethinking); richer/flexible dashboard widgets — layout-faithful + stat cards, spanning sizes, regions, per-widget settings (`explorations/dashboard-widgets.md`). Both added to roadmap Phase 3.
+- **Clarified in-product:** the meeting "Agenda" section got a one-line hint (it's a default frame; editable templates come later). **Superseded 2026-06-18 (ADR-090):** the fixed Agenda frame was removed — agendas come from the markdown body (template or hand-typed); "Meeting prep" relabeled to "People"; section headings gained icons.
+- **Both since shipped (were parked for future phases):** inline action-item → linked task with a backlink to the specific body line — **DONE 2026-06-18, ADR-090** (`explorations/block-linked-action-items.md`; the ADR-037 "markdown has no native block ids" note is resolved by Obsidian-style `^id` markers); richer/flexible dashboard widgets — **DONE 2026-06-15, ADR-064/065** (`explorations/dashboard-widgets.md`).
 
 **Next session — Phase 2 tail:** push notifications → public share links → provider-interface confirmation (auth + scheduler), then circle back to the deferred matcher UIs once §1c lands. The MS/Todoist integrations remain code-complete and Brandon-step-blocked (unchanged).
 

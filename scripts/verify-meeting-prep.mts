@@ -46,7 +46,10 @@ try {
   // Roger's tasks: one open (should appear), one done (excluded), plus a task
   // for the OTHER person (excluded). And a suggested edge that must not count.
   const openTask = await mk({ type: "task", title: "Prep budget memo", status: "open", dueDate: new Date("2026-06-19T00:00:00Z") });
-  const doneTask = await mk({ type: "task", title: "Already finished", status: "done" });
+  // Raw insert sets the status key but not the category bucket the active
+  // filter keys off (ADR-082); status_category defaults to not_started, so a
+  // "done" fixture must set statusCategory explicitly or it reads as active.
+  const doneTask = await mk({ type: "task", title: "Already finished", status: "done", statusCategory: "done" });
   const otherTask = await mk({ type: "task", title: "Not Roger's", status: "open" });
   const suggestedTask = await mk({ type: "task", title: "Only suggested-linked", status: "open" });
   await relate(openTask, roger);
@@ -78,12 +81,11 @@ try {
     prep.recentMeetings[0].id === past1 && prep.recentMeetings[2].id === past3,
     prep.recentMeetings.map((m) => m.title).join(" > ")
   );
-  check("default agenda present", prep.agenda.length > 0);
 
   // --- empty prep (no related person) -------------------------------------
   const lonelyMeeting = await mk({ type: "meeting", title: "Solo block" });
   const emptyPrep = await getMeetingPrep(ownerId, lonelyMeeting);
-  check("a meeting with no people yields empty prep + default agenda", emptyPrep.people.length === 0 && emptyPrep.openTasks.length === 0 && emptyPrep.agenda.length > 0);
+  check("a meeting with no people yields empty prep", emptyPrep.people.length === 0 && emptyPrep.openTasks.length === 0);
 
   // --- action-item -> task promotion --------------------------------------
   const task = await promoteActionItem(ownerId, meeting, "  Follow up on the memo  ");
@@ -98,6 +100,16 @@ try {
   // The promoted task should now appear in this person's prep open tasks.
   const prep2 = await getMeetingPrep(ownerId, meeting);
   check("promoted task shows up in the next prep read", prep2.openTasks.some((t) => t.id === task.id));
+
+  // Block-linked promotion (ADR-090): a body + the line's ^id anchor ride along.
+  const linked = await promoteActionItem(ownerId, meeting, "Email the budget", {
+    body: "- detail one\n- detail two",
+    blockRef: "a1b2c3",
+  });
+  const src = (linked.properties as { source?: { itemId?: string; blockRef?: string } } | null)?.source;
+  check("block-linked promotion stores source.itemId + blockRef", src?.itemId === meeting && src?.blockRef === "a1b2c3");
+  const linkedBody = (linked.body as { text?: string } | null)?.text ?? "";
+  check("block-linked promotion carries the pulled sub-bullets as the task body", linkedBody.includes("detail one") && linkedBody.includes("detail two"));
 
   // --- owner scoping ------------------------------------------------------
   const [otherUser] = await db.insert(users).values({ email: `verify-prep-other-${Date.now()}@example.invalid` }).returning({ id: users.id });

@@ -1,6 +1,6 @@
 # Exploration: action items in the note body, promotable to linked tasks
 
-**Status:** parked (Brandon, 2026-06-13). Not intent, not a decision; a likely Phase 3 feature. Raised while reviewing the meeting canvas.
+**Status:** ✅ **BUILT (2026-06-18, ADR-090).** Shipped as the Obsidian-style trailing `^id` marker + per-line "→ task" promotion on checkbox lines (title from the line, body from de-indented sub-bullets), stored as `properties.source.blockRef`, stripped from share/print. Round 2 (same day) also shipped the read-side promoted-line **badge** (links to the task, suppresses re-promote), the `#^id` **deep link** (scroll + a plugin-managed flash), a **"Copy link to this line"** toolbar button (any line, the "Extension" section below), and a **task → source-line back-link**. Only the **public-share** `#^id` anchor (`/share/<token>#^id`) remains open. Kept for the record. *(Originally: parked, Brandon 2026-06-13 — raised while reviewing the meeting canvas.)*
 
 > **⚠️ Affected by ADR-037 (Markdown epoch).** This exploration assumed BlockNote's stable per-block `id`s in the document JSON. With **markdown** now the canonical body, there are no native block ids, so the anchor needs a markdown-friendly mechanism. **Resolution (Brandon, 2026-06-13): adopt Obsidian's approach.** The rest of the idea (promote a line to a task, title-from-text, back-link to the meeting) survives unchanged.
 >

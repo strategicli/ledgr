@@ -18,11 +18,24 @@ export async function POST(
     const raw = await request.json().catch(() => {
       throw new ItemError("bad_request", "request body must be JSON");
     });
-    const title = (raw as { title?: unknown })?.title;
+    const { title, body, blockRef } = (raw ?? {}) as {
+      title?: unknown;
+      body?: unknown;
+      blockRef?: unknown;
+    };
     if (typeof title !== "string") {
       throw new ItemError("bad_request", "title must be a string");
     }
-    const task = await promoteActionItem(owner.id, asUuid(id, "id"), title);
+    if (body !== undefined && typeof body !== "string") {
+      throw new ItemError("bad_request", "body must be a string");
+    }
+    if (blockRef !== undefined && typeof blockRef !== "string") {
+      throw new ItemError("bad_request", "blockRef must be a string");
+    }
+    const task = await promoteActionItem(owner.id, asUuid(id, "id"), title, {
+      body,
+      blockRef,
+    });
     return NextResponse.json({ task }, { status: 201 });
   } catch (err) {
     return errorResponse(err);

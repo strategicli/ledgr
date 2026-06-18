@@ -16,6 +16,7 @@
 // It is never imported by a client component — print, export, and FTS are all
 // server paths, so the editor bundle never pays for it.
 import MarkdownIt from "markdown-it";
+import { stripBlockAnchors } from "@/lib/editor/block-anchor";
 import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
 
 // html:true passes raw inline HTML through, which is required: the editor
@@ -116,7 +117,9 @@ md.core.ruler.after("inline", "task_lists", (state) => {
 // empty out (the document shell renders the title and an empty body).
 export function markdownToHtml(markdown: string): string {
   if (!markdown) return "";
-  return md.render(markdown);
+  // Block anchors (^id, ADR-090) are an editor-only back-reference mechanism;
+  // strip them so shared/printed/exported notes read as clean prose.
+  return md.render(stripBlockAnchors(markdown));
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode
@@ -126,7 +129,7 @@ export function markdownToHtml(markdown: string): string {
 export function markdownToText(markdown: string): string {
   if (!markdown) return "";
   const text = md
-    .render(markdown)
+    .render(stripBlockAnchors(markdown))
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

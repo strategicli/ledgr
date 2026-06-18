@@ -13,7 +13,8 @@ import { Markdown } from "@tiptap/markdown";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
@@ -29,6 +30,18 @@ import {
   TextColor,
 } from "./extensions";
 import { createMentionSuggestion } from "./mention-suggestion";
+import {
+  BlockAnchor,
+  PROMOTE_LINE_EVENT,
+  OPEN_ITEM_EVENT,
+  ensureAnchorAtPos,
+  ensureAnchorAtSelection,
+  scrollToBlockId,
+  setPromotedRefs,
+  type PromotedRefs,
+} from "./block-anchor-extension";
+import { extractPromotable } from "@/lib/editor/block-anchor";
+import PromoteLinePopup, { type PromoteDraft } from "./PromoteLinePopup";
 import "./markdown-editor.css";
 
 export type MarkdownEditorProps = {
@@ -44,6 +57,15 @@ export type MarkdownEditorProps = {
   // URL. When unset, image insertion is disabled — controlled hosts with no
   // backing item (scratch route, Changelog notes) pass nothing.
   uploadImage?: (file: File) => Promise<string>;
+  // When set (meetings, ADR-090): enable the per-line "→ task" promote
+  // affordance, posting to this meeting's promote endpoint.
+  promoteToMeetingId?: string;
+  // Flush the host's debounced body save and resolve when done — called before a
+  // promote POST so the line's freshly-inserted ^id anchor is persisted first.
+  onRequestSave?: () => Promise<void>;
+  // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
+  // those lines instead of the promote button, and links to the task.
+  promotedRefs?: PromotedRefs;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -111,16 +133,30 @@ export default function MarkdownEditor({
   onChange,
   onEditorReady,
   uploadImage,
+  promoteToMeetingId,
+  onRequestSave,
+  promotedRefs,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
   // without re-creating the editor. Synced in an effect, not during render.
   const onChangeRef = useRef(onChange);
   const uploadRef = useRef(uploadImage);
+  const onRequestSaveRef = useRef(onRequestSave);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  // The promote popup's draft, or null when closed (ADR-090).
+  const [promote, setPromote] = useState<{
+    blockId: string;
+    title: string;
+    body: string;
+  } | null>(null);
+  // Brief "Copied" feedback on the copy-link-to-line button.
+  const [linkCopied, setLinkCopied] = useState(false);
   useEffect(() => {
     onChangeRef.current = onChange;
     uploadRef.current = uploadImage;
+    onRequestSaveRef.current = onRequestSave;
   });
 
   const editor = useEditor({
@@ -133,6 +169,12 @@ export default function MarkdownEditor({
       // checklist item hold a sub-checklist.
       TaskList,
       TaskItem.configure({ nested: true }),
+      // Block anchors (ADR-090): dim trailing ^id markers + the jump-to/ensure
+      // primitives the action-item → task promotion rides on. The per-line
+      // "→ task" widget shows only when a meeting wired the promote path; a
+      // promoted line shows a "✓ task" badge instead (the ref map is pushed into
+      // plugin state by an effect, so the badge updates after a promotion).
+      BlockAnchor.configure({ promote: !!promoteToMeetingId }),
       TextColor,
       Highlight,
       // Inline images (paste/drop → R2) and GFM tables. Both round-trip to
@@ -230,6 +272,60 @@ export default function MarkdownEditor({
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
 
+  // Promote affordance (ADR-090): a checkbox line's "→ task" button fires a DOM
+  // event carrying its position. Ensure the line has an ^id anchor, then open
+  // the popup pre-filled with the line's text + sub-bullets (deterministic).
+  useEffect(() => {
+    if (!editor || !promoteToMeetingId) return;
+    const dom = editor.view.dom;
+    const handler = (e: Event) => {
+      const pos = (e as CustomEvent<{ pos: number }>).detail?.pos;
+      if (typeof pos !== "number") return;
+      const id = ensureAnchorAtPos(editor, pos);
+      if (!id) return;
+      // The insert changed the doc; push it into the host's pending save so the
+      // pre-promote flush (onRequestSave) persists the anchor.
+      onChangeRef.current(editor.getMarkdown());
+      const ex = extractPromotable(editor.getMarkdown(), id) ?? { title: "", body: "" };
+      setPromote({ blockId: id, title: ex.title, body: ex.body });
+    };
+    dom.addEventListener(PROMOTE_LINE_EVENT, handler);
+    return () => dom.removeEventListener(PROMOTE_LINE_EVENT, handler);
+  }, [editor, promoteToMeetingId]);
+
+  // A "✓ task" badge (or any deep link to a line) fires ledgr-open-item; navigate
+  // there with the SPA router rather than a full reload.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const handler = (e: Event) => {
+      const itemId = (e as CustomEvent<{ itemId: string }>).detail?.itemId;
+      if (itemId) router.push(`/items/${itemId}`);
+    };
+    dom.addEventListener(OPEN_ITEM_EVENT, handler);
+    return () => dom.removeEventListener(OPEN_ITEM_EVENT, handler);
+  }, [editor, router]);
+
+  // Deep link to a line (ADR-090): a #^id hash scrolls the editor to that line
+  // and flashes it — on first mount (arriving from a copied link / a task's
+  // source backlink) and on in-page hashchange. A short delay lets layout settle.
+  useEffect(() => {
+    if (!editor) return;
+    const jump = () => {
+      const m = /^#\^([a-z0-9]+)$/.exec(window.location.hash);
+      if (m) window.setTimeout(() => scrollToBlockId(editor, m[1]), 80);
+    };
+    jump();
+    window.addEventListener("hashchange", jump);
+    return () => window.removeEventListener("hashchange", jump);
+  }, [editor]);
+
+  // Push the promoted-ref map into the plugin whenever it changes (e.g. after a
+  // promotion refreshes the page) so the "✓ task" badge updates.
+  useEffect(() => {
+    if (editor) setPromotedRefs(editor, promotedRefs ?? {});
+  }, [editor, promotedRefs]);
+
   // If the host swaps in a different document (e.g. "reload from saved" on the
   // scratch route), reset the editor to it without firing onUpdate.
   useEffect(() => {
@@ -259,6 +355,47 @@ export default function MarkdownEditor({
     const chain = editor.chain().focus();
     if (color) chain.setMark("highlight", { color }).run();
     else chain.unsetMark("highlight").run();
+  };
+
+  // Create the task from the popup draft (ADR-090): flush the body save so the
+  // anchor is persisted, POST the promotion, then refresh so the new task shows
+  // in the prep panel and the promoted line gets its badge.
+  const submitPromote = async (draft: PromoteDraft) => {
+    const meetingId = promoteToMeetingId;
+    const blockRef = promote?.blockId;
+    if (!meetingId) return;
+    setPromote(null);
+    try {
+      await onRequestSaveRef.current?.();
+      await fetch(`/api/items/${meetingId}/promote-task`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: draft.title, body: draft.body, blockRef }),
+      });
+      router.refresh();
+    } catch (err) {
+      console.error("promote failed", err);
+    }
+  };
+
+  // Copy a deep link to the cursor's line (ADR-090): ensure that line has an ^id
+  // anchor, then copy an absolute /items/<id>#^<id> URL. Works on any line/type.
+  const copyLineLink = async () => {
+    if (!itemId) return;
+    const id = ensureAnchorAtSelection(editor);
+    if (!id) return;
+    // The insert (if any) changed the doc; feed the host's debounced save so the
+    // anchor persists and the link resolves after navigation.
+    onChangeRef.current(editor.getMarkdown());
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/items/${itemId}#^${id}`
+      );
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      console.error("clipboard write failed");
+    }
   };
 
   return (
@@ -346,6 +483,14 @@ export default function MarkdownEditor({
             onClick={() => fileInputRef.current?.click()}
           />
         ) : null}
+        {itemId ? (
+          <ToolbarButton
+            label={linkCopied ? "Copied ✓" : "🔗 Link"}
+            title="Copy a link to this line (from the cursor)"
+            active={linkCopied}
+            onClick={() => void copyLineLink()}
+          />
+        ) : null}
 
         <span className="mx-1 h-5 w-px bg-neutral-700" />
 
@@ -410,6 +555,15 @@ export default function MarkdownEditor({
           }
         }}
       />
+
+      {promote && (
+        <PromoteLinePopup
+          initialTitle={promote.title}
+          initialBody={promote.body}
+          onSubmit={submitPromote}
+          onCancel={() => setPromote(null)}
+        />
+      )}
     </div>
   );
 }

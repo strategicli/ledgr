@@ -11,6 +11,7 @@ import {
   type MinutesState,
 } from "@/lib/meetings/transcripts";
 import { getTranscription } from "@/lib/transcription/provider";
+import SectionHeading from "@/components/canvas/SectionHeading";
 import AddTranscript from "./AddTranscript";
 import AudioUpload from "./AudioUpload";
 import TranscriptionPoller from "./TranscriptionPoller";
@@ -39,9 +40,9 @@ export default async function MeetingTranscripts({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-12 pt-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+      <SectionHeading icon="document">
         Transcripts {transcripts.length > 0 && `(${transcripts.length})`}
-      </h3>
+      </SectionHeading>
 
       {transcripts.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
