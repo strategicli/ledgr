@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import SettingsForm from "@/components/settings/SettingsForm";
+import IcsFeed from "@/components/settings/IcsFeed";
 import BackButton from "@/components/ui/BackButton";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function SettingsPage() {
           <BackButton />
         </div>
         <SettingsForm initial={settings} />
+        <IcsFeed initialToken={settings.icsToken} />
       </div>
     </main>
   );

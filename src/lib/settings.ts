@@ -146,6 +146,11 @@ export type UserSettings = {
   // parses back to null, so a removed dashboard silently falls back.
   homeDashboardId: string | null;
   todayDashboardId: string | null;
+  // The unguessable token in the owner's published ICS task-feed URL (T4,
+  // ADR-079). null = no feed published yet; generated/rotated from User
+  // Settings. The feed route resolves the owner by this token (no Clerk),
+  // same posture as a share link.
+  icsToken: string | null;
 };
 
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
@@ -170,6 +175,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   displayName: "",
   homeDashboardId: null,
   todayDashboardId: null,
+  icsToken: null,
 };
 
 const SETTINGS_UUID_RE =
@@ -258,6 +264,11 @@ export function parseSettings(raw: unknown): UserSettings {
     typeof v === "string" && SETTINGS_UUID_RE.test(v) ? v : null;
   const homeDashboardId = dashRef(r.homeDashboardId);
   const todayDashboardId = dashRef(r.todayDashboardId);
+  // base64url token, bounded; anything else → no feed.
+  const icsToken =
+    typeof r.icsToken === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(r.icsToken)
+      ? r.icsToken
+      : null;
   const navSlots = parseNavSlots(r.navSlots, NAV_SLOTS_HARD_CAP, DEFAULT_NAV_SLOTS);
   // null (or absent) means mirror desktop; an array is a distinct mobile list.
   const mobileNavSlots =
@@ -277,6 +288,7 @@ export function parseSettings(raw: unknown): UserSettings {
     displayName,
     homeDashboardId,
     todayDashboardId,
+    icsToken,
   };
 }
 

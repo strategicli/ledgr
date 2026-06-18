@@ -22,6 +22,11 @@ const isPublicRoute = createRouteMatcher([
   // the render path takes no Clerk session. Issuance (/api/items/[id]/share)
   // stays Clerk-protected.
   "/share(.*)",
+  // Published ICS task feed (T4, ADR-079): an unguessable token in the URL is
+  // the credential, so calendar apps subscribe with no Clerk session. The
+  // token-management route (/api/ics/token) still gates itself with
+  // requireOwner, which 401s an anonymous caller, so this is safe.
+  "/api/ics(.*)",
 ]);
 
 const handler = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
