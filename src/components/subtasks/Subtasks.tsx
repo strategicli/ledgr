@@ -8,6 +8,7 @@ import Link from "next/link";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import AddSubtask from "./AddSubtask";
 import SubtaskCheckbox from "./SubtaskCheckbox";
+import SubtaskSchedule from "./SubtaskSchedule";
 
 // Due and scheduled dates are UTC-midnight calendar days (ADR-008); format in
 // UTC so the shown day can't shift with the viewer's timezone.
@@ -25,11 +26,17 @@ function ProgressBadge({ done, total }: { done: number; total: number }) {
   );
 }
 
-function SubtaskRow({ node }: { node: SubtaskNode }) {
+function SubtaskRow({
+  node,
+  parentScheduled,
+}: {
+  node: SubtaskNode;
+  parentScheduled: Date | null;
+}) {
   const done = node.type === "task" && node.statusCategory === "done";
   return (
     <li>
-      <div className="flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">
+      <div className="group/row flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">
         {node.type === "task" ? (
           <SubtaskCheckbox id={node.id} done={done} />
         ) : (
@@ -49,10 +56,21 @@ function SubtaskRow({ node }: { node: SubtaskNode }) {
           </span>
         )}
         {node.progress && <ProgressBadge {...node.progress} />}
-        {node.scheduledDate && (
-          <span className="shrink-0 text-xs text-neutral-500">
-            scheduled {dateFmt.format(node.scheduledDate)}
-          </span>
+        {/* Scheduled date — interactive + relative-aware for task subtasks (S5);
+            a plain label for non-task children. */}
+        {node.type === "task" ? (
+          <SubtaskSchedule
+            id={node.id}
+            scheduledIso={node.scheduledDate?.toISOString() ?? null}
+            offsetDays={node.relativeOffset}
+            parentScheduledIso={parentScheduled?.toISOString() ?? null}
+          />
+        ) : (
+          node.scheduledDate && (
+            <span className="shrink-0 text-xs text-neutral-500">
+              scheduled {dateFmt.format(node.scheduledDate)}
+            </span>
+          )
         )}
         {node.dueDate && (
           <span className="shrink-0 text-xs text-neutral-500">
@@ -63,7 +81,8 @@ function SubtaskRow({ node }: { node: SubtaskNode }) {
       {node.children.length > 0 && (
         <ul className="ml-4 border-l border-neutral-800 pl-3">
           {node.children.map((child) => (
-            <SubtaskRow key={child.id} node={child} />
+            // A child's parent (for its relative offset) is THIS node.
+            <SubtaskRow key={child.id} node={child} parentScheduled={node.scheduledDate} />
           ))}
         </ul>
       )}
@@ -74,9 +93,13 @@ function SubtaskRow({ node }: { node: SubtaskNode }) {
 export default async function Subtasks({
   ownerId,
   itemId,
+  parentScheduled = null,
 }: {
   ownerId: string;
   itemId: string;
+  // The parent item's scheduled date — the anchor a relative subtask's offset
+  // is measured from (S5, ADR-085). null when the parent isn't dated.
+  parentScheduled?: Date | null;
 }) {
   const { children, progress } = await listSubtree(ownerId, itemId);
 
@@ -101,7 +124,7 @@ export default async function Subtasks({
       </h2>
       <ul className="mt-1">
         {children.map((node) => (
-          <SubtaskRow key={node.id} node={node} />
+          <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} />
         ))}
       </ul>
       <AddSubtask parentId={itemId} />

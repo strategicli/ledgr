@@ -12,6 +12,7 @@ import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { ItemError, type ItemStatus, type Urgency } from "@/lib/items";
 import { type StatusCategory } from "@/lib/status";
+import { relativeOffsetOf } from "@/lib/relative-subtask";
 
 // Generous bound for a single-user tree; rows past it are dropped (and any
 // children orphaned by the cut are dropped with them in assembly).
@@ -27,6 +28,9 @@ export type SubtaskNode = {
   statusCategory: StatusCategory;
   dueDate: Date | null;
   scheduledDate: Date | null;
+  // The relative-schedule offset (days from the parent's scheduled date, S5) if
+  // this subtask is relatively scheduled, else null. Lets the row show "+2d".
+  relativeOffset: number | null;
   urgency: Urgency | null;
   parentId: string;
   createdAt: Date;
@@ -49,6 +53,7 @@ type RawRow = {
   status_category: string;
   due_date: string | Date | null;
   scheduled_date: string | Date | null;
+  properties: Record<string, unknown> | null;
   urgency: Urgency | null;
   parent_id: string;
   created_at: string | Date;
@@ -86,13 +91,13 @@ export async function listSubtree(
   const res = await getDb().execute(sql`
     with recursive subtree as (
       select id, type, title, status, status_category, due_date, scheduled_date,
-             urgency, parent_id, created_at, updated_at
+             properties, urgency, parent_id, created_at, updated_at
       from items
       where parent_id = ${rootId} and owner_id = ${ownerId}
         and deleted_at is null
       union
       select i.id, i.type, i.title, i.status, i.status_category, i.due_date,
-             i.scheduled_date, i.urgency, i.parent_id, i.created_at, i.updated_at
+             i.scheduled_date, i.properties, i.urgency, i.parent_id, i.created_at, i.updated_at
       from items i join subtree s on i.parent_id = s.id
       where i.owner_id = ${ownerId} and i.deleted_at is null
     )
@@ -110,6 +115,7 @@ export async function listSubtree(
       dueDate: raw.due_date == null ? null : new Date(raw.due_date),
       scheduledDate:
         raw.scheduled_date == null ? null : new Date(raw.scheduled_date),
+      relativeOffset: relativeOffsetOf(raw.properties),
       urgency: raw.urgency,
       parentId: raw.parent_id,
       createdAt: new Date(raw.created_at),

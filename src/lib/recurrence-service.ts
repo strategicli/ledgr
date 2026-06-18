@@ -33,6 +33,7 @@ import {
 import { APP_TIMEZONE, ymdInZone } from "@/lib/today";
 import { defaultStatusKey } from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
+import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
 
 // The relation role that links a materialized occurrence (source) to its series
 // (target). A role, not parent_id, so the series' own canvas subtasks stay its
@@ -119,6 +120,12 @@ async function advanceSeriesRow(
     })
     .where(and(eq(items.id, series.id), eq(items.ownerId, ownerId)))
     .returning();
+  // Relative subtasks shift with the series' scheduled date (S5, ADR-085).
+  await recomputeRelativeChildren(
+    ownerId,
+    series.id,
+    updated.scheduledDate ? dateToYmdUtc(updated.scheduledDate) : null
+  );
   return { updated, result: res };
 }
 
@@ -284,6 +291,11 @@ async function writeSeriesLogState(
     })
     .where(and(eq(items.id, series.id), eq(items.ownerId, ownerId)))
     .returning();
+  await recomputeRelativeChildren(
+    ownerId,
+    series.id,
+    updated.scheduledDate ? dateToYmdUtc(updated.scheduledDate) : null
+  );
   return updated as ItemRow;
 }
 

@@ -18,7 +18,8 @@ import { getDb } from "@/db";
 import { items, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
 import { syncMentionRelations } from "@/lib/mentions";
-import { parseRecurrence } from "@/lib/recurrence";
+import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
+import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
 import {
   completeMaterializedOccurrence,
   completeVirtualSeries,
@@ -426,6 +427,16 @@ export async function updateItem(
     if (updated.body != null) await snapshotRevision(id, updated.body);
     // Runs on null bodies too: clearing a body clears its mention edges.
     await syncMentionRelations(ownerId, id, updated.body);
+  }
+  // A scheduled-date change re-derives any relative subtasks (S5, ADR-085):
+  // each carries an offset from this parent's scheduled day, so moving the
+  // parent shifts them (and chains down). Only when scheduled actually changed.
+  if (patch.scheduledDate !== undefined) {
+    await recomputeRelativeChildren(
+      ownerId,
+      id,
+      updated.scheduledDate ? dateToYmdUtc(updated.scheduledDate) : null
+    );
   }
   // A materialized occurrence was just completed: advance its parent series and
   // clone the next occurrence (create-next-after-completion). Done after the

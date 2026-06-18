@@ -124,7 +124,10 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       if (id === "recurrence") return item.type === "task" ? recurrenceNode : null;
       if (id === "recurrenceCalendar")
         return item.type === "task" ? recurrenceCalendarNode : null;
-      if (id === "subtasks") return <Subtasks ownerId={ownerId} itemId={item.id} />;
+      if (id === "subtasks")
+        return (
+          <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
+        );
       if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} />;
       if (id.startsWith("prop:")) {
         const key = id.slice(5);
@@ -227,7 +230,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {item.type === "task" && recurrenceCalendarNode}
       {/* Subtasks are a task feature (ADR-018); a future project treatment
           may widen this, but meetings and notes don't grow checklists. */}
-      {item.type === "task" && <Subtasks ownerId={ownerId} itemId={item.id} />}
+      {item.type === "task" && (
+        <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
+      )}
       {/* Meeting prep (PRD §5.1): the person's open tasks, recent meetings,
           agenda, and action-item -> task promotion. */}
       {item.type === "meeting" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
