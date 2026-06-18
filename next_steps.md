@@ -26,6 +26,33 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 ---
 
+## ⟢ NEXT UP — Native Tasks (go fully native, ADR-073) + toward-1.0 decisions (2026-06-17)
+
+> **🥇 #1 priority toward 1.0: getting native tasks good enough to fully replace Todoist.** This is the next thing to sort out, ahead of the rest of the 1.0 push (Notion migration, matcher UIs, the alpha→1.0 flip). Brandon, 2026-06-17.
+
+**Toward-1.0 decisions Brandon settled 2026-06-17 (ADRs 073–075):**
+- **Tasks go fully native (ADR-073, CORE).** Drop Todoist as the engine; Ledgr owns tasks end to end. Todoist stays an optional adapter behind the `tasks` seam (Tyler keeps it). Reverses PRD §4.6/§5.2. → the Native Tasks chunk below. **Flag Tyler in COLLAB to ratify the seam change before the engine merges.**
+- **Microsoft-only for v1.0 (ADR-074, CORE).** Google/iCloud calendar/email adapters deferred post-1.0 (Tyler builds them in his instance when he adopts). Seam discipline stays; only the extra adapters wait. Answers PRD Q7 for v1.0.
+- **No confidential tier (ADR-075, CORE).** The single-user + Clerk + owner-scoped posture is sufficient; declined for v1.0 (revisitable later / for Tyler's instance).
+- **Audio capture → AI minutes is a candidate 1.0 item** (`explorations/meeting-recording.md`, elevated 2026-06-17): record/upload audio on a meeting → deterministic transcription → human-triggered Claude minutes + action-items landing in the Inbox for triage. Not committed; sequence after Native Tasks unless Brandon reprioritizes.
+
+**✅ In-browser verification backlog cleared (Brandon, 2026-06-17).** The pending eyeballs across recent slices — customizable dashboards (ADR-064/065), typed relations (ADR-067), item-view inline editing + canvas layout (ADR-068/069), view/capture papercuts (ADR-072), AI & MCP page (ADR-066), nav v6 (ADR-056), and the editor-parity image-paste + GFM tables (ADR-040 carry-overs) — are all confirmed working. No open eyeball gates remain.
+
+**THE NEXT CHUNK — Native Tasks (T1–T6).** Make Ledgr the task manager end to end (ADR-073). The exploration (`explorations/tasks-todoist-vs-native.md`) named what Todoist provides that native must replace; these slices replace each, plus Brandon's daily-planning asks (rescheduling, focus/Top-3). Tasks stay rows in `items` (Principle 2) — this is the recurrence/reminder/scheduling layer around them. Core (the `tasks` seam + a recurrence model); ADR-073 recorded, **flag Tyler in COLLAB to ratify before the engine merges.** Pairs with `explorations/calendar-time-blocking.md`.
+
+- [ ] **T1 — Native recurrence engine.** One task item carries an RRULE + a per-date completion log; completing an occurrence stamps the date and advances `scheduled` to the next (deterministic, Principle 3, no model). No spawned clones, no overdue stacking. A per-task **occurrence mode** chooses *virtual* (one shared body + completion log, the default) or *materialized* (each occurrence is its own child item with its own notes, never overwritten — via create-next-after-completion, so still no stacking). Materialized occurrences are **deep-cloned from the series prototype** (fresh unchecked subtasks, fresh body, carried tags/relations) via a clone-subtree primitive shared with a subtree-aware extension of templates (ADR-045). Un-defers ADR-026's "recurrence delegated to Todoist." *(The load-bearing slice — recurrence is the piece Todoist fully owned; it unblocks T2–T4.)* **Design + the open forks: `explorations/recurrence-model.md`** (grounded in the Obsidian TaskNotes model; the model choice is core → ADR with Tyler before T1 builds).
+- [ ] **T2 — Scheduling + rescheduling.** Reschedule controls (tomorrow / next week / pick date), an optional defer/start date, a deterministic overdue auto-roll (the `calendar-time-blocking.md` slot-finder/rescheduler sibling), and natural-language date entry on capture (small parser, no heavy dep — Principle 5) to match Todoist's NL dates.
+- [ ] **T3 — Daily focus layer ("Top 3" / in-focus).** Mark the vital few for the day; surface on Today + as a view/widget. A `focus` flag/date on the task (or a lightweight day-plan). Decide interaction with the existing Today view + dashboards. **Brainstorm + UX options: `explorations/task-focus-layer.md`** (recommends a day-stamped `focus` marker + a "Today's Focus" zone on Today + a star affordance + a widget; soft cap at 3, morning re-pick).
+- [ ] **T4 — Reminders without Todoist.** (a) A Ledgr-published read-only **ICS subscription feed** (`webcal://`) of scheduled/due tasks so any calendar app fires its own reminders — Sunday-proof (cached), standards-based, no new push infra (the exploration's recommended path). (b) The existing web-push sender (ADR-034) for the morning agenda + near-term nudges. Per-task reminder lead time.
+- [ ] **T5 — Offline / quick capture without Todoist.** Lean on the PWA share-target + an offline outbox that syncs on reconnect, replacing the Todoist inbox pull-in (ADR-010/026) as the offline-capture path.
+- [ ] **T6 — Seam + retire Todoist (Brandon's instance).** Native becomes the default `tasks` adapter; Todoist stays an optional adapter (Tyler keeps it — no rewrite, Phase-4 packageable). Turn off Brandon's Todoist sync, update the `/health` canary + runbook + `.env`, and record the PRD §4.6/§5.2 reversal note.
+
+**Suggested start: T1 (recurrence)** — load-bearing and unblocks T2–T4.
+
+**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the §1c-gated matcher setup-wizard + learn-by-confirmation UIs (Phase 2); the **alpha → v1.0 production flip** (record in `decisions.md` — turns on migration-caution + no-Saturday-deploys).
+
+---
+
 ## ⟢ Session summary — item-view UX push: inline editing (Feature A, ADR-068) ✅ DONE + arrangeable per-type canvas layout (Feature B, ADR-069) ✅ DONE
 
 **A two-feature item-view UX push Brandon asked for (2026-06-16). Feature A shipped 2026-06-16 (ADR-068); Feature B B1 shipped 2026-06-17 (ADR-069, CORE).** Feature A is non-core; Feature B is core (a `types.canvas_layout` column + the canvas model) — both flagged to Tyler in `COLLAB.md`.

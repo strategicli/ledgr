@@ -1,6 +1,6 @@
 # Exploration: meeting recording, transcription, and minutes
 
-**Status:** parked (Brandon, 2026-06-14). Not intent, not a decision.
+**Status:** ⭐ **Candidate 1.0 item (Brandon, 2026-06-17)** — elevated from parked: record/upload audio → deterministic transcription → human-triggered Claude minutes + action-items landing in the Inbox for triage. Not yet committed/scheduled; sequence after the Native Tasks chunk unless reprioritized. *(Was: parked, 2026-06-14.)*
 
 ## The idea
 

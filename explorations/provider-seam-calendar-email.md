@@ -1,6 +1,6 @@
 # Exploration: provider seam for calendar + email-in (Microsoft / Google / iCloud)
 
-**Status:** parked, open for Brandon + Tyler. Core (provider interfaces are a both-agree area per CLAUDE.md "Building together"), so it lands as an ADR before it builds. Likely built and proven in Tyler's instance first (he needs Google), then adopted.
+**Status:** ✅ **RESOLVED 2026-06-17 — Microsoft-only for v1.0 (ADR-074); Google/iCloud adapters deferred post-1.0**, built and proven in Tyler's instance when he adopts. The seam *discipline* stays (calendar/mail behind interfaces); only the extra adapters wait. Answers PRD Q7 for v1.0. Kept below for the record. *(Was: parked, open for Brandon + Tyler.)*
 **Source:** cherry-picked from Tyler's `tyler/additions-for-review` branch (`ty-additions/integrations-savor-atlas.md`, `ty-additions/FOR-BRANDON-approach-diff.md` #6).
 
 ## The idea
