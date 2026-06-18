@@ -262,3 +262,78 @@
   margin-top: 0.15rem;
   padding-top: 0.4rem;
 }
+
+/* Block anchors (ADR-090). The trailing "^id" marker stays in the body (it's the
+   back-reference target) but reads as near-invisible while editing — dimmed and
+   shrunk, Obsidian's reading-view feel. It's stripped entirely from share/print
+   (markdownToHtml), so this styling is editor-only. */
+.block-anchor-marker {
+  opacity: 0.28;
+  font-size: 0.8em;
+  letter-spacing: 0.02em;
+}
+.ProseMirror:focus-within .block-anchor-marker {
+  opacity: 0.5;
+}
+
+/* Jump-to-line flash (#^id deep link / a promoted line's "→ task" back-link). */
+.block-anchor-flash {
+  background-color: rgba(250, 204, 21, 0.18);
+  border-radius: 3px;
+  transition: background-color 0.5s ease-out;
+}
+
+/* Per-line "→ task" promote affordance (ADR-090, meetings only): a quiet button
+   at the end of a checkbox line, revealed on hover so it never clutters the note
+   while typing. Desktop hover is the primary path (mobile keeps the prep panel's
+   input). It's an editor widget decoration, never serialized to the body. */
+.promote-line-btn {
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease-in-out;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+[data-type="taskList"] li:hover > div .promote-line-btn,
+.promote-line-btn:focus-visible {
+  opacity: 0.85;
+}
+.promote-line-btn:hover {
+  opacity: 1;
+  background: rgba(59, 130, 246, 0.22);
+}
+
+/* Promoted-line badge (ADR-090): once a checkbox line has become a task, it
+   shows a persistent "✓ task" badge (links to the task) in place of the promote
+   button — so the line reads as promoted and can't be double-promoted. Editor
+   only; never serialized to the body. */
+.promoted-line-badge {
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 4px;
+  opacity: 0.7;
+  transition: opacity 0.12s ease-in-out;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+[data-type="taskList"] li:hover > div .promoted-line-badge,
+.promoted-line-badge:hover,
+.promoted-line-badge:focus-visible {
+  opacity: 1;
+}

@@ -23,6 +23,9 @@ import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
+import { promotedBlockRefs } from "@/lib/meetings/promote";
+import { getItem } from "@/lib/items";
+import Link from "next/link";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import ReminderControl from "@/components/canvas/ReminderControl";
@@ -66,6 +69,26 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // Today (app timezone) anchors a newly-enabled repeat; computed once for both
   // the classic mount and the grid card.
   const today = appTodayYmd();
+  // Block anchors (ADR-090): a meeting's promoted lines (→ a "✓ task" badge), and
+  // a promoted task's back-link to the exact meeting line it came from.
+  const promotedRefs =
+    item.type === "meeting" ? await promotedBlockRefs(ownerId, item.id) : undefined;
+  const sourceObj =
+    item.type === "task"
+      ? ((item.properties as Record<string, unknown> | null)?.source as
+          | { itemId?: string; blockRef?: string }
+          | undefined)
+      : undefined;
+  let sourceLink: { href: string; title: string } | null = null;
+  if (sourceObj?.itemId && sourceObj?.blockRef) {
+    const src = await getItem(ownerId, sourceObj.itemId).catch(() => null);
+    if (src && !src.deletedAt) {
+      sourceLink = {
+        href: `/items/${src.id}#^${sourceObj.blockRef}`,
+        title: src.title || "Untitled",
+      };
+    }
+  }
   const recurrenceRule = parseRecurrence(
     (item.properties as Record<string, unknown> | null)?.recurrence
   );
@@ -138,6 +161,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           <ItemEditor
             item={{ id: item.id, title: item.title, body: item.body }}
             slot="body"
+            promoteToMeetingId={item.type === "meeting" ? item.id : undefined}
+            promotedRefs={promotedRefs}
           />
         );
       if (id.startsWith("sys:")) {
@@ -246,7 +271,19 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} statuses={statuses} />
           ) : null
         }
+        promoteToMeetingId={item.type === "meeting" ? item.id : undefined}
+        promotedRefs={promotedRefs}
       />
+      {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
+          meeting line it came from; clicking deep-links + flashes that line. */}
+      {sourceLink && (
+        <div className="mx-auto w-full max-w-3xl px-12 pt-1 text-xs text-neutral-500">
+          ↳ from{" "}
+          <Link href={sourceLink.href} className="text-neutral-400 hover:text-neutral-200 hover:underline">
+            {sourceLink.title}
+          </Link>
+        </div>
+      )}
       {/* Repeat control (native tasks, ADR-073/076): sets the task's recurrence
           rule; completion then advances the schedule deterministically. */}
       {item.type === "task" && recurrenceNode}
@@ -260,8 +297,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {item.type === "task" && (
         <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
       )}
-      {/* Meeting prep (PRD §5.1): the person's open tasks, recent meetings,
-          agenda, and action-item -> task promotion. */}
+      {/* Meeting prep (PRD §5.1): the people, their open tasks, recent
+          meetings, and action-item -> task promotion. */}
       {item.type === "meeting" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
       {/* Transcripts (meeting recording v1a, ADR-087): paste/list a meeting's
           transcripts (each its own item), the pivot for Claude-over-MCP minutes. */}

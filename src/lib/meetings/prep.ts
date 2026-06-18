@@ -1,9 +1,9 @@
 // Meeting prep assembly (slice 24, PRD §5.1). Deterministic, no model in the
-// loop: given a meeting, gather the related person's open tasks, the
-// last few meetings with them, and agenda headings. This is the Phase 2
-// forerunner of the general per-type item template (roadmap Phase 3). Reads
-// only — owner-scoped, body-free, confirmed edges only (a provisional calendar
-// match must not shape prep, PRD §3.3).
+// loop: given a meeting, gather the related person's open tasks and the
+// last few meetings with them. This is the Phase 2 forerunner of the general
+// per-type item template (roadmap Phase 3). Reads only — owner-scoped,
+// body-free, confirmed edges only (a provisional calendar match must not shape
+// prep, PRD §3.3).
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
@@ -16,15 +16,11 @@ export type MeetingPrep = {
   people: PrepPerson[];
   openTasks: ListRow[];
   recentMeetings: ListRow[];
-  agenda: string[];
   // The template a matcher chose (slice 23), if any — shown as a hint; the
   // full named-template system (agenda per template) is Phase 3.
   templateName: string | null;
 };
 
-// A sensible default until per-template agendas exist (Phase 3). Kept short so
-// it's a starting frame, not a form to fill.
-const DEFAULT_AGENDA = ["Agenda", "Discussion", "Action items", "Follow-ups"];
 const RECENT_MEETINGS = 3;
 
 // The meeting's confirmed related people (both directions), title order.
@@ -73,7 +69,7 @@ export async function getMeetingPrep(
 
   const people = await getMeetingPeople(ownerId, meetingId);
   if (people.length === 0) {
-    return { people, openTasks: [], recentMeetings: [], agenda: DEFAULT_AGENDA, templateName };
+    return { people, openTasks: [], recentMeetings: [], templateName };
   }
 
   // Per-person queries (people per meeting are few) reusing the tested
@@ -105,5 +101,5 @@ export async function getMeetingPrep(
     .sort((a, b) => (b.meetingAt?.getTime() ?? 0) - (a.meetingAt?.getTime() ?? 0))
     .slice(0, RECENT_MEETINGS);
 
-  return { people, openTasks, recentMeetings, agenda: DEFAULT_AGENDA, templateName };
+  return { people, openTasks, recentMeetings, templateName };
 }

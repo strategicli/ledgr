@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { beginSave, endSave } from "@/lib/save-status";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
+import type { PromotedRefs } from "./block-anchor-extension";
 
 const SAVE_DEBOUNCE_MS = 1500;
 
@@ -50,9 +51,20 @@ export type ItemEditorProps = {
   // that block, bare (no canvas chrome), so each can live in its own grid card;
   // each instance keeps its own debounced autosave for the field it owns.
   slot?: "full" | "title" | "body";
+  // When this item is a meeting (ADR-090): enable the body editor's per-line
+  // "→ task" promote affordance, posting to this meeting's promote endpoint.
+  promoteToMeetingId?: string;
+  // blockRef → promoted task (ADR-090), so already-promoted lines show a badge.
+  promotedRefs?: PromotedRefs;
 };
 
-export default function ItemEditor({ item, fields, slot = "full" }: ItemEditorProps) {
+export default function ItemEditor({
+  item,
+  fields,
+  slot = "full",
+  promoteToMeetingId,
+  promotedRefs,
+}: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,6 +182,11 @@ export default function ItemEditor({ item, fields, slot = "full" }: ItemEditorPr
         pending.current.body = makeMarkdownBody(markdown);
         schedule();
       }}
+      promoteToMeetingId={promoteToMeetingId}
+      promotedRefs={promotedRefs}
+      // The promote flow flushes the body save first, so the line's ^id anchor
+      // is persisted before the task is created and the page refreshes.
+      onRequestSave={flush}
     />
   );
 
