@@ -5,15 +5,18 @@
 export type CanvasField =
   | "status"
   | "dueDate"
+  | "scheduledDate"
   | "urgency"
   | "meetingAt"
   | "url";
 
-// Baked-in fields stay core to their type (ADR-018): status, due date, and
-// urgency belong to tasks only. Other types surface nothing task-shaped;
-// users add such fields later via custom properties, not built-ins.
+// Baked-in fields stay core to their type (ADR-018): status, scheduled, due
+// date, and urgency belong to tasks only. Other types surface nothing
+// task-shaped; users add such fields later via custom properties, not built-ins.
+// scheduled (the planned date) sits beside due (the deadline) — native tasks,
+// ADR-073/076.
 const TOP_STRIP: Record<string, CanvasField[]> = {
-  task: ["status", "dueDate", "urgency"],
+  task: ["status", "scheduledDate", "dueDate", "urgency"],
   meeting: ["meetingAt"],
   note: [],
   link: ["url"],
@@ -36,6 +39,7 @@ export type FooterField = { label: string; value: string };
 type FooterItem = {
   type: string;
   dueDate: Date | null;
+  scheduledDate?: Date | null;
   urgency: string | null;
   meetingAt: Date | null;
   url: string | null;
@@ -57,6 +61,11 @@ export function footerFieldsFor(item: FooterItem): FooterField[] {
   // Task fields are task-only (ADR-018): never surfaced on another type, even
   // when legacy data set them.
   if (item.type === "task") {
+    maybe(
+      "scheduledDate",
+      "Scheduled",
+      item.scheduledDate ? tsFmt.format(item.scheduledDate) : null
+    );
     maybe("dueDate", "Due", item.dueDate ? tsFmt.format(item.dueDate) : null);
     maybe("urgency", "Urgency", item.urgency);
   }

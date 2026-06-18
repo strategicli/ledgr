@@ -22,6 +22,7 @@ import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
+import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
@@ -34,6 +35,8 @@ import {
   type CardId,
 } from "@/lib/canvas-layout";
 import { getType } from "@/lib/types";
+import { parseRecurrence } from "@/lib/recurrence";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import type { CanvasProps } from "@/lib/modules";
 
 export default async function MarkdownCanvas({ item, ownerId, arrange = false }: CanvasProps) {
@@ -41,6 +44,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const strip: StripValues = {
     status: item.status,
     dueDate: item.dueDate?.toISOString() ?? null,
+    scheduledDate: item.scheduledDate?.toISOString() ?? null,
     urgency: item.urgency,
     meetingAt: item.meetingAt?.toISOString() ?? null,
     url: item.url,
@@ -51,6 +55,20 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const typeDef = await getType(item.type).catch(() => null);
   const propertySchema = typeDef?.propertySchema ?? [];
   const savedLayout = typeDef?.canvasLayout ?? null;
+  // Today (app timezone) anchors a newly-enabled repeat; computed once for both
+  // the classic mount and the grid card.
+  const today = appTodayYmd();
+  const recurrenceNode = (
+    <RecurrenceControl
+      itemId={item.id}
+      initial={parseRecurrence(
+        (item.properties as Record<string, unknown> | null)?.recurrence
+      )}
+      scheduledDate={item.scheduledDate?.toISOString() ?? null}
+      dueDate={item.dueDate?.toISOString() ?? null}
+      today={today}
+    />
+  );
 
   // Dispatch: render the grid when arranging OR when this type has a saved layout
   // (field-level placement can't be a vertical stack). Otherwise the classic
@@ -91,6 +109,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         const f = id.slice(4) as CanvasField;
         return <FieldStrip itemId={item.id} fields={[f]} initial={strip} />;
       }
+      if (id === "recurrence") return item.type === "task" ? recurrenceNode : null;
       if (id === "subtasks") return <Subtasks ownerId={ownerId} itemId={item.id} />;
       if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} />;
       if (id.startsWith("prop:")) {
@@ -186,6 +205,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           ) : null
         }
       />
+      {/* Repeat control (native tasks, ADR-073/076): sets the task's recurrence
+          rule; completion then advances the schedule deterministically. */}
+      {item.type === "task" && recurrenceNode}
       {/* Subtasks are a task feature (ADR-018); a future project treatment
           may widen this, but meetings and notes don't grow checklists. */}
       {item.type === "task" && <Subtasks ownerId={ownerId} itemId={item.id} />}

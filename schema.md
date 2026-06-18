@@ -62,7 +62,8 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `person`, all `is_system
 | `body` | jsonb | Canonical body as `{format, text}` — `format: "markdown"` (default; extended dialect, PRD §4.1) or a markdown-family format like `chordpro` per type; `text` is the markdown source of truth. Null until "gone deeper". **Never selected in list queries.** *(Markdown-canonical since ADR-037; was BlockNote JSON through v0.17.)* |
 | `body_text` | text | plain-text extraction of `body.text`, maintained by app code on save; feeds the generated FTS column (ADR-003). With markdown canonical this is a near-identity strip of markdown syntax, not a JSON walk. Never selected in list queries. |
 | `status` | enum | `open` \| `done` \| `archived`; non-task types default `open` |
-| `due_date` | timestamptz | nullable |
+| `due_date` | timestamptz | nullable; the **deadline** |
+| `scheduled_date` | timestamptz | nullable (migration 0021, ADR-076). The **planned date**, distinct from the due-date deadline (native tasks, ADR-073). A real column because it is hot (Today, the focus layer, the ICS feed, the overdue auto-roll all query it); UTC-midnight calendar day like `due_date` (ADR-008). For a recurring task it auto-advances on completion to the next uncompleted occurrence. Indexed (`items_scheduled_date_idx`) |
 | `urgency` | enum | `low` \| `normal` \| `high` \| `critical`; nullable |
 | `meeting_at` | timestamptz | meetings only |
 | `url` | text | links only; original web address |
@@ -78,6 +79,7 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `person`, all `is_system
 | `updated_at` | timestamptz | |
 
 Notes:
+- **Recurrence (ADR-076)** lives in `properties.recurrence` (jsonb), not a column: `{ rrule, dtstart, completeInstances[], skippedInstances[], occurrenceMode: "virtual"|"materialized", anchorMode: "fixed"|"completion", maintainDueOffset? }`. `rrule` is a constrained RFC-5545 string (`FREQ`/`INTERVAL`/`BYDAY`/`COUNT`/`UNTIL`); occurrences are computed deterministically (`src/lib/recurrence.ts`), never stored as rows. Completing a recurring task advances `scheduled_date` to the next uncompleted occurrence (model C — per-date completion log; no spawned clones, no overdue stacking). A **materialized** occurrence is its own item, a deep clone of the series prototype, linked to the series by an `occurrence` relation (role, not `parent_id`); created via create-next-after-completion (one live occurrence at a time).
 - People are items with `type = 'person'`. They have bodies, so "Roger" can hold notes about Roger, and relate to his meetings/tasks/prayer through the `relations` table. (Sub-classifying people — staff/volunteer — is a `select` property on the type, not a built-in column; the former `kind` column was dropped with the entity type, ADR-055.)
 
 ### Hierarchy (parent/child)

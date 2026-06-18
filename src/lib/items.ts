@@ -18,6 +18,13 @@ import { getDb } from "@/db";
 import { items, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
 import { syncMentionRelations } from "@/lib/mentions";
+import { parseRecurrence } from "@/lib/recurrence";
+import {
+  completeMaterializedOccurrence,
+  completeVirtualSeries,
+  ensureFirstOccurrence,
+  occurrenceSeriesId,
+} from "@/lib/recurrence-service";
 
 // A new revision is skipped when the latest one is younger than this; the
 // editor autosaves often (slice 5) and one snapshot per burst is enough
@@ -53,6 +60,10 @@ export type ItemInput = {
   body?: unknown;
   status?: ItemStatus;
   dueDate?: Date | null;
+  // The planned date, distinct from the due-date deadline (native tasks,
+  // ADR-073/076). Stored UTC-midnight like dueDate; auto-advances on completion
+  // for a recurring task (see recurrence.ts / recurrence-service.ts).
+  scheduledDate?: Date | null;
   urgency?: Urgency | null;
   meetingAt?: Date | null;
   url?: string | null;
@@ -93,6 +104,7 @@ export const listColumns = {
   title: items.title,
   status: items.status,
   dueDate: items.dueDate,
+  scheduledDate: items.scheduledDate,
   urgency: items.urgency,
   meetingAt: items.meetingAt,
   url: items.url,
@@ -279,6 +291,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
       bodyText: extractBodyText(body),
       status: input.status ?? "open",
       dueDate: input.dueDate ?? null,
+      scheduledDate: input.scheduledDate ?? null,
       urgency: input.urgency ?? null,
       meetingAt: input.meetingAt ?? null,
       url: input.url ?? null,
@@ -302,7 +315,7 @@ export async function updateItem(
 ) {
   const db = getDb();
   const existing = await db
-    .select({ id: items.id })
+    .select({ id: items.id, status: items.status })
     .from(items)
     .where(
       and(eq(items.id, id), eq(items.ownerId, ownerId), isNull(items.deletedAt))
@@ -314,11 +327,42 @@ export async function updateItem(
     await assertValidParent(ownerId, patch.parentId, id);
   }
 
+  // Recurrence-aware completion (ADR-076). Completing a recurring task is not a
+  // plain status flip, so intercept the completing gesture before the normal
+  // update. Runs for every caller (checkbox / MCP / REST) since they all land
+  // here. Only fires when this patch is the open→done transition.
+  let materializedOccurrencePost = false;
+  if (patch.status === "done" && existing[0].status !== "done") {
+    const current = await getItem(ownerId, id);
+    const props = current.properties as Record<string, unknown> | null;
+    const rule = parseRecurrence(props?.recurrence);
+    if (rule) {
+      // A recurring SERIES: advance to the next occurrence, don't mark it done.
+      // Apply any other fields in the same patch first (completion is normally
+      // status-only, but MCP/REST could send more), then advance from the
+      // re-read row so the advance sees those edits.
+      const { status: _done, ...rest } = patch;
+      if (Object.keys(rest).length > 0) await updateItem(ownerId, id, rest);
+      const fresh = await getItem(ownerId, id);
+      const advanced = await completeVirtualSeries(ownerId, fresh);
+      if (rule.occurrenceMode === "materialized") {
+        await ensureFirstOccurrence(ownerId, id); // keep one live occurrence
+      }
+      return advanced;
+    }
+    if (occurrenceSeriesId(current)) {
+      // A materialized occurrence child: complete it normally below, then
+      // advance its parent series + clone the next occurrence.
+      materializedOccurrencePost = true;
+    }
+  }
+
   const set: Record<string, unknown> = {};
   if (patch.type !== undefined) set.type = patch.type;
   if (patch.title !== undefined) set.title = patch.title;
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
+  if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
   if (patch.urgency !== undefined) set.urgency = patch.urgency;
   if (patch.meetingAt !== undefined) set.meetingAt = patch.meetingAt;
   if (patch.url !== undefined) set.url = patch.url;
@@ -353,6 +397,20 @@ export async function updateItem(
     if (updated.body != null) await snapshotRevision(id, updated.body);
     // Runs on null bodies too: clearing a body clears its mention edges.
     await syncMentionRelations(ownerId, id, updated.body);
+  }
+  // A materialized occurrence was just completed: advance its parent series and
+  // clone the next occurrence (create-next-after-completion). Done after the
+  // child's own update so the child is firmly `done` history first.
+  if (materializedOccurrencePost) {
+    await completeMaterializedOccurrence(ownerId, updated);
+  }
+  // Setting a materialized recurrence rule creates the first live occurrence
+  // (idempotent — a no-op if not materialized or one already exists).
+  const touchedRecurrence =
+    (patch.propertyPatch && "recurrence" in patch.propertyPatch) ||
+    (patch.properties != null && "recurrence" in patch.properties);
+  if (touchedRecurrence) {
+    await ensureFirstOccurrence(ownerId, id).catch(() => {});
   }
   return updated;
 }
