@@ -5,6 +5,7 @@ import Link from "next/link";
 import DashboardView from "@/components/dashboards/DashboardView";
 import QuickCapture from "@/components/today/QuickCapture";
 import PushToggle from "@/components/pwa/PushToggle";
+import RollOverdueButton from "@/components/today/RollOverdueButton";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { listItems } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
@@ -42,15 +43,20 @@ const recentFmt = new Intl.DateTimeFormat("en-US", {
 function Section({
   title,
   children,
+  action,
 }: {
   title: string;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
     <section className="mt-8">
-      <h2 className="border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        {title}
-      </h2>
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-1">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          {title}
+        </h2>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -60,7 +66,14 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="mt-2 px-2 text-sm text-neutral-600">{children}</p>;
 }
 
+// The date a task is "on the plate" by: its planned (scheduled) date if set,
+// else its deadline (native tasks T2). Drives the Today partition + the row date.
+function planDate(task: ListedItem): Date | null {
+  return task.scheduledDate ?? task.dueDate ?? null;
+}
+
 function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
+  const d = planDate(task);
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
       <SubtaskCheckbox id={task.id} done={false} />
@@ -72,6 +85,11 @@ function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
       >
         {task.title || "Untitled"}
       </Link>
+      {/* A scheduled-but-not-due task is planned work; mark it so the date isn't
+          mistaken for a deadline. */}
+      {task.scheduledDate && !task.dueDate && (
+        <span className="shrink-0 text-xs text-neutral-600">planned</span>
+      )}
       {(task.urgency === "high" || task.urgency === "critical") && (
         <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
           {task.urgency}
@@ -82,7 +100,7 @@ function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
           overdue ? "text-[var(--accent)]" : "text-neutral-600"
         }`}
       >
-        {task.dueDate ? dueFmt.format(task.dueDate) : ""}
+        {d ? dueFmt.format(d) : ""}
       </span>
     </li>
   );
@@ -123,12 +141,21 @@ export async function TodayHome() {
   }
 
   const { bounds, meetings, dueTasks, recent } = await getTodayData(owner.id);
-  const overdue = dueTasks.filter(
-    (t) => t.dueDate && t.dueDate < bounds.dueToday
-  );
-  const dueToday = dueTasks.filter(
-    (t) => t.dueDate && t.dueDate >= bounds.dueToday
-  );
+  // Partition on the effective plan date (scheduled, else due), so a task
+  // planned for an earlier day counts as overdue even with no deadline.
+  const overdue = dueTasks.filter((t) => {
+    const d = t.scheduledDate ?? t.dueDate;
+    return d != null && d < bounds.dueToday;
+  });
+  const dueToday = dueTasks.filter((t) => {
+    const d = t.scheduledDate ?? t.dueDate;
+    return d != null && d >= bounds.dueToday;
+  });
+  // Recurring series advance via completion, not the roll (recurrence-service.ts),
+  // so the roll button only counts the non-recurring overdue it would actually move.
+  const rollableOverdue = overdue.filter(
+    (t) => !(t.properties as Record<string, unknown> | null)?.recurrence
+  ).length;
 
   return (
     <main className="min-h-screen">
@@ -171,7 +198,7 @@ export async function TodayHome() {
           )}
         </Section>
 
-        <Section title="Tasks">
+        <Section title="Tasks" action={<RollOverdueButton count={rollableOverdue} />}>
           {dueTasks.length > 0 ? (
             <ul className="mt-1">
               {overdue.map((t) => (
@@ -182,7 +209,7 @@ export async function TodayHome() {
               ))}
             </ul>
           ) : (
-            <Empty>Nothing due. Capture something above.</Empty>
+            <Empty>Nothing due or planned. Capture something above.</Empty>
           )}
         </Section>
 

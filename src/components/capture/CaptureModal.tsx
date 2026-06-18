@@ -10,6 +10,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { URGENCIES } from "@/lib/item-enums";
+import { parseNaturalDate } from "@/lib/nl-date";
+
+// Today as YYYY-MM-DD in the user's local zone (single-user = the app zone), for
+// natural-language date parsing on capture (T2). Local getters, no UTC shift.
+function localTodayYmd(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const fieldClass =
   "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-300 outline-none focus:border-neutral-600";
@@ -181,6 +189,29 @@ export default function CaptureModal({
                 onChange={(e) => setDue(e.target.value)}
                 aria-label="Due date"
                 className={`${fieldClass} [color-scheme:dark]`}
+              />
+              <input
+                type="text"
+                placeholder="or 'next fri'"
+                aria-label="Due date in plain language"
+                // Natural-language due date (T2): parse on Enter/blur into the
+                // date field; an unrecognized phrase is left for the user.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.stopPropagation();
+                    e.currentTarget.blur();
+                  }
+                }}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (!v) return;
+                  const ymd = parseNaturalDate(v, localTodayYmd());
+                  if (ymd) {
+                    setDue(ymd);
+                    e.target.value = "";
+                  }
+                }}
+                className={`${fieldClass} w-24`}
               />
               <select
                 value={urgency}

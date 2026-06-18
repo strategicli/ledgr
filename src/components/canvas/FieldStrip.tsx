@@ -8,6 +8,8 @@ import { useState } from "react";
 import type { CanvasField } from "@/lib/canvas-fields";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
 import { beginSave, endSave } from "@/lib/save-status";
+import { addDaysYmd } from "@/lib/recurrence";
+import { parseNaturalDate } from "@/lib/nl-date";
 
 export type StripValues = {
   status: string;
@@ -30,15 +32,29 @@ function toLocalInput(iso: string): string {
 const selectClass =
   "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600";
 const inputClass = `${selectClass} [color-scheme:dark]`;
+// Reschedule shortcut chips on the scheduled field (T2).
+const chipClass =
+  "rounded border border-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-200";
+
+// ISO instant (UTC midnight) for a calendar day, matching how scheduled/due are
+// stored and sliced elsewhere.
+function ymdToIso(ymd: string): string {
+  return `${ymd}T00:00:00.000Z`;
+}
 
 export default function FieldStrip({
   itemId,
   fields,
   initial,
+  today,
 }: {
   itemId: string;
   fields: CanvasField[];
   initial: StripValues;
+  // App-timezone today (YYYY-MM-DD); enables the reschedule shortcuts + natural-
+  // language date entry on the scheduled field (native tasks, T2). Absent → the
+  // scheduled field is a plain date picker.
+  today?: string;
 }) {
   const [values, setValues] = useState(initial);
   const [error, setError] = useState(false);
@@ -94,19 +110,52 @@ export default function FieldStrip({
             }
           />
         );
-      case "scheduledDate":
+      case "scheduledDate": {
+        const set = (ymd: string | null) =>
+          void save({ scheduledDate: ymd ? ymdToIso(ymd) : null });
         return (
-          <input
-            type="date"
-            className={inputClass}
-            // Scheduled is a calendar day like due (UTC midnight); slice, don't
-            // local-format, so the picked day stays put (native tasks, ADR-076).
-            value={values.scheduledDate ? values.scheduledDate.slice(0, 10) : ""}
-            onChange={(e) =>
-              void save({ scheduledDate: e.target.value || null })
-            }
-          />
+          <span className="flex flex-wrap items-center gap-1.5">
+            <input
+              type="date"
+              className={inputClass}
+              // Scheduled is a calendar day like due (UTC midnight); slice, don't
+              // local-format, so the picked day stays put (native tasks, ADR-076).
+              value={values.scheduledDate ? values.scheduledDate.slice(0, 10) : ""}
+              onChange={(e) => set(e.target.value || null)}
+            />
+            {today && (
+              <>
+                <button type="button" className={chipClass} onClick={() => set(today)}>
+                  Today
+                </button>
+                <button type="button" className={chipClass} onClick={() => set(addDaysYmd(today, 1))}>
+                  Tomorrow
+                </button>
+                <button type="button" className={chipClass} onClick={() => set(addDaysYmd(today, 7))}>
+                  +1wk
+                </button>
+                <input
+                  type="text"
+                  className={`${inputClass} w-28`}
+                  placeholder="e.g. next fri"
+                  // Free-text NL date: parse on Enter/blur (T2). A phrase we don't
+                  // understand is ignored (the field clears), not guessed.
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (!v) return;
+                    const ymd = parseNaturalDate(v, today);
+                    if (ymd) set(ymd);
+                    e.target.value = "";
+                  }}
+                />
+              </>
+            )}
+          </span>
         );
+      }
       case "urgency":
         return (
           <select
