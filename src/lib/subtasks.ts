@@ -11,6 +11,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { ItemError, type ItemStatus, type Urgency } from "@/lib/items";
+import { type StatusCategory } from "@/lib/status";
 
 // Generous bound for a single-user tree; rows past it are dropped (and any
 // children orphaned by the cut are dropped with them in assembly).
@@ -23,6 +24,7 @@ export type SubtaskNode = {
   type: string;
   title: string;
   status: ItemStatus;
+  statusCategory: StatusCategory;
   dueDate: Date | null;
   scheduledDate: Date | null;
   urgency: Urgency | null;
@@ -44,6 +46,7 @@ type RawRow = {
   type: string;
   title: string;
   status: ItemStatus;
+  status_category: string;
   due_date: string | Date | null;
   scheduled_date: string | Date | null;
   urgency: Urgency | null;
@@ -64,7 +67,7 @@ function progressOf(children: SubtaskNode[]): Progress | null {
   const tasks = children.filter((c) => c.type === "task");
   if (tasks.length === 0) return null;
   return {
-    done: tasks.filter((t) => t.status === "done").length,
+    done: tasks.filter((t) => t.statusCategory === "done").length,
     total: tasks.length,
   };
 }
@@ -82,14 +85,14 @@ export async function listSubtree(
   // their parent's owner in practice, but every query carries the scope.
   const res = await getDb().execute(sql`
     with recursive subtree as (
-      select id, type, title, status, due_date, scheduled_date, urgency,
-             parent_id, created_at, updated_at
+      select id, type, title, status, status_category, due_date, scheduled_date,
+             urgency, parent_id, created_at, updated_at
       from items
       where parent_id = ${rootId} and owner_id = ${ownerId}
         and deleted_at is null
       union
-      select i.id, i.type, i.title, i.status, i.due_date, i.scheduled_date,
-             i.urgency, i.parent_id, i.created_at, i.updated_at
+      select i.id, i.type, i.title, i.status, i.status_category, i.due_date,
+             i.scheduled_date, i.urgency, i.parent_id, i.created_at, i.updated_at
       from items i join subtree s on i.parent_id = s.id
       where i.owner_id = ${ownerId} and i.deleted_at is null
     )
@@ -103,6 +106,7 @@ export async function listSubtree(
       type: raw.type,
       title: raw.title,
       status: raw.status,
+      statusCategory: raw.status_category as StatusCategory,
       dueDate: raw.due_date == null ? null : new Date(raw.due_date),
       scheduledDate:
         raw.scheduled_date == null ? null : new Date(raw.scheduled_date),

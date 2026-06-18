@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
+import StatusSchemaEditor from "@/components/build/StatusSchemaEditor";
 import { capabilityById } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
 import { countItemsOfType, getType, listTypes } from "@/lib/types";
@@ -57,6 +58,7 @@ export default async function EditType({
           itemCount={itemCount}
           availableTypes={availableTypes}
         />
+        <StatusSchemaEditor typeKey={key} initial={type.statusSchema} />
       </div>
     </main>
   );

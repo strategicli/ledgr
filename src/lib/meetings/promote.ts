@@ -21,7 +21,7 @@ export async function promoteActionItem(
   const task = await createItem(ownerId, {
     type: "task",
     title: trimmed,
-    status: "open",
+    // Status defaults to the type's not-started status (createItem, S2).
     // It's a deliberate promotion, not an untriaged arrival (ADR-010).
     inbox: false,
   });

@@ -2,9 +2,10 @@
 // auto-roll. Server-side, owner-scoped, no model in the loop (Principle 3) —
 // the slot-finder/rescheduler sibling from explorations/calendar-time-blocking.md,
 // in its simplest form: pull a stale planned date forward to today.
-import { and, eq, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
+import { ACTIVE_CATEGORIES } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
 
 // The shared predicate for an overdue planned task: open, live, non-recurring,
@@ -16,7 +17,7 @@ function overdueWhere(ownerId: string, dueToday: Date): SQL {
   return and(
     eq(items.ownerId, ownerId),
     eq(items.type, "task"),
-    eq(items.status, "open"),
+    inArray(items.statusCategory, ACTIVE_CATEGORIES),
     isNull(items.deletedAt),
     or(
       lt(items.scheduledDate, dueToday),

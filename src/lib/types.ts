@@ -17,6 +17,12 @@ import { eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { parseCanvasLayout, type CanvasLayout } from "@/lib/canvas-layout";
+import {
+  parseStatusSchema,
+  resolveStatusSchema,
+  validateStatusSchema,
+  type StatusDef,
+} from "@/lib/status";
 import { ItemError } from "@/lib/items";
 import { capabilityById } from "@/lib/modules";
 // SPIKE (bespoke-tool catalog): registers the workflow modules (Songs, Papers)
@@ -74,6 +80,10 @@ export type TypeDefinition = {
   icon: string | null;
   isSystem: boolean;
   propertySchema: PropertyDef[];
+  // Configurable statuses (Tasks Polish S2, ADR-082); null = inherit the system
+  // default (To Do / Done / Archived). Parsed tolerantly on read — a malformed
+  // value reads as null (inherit), mirroring how a bad property_schema → [].
+  statusSchema: StatusDef[] | null;
   showInQuickCapture: boolean;
   // SPIKE (bespoke-tool catalog): the attached module-capability id, or null.
   // The registry (modules.ts) resolves this type's canvas/format/exporters from
@@ -282,6 +292,7 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     icon: row.icon,
     isSystem: row.isSystem,
     propertySchema,
+    statusSchema: parseStatusSchema(row.statusSchema),
     showInQuickCapture: row.showInQuickCapture,
     capability: row.capability,
     hidden: row.hidden,
@@ -456,6 +467,42 @@ export async function setTypeCanvasLayout(
     .set({ canvasLayout: value })
     .where(eq(types.key, key))
     .returning();
+  return rowToDefinition(rows[0]);
+}
+
+// Save (or reset) a type's configurable statuses (Tasks Polish S2, ADR-082).
+// A focused setter like setTypeCanvasLayout — the ClickUp-style editor PATCHes
+// just this, never the whole-definition builder, so it can't clobber a schema
+// edit. A null schema resets to the inherited system default. On save we re-sync
+// every item of this type's denormalized status_category to the new schema (a
+// recategorized status must re-bucket existing rows, or the hot queries would
+// read a stale category). status keys are validated slugs and categories are
+// enum values, so the dynamic CASE is built from bound params.
+export async function setTypeStatusSchema(
+  key: string,
+  rawSchema: unknown
+): Promise<TypeDefinition> {
+  await getType(key); // existence (throws not_found)
+  const value: StatusDef[] | null =
+    rawSchema == null ? null : validateStatusSchema(rawSchema, (m) => bad(m));
+
+  const rows = await getDb()
+    .update(types)
+    .set({ statusSchema: value })
+    .where(eq(types.key, key))
+    .returning();
+
+  // Re-bucket existing items against the effective set (custom or default).
+  const resolved = resolveStatusSchema(value);
+  const cases = resolved.map(
+    (s) => sql`when ${s.key} then ${s.category}::status_category`
+  );
+  await getDb().execute(sql`
+    update items
+    set status_category =
+      case status ${sql.join(cases, sql` `)} else 'not_started'::status_category end
+    where type = ${key}
+  `);
   return rowToDefinition(rows[0]);
 }
 

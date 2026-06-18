@@ -13,6 +13,7 @@ import { useState } from "react";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
 import { boardDropPatch, groupValueFor, NONE_GROUP, orderedGroups } from "@/lib/view-grouping";
 import type { ViewGrouping } from "@/lib/views";
+import type { StatusDef } from "@/lib/status";
 
 // What the board needs to group + render a card. dateLabel is precomputed by
 // the server BoardLayout so the client needn't reimplement the date calendars.
@@ -49,10 +50,13 @@ export default function BoardDnd({
   cards,
   grouping,
   groupOrder,
+  statuses,
 }: {
   cards: BoardCard[];
   grouping: ViewGrouping;
   groupOrder?: string[];
+  // The type's resolved statuses (S2): a status board colors its columns.
+  statuses?: StatusDef[];
 }) {
   const router = useRouter();
   const [items, setItems] = useState(cards);
@@ -72,12 +76,15 @@ export default function BoardDnd({
   // Show every valid target column, including empty ones, so a card can be
   // dragged into a status/option that nothing currently has (orderedGroups
   // otherwise renders only present values).
+  const statusBoard =
+    !grouping || ("field" in grouping && grouping.field === "status");
   const fullKnown: string[] =
     grouping && "propertyKey" in grouping
       ? [...(groupOrder ?? []), NONE_GROUP]
       : (grouping?.field ?? "status") === "urgency"
         ? [...URGENCIES, NONE_GROUP]
-        : [...ITEM_STATUSES];
+        : // status: every custom status as a column (S2), in schema order.
+          [...(groupOrder ?? ITEM_STATUSES)];
   const present = new Set([
     ...items.map((i) => groupValueFor(i, grouping, now)),
     ...fullKnown,
@@ -128,7 +135,21 @@ export default function BoardDnd({
             }`}
           >
             <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-              <span className="truncate">{col}</span>
+              {(() => {
+                const sdef = statusBoard ? statuses?.find((s) => s.key === col) : undefined;
+                return (
+                  <span className="flex items-center gap-1.5 truncate">
+                    {sdef?.color && (
+                      <span
+                        aria-hidden
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: sdef.color }}
+                      />
+                    )}
+                    {sdef?.label ?? col}
+                  </span>
+                );
+              })()}
               <span className="text-neutral-600">{colItems.length}</span>
             </div>
             <ul className="flex min-h-12 flex-col gap-1.5 p-2">

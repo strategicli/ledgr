@@ -20,7 +20,8 @@ export type RelatedRowItem = {
   id: string;
   type: string;
   title: string;
-  status: string;
+  status: string; // the status key (its label/color come from the type schema)
+  statusCategory: string; // the bucket — done-ness keys off this (S2)
   dueDate: string | null; // ISO; due dates are UTC-midnight calendar days
   updatedAt: string; // ISO
 };
@@ -42,11 +43,10 @@ export default function RelatedRow({
   // field's role so it doesn't drop other links to the same item.
   removalRole?: string;
 }) {
-  const [status, setStatus] = useState(item.status);
+  const [done, setDone] = useState(item.statusCategory === "done");
   const [dueDate, setDueDate] = useState(item.dueDate);
   const [error, setError] = useState(false);
   const isTask = item.type === "task";
-  const done = status === "done";
 
   // Optimistic: apply locally, PATCH, revert on failure. Single deliberate
   // gestures (a click, a date pick), not keystroke streams, so one request each.
@@ -65,11 +65,22 @@ export default function RelatedRow({
     }
   }
 
+  // The complete endpoint flips between the type's default done / not-started
+  // status (S2), so this row needs no status schema.
+  async function completeToggle(revert: () => void) {
+    setError(false);
+    try {
+      const res = await fetch(`/api/items/${item.id}/complete`, { method: "POST" });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      revert();
+      setError(true);
+    }
+  }
   function toggle() {
-    const prev = status;
-    const next = prev === "done" ? "open" : "done";
-    setStatus(next);
-    void patch({ status: next }, () => setStatus(prev));
+    const prev = done;
+    setDone(!prev);
+    void completeToggle(() => setDone(prev));
   }
 
   function changeDue(value: string) {
@@ -118,9 +129,9 @@ export default function RelatedRow({
           suggested
         </span>
       )}
-      {!isTask && status !== "open" && (
+      {!isTask && item.statusCategory !== "not_started" && (
         <span className="shrink-0 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
-          {status}
+          {item.status}
         </span>
       )}
       {isTask ? (

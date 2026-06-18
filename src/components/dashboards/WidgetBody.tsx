@@ -83,7 +83,7 @@ export default function WidgetBody({ data }: { data: WidgetData }) {
     <ul className="flex h-full flex-col gap-0.5 overflow-y-auto p-2">
       {data.items.length > 0 ? (
         data.items.map((item) => {
-          const done = item.status === "done";
+          const done = item.statusCategory === "done";
           const isTask = item.type === "task";
           const rel = data.related?.[item.id] ?? [];
           // Prefer a non-task association (the person/meeting/project a task is

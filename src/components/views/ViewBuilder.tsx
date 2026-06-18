@@ -12,7 +12,15 @@ import type { PropertyDef } from "@/lib/types";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
-const STATUSES = ["open", "done", "archived"];
+// Status filter is by CATEGORY now (S2): statuses are user-defined per type, so
+// a generic view filters by the bucket. "active" = not started + in progress.
+const STATUS_CATEGORY_OPTS = [
+  { value: "active", label: "active" },
+  { value: "not_started", label: "not started" },
+  { value: "in_progress", label: "in progress" },
+  { value: "done", label: "done" },
+  { value: "archived", label: "archived (closed)" },
+];
 const URGENCIES = ["low", "normal", "high", "critical"];
 // Mirrors views.ts PROPERTY_FILTER_NONE (kept local so this client form never
 // imports the DB-backed views module). "" = any (no filter); this = "not set".
@@ -171,7 +179,9 @@ export default function ViewBuilder({
   const [name, setName] = useState(initial?.name ?? "");
   const [layout, setLayout] = useState<string>(initial?.layout ?? "list");
   const [type, setType] = useState(t0);
-  const [status, setStatus] = useState<string>(initial?.filter.status ?? "");
+  const [statusCategory, setStatusCategory] = useState<string>(
+    initial?.filter.statusCategory ?? ""
+  );
   const [urgency, setUrgency] = useState<string>(
     showsUrgency(t0) ? initial?.filter.urgency ?? "" : ""
   );
@@ -266,7 +276,7 @@ export default function ViewBuilder({
     setBusy(true);
     const filter: Record<string, unknown> = {};
     if (type) filter.type = type;
-    if (status) filter.status = status;
+    if (statusCategory) filter.statusCategory = statusCategory;
     if (urgency) filter.urgency = urgency;
     if (relatedTo) filter.relatedTo = relatedTo;
     if (dateWindow) {
@@ -382,13 +392,13 @@ export default function ViewBuilder({
         </Field>
         <Field label="Status">
           <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            value={statusCategory}
+            onChange={(e) => setStatusCategory(e.target.value)}
             className={selectClass}
           >
             <Opt value="" label="any" />
-            {STATUSES.map((s) => (
-              <Opt key={s} value={s} />
+            {STATUS_CATEGORY_OPTS.map((s) => (
+              <Opt key={s.value} value={s.value} label={s.label} />
             ))}
           </select>
         </Field>

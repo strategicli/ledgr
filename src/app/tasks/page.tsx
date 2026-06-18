@@ -1,8 +1,8 @@
 // Tasks list (PRD §4.2): filterable by status, urgency, a date window, and
 // related person. The "Date" selector chooses which date — the due deadline or
 // the scheduled plan (ADR-076) — the window filters and the list sorts by; the
-// URL carries the filter (FilterBar contract). Absent status means open, the
-// daily-driver default. Sorted by the chosen date, undated last.
+// URL carries the filter (FilterBar contract). Absent status means active (the
+// daily-driver default). Sorted by the chosen date, undated last.
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import FilterBar, { type FilterSelect } from "@/components/lists/FilterBar";
@@ -10,13 +10,9 @@ import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
-import {
-  ITEM_STATUSES,
-  URGENCIES,
-  type ItemStatus,
-  type Urgency,
-} from "@/lib/item-enums";
+import { URGENCIES, type Urgency } from "@/lib/item-enums";
 import { resolveOwner } from "@/lib/owner";
+import { resolveStatusSchema, type StatusDef } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import {
@@ -49,12 +45,15 @@ function TaskRow({
   task,
   dueToday,
   dateField,
+  statuses,
 }: {
   task: ListedItem;
   dueToday: Date;
   dateField: "dueDate" | "scheduledDate";
+  statuses: StatusDef[];
 }) {
-  const done = task.status === "done";
+  const done = task.statusCategory === "done";
+  const sdef = statuses.find((s) => s.key === task.status);
   // Show the date for the dimension the list is working in, and flag it
   // red when it's in the past (a missed deadline, or a planned day gone by).
   const date = dateField === "scheduledDate" ? task.scheduledDate : task.dueDate;
@@ -70,9 +69,16 @@ function TaskRow({
       >
         {task.title || "Untitled"}
       </Link>
-      {task.status === "archived" && (
-        <span className="shrink-0 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
-          archived
+      {sdef && sdef.category !== "not_started" && (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
+          {sdef.color && (
+            <span
+              aria-hidden
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ backgroundColor: sdef.color }}
+            />
+          )}
+          {sdef.label}
         </span>
       )}
       {(task.urgency === "high" || task.urgency === "critical") && (
@@ -105,10 +111,11 @@ export default async function Tasks({
     typeof sp[key] === "string" ? (sp[key] as string) : undefined;
 
   const filter: ViewFilter = { type: "task" };
-  const status = param("status") ?? "open";
-  if (ITEM_STATUSES.includes(status as ItemStatus)) {
-    filter.status = status as ItemStatus;
-  }
+  // Status filter (S2): "active" (default) → the not-started/in-progress bucket;
+  // "any" → no status filter; anything else is an exact status key.
+  const statusParam = param("status") ?? "active";
+  if (statusParam === "active") filter.statusCategory = "active";
+  else if (statusParam !== "any") filter.status = statusParam;
   const urgency = param("urgency");
   if (URGENCIES.includes(urgency as Urgency)) {
     filter.urgency = urgency as Urgency;
@@ -128,6 +135,7 @@ export default async function Tasks({
   // too (e.g. a "context" or "area" the user added). Scoped to the schema so a
   // stray prop_ param can't inject a predicate.
   const taskType = await getType("task");
+  const statuses = resolveStatusSchema(taskType.statusSchema);
   const filterProps = propertyFilterOptions(taskType.propertySchema);
   const propFilters = propertyFiltersFromParams(sp, taskType.propertySchema);
   if (propFilters.length) filter.propertyFilters = propFilters;
@@ -142,9 +150,10 @@ export default async function Tasks({
     {
       param: "status",
       label: "Status",
-      defaultValue: "open",
+      defaultValue: "active",
       options: [
-        ...ITEM_STATUSES.map((s) => ({ value: s, label: s })),
+        { value: "active", label: "active" },
+        ...statuses.map((s) => ({ value: s.key, label: s.label })),
         { value: "any", label: "any" },
       ],
     },
@@ -216,6 +225,7 @@ export default async function Tasks({
               task={task}
               dueToday={dueToday}
               dateField={dateField}
+              statuses={statuses}
             />
           ))}
         </ul>

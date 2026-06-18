@@ -82,7 +82,7 @@ export async function getMeetingPrep(
     people.map((e) =>
       queryViewItems(
         ownerId,
-        { type: "task", status: "open", relatedTo: e.id },
+        { type: "task", statusCategory: "active", relatedTo: e.id },
         { field: "dueDate", dir: "asc" },
         50
       )

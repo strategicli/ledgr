@@ -7,12 +7,10 @@
 // request JSON into a well-formed ItemInput/ItemPatch.
 import { isItemBody } from "@/lib/body";
 import {
-  ITEM_STATUSES,
   URGENCIES,
   ItemError,
   type ItemInput,
   type ItemPatch,
-  type ItemStatus,
   type Urgency,
 } from "@/lib/items";
 
@@ -81,10 +79,14 @@ export function parseItemPayload(
     out.body = input.body;
   }
   if (input.status !== undefined) {
-    if (!ITEM_STATUSES.includes(input.status as ItemStatus)) {
-      bad(`status must be one of: ${ITEM_STATUSES.join(", ")}`);
+    // A status KEY (S2): statuses are user-defined per type, so validate the
+    // shape (a slug) here; the type's schema gives it meaning + its category
+    // (resolved in createItem/updateItem).
+    const status = asString(input.status, "status").trim().toLowerCase();
+    if (!/^[a-z][a-z0-9_]*$/.test(status) || status.length > 40) {
+      bad("status must be a status key (a slug: letters, digits, _)");
     }
-    out.status = input.status as ItemStatus;
+    out.status = status;
   }
   if (input.urgency !== undefined) {
     if (

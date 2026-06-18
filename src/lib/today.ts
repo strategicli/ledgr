@@ -8,10 +8,11 @@
 // - due_date is a calendar day stored as UTC midnight (FieldStrip slices the
 //   ISO date), so due comparisons use plain UTC midnights; shifting them by
 //   the timezone would misfile evening saves.
-import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { listColumns } from "@/lib/items";
+import { ACTIVE_CATEGORIES } from "@/lib/status";
 
 // Single-user Phase 1 stand-in for a per-user timezone setting. The server
 // runs in UTC (Vercel), so "today" must be computed, never assumed.
@@ -113,7 +114,8 @@ export async function getTodayData(ownerId: string, now = new Date()) {
         and(
           live,
           eq(items.type, "task"),
-          eq(items.status, "open"),
+          // Active = not yet complete (any not_started/in_progress status), S2.
+          inArray(items.statusCategory, ACTIVE_CATEGORIES),
           // On my plate today = due by today OR planned (scheduled) by today.
           // A future scheduled date is deferred — it stays off Today until then
           // (the defer/start-date behavior, native tasks T2/ADR-073).
@@ -143,7 +145,7 @@ export async function getTodayData(ownerId: string, now = new Date()) {
         and(
           live,
           eq(items.type, "task"),
-          eq(items.status, "open"),
+          inArray(items.statusCategory, ACTIVE_CATEGORIES),
           sql`${items.properties} @> ${JSON.stringify({ focus: { date: todayYmd } })}::jsonb`
         )
       )

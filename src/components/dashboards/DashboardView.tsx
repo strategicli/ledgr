@@ -37,6 +37,7 @@ function toViewItem(i: Awaited<ReturnType<typeof queryViewItems>>[number]): View
     type: i.type,
     title: i.title,
     status: i.status,
+    statusCategory: i.statusCategory,
     dueDate: i.dueDate,
     scheduledDate: i.scheduledDate,
     urgency: i.urgency,

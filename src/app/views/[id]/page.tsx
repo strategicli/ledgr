@@ -9,6 +9,7 @@ import NewItemButton from "@/components/home/NewItemButton";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
+import { resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -39,12 +40,19 @@ export default async function ViewPage({ params }: Context) {
   // For a board grouped by a custom property, order its columns by the type's
   // option list (a workflow board reads Applied → Interview → Offer, not
   // alphabetically). Falls back to present-value order if the type/prop is gone.
+  // The type's resolved statuses (S2): status chips + a status board's column
+  // labels/colors render from these.
+  const statuses = resolveStatusSchema(type?.statusSchema ?? null);
+
   let groupOrder: string[] | undefined;
   const grouping = view.grouping;
   if (grouping && "propertyKey" in grouping) {
     groupOrder = type?.propertySchema.find(
       (p) => p.key === grouping.propertyKey
     )?.options;
+  } else if (!grouping || ("field" in grouping && grouping.field === "status")) {
+    // A status board shows every status as a column, in the type's schema order.
+    groupOrder = statuses.map((s) => s.key);
   }
 
   // A board's cards can be dragged between columns only when a drop maps to a
@@ -100,6 +108,7 @@ export default async function ViewPage({ params }: Context) {
           groupOrder={groupOrder}
           propertyLabels={propertyLabels}
           boardDraggable={boardDraggable}
+          statuses={statuses}
         />
       </div>
     </main>

@@ -3,10 +3,10 @@
 // columns store exactly these shapes, so today's hardcoded list pages become
 // stored system views later without a query rewrite. Same discipline as
 // every list read: owner-scoped, body-free listColumns, live items only.
-import { and, asc, desc, eq, isNull, lt, gte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gte, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, views } from "@/db/schema";
-import { ITEM_STATUSES, URGENCIES, type ItemStatus, type Urgency } from "@/lib/item-enums";
+import { URGENCIES, type ItemStatus, type Urgency } from "@/lib/item-enums";
 import { ItemError, listColumns } from "@/lib/items";
 import { APP_TIMEZONE, todayBounds, zonedMidnightUtc } from "@/lib/today";
 
@@ -21,6 +21,10 @@ export type DueWindow = (typeof DUE_WINDOWS)[number];
 export type ViewFilter = {
   type?: string;
   status?: ItemStatus;
+  // Filter by status CATEGORY bucket (S2): not_started | in_progress | done |
+  // archived, or "active" = not_started+in_progress (the daily default). Keys off
+  // the indexed items.status_category; `status` above is the exact-key filter.
+  statusCategory?: string;
   urgency?: Urgency;
   // Which date the window applies to (default "dueDate"). "meetingAt" lets a
   // meeting view filter by its "When"; due-date semantics are UTC-midnight
@@ -71,6 +75,18 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
   const where: SQL[] = [eq(items.ownerId, ownerId), isNull(items.deletedAt)];
   if (filter.type) where.push(eq(items.type, filter.type));
   if (filter.status) where.push(eq(items.status, filter.status));
+  if (filter.statusCategory) {
+    if (filter.statusCategory === "active") {
+      where.push(inArray(items.statusCategory, ["not_started", "in_progress"]));
+    } else {
+      where.push(
+        eq(
+          items.statusCategory,
+          filter.statusCategory as "not_started" | "in_progress" | "done" | "archived"
+        )
+      );
+    }
+  }
   if (filter.urgency) where.push(eq(items.urgency, filter.urgency));
 
   if (filter.due || filter.withinDays != null) {
@@ -268,8 +284,16 @@ export function parseViewFilter(raw: unknown): ViewFilter {
   const out: ViewFilter = {};
   if (r.type != null) out.type = String(r.type);
   if (r.status != null) {
-    if (!ITEM_STATUSES.includes(r.status as ItemStatus)) bad("filter.status invalid");
-    out.status = r.status as ItemStatus;
+    // A status KEY (S2) — exact match; any slug is acceptable (the type's schema
+    // gives it meaning, an unknown key simply matches nothing).
+    out.status = String(r.status);
+  }
+  if (r.statusCategory != null) {
+    const c = String(r.statusCategory);
+    if (!["active", "not_started", "in_progress", "done", "archived"].includes(c)) {
+      bad("filter.statusCategory invalid");
+    }
+    out.statusCategory = c;
   }
   if (r.urgency != null) {
     if (!URGENCIES.includes(r.urgency as Urgency)) bad("filter.urgency invalid");
