@@ -16,6 +16,7 @@ import { checkGithub, type GithubHealth } from "@/lib/github/client";
 import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
 import { getPushState } from "@/lib/push/notify";
 import { getTodoistState } from "@/lib/todoist/sync";
+import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
 import { createLogger, isDebugMode } from "@/lib/log";
 
 export type DatabaseCheck =
@@ -37,6 +38,10 @@ export type HealthReport = {
     lastExportRunAt: string | null;
     lastCalendarSyncAt: string | null;
     lastCalendarRunAt: string | null;
+    // The active tasks adapter (ADR-081): "native" (default — Ledgr owns tasks,
+    // no sync) or "todoist" (the optional sync). The lastTodoist* fields below
+    // are only meaningful when the adapter is "todoist".
+    tasksAdapter: TasksAdapterId;
     lastTodoistSyncAt: string | null;
     lastTodoistRunAt: string | null;
     lastEmailImportAt: string | null;
@@ -197,6 +202,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastExportRunAt,
       lastCalendarSyncAt,
       lastCalendarRunAt,
+      tasksAdapter: tasksAdapter(),
       lastTodoistSyncAt,
       lastTodoistRunAt,
       lastEmailImportAt,

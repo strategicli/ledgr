@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { isTodoistAdapterActive } from "@/lib/tasks/provider";
 import { getTodoistClient } from "@/lib/todoist/client";
 import { resolveTodoistOwner } from "@/lib/todoist/owner";
 import { runTodoistSync } from "@/lib/todoist/sync";
@@ -27,6 +28,11 @@ function signatureValid(rawBody: string, header: string | null, secret: string):
 
 export async function POST(request: Request) {
   const log = createLogger("todoist-webhook");
+  // Native is the default tasks adapter (ADR-073/081): a webhook that arrives
+  // when Todoist isn't active is ignored with 200 (no retry-storm), never synced.
+  if (!isTodoistAdapterActive()) {
+    return NextResponse.json({ ok: true, skipped: true, adapter: "native" });
+  }
   const secret = process.env.TODOIST_CLIENT_SECRET;
   const client = getTodoistClient();
 

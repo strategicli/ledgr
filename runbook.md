@@ -119,8 +119,10 @@ Until this is done, `/health` `checks.graph` reports `{configured:true, ok:true}
 
 ---
 
-## 1d. Todoist setup (one-time, Brandon — Phase 2)
-Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date changes back; the webhook is the real-time path and a 3h GitHub Actions poll is the backstop. Until the token is set, `/health` `lastTodoistSyncAt` stays null and the cron returns a 503 (reported as success so the run isn't red before setup).
+## 1d. Todoist setup (OPTIONAL adapter — Phase 2; superseded as default by native tasks, ADR-073/081)
+> **Tasks are native by default (ADR-073/081).** Ledgr owns tasks end to end — recurrence (ADR-076), scheduling/reschedule (ADR-077), the Top-3 focus layer (ADR-078), reminders via the published ICS feed (ADR-079, §1h), and offline capture (ADR-080). The **`tasks` provider seam** (`src/lib/tasks/provider.ts`) reports the active adapter at `/health` `checks.tasksAdapter`. **Brandon's instance runs `native`** (the default — `TASKS_ADAPTER` unset), so the Todoist sync endpoints/crons **no-op cleanly** (`{ok:true, skipped:true, adapter:"native"}`, 200) and nothing below needs setting up. **Todoist stays an optional adapter** for an instance that wants it (Tyler's): set **`TASKS_ADAPTER=todoist`** *and* `TODOIST_TOKEN`, then follow the steps below. The Todoist code is unchanged — this is a config flip, not a rewrite (Phase-4 packageable).
+
+Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date changes back; the webhook is the real-time path and a 3h GitHub Actions poll is the backstop. With the native adapter (the default) the cron returns `skipped: true` and `/health` `lastTodoistSyncAt` stays null — both expected, not an error.
 
 1. **API token:** Todoist → Settings → Integrations → Developer → copy the API token → set `TODOIST_TOKEN` in Vercel and `.env.local`.
 2. **Webhook (real-time completions/edits):** create a Todoist app at the [App Management console](https://developer.todoist.com/appconsole.html). Copy the app's **client secret** → `TODOIST_CLIENT_SECRET` (used to verify the webhook HMAC). Configure the webhook callback URL to `https://ledgr-teal.vercel.app/api/todoist/webhook` and subscribe to `item:completed`, `item:updated`, `item:added`. (The route verifies the `X-Todoist-Hmac-SHA256` signature itself; it's the one Clerk-public Todoist route.)

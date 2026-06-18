@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyMachineToken } from "@/lib/auth/machine";
+import { isTodoistAdapterActive } from "@/lib/tasks/provider";
 import { getTodoistClient } from "@/lib/todoist/client";
 import { resolveTodoistOwner } from "@/lib/todoist/owner";
 import { runTodoistSync } from "@/lib/todoist/sync";
@@ -19,6 +20,12 @@ export async function GET(request: Request) {
   }
 
   const log = createLogger("todoist-sync");
+  // Native is the default tasks adapter (ADR-073/081): Ledgr owns tasks in-app,
+  // so when Todoist isn't the active adapter the cron no-ops cleanly (200, not
+  // an error) — the scheduled job can keep firing harmlessly.
+  if (!isTodoistAdapterActive()) {
+    return NextResponse.json({ ok: true, skipped: true, adapter: "native" });
+  }
   const client = getTodoistClient();
   if (!client) {
     log.warn("Todoist not configured (TODOIST_TOKEN unset)");

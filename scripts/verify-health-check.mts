@@ -52,6 +52,7 @@ function baseReport(): HealthReport {
       lastExportRunAt: iso(6),
       lastCalendarSyncAt: iso(3),
       lastCalendarRunAt: iso(3),
+      tasksAdapter: "native",
       lastTodoistSyncAt: iso(2),
       lastTodoistRunAt: iso(2),
       lastEmailImportAt: iso(1),
