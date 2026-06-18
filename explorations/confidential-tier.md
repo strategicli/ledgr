@@ -1,6 +1,6 @@
 # Exploration: a confidential / privacy tier for sensitive content
 
-**Status:** parked, open for Brandon + Tyler. **Primary open question** behind any Discipleship/pastoral content. Core (a cross-cutting invariant that touches the MCP, export, and briefing contracts), so it lands as an ADR before it builds, and whatever is chosen applies to both instances as a shared platform capability (not a per-module hack).
+**Status:** ✅ **RESOLVED 2026-06-17 — declined for v1.0 (ADR-075).** The single-user + Clerk + owner-scoped posture is judged sufficient (Brandon's call); no `confidential` flag or field encryption in v1.0. Revisitable later or for Tyler's instance. Kept below for the record. *(Was: parked, open for Brandon + Tyler — primary open question behind any Discipleship/pastoral content.)* Core (a cross-cutting invariant that touches the MCP, export, and briefing contracts), so it lands as an ADR before it builds, and whatever is chosen applies to both instances as a shared platform capability (not a per-module hack).
 **Source:** cherry-picked from Tyler's `tyler/additions-for-review` branch (`ty-additions/module-discipleship.md` "Privacy tier", `ty-additions/FOR-BRANDON-approach-diff.md`). The PRD already wrestled with this in §6.3 and deferred a field-encrypted tier.
 
 ## The need

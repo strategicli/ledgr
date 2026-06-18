@@ -1,6 +1,6 @@
 # Exploration: keep Todoist, or make Ledgr a Todoist replacement?
 
-**Status:** parked, **for joint Brandon + Tyler discussion** at their next sync (Brandon, 2026-06-15). **Core** (the `tasks` provider interface, the notification approach, and a recurrence model are all cross-cutting), so it lands as an ADR with both-agree before anything builds. It would also **reverse a standing PRD decision** (§4.6/§5.2 name Todoist the notification engine "by design"), so it is a real pivot, in the spirit of ADR-037, not a small change.
+**Status:** ✅ **RESOLVED 2026-06-17 — direction (B): go fully native, Ledgr owns tasks end to end (ADR-073).** Todoist becomes an optional adapter behind the `tasks` seam (Tyler can keep it); the build is lined up as the Native Tasks chunk T1–T6 in `next_steps.md`. Kept below for the record. *(Was: parked, for joint Brandon + Tyler discussion, 2026-06-15.)* **Core** (the `tasks` provider interface, the notification approach, and a recurrence model are all cross-cutting), so it lands as an ADR with both-agree before anything builds. It would also **reverse a standing PRD decision** (§4.6/§5.2 name Todoist the notification engine "by design"), so it is a real pivot, in the spirit of ADR-037, not a small change.
 **Source:** Brandon, 2026-06-15, raised alongside the calendar time-blocking work (`explorations/calendar-time-blocking.md`), which currently leans on Todoist for both reminders and the calendar overlay.
 
 ## The fork
