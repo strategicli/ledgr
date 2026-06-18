@@ -6,7 +6,9 @@ import DashboardView from "@/components/dashboards/DashboardView";
 import QuickCapture from "@/components/today/QuickCapture";
 import PushToggle from "@/components/pwa/PushToggle";
 import RollOverdueButton from "@/components/today/RollOverdueButton";
+import FocusStar from "@/components/today/FocusStar";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import { FOCUS_SOFT_CAP, focusOrder, isFocusedOn } from "@/lib/focus";
 import { listItems } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
@@ -72,7 +74,15 @@ function planDate(task: ListedItem): Date | null {
   return task.scheduledDate ?? task.dueDate ?? null;
 }
 
-function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
+function TaskRow({
+  task,
+  overdue,
+  today,
+}: {
+  task: ListedItem;
+  overdue: boolean;
+  today: string;
+}) {
   const d = planDate(task);
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
@@ -102,6 +112,11 @@ function TaskRow({ task, overdue }: { task: ListedItem; overdue: boolean }) {
       >
         {d ? dueFmt.format(d) : ""}
       </span>
+      <FocusStar
+        itemId={task.id}
+        focused={isFocusedOn(task.properties, today)}
+        today={today}
+      />
     </li>
   );
 }
@@ -140,14 +155,23 @@ export async function TodayHome() {
     );
   }
 
-  const { bounds, meetings, dueTasks, recent } = await getTodayData(owner.id);
+  const { bounds, meetings, dueTasks, recent, focusTasks, todayYmd } =
+    await getTodayData(owner.id);
+  // Today's Focus (T3): the vital few, ordered by the focus marker's order.
+  const focus = [...focusTasks].sort(
+    (a, b) => focusOrder(a.properties) - focusOrder(b.properties)
+  );
+  const focusedIds = new Set(focus.map((t) => t.id));
+  // The due/planned list excludes anything already in the focus zone, so a task
+  // shows once: in Focus if focused, else here.
+  const rest = dueTasks.filter((t) => !focusedIds.has(t.id));
   // Partition on the effective plan date (scheduled, else due), so a task
   // planned for an earlier day counts as overdue even with no deadline.
-  const overdue = dueTasks.filter((t) => {
+  const overdue = rest.filter((t) => {
     const d = t.scheduledDate ?? t.dueDate;
     return d != null && d < bounds.dueToday;
   });
-  const dueToday = dueTasks.filter((t) => {
+  const dueToday = rest.filter((t) => {
     const d = t.scheduledDate ?? t.dueDate;
     return d != null && d >= bounds.dueToday;
   });
@@ -170,6 +194,25 @@ export async function TodayHome() {
         <div className="mt-6">
           <QuickCapture />
         </div>
+
+        {focus.length > 0 && (
+          <Section
+            title="Today's Focus"
+            action={
+              focus.length > FOCUS_SOFT_CAP ? (
+                <span className="text-xs text-amber-500/80">
+                  {focus.length} in focus — the vital few is usually ≤ {FOCUS_SOFT_CAP}
+                </span>
+              ) : undefined
+            }
+          >
+            <ul className="mt-1">
+              {focus.map((t) => (
+                <TaskRow key={t.id} task={t} overdue={false} today={todayYmd} />
+              ))}
+            </ul>
+          </Section>
+        )}
 
         <Section title="Meetings">
           {meetings.length > 0 ? (
@@ -199,13 +242,13 @@ export async function TodayHome() {
         </Section>
 
         <Section title="Tasks" action={<RollOverdueButton count={rollableOverdue} />}>
-          {dueTasks.length > 0 ? (
+          {overdue.length + dueToday.length > 0 ? (
             <ul className="mt-1">
               {overdue.map((t) => (
-                <TaskRow key={t.id} task={t} overdue />
+                <TaskRow key={t.id} task={t} overdue today={todayYmd} />
               ))}
               {dueToday.map((t) => (
-                <TaskRow key={t.id} task={t} overdue={false} />
+                <TaskRow key={t.id} task={t} overdue={false} today={todayYmd} />
               ))}
             </ul>
           ) : (

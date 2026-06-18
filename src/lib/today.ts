@@ -89,8 +89,10 @@ export async function getTodayData(ownerId: string, now = new Date()) {
   const bounds = todayBounds(now);
   const db = getDb();
   const live = and(eq(items.ownerId, ownerId), isNull(items.deletedAt));
+  // Today as a calendar day string, for the day-stamped focus marker (T3).
+  const todayYmd = `${bounds.today.y}-${String(bounds.today.m).padStart(2, "0")}-${String(bounds.today.d).padStart(2, "0")}`;
 
-  const [meetings, dueTasks, recent] = await Promise.all([
+  const [meetings, dueTasks, recent, focusTasks] = await Promise.all([
     db
       .select(listColumns)
       .from(items)
@@ -130,7 +132,23 @@ export async function getTodayData(ownerId: string, now = new Date()) {
       .where(live)
       .orderBy(desc(items.updatedAt))
       .limit(8),
+    // Today's Focus (T3): tasks day-stamped for today (properties.focus.date ==
+    // today). Index-backed by items_properties_gin (the @> containment ignores
+    // the optional `order` key). Open tasks only — a focused task done today
+    // drops out, like the due list.
+    db
+      .select(listColumns)
+      .from(items)
+      .where(
+        and(
+          live,
+          eq(items.type, "task"),
+          eq(items.status, "open"),
+          sql`${items.properties} @> ${JSON.stringify({ focus: { date: todayYmd } })}::jsonb`
+        )
+      )
+      .limit(50),
   ]);
 
-  return { bounds, meetings, dueTasks, recent };
+  return { bounds, meetings, dueTasks, recent, focusTasks, todayYmd };
 }
