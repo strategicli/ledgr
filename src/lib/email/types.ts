@@ -4,18 +4,23 @@
 // Outlook "Ledgr Import" folder polled via messages/delta; each message
 // becomes a note (or a task if the subject is prefixed `task:`).
 
+// Attachment metadata only — the importer links to attachments in the original
+// email rather than copying bytes into R2 (ADR: link-don't-copy). Inline
+// signature images are filtered out upstream and never reach the engine.
 export type MailAttachment = {
-  id: string;
   name: string;
   contentType: string;
   size: number;
-  bytes: Uint8Array;
 };
 
 // A message normalized to what the importer needs. The engine never sees Graph
 // JSON. Either bodyHtml or bodyText may be present; the converter prefers text.
+// `internetMessageId` is the stable RFC822 Message-ID: unlike the Graph `id`,
+// it survives the message moving between folders, so it's both the dedup key
+// and the durable handle the "Open in Outlook" redirect re-resolves through.
 export type NormalizedMessage = {
   id: string;
+  internetMessageId: string | null;
   subject: string;
   fromName: string | null;
   fromEmail: string | null;

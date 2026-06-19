@@ -9,11 +9,12 @@ import type { MailAttachment, MailSource, NormalizedMessage } from "./types";
 
 const IMPORT_FOLDER = "Ledgr Import";
 const IMPORTED_SUBFOLDER = "Imported";
-const SELECT = "id,subject,from,receivedDateTime,body,hasAttachments";
+const SELECT = "id,internetMessageId,subject,from,receivedDateTime,body,hasAttachments";
 const MAX_PAGES = 50;
 
 type GraphMessage = {
   id: string;
+  internetMessageId?: string;
   subject?: string;
   from?: { emailAddress?: { name?: string; address?: string } };
   receivedDateTime?: string;
@@ -28,7 +29,7 @@ type GraphFileAttachment = {
   name?: string;
   contentType?: string;
   size?: number;
-  contentBytes?: string;
+  isInline?: boolean;
 };
 
 type DeltaPage = {
@@ -79,28 +80,43 @@ export class GraphMailSource implements MailSource {
     return { importId: this.importFolderId, importedId: this.importedFolderId! };
   }
 
+  // Attachment metadata only ($select drops contentBytes — we link to the
+  // original mail, never download the bytes). Inline images (email signatures,
+  // embedded logos) are skipped: they're noise, and copying them was the bulk
+  // of the storage churn this design removes.
   private async fetchAttachments(messageId: string): Promise<MailAttachment[]> {
     const res = await graphGet<{ value: GraphFileAttachment[] }>(
-      this.base(`/messages/${messageId}/attachments`)
+      this.base(`/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`)
     );
     const out: MailAttachment[] = [];
     for (const a of res.value) {
-      if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || !a.contentBytes) continue;
+      if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || a.isInline) continue;
       out.push({
-        id: a.id,
         name: a.name || "attachment",
         contentType: a.contentType || "application/octet-stream",
         size: a.size ?? 0,
-        bytes: new Uint8Array(Buffer.from(a.contentBytes, "base64")),
       });
     }
     return out;
+  }
+
+  // Resolve the live "open in Outlook" URL for a message from its stable
+  // internetMessageId. Used by the /api/email/open redirect — re-resolving on
+  // click means the link still works after the message is moved (which changes
+  // the Graph id, and thus any webLink captured at import time).
+  async resolveWebLink(internetMessageId: string): Promise<string | null> {
+    const filter = encodeURIComponent(`internetMessageId eq '${internetMessageId.replace(/'/g, "''")}'`);
+    const res = await graphGet<{ value: { webLink?: string }[] }>(
+      this.base(`/messages?$filter=${filter}&$select=webLink&$top=1`)
+    );
+    return res.value[0]?.webLink ?? null;
   }
 
   private normalize(m: GraphMessage): NormalizedMessage {
     const isHtml = (m.body?.contentType ?? "").toLowerCase() === "html";
     return {
       id: m.id,
+      internetMessageId: m.internetMessageId ?? null,
       subject: m.subject ?? "",
       fromName: m.from?.emailAddress?.name ?? null,
       fromEmail: m.from?.emailAddress?.address?.toLowerCase() ?? null,

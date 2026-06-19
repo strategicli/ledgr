@@ -1,17 +1,19 @@
 // Email-in import engine (slice 26, PRD §5.3). Deterministic, no model in the
 // loop. Polls the "Ledgr Import" Outlook folder through a MailSource: each new
-// message becomes a `note` (or `task` if the subject is prefixed `task:`),
-// body converted from the email, attachments stored to R2. Imported messages
-// are marked read + moved (markImported) so messages/delta never re-returns
-// them; a properties.email.messageId guard covers a crash between create and
-// move. New items land inbox:true for manual entity tagging.
+// message becomes a `note` (or `task` if the subject is prefixed `task:`), its
+// body converted from the email. Attachments are LINKED, not copied: their
+// names/sizes plus an "open in Outlook" link go in the note body (the bytes
+// stay in the original mail, keeping R2 lean — link-don't-copy ADR). Imported
+// messages are marked read + moved (markImported) so messages/delta never
+// re-returns them; an internetMessageId guard covers a crash between create and
+// move (it's stable across the move, unlike the Graph id). New items land
+// inbox:true for manual entity tagging.
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { attachments as attachmentsTable, jobState } from "@/db/schema";
+import { jobState } from "@/db/schema";
 import { makeMarkdownBody } from "@/lib/body";
 import { createItem } from "@/lib/items";
-import { getStorage } from "@/lib/storage";
-import { emailToMarkdown } from "./html";
+import { emailToMarkdown, emailFooterMarkdown } from "./html";
 import type { MailSource, NormalizedMessage } from "./types";
 
 export const EMAIL_JOB_KEY = "email_import";
@@ -34,12 +36,18 @@ export type EmailJobState = {
   deltaToken: string | null;
 };
 
-// Already-imported guard: a prior item carrying this message id (GIN @>).
-async function alreadyImported(ownerId: string, messageId: string): Promise<boolean> {
+// Already-imported guard: a prior item carrying this message (GIN @>). Keyed on
+// the stable internetMessageId so the guard still matches after the message has
+// been moved (the Graph id changes on a move); falls back to the volatile id
+// for the rare message with no internetMessageId.
+async function alreadyImported(ownerId: string, msg: NormalizedMessage): Promise<boolean> {
+  const key = msg.internetMessageId
+    ? { email: { internetMessageId: msg.internetMessageId } }
+    : { email: { messageId: msg.id } };
   const res = await getDb().execute(sql`
     select 1 from items
     where owner_id = ${ownerId}
-      and properties @> ${JSON.stringify({ email: { messageId } })}::jsonb
+      and properties @> ${JSON.stringify(key)}::jsonb
     limit 1
   `);
   return res.rows.length > 0;
@@ -51,34 +59,6 @@ function routeMessage(msg: NormalizedMessage): { type: "task" | "note"; title: s
     return { type: "task", title: subject.replace(TASK_PREFIX, "").trim() || "(no subject)" };
   }
   return { type: "note", title: subject || "(no subject)" };
-}
-
-async function storeAttachments(
-  ownerId: string,
-  itemId: string,
-  msg: NormalizedMessage
-): Promise<number> {
-  if (msg.attachments.length === 0) return 0;
-  const storage = getStorage();
-  if (!storage) return 0; // No R2 configured: import the item, drop the bytes.
-  const db = getDb();
-  let stored = 0;
-  for (const att of msg.attachments) {
-    const id = crypto.randomUUID();
-    const key = `${ownerId}/${id}/${att.name}`;
-    await storage.putObject(key, att.bytes, att.contentType);
-    await db.insert(attachmentsTable).values({
-      id,
-      ownerId,
-      parentItemId: itemId,
-      filename: att.name,
-      contentType: att.contentType,
-      sizeBytes: att.size,
-      storageKey: key,
-    });
-    stored++;
-  }
-  return stored;
 }
 
 export async function runEmailImport(
@@ -97,28 +77,37 @@ export async function runEmailImport(
 
   for (const msg of messages) {
     try {
-      if (await alreadyImported(ownerId, msg.id)) {
+      if (await alreadyImported(ownerId, msg)) {
         // Created before but the move didn't land; move it now and skip.
         await source.markImported(msg.id);
         result.skipped++;
         continue;
       }
       const { type, title } = routeMessage(msg);
-      const item = await createItem(ownerId, {
+      // Body = the email's text plus the link-don't-copy footer (sender, an
+      // open-in-Outlook link, the attachment names/sizes). The bytes stay in
+      // the original mail; nothing is written to R2.
+      const body = [emailToMarkdown(msg.bodyText, msg.bodyHtml), emailFooterMarkdown(msg)]
+        .filter(Boolean)
+        .join("\n\n");
+      await createItem(ownerId, {
         type,
         title,
-        body: makeMarkdownBody(emailToMarkdown(msg.bodyText, msg.bodyHtml)),
+        body: makeMarkdownBody(body),
         inbox: true,
         properties: {
           email: {
             messageId: msg.id,
+            internetMessageId: msg.internetMessageId,
             fromName: msg.fromName,
             fromEmail: msg.fromEmail,
             receivedAt: msg.receivedAt,
+            // Metadata only (no bytes) — feeds a future "Save to Ledgr" action.
+            attachments: msg.attachments,
           },
         },
       });
-      result.attachments += await storeAttachments(ownerId, item.id, msg);
+      result.attachments += msg.attachments.length;
       await source.markImported(msg.id);
       result.imported++;
       if (type === "task") result.tasks++;

@@ -1,11 +1,11 @@
-// Slice 26 verification: the new R2 server-side putObject against the real
-// bucket, then the email-in import engine against Neon with a stub MailSource
-// under a throwaway owner. Covers note/task routing, HTML->text body
-// conversion, inbox:true arrival, properties.email dedup (no double-import),
-// graceful attachment-drop when storage is off, delta-token persistence, and
-// "an errored run does not advance the delta token". Run:
+// Email-in verification: the pure link-don't-copy footer (html.ts) plus the
+// import engine against Neon with a stub MailSource under a throwaway owner.
+// Covers note/task routing, HTML->text body conversion, inbox:true arrival,
+// the link-don't-copy footer (sender + open-in-Outlook link + attachment
+// names/sizes, no R2), internetMessageId dedup (no double-import, stable across
+// the move), delta-token persistence, and "an errored run does not advance the
+// delta token". Run:
 //   npx tsx scripts/verify-email-in.mts
-// Safe to delete once the slice is closed.
 import { readFileSync } from "node:fs";
 
 for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
@@ -21,35 +21,28 @@ function check(name: string, ok: boolean, detail = "") {
   if (!ok) failures += 1;
 }
 
-// --- Part A: real R2 putObject/deleteObject roundtrip (creds present) -------
-// Constructed directly (not via getStorage) so it doesn't cache a provider
-// that Part B then deletes the env out from under.
-const haveR2 = !!(process.env.R2_ACCESS_KEY_ID && process.env.R2_ENDPOINT && process.env.R2_BUCKET);
-if (haveR2) {
-  const { R2Provider } = await import("../src/lib/storage/r2");
-  const r2 = new R2Provider({
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    bucket: process.env.R2_BUCKET!,
-    endpoint: process.env.R2_ENDPOINT!,
-    publicBaseUrl: process.env.R2_PUBLIC_BASE_URL || "https://example.invalid",
+// --- Part A: pure footer (link-don't-copy) ----------------------------------
+const { emailFooterMarkdown } = await import("../src/lib/email/html");
+{
+  const full = emailFooterMarkdown({
+    fromName: "Lesleigh Carmichael",
+    fromEmail: "lesleigh@example.org",
+    internetMessageId: "<abc@mail.gmail.com>",
+    attachments: [{ name: "Proposal.pdf", contentType: "application/pdf", size: 1024 }],
   });
-  const key = `verify-email-in/${Date.now()}/probe.txt`;
-  try {
-    const url = await r2.putObject(key, new TextEncoder().encode("ledgr probe"), "text/plain");
-    check("R2 putObject writes server-side and returns the public URL", url.includes(encodeURIComponent("probe.txt").replace("%2F", "/")) || url.endsWith("probe.txt"));
-    await r2.deleteObject(key);
-    check("R2 deleteObject cleans up the probe object", true);
-  } catch (err) {
-    check("R2 putObject/deleteObject roundtrip", false, String(err));
-  }
-} else {
-  console.log("INFO  R2 not configured locally — skipping the putObject roundtrip.");
-}
+  check("footer shows the sender", full.includes("**From:** Lesleigh Carmichael (lesleigh@example.org)"), full);
+  check("footer links to the open-in-Outlook redirect with the encoded mid",
+    full.includes("/api/email/open?mid=") && full.includes(encodeURIComponent("<abc@mail.gmail.com>")));
+  check("footer lists the attachment name + human size", full.includes("- Proposal.pdf (1 KB)"), full);
+  check("footer never embeds bytes or an R2 url", !/r2|cloudflarestorage|base64/i.test(full));
 
-// --- force storage OFF for the engine tests (attachment-drop path) ----------
-delete process.env.R2_ACCESS_KEY_ID;
-delete process.env.R2_SECRET_ACCESS_KEY;
+  const senderOnly = emailFooterMarkdown({ fromName: "Bob", fromEmail: null, internetMessageId: null, attachments: [] });
+  check("sender-only footer: From but no link, no Attachments heading",
+    senderOnly.includes("**From:** Bob") && !senderOnly.includes("Open original") && !senderOnly.includes("Attachments"));
+
+  check("empty footer (nothing to show) is the empty string",
+    emailFooterMarkdown({ fromName: null, fromEmail: null, internetMessageId: null, attachments: [] }) === "");
+}
 
 const { getDb } = await import("../src/db");
 const { items, jobState, users } = await import("../src/db/schema");
@@ -63,6 +56,9 @@ const db = getDb();
 function msg(over: Partial<NormalizedMessage> & { id: string }): NormalizedMessage {
   return {
     id: over.id,
+    // Derive a stable internetMessageId from the id so the dedup guard keys on
+    // it (the real stable handle), mirroring production.
+    internetMessageId: over.internetMessageId ?? `<${over.id}@test>`,
     subject: over.subject ?? "",
     fromName: over.fromName ?? "Sender",
     fromEmail: over.fromEmail ?? "sender@example.invalid",
@@ -101,6 +97,12 @@ const findByMessageId = async (messageId: string) =>
 
 const fake = new FakeMail();
 
+// job_state uses a single global key shared with the real email-import job.
+// Snapshot and clear it so this run starts from a null token AND doesn't
+// clobber production's delta token; restore it in finally.
+const savedJob = (await db.select().from(jobState).where(eq(jobState.key, EMAIL_JOB_KEY)))[0];
+await db.delete(jobState).where(eq(jobState.key, EMAIL_JOB_KEY));
+
 try {
   // --- Run 1: import note, task, html, attachment-bearing -----------------
   fake.next = {
@@ -108,44 +110,44 @@ try {
       msg({ id: "m1", subject: "Hello there", bodyText: "Line one\n\nLine two" }),
       msg({ id: "m2", subject: "task:  Follow up with Roger", bodyText: "do it" }),
       msg({ id: "m3", subject: "Formatted", bodyHtml: "<p>Hi <b>there</b></p><p>bye</p>" }),
-      msg({ id: "m4", subject: "Has a file", bodyText: "see attached", attachments: [{ id: "a1", name: "doc.pdf", contentType: "application/pdf", size: 10, bytes: new Uint8Array([1, 2, 3]) }] }),
+      msg({ id: "m4", subject: "Has a file", bodyText: "see attached", attachments: [{ name: "doc.pdf", contentType: "application/pdf", size: 10 }] }),
     ],
     nextDeltaToken: "delta-1",
   };
   const r1 = await runEmailImport(ownerId, fake);
   check("run 1 imports all four messages", r1.imported === 4 && r1.errors === 0, JSON.stringify(r1));
   check("run 1 routes 1 task + 3 notes", r1.tasks === 1 && r1.notes === 3);
+  check("run 1 counts the one linked attachment", r1.attachments === 1, JSON.stringify(r1));
   check("run 1 starts from a null delta token", fake.received[0] === null);
   check("all four messages were marked imported (moved)", fake.moved.length === 4);
 
   const n1 = await findByMessageId("m1");
   check("plain message becomes a note, inbox:true", n1?.type === "note" && n1?.title === "Hello there" && n1?.inbox === true);
-  const nb1 = n1?.body as { format?: string; text?: string } | null;
-  check(
-    "note body is markdown with two paragraphs",
-    nb1?.format === "markdown" && (nb1.text ?? "").split(/\n{2,}/).filter(Boolean).length === 2,
-    JSON.stringify(nb1)
-  );
-  check("note records sender in properties.email", (n1?.properties as { email?: { fromEmail?: string } })?.email?.fromEmail === "sender@example.invalid");
+  const nb1 = (n1?.body as { format?: string; text?: string } | null) ?? {};
+  const n1text = nb1.text ?? "";
+  check("note body keeps the email's text", nb1.format === "markdown" && n1text.includes("Line one") && n1text.includes("Line two"), n1text);
+  check("note body carries the link-don't-copy footer (From + Outlook link)",
+    n1text.includes("**From:**") && n1text.includes("/api/email/open?mid="), n1text);
+  const email1 = (n1?.properties as { email?: { fromEmail?: string; internetMessageId?: string } })?.email;
+  check("note records sender + stable internetMessageId in properties.email",
+    email1?.fromEmail === "sender@example.invalid" && email1?.internetMessageId === "<m1@test>");
 
   const t2 = await findByMessageId("m2");
   check("`task:` subject becomes a task with the prefix stripped", t2?.type === "task" && t2?.title === "Follow up with Roger");
 
   const h3 = await findByMessageId("m3");
-  const h3body = h3?.body as { format?: string; text?: string } | null;
-  const h3text = h3body?.text ?? "";
-  check(
-    "HTML body is converted to markdown text (tags stripped)",
-    h3body?.format === "markdown" && h3text.includes("Hi there") && h3text.includes("bye") && !h3text.includes("<"),
-    h3text
-  );
+  const h3text = (h3?.body as { format?: string; text?: string } | null)?.text ?? "";
+  check("HTML body is converted to markdown text (tags stripped)",
+    h3text.includes("Hi there") && h3text.includes("bye") && !h3text.includes("<"), h3text);
 
   const a4 = await findByMessageId("m4");
-  check("attachment-bearing message imports; bytes dropped gracefully w/o storage", !!a4 && r1.attachments === 0);
+  const a4text = (a4?.body as { text?: string } | null)?.text ?? "";
+  check("attachment-bearing message lists the file in the body, no R2 copy",
+    !!a4 && a4text.includes("doc.pdf") && a4text.includes("(10 B)") && a4text.includes("Attachments"), a4text);
 
   check("job_state advanced the delta token on a clean run", (await getEmailState())?.deltaToken === "delta-1");
 
-  // --- Run 2: dedup (same message id) does not double-import --------------
+  // --- Run 2: dedup (same internetMessageId) does not double-import --------
   fake.next = { messages: [msg({ id: "m1", subject: "Hello there", bodyText: "x" })], nextDeltaToken: "delta-2" };
   const r2 = await runEmailImport(ownerId, fake);
   check("run 2 receives the stored delta token", fake.received[1] === "delta-1");
@@ -165,6 +167,7 @@ try {
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(users).where(eq(users.id, ownerId));
   await db.delete(jobState).where(eq(jobState.key, EMAIL_JOB_KEY));
+  if (savedJob) await db.insert(jobState).values({ key: EMAIL_JOB_KEY, value: savedJob.value });
 }
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);

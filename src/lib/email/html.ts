@@ -57,3 +57,44 @@ export function emailToMarkdown(
     .filter(Boolean)
     .join("\n\n");
 }
+
+// Human-readable byte size for the attachment list ("240 KB", "1.8 MB").
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  const v = n / 1024 ** i;
+  // Integer for bytes/KB; one decimal for MB/GB so "1.8 MB" reads right.
+  return `${i <= 1 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+}
+
+// The link-don't-copy footer appended to an email-in note: who it's from, a
+// link that reopens the original in Outlook (resolved live through the stable
+// internetMessageId, so it survives the message being re-filed), and the
+// attachment names/sizes — which live in the original mail, not R2. Returns ""
+// when there's nothing worth appending.
+export function emailFooterMarkdown(msg: {
+  fromName: string | null;
+  fromEmail: string | null;
+  internetMessageId: string | null;
+  attachments: { name: string; contentType: string; size: number }[];
+}): string {
+  const lines: string[] = [];
+  // Parenthesised, not <angle-bracketed>: `<addr>` is a markdown autolink and
+  // would also trip the inline-HTML escape, leaving visible backslashes.
+  const sender = [msg.fromName, msg.fromEmail && `(${msg.fromEmail})`].filter(Boolean).join(" ");
+  if (sender) lines.push(`**From:** ${escapeInline(sender)}`);
+  if (msg.internetMessageId) {
+    const href = `/api/email/open?mid=${encodeURIComponent(msg.internetMessageId)}`;
+    lines.push(`[Open original email in Outlook ↗](${href})`);
+  }
+  if (msg.attachments.length > 0) {
+    lines.push(`**Attachments** (in the original email):`);
+    for (const a of msg.attachments) {
+      lines.push(`- ${escapeInline(a.name)} (${formatBytes(a.size)})`);
+    }
+  }
+  if (lines.length === 0) return "";
+  // A thematic break separates the email's own text from the Ledgr-added footer.
+  return `---\n\n${lines.join("\n")}`;
+}
