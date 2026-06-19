@@ -16,10 +16,12 @@ export default function TypeQuickCaptureToggle({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
 
   const toggle = async () => {
     if (busy) return;
     setBusy(true);
+    setError(false);
     try {
       const res = await fetch(`/api/types/${typeKey}/quick-capture`, {
         method: "POST",
@@ -29,7 +31,10 @@ export default function TypeQuickCaptureToggle({
       if (!res.ok) throw new Error(String(res.status));
       router.refresh();
     } catch {
-      // leave as-is on failure
+      // Don't fail silently (Principle 9): a failed click left the box snapped
+      // back with no signal. Mark it so the no-op is visible.
+      setError(true);
+      setTimeout(() => setError(false), 2500);
     } finally {
       setBusy(false);
     }
@@ -42,8 +47,16 @@ export default function TypeQuickCaptureToggle({
       onChange={toggle}
       disabled={busy}
       aria-label="Show in quick capture"
-      title={showInQuickCapture ? "In quick capture — click to remove" : "Not in quick capture — click to add"}
-      className="ledgr-check shrink-0 disabled:opacity-50"
+      title={
+        error
+          ? "Couldn't save, click to try again"
+          : showInQuickCapture
+            ? "In quick capture, click to remove"
+            : "Not in quick capture, click to add"
+      }
+      className={`ledgr-check shrink-0 disabled:opacity-50 ${
+        error ? "outline outline-1 outline-red-500" : ""
+      }`}
     />
   );
 }

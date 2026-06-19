@@ -155,7 +155,7 @@ export async function TodayHome() {
     );
   }
 
-  const { bounds, meetings, dueTasks, recent, focusTasks, todayYmd } =
+  const { bounds, meetings, dueTasks, recent, focusTasks, todayYmd, typeLabels } =
     await getTodayData(owner.id);
   // Today's Focus (T3): the vital few, ordered by the focus marker's order.
   const focus = [...focusTasks].sort(
@@ -201,7 +201,7 @@ export async function TodayHome() {
             action={
               focus.length > FOCUS_SOFT_CAP ? (
                 <span className="text-xs text-amber-500/80">
-                  {focus.length} in focus — the vital few is usually ≤ {FOCUS_SOFT_CAP}
+                  {focus.length} in focus (the vital few is usually {FOCUS_SOFT_CAP} or fewer)
                 </span>
               ) : undefined
             }
@@ -265,7 +265,7 @@ export async function TodayHome() {
                   className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
                 >
                   <span className="w-16 shrink-0 truncate text-xs text-neutral-600">
-                    {item.type}
+                    {typeLabels[item.type] ?? item.type}
                   </span>
                   <Link
                     href={`/items/${item.id}`}

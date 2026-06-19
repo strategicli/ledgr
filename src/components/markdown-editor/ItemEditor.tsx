@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
-import { beginSave, endSave } from "@/lib/save-status";
+import { beginSave, endSave, registerSaveRetry } from "@/lib/save-status";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
 
@@ -70,6 +70,18 @@ export default function ItemEditor({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const didAutofocus = useRef(false);
+
+  // New items land ready to type: focus the title when an item opens with an
+  // empty title (the most common entry action). Once only, and never for the
+  // bare body slot (which has no title input). Existing-titled items are left
+  // alone so opening them to read doesn't steal focus.
+  useEffect(() => {
+    if (didAutofocus.current || slot === "body") return;
+    didAutofocus.current = true;
+    if (item.title === "") titleRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const flush = useCallback(async () => {
     if (timer.current) {
@@ -106,6 +118,10 @@ export default function ItemEditor({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
   }, [flush]);
+
+  // Wire this editor's flush to the global "Retry" affordance (the save-failed
+  // pill), so a click forces an immediate re-save of the pending patch.
+  useEffect(() => registerSaveRetry(() => void flush()), [flush]);
 
   // Title wraps and grows with content (Brandon, 2026-06-17): keep the textarea's
   // height matched to its content after every edit, so a long title shows in full

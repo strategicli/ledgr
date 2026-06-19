@@ -111,6 +111,7 @@ export default function NavSlotsEditor({
   const [editor, setEditor] = useState<{ index: number | null } | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
   const router = useRouter();
 
   const activeKey: ListKey = mobileMode === "custom" ? tab : "desktop";
@@ -124,6 +125,7 @@ export default function NavSlotsEditor({
   // mount, so the refresh updates the nav without resetting the form.
   function persist(nextDesktop: NavSlotConfig[], mode: "mirror" | "custom", nextMobile: NavSlotConfig[]) {
     setSaved(false);
+    setError(false);
     void fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -132,11 +134,14 @@ export default function NavSlotsEditor({
         mobileNavSlots: mode === "custom" ? nextMobile : null,
       }),
     })
-      .then(() => {
+      .then((res) => {
+        // fetch resolves on a 4xx/5xx too, so a failed save was flashing
+        // "Saved." anyway. Check the status and surface failures (Principle 9).
+        if (!res.ok) throw new Error(String(res.status));
         setSaved(true);
         router.refresh();
       })
-      .catch(() => {});
+      .catch(() => setError(true));
   }
 
   // Write back the active list and persist.
@@ -348,6 +353,11 @@ export default function NavSlotsEditor({
             </span>
           ) : null}
           {saved && <span className="text-xs text-neutral-600">Saved.</span>}
+          {error && (
+            <span className="text-xs text-red-400">
+              Couldn&rsquo;t save. Check your connection and try again.
+            </span>
+          )}
         </div>
       )}
     </div>

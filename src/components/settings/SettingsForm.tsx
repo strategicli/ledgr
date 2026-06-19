@@ -78,12 +78,13 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Display name</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
-          How you sign shared notes on the Changelog. Leave blank to use your email name.
+          Shown wherever your name appears in the app. Leave blank to use your
+          email name.
         </p>
         <input
           type="text"
           maxLength={60}
-          placeholder="e.g. Tyler"
+          placeholder="Your name"
           value={settings.displayName}
           onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
           onBlur={() => void save({ displayName: settings.displayName })}

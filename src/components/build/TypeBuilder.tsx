@@ -234,7 +234,18 @@ export default function TypeBuilder({
         setBusy(false);
         return;
       }
-      router.push("/build/types");
+      if (!editing) {
+        // Land on the new type's edit page, not the list: statuses live in the
+        // StatusSchemaEditor, which only renders on edit. Bouncing to the list
+        // hid them until the user saved and reopened the type (the worst Build
+        // friction the audit found).
+        const data = (await res.json().catch(() => null)) as
+          | { type?: { key?: string } }
+          | null;
+        router.push(`/build/types/${data?.type?.key ?? finalKey}/edit`);
+      } else {
+        router.push("/build/types");
+      }
       router.refresh();
     } catch {
       setError("save failed (offline?)");

@@ -13,6 +13,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { beginSave, endSave } from "@/lib/save-status";
+import HoverTip from "@/components/ui/HoverTip";
 import {
   describeRule,
   makeRecurrence,
@@ -212,26 +213,67 @@ export default function RecurrenceControl({
 
         {preset !== "none" && (
           <>
-            <label className="flex items-center gap-1.5">
+            {/* These two used to be bare selects; the audit flagged them as the
+                most opaque control on the canvas (one of them materializes a new
+                item per occurrence). Visible labels + a HoverTip explain each. */}
+            <span className="flex items-center gap-1.5 text-neutral-400">
+              <HoverTip
+                align="left"
+                tip={
+                  <>
+                    <span className="font-medium text-neutral-100">
+                      On schedule
+                    </span>{" "}
+                    keeps each repeat on the rule&rsquo;s calendar.{" "}
+                    <span className="font-medium text-neutral-100">
+                      After completion
+                    </span>{" "}
+                    counts the gap from the day you check it off, so the next one
+                    moves with you.
+                  </>
+                }
+              >
+                Next date
+              </HoverTip>
               <select
                 className={selectClass}
+                aria-label="When the next occurrence is scheduled"
                 value={rule?.anchorMode ?? "fixed"}
                 onChange={(e) => rebuild({ anchorMode: e.target.value as AnchorMode })}
               >
                 <option value="fixed">On schedule</option>
                 <option value="completion">After completion</option>
               </select>
-            </label>
-            <label className="flex items-center gap-1.5">
+            </span>
+            <span className="flex items-center gap-1.5 text-neutral-400">
+              <HoverTip
+                align="left"
+                tip={
+                  <>
+                    <span className="font-medium text-neutral-100">
+                      One repeating task
+                    </span>{" "}
+                    moves a single task forward to its next date as you finish it.{" "}
+                    <span className="font-medium text-neutral-100">
+                      Separate note each time
+                    </span>{" "}
+                    creates a fresh item for each occurrence, so each can hold its
+                    own notes and subtasks.
+                  </>
+                }
+              >
+                Stored as
+              </HoverTip>
               <select
                 className={selectClass}
+                aria-label="How recurring occurrences are stored"
                 value={rule?.occurrenceMode ?? "virtual"}
                 onChange={(e) => rebuild({ occurrenceMode: e.target.value as OccurrenceMode })}
               >
                 <option value="virtual">One repeating task</option>
                 <option value="materialized">Separate note each time</option>
               </select>
-            </label>
+            </span>
           </>
         )}
 

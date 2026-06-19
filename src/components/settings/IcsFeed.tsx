@@ -59,7 +59,7 @@ export default function IcsFeed({ initialToken }: { initialToken: string | null 
           <div className="flex flex-wrap items-center gap-2">
             <a
               href={webcalUrl}
-              className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110"
+              className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-neutral-900 hover:brightness-110"
             >
               Subscribe in calendar
             </a>
@@ -100,7 +100,7 @@ export default function IcsFeed({ initialToken }: { initialToken: string | null 
           type="button"
           onClick={generate}
           disabled={busy}
-          className="mt-3 rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110 disabled:opacity-50"
+          className="mt-3 rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-neutral-900 hover:brightness-110 disabled:opacity-50"
         >
           {busy ? "Generating…" : "Publish a feed"}
         </button>

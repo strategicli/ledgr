@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ViewRenderer from "@/components/views/ViewRenderer";
+import DuplicateViewButton from "@/components/views/DuplicateViewButton";
 import NewItemButton from "@/components/home/NewItemButton";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
@@ -14,13 +15,23 @@ import { getView, queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
-type Context = { params: Promise<{ id: string }> };
+type Context = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
-export default async function ViewPage({ params }: Context) {
+export default async function ViewPage({ params, searchParams }: Context) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
   const { id } = await params;
+  const sp = await searchParams;
+  // Calendar month to show (the layout's prev/next links set this); ignore
+  // anything not YYYY-MM so a junk param falls back to the current month.
+  const month =
+    typeof sp.month === "string" && /^\d{4}-\d{2}$/.test(sp.month)
+      ? sp.month
+      : undefined;
   let view;
   try {
     view = await getView(owner.id, id);
@@ -96,6 +107,19 @@ export default async function ViewPage({ params }: Context) {
                 Edit
               </Link>
             )}
+            {/* Always available — the only way to customize a built-in (system)
+                view, which can't be edited in place. */}
+            <DuplicateViewButton
+              input={{
+                name: view.name,
+                filter: view.filter,
+                sort: view.sort,
+                grouping: view.grouping,
+                columns: view.columns,
+                layout: view.layout,
+                dateProperty: view.dateProperty,
+              }}
+            />
           </div>
         </div>
         <p className="mt-1 text-sm text-neutral-500">
@@ -109,6 +133,8 @@ export default async function ViewPage({ params }: Context) {
           propertyLabels={propertyLabels}
           boardDraggable={boardDraggable}
           statuses={statuses}
+          month={month}
+          calendarNavHref={`/views/${view.id}`}
         />
       </div>
     </main>
