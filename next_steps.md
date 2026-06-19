@@ -102,6 +102,16 @@ Brandon's finishing-touches pass on the just-shipped Native Tasks chunk (the dua
 
 ---
 
+## ⟢ Session — Mobile canvas margins + item-modal Trash action (2026-06-19) ✅ DONE
+
+**A focused UI pass across all Ledgr canvases (PR #34).** Non-core polish; no schema/seam/module changes.
+
+- [x] **UI-1 — Responsive canvas padding. ✅ DONE (2026-06-19, PR #34).** Every canvas section used a fixed `px-12` (48px/side), squeezing content to ~270px on iPhone inside the modal. Changed to `px-4 sm:px-8 md:px-12` across all 17 canvas components (`ItemEditor`, `FieldStrip`, `MarkdownCanvas`, `ItemCanvas`, `LinkCanvas`, `RecurrenceControl`, `RecurrenceCalendar`, `SaveOffline`, `ShareLink`, `MeetingPrep`, `MeetingTranscripts`, `CustomProperties`, `RelationProperties`, `RelatedPanel`, `Subtasks`). Mobile now gets 16px side margins; tablet 32px; desktop keeps the original 48px.
+- [x] **UI-2 — Trash button in the item modal. ✅ DONE (2026-06-19, PR #34).** Added a "Trash" action to the modal header (left-aligned, `ConfirmButton` popover with a 30-day recovery note), so items can be soft-deleted without navigating back to a list. "⤢ Expand" and "✕" stay on the right. Also fixed `ConfirmButton`'s Escape key handler to call `e.preventDefault()` so pressing Escape closes only the confirm dialog, not the parent modal.
+- [x] **UI-3 — Modal backdrop tighter on mobile. ✅ DONE (2026-06-19, PR #34).** Reduced backdrop vertical padding from `py-6` to `py-3` on mobile, giving the panel more usable screen height.
+
+---
+
 ## ⟢ Session summary — item-view UX push: inline editing (Feature A, ADR-068) ✅ DONE + arrangeable per-type canvas layout (Feature B, ADR-069) ✅ DONE
 
 **A two-feature item-view UX push Brandon asked for (2026-06-16). Feature A shipped 2026-06-16 (ADR-068); Feature B B1 shipped 2026-06-17 (ADR-069, CORE).** Feature A is non-core; Feature B is core (a `types.canvas_layout` column + the canvas model) — both flagged to Tyler in `COLLAB.md`.
