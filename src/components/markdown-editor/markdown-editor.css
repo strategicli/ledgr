@@ -15,6 +15,18 @@
   outline: none;
 }
 
+/* Empty-body placeholder (Placeholder extension). Shown only while the whole
+   body is empty: the extension tags the first child with is-editor-empty and
+   carries the text in data-placeholder. Quiet, non-interactive, no layout
+   shift (float + zero height). */
+.ledgr-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #525252;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 .ledgr-prose h1 {
   font-size: 1.6rem;
   font-weight: 700;

@@ -56,7 +56,7 @@ export default async function Inbox() {
             {inboxItems.map((item) => (
               <li
                 key={item.id}
-                className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60"
+                className="group flex flex-col gap-1 rounded px-2 py-1 hover:bg-neutral-800/60 sm:flex-row sm:items-center sm:gap-2"
               >
                 <Link
                   href={`/items/${item.id}`}
@@ -66,15 +66,20 @@ export default async function Inbox() {
                 >
                   {item.title || "Untitled"}
                 </Link>
-                <span className="shrink-0 text-xs text-neutral-600">
-                  {dateFmt.format(item.createdAt)}
-                </span>
-                <TriageControls
-                  id={item.id}
-                  type={item.type}
-                  typeOptions={typeRows}
-                />
-                <RowAction id={item.id} action="trash" />
+                {/* On phones the date + triage controls wrap to their own row
+                    under the title (the dense one-line row crushed the title);
+                    on sm+ they rejoin the title's row via display:contents. */}
+                <div className="flex items-center gap-2 sm:contents">
+                  <span className="shrink-0 text-xs text-neutral-600">
+                    {dateFmt.format(item.createdAt)}
+                  </span>
+                  <TriageControls
+                    id={item.id}
+                    type={item.type}
+                    typeOptions={typeRows}
+                  />
+                  <RowAction id={item.id} action="trash" />
+                </div>
               </li>
             ))}
           </ul>

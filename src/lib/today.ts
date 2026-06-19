@@ -10,7 +10,7 @@
 //   the timezone would misfile evening saves.
 import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items } from "@/db/schema";
+import { items, types } from "@/db/schema";
 import { listColumns } from "@/lib/items";
 import { ACTIVE_CATEGORIES } from "@/lib/status";
 
@@ -93,7 +93,7 @@ export async function getTodayData(ownerId: string, now = new Date()) {
   // Today as a calendar day string, for the day-stamped focus marker (T3).
   const todayYmd = `${bounds.today.y}-${String(bounds.today.m).padStart(2, "0")}-${String(bounds.today.d).padStart(2, "0")}`;
 
-  const [meetings, dueTasks, recent, focusTasks] = await Promise.all([
+  const [meetings, dueTasks, recent, focusTasks, typeRows] = await Promise.all([
     db
       .select(listColumns)
       .from(items)
@@ -150,7 +150,14 @@ export async function getTodayData(ownerId: string, now = new Date()) {
         )
       )
       .limit(50),
+    // Type key → label, so Recent can show "Note", not the raw "note" key (and
+    // a custom type its real name). The types table is tiny; folded into the
+    // one batched fetch rather than a separate round trip.
+    db.select({ key: types.key, label: types.label }).from(types),
   ]);
 
-  return { bounds, meetings, dueTasks, recent, focusTasks, todayYmd };
+  const typeLabels: Record<string, string> = {};
+  for (const t of typeRows) typeLabels[t.key] = t.label;
+
+  return { bounds, meetings, dueTasks, recent, focusTasks, todayYmd, typeLabels };
 }

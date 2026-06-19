@@ -10,6 +10,7 @@
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import { Placeholder } from "@tiptap/extensions";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -164,6 +165,11 @@ export default function MarkdownEditor({
     extensions: [
       StarterKit,
       Markdown,
+      // Empty-state hint: a quiet "Start writing…" while the body is empty, the
+      // first impression of every new note. First-party (@tiptap/extensions),
+      // styled via the is-editor-empty class in markdown-editor.css. No "/" hint
+      // since there's no slash menu yet (ADR-037 defers the Notion feel).
+      Placeholder.configure({ placeholder: "Start writing…" }),
       // GFM task lists (- [ ] / - [x]): @tiptap/markdown round-trips them, so no
       // bespoke serializer is needed (unlike the color marks). nested lets a
       // checklist item hold a sub-checklist.

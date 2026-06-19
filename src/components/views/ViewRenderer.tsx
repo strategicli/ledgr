@@ -518,20 +518,44 @@ function AgendaLayout({
   );
 }
 
-function CalendarLayout({ items, view }: { items: ViewItem[]; view: ViewDefinition }) {
+function CalendarLayout({
+  items,
+  view,
+  month,
+  navHref,
+}: {
+  items: ViewItem[];
+  view: ViewDefinition;
+  // Which month to show, "YYYY-MM" (validated by the caller); defaults to the
+  // current month. Items aren't month-bounded by the query, so navigating just
+  // re-buckets the same rows into the chosen month — no re-fetch.
+  month?: string;
+  // Base path for the prev/next/today links (e.g. "/views/<id>"). When set, the
+  // month nav renders; widgets leave it unset (no URL context) and stay locked
+  // to the current month.
+  navHref?: string;
+}) {
   const prop = view.dateProperty;
-  // The month containing "now" in the app's timezone.
-  const parts = tzKey.format(new Date()).split("-"); // YYYY-MM-DD
-  const year = Number(parts[0]);
-  const month = Number(parts[1]); // 1-12
+  const pad = (n: number) => String(n).padStart(2, "0");
+  // The month to show: the provided YYYY-MM or the current month (app TZ).
+  const nowParts = tzKey.format(new Date()).split("-"); // YYYY-MM-DD
+  const shown = month && /^\d{4}-\d{2}$/.test(month) ? month : `${nowParts[0]}-${nowParts[1]}`;
+  const [ys, ms] = shown.split("-");
+  const year = Number(ys);
+  const monthNum = Number(ms); // 1-12
   const monthLabel = new Intl.DateTimeFormat("en-US", {
     month: "long",
     year: "numeric",
-    timeZone: APP_TIMEZONE,
-  }).format(new Date());
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, monthNum - 1, 1)));
+  const daysInMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(year, monthNum - 1, 1)).getUTCDay();
   const todayKey = tzKey.format(new Date());
+  const onCurrentMonth = shown === `${nowParts[0]}-${nowParts[1]}`;
+  // Prev/next month params (first-of-month math, DST-safe in UTC).
+  const toParam = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
+  const prevMonth = toParam(new Date(Date.UTC(year, monthNum - 2, 1)));
+  const nextMonth = toParam(new Date(Date.UTC(year, monthNum, 1)));
 
   // Bucket items by day key; count any that fall outside the shown month.
   const byDay = new Map<string, ViewItem[]>();
@@ -543,7 +567,7 @@ function CalendarLayout({ items, view }: { items: ViewItem[]; view: ViewDefiniti
       continue;
     }
     const key = dayKey(d, prop);
-    if (!key.startsWith(`${parts[0]}-${parts[1]}`)) {
+    if (!key.startsWith(shown)) {
       outside += 1;
       continue;
     }
@@ -551,16 +575,35 @@ function CalendarLayout({ items, view }: { items: ViewItem[]; view: ViewDefiniti
     byDay.get(key)!.push(item);
   }
 
-  const pad = (n: number) => String(n).padStart(2, "0");
   const cells: ({ day: number; key: string } | null)[] = [];
   for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
   for (let d = 1; d <= daysInMonth; d += 1) {
-    cells.push({ day: d, key: `${parts[0]}-${parts[1]}-${pad(d)}` });
+    cells.push({ day: d, key: `${shown}-${pad(d)}` });
   }
+
+  const navLink =
+    "rounded px-2 py-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200";
 
   return (
     <div className="mt-4">
-      <p className="text-sm font-medium text-neutral-300">{monthLabel}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-neutral-300">{monthLabel}</p>
+        {navHref && (
+          <div className="flex items-center gap-1 text-xs">
+            <Link href={`${navHref}?month=${prevMonth}`} aria-label="Previous month" className={navLink}>
+              ‹
+            </Link>
+            {!onCurrentMonth && (
+              <Link href={navHref} className={navLink}>
+                Today
+              </Link>
+            )}
+            <Link href={`${navHref}?month=${nextMonth}`} aria-label="Next month" className={navLink}>
+              ›
+            </Link>
+          </div>
+        )}
+      </div>
       <div className="mt-2 grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-neutral-800 bg-neutral-800 text-xs">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div
@@ -625,6 +668,8 @@ export default function ViewRenderer({
   propertyLabels = {},
   boardDraggable = false,
   statuses,
+  month,
+  calendarNavHref,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -641,6 +686,13 @@ export default function ViewRenderer({
   // value. The page decides (only safe for status/urgency/single-select);
   // dashboards leave it false, so a board widget stays read-only.
   boardDraggable?: boolean;
+  // Calendar month to show, "YYYY-MM" (from the page's ?month= param); defaults
+  // to the current month.
+  month?: string;
+  // Base path for the calendar's month-nav links (e.g. "/views/<id>"). Set by
+  // the view page; widgets leave it unset so a calendar widget shows the current
+  // month with no nav.
+  calendarNavHref?: string;
 }) {
   if (items.length === 0) {
     return (
@@ -663,7 +715,28 @@ export default function ViewRenderer({
         />
       );
     case "calendar":
-      return <CalendarLayout items={items} view={view} />;
+      // Desktop gets the month grid (with nav); a 7-column grid is unreadable on
+      // a phone, so mobile falls back to the agenda list (all dated items).
+      return (
+        <>
+          <div className="hidden sm:block">
+            <CalendarLayout
+              items={items}
+              view={view}
+              month={month}
+              navHref={calendarNavHref}
+            />
+          </div>
+          <div className="sm:hidden">
+            <AgendaLayout
+              items={items}
+              view={view}
+              propertyLabels={propertyLabels}
+              statuses={statuses}
+            />
+          </div>
+        </>
+      );
     case "agenda":
       return (
         <AgendaLayout

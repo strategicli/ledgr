@@ -75,7 +75,9 @@ function TaskRow({
         {task.title || "Untitled"}
       </Link>
       {sdef && sdef.category !== "not_started" && (
-        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
+        // Secondary detail: hidden on phones to keep the title readable; the
+        // full status shows on sm+ and on the item canvas.
+        <span className="hidden shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400 sm:inline-flex">
           {sdef.color && (
             <span
               aria-hidden

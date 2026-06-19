@@ -26,10 +26,12 @@ export default function TypeVisibilityToggle({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
 
   const toggle = async () => {
     if (busy) return;
     setBusy(true);
+    setError(false);
     try {
       const res = await fetch(`/api/types/${typeKey}/hidden`, {
         method: "POST",
@@ -39,7 +41,10 @@ export default function TypeVisibilityToggle({
       if (!res.ok) throw new Error(String(res.status));
       router.refresh();
     } catch {
-      // leave as-is on failure
+      // Don't fail silently (Principle 9): mark the control so the no-op is
+      // visible. Clears on the next attempt or after a moment.
+      setError(true);
+      setTimeout(() => setError(false), 2500);
     } finally {
       setBusy(false);
     }
@@ -51,8 +56,16 @@ export default function TypeVisibilityToggle({
       onClick={toggle}
       disabled={busy}
       aria-pressed={hidden}
-      title={hidden ? "Hidden — click to show" : "Visible — click to hide"}
+      title={
+        error
+          ? "Couldn't save, click to try again"
+          : hidden
+            ? "Hidden, click to show"
+            : "Visible, click to hide"
+      }
       className={`shrink-0 rounded p-1.5 disabled:opacity-50 ${
+        error ? "ring-1 ring-red-500 " : ""
+      }${
         hidden
           ? "text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300"
           : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"

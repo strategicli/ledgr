@@ -115,7 +115,8 @@ export default function SubtaskSchedule({
         type="button"
         onClick={() => setEditing(true)}
         title={parentYmd ? "Schedule (relative to the parent's date)" : "Schedule"}
-        className="shrink-0 rounded px-1 text-xs text-neutral-600 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-neutral-300 group-hover/row:opacity-100"
+        // Hover-reveal on desktop, always visible on phones (no hover on touch).
+        className="shrink-0 rounded px-1 text-xs text-neutral-600 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-neutral-300 group-hover/row:opacity-100 max-sm:opacity-100"
       >
         ＋ when
       </button>

@@ -19,6 +19,10 @@ let inFlight = 0;
 let state: SaveState = "idle";
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
+// Editors register a flush here so the indicator's "Retry" can force an
+// immediate re-save after a failure, instead of the user waiting on the
+// debounce timer (or having to type again).
+const retryListeners = new Set<() => void>();
 
 function emit() {
   for (const l of listeners) l();
@@ -60,6 +64,20 @@ function subscribe(l: () => void) {
   return () => {
     listeners.delete(l);
   };
+}
+
+// An editor registers its flush; the returned fn unregisters on unmount.
+export function registerSaveRetry(fn: () => void): () => void {
+  retryListeners.add(fn);
+  return () => {
+    retryListeners.delete(fn);
+  };
+}
+
+// Fire every registered flush (the "Retry" affordance). Each editor flushes
+// only its own pending patch, so this is safe with several editors mounted.
+export function requestSaveRetry() {
+  for (const fn of retryListeners) fn();
 }
 
 function getSnapshot() {

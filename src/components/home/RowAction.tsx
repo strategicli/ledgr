@@ -37,7 +37,10 @@ export default function RowAction({
     <button
       onClick={run}
       disabled={state === "busy"}
-      className="rounded px-2 py-0.5 text-xs text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-neutral-700 hover:text-neutral-200 disabled:opacity-50"
+      // Hover-reveal on desktop, always visible on phones (no hover on touch,
+      // so an invisible trash/restore would be unreachable). Soft-delete makes
+      // an accidental tap recoverable from Trash.
+      className="rounded px-2 py-0.5 text-xs text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100 hover:bg-neutral-700 hover:text-neutral-200 disabled:opacity-50"
     >
       {state === "error" ? "Failed, retry?" : label}
     </button>
