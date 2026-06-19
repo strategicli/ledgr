@@ -144,7 +144,7 @@ export default function RecurrenceCalendar({
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-12 pb-2 pt-1">
+    <section className="mx-auto w-full max-w-3xl px-4 pb-2 pt-1 sm:px-8 md:px-12">
       <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
         {/* Month header */}
         <div className="mb-2 flex items-center justify-between">

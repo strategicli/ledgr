@@ -47,7 +47,10 @@ export default function ConfirmButton({
       if (!wrapRef.current?.contains(e.target as Node)) close();
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") {
+        e.preventDefault(); // don't let parent modal also close
+        close();
+      }
     }
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onKey);

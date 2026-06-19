@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 
 export default function Modal({
   itemId,
@@ -44,7 +45,7 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 py-6 sm:px-6 sm:py-12"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 py-3 sm:px-6 sm:py-8"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -54,23 +55,40 @@ export default function Modal({
           wide ? "max-w-5xl" : "max-w-3xl"
         }`}
       >
-        <div className="flex shrink-0 items-center justify-end gap-1 px-3 pt-2">
-          {/* Plain <a>, not <Link>: a soft nav to the same URL would stay
-              intercepted; a document load renders the full page form. */}
-          <a
-            href={`/items/${itemId}`}
-            className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-            title="Expand to full page"
-          >
-            ⤢ Expand
-          </a>
-          <button
-            onClick={close}
-            className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-            title="Close (Esc)"
-          >
-            ✕
-          </button>
+        <div className="flex shrink-0 items-center justify-between gap-1 px-3 pt-2">
+          <ConfirmButton
+            title="Move to Trash?"
+            description="This item moves to Trash and can be recovered for 30 days."
+            confirmLabel="Trash"
+            trigger="Trash"
+            triggerLabel="Move to Trash"
+            triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
+            align="left"
+            onConfirm={async () => {
+              const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
+              if (!res.ok) throw new Error(`Failed (${res.status})`);
+              close();
+            }}
+          />
+          <div className="flex items-center gap-1">
+            {/* Plain <a>, not <Link>: a soft nav to the same URL would stay
+                intercepted; a document load renders the full page form. */}
+            <a
+              href={`/items/${itemId}`}
+              className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+              title="Expand to full page"
+            >
+              ⤢ Expand
+            </a>
+            <button
+              onClick={close}
+              aria-label="Close"
+              className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+              title="Close (Esc)"
+            >
+              ✕
+            </button>
+          </div>
         </div>
         <div className="min-h-0 overflow-y-auto pb-12">{children}</div>
       </div>

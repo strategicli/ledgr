@@ -158,7 +158,7 @@ export default function RecurrenceControl({
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-12 pb-2 pt-2">
+    <section className="mx-auto w-full max-w-3xl px-4 pb-2 pt-2 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-neutral-500">
         <label className="flex items-center gap-1.5">
           Repeat

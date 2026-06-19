@@ -61,7 +61,7 @@ export default async function ItemCanvas({
           doesn't jump. The modal stays the narrow quick reader. */}
       <div className={variant === "page" ? "canvas-wide" : undefined}>
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-1 px-12 pt-6 text-sm text-neutral-500">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-1 px-4 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
             {variant === "page" && (
               <Link href="/items" className="hover:text-neutral-300">
                 ← All items
