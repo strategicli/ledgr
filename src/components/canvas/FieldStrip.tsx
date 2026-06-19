@@ -245,7 +245,7 @@ export default function FieldStrip({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-12 pb-3">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 pb-3 sm:px-8 md:px-12">
       {fields.map((name) => (
         <label
           key={name}

@@ -123,7 +123,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const scheduledTime = parseScheduledTime(item.properties);
   const hasSchedule = item.scheduledDate != null || recurrenceRule != null;
   const taskExtrasNode = (
-    <section className="mx-auto w-full max-w-3xl px-12 pb-1 pt-1">
+    <section className="mx-auto w-full max-w-3xl px-4 pb-1 pt-1 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <span className="flex items-center gap-1.5 text-xs text-neutral-500">
           <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
@@ -262,7 +262,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // Classic stacked canvas (null layout, not arranging) — unchanged.
   return (
     <>
-      <div className="mx-auto flex w-full max-w-3xl justify-end px-12 pt-4">
+      <div className="mx-auto flex w-full max-w-3xl justify-end px-4 pt-4 sm:px-8 md:px-12">
         {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
         <a
           href={`/items/${item.id}?arrange=1`}
@@ -284,7 +284,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}
       {sourceLink && (
-        <div className="mx-auto w-full max-w-3xl px-12 pt-1 text-xs text-neutral-500">
+        <div className="mx-auto w-full max-w-3xl px-4 pt-1 text-xs text-neutral-500 sm:px-8 md:px-12">
           ↳ from{" "}
           <Link href={sourceLink.href} className="text-neutral-400 hover:text-neutral-200 hover:underline">
             {sourceLink.title}
@@ -337,7 +337,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       <SaveOffline itemId={item.id} />
       {/* Public share link (PRD §4.12): read-only, print-friendly, PDF. */}
       <ShareLink itemId={item.id} />
-      <details className="mx-auto w-full max-w-3xl px-12 pb-12 pt-4">
+      <details className="mx-auto w-full max-w-3xl px-4 pb-12 pt-4 sm:px-8 md:px-12">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields
         </summary>

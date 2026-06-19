@@ -20,7 +20,7 @@ export default async function MeetingPrep({
   const prep = await getMeetingPrep(ownerId, itemId);
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-12 pt-4">
+    <section className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
       <div className="flex items-center gap-2">
         <SectionHeading icon="people">People</SectionHeading>
         {prep.templateName && (

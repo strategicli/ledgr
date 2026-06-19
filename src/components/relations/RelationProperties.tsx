@@ -41,7 +41,7 @@ export default async function RelationProperties({
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-12 pb-6 pt-2">
+    <section className="mx-auto w-full max-w-3xl px-4 pb-6 pt-2 sm:px-8 md:px-12">
       {!hideHeading && (
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
           Relations

@@ -39,7 +39,7 @@ export default async function MeetingTranscripts({
     .map((t) => t.id);
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-12 pt-4">
+    <section className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
       <SectionHeading icon="document">
         Transcripts {transcripts.length > 0 && `(${transcripts.length})`}
       </SectionHeading>
