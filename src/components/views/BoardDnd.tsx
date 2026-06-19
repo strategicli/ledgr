@@ -9,11 +9,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
 import { boardDropPatch, groupValueFor, NONE_GROUP, orderedGroups } from "@/lib/view-grouping";
 import type { ViewGrouping } from "@/lib/views";
 import type { StatusDef } from "@/lib/status";
+import { useBoardTouchDrag } from "./useBoardTouchDrag";
 
 // What the board needs to group + render a card. dateLabel is precomputed by
 // the server BoardLayout so the client needn't reimplement the date calendars.
@@ -71,6 +72,7 @@ export default function BoardDnd({
   }
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
 
   const now = new Date();
   // Show every valid target column, including empty ones, so a card can be
@@ -115,13 +117,35 @@ export default function BoardDnd({
     }
   }
 
+  // Touch path: long-press a card to lift it, drag onto a column, release.
+  // Desktop mouse keeps the native HTML5 drag wired below; the two never
+  // collide (touch events don't fire for mouse). Reuses the same drop().
+  useBoardTouchDrag(boardRef, {
+    onArm: (id) => setDragId(id),
+    onOver: (col) => setOverCol(col),
+    onDrop: (col) => {
+      if (col) void drop(col);
+      else {
+        setDragId(null);
+        setOverCol(null);
+      }
+    },
+    onCancel: () => {
+      setDragId(null);
+      setOverCol(null);
+    },
+  });
+
   return (
-    <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+    // data-scroll-x marks this as a horizontal scroller so a future mobile
+    // swipe-nav (explorations/mobile-swipe-navigation.md) won't hijack drags.
+    <div ref={boardRef} data-scroll-x className="mt-4 flex gap-3 overflow-x-auto pb-2">
       {columns.map((col) => {
         const colItems = items.filter((i) => groupValueFor(i, grouping, now) === col);
         return (
           <div
             key={col}
+            data-col={col}
             onDragOver={(e) => {
               e.preventDefault();
               if (overCol !== col) setOverCol(col);
@@ -156,6 +180,7 @@ export default function BoardDnd({
               {colItems.map((item) => (
                 <li
                   key={item.id}
+                  data-card-id={item.id}
                   draggable
                   onDragStart={() => setDragId(item.id)}
                   onDragEnd={() => {
