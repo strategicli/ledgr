@@ -240,15 +240,24 @@ export function useBoardTouchDrag(
       if (wasArmed) cb.current.onCancel();
     }
 
+    function onContextMenu(e: Event) {
+      // Android fires contextmenu on long-press; while a card touch is in
+      // progress, cancel it so the menu doesn't hijack the drag. (iOS uses the
+      // link callout / selection, suppressed via CSS on [data-card-id].)
+      if (touchId != null) e.preventDefault();
+    }
+
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: false });
     el.addEventListener("touchcancel", onTouchCancel, { passive: true });
+    el.addEventListener("contextmenu", onContextMenu);
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchCancel);
+      el.removeEventListener("contextmenu", onContextMenu);
       reset();
     };
   }, [containerRef]);
