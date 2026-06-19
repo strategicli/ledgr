@@ -186,3 +186,20 @@ body {
 .canvas-wide .max-w-3xl {
   max-width: 64rem;
 }
+
+/* Mobile kanban (BoardDnd): long-press is repurposed as drag-to-move, so the
+   native long-press behaviors on a board card must be suppressed or they hijack
+   the gesture — on iOS the link callout / selection magnifier fires a
+   touchcancel that kills the drag, on Android a context menu pops up. The cards
+   are `[data-card-id]`; -webkit-touch-callout + user-select are inherited, so
+   this covers the inner <a>. (touch-action is left alone — pre-arm scrolling
+   must still work; useBoardTouchDrag preventDefaults the armed touchmove. The
+   Android contextmenu event is canceled in the hook.) Unconditional rather than
+   pointer:coarse-scoped: selecting a card title is a non-feature on desktop too,
+   and this guarantees the suppression on the touch device. */
+[data-card-id] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
