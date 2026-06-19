@@ -51,10 +51,20 @@ export class R2Provider implements StorageProvider {
     bytes: Uint8Array,
     contentType: string
   ): Promise<string> {
+    // Content-Length must be set explicitly. R2 rejects a PUT that arrives
+    // without a length (HTTP 411 MissingContentLength) — it doesn't accept
+    // chunked uploads. Local Node's undici infers the length from a buffered
+    // body, but the Node runtime on Vercel doesn't (aws4fetch can hand fetch a
+    // streamed body), so server-side email-in attachment uploads 411'd in
+    // production until the header was made explicit. It's signed in, so the
+    // signature still matches.
     const signed = await this.client.sign(
       new Request(this.objectUrl(key), {
         method: "PUT",
-        headers: { "Content-Type": contentType },
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(bytes.byteLength),
+        },
         body: bytes as BodyInit,
       })
     );
