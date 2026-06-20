@@ -1,8 +1,10 @@
-// Item templates index (slice 34, PRD §4.3/§4.14): the owner's per-type
-// starting points, grouped by type, each linking into its editor. "+ New
-// template" starts a blank one. Empty state points at what they're for.
+// Item templates index (ADR-093): the owner's per-type starting points, grouped
+// by type. Each is backed by a real prototype item — the name links into that
+// prototype's canvas to edit it; Delete trashes the prototype and drops the
+// registry row. "New template" creates an empty one and opens its canvas.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import DeleteTemplateButton from "@/components/build/DeleteTemplateButton";
 import { resolveOwner } from "@/lib/owner";
 import { listTemplates } from "@/lib/templates";
 import { listTypes } from "@/lib/types";
@@ -51,8 +53,8 @@ export default async function TemplatesIndex() {
           </div>
         </div>
         <p className="mt-1 text-sm text-neutral-500">
-          Reusable starting points for new items: preset fields and starter
-          content. Pick one from the “+ New” menu on any list.
+          Reusable starting points for new items. A template is a real item you
+          author in the normal canvas; pick one from the “+ New” menu on any list.
         </p>
 
         {groups.length > 0 ? (
@@ -64,22 +66,24 @@ export default async function TemplatesIndex() {
                 </h2>
                 <ul className="mt-1 flex flex-col gap-1">
                   {group.items.map((t) => (
-                    <li key={t.id}>
+                    <li
+                      key={t.id}
+                      className="group flex items-center gap-3 rounded px-2 py-1.5 hover:bg-neutral-800/60"
+                    >
                       <Link
-                        href={`/build/templates/${t.id}/edit`}
-                        className="group flex items-center gap-3 rounded px-2 py-1.5 hover:bg-neutral-800/60"
+                        href={`/items/${t.prototypeItemId}`}
+                        className="min-w-0 flex-1 truncate text-sm text-neutral-200 hover:text-white"
                       >
-                        <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">
-                          {t.name}
-                        </span>
-                        <span className="shrink-0 text-xs text-neutral-600">
-                          {Object.keys(t.propertyDefaults).length > 0 &&
-                            `${Object.keys(t.propertyDefaults).length} field${
-                              Object.keys(t.propertyDefaults).length === 1 ? "" : "s"
-                            }`}
-                          {t.body ? " · body" : ""}
-                        </span>
+                        {t.name}
                       </Link>
+                      {t.isDefault && (
+                        <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                          Default
+                        </span>
+                      )}
+                      <span className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
+                        <DeleteTemplateButton id={t.id} name={t.name} />
+                      </span>
                     </li>
                   ))}
                 </ul>

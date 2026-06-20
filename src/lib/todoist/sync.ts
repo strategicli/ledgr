@@ -106,6 +106,8 @@ export async function runTodoistSync(
         eq(items.ownerId, ownerId),
         eq(items.type, "task"),
         isNull(items.deletedAt),
+        // A template task never syncs to Todoist (ADR-093).
+        eq(items.isTemplate, false),
         or(
           and(eq(items.status, "open"), isNotNull(items.dueDate)),
           isNotNull(items.todoistId)

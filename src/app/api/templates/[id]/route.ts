@@ -23,8 +23,9 @@ export async function GET(_request: Request, context: Context) {
   }
 }
 
-// PATCH /api/templates/[id] — replace name/body/property defaults. The type is
-// immutable (the defaults are keyed to that type's schema).
+// PATCH /api/templates/[id] — edit registry metadata (name, default flag). The
+// type is immutable, and the content lives on the prototype item, edited in the
+// canvas (ADR-093).
 export async function PATCH(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;

@@ -171,6 +171,9 @@ async function exportAttachments(
 function needsExportWhere(ownerId: string) {
   return and(
     eq(items.ownerId, ownerId),
+    // Template prototypes never export to OneDrive (ADR-093): they're not real
+    // content and must not reach the Sunday-proof fallback tree.
+    eq(items.isTemplate, false),
     or(
       // Never exported: live items only (an item created and trashed
       // between runs has no file to archive).

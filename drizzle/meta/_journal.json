@@ -176,6 +176,20 @@
       "when": 1781803943676,
       "tag": "0024_tranquil_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1781973726425,
+      "tag": "0025_tpl1_drop_template_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1781973744814,
+      "tag": "0026_tpl1_template_registry",
+      "breakpoints": true
     }
   ]
 }

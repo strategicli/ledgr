@@ -57,7 +57,9 @@ export async function syncMentionRelations(
       and(
         inArray(items.id, missing),
         eq(items.ownerId, ownerId),
-        sql`${items.deletedAt} IS NULL`
+        sql`${items.deletedAt} IS NULL`,
+        // A mention can't point at a template prototype (ADR-093).
+        eq(items.isTemplate, false)
       )
     );
   if (valid.length === 0) return;

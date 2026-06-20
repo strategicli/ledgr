@@ -36,6 +36,9 @@ export function searchItemsQuery(
   const where: SQL[] = [
     eq(items.ownerId, ownerId),
     isNull(items.deletedAt),
+    // Template prototypes stay out of search/FTS (ADR-093) — app search,
+    // MCP search_items, and the typeaheads that ride this query.
+    eq(items.isTemplate, false),
     sql`${items.search} @@ ${query}`,
   ];
   if (opts.type) where.push(eq(items.type, opts.type));

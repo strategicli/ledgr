@@ -19,6 +19,7 @@ function overdueWhere(ownerId: string, dueToday: Date): SQL {
     eq(items.type, "task"),
     inArray(items.statusCategory, ACTIVE_CATEGORIES),
     isNull(items.deletedAt),
+    eq(items.isTemplate, false),
     or(
       lt(items.scheduledDate, dueToday),
       and(isNull(items.scheduledDate), lt(items.dueDate, dueToday))

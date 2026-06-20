@@ -89,7 +89,12 @@ export type TodayData = Awaited<ReturnType<typeof getTodayData>>;
 export async function getTodayData(ownerId: string, now = new Date()) {
   const bounds = todayBounds(now);
   const db = getDb();
-  const live = and(eq(items.ownerId, ownerId), isNull(items.deletedAt));
+  // Excludes template prototypes (ADR-093) from all four Today queries below.
+  const live = and(
+    eq(items.ownerId, ownerId),
+    isNull(items.deletedAt),
+    eq(items.isTemplate, false)
+  );
   // Today as a calendar day string, for the day-stamped focus marker (T3).
   const todayYmd = `${bounds.today.y}-${String(bounds.today.m).padStart(2, "0")}-${String(bounds.today.d).padStart(2, "0")}`;
 
