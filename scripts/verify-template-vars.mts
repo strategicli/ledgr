@@ -1,6 +1,14 @@
 // Pure unit checks for the template variable resolver (ADR-093, TPL3). No DB —
 // the resolver is pure (the caller passes today/now). Run: npx tsx scripts/verify-template-vars.mts
-import { resolveVars, scanAskLabels, hasVars, type VarContext } from "../src/lib/template-vars";
+import {
+  resolveVars,
+  scanAskLabels,
+  hasVars,
+  resolveDateRule,
+  parseDateRule,
+  parseApplyConfig,
+  type VarContext,
+} from "../src/lib/template-vars";
 
 let pass = 0;
 let fail = 0;
@@ -84,6 +92,29 @@ truthy("hasVars date token", hasVars("a {{today}} b"));
 truthy("hasVars ask token", hasVars("{{ask:X}}"));
 truthy("hasVars false for plain text", !hasVars("nothing here"));
 truthy("hasVars false for unknown token", !hasVars("{{bogus}}"));
+
+// --- TPL3b: structured date rules ---
+eq("rule none → null", resolveDateRule({ mode: "none" }, "2026-06-20"), null);
+eq("rule undefined → null", resolveDateRule(undefined, "2026-06-20"), null);
+eq("rule offset +3", resolveDateRule({ mode: "offset", days: 3 }, "2026-06-20"), "2026-06-23");
+eq("rule offset 0 = apply day", resolveDateRule({ mode: "offset", days: 0 }, "2026-06-20"), "2026-06-20");
+eq("rule offset -2", resolveDateRule({ mode: "offset", days: -2 }, "2026-06-20"), "2026-06-18");
+eq("rule offset crosses month", resolveDateRule({ mode: "offset", days: 12 }, "2026-06-20"), "2026-07-02");
+eq("rule fixed", resolveDateRule({ mode: "fixed", date: "2026-12-25" }, "2026-06-20"), "2026-12-25");
+eq("rule fixed invalid date → null", resolveDateRule({ mode: "fixed", date: "nope" }, "2026-06-20"), null);
+eq("parseDateRule offset", parseDateRule({ mode: "offset", days: 5 }), { mode: "offset", days: 5 });
+eq("parseDateRule fixed", parseDateRule({ mode: "fixed", date: "2026-01-02" }), { mode: "fixed", date: "2026-01-02" });
+eq("parseDateRule none", parseDateRule({ mode: "none" }), { mode: "none" });
+eq("parseDateRule unknown mode → null", parseDateRule({ mode: "weird" }), null);
+eq("parseDateRule offset non-int → null", parseDateRule({ mode: "offset", days: 1.5 }), null);
+eq("parseDateRule fixed bad date → null", parseDateRule({ mode: "fixed", date: "2026-13-40" }), null);
+eq(
+  "parseApplyConfig keeps valid rules",
+  parseApplyConfig({ scheduledDate: { mode: "offset", days: 1 }, dueDate: { mode: "fixed", date: "2026-07-01" }, junk: 1 }),
+  { dueDate: { mode: "fixed", date: "2026-07-01" }, scheduledDate: { mode: "offset", days: 1 } }
+);
+eq("parseApplyConfig drops invalid", parseApplyConfig({ scheduledDate: { mode: "bad" } }), {});
+eq("parseApplyConfig non-object → {}", parseApplyConfig(null), {});
 
 console.log(`\n${fail ? "FAIL" : "ALL PASS"} (${pass} passed, ${fail} failed)`);
 process.exit(fail ? 1 : 0);
