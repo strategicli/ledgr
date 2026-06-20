@@ -95,6 +95,23 @@ try {
     (got.widgets[0].settings as { itemLimit: number }).itemLimit === 10);
   check("action widget has null viewId", got.widgets[2].kind === "action" && got.widgets[2].viewId === null);
 
+  // new-from-template action widget (TPL5): a valid templateId UUID survives the
+  // parser, an invalid one drops to null, and the carried targetType holds.
+  const goodTemplateId = crypto.randomUUID();
+  const nftParsed = parseWidgets([
+    { kind: "action", settings: { action: "new-from-template", label: "New Sermon", icon: null, targetType: "sermon", templateId: goodTemplateId, href: null }, layout: {} },
+    { kind: "action", settings: { action: "new-from-template", label: "Bad", targetType: "task", templateId: "not-a-uuid" }, layout: {} },
+  ]);
+  const nft0 = nftParsed[0].settings as { action: string; templateId: string | null; targetType: string | null };
+  check(
+    "new-from-template widget keeps a valid templateId + targetType (TPL5)",
+    nft0.action === "new-from-template" && nft0.templateId === goodTemplateId && nft0.targetType === "sermon"
+  );
+  check(
+    "new-from-template widget drops an invalid templateId to null (TPL5)",
+    (nftParsed[1].settings as { templateId: string | null }).templateId === null
+  );
+
   // text/heading widget: non-data structure, null viewId, heading/body settings
   const textParsed = parseWidgets([
     { kind: "text", settings: { heading: "My Tasks", body: "notes" }, layout: {} },

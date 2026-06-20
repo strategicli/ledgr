@@ -63,6 +63,7 @@ async function throws(name: string, fn: () => Promise<unknown> | unknown, code?:
 const stamp = Date.now();
 const typeKey = `vtmpl${stamp}`;
 const typeKey2 = `vtmpl2_${stamp}`;
+const typeKeyOther = `vtmpl_other_${stamp}`; // the type-mismatch guard fixture
 
 const db = getDb();
 const [owner] = await db
@@ -355,9 +356,8 @@ try {
 
   // Guards.
   await throws("apply-to-existing rejects a template target", () => applyTemplateToExisting(owner.id, mtmpl.id, mtmpl.prototypeItemId), "bad_request");
-  const otherType = `vtmpl_other_${stamp}`;
-  await createType({ key: otherType, label: "VOther", icon: null, showInQuickCapture: true, capability: null, propertySchema: [] });
-  const wrongTypeItem = await createItem(owner.id, { type: otherType, title: "wrong type" });
+  await createType({ key: typeKeyOther, label: "VOther", icon: null, showInQuickCapture: true, capability: null, propertySchema: [] });
+  const wrongTypeItem = await createItem(owner.id, { type: typeKeyOther, title: "wrong type" });
   await throws("apply-to-existing rejects a type mismatch", () => applyTemplateToExisting(owner.id, mtmpl.id, wrongTypeItem.id), "bad_request");
   await throws("apply-to-existing is owner-scoped (template)", () => applyTemplateToExisting(other.id, mtmpl.id, tgtA.id), "not_found");
   const tgtTrash = await createItem(owner.id, { type: typeKey, title: "trash target" });
@@ -387,7 +387,7 @@ try {
   // Deleting items cascades the templates rows (prototype_item_id FK) + relations.
   await db.delete(items).where(inArray(items.ownerId, [owner.id, other.id]));
   await db.delete(templates).where(inArray(templates.ownerId, [owner.id, other.id]));
-  await db.delete(types).where(inArray(types.key, [typeKey, typeKey2]));
+  await db.delete(types).where(inArray(types.key, [typeKey, typeKey2, typeKeyOther]));
   await db.delete(users).where(inArray(users.id, [owner.id, other.id]));
 }
 

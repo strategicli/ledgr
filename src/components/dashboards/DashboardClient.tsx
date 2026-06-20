@@ -19,6 +19,8 @@ import DashboardGridLayout from "./DashboardGridLayout";
 import FocusPicker from "./FocusPicker";
 import {
   GRID_BREAKPOINTS,
+  type ActionKind,
+  type ActionWidgetSettings,
   type DashboardWidget,
   type WidgetData,
   type WidgetLayout,
@@ -192,6 +194,42 @@ export default function DashboardClient({
     void commit([...widgetsRef.current, { widget, view: null, items: [], count: 0 }], false);
   }, [commit]);
 
+  // An action widget (TPL5): a non-data button — quick-capture, new-from-template,
+  // or link. No backing view and no data fetch, so just append it with sensible
+  // defaults; the user configures it (template / type / URL) via its gear.
+  const handleAddAction = useCallback(
+    (action: ActionKind) => {
+      const labels: Record<ActionKind, string> = {
+        "quick-capture": "Quick capture",
+        "new-from-template": "New from template",
+        link: "Link",
+      };
+      const settings: ActionWidgetSettings = {
+        action,
+        label: labels[action],
+        icon: null,
+        // quick-capture starts on task (the common case); new-from-template's
+        // type comes from the picked template; link has none.
+        targetType: action === "quick-capture" ? "task" : null,
+        templateId: null,
+        href: null,
+      };
+      const widget: DashboardWidget = {
+        id: crypto.randomUUID(),
+        kind: "action",
+        viewId: null,
+        settings,
+        layout: {
+          lg: { x: 0, y: 999, w: 3, h: 2 },
+          md: { x: 0, y: 999, w: 3, h: 2 },
+          sm: { x: 0, y: 999, w: 1, h: 2 },
+        },
+      };
+      void commit([...widgetsRef.current, { widget, view: null, items: [], count: 0 }], false);
+    },
+    [commit]
+  );
+
   // A prebuilt/starter widget: create its backing view first (a real saved
   // view), then add it as a widget via handleAdd.
   const handleAddStarter = useCallback(
@@ -312,6 +350,7 @@ export default function DashboardClient({
                 onAdd={handleAdd}
                 onAddStarter={handleAddStarter}
                 onAddText={handleAddText}
+                onAddAction={handleAddAction}
               />
             )}
             <button

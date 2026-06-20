@@ -201,15 +201,37 @@ try {
     type: "task",
     name: `Standup ${stamp}`,
   });
-  await updateItem(ownerId, template.prototypeItemId, { propertyPatch: { area: "ops" } });
+  await updateItem(ownerId, template.prototypeItemId, {
+    propertyPatch: { area: "ops" },
+    body: { format: "markdown", text: "Standup topic: {{ask:Topic}}" },
+  });
   const tmpls = await callJson(ownerId, "list_templates", { type: "task" });
-  check("list_templates lists the template", (tmpls.templates as Json[]).some((t) => t.id === template.id));
-  check("list_templates reports the prototype id", (tmpls.templates as Json[]).some((t) => t.prototypeItemId === template.prototypeItemId));
-  const fromTemplate = await callJson(ownerId, "apply_template", { id: template.id });
+  const tmplEntry = (tmpls.templates as Json[]).find((t) => t.id === template.id);
+  check("list_templates lists the template", !!tmplEntry);
+  check("list_templates reports the prototype id", tmplEntry?.prototypeItemId === template.prototypeItemId);
+  check("list_templates reports isDefault (TPL5)", tmplEntry?.isDefault === false);
+  check("list_templates reports askLabels from the prototype (TPL5)", JSON.stringify(tmplEntry?.askLabels) === JSON.stringify(["Topic"]));
+  const fromTemplate = await callJson(ownerId, "apply_template", { id: template.id, answers: { Topic: "Roadmap" } });
   check("apply_template creates a filed item of the template's type", fromTemplate.type === "task" && fromTemplate.inbox === false);
   check("apply_template's item is not a template", fromTemplate.id !== template.prototypeItemId);
   const fromTemplateGot = await callJson(ownerId, "get_item", { id: fromTemplate.id as string });
   check("apply_template carried the prototype's properties", (fromTemplateGot.properties as Json)?.area === "ops");
+  check("apply_template resolved {{ask}} from answers (TPL5)", (fromTemplateGot.body as string)?.includes("Roadmap"));
+
+  // apply_template onto an EXISTING item (TPL5): targetId + mode merges the
+  // template in and returns the same item (not a new one). fill carries the
+  // template's property onto the empty-bodied target and resolves answers.
+  const applyTarget = await callJson(ownerId, "create_item", { type: "task", title: `Apply onto me ${stamp}` });
+  const merged = await callJson(ownerId, "apply_template", {
+    id: template.id,
+    targetId: applyTarget.id as string,
+    mode: "fill",
+    answers: { Topic: "Hiring" },
+  });
+  check("apply_template with targetId returns the same existing item (TPL5)", merged.id === applyTarget.id);
+  const mergedGot = await callJson(ownerId, "get_item", { id: applyTarget.id as string });
+  check("apply_template fill carried the template's property onto the target (TPL5)", (mergedGot.properties as Json)?.area === "ops");
+  check("apply_template fill filled the empty body with the resolved template body (TPL5)", (mergedGot.body as string)?.includes("Hiring"));
   // The prototype itself must not leak into MCP search/list surfaces.
   const taskList = await callJson(ownerId, "list_items", { type: "task" });
   check("list_items excludes the template prototype", !itemsOf(taskList).some((i) => i.id === template.prototypeItemId));
@@ -217,6 +239,7 @@ try {
   // owner scoping holds for the new tools too.
   await expectErr("owner2 cannot run_view owner1's view", owner2Id, "run_view", { id: view.id });
   await expectErr("owner2 cannot relate owner1's items", owner2Id, "relate_items", { sourceId: note.id as string, targetId: entity.id as string });
+  await expectErr("owner2 cannot apply_template onto owner1's item", owner2Id, "apply_template", { id: template.id, targetId: applyTarget.id as string });
 
   // Validation / error surfacing (isError results, not thrown).
   await expectErr("create_item with an unknown type errors", ownerId, "create_item", { type: `nope_${stamp}`, title: "x" });
