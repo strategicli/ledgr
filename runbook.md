@@ -91,6 +91,8 @@ The export job (ADR-017) authenticates app-only (client credentials): no stored 
 ---
 
 ## 1c. Azure calendar + email-in access (one-time, Brandon — Phase 2)
+> **✅ Completed 2026-06-19.** `Calendars.Read` + `Mail.ReadWrite` granted and admin-consented, the Application Access Policy restricts the app to Brandon's mailbox, and the `Ledgr Import` folder exists. Verified live: the `verify-graph-auth.mts` Calendars.Read probe is clean, and `/health` shows clean `lastCalendarSyncAt` + `lastEmailImportAt`. Steps below are kept as the how-to / for re-setup.
+
 The calendar poll and email-in are unattended jobs, so they authenticate **app-only** on the same `ledgr-export` registration (ADR-022): no stored refresh token to expire, no MFA prompt in a cron. App-only Exchange permissions are tenant-wide by default, so they **must** be restricted to Brandon's mailbox by an Application Access Policy — that's the security boundary, and it's mandatory, not optional. (The export's `Files.ReadWrite.All` stays tenant-wide because Application Access Policies are Exchange-only; that's already accepted in §1b.)
 
 Until this is done, `/health` `checks.graph` reports `{configured:true, ok:true}` (the token grant works from §1b), but any calendar/mail call returns **403** and the calendar sync logs a visible "permission/access-policy missing" error rather than stalling silently.
@@ -135,6 +137,8 @@ Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date chang
 ---
 
 ## 1e. Web Push notifications setup (one-time, Brandon — Phase 2)
+> **✅ Completed 2026-06-20.** VAPID keys set in Vercel; the Home "Enable notifications" toggle is live (push configured).
+
 Push notifications (ADR-034) send the morning agenda summary and meeting-prep-ready notices. The protocol is hand-rolled over `node:crypto` (no `web-push` dependency); all it needs is a VAPID keypair. Until the keys are set, `/api/push` reports `{configured:false}` (the Today toggle stays hidden) and the notify crons return a 503 (reported, not red-spamming).
 
 1. **Generate the keypair:** `node scripts/make-vapid-keys.mjs` → prints `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. The keypair is permanent (rotating it invalidates every existing subscription — they'd re-subscribe), so generate once and keep it.
@@ -145,6 +149,8 @@ Push notifications (ADR-034) send the morning agenda summary and meeting-prep-re
 ---
 
 ## 1f. Claude MCP server setup (one-time, Brandon — Phase 3)
+> **✅ Completed 2026-06-20.** `mcp`-scoped token in `LEDGR_API_TOKENS`; `/health` `checks.mcp` green; `list_types` verified live. **Correction to step 3 below:** the consumer "Add custom connector" dialog is OAuth-only (no custom-header field), so a static-token MCP can't be added there. Use Claude Desktop's `claude_desktop_config.json` with `mcp-remote` instead — `{"mcpServers":{"ledgr":{"command":"npx","args":["-y","mcp-remote","https://ledgr-teal.vercel.app/api/mcp","--header","Authorization: Bearer <raw token>"]}}}` — and edit it while the app is closed (it rewrites that file on quit).
+
 The MCP server (ADR-047) makes Claude a first-class client: from Claude desktop/web/mobile you can search, read, create, and update your Ledgr items over a personal API token (PRD §5.5) — "what's open with Roger," "file this as a task due Friday," "prep tomorrow's 1:1." It's an **in-app** endpoint at `POST /api/mcp` (Streamable HTTP — no separate server to host or keep warm), gated by a scoped machine token, never Clerk. Until a token exists the endpoint 401s every call; `/health` `checks.mcp.configured` is the canary.
 
 1. **Issue a token:** `node scripts/make-token.mjs claude-mcp mcp` prints the raw token (`lgr_…`, shown once — keep it for the client) and the `LEDGR_API_TOKENS` entry. Append the entry, comma-separated, to `LEDGR_API_TOKENS` in Vercel (and `.env.local`), redeploy. The token's scope is `mcp`; it grants only the MCP endpoint, nothing else.
@@ -154,6 +160,8 @@ The MCP server (ADR-047) makes Claude a first-class client: from Claude desktop/
 5. **Revoke:** delete the `claude-mcp` entry from `LEDGR_API_TOKENS`, redeploy (same flow as any machine token, §3). Rotate on any suspicion of leak — a token is the only credential on this endpoint.
 
 ## 1g. Changelog + shared collab notes (one-time, per builder — ADR-053)
+> **✅ Completed 2026-06-20.** Fine-grained `GITHUB_TOKEN` (Contents R/W on `brandonscollins/ledgr`) set in Vercel; `/health` `checks.github` is `{ok:true}`.
+
 The Changelog page (in the kebab "More" menu) reads the repo's commit history live, and a shared notes scratchpad beside it reads and commits a notes file in the repo. Git is the shared medium across the two separate deploys, so both builders see each other's pushes and notes. Until a token is set the page shows a "not connected" note; `/health` `checks.github` is the canary.
 
 1. **Issue a token:** GitHub → Settings → Developer settings → Personal access tokens. A classic token with `repo` scope, or a fine-grained token scoped to `brandonscollins/ledgr` with **Contents: Read and write** (read powers the changelog, write powers the notes commits).
