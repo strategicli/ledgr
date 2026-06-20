@@ -13,8 +13,11 @@ import { canvasIdForType } from "@/lib/modules";
 import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
+import { getTemplateByPrototype } from "@/lib/templates";
 import { getType } from "@/lib/types";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
+import SaveAsTemplateButton from "@/components/canvas/SaveAsTemplateButton";
+import TemplateBanner from "@/components/canvas/TemplateBanner";
 
 export default async function ItemCanvas({
   id,
@@ -38,10 +41,20 @@ export default async function ItemCanvas({
   }
   if (item.deletedAt) notFound(); // Trash items restore first, then open.
 
+  // A template prototype shows the "Template" banner instead of the normal item
+  // chrome (ADR-093, TPL2). The registry row is found only for a prototype ROOT;
+  // a template subtask is is_template but backs no row (a minimal note instead).
+  const template = item.isTemplate
+    ? await getTemplateByPrototype(owner.id, item.id)
+    : null;
+
   // Hierarchy reads child-upward (PRD §3.5): the breadcrumb is the live
   // ancestor chain, root first.
   const ancestors = item.parentId ? await listAncestors(owner.id, item.id) : [];
-  const showBreadcrumb = variant === "page" || ancestors.length > 0;
+  // A template prototype (no ancestors) shows the banner instead of a breadcrumb;
+  // a template subtask still shows its ancestor chain up to the prototype.
+  const showBreadcrumb =
+    (variant === "page" && !item.isTemplate) || ancestors.length > 0;
 
   // Owner-aware so the per-user enable flip (M6) can route a disabled module's
   // type back to the default canvas without touching this call site. The type's
@@ -60,26 +73,51 @@ export default async function ItemCanvas({
           actually gains room, and matches the grid width so entering Arrange
           doesn't jump. The modal stays the narrow quick reader. */}
       <div className={variant === "page" ? "canvas-wide" : undefined}>
+        {item.isTemplate &&
+          (template ? (
+            <TemplateBanner
+              templateId={template.id}
+              name={template.name}
+              isDefault={template.isDefault}
+              typeLabel={typeDef?.label ?? item.type}
+            />
+          ) : (
+            <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+              <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200/80">
+                Part of a template — edits here change the template, not a real item.
+              </div>
+            </div>
+          ))}
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-1 px-4 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
-            {variant === "page" && (
-              <Link href="/items" className="hover:text-neutral-300">
-                ← All items
-              </Link>
-            )}
-            {ancestors.map((a, i) => (
-              <span key={a.id} className="flex min-w-0 items-center gap-1">
-                {(variant === "page" || i > 0) && (
-                  <span className="text-neutral-700">/</span>
-                )}
-                <Link
-                  href={`/items/${a.id}`}
-                  className="truncate hover:text-neutral-300"
-                >
-                  {a.title || "Untitled"}
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-4 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
+            <div className="flex min-w-0 items-center gap-1">
+              {variant === "page" && !item.isTemplate && (
+                <Link href="/items" className="hover:text-neutral-300">
+                  ← All items
                 </Link>
-              </span>
-            ))}
+              )}
+              {ancestors.map((a, i) => (
+                <span key={a.id} className="flex min-w-0 items-center gap-1">
+                  {((variant === "page" && !item.isTemplate) || i > 0) && (
+                    <span className="text-neutral-700">/</span>
+                  )}
+                  <Link
+                    href={`/items/${a.id}`}
+                    className="truncate hover:text-neutral-300"
+                  >
+                    {a.title || "Untitled"}
+                  </Link>
+                </span>
+              ))}
+            </div>
+            {variant === "page" && !item.isTemplate && (
+              <SaveAsTemplateButton
+                itemId={item.id}
+                defaultName={item.title || "Untitled"}
+                align="right"
+                triggerClassName="shrink-0 rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+              />
+            )}
           </div>
         )}
         {/* canvasComponentFor is a registry lookup (module-wiring.tsx) returning a

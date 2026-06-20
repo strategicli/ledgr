@@ -24,6 +24,8 @@ export default async function ItemModal({
   // breakpoint. Best-effort: any failure just yields the default-width modal, and
   // ItemCanvas surfaces the real not-found/auth handling.
   let wide = false;
+  let title = "";
+  let isTemplate = false;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -32,12 +34,14 @@ export default async function ItemModal({
       // chord chart widens the modal like a real song.
       const typeDef = await getType(item.type).catch(() => null);
       wide = canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
+      title = item.title;
+      isTemplate = item.isTemplate;
     }
   } catch {
     // ignore — render the default modal width
   }
   return (
-    <Modal itemId={id} wide={wide}>
+    <Modal itemId={id} wide={wide} title={title} isTemplate={isTemplate}>
       <ItemCanvas id={id} variant="modal" />
     </Modal>
   );

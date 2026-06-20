@@ -129,6 +129,25 @@ export async function getTemplate(
   return rowToTemplate(rows[0]);
 }
 
+// The registry row a given prototype item backs, or null if the item isn't a
+// template root (e.g. it's a template subtask, or not a template at all). Powers
+// the canvas "Template" banner (ADR-093, TPL2).
+export async function getTemplateByPrototype(
+  ownerId: string,
+  prototypeItemId: string
+): Promise<ItemTemplate | null> {
+  const rows = await getDb()
+    .select()
+    .from(templates)
+    .where(
+      and(
+        eq(templates.ownerId, ownerId),
+        eq(templates.prototypeItemId, prototypeItemId)
+      )
+    );
+  return rows.length ? rowToTemplate(rows[0]) : null;
+}
+
 // Create a template = a registry row + an empty hidden prototype item, authored
 // afterwards in the normal canvas (ADR-093). The prototype is is_template=true
 // with a blank body; the user opens /items/<prototypeItemId> to build it out
@@ -201,6 +220,52 @@ export async function deleteTemplate(ownerId: string, id: string): Promise<void>
   } catch (err) {
     if (!(err instanceof ItemError)) throw err;
   }
+}
+
+// "Save as template" (TPL2): clone an existing item's subtree into a hidden
+// template prototype (is_template=true via cloneItemSubtree's override; the whole
+// subtree inherits it) and register it. The clone carries the item's body,
+// subtasks, properties, and relation edges — so a meeting's usual attendees, a
+// task's subtasks, etc. become the template's presets. Rejects a trashed item or
+// one that's already a template (duplicate it instead).
+export async function createTemplateFromItem(
+  ownerId: string,
+  itemId: string,
+  name?: string
+): Promise<ItemTemplate> {
+  const src = await getItem(ownerId, itemId); // ownership + existence
+  if (src.deletedAt) throw new ItemError("bad_request", "can't make a template from a trashed item");
+  if (src.isTemplate) throw new ItemError("bad_request", "this item is already a template — duplicate it instead");
+  const finalName = (name?.trim() || src.title.trim() || "Untitled template").slice(0, 120);
+  const { rootId } = await cloneItemSubtree(ownerId, itemId, {
+    isTemplate: true,
+    inbox: false,
+  });
+  const rows = await getDb()
+    .insert(templates)
+    .values({ ownerId, type: src.type, name: finalName, prototypeItemId: rootId })
+    .returning();
+  return rowToTemplate(rows[0]);
+}
+
+// Duplicate a template (TPL2): clone its prototype subtree into a new template
+// prototype + registry row. The copy is never the default (a duplicate mustn't
+// steal the type's default).
+export async function duplicateTemplate(
+  ownerId: string,
+  id: string
+): Promise<ItemTemplate> {
+  const tmpl = await getTemplate(ownerId, id); // ownership + existence
+  const { rootId } = await cloneItemSubtree(ownerId, tmpl.prototypeItemId, {
+    isTemplate: true,
+    inbox: false,
+  });
+  const name = `Copy of ${tmpl.name}`.slice(0, 120);
+  const rows = await getDb()
+    .insert(templates)
+    .values({ ownerId, type: tmpl.type, name, prototypeItemId: rootId })
+    .returning();
+  return rowToTemplate(rows[0]);
 }
 
 // Apply a template: deep-clone its prototype subtree into a fresh REAL item

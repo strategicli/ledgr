@@ -7,17 +7,25 @@
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import SaveAsTemplateButton from "@/components/canvas/SaveAsTemplateButton";
 
 export default function Modal({
   itemId,
   children,
   wide = false,
+  title = "",
+  isTemplate = false,
 }: {
   itemId: string;
   children: React.ReactNode;
   // Wider panel for canvases that need the room (a song's two-column chart);
   // the default keeps note/task previews compact.
   wide?: boolean;
+  // For the header's "Save as template" default name; and to swap chrome on a
+  // template prototype (its delete is the registry-aware banner action, not the
+  // generic item Trash, which would orphan the registry row) — ADR-093 TPL2.
+  title?: string;
+  isTemplate?: boolean;
 }) {
   const router = useRouter();
   const close = useCallback(() => router.back(), [router]);
@@ -56,20 +64,34 @@ export default function Modal({
         }`}
       >
         <div className="flex shrink-0 items-center justify-between gap-1 px-3 pt-2">
-          <ConfirmButton
-            title="Move to Trash?"
-            description="This item moves to Trash and can be recovered for 30 days."
-            confirmLabel="Trash"
-            trigger="Trash"
-            triggerLabel="Move to Trash"
-            triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
-            align="left"
-            onConfirm={async () => {
-              const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
-              if (!res.ok) throw new Error(`Failed (${res.status})`);
-              close();
-            }}
-          />
+          <div className="flex items-center gap-1">
+            {/* A template prototype's destructive/templatize actions live in its
+                canvas banner (registry-aware); the generic item chrome is hidden. */}
+            {!isTemplate && (
+              <>
+                <ConfirmButton
+                  title="Move to Trash?"
+                  description="This item moves to Trash and can be recovered for 30 days."
+                  confirmLabel="Trash"
+                  trigger="Trash"
+                  triggerLabel="Move to Trash"
+                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
+                  align="left"
+                  onConfirm={async () => {
+                    const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
+                    if (!res.ok) throw new Error(`Failed (${res.status})`);
+                    close();
+                  }}
+                />
+                <SaveAsTemplateButton
+                  itemId={itemId}
+                  defaultName={title || "Untitled"}
+                  align="left"
+                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                />
+              </>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             {/* Plain <a>, not <Link>: a soft nav to the same URL would stay
                 intercepted; a document load renders the full page form. */}

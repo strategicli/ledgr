@@ -46,6 +46,11 @@ export type CloneOverrides = {
   scheduledDate?: Date | null;
   dueDate?: Date | null;
   inbox?: boolean;
+  // Mark the cloned ROOT as a template prototype (ADR-093, TPL2). Descendants
+  // inherit it through createItem's parent-inheritance, so "Save as template" /
+  // "Duplicate template" produce a fully template-flagged subtree. Omitted =
+  // false (the apply/recurrence path: clones are real items).
+  isTemplate?: boolean;
   // Merged over the cloned (post-strip) properties — e.g. stamp occurrence meta.
   properties?: Record<string, unknown>;
 };
@@ -154,6 +159,8 @@ async function cloneNode(
       overrides?.properties
     ),
     inbox: overrides?.inbox ?? false,
+    // Root only (overrides apply to the root); descendants inherit via createItem.
+    isTemplate: overrides?.isTemplate,
   });
 
   if (reset.carryRelations !== false) {
