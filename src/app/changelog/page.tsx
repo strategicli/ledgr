@@ -11,6 +11,7 @@ import { getChangelog, getGithubConfig, GithubError, type ChangelogEntry } from 
 import { APP_TIMEZONE } from "@/lib/today";
 import { getSettings, effectiveDisplayName } from "@/lib/settings";
 import CollabNotes from "@/components/changelog/CollabNotes";
+import V1Progress from "@/components/changelog/V1Progress";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,8 @@ export default async function ChangelogPage() {
             ← Back
           </Link>
         </div>
+
+        <V1Progress />
 
         <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
           {/* 1/2 — the commit history */}
