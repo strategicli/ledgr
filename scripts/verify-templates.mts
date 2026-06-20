@@ -21,14 +21,18 @@ const {
   parseTemplateInput,
   createTemplate,
   getTemplate,
+  getTemplateByPrototype,
   listTemplates,
   updateTemplate,
   deleteTemplate,
   createItemFromTemplate,
+  createTemplateFromItem,
+  duplicateTemplate,
   templateCountsByType,
 } = await import("../src/lib/templates");
+const { cloneItemSubtree } = await import("../src/lib/clone");
 const { createType, deleteType, countLiveItemsOfType } = await import("../src/lib/types");
-const { ItemError, createItem, getItem, listItems, itemCountsByType, updateItem } =
+const { ItemError, createItem, getItem, listItems, itemCountsByType, updateItem, softDeleteItem } =
   await import("../src/lib/items");
 const { searchItems } = await import("../src/lib/search");
 const { queryViewItems } = await import("../src/lib/views");
@@ -165,6 +169,61 @@ try {
     .from(templates)
     .where(and(eq(templates.ownerId, owner.id), eq(templates.type, typeKey), eq(templates.isDefault, true)));
   check("at most one default per type", defaults.length === 1);
+
+  // --- TPL2: clone-as-template, save-as-template, duplicate, lookup ---
+  const realItem = await createItem(owner.id, {
+    type: typeKey,
+    title: "Real candidate",
+    body: { format: "markdown", text: "## Real\n\n- [ ] do it" },
+    properties: { stage: "Offer" },
+  });
+  const realSub = await createItem(owner.id, { type: typeKey, title: "Real subtask", parentId: realItem.id });
+  await relateItems(owner.id, realItem.id, alice.id);
+  check("sanity: a normal item + subtask are not templates", realItem.isTemplate === false && realSub.isTemplate === false);
+
+  // cloneItemSubtree({isTemplate}) marks the whole clone as template content.
+  const cloned = await cloneItemSubtree(owner.id, realItem.id, { isTemplate: true, inbox: false });
+  const clonedRoot = await getItem(owner.id, cloned.rootId);
+  const clonedKids = await db
+    .select({ isTemplate: items.isTemplate })
+    .from(items)
+    .where(and(eq(items.parentId, cloned.rootId), eq(items.ownerId, owner.id)));
+  check("clone isTemplate marks the root + subtree", clonedRoot.isTemplate === true && clonedKids.length === 1 && clonedKids[0].isTemplate === true);
+  check("clone-as-template leaves the source real", (await getItem(owner.id, realItem.id)).isTemplate === false);
+
+  // createTemplateFromItem = "Save as template"
+  const saved = await createTemplateFromItem(owner.id, realItem.id, "From real");
+  check("save-as-template registers a template of the item's type", saved.type === typeKey && saved.name === "From real" && saved.isDefault === false);
+  const savedProto = await getItem(owner.id, saved.prototypeItemId);
+  check("save-as-template prototype is a template carrying the body", savedProto.isTemplate === true && (savedProto.body as { text?: string } | null)?.text?.includes("do it") === true);
+  const savedKids = await db
+    .select({ id: items.id, isTemplate: items.isTemplate })
+    .from(items)
+    .where(and(eq(items.parentId, saved.prototypeItemId), eq(items.ownerId, owner.id)));
+  check("save-as-template cloned the subtask as template content", savedKids.length === 1 && savedKids[0].isTemplate === true);
+  check("save-as-template carried the relation edge", (await listRelatedItems(owner.id, saved.prototypeItemId)).some((r) => r.id === alice.id));
+  const listAfterSave = await listItems(owner.id, { type: typeKey });
+  check("save-as-template prototype is excluded from lists", !listAfterSave.some((i) => i.id === saved.prototypeItemId));
+  check("the source item still appears in lists", listAfterSave.some((i) => i.id === realItem.id));
+  check("applying a saved template yields a real item", (await getItem(owner.id, (await createItemFromTemplate(owner.id, saved.id)).id)).isTemplate === false);
+  await throws("save-as-template rejects a template", () => createTemplateFromItem(owner.id, saved.prototypeItemId), "bad_request");
+  const trashed = await createItem(owner.id, { type: typeKey, title: "Trash me" });
+  await softDeleteItem(owner.id, trashed.id);
+  await throws("save-as-template rejects a trashed item", () => createTemplateFromItem(owner.id, trashed.id), "bad_request");
+  await throws("createTemplateFromItem is owner-scoped", () => createTemplateFromItem(other.id, realItem.id), "not_found");
+
+  // duplicateTemplate
+  const dup = await duplicateTemplate(owner.id, saved.id);
+  check("duplicate makes a new non-default template named Copy of", dup.id !== saved.id && dup.name === "Copy of From real" && dup.isDefault === false);
+  check("duplicate prototype is a fresh template", (await getItem(owner.id, dup.prototypeItemId)).isTemplate === true && dup.prototypeItemId !== saved.prototypeItemId);
+  check("duplicate cloned the subtree", (await db.select({ id: items.id }).from(items).where(and(eq(items.parentId, dup.prototypeItemId), eq(items.ownerId, owner.id)))).length === 1);
+  await throws("duplicateTemplate is owner-scoped", () => duplicateTemplate(other.id, saved.id), "not_found");
+
+  // getTemplateByPrototype
+  check("getTemplateByPrototype finds the row by prototype id", (await getTemplateByPrototype(owner.id, saved.prototypeItemId))?.id === saved.id);
+  check("getTemplateByPrototype is null for a real item", (await getTemplateByPrototype(owner.id, realItem.id)) === null);
+  check("getTemplateByPrototype is null for a template subtask", (await getTemplateByPrototype(owner.id, savedKids[0].id)) === null);
+  check("getTemplateByPrototype is owner-scoped", (await getTemplateByPrototype(other.id, saved.prototypeItemId)) === null);
 
   // --- delete = drop registry row + soft-delete prototype ---
   const t2proto = t2.prototypeItemId;

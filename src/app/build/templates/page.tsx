@@ -4,7 +4,7 @@
 // registry row. "New template" creates an empty one and opens its canvas.
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import DeleteTemplateButton from "@/components/build/DeleteTemplateButton";
+import TemplateRowActions from "@/components/build/TemplateRowActions";
 import { resolveOwner } from "@/lib/owner";
 import { listTemplates } from "@/lib/templates";
 import { listTypes } from "@/lib/types";
@@ -76,13 +76,8 @@ export default async function TemplatesIndex() {
                       >
                         {t.name}
                       </Link>
-                      {t.isDefault && (
-                        <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
-                          Default
-                        </span>
-                      )}
-                      <span className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
-                        <DeleteTemplateButton id={t.id} name={t.name} />
+                      <span className="shrink-0">
+                        <TemplateRowActions id={t.id} name={t.name} isDefault={t.isDefault} />
                       </span>
                     </li>
                   ))}
