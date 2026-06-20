@@ -173,6 +173,64 @@ export function scanAskLabels(texts: (string | null | undefined)[]): string[] {
   return out;
 }
 
+// ===========================================================================
+// Structured date rules (ADR-093, TPL3b): how an applied item's due / scheduled
+// dates are set. The clone clears the prototype's own dated fields, so these
+// rules are the source of an applied item's dates. PURE: the caller passes today.
+//   none   — leave the field empty (the clone default)
+//   fixed  — an absolute calendar day (e.g. always due Dec 25)
+//   offset — apply date ± N days (0 = the apply day itself); relative subtasks
+//            then recompute off the root's scheduled day (ADR-085)
+export type DateRule =
+  | { mode: "none" }
+  | { mode: "fixed"; date: string } // YYYY-MM-DD
+  | { mode: "offset"; days: number };
+
+export type ApplyConfig = {
+  dueDate?: DateRule;
+  scheduledDate?: DateRule;
+};
+
+// Resolve a rule to a YYYY-MM-DD calendar day, or null (none / invalid).
+export function resolveDateRule(
+  rule: DateRule | undefined,
+  todayYmd: string
+): string | null {
+  if (!rule || !isYmd(todayYmd)) return null;
+  if (rule.mode === "fixed") return isYmd(rule.date) ? rule.date : null;
+  if (rule.mode === "offset") {
+    return Number.isInteger(rule.days) ? addDaysYmd(todayYmd, rule.days) : null;
+  }
+  return null; // none
+}
+
+// Tolerant parse of a stored/posted rule → a valid DateRule or null (dropped).
+export function parseDateRule(raw: unknown): DateRule | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.mode === "none") return { mode: "none" };
+  if (r.mode === "fixed" && typeof r.date === "string" && isYmd(r.date)) {
+    return { mode: "fixed", date: r.date };
+  }
+  if (r.mode === "offset" && typeof r.days === "number" && Number.isInteger(r.days)) {
+    return { mode: "offset", days: r.days };
+  }
+  return null;
+}
+
+// Tolerant parse of the whole apply_config jsonb. Unknown keys dropped; a "none"
+// rule is kept (an explicit "leave empty") but is a no-op at apply.
+export function parseApplyConfig(raw: unknown): ApplyConfig {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const r = raw as Record<string, unknown>;
+  const out: ApplyConfig = {};
+  const due = parseDateRule(r.dueDate);
+  const scheduled = parseDateRule(r.scheduledDate);
+  if (due) out.dueDate = due;
+  if (scheduled) out.scheduledDate = scheduled;
+  return out;
+}
+
 // True if `text` contains any recognized template token (date/now/title/ask) —
 // used to decide whether resolution needs to run at all.
 export function hasVars(text: string | null | undefined): boolean {

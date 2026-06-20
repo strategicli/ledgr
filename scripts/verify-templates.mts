@@ -33,6 +33,7 @@ const {
 } = await import("../src/lib/templates");
 const { cloneItemSubtree } = await import("../src/lib/clone");
 const { bodyMarkdown } = await import("../src/lib/body");
+const { dateToYmdUtc } = await import("../src/lib/recurrence");
 const { createType, deleteType, countLiveItemsOfType } = await import("../src/lib/types");
 const { ItemError, createItem, getItem, listItems, itemCountsByType, updateItem, softDeleteItem } =
   await import("../src/lib/items");
@@ -253,6 +254,33 @@ try {
   check("apply resolves tokens in a subtask + it's a real item", vappliedKids.length === 1 && vappliedKids[0].title === "Prep Prayer" && vappliedKids[0].isTemplate === false);
   check("the prototype keeps its tokens (only the clone is resolved)", (await getItem(owner.id, vtmpl.prototypeItemId)).title === "Review for {{nextSunday:short}}");
   check("an unanswered {{ask}} resolves to empty", bodyMarkdown((await getItem(owner.id, (await createItemFromTemplate(owner.id, vtmpl.id, { now: new Date("2026-06-20T12:00:00Z") })).id)).body).includes("Topic: \n"));
+
+  // --- TPL3b: structured due/scheduled date rules ---
+  const dtmpl = await createTemplate(owner.id, { type: typeKey, name: "Dated template" });
+  check("a new template starts with no apply rules", JSON.stringify(dtmpl.applyConfig) === "{}");
+  const dUpdated = await updateTemplate(owner.id, dtmpl.id, {
+    applyConfig: { scheduledDate: { mode: "offset", days: 2 }, dueDate: { mode: "fixed", date: "2026-12-25" } },
+  });
+  check("updateTemplate persists apply_config", dUpdated.applyConfig.scheduledDate?.mode === "offset" && dUpdated.applyConfig.dueDate?.mode === "fixed");
+  check("getTemplate round-trips apply_config", (await getTemplate(owner.id, dtmpl.id)).applyConfig.scheduledDate?.mode === "offset");
+  // A relative subtask on the prototype recomputes off the applied scheduled date.
+  await createItem(owner.id, {
+    type: typeKey,
+    title: "Rel sub",
+    parentId: dtmpl.prototypeItemId,
+    properties: { relativeSchedule: { offsetDays: 1 } },
+  });
+  const dApplied = await getItem(owner.id, (await createItemFromTemplate(owner.id, dtmpl.id, { now: new Date("2026-06-20T12:00:00Z") })).id);
+  check("apply offset rule sets scheduled = apply+2", !!dApplied.scheduledDate && dateToYmdUtc(dApplied.scheduledDate) === "2026-06-22");
+  check("apply fixed rule sets due", !!dApplied.dueDate && dateToYmdUtc(dApplied.dueDate) === "2026-12-25");
+  const dKids = await db
+    .select({ sched: items.scheduledDate })
+    .from(items)
+    .where(and(eq(items.parentId, dApplied.id), eq(items.ownerId, owner.id)));
+  check("relative subtask recomputes off the applied scheduled date (apply+2+1)", dKids.length === 1 && !!dKids[0].sched && dateToYmdUtc(dKids[0].sched!) === "2026-06-23");
+  const noRules = await createTemplate(owner.id, { type: typeKey, name: "No-date template" });
+  const noRulesApplied = await getItem(owner.id, (await createItemFromTemplate(owner.id, noRules.id, { now: new Date("2026-06-20T12:00:00Z") })).id);
+  check("no rules → applied item has no dates", noRulesApplied.scheduledDate === null && noRulesApplied.dueDate === null);
 
   // --- delete = drop registry row + soft-delete prototype ---
   const t2proto = t2.prototypeItemId;

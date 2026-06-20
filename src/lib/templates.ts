@@ -13,7 +13,14 @@ import { items, templates, types } from "@/db/schema";
 import { isItemBody, type ItemBody } from "@/lib/body";
 import { cloneItemSubtree } from "@/lib/clone";
 import { createItem, getItem, ItemError, softDeleteItem, updateItem } from "@/lib/items";
-import { resolveVars, scanAskLabels } from "@/lib/template-vars";
+import { ymdToUtcDate } from "@/lib/recurrence";
+import {
+  parseApplyConfig,
+  resolveDateRule,
+  resolveVars,
+  scanAskLabels,
+  type ApplyConfig,
+} from "@/lib/template-vars";
 import { APP_TIMEZONE, todayBounds } from "@/lib/today";
 
 export type ItemTemplate = {
@@ -25,9 +32,9 @@ export type ItemTemplate = {
   prototypeItemId: string;
   // The type's default template (TPL4): "+ New" uses it automatically.
   isDefault: boolean;
-  // Apply-time config (TPL3): date-field rules / variable defaults. Opaque
-  // here; null until variable resolution lands.
-  applyConfig: Record<string, unknown> | null;
+  // Apply-time config (TPL3b): rules for the dated fields (none | fixed | offset
+  // from the apply date). {} = no rules (the clone's cleared dates stand).
+  applyConfig: ApplyConfig;
   createdAt: Date;
 };
 
@@ -35,7 +42,11 @@ export type ItemTemplate = {
 // the canvas afterwards. Type is immutable after create (the prototype is keyed
 // to it). Patch edits the metadata only (name, default flag).
 export type TemplateCreateInput = { type: string; name: string };
-export type TemplatePatchInput = { name?: string; isDefault?: boolean };
+export type TemplatePatchInput = {
+  name?: string;
+  isDefault?: boolean;
+  applyConfig?: ApplyConfig;
+};
 
 function bad(message: string): never {
   throw new ItemError("bad_request", message);
@@ -69,7 +80,15 @@ export function parseTemplateInput(
     if (typeof r.isDefault !== "boolean") bad("isDefault must be a boolean");
     patch.isDefault = r.isDefault;
   }
-  if (patch.name === undefined && patch.isDefault === undefined) {
+  if (r.applyConfig !== undefined) {
+    // Tolerant: invalid rules are dropped to {} rather than rejected.
+    patch.applyConfig = parseApplyConfig(r.applyConfig);
+  }
+  if (
+    patch.name === undefined &&
+    patch.isDefault === undefined &&
+    patch.applyConfig === undefined
+  ) {
     bad("nothing to update");
   }
   return patch;
@@ -81,12 +100,6 @@ async function assertTypeExists(type: string): Promise<void> {
     .from(types)
     .where(and(eq(types.key, type), isNull(types.deletedAt)));
   if (rows.length === 0) throw new ItemError("bad_request", `unknown type '${type}'`);
-}
-
-function parseApplyConfig(raw: unknown): Record<string, unknown> | null {
-  return raw && typeof raw === "object" && !Array.isArray(raw)
-    ? (raw as Record<string, unknown>)
-    : null;
 }
 
 function rowToTemplate(row: typeof templates.$inferSelect): ItemTemplate {
@@ -201,6 +214,7 @@ export async function updateTemplate(
   const set: Record<string, unknown> = {};
   if (input.name !== undefined) set.name = input.name;
   if (input.isDefault !== undefined) set.isDefault = input.isDefault;
+  if (input.applyConfig !== undefined) set.applyConfig = input.applyConfig;
   const rows = await getDb()
     .update(templates)
     .set(set)
@@ -345,23 +359,45 @@ export async function templateAskLabels(
   return scanAskLabels(texts);
 }
 
+// Set the cloned ROOT's dated fields from the template's apply rules (TPL3b).
+// The clone clears the prototype's own dates, so these rules are the source of an
+// applied item's due/scheduled. A "none"/absent rule leaves the field empty.
+// Setting scheduledDate cascades to relative subtasks (ADR-085) via updateItem.
+async function applyDateRules(
+  ownerId: string,
+  rootId: string,
+  cfg: ApplyConfig,
+  now: Date
+): Promise<void> {
+  const todayYmd = ymdOf(now);
+  const dueYmd = resolveDateRule(cfg.dueDate, todayYmd);
+  const scheduledYmd = resolveDateRule(cfg.scheduledDate, todayYmd);
+  if (!dueYmd && !scheduledYmd) return;
+  const patch: { dueDate?: Date; scheduledDate?: Date } = {};
+  if (dueYmd) patch.dueDate = ymdToUtcDate(dueYmd);
+  if (scheduledYmd) patch.scheduledDate = ymdToUtcDate(scheduledYmd);
+  await updateItem(ownerId, rootId, patch);
+}
+
 // Apply a template: deep-clone its prototype subtree into a fresh REAL item
 // (cloneItemSubtree never copies is_template, so the clone and its children are
 // is_template=false), then resolve {{tokens}} over the clone (dates / {{title}}
-// echo / {{ask:Label}} answers, TPL3). Carries the prototype's body, properties,
-// subtasks, and relation edges (carryRelations). Deliberate creation, so not an
-// Inbox arrival (ADR-010). Returns the new root item. (TPL4 layers apply-to-
-// existing on top of this.)
+// echo / {{ask:Label}} answers, TPL3a) and set the root's dates from the apply
+// rules (TPL3b). Carries the prototype's body, properties, subtasks, and relation
+// edges (carryRelations). Deliberate creation, so not an Inbox arrival (ADR-010).
+// Returns the new root item. (TPL4 layers apply-to-existing on top of this.)
 export async function createItemFromTemplate(
   ownerId: string,
   id: string,
   opts: { answers?: Record<string, string>; now?: Date } = {}
 ) {
   const tmpl = await getTemplate(ownerId, id);
+  const now = opts.now ?? new Date();
   const { rootId } = await cloneItemSubtree(ownerId, tmpl.prototypeItemId, {
     inbox: false,
   });
-  await resolveTemplateVars(ownerId, rootId, opts);
+  await resolveTemplateVars(ownerId, rootId, { answers: opts.answers, now });
+  await applyDateRules(ownerId, rootId, tmpl.applyConfig, now);
   return getItem(ownerId, rootId);
 }
 

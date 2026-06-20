@@ -80,6 +80,7 @@ export default async function ItemCanvas({
               name={template.name}
               isDefault={template.isDefault}
               typeLabel={typeDef?.label ?? item.type}
+              applyConfig={template.applyConfig}
             />
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">

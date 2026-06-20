@@ -1,30 +1,37 @@
-// The "Template" banner on a prototype item's canvas (ADR-093, TPL2). Makes it
-// unmistakable you're editing a template (not a real item), and carries its
-// registry actions: inline rename, set-as-default, duplicate, delete. Apply is
-// elsewhere ("+ New" / the chooser, TPL4); this is the authoring surface.
+// The "Template" banner on a prototype item's canvas (ADR-093, TPL2/TPL3b). Makes
+// it unmistakable you're editing a template (not a real item), and carries its
+// registry actions: inline rename, set-as-default, duplicate, delete, and the
+// "dates on apply" rules (TPL3b). Apply itself is elsewhere ("+ New" / the
+// chooser, TPL4); this is the authoring surface.
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import TemplateDatesControl from "@/components/canvas/TemplateDatesControl";
+import type { ApplyConfig } from "@/lib/template-vars";
 
 export default function TemplateBanner({
   templateId,
   name,
   isDefault,
   typeLabel,
+  applyConfig,
 }: {
   templateId: string;
   name: string;
   isDefault: boolean;
   typeLabel: string;
+  applyConfig: ApplyConfig;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
+  const [showDates, setShowDates] = useState(false);
   const [busy, setBusy] = useState<null | "rename" | "default" | "duplicate">(null);
   const [error, setError] = useState<string | null>(null);
+  const hasDateRules = !!(applyConfig.dueDate || applyConfig.scheduledDate);
 
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     setError(null);
@@ -151,6 +158,15 @@ export default function TemplateBanner({
           >
             {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowDates((s) => !s)}
+            aria-expanded={showDates}
+            title="Set the dates new items get on apply"
+            className={`${actionClass} ${hasDateRules ? "text-amber-300 hover:text-amber-200" : ""}`}
+          >
+            {hasDateRules ? "★ Dates" : "Dates"}
+          </button>
           <ConfirmButton
             onConfirm={confirmDelete}
             title={`Delete the “${name}” template?`}
@@ -168,6 +184,9 @@ export default function TemplateBanner({
         </div>
         {error && <span className="w-full text-xs text-red-400">{error}</span>}
       </div>
+      {showDates && (
+        <TemplateDatesControl templateId={templateId} applyConfig={applyConfig} />
+      )}
     </div>
   );
 }
