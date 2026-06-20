@@ -2,9 +2,24 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ⭐ NEXT BUILD PRIORITY — Templates (Brandon, 2026-06-20)
+## ⭐ NEXT BUILD PRIORITY — Templates redesign (DESIGN DONE 2026-06-20, ADR-093; build next session)
 
-Brandon's call for the next build chunk: **Templates.** Builds on the existing `templates` table + `TemplateBuilder` + relation-defaults (ADR-050); see `explorations/template-property-defaults.md` and roadmap Phase 3 ("workflow/wiki templates → per-type item templates"). Scope into slices when picked up.
+**The next build chunk.** A design session with Brandon settled the shape; **no code yet.** Recorded as **ADR-093** (CORE — reverses ADR-045's "templates aren't items"; **flag Tyler in `COLLAB.md` to ratify before the TPL1 schema migration merges**). Builds on the existing `templates` table + `TemplateBuilder` + relation-defaults (ADR-045/050) and, crucially, **`cloneItemSubtree`** (`src/lib/clone.ts`, ADR-076 — its header already names "the subtree-aware template apply" as a planned caller) + relative subtasks (ADR-085). **Supersedes `explorations/template-property-defaults.md`.**
+
+**The four decisions (Brandon, 2026-06-20):**
+1. **Templates are real items.** A template's content is a normal `items` row + subtree, authored/edited in the same canvas as any item (real subtasks/body/properties/relations — no second editor). Apply = a deep clone. (Reverses ADR-045; **CORE**.)
+2. **Variables = dates + ask-on-apply prompts + computed (full tier).** `{{today}}`/`{{today+7d}}`/`{{now}}`/`{{nextSunday}}`/`{{title}}` tokens in title+body, each fixed-or-dynamic; relative due/scheduled offsets; `{{ask:Label}}` fill-in prompts collected on apply.
+3. **Apply-to-existing = fill-blanks (default) + overwrite (explicit).** Apply to an already-started item, filling only empty fields + adding missing subtasks (Brandon's "change only the unchanged"); plus an explicit overwrite mode.
+4. **Create UX = per-type default + chooser.** Each type may set a default template "+ New" uses; a chooser lists the rest + Blank.
+
+**Industry grounding (research, 2026-06-20):** Notion (duplicate-a-prototype + `@today` "date when duplicated" toggle + default DB template), ClickUp (merge-on-apply-to-existing, per-list default, remap-subtask-dates, granular "what to import"), Obsidian Templater (`tp.date.now(fmt, offset)` + `tp.system.prompt`), Asana (subtasks + relative dates; notably *can't* do relative-to-parent-due, which Ledgr's S5 relative subtasks already nails).
+
+**Slice plan (TPL1–TPL5; scope each finer when picked up — each lands with its own `verify-*` + an ADR/COLLAB note where it touches core):**
+- [ ] **TPL1 — Data model: templates-as-prototype-items (CORE).** Add `items.is_template boolean default false` (+ migration), **excluded from every owner-scoped surface** (list/search/FTS/views/export/MCP list+search/counts/Today/Inbox — enumerate and touch each, the `deletedAt`/`inbox` discipline). Reshape `templates` → thin registry `{id, owner_id, type, name, prototype_item_id → items, is_default, apply_config jsonb, created_at}`; move body/property/relation content onto the prototype item; convert-or-reseed existing rows (alpha). Apply rewired to `cloneItemSubtree(prototype)`. ADR-093 records the direction; this slice writes the migration. **Flag Tyler before merge.**
+- [ ] **TPL2 — Authoring in the real canvas + Save-as-template + duplicate + delete.** A template opens its prototype item in the normal editor with a clear "Template" banner; **"Save as template"** on any item (modal header + canvas) clones its subtree into a hidden template item + registry row; **duplicate** (clone prototype) + **delete** (soft-delete prototype + drop registry row); Build → Templates index lists by type with a default badge.
+- [ ] **TPL3 — Variable/dynamic resolution (dates + prompts + computed).** New pure `src/lib/template-vars.ts`: title/body token resolver (`{{today(+Nd)}}`/`{{now}}`/`{{nextSunday}}`/`{{title}}`/formats, fixed-vs-dynamic) reusing `nl-date.ts`; structured due/scheduled date rules (fixed | offset-from-apply | none); `{{ask:Label}}` prompt scan → a small apply-time form. Runs over the cloned tree after TPL1's clone.
+- [ ] **TPL4 — Apply UX: default+chooser for new items; apply-to-existing (fill-blanks + overwrite).** Per-type default (registry `is_default`) used by "+ New"; a chooser (small preview) for the rest + Blank; **"Apply template…"** on an existing item → fill-blanks merge (empty scalars only, add missing subtasks, body skip/append, add missing relations) or overwrite; the TPL3 prompt form shared by all apply paths.
+- [ ] **TPL5 — MCP + surfaces parity + verify.** Update `list_templates`/`apply_template` (prototype info, apply-to-existing + var answers); dashboard "new-from-template" action widget; rewrite `verify-templates.mts` for the new model.
 
 ## ⚠️ TURNING POINT — the Markdown epoch (v0.18, ADR-037, 2026-06-13)
 

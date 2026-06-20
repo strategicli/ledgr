@@ -1,5 +1,7 @@
 # Exploration: templates that preset people/relations (and core fields)
 
+**Superseded / expanded (2026-06-20, ADR-093):** the templates feature is being redesigned. Templates become real prototype items (clone-to-apply via `cloneItemSubtree`), gaining child items, dynamic variables (dates + `{{ask:…}}` prompts + computed tokens), and apply-to-existing (fill-blanks/overwrite), with a per-type default + chooser. See `next_steps.md` "Templates redesign" (slices TPL1–TPL5) + ADR-093. Option A (relation defaults) shipped (below) and folds into the prototype item's real relations. This doc is kept for the record.
+
 **Status:** option A **BUILT** (2026-06-14, ADR-050); the rest still parked. What shipped: `relation_defaults` on `templates` (migration 0010) + the "Related items" picker in `TemplateBuilder` + apply-writes-edges via `relateItems`. Brandon waived Tyler's core sign-off (he's not on core yet). Still open: the broader **`relation` property kind** (option B — folds into `entity-vs-custom-type.md`) and presetting **core structured fields** (the "adjacent ask" below). Original note kept below for the record.
 
 ## What Brandon hit
