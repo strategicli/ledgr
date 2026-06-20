@@ -24,6 +24,19 @@ export default function ActionWidgetBody({ settings }: { settings: ActionWidgetS
   const baseClass =
     "cancel-drag flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-sm text-neutral-200 hover:bg-neutral-800/40";
 
+  // new-from-template needs a template chosen first; until then it's a hint, not
+  // a button (so a click can't fall through to creating a blank item).
+  if (settings.action === "new-from-template" && !settings.templateId) {
+    return (
+      <div className={`${baseClass} opacity-60`}>
+        {glyph}
+        <span className="text-center text-xs text-neutral-500">
+          Pick a template in settings (⚙)
+        </span>
+      </div>
+    );
+  }
+
   if (settings.action === "link") {
     const href = settings.href || "#";
     const external = /^https?:\/\//.test(href);

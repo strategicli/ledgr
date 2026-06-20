@@ -1,26 +1,37 @@
-// Add-widget menu (edit mode), two sections:
+// Add-widget menu (edit mode), sections:
+//   • Structure — a text/heading block.
+//   • Actions — non-data buttons (quick capture, new-from-template, link). Each
+//     adds an action widget configured afterwards via its gear (TPL5).
 //   • Prebuilt — ready-made starter widgets (Tasks Due Today, Upcoming Tasks,
 //     Meetings This Week, …). Picking one creates (or reuses) its backing saved
 //     view and adds the widget — no view builder needed.
 //   • From Views — the owner's existing saved views.
-// Both add as a List or a Count widget. The richer add flow (create-a-view
-// inline, action widgets) lands later.
+// View/Prebuilt add as a List or a Count widget.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ActionKind } from "@/lib/dashboard-widgets";
 import { STARTER_WIDGETS, type StarterWidget } from "@/lib/starter-widgets";
 import type { ViewDefinition } from "@/lib/views";
 
 type Kind = "view" | "stat";
 
+const ACTION_ITEMS: { action: ActionKind; label: string; description: string }[] = [
+  { action: "new-from-template", label: "New from template", description: "Create an item from a template in one click" },
+  { action: "quick-capture", label: "Quick capture", description: "Create a blank item of a type and open it" },
+  { action: "link", label: "Link", description: "A button that navigates to a page or URL" },
+];
+
 export default function AddWidgetMenu({
   onAdd,
   onAddStarter,
   onAddText,
+  onAddAction,
 }: {
   onAdd: (view: ViewDefinition, kind: Kind) => void;
   onAddStarter: (starter: StarterWidget, kind: Kind) => void;
   onAddText: () => void;
+  onAddAction: (action: ActionKind) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<ViewDefinition[] | null>(null);
@@ -79,6 +90,26 @@ export default function AddWidgetMenu({
               </span>
             </span>
           </button>
+
+          <div className="my-1 border-t border-neutral-800" />
+          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Actions
+          </p>
+          {ACTION_ITEMS.map((a) => (
+            <button
+              key={a.action}
+              onClick={() => {
+                onAddAction(a.action);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800/60"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-neutral-200">{a.label}</span>
+                <span className="block truncate text-xs text-neutral-600">{a.description}</span>
+              </span>
+            </button>
+          ))}
 
           <div className="my-1 border-t border-neutral-800" />
           <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">

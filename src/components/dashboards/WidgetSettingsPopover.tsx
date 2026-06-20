@@ -5,7 +5,7 @@
 // persists + refetches where the change affects data.
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActionKind,
   ActionWidgetSettings,
@@ -197,7 +197,60 @@ function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => 
   }
 
   // action
-  const s = widget.settings as ActionWidgetSettings;
+  return <ActionFields s={widget.settings as ActionWidgetSettings} onChange={onChange} />;
+}
+
+// A picked template: id, name, and the type it builds (sets the widget's
+// targetType so the apply opens the right type).
+type TemplateOption = { id: string; name: string; type: string };
+// A type for the quick-capture picker.
+type TypeOption = { key: string; label: string };
+
+// The action-widget fields. A separate component so it can fetch the owner's
+// templates + types (for the pickers) without conditional hooks in renderFields.
+// The dropdowns replace pasting a raw template UUID / typing a type key (TPL5,
+// Tyler's "richer action-widget pickers" follow-up); choosing a template also
+// sets targetType (the template implies its type).
+function ActionFields({
+  s,
+  onChange,
+}: {
+  s: ActionWidgetSettings;
+  onChange: (settings: WidgetSettings) => void;
+}) {
+  const [templates, setTemplates] = useState<TemplateOption[] | null>(null);
+  const [types, setTypes] = useState<TypeOption[] | null>(null);
+  useEffect(() => {
+    if (s.action !== "new-from-template") return;
+    let alive = true;
+    void fetch("/api/templates")
+      .then((r) => r.json())
+      .then((d: { templates: TemplateOption[] }) => {
+        if (alive) setTemplates(d.templates);
+      })
+      .catch(() => {
+        if (alive) setTemplates([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [s.action]);
+  useEffect(() => {
+    if (s.action !== "quick-capture") return;
+    let alive = true;
+    void fetch("/api/types")
+      .then((r) => r.json())
+      .then((d: { types: TypeOption[] }) => {
+        if (alive) setTypes(d.types);
+      })
+      .catch(() => {
+        if (alive) setTypes([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [s.action]);
+
   return (
     <>
       <label className={field}>
@@ -223,27 +276,56 @@ function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => 
           className={input}
         />
       </label>
-      {s.action !== "link" && (
+      {s.action === "quick-capture" && (
         <label className={field}>
-          Type key
-          <input
-            type="text"
+          Type
+          <select
             value={s.targetType ?? ""}
-            placeholder="e.g. task"
             onChange={(e) => onChange({ ...s, targetType: e.target.value || null })}
             className={input}
-          />
+          >
+            <option value="">{types === null ? "Loading types…" : "Select a type…"}</option>
+            {/* Keep a stale/hidden current value selectable so it isn't lost. */}
+            {s.targetType && !types?.some((t) => t.key === s.targetType) && (
+              <option value={s.targetType}>{s.targetType}</option>
+            )}
+            {types?.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
         </label>
       )}
       {s.action === "new-from-template" && (
         <label className={field}>
-          Template id
-          <input
-            type="text"
+          Template
+          <select
             value={s.templateId ?? ""}
-            onChange={(e) => onChange({ ...s, templateId: e.target.value || null })}
+            onChange={(e) => {
+              const picked = templates?.find((t) => t.id === e.target.value);
+              onChange({
+                ...s,
+                templateId: e.target.value || null,
+                // Carry the template's type so the applied item opens correctly.
+                targetType: picked ? picked.type : s.targetType,
+              });
+            }}
             className={input}
-          />
+          >
+            <option value="">
+              {templates === null
+                ? "Loading templates…"
+                : templates.length === 0
+                  ? "No templates yet"
+                  : "Select a template…"}
+            </option>
+            {templates?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} · {t.type}
+              </option>
+            ))}
+          </select>
         </label>
       )}
       {s.action === "link" && (
