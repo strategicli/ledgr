@@ -7,11 +7,14 @@
 // fresh real item — so the prototype's own content subsumes the old
 // body/property_defaults/relation_defaults blob (no second editor, no drift).
 // Same owner-scoped, hand-rolled-validation discipline as views.ts/types.ts.
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, templates, types } from "@/db/schema";
+import { isItemBody, type ItemBody } from "@/lib/body";
 import { cloneItemSubtree } from "@/lib/clone";
-import { createItem, getItem, ItemError, softDeleteItem } from "@/lib/items";
+import { createItem, getItem, ItemError, softDeleteItem, updateItem } from "@/lib/items";
+import { resolveVars, scanAskLabels } from "@/lib/template-vars";
+import { APP_TIMEZONE, todayBounds } from "@/lib/today";
 
 export type ItemTemplate = {
   id: string;
@@ -268,17 +271,97 @@ export async function duplicateTemplate(
   return rowToTemplate(rows[0]);
 }
 
+// App-timezone "today" as YYYY-MM-DD, for the variable resolver (TPL3).
+function ymdOf(now: Date): string {
+  const t = todayBounds(now).today;
+  return `${t.y}-${String(t.m).padStart(2, "0")}-${String(t.d).padStart(2, "0")}`;
+}
+
+// id/title/body for an item + its whole live subtree (one recursive read).
+async function subtreeNodes(
+  ownerId: string,
+  rootId: string
+): Promise<{ id: string; title: string; body: unknown }[]> {
+  const res = await getDb().execute(sql`
+    with recursive sub as (
+      select id, title, body from items
+        where id = ${rootId} and owner_id = ${ownerId} and deleted_at is null
+      union all
+      select i.id, i.title, i.body from items i
+        join sub s on i.parent_id = s.id
+        where i.owner_id = ${ownerId} and i.deleted_at is null
+    )
+    select id, title, body from sub
+  `);
+  return res.rows as { id: string; title: string; body: unknown }[];
+}
+
+// Resolve {{tokens}} across a freshly-cloned subtree's titles + bodies (ADR-093,
+// TPL3). The root title resolves first so {{title}} in bodies/descendants echoes
+// the final title; `answers` fill {{ask:Label}}; date tokens resolve to `now`.
+async function resolveTemplateVars(
+  ownerId: string,
+  rootId: string,
+  opts: { answers?: Record<string, string>; now?: Date }
+): Promise<void> {
+  const now = opts.now ?? new Date();
+  const base = {
+    todayYmd: ymdOf(now),
+    now,
+    timeZone: APP_TIMEZONE,
+    answers: opts.answers,
+  };
+  const nodes = await subtreeNodes(ownerId, rootId);
+  const root = nodes.find((n) => n.id === rootId);
+  const resolvedTitle = root ? resolveVars(root.title ?? "", base) : "";
+  const ctx = { ...base, title: resolvedTitle };
+  for (const n of nodes) {
+    const patch: { title?: string; body?: ItemBody } = {};
+    const newTitle = resolveVars(n.title ?? "", ctx);
+    if (newTitle !== (n.title ?? "")) patch.title = newTitle;
+    if (isItemBody(n.body) && n.body.text) {
+      const newText = resolveVars(n.body.text, ctx);
+      if (newText !== n.body.text) patch.body = { format: n.body.format, text: newText };
+    }
+    if (patch.title !== undefined || patch.body !== undefined) {
+      await updateItem(ownerId, n.id, patch);
+    }
+  }
+}
+
+// The distinct {{ask:Label}} prompts a template will ask on apply (titles +
+// bodies across its prototype subtree). The apply UI collects these first.
+export async function templateAskLabels(
+  ownerId: string,
+  id: string
+): Promise<string[]> {
+  const tmpl = await getTemplate(ownerId, id);
+  const nodes = await subtreeNodes(ownerId, tmpl.prototypeItemId);
+  const texts: (string | null)[] = [];
+  for (const n of nodes) {
+    texts.push(n.title ?? null);
+    if (isItemBody(n.body)) texts.push(n.body.text);
+  }
+  return scanAskLabels(texts);
+}
+
 // Apply a template: deep-clone its prototype subtree into a fresh REAL item
 // (cloneItemSubtree never copies is_template, so the clone and its children are
-// is_template=false). Carries the prototype's body, properties, subtasks, and
-// relation edges (carryRelations). Deliberate creation, so not an Inbox arrival
-// (ADR-010). Returns the new root item. (TPL3 layers variable resolution and
-// TPL4 the apply-to-existing merge on top of this.)
-export async function createItemFromTemplate(ownerId: string, id: string) {
+// is_template=false), then resolve {{tokens}} over the clone (dates / {{title}}
+// echo / {{ask:Label}} answers, TPL3). Carries the prototype's body, properties,
+// subtasks, and relation edges (carryRelations). Deliberate creation, so not an
+// Inbox arrival (ADR-010). Returns the new root item. (TPL4 layers apply-to-
+// existing on top of this.)
+export async function createItemFromTemplate(
+  ownerId: string,
+  id: string,
+  opts: { answers?: Record<string, string>; now?: Date } = {}
+) {
   const tmpl = await getTemplate(ownerId, id);
   const { rootId } = await cloneItemSubtree(ownerId, tmpl.prototypeItemId, {
     inbox: false,
   });
+  await resolveTemplateVars(ownerId, rootId, opts);
   return getItem(ownerId, rootId);
 }
 

@@ -112,6 +112,24 @@ function optEnum<T extends string>(
   return v as T;
 }
 
+// An object of string→string (e.g. {{ask:Label}} answers); non-string values
+// are dropped. Returns undefined for a missing/empty/non-object value.
+function optStringRecord(
+  args: Record<string, unknown>,
+  key: string
+): Record<string, string> | undefined {
+  const v = args[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "object" || Array.isArray(v)) {
+    throw new ItemError("bad_request", `${key} must be an object`);
+  }
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === "string") out[k] = val;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function optUuidArray(args: Record<string, unknown>, key: string): string[] {
   const v = args[key];
   if (v === undefined || v === null) return [];
@@ -559,19 +577,27 @@ const TOOLS: McpTool[] = [
     title: "Apply template",
     description:
       "Create a new item from a template: a deep copy of the template's prototype " +
-      "(its title, body, subtasks, properties, and related items). Adjust any " +
-      "fields afterward with update_item. Get the id from list_templates.",
+      "(its title, body, subtasks, properties, and related items), with any " +
+      "{{today}}/{{title}} date tokens and {{ask:Label}} fill-in prompts resolved. " +
+      "Pass `answers` (an object keyed by prompt label) to fill the {{ask:…}} " +
+      "prompts; unanswered ones resolve to empty. Get the id from list_templates.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "The template id (UUID), from list_templates." },
+        answers: {
+          type: "object",
+          description: "Values for the template's {{ask:Label}} prompts, keyed by label.",
+        },
       },
       required: ["id"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     handler: async (ownerId, args) => {
-      const created = await createItemFromTemplate(ownerId, asUuid(args.id, "id"));
+      const created = await createItemFromTemplate(ownerId, asUuid(args.id, "id"), {
+        answers: optStringRecord(args, "answers"),
+      });
       return rowView(created);
     },
   },

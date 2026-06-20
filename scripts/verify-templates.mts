@@ -28,9 +28,11 @@ const {
   createItemFromTemplate,
   createTemplateFromItem,
   duplicateTemplate,
+  templateAskLabels,
   templateCountsByType,
 } = await import("../src/lib/templates");
 const { cloneItemSubtree } = await import("../src/lib/clone");
+const { bodyMarkdown } = await import("../src/lib/body");
 const { createType, deleteType, countLiveItemsOfType } = await import("../src/lib/types");
 const { ItemError, createItem, getItem, listItems, itemCountsByType, updateItem, softDeleteItem } =
   await import("../src/lib/items");
@@ -224,6 +226,33 @@ try {
   check("getTemplateByPrototype is null for a real item", (await getTemplateByPrototype(owner.id, realItem.id)) === null);
   check("getTemplateByPrototype is null for a template subtask", (await getTemplateByPrototype(owner.id, savedKids[0].id)) === null);
   check("getTemplateByPrototype is owner-scoped", (await getTemplateByPrototype(other.id, saved.prototypeItemId)) === null);
+
+  // --- TPL3: variable resolution on apply ---
+  const vtmpl = await createTemplate(owner.id, { type: typeKey, name: "Var template" });
+  await updateItem(owner.id, vtmpl.prototypeItemId, {
+    title: "Review for {{nextSunday:short}}",
+    body: { format: "markdown", text: "Topic: {{ask:Topic}}\nDue {{today+3d:iso}}\nRe: {{title}}" },
+  });
+  await createItem(owner.id, { type: typeKey, title: "Prep {{ask:Topic}}", parentId: vtmpl.prototypeItemId });
+  check("templateAskLabels scans titles + bodies across the subtree", JSON.stringify(await templateAskLabels(owner.id, vtmpl.id)) === JSON.stringify(["Topic"]));
+  // Saturday 2026-06-20 → next Sunday = Jun 28; +3d = 2026-06-23.
+  const vapplied = await createItemFromTemplate(owner.id, vtmpl.id, {
+    now: new Date("2026-06-20T12:00:00Z"),
+    answers: { Topic: "Prayer" },
+  });
+  const vappliedFull = await getItem(owner.id, vapplied.id);
+  const vappliedBody = bodyMarkdown(vappliedFull.body);
+  check("apply resolves a date token in the title", vappliedFull.title === "Review for Jun 28");
+  check("apply resolves {{ask}} in the body", vappliedBody.includes("Topic: Prayer"));
+  check("apply resolves a date offset in the body", vappliedBody.includes("Due 2026-06-23"));
+  check("apply resolves {{title}} echo to the RESOLVED title", vappliedBody.includes("Re: Review for Jun 28"));
+  const vappliedKids = await db
+    .select({ title: items.title, isTemplate: items.isTemplate })
+    .from(items)
+    .where(and(eq(items.parentId, vapplied.id), eq(items.ownerId, owner.id)));
+  check("apply resolves tokens in a subtask + it's a real item", vappliedKids.length === 1 && vappliedKids[0].title === "Prep Prayer" && vappliedKids[0].isTemplate === false);
+  check("the prototype keeps its tokens (only the clone is resolved)", (await getItem(owner.id, vtmpl.prototypeItemId)).title === "Review for {{nextSunday:short}}");
+  check("an unanswered {{ask}} resolves to empty", bodyMarkdown((await getItem(owner.id, (await createItemFromTemplate(owner.id, vtmpl.id, { now: new Date("2026-06-20T12:00:00Z") })).id)).body).includes("Topic: \n"));
 
   // --- delete = drop registry row + soft-delete prototype ---
   const t2proto = t2.prototypeItemId;
