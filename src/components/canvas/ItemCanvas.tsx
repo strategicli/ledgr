@@ -16,6 +16,7 @@ import { listAncestors } from "@/lib/subtasks";
 import { getTemplateByPrototype } from "@/lib/templates";
 import { getType } from "@/lib/types";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
+import ApplyTemplateButton from "@/components/canvas/ApplyTemplateButton";
 import SaveAsTemplateButton from "@/components/canvas/SaveAsTemplateButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 
@@ -112,12 +113,19 @@ export default async function ItemCanvas({
               ))}
             </div>
             {variant === "page" && !item.isTemplate && (
-              <SaveAsTemplateButton
-                itemId={item.id}
-                defaultName={item.title || "Untitled"}
-                align="right"
-                triggerClassName="shrink-0 rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-              />
+              <span className="flex shrink-0 items-center gap-1">
+                <ApplyTemplateButton
+                  itemId={item.id}
+                  type={item.type}
+                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                />
+                <SaveAsTemplateButton
+                  itemId={item.id}
+                  defaultName={item.title || "Untitled"}
+                  align="right"
+                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                />
+              </span>
             )}
           </div>
         )}
