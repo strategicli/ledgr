@@ -1,16 +1,30 @@
 // Creates a new item of the given type, then jumps into its editor. When the
-// type has item templates, it becomes a small menu — "Blank" plus each template
-// — so a new item can start from a template prototype (ADR-093). A template with
-// {{ask:…}} prompts (TPL3) opens a small form first; otherwise it applies
-// straight away. It self-fetches the type's templates on mount, so every list
-// page that already renders <NewItemButton type=…/> gets the menu with no change.
+// type has templates (ADR-093), "+ New" gains a chooser (Blank + each template).
+// A per-type DEFAULT template (TPL4) is applied by the primary "+ New" click,
+// with a ▾ opening the chooser for the rest; with no default, "+ New ▾" just
+// opens the chooser. A template with {{ask:…}} prompts (TPL3) opens a small form
+// first. Self-fetches the type's templates on mount, so every list page that
+// renders <NewItemButton type=…/> gets this with no change.
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import TemplateApplyDialog from "@/components/home/TemplateApplyDialog";
 
-type TemplateOpt = { id: string; name: string };
+type TemplateOpt = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  subtaskCount: number;
+  hasBody: boolean;
+};
+
+function previewLine(t: TemplateOpt): string {
+  const parts: string[] = [];
+  if (t.subtaskCount > 0) parts.push(`${t.subtaskCount} subtask${t.subtaskCount === 1 ? "" : "s"}`);
+  if (t.hasBody) parts.push("starter body");
+  return parts.join(" · ");
+}
 
 export default function NewItemButton({ type }: { type: string }) {
   const router = useRouter();
@@ -26,12 +40,10 @@ export default function NewItemButton({ type }: { type: string }) {
   useEffect(() => {
     if (!type) return;
     const ctrl = new AbortController();
-    fetch(`/api/templates?type=${encodeURIComponent(type)}`, { signal: ctrl.signal })
+    fetch(`/api/templates?type=${encodeURIComponent(type)}&preview=1`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { templates?: TemplateOpt[] } | null) => {
-        if (d?.templates) {
-          setTemplates(d.templates.map((t) => ({ id: t.id, name: t.name })));
-        }
+        if (d?.templates) setTemplates(d.templates);
       })
       .catch(() => {});
     return () => ctrl.abort();
@@ -105,21 +117,40 @@ export default function NewItemButton({ type }: { type: string }) {
     );
   }
 
+  const defaultTpl = templates.find((t) => t.isDefault);
+  // The primary "+ New" click: apply the default if there is one, else open the
+  // chooser. (Error state retries the same primary action.)
+  const primary = () =>
+    defaultTpl ? void createFromTemplate(defaultTpl.id, defaultTpl.name) : setMenuOpen((o) => !o);
+
   return (
-    <div ref={rootRef} className="relative inline-block text-left">
+    <div ref={rootRef} className="relative inline-flex items-center text-left">
       <button
-        onClick={() => setMenuOpen((o) => !o)}
+        onClick={primary}
         disabled={state === "busy"}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
+        aria-haspopup={defaultTpl ? undefined : "menu"}
+        aria-expanded={defaultTpl ? undefined : menuOpen}
+        title={defaultTpl ? `New from “${defaultTpl.name}” (default)` : undefined}
         className={buttonClass}
       >
-        {state === "error" ? "Failed, retry?" : "+ New ▾"}
+        {state === "error" ? "Failed, retry?" : defaultTpl ? "+ New" : "+ New ▾"}
       </button>
+      {defaultTpl && (
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          disabled={state === "busy"}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label="Choose a template"
+          className={`${buttonClass} -ml-1 px-1`}
+        >
+          ▾
+        </button>
+      )}
       {menuOpen && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50"
+          className="absolute right-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50"
         >
           <button
             role="menuitem"
@@ -132,16 +163,25 @@ export default function NewItemButton({ type }: { type: string }) {
           <p className="px-3 py-0.5 text-xs uppercase tracking-wide text-neutral-600">
             From template
           </p>
-          {templates.map((t) => (
-            <button
-              key={t.id}
-              role="menuitem"
-              onClick={() => void createFromTemplate(t.id, t.name)}
-              className="block w-full truncate px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
-            >
-              {t.name}
-            </button>
-          ))}
+          {templates.map((t) => {
+            const preview = previewLine(t);
+            return (
+              <button
+                key={t.id}
+                role="menuitem"
+                onClick={() => void createFromTemplate(t.id, t.name)}
+                className="block w-full px-3 py-1.5 text-left hover:bg-neutral-800"
+              >
+                <span className="flex items-center gap-1.5 truncate text-sm text-neutral-200">
+                  {t.isDefault && <span className="text-amber-300" title="Default">★</span>}
+                  <span className="truncate">{t.name}</span>
+                </span>
+                {preview && (
+                  <span className="block truncate text-xs text-neutral-500">{preview}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
       {applyVars && (

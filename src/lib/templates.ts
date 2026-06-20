@@ -133,6 +133,42 @@ export async function listTemplates(
   return rows.map((r) => rowToTemplate(r.t));
 }
 
+// One entry in the "+ New" chooser (TPL4): name + default flag + a small preview
+// (subtask count, whether it has a starter body).
+export type TemplatePickerEntry = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  subtaskCount: number;
+  hasBody: boolean;
+};
+
+// Templates for the "+ New" chooser, default first then name. One query: joins
+// the live prototype (skips an orphaned row) and counts its direct subtasks.
+export async function listTemplatesForPicker(
+  ownerId: string,
+  type?: string
+): Promise<TemplatePickerEntry[]> {
+  const typeCond = type ? sql` and t.type = ${type}` : sql``;
+  const res = await getDb().execute(sql`
+    select t.id, t.name, t.is_default as "isDefault",
+      (p.body is not null) as "hasBody",
+      (select count(*)::int from items c
+        where c.parent_id = t.prototype_item_id and c.deleted_at is null) as "subtaskCount"
+    from templates t
+    join items p on p.id = t.prototype_item_id and p.deleted_at is null
+    where t.owner_id = ${ownerId}${typeCond}
+    order by t.is_default desc, t.name asc
+  `);
+  return (res.rows as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    isDefault: r.isDefault === true,
+    subtaskCount: Number(r.subtaskCount) || 0,
+    hasBody: r.hasBody === true,
+  }));
+}
+
 export async function getTemplate(
   ownerId: string,
   id: string
