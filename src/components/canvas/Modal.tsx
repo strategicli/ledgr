@@ -7,6 +7,7 @@
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import ApplyTemplateButton from "@/components/canvas/ApplyTemplateButton";
 import SaveAsTemplateButton from "@/components/canvas/SaveAsTemplateButton";
 
 export default function Modal({
@@ -14,6 +15,7 @@ export default function Modal({
   children,
   wide = false,
   title = "",
+  type = "",
   isTemplate = false,
 }: {
   itemId: string;
@@ -25,6 +27,8 @@ export default function Modal({
   // template prototype (its delete is the registry-aware banner action, not the
   // generic item Trash, which would orphan the registry row) — ADR-093 TPL2.
   title?: string;
+  // The item's type, for the header's "Apply template…" picker (TPL4b).
+  type?: string;
   isTemplate?: boolean;
 }) {
   const router = useRouter();
@@ -89,6 +93,13 @@ export default function Modal({
                   align="left"
                   triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
                 />
+                {type && (
+                  <ApplyTemplateButton
+                    itemId={itemId}
+                    type={type}
+                    triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                  />
+                )}
               </>
             )}
           </div>

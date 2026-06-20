@@ -23,11 +23,13 @@ const {
   getTemplate,
   getTemplateByPrototype,
   listTemplates,
+  listTemplatesForPicker,
   updateTemplate,
   deleteTemplate,
   createItemFromTemplate,
   createTemplateFromItem,
   duplicateTemplate,
+  applyTemplateToExisting,
   templateAskLabels,
   templateCountsByType,
 } = await import("../src/lib/templates");
@@ -281,6 +283,86 @@ try {
   const noRules = await createTemplate(owner.id, { type: typeKey, name: "No-date template" });
   const noRulesApplied = await getItem(owner.id, (await createItemFromTemplate(owner.id, noRules.id, { now: new Date("2026-06-20T12:00:00Z") })).id);
   check("no rules → applied item has no dates", noRulesApplied.scheduledDate === null && noRulesApplied.dueDate === null);
+
+  // --- TPL4a: the "+ New" picker (default-first + preview) ---
+  // vtmpl (from the TPL3 block) has 1 subtask + a starter body; make it default.
+  await updateTemplate(owner.id, vtmpl.id, { isDefault: true });
+  const picker = await listTemplatesForPicker(owner.id, typeKey);
+  check("picker lists the type's templates", picker.length >= 1);
+  check("picker puts the default first", picker[0].id === vtmpl.id && picker[0].isDefault === true);
+  check("only one picker entry is the default", picker.filter((p) => p.isDefault).length === 1);
+  const vEntry = picker.find((p) => p.id === vtmpl.id);
+  check("picker preview counts subtasks", vEntry?.subtaskCount === 1);
+  check("picker preview flags a starter body", vEntry?.hasBody === true);
+  check("picker is owner-scoped", (await listTemplatesForPicker(other.id, typeKey)).length === 0);
+
+  // --- TPL4b: apply-to-existing (fill-blanks + overwrite) ---
+  const APPLY_NOW = new Date("2026-06-20T12:00:00Z"); // today+1d=06-21, +2d=06-22
+  const mtmpl = await createTemplate(owner.id, { type: typeKey, name: "Merge template" });
+  await updateItem(owner.id, mtmpl.prototypeItemId, {
+    title: "Tmpl title",
+    body: { format: "markdown", text: "Due {{today+1d:iso}} for {{title}}" },
+    urgency: "high",
+    properties: { stage: "Offer", round: "Phone" },
+  });
+  await updateTemplate(owner.id, mtmpl.id, { applyConfig: { scheduledDate: { mode: "offset", days: 2 } } });
+  await createItem(owner.id, { type: typeKey, title: "Shared sub", parentId: mtmpl.prototypeItemId });
+  await createItem(owner.id, { type: typeKey, title: "Plan {{today+1d:iso}}", parentId: mtmpl.prototypeItemId });
+  await relateItems(owner.id, mtmpl.prototypeItemId, alice.id);
+
+  // Fill-blanks target: started, with its own title/body/props/subtasks.
+  const tgtA = await createItem(owner.id, {
+    type: typeKey,
+    title: "Existing title",
+    body: { format: "markdown", text: "Existing body" },
+    properties: { stage: "Applied", other: "keep" },
+  });
+  await createItem(owner.id, { type: typeKey, title: "Shared sub", parentId: tgtA.id });
+  await createItem(owner.id, { type: typeKey, title: "Existing-only sub", parentId: tgtA.id });
+  await applyTemplateToExisting(owner.id, mtmpl.id, tgtA.id, { mode: "fill", now: APPLY_NOW });
+  const fa = await getItem(owner.id, tgtA.id);
+  const faProps = fa.properties as Record<string, unknown>;
+  check("fill keeps a non-empty title", fa.title === "Existing title");
+  check("fill skips a non-empty body", bodyMarkdown(fa.body) === "Existing body");
+  check("fill sets an empty scalar (urgency)", fa.urgency === "high");
+  check("fill keeps the target's own property value", faProps.stage === "Applied");
+  check("fill adds a missing property", faProps.round === "Phone");
+  check("fill preserves a target-only property", faProps.other === "keep");
+  check("fill sets an empty date from the rule (today+2)", !!fa.scheduledDate && dateToYmdUtc(fa.scheduledDate) === "2026-06-22");
+  const faKids = await db.select({ title: items.title }).from(items).where(and(eq(items.parentId, tgtA.id), eq(items.ownerId, owner.id)));
+  const faTitles = faKids.map((k) => k.title).sort();
+  check("fill adds the missing subtask (token-resolved), dedupes the shared one", faKids.length === 3 && faTitles.includes("Plan 2026-06-21") && faTitles.filter((t) => t === "Shared sub").length === 1);
+  check("fill adds the template's relation", (await listRelatedItems(owner.id, tgtA.id)).some((r) => r.id === alice.id));
+
+  // Overwrite target.
+  const tgtB = await createItem(owner.id, {
+    type: typeKey,
+    title: "Old title",
+    body: { format: "markdown", text: "Old body" },
+    urgency: "low",
+    properties: { stage: "Applied", other: "keep" },
+  });
+  await createItem(owner.id, { type: typeKey, title: "Existing-only sub", parentId: tgtB.id });
+  await applyTemplateToExisting(owner.id, mtmpl.id, tgtB.id, { mode: "overwrite", now: APPLY_NOW });
+  const ob = await getItem(owner.id, tgtB.id);
+  const obProps = ob.properties as Record<string, unknown>;
+  check("overwrite replaces the title", ob.title === "Tmpl title");
+  check("overwrite replaces the body with {{title}} echoing the new title", bodyMarkdown(ob.body) === "Due 2026-06-21 for Tmpl title");
+  check("overwrite overrides a shared property", obProps.stage === "Offer");
+  check("overwrite preserves a target-only property", obProps.other === "keep");
+  const obKids = await db.select({ title: items.title }).from(items).where(and(eq(items.parentId, tgtB.id), eq(items.ownerId, owner.id)));
+  check("overwrite ADDS template subtasks without deleting the target's", obKids.length === 3 && obKids.some((k) => k.title === "Existing-only sub") && obKids.some((k) => k.title === "Shared sub"));
+
+  // Guards.
+  await throws("apply-to-existing rejects a template target", () => applyTemplateToExisting(owner.id, mtmpl.id, mtmpl.prototypeItemId), "bad_request");
+  const otherType = `vtmpl_other_${stamp}`;
+  await createType({ key: otherType, label: "VOther", icon: null, showInQuickCapture: true, capability: null, propertySchema: [] });
+  const wrongTypeItem = await createItem(owner.id, { type: otherType, title: "wrong type" });
+  await throws("apply-to-existing rejects a type mismatch", () => applyTemplateToExisting(owner.id, mtmpl.id, wrongTypeItem.id), "bad_request");
+  await throws("apply-to-existing is owner-scoped (template)", () => applyTemplateToExisting(other.id, mtmpl.id, tgtA.id), "not_found");
+  const tgtTrash = await createItem(owner.id, { type: typeKey, title: "trash target" });
+  await softDeleteItem(owner.id, tgtTrash.id);
+  await throws("apply-to-existing rejects a trashed target", () => applyTemplateToExisting(owner.id, mtmpl.id, tgtTrash.id), "bad_request");
 
   // --- delete = drop registry row + soft-delete prototype ---
   const t2proto = t2.prototypeItemId;

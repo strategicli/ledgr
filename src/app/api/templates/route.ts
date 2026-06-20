@@ -3,19 +3,26 @@ import { errorResponse, requireOwner } from "@/lib/api";
 import {
   createTemplate,
   listTemplates,
+  listTemplatesForPicker,
   parseTemplateInput,
 } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/templates[?type=key] — the owner's item templates, optionally for
-// one type (the "+ New" menu fetches this per type).
+// GET /api/templates[?type=key][&preview=1] — the owner's item templates,
+// optionally for one type. preview=1 returns the "+ New" chooser shape
+// (default-first + subtask count + has-body); otherwise the full registry rows.
 export async function GET(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
-    const type = new URL(request.url).searchParams.get("type") ?? undefined;
-    return NextResponse.json({ templates: await listTemplates(owner.id, type) });
+    const params = new URL(request.url).searchParams;
+    const type = params.get("type") ?? undefined;
+    const templates =
+      params.get("preview") === "1"
+        ? await listTemplatesForPicker(owner.id, type)
+        : await listTemplates(owner.id, type);
+    return NextResponse.json({ templates });
   } catch (err) {
     return errorResponse(err);
   }

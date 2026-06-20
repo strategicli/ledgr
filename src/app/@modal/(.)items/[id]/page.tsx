@@ -25,6 +25,7 @@ export default async function ItemModal({
   // ItemCanvas surfaces the real not-found/auth handling.
   let wide = false;
   let title = "";
+  let type = "";
   let isTemplate = false;
   try {
     const owner = await resolveOwner();
@@ -35,13 +36,14 @@ export default async function ItemModal({
       const typeDef = await getType(item.type).catch(() => null);
       wide = canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
       title = item.title;
+      type = item.type;
       isTemplate = item.isTemplate;
     }
   } catch {
     // ignore — render the default modal width
   }
   return (
-    <Modal itemId={id} wide={wide} title={title} isTemplate={isTemplate}>
+    <Modal itemId={id} wide={wide} title={title} type={type} isTemplate={isTemplate}>
       <ItemCanvas id={id} variant="modal" />
     </Modal>
   );
