@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ⭐ NEXT BUILD PRIORITY — Templates (Brandon, 2026-06-20)
+
+Brandon's call for the next build chunk: **Templates.** Builds on the existing `templates` table + `TemplateBuilder` + relation-defaults (ADR-050); see `explorations/template-property-defaults.md` and roadmap Phase 3 ("workflow/wiki templates → per-type item templates"). Scope into slices when picked up.
+
 ## ⚠️ TURNING POINT — the Markdown epoch (v0.18, ADR-037, 2026-06-13)
 
 **Read this before anything below.** After a long Brandon↔Tyler conversation, two foundational decisions changed and Ledgr became a two-builder project:
@@ -62,7 +66,7 @@ Brandon: kanban DnD works on desktop but not mobile. Add long-press-and-drag on 
 
 **🎉 The Native Tasks chunk (T1–T6, ADR-073) is complete — Ledgr replaces Todoist end to end on Brandon's instance.**
 
-**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the §1c-gated matcher setup-wizard + learn-by-confirmation UIs (Phase 2); the **alpha → v1.0 production flip** (record in `decisions.md` — turns on migration-caution + no-Saturday-deploys).
+**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the matcher setup-wizard + learn-by-confirmation UIs (Phase 2; §1c is live as of 2026-06-19, so these are now unblocked); the **alpha → v1.0 production flip** (record in `decisions.md` — turns on migration-caution + no-Saturday-deploys).
 
 ---
 
@@ -485,9 +489,9 @@ The second workflow module on the M5/M6 foundation. A `paper` type with a **mark
 
 `tsc --noEmit` clean; full `next build` clean (all new routes compile); the two new migrations applied to Neon; all three new verify scripts green plus `verify-print` unchanged. **Pending (same posture as the rest of Phase 2):** the in-browser checks — a real push subscription + delivered notification (needs VAPID keys, §1e), and eyeballing the share render / canvas controls on the deploy. Logic + types + build are proven.
 
-**Phase 2 is now code-complete** except the deferred matcher UIs (setup wizard + learn-by-confirmation), which stay **§1c-blocked** (need live calendar). Everything else awaits Brandon-steps (Azure §1c, the cron token, Todoist token/webhook, and now VAPID keys §1e), not code.
+**Phase 2 is now code-complete** except the matcher UIs (setup wizard + learn-by-confirmation). **§1c landed 2026-06-19, so those UIs are now UNBLOCKED** (the remaining work is UI code, not a Brandon-step). The live-wiring Brandon-steps still open: VAPID keys (§1e), the MCP token (§1f), the GitHub token (§1g), and `CRON_SECRET` for the OneDrive export.
 
-**Next session — Phase 3 opens:** the MCP server (search/read/create/update items over a personal API token) is the natural first slice; then scheduled Claude tasks (morning briefing / weekly health check) over the same API, and the Build surface shell. Or, once Brandon completes §1c, circle back to the matcher setup-wizard + learn-by-confirmation UIs.
+**Next session — Phase 3 opens:** the MCP server (search/read/create/update items over a personal API token) is the natural first slice; then scheduled Claude tasks (morning briefing / weekly health check) over the same API, and the Build surface shell. Or, now that §1c is live (2026-06-19), build the matcher setup-wizard + learn-by-confirmation UIs.
 
 **New Brandon-step for notifications (§1e):** `node scripts/make-vapid-keys.mjs` → set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` in Vercel + `.env.local`, redeploy → open Today on the installed PWA, "Enable notifications", confirm a row lands and a test push arrives. The agenda/prep crons also need the existing `LEDGR_CRON_TOKEN` (the agenda rides the Vercel `CRON_SECRET` automatically).
 
@@ -526,7 +530,7 @@ The second workflow module on the M5/M6 foundation. A `paper` type with a **mark
 `tsc --noEmit` is clean across the whole project; all six new verify scripts pass, and the two touched Phase-1 scripts (`verify-export`, `verify-relations-write`) still pass — no regressions. `/health` now reports export, calendar, Todoist, email, and graph canaries.
 
 **(2) Half-done / verification-pending:**
-- **Matcher UIs (slice 23):** engine + config + suggested/confirmed states are done. **Not built:** the setup wizard (samples live calendar → §1c-blocked) and learn-by-confirmation UI (a Build affordance on the slice-15 confirm path; the data backbone — `properties.match.matcherIds`, `/api/matchers` — is in place). Tracked as the follow-up item below. Roadmap line stays `[~]`.
+- **Matcher UIs (slice 23):** engine + config + suggested/confirmed states are done. **Not built:** the setup wizard (samples live calendar; §1c now live 2026-06-19, ready to build) and learn-by-confirmation UI (a Build affordance on the slice-15 confirm path; the data backbone — `properties.match.matcherIds`, `/api/matchers` — is in place). Tracked as the follow-up item below. Roadmap line stays `[~]`.
 - **Meeting-prep panel (slice 24):** the lib + promotion are fully verified; the **canvas panel's in-browser visual check is pending** — it needs a meeting with a related person (which pairs with §1c live calendar). The logic is proven; only CSS/layout is unverified.
 - **Recurrence-occurrence completion logging (Todoist, slice 25)** deferred — needs the Sync API completed-items endpoint.
 - **Every integration is end-to-end-blocked on a Brandon-step** (Azure permissions, the cron token, the Todoist token/webhook, the Outlook folder). The code is complete and unit-verified; only the live wiring waits.
@@ -537,10 +541,17 @@ The second workflow module on the M5/M6 foundation. A `paper` type with a **mark
 
 ---
 
-**Brandon-steps to light up the integrations (in priority order — code is done, these are the live wiring):**
-1. **§1c — Azure Graph permissions + Application Access Policy (unblocks BOTH calendar and email-in):** on the `ledgr-export` registration add `Calendars.Read` **and** `Mail.ReadWrite` application permissions → grant admin consent → create the Application Access Policy restricting the app to your mailbox (Exchange Online PowerShell, exact commands in runbook §1c). App-only Exchange scopes are tenant-wide until that policy exists — this is the security boundary, mandatory. Also create the **`Ledgr Import` Outlook folder** for email-in. Verify: `npx tsx scripts/verify-graph-auth.mts` (the Calendars.Read probe stops returning 403 once the policy applies, ~30 min); then a calendar "sync now" and an email drop-in.
-2. **`LEDGR_CRON_TOKEN` GitHub repo secret (unblocks the 6h calendar / 3h Todoist / 30-min email polls):** `node scripts/make-token.mjs gh-actions cron`, add its entry to `LEDGR_API_TOKENS` in Vercel + redeploy, set the raw value as the `LEDGR_CRON_TOKEN` repo secret (one cron token can also serve `LEDGR_ERROR_TOKEN` for failure reports). "Sync now" buttons work without it; the polls need it.
-3. **Todoist token + webhook — runbook §1d (unblocks Todoist sync):** set `TODOIST_TOKEN` (Settings → Integrations → Developer) and `TODOIST_CLIENT_SECRET` (a Todoist app's client secret) in Vercel + `.env.local`; register the webhook `https://ledgr-teal.vercel.app/api/todoist/webhook` for `item:completed`/`item:updated`/`item:added`. Verify per §1d step 5.
+**Brandon-steps to light up the integrations (status 2026-06-19):**
+1. ✅ **DONE 2026-06-19, §1c Azure Graph permissions + Application Access Policy (calendar + email-in):** `Calendars.Read` + `Mail.ReadWrite` granted and admin-consented, the Application Access Policy restricts the app to Brandon's mailbox, and the `Ledgr Import` folder exists. Verified live: the `verify-graph-auth.mts` Calendars.Read probe is clean, and `/health` shows clean `lastCalendarSyncAt` + `lastEmailImportAt`.
+2. ✅ **DONE 2026-06-14, `LEDGR_CRON_TOKEN` GitHub repo secret:** set, so the GitHub Actions calendar/email polls authenticate. (One cron token can also serve `CRON_SECRET` for the Vercel crons and `LEDGR_ERROR_TOKEN`.)
+3. ⚪ **Optional, Todoist (§1d):** superseded as the default by native tasks (ADR-073/081). Brandon's instance runs `native`, so this is only for an instance that opts into the Todoist adapter.
+
+**Manual setup Brandon-steps — ✅ ALL DONE 2026-06-20 (verified on `/health`):**
+4. ✅ **DONE 2026-06-20, OneDrive export automation:** the scheduled Vercel export cron ran unattended at 2026-06-20T07:00Z (`lastExportAt` advanced on its own), so the existing `CRON_SECRET` was valid all along — the export had only failed before because Graph was unconfigured until 2026-06-19. A manual run also seeded the first backup (81 items). Sunday-proof backup is live.
+5. ✅ **DONE 2026-06-20, VAPID push keys (§1e):** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` set in Vercel; the "Enable notifications" toggle now appears on Home (push configured).
+6. ✅ **DONE 2026-06-20, MCP token (§1f):** the `claude-mcp:mcp` entry is in `LEDGR_API_TOKENS`; `/health` `checks.mcp` is all-true; `list_types` returns the real type list. NOTE: the consumer "Add custom connector" dialog is OAuth-only (no header field), so the working path for a static-token MCP is Claude Desktop's `claude_desktop_config.json` + `mcp-remote` (runbook §1f updated).
+7. ✅ **DONE 2026-06-20, GitHub token (§1g):** fine-grained PAT (Contents R/W on `brandonscollins/ledgr`) set as `GITHUB_TOKEN`; `/health` `checks.github` is `{configured:true, ok:true, repo:"brandonscollins/ledgr"}`.
+8. ⚪ **Optional, AssemblyAI key (§1i) — not set:** would enable audio-to-transcription on meetings; paste-transcript works without it.
 
 **Phase 1 "live with it" checks (no rush, carried over):**
 - Save Offline (was "Pulpit Ready") airplane-mode test on the installed phone PWA (+ the Print/PDF view); PWA install + share-target on Android; try both desktop navs and pick one (closes Q9, loser gets deleted); live with `q`/`Ctrl+K`; (optional) attach an R2 custom domain and update `R2_PUBLIC_BASE_URL` before many images exist.
@@ -593,7 +604,7 @@ The Tiptap editor (ADR-040) shipped the core path; a few BlockNote-era affordanc
 - Minor: strikethrough toolbar button (Strike already round-trips, just no button).
 
 ### (follow-up) Matchers: setup wizard + learn-by-confirmation UI
-- The matcher **engine + config + suggested/confirmed states are done** (slice 23). Remaining: (a) **setup wizard** — sample recent/upcoming events and let Brandon pick matches → write first rules (needs live calendar, so **§1c-blocked**); (b) **learn-by-confirmation** — when Brandon confirms a suggested match on a meeting (slice-15 confirm path), offer to save a standing rule (POST `/api/matchers`); the data backbone (`properties.match.matcherIds`, the matchers API) is already in place. Pick these up once §1c lands and the meeting canvas shows matches.
+- The matcher **engine + config + suggested/confirmed states are done** (slice 23). Remaining: (a) **setup wizard** — sample recent/upcoming events and let Brandon pick matches → write first rules (needs live calendar; **§1c now live 2026-06-19, ready to build**); (b) **learn-by-confirmation** — when Brandon confirms a suggested match on a meeting (slice-15 confirm path), offer to save a standing rule (POST `/api/matchers`); the data backbone (`properties.match.matcherIds`, the matchers API) is already in place. §1c is now live (2026-06-19), so pick these up whenever; the meeting canvas shows matches.
 
 ---
 
