@@ -76,11 +76,18 @@ async function pinLeg(itemId: string): Promise<LegState> {
       }
     }
 
-    // The verification round-trip: only a re-read copy proves the pin.
+    // The verification round-trip: only a re-read copy proves the pin. Match on
+    // a marker every print document carries — the print-bar's window.print()
+    // handler plus the full <html>…</html> shell — not the title <h1>, which
+    // renderPrintDocument suppresses for chordpro chord-chart bodies. A 404
+    // "Not found" string or a /sign-in redirect body carries neither, so it
+    // still fails.
     const stored = await cache.match(printUrl);
     const storedItem = await cache.match(`/items/${itemId}`);
     const body = stored ? await stored.text() : "";
-    if (!stored || !storedItem || !body.includes("<h1")) {
+    const isPrintDoc =
+      body.includes("window.print()") && body.includes("</html>");
+    if (!stored || !storedItem || !isPrintDoc) {
       return { phase: "fail", detail: "pin verification failed — not cached" };
     }
     const imgNote =
