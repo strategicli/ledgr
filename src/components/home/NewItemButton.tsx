@@ -1,12 +1,14 @@
 // Creates a new item of the given type, then jumps into its editor. When the
-// type has item templates (slice 34), it becomes a small menu — "Blank" plus
-// each template — so a new item can start from a preset body + property
-// defaults. It self-fetches the type's templates on mount, so every list page
-// that already renders <NewItemButton type=…/> gets the menu with no change.
+// type has item templates, it becomes a small menu — "Blank" plus each template
+// — so a new item can start from a template prototype (ADR-093). A template with
+// {{ask:…}} prompts (TPL3) opens a small form first; otherwise it applies
+// straight away. It self-fetches the type's templates on mount, so every list
+// page that already renders <NewItemButton type=…/> gets the menu with no change.
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import TemplateApplyDialog from "@/components/home/TemplateApplyDialog";
 
 type TemplateOpt = { id: string; name: string };
 
@@ -15,6 +17,10 @@ export default function NewItemButton({ type }: { type: string }) {
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
   const [templates, setTemplates] = useState<TemplateOpt[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // A picked template that has {{ask:…}} prompts → the apply-time form.
+  const [applyVars, setApplyVars] = useState<
+    { id: string; name: string; askLabels: string[] } | null
+  >(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,8 +74,24 @@ export default function NewItemButton({ type }: { type: string }) {
       })
     );
 
-  const createFromTemplate = (id: string) =>
+  const createFromTemplate = async (id: string, name: string) => {
+    setMenuOpen(false);
+    // A template with {{ask:…}} prompts collects answers first (TPL3); otherwise
+    // apply straight away. A vars-fetch failure falls through to a direct apply.
+    try {
+      const res = await fetch(`/api/templates/${id}/vars`);
+      if (res.ok) {
+        const { askLabels } = (await res.json()) as { askLabels?: string[] };
+        if (askLabels && askLabels.length) {
+          setApplyVars({ id, name, askLabels });
+          return;
+        }
+      }
+    } catch {
+      /* fall through to a direct apply */
+    }
     open(fetch(`/api/templates/${id}/apply`, { method: "POST" }));
+  };
 
   const buttonClass =
     "rounded px-2 py-0.5 text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50";
@@ -114,13 +136,21 @@ export default function NewItemButton({ type }: { type: string }) {
             <button
               key={t.id}
               role="menuitem"
-              onClick={() => createFromTemplate(t.id)}
+              onClick={() => void createFromTemplate(t.id, t.name)}
               className="block w-full truncate px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
             >
               {t.name}
             </button>
           ))}
         </div>
+      )}
+      {applyVars && (
+        <TemplateApplyDialog
+          templateId={applyVars.id}
+          name={applyVars.name}
+          askLabels={applyVars.askLabels}
+          onClose={() => setApplyVars(null)}
+        />
       )}
     </div>
   );
