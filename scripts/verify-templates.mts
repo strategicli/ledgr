@@ -23,6 +23,7 @@ const {
   getTemplate,
   getTemplateByPrototype,
   listTemplates,
+  listTemplatesForPicker,
   updateTemplate,
   deleteTemplate,
   createItemFromTemplate,
@@ -281,6 +282,18 @@ try {
   const noRules = await createTemplate(owner.id, { type: typeKey, name: "No-date template" });
   const noRulesApplied = await getItem(owner.id, (await createItemFromTemplate(owner.id, noRules.id, { now: new Date("2026-06-20T12:00:00Z") })).id);
   check("no rules → applied item has no dates", noRulesApplied.scheduledDate === null && noRulesApplied.dueDate === null);
+
+  // --- TPL4a: the "+ New" picker (default-first + preview) ---
+  // vtmpl (from the TPL3 block) has 1 subtask + a starter body; make it default.
+  await updateTemplate(owner.id, vtmpl.id, { isDefault: true });
+  const picker = await listTemplatesForPicker(owner.id, typeKey);
+  check("picker lists the type's templates", picker.length >= 1);
+  check("picker puts the default first", picker[0].id === vtmpl.id && picker[0].isDefault === true);
+  check("only one picker entry is the default", picker.filter((p) => p.isDefault).length === 1);
+  const vEntry = picker.find((p) => p.id === vtmpl.id);
+  check("picker preview counts subtasks", vEntry?.subtaskCount === 1);
+  check("picker preview flags a starter body", vEntry?.hasBody === true);
+  check("picker is owner-scoped", (await listTemplatesForPicker(other.id, typeKey)).length === 0);
 
   // --- delete = drop registry row + soft-delete prototype ---
   const t2proto = t2.prototypeItemId;
