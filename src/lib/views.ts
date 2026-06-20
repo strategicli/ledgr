@@ -77,7 +77,14 @@ export const VIEW_LIMIT = 200;
 // dashboard badge can never disagree with the view it labels. Owner-scoped
 // and live-only by construction.
 function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
-  const where: SQL[] = [eq(items.ownerId, ownerId), isNull(items.deletedAt)];
+  // Template prototypes are excluded from every view (ADR-093) — the same line
+  // as the soft-delete filter. Covers the list/board/agenda renders, the badge
+  // count, /tasks, /list/[type], saved views, dashboards, and MCP list/run.
+  const where: SQL[] = [
+    eq(items.ownerId, ownerId),
+    isNull(items.deletedAt),
+    eq(items.isTemplate, false),
+  ];
   if (filter.type) where.push(eq(items.type, filter.type));
   if (filter.status) where.push(eq(items.status, filter.status));
   if (filter.statusCategory) {
@@ -585,7 +592,8 @@ export async function listPersonOptions(ownerId: string) {
       and(
         eq(items.ownerId, ownerId),
         eq(items.type, "person"),
-        isNull(items.deletedAt)
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false)
       )
     )
     .orderBy(asc(items.title))

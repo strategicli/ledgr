@@ -1,12 +1,12 @@
-// New item template (slice 34): the builder with no initial template. An
-// optional ?type= preselects which type it creates (the "+ New" menu and the
-// type page link here with it set). Static segment, so it wins over [id].
+// New item template (ADR-093): a minimal name + type form. An optional ?type=
+// preselects which type it creates (the "+ New" menu links here with it set).
+// Static segment, so it wins over [id]. The actual content is authored in the
+// prototype's canvas, which the form opens on create.
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import TemplateBuilder from "@/components/build/TemplateBuilder";
+import NewTemplateForm from "@/components/build/NewTemplateForm";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
-import { listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +18,7 @@ export default async function NewTemplate({
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [{ type }, types, people] = await Promise.all([
-    searchParams,
-    listTypes(),
-    listPersonOptions(owner.id),
-  ]);
+  const [{ type }, types] = await Promise.all([searchParams, listTypes()]);
   const defaultType = type && types.some((t) => t.key === type) ? type : undefined;
 
   return (
@@ -39,7 +35,7 @@ export default async function NewTemplate({
             ← All templates
           </Link>
         </div>
-        <TemplateBuilder types={types} people={people} defaultType={defaultType} />
+        <NewTemplateForm types={types} defaultType={defaultType} />
       </div>
     </main>
   );

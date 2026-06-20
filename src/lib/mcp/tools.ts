@@ -529,9 +529,10 @@ const TOOLS: McpTool[] = [
     name: "list_templates",
     title: "List templates",
     description:
-      "List the owner's item templates — reusable starting points for new items " +
-      "(preset properties, a starter body, preset related people). Optionally " +
-      "filter by type. Use apply_template to create an item from one.",
+      "List the owner's item templates — reusable starting points for new items. " +
+      "Each is backed by a hidden prototype item (its body, subtasks, properties, " +
+      "and related items); apply_template deep-copies that prototype. Optionally " +
+      "filter by type.",
     inputSchema: {
       type: "object",
       properties: {
@@ -547,8 +548,8 @@ const TOOLS: McpTool[] = [
           id: t.id,
           type: t.type,
           name: t.name,
-          propertyDefaults: t.propertyDefaults,
-          relationCount: t.relationDefaults.length,
+          isDefault: t.isDefault,
+          prototypeItemId: t.prototypeItemId,
         })),
       };
     },
@@ -557,10 +558,9 @@ const TOOLS: McpTool[] = [
     name: "apply_template",
     title: "Apply template",
     description:
-      "Create a new item from a template (its starter body, preset properties, " +
-      "and preset related people). The new item has a blank title — set it (and " +
-      "any other fields) with a follow-up update_item. Get the id from " +
-      "list_templates.",
+      "Create a new item from a template: a deep copy of the template's prototype " +
+      "(its title, body, subtasks, properties, and related items). Adjust any " +
+      "fields afterward with update_item. Get the id from list_templates.",
     inputSchema: {
       type: "object",
       properties: {

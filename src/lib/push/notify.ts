@@ -141,6 +141,8 @@ export async function runPrepNotify(
         eq(items.type, "meeting"),
         ne(items.statusCategory, "archived"),
         isNull(items.deletedAt),
+        // No prep push for a template meeting (ADR-093).
+        eq(items.isTemplate, false),
         gt(items.meetingAt, now),
         lte(items.meetingAt, windowEnd),
         // not cancelled (calendar flag) and not already prep-notified

@@ -49,6 +49,10 @@ export function relatedItemsQuery(ownerId: string, itemId: string) {
       and(
         eq(items.ownerId, ownerId),
         isNull(items.deletedAt),
+        // A template prototype must not surface as a related item (ADR-093).
+        // Filtered on the JOINED item, so a prototype's OWN Related panel still
+        // shows its (non-template) links when authoring.
+        eq(items.isTemplate, false),
         // A self-edge must not list the entity on its own page.
         ne(items.id, itemId)
       )
@@ -108,7 +112,8 @@ export async function relatedSummaryFor(
           inArray(relations.sourceId, itemIds),
           eq(relations.matchState, "confirmed"),
           eq(items.ownerId, ownerId),
-          isNull(items.deletedAt)
+          isNull(items.deletedAt),
+          eq(items.isTemplate, false)
         )
       ),
     db
@@ -120,7 +125,8 @@ export async function relatedSummaryFor(
           inArray(relations.targetId, itemIds),
           eq(relations.matchState, "confirmed"),
           eq(items.ownerId, ownerId),
-          isNull(items.deletedAt)
+          isNull(items.deletedAt),
+          eq(items.isTemplate, false)
         )
       ),
   ]);
@@ -163,7 +169,8 @@ export async function outgoingRelationsByRole(
         eq(relations.sourceId, itemId),
         inArray(relations.role, roles),
         eq(items.ownerId, ownerId),
-        isNull(items.deletedAt)
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false)
       )
     )
     .orderBy(desc(items.updatedAt));

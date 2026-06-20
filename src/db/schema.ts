@@ -231,6 +231,16 @@ export const items = pgTable(
     // column, not a properties key: it is hot (nav badge counts it on every
     // page) and filterable.
     inbox: boolean("inbox").notNull().default(false),
+    // Template-prototype flag (ADR-093). A template's content is a real item
+    // (and subtree): the prototype carries is_template = true, and every child
+    // inherits it (createItem propagates it from a template parent). Excluded
+    // from every owner-scoped enumeration — list/search/FTS/views/export/
+    // counts/Today/Inbox/related/ICS — the same discipline as deleted_at, so a
+    // template never leaks into user-facing surfaces. By-id reads (getItem,
+    // subtree, clone) still see it: that's the authoring/apply path.
+    // cloneItemSubtree never copies this, so applying a template yields real
+    // (is_template = false) items.
+    isTemplate: boolean("is_template").notNull().default(false),
     todoistId: text("todoist_id"),
     msEventId: text("ms_event_id"),
     // OneDrive export state (slice 17): when this row was last written to
@@ -445,16 +455,18 @@ export const shareTokens = pgTable(
   ]
 );
 
-// Per-type item templates (slice 34, PRD §4.3/§4.14): reusable starting points
-// for new items of a type — preset custom-property values + starter body
-// content. The Phase-2 meeting-prep agenda (§5.1) is the forerunner; this
-// generalizes it to any type. Owner-scoped like views/matchers (personal
-// config, not shared structure). body is the canonical { format, text }
-// shape; property_defaults seeds items.properties. A template references its
-// type (FK), and the cascade drops a type's templates if the type itself is
-// ever deleted (deleteType already blocks while items use it). Not items
-// (CLAUDE.md rule 2 covers user content; a template is config, like a view),
-// and kept out of items.properties so getType stays lean on the canvas.
+// Per-type item templates — now a thin REGISTRY pointing at a prototype item
+// (ADR-093, reverses ADR-045). A template's content is a real item + subtree
+// (is_template = true), authored in the normal canvas; this row holds only the
+// metadata: name, which type it makes, its prototype, whether it's the type's
+// default, and an apply_config blob (date-field rules / variable defaults,
+// filled by TPL3). Apply = cloneItemSubtree(prototype). The old
+// body/property_defaults/relation_defaults columns are gone — that content now
+// lives on the prototype's real body, properties, and relation edges (the
+// clone's carryRelations re-creates the preset edges). Still owner-scoped
+// personal config, like views/matchers. prototype_item_id cascades, so a
+// purged prototype takes its registry row with it; a normal delete is
+// registry-aware (templates.ts deleteTemplate).
 export const templates = pgTable(
   "templates",
   {
@@ -466,20 +478,29 @@ export const templates = pgTable(
       .notNull()
       .references(() => types.key, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    body: jsonb("body"),
-    propertyDefaults: jsonb("property_defaults"),
-    // Relations the template pre-creates on apply (Brandon feedback,
-    // 2026-06-14): an array of { targetId, role } edges written from the new
-    // item to existing items — e.g. a "pastors meeting" template that
-    // pre-relates the people who normally attend. property_defaults can't do
-    // this: relations live in the relations table, not items.properties, and
-    // there is no relation property kind. null = no preset edges.
-    relationDefaults: jsonb("relation_defaults"),
+    // The hidden prototype item this template clones on apply. Cascade: if the
+    // prototype is ever hard-purged (30-day Trash purge), the registry row goes
+    // with it.
+    prototypeItemId: uuid("prototype_item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    // The type's default template, used automatically by "+ New" (TPL4). At
+    // most one per (owner, type), enforced by the partial unique index below.
+    isDefault: boolean("is_default").notNull().default(false),
+    // Apply-time configuration (TPL3): date-field rules, variable defaults.
+    // Reserved now (null), populated when variable resolution lands.
+    applyConfig: jsonb("apply_config"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("templates_owner_type_idx").on(t.ownerId, t.type)]
+  (t) => [
+    index("templates_owner_type_idx").on(t.ownerId, t.type),
+    // At most one default template per type per owner.
+    uniqueIndex("templates_one_default_per_type")
+      .on(t.ownerId, t.type)
+      .where(sql`${t.isDefault}`),
+  ]
 );
 
 // No silent failures: failed crons/webhooks land here and surface through

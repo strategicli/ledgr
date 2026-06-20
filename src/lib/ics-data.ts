@@ -48,6 +48,8 @@ export async function listIcsTasks(ownerId: string, origin: string): Promise<Ics
         eq(items.type, "task"),
         inArray(items.statusCategory, ACTIVE_CATEGORIES),
         isNull(items.deletedAt),
+        // A template task emits no calendar event (ADR-093).
+        eq(items.isTemplate, false),
         or(
           isNotNull(items.scheduledDate),
           isNotNull(items.dueDate),

@@ -1,106 +1,41 @@
-// Per-type item templates (slice 34, PRD §4.3/§4.14): reusable starting points
-// for new items — preset custom-property values + starter body content. Same
-// store discipline as views.ts/types.ts: hand-rolled validation (the shapes are
-// small; a schema lib isn't worth a dependency, rule 5), one parse path, and a
-// row->definition coercion so a hand-edited or legacy row still reads cleanly.
-//
-// Owner-scoped (a template is personal config, like a view), keyed to a type.
-// The Phase-2 meeting-prep agenda (src/lib/meetings/prep.ts) is the forerunner:
-// a hardcoded default body for one type; this generalizes it so any type can
-// carry named, editable starting points. Applying a template is just createItem
-// with the body + property defaults filled in.
-import { and, asc, eq } from "drizzle-orm";
+// Per-type item templates — a thin REGISTRY over real prototype items (ADR-093,
+// reverses ADR-045). A template's content is an ordinary item + subtree
+// (is_template = true), authored in the same canvas as any item; this store
+// holds only the metadata row (name, type, prototype, default flag, apply
+// config) and the apply logic. Apply = cloneItemSubtree(prototype), which
+// carries the prototype's body, properties, subtasks, and relation edges onto a
+// fresh real item — so the prototype's own content subsumes the old
+// body/property_defaults/relation_defaults blob (no second editor, no drift).
+// Same owner-scoped, hand-rolled-validation discipline as views.ts/types.ts.
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
-import { templates, types } from "@/db/schema";
-import { isItemBody, makeMarkdownBody, type ItemBody } from "@/lib/body";
-import { createItem, ItemError } from "@/lib/items";
-import { relateItems } from "@/lib/relations";
-
-// A relation the template pre-creates on apply: an edge from the new item to an
-// existing item (a person/org entity, usually), with a role. This is the piece
-// property defaults can't express — relations live in the relations table, not
-// items.properties (Brandon feedback, 2026-06-14).
-export type RelationDefault = { targetId: string; role: string };
+import { items, templates, types } from "@/db/schema";
+import { cloneItemSubtree } from "@/lib/clone";
+import { createItem, getItem, ItemError, softDeleteItem } from "@/lib/items";
 
 export type ItemTemplate = {
   id: string;
   type: string;
   name: string;
-  // Canonical { format, text } starter body, or null for "start blank".
-  body: ItemBody | null;
-  // Seeds items.properties on apply; the keys are a type's property_schema
-  // keys (validated loosely here — it mirrors the freeform properties column).
-  propertyDefaults: Record<string, unknown>;
-  // Edges relateItems writes from the new item on apply (e.g. a meeting's usual
-  // attendees). Empty array = none.
-  relationDefaults: RelationDefault[];
+  // The hidden prototype item this template clones on apply. Author it by
+  // opening /items/<prototypeItemId> in the normal canvas.
+  prototypeItemId: string;
+  // The type's default template (TPL4): "+ New" uses it automatically.
+  isDefault: boolean;
+  // Apply-time config (TPL3): date-field rules / variable defaults. Opaque
+  // here; null until variable resolution lands.
+  applyConfig: Record<string, unknown> | null;
   createdAt: Date;
 };
 
-// What the builder submits. `type` is set on create and immutable after (the
-// defaults are keyed to that type's schema; re-pointing would orphan them).
-export type TemplateCreateInput = {
-  type: string;
-  name: string;
-  body: ItemBody | null;
-  propertyDefaults: Record<string, unknown>;
-  // Optional on the input so hand-built callers don't have to pass it; parse
-  // always sets it, and the store normalizes a missing value to [].
-  relationDefaults?: RelationDefault[];
-};
-export type TemplatePatchInput = Omit<TemplateCreateInput, "type">;
+// Create takes only name + type; the prototype is created empty and authored in
+// the canvas afterwards. Type is immutable after create (the prototype is keyed
+// to it). Patch edits the metadata only (name, default flag).
+export type TemplateCreateInput = { type: string; name: string };
+export type TemplatePatchInput = { name?: string; isDefault?: boolean };
 
 function bad(message: string): never {
   throw new ItemError("bad_request", message);
-}
-
-// A starter body: accept either a raw markdown string (wrapped into the
-// { format, text } shape) or an already-shaped body; an empty body stores null.
-function parseBody(raw: unknown): ItemBody | null {
-  if (raw == null) return null;
-  if (typeof raw === "string") {
-    return raw.trim() ? makeMarkdownBody(raw) : null;
-  }
-  if (isItemBody(raw)) return raw.text.trim() ? raw : null;
-  bad("body must be a markdown string or a { format, text } object");
-}
-
-function parseDefaults(raw: unknown): Record<string, unknown> {
-  if (raw == null) return {};
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    bad("propertyDefaults must be an object");
-  }
-  // Drop null/undefined values so a default never writes an empty key.
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (v != null && v !== "") out[k] = v;
-  }
-  return out;
-}
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// A list of { targetId, role } edges. Tolerant like parseDefaults: drop
-// anything malformed rather than reject the whole save, and de-dupe on
-// (targetId, role) so the same person can't be added twice.
-function parseRelationDefaults(raw: unknown): RelationDefault[] {
-  if (raw == null) return [];
-  if (!Array.isArray(raw)) bad("relationDefaults must be an array");
-  const out: RelationDefault[] = [];
-  const seen = new Set<string>();
-  for (const entry of raw) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const r = entry as Record<string, unknown>;
-    const targetId = String(r.targetId ?? "").trim();
-    if (!UUID_RE.test(targetId)) continue;
-    const role = String(r.role ?? "related").trim() || "related";
-    const dedupe = `${targetId}:${role}`;
-    if (seen.has(dedupe)) continue;
-    seen.add(dedupe);
-    out.push({ targetId, role });
-  }
-  return out;
 }
 
 function parseName(raw: unknown): string {
@@ -121,60 +56,65 @@ export function parseTemplateInput(
     bad("request body must be a JSON object");
   }
   const r = raw as Record<string, unknown>;
-  const common = {
-    name: parseName(r.name),
-    body: parseBody(r.body),
-    propertyDefaults: parseDefaults(r.propertyDefaults),
-    relationDefaults: parseRelationDefaults(r.relationDefaults),
-  };
   if (mode === "create") {
     if (typeof r.type !== "string" || !r.type.trim()) bad("type is required");
-    return { type: r.type.trim(), ...common };
+    return { type: r.type.trim(), name: parseName(r.name) };
   }
-  return common;
+  const patch: TemplatePatchInput = {};
+  if (r.name !== undefined) patch.name = parseName(r.name);
+  if (r.isDefault !== undefined) {
+    if (typeof r.isDefault !== "boolean") bad("isDefault must be a boolean");
+    patch.isDefault = r.isDefault;
+  }
+  if (patch.name === undefined && patch.isDefault === undefined) {
+    bad("nothing to update");
+  }
+  return patch;
 }
 
 async function assertTypeExists(type: string): Promise<void> {
   const rows = await getDb()
     .select({ key: types.key })
     .from(types)
-    .where(eq(types.key, type));
+    .where(and(eq(types.key, type), isNull(types.deletedAt)));
   if (rows.length === 0) throw new ItemError("bad_request", `unknown type '${type}'`);
 }
 
+function parseApplyConfig(raw: unknown): Record<string, unknown> | null {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : null;
+}
+
 function rowToTemplate(row: typeof templates.$inferSelect): ItemTemplate {
-  const defaults =
-    row.propertyDefaults &&
-    typeof row.propertyDefaults === "object" &&
-    !Array.isArray(row.propertyDefaults)
-      ? (row.propertyDefaults as Record<string, unknown>)
-      : {};
   return {
     id: row.id,
     type: row.type,
     name: row.name,
-    body: isItemBody(row.body) ? row.body : null,
-    propertyDefaults: defaults,
-    // Coerce through the same parser so a hand-edited/legacy row reads cleanly.
-    relationDefaults: parseRelationDefaults(row.relationDefaults),
+    prototypeItemId: row.prototypeItemId,
+    isDefault: row.isDefault,
+    applyConfig: parseApplyConfig(row.applyConfig),
     createdAt: row.createdAt,
   };
 }
 
-// All of the owner's templates, optionally for one type; type then name order
-// so the index reads grouped.
+// The owner's templates, optionally for one type; type then name order so the
+// index reads grouped. Joined to items so a registry row whose prototype was
+// soft-deleted directly (orphaning the row until the purge cascade clears it) is
+// skipped defensively.
 export async function listTemplates(
   ownerId: string,
   type?: string
 ): Promise<ItemTemplate[]> {
-  const where = [eq(templates.ownerId, ownerId)];
+  const where = [eq(templates.ownerId, ownerId), isNull(items.deletedAt)];
   if (type) where.push(eq(templates.type, type));
   const rows = await getDb()
-    .select()
+    .select({ t: templates })
     .from(templates)
+    .innerJoin(items, eq(items.id, templates.prototypeItemId))
     .where(and(...where))
     .orderBy(asc(templates.type), asc(templates.name));
-  return rows.map(rowToTemplate);
+  return rows.map((r) => rowToTemplate(r.t));
 }
 
 export async function getTemplate(
@@ -189,20 +129,28 @@ export async function getTemplate(
   return rowToTemplate(rows[0]);
 }
 
+// Create a template = a registry row + an empty hidden prototype item, authored
+// afterwards in the normal canvas (ADR-093). The prototype is is_template=true
+// with a blank body; the user opens /items/<prototypeItemId> to build it out
+// (subtasks, body, properties, relations — all real).
 export async function createTemplate(
   ownerId: string,
   input: TemplateCreateInput
 ): Promise<ItemTemplate> {
   await assertTypeExists(input.type);
+  const prototype = await createItem(ownerId, {
+    type: input.type,
+    title: input.name,
+    isTemplate: true,
+    inbox: false,
+  });
   const rows = await getDb()
     .insert(templates)
     .values({
       ownerId,
       type: input.type,
       name: input.name,
-      body: input.body,
-      propertyDefaults: input.propertyDefaults,
-      relationDefaults: input.relationDefaults ?? [],
+      prototypeItemId: prototype.id,
     })
     .returning();
   return rowToTemplate(rows[0]);
@@ -213,64 +161,73 @@ export async function updateTemplate(
   id: string,
   input: TemplatePatchInput
 ): Promise<ItemTemplate> {
-  await getTemplate(ownerId, id); // ownership + existence
+  const existing = await getTemplate(ownerId, id); // ownership + existence
+  // Making this the type's default clears any other default for the same type
+  // first (the partial unique index allows only one per owner+type).
+  if (input.isDefault === true) {
+    await getDb()
+      .update(templates)
+      .set({ isDefault: false })
+      .where(
+        and(
+          eq(templates.ownerId, ownerId),
+          eq(templates.type, existing.type),
+          eq(templates.isDefault, true)
+        )
+      );
+  }
+  const set: Record<string, unknown> = {};
+  if (input.name !== undefined) set.name = input.name;
+  if (input.isDefault !== undefined) set.isDefault = input.isDefault;
   const rows = await getDb()
     .update(templates)
-    .set({
-      name: input.name,
-      body: input.body,
-      propertyDefaults: input.propertyDefaults,
-      relationDefaults: input.relationDefaults ?? [],
-    })
+    .set(set)
     .where(and(eq(templates.id, id), eq(templates.ownerId, ownerId)))
     .returning();
   return rowToTemplate(rows[0]);
 }
 
+// Delete = drop the registry row AND soft-delete its prototype subtree (the
+// prototype is a real item; it goes to Trash like any other). Registry-aware so
+// the FK can't dangle; best-effort on the prototype (an already-gone one mustn't
+// block the registry delete).
 export async function deleteTemplate(ownerId: string, id: string): Promise<void> {
-  await getTemplate(ownerId, id); // ownership + existence
+  const tmpl = await getTemplate(ownerId, id); // ownership + existence
   await getDb()
     .delete(templates)
     .where(and(eq(templates.id, id), eq(templates.ownerId, ownerId)));
+  try {
+    await softDeleteItem(ownerId, tmpl.prototypeItemId);
+  } catch (err) {
+    if (!(err instanceof ItemError)) throw err;
+  }
 }
 
-// Apply a template: create a real item of its type seeded with the starter
-// body + property defaults. Deliberate creation (like "+ New"), so it does not
-// land in the Inbox (ADR-010 — inbox membership is an explicit arrival act).
-// The title is left empty for the user to fill, matching the blank "+ New".
+// Apply a template: deep-clone its prototype subtree into a fresh REAL item
+// (cloneItemSubtree never copies is_template, so the clone and its children are
+// is_template=false). Carries the prototype's body, properties, subtasks, and
+// relation edges (carryRelations). Deliberate creation, so not an Inbox arrival
+// (ADR-010). Returns the new root item. (TPL3 layers variable resolution and
+// TPL4 the apply-to-existing merge on top of this.)
 export async function createItemFromTemplate(ownerId: string, id: string) {
-  const template = await getTemplate(ownerId, id);
-  const created = await createItem(ownerId, {
-    type: template.type,
-    body: template.body,
-    properties: Object.keys(template.propertyDefaults).length
-      ? template.propertyDefaults
-      : null,
+  const tmpl = await getTemplate(ownerId, id);
+  const { rootId } = await cloneItemSubtree(ownerId, tmpl.prototypeItemId, {
     inbox: false,
   });
-  // Write the preset relation edges from the new item. Resilient by design: a
-  // target that was deleted/trashed since the template was saved (relateItems
-  // throws not_found / "in Trash") is skipped, not allowed to abort the create
-  // — the item already exists and one stale attendee shouldn't lose it.
-  for (const rel of template.relationDefaults) {
-    try {
-      await relateItems(ownerId, created.id, rel.targetId, rel.role);
-    } catch (err) {
-      if (!(err instanceof ItemError)) throw err;
-    }
-  }
-  return created;
+  return getItem(ownerId, rootId);
 }
 
-// Per-type template counts for the owner, e.g. { task: 2, meeting: 1 }. Powers
+// Per-type template counts for the owner, e.g. { task: 2, meeting: 1 } — powers
 // the "+ New" menu's decision to offer templates and the Build index badges.
+// Counts only live-prototype templates.
 export async function templateCountsByType(
   ownerId: string
 ): Promise<Record<string, number>> {
   const rows = await getDb()
     .select({ type: templates.type })
     .from(templates)
-    .where(eq(templates.ownerId, ownerId));
+    .innerJoin(items, eq(items.id, templates.prototypeItemId))
+    .where(and(eq(templates.ownerId, ownerId), isNull(items.deletedAt)));
   const counts: Record<string, number> = {};
   for (const r of rows) counts[r.type] = (counts[r.type] ?? 0) + 1;
   return counts;

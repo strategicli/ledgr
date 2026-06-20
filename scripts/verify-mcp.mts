@@ -23,6 +23,7 @@ const { handleMcpMessage } = await import("../src/lib/mcp/server");
 const { listToolDefs, callTool } = await import("../src/lib/mcp/tools");
 const { createView, parseViewInput } = await import("../src/lib/views");
 const { createTemplate } = await import("../src/lib/templates");
+const { updateItem } = await import("../src/lib/items");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -193,19 +194,25 @@ try {
   const ran = await callJson(ownerId, "run_view", { id: view.id });
   check("run_view returns the view's items (the done task)", itemsOf(ran).some((i) => i.id === task.id));
 
-  // list_templates / apply_template over a template made through the lib.
+  // list_templates / apply_template over a template made through the lib. The
+  // content now lives on the prototype item (ADR-093), so author one property on
+  // it and confirm apply (deep clone) carries it.
   const template = await createTemplate(ownerId, {
     type: "task",
     name: `Standup ${stamp}`,
-    body: null,
-    propertyDefaults: { area: "ops" },
   });
+  await updateItem(ownerId, template.prototypeItemId, { propertyPatch: { area: "ops" } });
   const tmpls = await callJson(ownerId, "list_templates", { type: "task" });
   check("list_templates lists the template", (tmpls.templates as Json[]).some((t) => t.id === template.id));
+  check("list_templates reports the prototype id", (tmpls.templates as Json[]).some((t) => t.prototypeItemId === template.prototypeItemId));
   const fromTemplate = await callJson(ownerId, "apply_template", { id: template.id });
   check("apply_template creates a filed item of the template's type", fromTemplate.type === "task" && fromTemplate.inbox === false);
+  check("apply_template's item is not a template", fromTemplate.id !== template.prototypeItemId);
   const fromTemplateGot = await callJson(ownerId, "get_item", { id: fromTemplate.id as string });
-  check("apply_template seeded the property defaults", (fromTemplateGot.properties as Json)?.area === "ops");
+  check("apply_template carried the prototype's properties", (fromTemplateGot.properties as Json)?.area === "ops");
+  // The prototype itself must not leak into MCP search/list surfaces.
+  const taskList = await callJson(ownerId, "list_items", { type: "task" });
+  check("list_items excludes the template prototype", !itemsOf(taskList).some((i) => i.id === template.prototypeItemId));
 
   // owner scoping holds for the new tools too.
   await expectErr("owner2 cannot run_view owner1's view", owner2Id, "run_view", { id: view.id });

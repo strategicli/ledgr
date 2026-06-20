@@ -74,6 +74,10 @@ export type ItemInput = {
   properties?: Record<string, unknown> | null;
   // Untriaged flag (PRD §4.2 Inbox): arrival paths set it, triage clears it.
   inbox?: boolean;
+  // Mark this item as template content (ADR-093). Set true to mint a template
+  // prototype; children created under a template parent inherit it automatically
+  // (see createItem), so callers only ever set it on the root prototype.
+  isTemplate?: boolean;
 };
 
 export type ItemPatch = Partial<ItemInput> & {
@@ -122,13 +126,19 @@ export const listColumns = {
   updatedAt: items.updatedAt,
 };
 
-const itemColumns = { ...listColumns, body: items.body };
+// getItem adds the body and the is_template flag (the canvas/banner + the
+// clone/apply path need it; list queries deliberately don't carry it).
+const itemColumns = { ...listColumns, body: items.body, isTemplate: items.isTemplate };
 
 // Exposed as a query builder (not just results) so verification can assert
 // the generated SQL carries owner_id and no body.
 export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   const where: SQL[] = [eq(items.ownerId, ownerId)];
   where.push(opts.trash ? isNotNull(items.deletedAt) : isNull(items.deletedAt));
+  // Template prototypes (and their subtrees) never appear in a user-facing list,
+  // Trash included (ADR-093). Their authoring path is the by-id canvas, not a
+  // list.
+  where.push(eq(items.isTemplate, false));
   if (opts.type) where.push(eq(items.type, opts.type));
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
@@ -160,7 +170,8 @@ export async function countInbox(ownerId: string): Promise<number> {
       and(
         eq(items.ownerId, ownerId),
         eq(items.inbox, true),
-        isNull(items.deletedAt)
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false)
       )
     );
   return rows[0].count;
@@ -175,7 +186,13 @@ export async function itemCountsByType(
   const rows = await getDb()
     .select({ type: items.type, count: sql<number>`count(*)::int` })
     .from(items)
-    .where(and(eq(items.ownerId, ownerId), isNull(items.deletedAt)))
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false)
+      )
+    )
     .groupBy(items.type);
   return Object.fromEntries(rows.map((r) => [r.type, r.count]));
 }
@@ -204,16 +221,18 @@ async function assertTypeExists(type: string) {
 // Parent must be the owner's own live item, and (on update) not the item
 // itself or one of its descendants; a parent cycle would hang every
 // recursive tree read, so it can never be writable.
+// Returns the parent's is_template flag so createItem can propagate it to the
+// child (a child of a template prototype is itself template content, ADR-093).
 async function assertValidParent(
   ownerId: string,
   parentId: string,
   selfId?: string
-) {
+): Promise<boolean> {
   if (parentId === selfId) {
     throw new ItemError("bad_request", "an item cannot be its own parent");
   }
   const parent = await getDb()
-    .select({ id: items.id })
+    .select({ id: items.id, isTemplate: items.isTemplate })
     .from(items)
     .where(
       and(
@@ -242,6 +261,7 @@ async function assertValidParent(
       );
     }
   }
+  return parent[0].isTemplate;
 }
 
 // Debounced snapshot + prune (PRD §4.6). force bypasses the debounce for
@@ -282,7 +302,13 @@ async function snapshotRevision(
 
 export async function createItem(ownerId: string, input: ItemInput) {
   await assertTypeExists(input.type);
-  if (input.parentId) await assertValidParent(ownerId, input.parentId);
+  // is_template is set explicitly on a prototype root, else inherited from a
+  // template parent (ADR-093), so a subtask under a prototype is template
+  // content too without any caller doing anything special.
+  const parentIsTemplate = input.parentId
+    ? await assertValidParent(ownerId, input.parentId)
+    : false;
+  const isTemplate = input.isTemplate ?? parentIsTemplate;
 
   // Status is a key from the type's schema (S2). Default to the type's "not
   // started" status, and store its category alongside so the hot queries / the
@@ -310,6 +336,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
       parentId: input.parentId ?? null,
       properties: input.properties ?? null,
       inbox: input.inbox ?? false,
+      isTemplate,
     })
     .returning(itemColumns);
   const created = rows[0];
