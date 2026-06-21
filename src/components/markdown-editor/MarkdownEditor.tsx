@@ -76,6 +76,10 @@ export type MarkdownEditorProps = {
   // grows with content (the task canvas, where bodies are short). Default false
   // keeps the roomy 14rem writing area.
   compact?: boolean;
+  // When false (a locked item, item lock toggle): the body is read-only.
+  // Tiptap drops contenteditable so the cursor can't enter, and the toolbar is
+  // hidden — the document still renders, it just can't be changed. Defaults true.
+  editable?: boolean;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -167,6 +171,7 @@ export default function MarkdownEditor({
   promotedRefs,
   collapsibleToolbar = false,
   compact = false,
+  editable = true,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
@@ -192,6 +197,7 @@ export default function MarkdownEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
+    editable,
     extensions: [
       StarterKit,
       Markdown,
@@ -307,6 +313,12 @@ export default function MarkdownEditor({
   useEffect(() => {
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  // Lock/unlock at runtime (the item lock toggle): a locked item drops
+  // contenteditable so the cursor can't enter, and the toolbar hides below.
+  useEffect(() => {
+    editor?.setEditable(editable);
+  }, [editor, editable]);
 
   // Promote affordance (ADR-090): a checkbox line's "→ task" button fires a DOM
   // event carrying its position. Ensure the line has an ^id anchor, then open
@@ -445,6 +457,9 @@ export default function MarkdownEditor({
 
   return (
     <div className="border-b border-neutral-800">
+      {/* The formatting toolbar is hidden on a locked item — nothing here can
+          act on a read-only document (item lock toggle). */}
+      {editable && (
       <div className={`flex flex-wrap items-center gap-0.5 px-1 py-1.5 ${toolbarOpen ? "border-b border-neutral-800/70" : ""}`}>
         {toolbarOpen && (<>{(
           [
@@ -534,6 +549,7 @@ export default function MarkdownEditor({
           </button>
         )}
       </div>
+      )}
 
       <EditorContent editor={editor} />
 

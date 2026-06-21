@@ -58,7 +58,7 @@ export default async function RelatedPanel({
 
   // Nothing linked yet: just the quiet add affordances, no section chrome.
   if (related.length === 0) {
-    return <div className="mx-auto w-full max-w-3xl px-4 pt-2 sm:px-8 md:px-12">{addBar}</div>;
+    return <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>;
   }
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
@@ -133,7 +133,7 @@ export default async function RelatedPanel({
   };
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+    <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
       <h2 className="border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
         Related
         <span className="ml-2 font-normal text-neutral-600">{related.length}</span>

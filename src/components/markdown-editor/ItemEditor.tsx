@@ -65,6 +65,10 @@ export type ItemEditorProps = {
   // MarkdownEditor; default off keeps the roomy always-on editor.
   collapsibleToolbar?: boolean;
   compactBody?: boolean;
+  // When true (the item lock toggle): the title and body are read-only and the
+  // cursor can't enter them, and the body's toolbar hides. The field strip and
+  // properties are locked by their own hosts (FieldStrip / CustomProperties).
+  locked?: boolean;
 };
 
 export default function ItemEditor({
@@ -76,6 +80,7 @@ export default function ItemEditor({
   tabsEnabled = false,
   collapsibleToolbar = false,
   compactBody = false,
+  locked = false,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -183,7 +188,12 @@ export default function ItemEditor({
     <textarea
       ref={titleRef}
       rows={1}
-      className="w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-neutral-100 outline-none placeholder:text-neutral-600"
+      // A locked item's title is read-only and can't be clicked into.
+      readOnly={locked}
+      tabIndex={locked ? -1 : undefined}
+      className={`w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-neutral-100 outline-none placeholder:text-neutral-600 ${
+        locked ? "pointer-events-none" : ""
+      }`}
       placeholder="Untitled"
       value={title}
       onChange={(e) => {
@@ -214,6 +224,7 @@ export default function ItemEditor({
       promoteToMeetingId={promoteToMeetingId}
       promotedRefs={promotedRefs}
       onRequestSave={flush}
+      editable={!locked}
     />
   ) : (
     <LazyMarkdownEditor
@@ -228,6 +239,7 @@ export default function ItemEditor({
       // The promote flow flushes the body save first, so the line's ^id anchor
       // is persisted before the task is created and the page refreshes.
       onRequestSave={flush}
+      editable={!locked}
     />
   );
 
@@ -239,9 +251,9 @@ export default function ItemEditor({
   // Classic stacked editor (the default canvas, unchanged).
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="px-4 pt-6 pb-2 sm:px-8 sm:pt-8 md:px-12">{titleInput}</div>
+      <div className="px-2 pt-6 pb-2 sm:px-8 sm:pt-8 md:px-12">{titleInput}</div>
       {fields}
-      <div className="px-4 pt-2 sm:px-8 md:px-12">{bodyEditor}</div>
+      <div className="px-2 pt-2 sm:px-8 md:px-12">{bodyEditor}</div>
     </div>
   );
 }

@@ -4,10 +4,10 @@
 
 .ledgr-prose {
   min-height: 14rem;
-  padding: 1rem;
+  padding: 0.75rem;
   outline: none;
   color: #e5e5e5;
-  font-size: 0.95rem;
+  font-size: var(--prose-font-size, 1rem);
   line-height: 1.6;
 }
 

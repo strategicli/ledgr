@@ -42,6 +42,7 @@ export default function CustomProperties({
   initial,
   hideHeading = false,
   bare = false,
+  locked = false,
 }: {
   itemId: string;
   typeKey: string;
@@ -53,6 +54,9 @@ export default function CustomProperties({
   hideHeading?: boolean;
   // Drop the wide centered-column padding for a narrow rail (task canvas).
   bare?: boolean;
+  // When true (the item lock toggle): every field (and its clear button) is
+  // disabled and can't be clicked into, via a disabled <fieldset> wrapper.
+  locked?: boolean;
 }) {
   const [values, setValues] = useState<Values>(initial ?? {});
   const [error, setError] = useState(false);
@@ -208,13 +212,16 @@ export default function CustomProperties({
   if (scalarSchema.length === 0) return null;
 
   return (
-    <section className={bare ? "" : "mx-auto w-full max-w-3xl px-4 pb-6 pt-2 sm:px-8 md:px-12"}>
+    <section className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12"}>
       {!hideHeading && (
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
           Properties
         </h2>
       )}
-      <dl className="flex flex-col gap-2">
+      <dl className={`flex flex-col gap-2 ${locked ? "opacity-60" : ""}`}>
+        {/* A disabled fieldset locks every property control at once (a locked
+            item); `contents` keeps the definition-list layout flat. */}
+        <fieldset disabled={locked} className="contents">
         {scalarSchema.map((prop) => {
           const v = values[prop.key];
           // A value worth offering an explicit clear for. Checkbox has no
@@ -253,6 +260,7 @@ export default function CustomProperties({
             </div>
           );
         })}
+        </fieldset>
       </dl>
       {error && (
         <p className="mt-2 text-xs text-red-400">Save failed, change reverted</p>

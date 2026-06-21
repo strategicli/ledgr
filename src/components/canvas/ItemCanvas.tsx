@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ItemError, getItem } from "@/lib/items";
+import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
 import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
@@ -16,8 +17,7 @@ import { listAncestors } from "@/lib/subtasks";
 import { getTemplateByPrototype } from "@/lib/templates";
 import { getType } from "@/lib/types";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
-import ApplyTemplateButton from "@/components/canvas/ApplyTemplateButton";
-import SaveAsTemplateButton from "@/components/canvas/SaveAsTemplateButton";
+import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 
 export default async function ItemCanvas({
@@ -57,6 +57,13 @@ export default async function ItemCanvas({
   const showBreadcrumb =
     (variant === "page" && !item.isTemplate) || ancestors.length > 0;
 
+  // Star state for the actions menu (page chrome only; the modal's menu resolves
+  // it separately). Skipped otherwise to avoid an extra settings read.
+  const favorited =
+    variant === "page" && !item.isTemplate
+      ? await isItemFavorited(owner.id, item.id)
+      : false;
+
   // Owner-aware so the per-user enable flip (M6) can route a disabled module's
   // type back to the default canvas without touching this call site. The type's
   // attached capability (SPIKE — bespoke-tool catalog) lets a user-named type
@@ -84,14 +91,14 @@ export default async function ItemCanvas({
               applyConfig={template.applyConfig}
             />
           ) : (
-            <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+            <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
               <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200/80">
                 Part of a template — edits here change the template, not a real item.
               </div>
             </div>
           ))}
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-4 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
                 <Link href="/items" className="hover:text-neutral-300">
@@ -114,16 +121,14 @@ export default async function ItemCanvas({
             </div>
             {variant === "page" && !item.isTemplate && (
               <span className="flex shrink-0 items-center gap-1">
-                <ApplyTemplateButton
+                <ItemActionsMenu
                   itemId={item.id}
                   type={item.type}
-                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-                />
-                <SaveAsTemplateButton
-                  itemId={item.id}
-                  defaultName={item.title || "Untitled"}
-                  align="right"
-                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                  title={item.title}
+                  locked={Boolean(
+                    (item.properties as Record<string, unknown> | null)?.locked
+                  )}
+                  favorited={favorited}
                 />
               </span>
             )}

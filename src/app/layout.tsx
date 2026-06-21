@@ -7,7 +7,7 @@ import OutboxSync from "@/components/pwa/OutboxSync";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
-import { DEFAULT_SETTINGS, getSettings } from "@/lib/settings";
+import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX } from "@/lib/settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -65,6 +65,7 @@ export default async function RootLayout({
   let accentGradient = DEFAULT_SETTINGS.highlightColor;
   let navPosition = DEFAULT_SETTINGS.navPosition;
   let railSize = DEFAULT_SETTINGS.railSize;
+  let proseFontSize = TEXT_SIZE_PX[DEFAULT_SETTINGS.textSize];
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -73,6 +74,7 @@ export default async function RootLayout({
       accentGradient = s.highlightGradient ?? s.highlightColor;
       navPosition = s.navPosition;
       railSize = s.railSize;
+      proseFontSize = TEXT_SIZE_PX[s.textSize];
     }
   } catch {
     /* defaults */
@@ -85,7 +87,7 @@ export default async function RootLayout({
       >
         <body
           className="min-h-full flex flex-col"
-          style={{ "--accent": accent, "--accent-gradient": accentGradient, ...navPadVars(navPosition, railSize) } as CSSProperties}
+          style={{ "--accent": accent, "--accent-gradient": accentGradient, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           {children}
           <Nav />

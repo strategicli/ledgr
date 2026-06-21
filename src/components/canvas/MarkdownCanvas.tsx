@@ -53,6 +53,11 @@ import { appTodayYmd } from "@/lib/recurrence-service";
 import type { CanvasProps } from "@/lib/modules";
 
 export default async function MarkdownCanvas({ item, ownerId, arrange = false }: CanvasProps) {
+  // A locked item (items.properties.locked, set from the canvas "⋯" menu)
+  // renders title, body, field strip, and properties read-only.
+  const locked = Boolean(
+    (item.properties as Record<string, unknown> | null)?.locked
+  );
   const fields = topStripFields(item.type);
   const strip: StripValues = {
     status: item.status,
@@ -129,7 +134,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const scheduledTime = parseScheduledTime(item.properties);
   const hasSchedule = item.scheduledDate != null || recurrenceRule != null;
   const taskExtrasNode = (
-    <section className="mx-auto w-full max-w-3xl px-4 pb-1 pt-1 sm:px-8 md:px-12">
+    <section className="mx-auto w-full max-w-3xl px-2 pb-1 pt-1 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <span className="flex items-center gap-1.5 text-xs text-neutral-500">
           <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
@@ -167,6 +172,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           <ItemEditor
             item={{ id: item.id, title: item.title, body: item.body }}
             slot="title"
+            locked={locked}
           />
         );
       if (id === "body")
@@ -177,11 +183,12 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             promoteToMeetingId={item.type === "event" ? item.id : undefined}
             promotedRefs={promotedRefs}
             tabsEnabled={tabsEnabled}
+            locked={locked}
           />
         );
       if (id.startsWith("sys:")) {
         const f = id.slice(4) as CanvasField;
-        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} today={today} statuses={statuses} />;
+        return <FieldStrip itemId={item.id} fields={[f]} initial={strip} today={today} statuses={statuses} locked={locked} />;
       }
       if (id === "recurrence") return item.type === "task" ? recurrenceNode : null;
       if (id === "recurrenceCalendar")
@@ -203,6 +210,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             schema={[def]}
             initial={propsObj}
             hideHeading
+            locked={locked}
           />
         ) : null;
       }
@@ -244,17 +252,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
 
     return (
       <>
-        {!arrange && (
-          <div className="flex w-full justify-end px-6 pt-4 sm:px-10">
-            {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
-            <a
-              href={`/items/${item.id}?arrange=1`}
-              className="text-xs text-neutral-600 hover:text-neutral-400"
-            >
-              Customize layout
-            </a>
-          </div>
-        )}
+        {/* "Customize layout" now lives in the canvas "⋯" actions menu. */}
         <ItemLayoutGrid
           itemId={item.id}
           typeKey={item.type}
@@ -269,32 +267,25 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   }
 
   // Classic stacked canvas (null layout, not arranging) — unchanged.
+  // ("Customize layout" now lives in the canvas "⋯" actions menu.)
   return (
     <>
-      <div className="mx-auto flex w-full max-w-3xl justify-end px-4 pt-4 sm:px-8 md:px-12">
-        {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
-        <a
-          href={`/items/${item.id}?arrange=1`}
-          className="text-xs text-neutral-600 hover:text-neutral-400"
-        >
-          Customize layout
-        </a>
-      </div>
       <ItemEditor
         item={{ id: item.id, title: item.title, body: item.body }}
         fields={
           fields.length > 0 ? (
-            <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} statuses={statuses} />
+            <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} statuses={statuses} locked={locked} />
           ) : null
         }
         promoteToMeetingId={item.type === "event" ? item.id : undefined}
         promotedRefs={promotedRefs}
         tabsEnabled={tabsEnabled}
+        locked={locked}
       />
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}
       {sourceLink && (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-1 text-xs text-neutral-500 sm:px-8 md:px-12">
+        <div className="mx-auto w-full max-w-3xl px-2 pt-1 text-xs text-neutral-500 sm:px-8 md:px-12">
           ↳ from{" "}
           <Link href={sourceLink.href} className="text-neutral-400 hover:text-neutral-200 hover:underline">
             {sourceLink.title}
@@ -329,6 +320,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           typeKey={item.type}
           schema={propertySchema}
           initial={(item.properties as Record<string, unknown>) ?? {}}
+          locked={locked}
         />
       )}
       {/* Typed relation fields (ADR-067): the type's `relation` properties as
@@ -350,7 +342,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Version history (Track changes): list snapshots, diff any two, restore
           (the general item-view undo). Lazy — fetches only when expanded. */}
       <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />
-      <details className="mx-auto w-full max-w-3xl px-4 pb-12 pt-4 sm:px-8 md:px-12">
+      <details className="mx-auto w-full max-w-3xl px-2 pb-12 pt-4 sm:px-8 md:px-12">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields
         </summary>

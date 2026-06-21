@@ -7,8 +7,7 @@
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
-import ApplyTemplateButton from "@/components/canvas/ApplyTemplateButton";
-import SaveAsTemplateButton from "@/components/canvas/SaveAsTemplateButton";
+import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 
 export default function Modal({
   itemId,
@@ -17,19 +16,26 @@ export default function Modal({
   title = "",
   type = "",
   isTemplate = false,
+  locked = false,
+  favorited = false,
 }: {
   itemId: string;
   children: React.ReactNode;
   // Wider panel for canvases that need the room (a song's two-column chart);
   // the default keeps note/task previews compact.
   wide?: boolean;
-  // For the header's "Save as template" default name; and to swap chrome on a
-  // template prototype (its delete is the registry-aware banner action, not the
-  // generic item Trash, which would orphan the registry row) — ADR-093 TPL2.
+  // For the actions menu's "Save as template" default name; and to swap chrome
+  // on a template prototype (its delete is the registry-aware banner action, not
+  // the generic item Trash, which would orphan the registry row) — ADR-093 TPL2.
   title?: string;
-  // The item's type, for the header's "Apply template…" picker (TPL4b).
+  // The item's type, for the actions menu's "Apply template…" picker (TPL4b).
   type?: string;
   isTemplate?: boolean;
+  // Whether the item is locked (items.properties.locked) — drives the menu's
+  // lock/unlock label.
+  locked?: boolean;
+  // Whether the item is in the owner's favorites — drives the menu's star label.
+  favorited?: boolean;
 }) {
   const router = useRouter();
   const close = useCallback(() => router.back(), [router]);
@@ -72,38 +78,34 @@ export default function Modal({
             {/* A template prototype's destructive/templatize actions live in its
                 canvas banner (registry-aware); the generic item chrome is hidden. */}
             {!isTemplate && (
-              <>
-                <ConfirmButton
-                  title="Move to Trash?"
-                  description="This item moves to Trash and can be recovered for 30 days."
-                  confirmLabel="Trash"
-                  trigger="Trash"
-                  triggerLabel="Move to Trash"
-                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
-                  align="left"
-                  onConfirm={async () => {
-                    const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
-                    if (!res.ok) throw new Error(`Failed (${res.status})`);
-                    close();
-                  }}
-                />
-                <SaveAsTemplateButton
-                  itemId={itemId}
-                  defaultName={title || "Untitled"}
-                  align="left"
-                  triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-                />
-                {type && (
-                  <ApplyTemplateButton
-                    itemId={itemId}
-                    type={type}
-                    triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-                  />
-                )}
-              </>
+              <ConfirmButton
+                title="Move to Trash?"
+                description="This item moves to Trash and can be recovered for 30 days."
+                confirmLabel="Trash"
+                trigger="Trash"
+                triggerLabel="Move to Trash"
+                triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
+                align="left"
+                onConfirm={async () => {
+                  const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
+                  if (!res.ok) throw new Error(`Failed (${res.status})`);
+                  close();
+                }}
+              />
             )}
           </div>
           <div className="flex items-center gap-1">
+            {/* Save as template, Apply template, Customize layout, and the lock
+                toggle all live behind the "⋯" menu (a template's are hidden). */}
+            {!isTemplate && (
+              <ItemActionsMenu
+                itemId={itemId}
+                type={type}
+                title={title}
+                locked={locked}
+                favorited={favorited}
+              />
+            )}
             {/* Plain <a>, not <Link>: a soft nav to the same URL would stay
                 intercepted; a document load renders the full page form. */}
             <a

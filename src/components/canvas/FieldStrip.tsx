@@ -51,6 +51,7 @@ export default function FieldStrip({
   today,
   statuses,
   layout = "strip",
+  locked = false,
 }: {
   itemId: string;
   fields: CanvasField[];
@@ -67,6 +68,9 @@ export default function FieldStrip({
   // labels + colors, and a done-glyph on done-category statuses. Absent → the
   // inherited default keys (a non-task field strip never shows status anyway).
   statuses?: StatusDef[];
+  // When true (the item lock toggle): every control is disabled and can't be
+  // clicked into, via a disabled <fieldset> wrapping the row.
+  locked?: boolean;
 }) {
   const [values, setValues] = useState(initial);
   const [error, setError] = useState(false);
@@ -274,16 +278,24 @@ export default function FieldStrip({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 pb-3 sm:px-8 md:px-12">
-      {fields.map((name) => (
-        <label
-          key={name}
-          className="flex items-center gap-1.5 text-xs text-neutral-500"
-        >
-          {labels[name]}
-          {field(name)}
-        </label>
-      ))}
+    <div
+      className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 px-2 pb-3 sm:px-8 md:px-12 ${
+        locked ? "opacity-60" : ""
+      }`}
+    >
+      {/* A disabled fieldset locks every control inside at once (a locked item);
+          `contents` keeps the flex layout flat, so the row looks unchanged. */}
+      <fieldset disabled={locked} className="contents">
+        {fields.map((name) => (
+          <label
+            key={name}
+            className="flex items-center gap-1.5 text-xs text-neutral-500"
+          >
+            {labels[name]}
+            {field(name)}
+          </label>
+        ))}
+      </fieldset>
       {error && (
         <span className="text-xs text-red-400">Save failed, change reverted</span>
       )}

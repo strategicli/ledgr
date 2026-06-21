@@ -52,6 +52,17 @@ const ALLOWED_ACCENTS = new Set<string>([
   ...HIGHLIGHT_GRADIENTS.map((g) => g.accent),
 ]);
 
+// Text size for the markdown prose canvas. Maps to the `--prose-font-size`
+// CSS variable; sm/base/lg/xl scale the reading body without touching UI chrome.
+export const TEXT_SIZES = ["sm", "base", "lg", "xl"] as const;
+export type TextSize = (typeof TEXT_SIZES)[number];
+export const TEXT_SIZE_PX: Record<TextSize, string> = {
+  sm: "0.875rem",
+  base: "1rem",
+  lg: "1.125rem",
+  xl: "1.25rem",
+};
+
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
@@ -97,6 +108,16 @@ export const RECOMMENDED_NAV_SLOTS = 5;
 export const RECOMMENDED_MOBILE_NAV_SLOTS = 4;
 export const NAV_SLOTS_HARD_CAP = 20;
 export const MAX_TOOLS_CHILDREN = 8;
+
+// --- Favorites -------------------------------------------------------------
+// A small, owner-curated list of items for instant access (the star toggle on
+// any item canvas, surfaced as a flyout from the Favorites nav slot). Stored as
+// an ordered list of item ids in users.settings (no schema change, same posture
+// as navSlots); order is the array order, reorderable by drag. The route the
+// Favorites nav slot points at; NavShell special-cases it into a flyout rather
+// than navigating. A generous cap bounds a hand-edited blob.
+export const FAVORITES_HREF = "/favorites";
+export const FAVORITES_HARD_CAP = 100;
 
 // A destination points at one route. `builtin` is a hardcoded app page, `view`
 // a saved view (/views/[id]), `type` a type's list (/list/[key]). The kind is
@@ -157,6 +178,13 @@ export type UserSettings = {
   // Settings. The feed route resolves the owner by this token (no Clerk),
   // same posture as a share link.
   icsToken: string | null;
+  // Prose canvas font size (sm/base/lg/xl). Stored as a string key; layout
+  // maps it to the --prose-font-size CSS variable so the setting applies
+  // globally without a client-side effect.
+  textSize: TextSize;
+  // Ordered item ids the owner has starred (the Favorites flyout). Order is the
+  // list order; a missing/deleted id is silently dropped when the list resolves.
+  favorites: string[];
 };
 
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
@@ -165,6 +193,7 @@ export type UserSettings = {
 export const DEFAULT_NAV_SLOTS: NavSlotConfig[] = [
   { type: "destination", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badge: "inbox" },
   { type: "destination", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks" },
+  { type: "destination", kind: "builtin", href: FAVORITES_HREF, label: "Favorites", icon: "starred" },
   { type: "destination", kind: "builtin", href: "/search", label: "Search", icon: "search" },
 ];
 
@@ -184,6 +213,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   homeDashboardId: null,
   todayDashboardId: null,
   icsToken: null,
+  textSize: "base",
+  favorites: [],
 };
 
 const SETTINGS_UUID_RE =
@@ -241,6 +272,22 @@ function parseNavSlots(raw: unknown, max: number, fallback: NavSlotConfig[]): Na
     .slice(0, max);
 }
 
+// Parse the stored favorites list: keep only well-formed uuid strings, dedupe
+// (first occurrence wins, preserving order), and cap the count. Anything that
+// isn't an array yields the empty list.
+function parseFavorites(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string" || !SETTINGS_UUID_RE.test(v) || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+    if (out.length >= FAVORITES_HARD_CAP) break;
+  }
+  return out;
+}
+
 export function parseSettings(raw: unknown): UserSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const highlightColor =
@@ -289,6 +336,10 @@ export function parseSettings(raw: unknown): UserSettings {
     r.mobileNavSlots == null
       ? null
       : parseNavSlots(r.mobileNavSlots, NAV_SLOTS_HARD_CAP, []);
+  const textSize = (TEXT_SIZES as readonly string[]).includes(r.textSize as string)
+    ? (r.textSize as TextSize)
+    : DEFAULT_SETTINGS.textSize;
+  const favorites = parseFavorites(r.favorites);
   return {
     highlightColor,
     highlightGradient,
@@ -305,6 +356,8 @@ export function parseSettings(raw: unknown): UserSettings {
     homeDashboardId,
     todayDashboardId,
     icsToken,
+    textSize,
+    favorites,
   };
 }
 

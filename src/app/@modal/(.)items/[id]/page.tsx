@@ -5,6 +5,7 @@
 import ItemCanvas from "@/components/canvas/ItemCanvas";
 import Modal from "@/components/canvas/Modal";
 import { getItem } from "@/lib/items";
+import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
@@ -27,6 +28,8 @@ export default async function ItemModal({
   let title = "";
   let type = "";
   let isTemplate = false;
+  let locked = false;
+  let favorited = false;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -38,12 +41,24 @@ export default async function ItemModal({
       title = item.title;
       type = item.type;
       isTemplate = item.isTemplate;
+      locked = Boolean(
+        (item.properties as Record<string, unknown> | null)?.locked
+      );
+      favorited = await isItemFavorited(owner.id, id);
     }
   } catch {
     // ignore — render the default modal width
   }
   return (
-    <Modal itemId={id} wide={wide} title={title} type={type} isTemplate={isTemplate}>
+    <Modal
+      itemId={id}
+      wide={wide}
+      title={title}
+      type={type}
+      isTemplate={isTemplate}
+      locked={locked}
+      favorited={favorited}
+    >
       <ItemCanvas id={id} variant="modal" />
     </Modal>
   );

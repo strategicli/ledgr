@@ -21,12 +21,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import BuildSidebar from "@/components/nav/BuildSidebar";
+import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import { isBuildPath } from "@/lib/build-nav";
 import { BUILD_SIDEBAR_PX, navPadVars, RAIL_PX } from "@/lib/nav-layout";
 import { navIconPaths } from "@/lib/nav-icons";
-import type { NavDensity, NavPosition, RailAnchor, RailSize } from "@/lib/settings";
+import { FAVORITES_HREF, type NavDensity, type NavPosition, type RailAnchor, type RailSize } from "@/lib/settings";
 
 // A single nav destination, resolved for render (icon key + any badge count).
 export type ShellDest = {
@@ -58,6 +59,9 @@ const HOME_SLOT: ShellSlot = {
 
 // A destination at /search opens the command palette rather than navigating.
 const isSearchHref = (href: string) => href === "/search";
+
+// A destination at /favorites opens the favorites flyout rather than navigating.
+const isFavoritesHref = (href: string) => href === FAVORITES_HREF;
 
 // Icon glyphs come from the shared NAV_ICONS library (key -> SVG paths); an
 // unknown key falls back to a generic list glyph. Hand-rolled 20px strokes, no
@@ -489,6 +493,29 @@ export default function NavShell({
             {inner}
           </button>
           {open && toolsPopover(slot, id, toolsPos)}
+        </div>
+      );
+    }
+
+    // Favorites: a destination that opens the favorites flyout instead of
+    // navigating. Reuses the tools open-state + outside-click closer.
+    if (isFavoritesHref(slot.href)) {
+      const open = openTools === id;
+      return (
+        <div key={id} data-nav-tools className="relative">
+          <button
+            onClick={() => setOpenTools((o) => (o === id ? null : id))}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label={slot.label}
+            title={slot.label}
+            className={className}
+          >
+            {inner}
+          </button>
+          {open && (
+            <FavoritesFlyout posClass={toolsPos} onNavigate={() => setOpenTools(null)} />
+          )}
         </div>
       );
     }
