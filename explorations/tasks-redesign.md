@@ -31,9 +31,16 @@ Project **cards**, each with its **subtasks/related tasks below**. Depends on th
 ## Task row (the list item)
 
 - A **priority-colored circle checkbox** on the left (P1 red … P5 green, P6 plain) — check to complete.
-- Title; optional secondary description line (muted).
-- A right-aligned **context label** (project / area) with a small icon (the Todoist "# Project" chip).
-- A **small SVG subtask indicator** when the task has children, with a **roll-down** (expand/collapse) to reveal the subtasks inline.
+- **Title**, with an optional muted description line.
+- **A metadata line directly below the title** (small SVG icons, colored), showing whichever apply (Images #9/#10):
+  - a **subtask-count indicator** — a small branch/subtask SVG + **`done/total`** (e.g. `0/3`) when the task has children;
+  - the **relative date** (calendar icon, accent-colored — "Wednesday"/"Saturday", per the relative-date rule below);
+  - a **recurring ↻ icon** when the task repeats;
+  - the **priority flag** (P-colored);
+  - the **assignee** (avatar);
+  - **label chip(s)** (tag icon, colored).
+- A right-aligned **project chip** (the "# Project" context) — or the project can sit on the metadata line; one consistent placement decided at build.
+- **Subtask roll-down:** the subtask-count indicator **expands inline** to reveal the subtasks, or the task is **clicked to open its detail modal**. Subtasks can themselves have subtasks (nesting), so the count indicator appears on subtasks too.
 - An **"Add task" button** below each list (and below a task's subtasks) for fast entry.
 
 ## Task detail canvas (opening a task) — Tyler, 2026-06-21
@@ -43,7 +50,8 @@ Tasks get their **own bespoke canvas** (not the default markdown canvas) — a f
 - **Main pane (left):**
   - Checkbox + **title** at the top.
   - A **lightweight Description** — mostly short plain text. **The full markdown chrome (color, bold/italic, headings, etc.) is hidden by default but still available** (e.g. a small toggle / slash menu), so a task description stays simple but can go rich when needed. (A "minimal" mode of the markdown editor: no visible toolbar by default.)
-  - **Subtasks are central** — a prominent **"+ Add sub-task"** right under the description (more emphasis than on other types).
+  - **Subtasks are central** — a collapsible **"Sub-tasks N/M"** section (chevron + done/total count), each subtask showing its own relative date, with a prominent **"+ Add sub-task"** right under the description. Subtasks can themselves nest (a child with children shows the same count indicator).
+  - **Parent breadcrumb (up-navigation):** when a subtask is opened, a **smaller clickable chip of its parent task sits above the title** — the parent's checkbox + title + the parent's own subtask count + a `›` — breadcrumb-style; click it to navigate up the tree (works at any depth). (Image #11.)
   - **Comments — DEFERRED (Tyler, 2026-06-21): not building yet.** (Todoist shows a Comment box here; we'll leave it out for now. When revisited: a lightweight timestamped list, likely `properties.comments` or related sub-items.) Leave room in the layout but don't build it.
 - **Right rail (details):** a column of property rows, each showing a value or a **"+"** to set — **Project · Date · Deadline · Priority · Labels · Reminders · Location · Assignee.** Same action vocabulary as the capture-card chips and the Quick Add config (one shared set: Date→scheduled, Deadline→due, Priority→P1–P6, etc.). (Todoist's lock/Pro badges on Deadline/Location are theirs; in Ledgr Deadline = the existing due date, Location is deferred.)
 - **Core note:** this gives the core `task` type a bespoke canvas (uses the ADR-041 seam, doesn't change it). Mostly UI; flag to Brandon if any of it reaches the core type model (the priority change is already the core flag).
