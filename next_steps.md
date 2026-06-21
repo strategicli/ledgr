@@ -36,7 +36,24 @@ Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core*
 
 ## ⟢ TYLER — v1.0 scope + parked work (2026-06-20)
 
-**⟢ NOW BUILDING — Tasks redesign (Todoist-style), 2026-06-21. PRD: `explorations/tasks-redesign.md`.** Replace the generic `/list/[type]` surface for tasks with a bespoke four-tab page (Today · Inbox · Upcoming · Projects). **Sequenced (Tyler's call):** (1) the **`project` type** (built first so Projects is real), (2) **P1–P6 priority** replacing the 4-level `urgency` — **CORE, Brandon-agree + ADR (ADR-096), flagged in COLLAB**; colors P1 red/P2 gold/P3 purple/P4 blue/P5 green/P6 none; (3) the **four-tab Tasks page** — Today (due-today by priority), Inbox (uncategorized bucket; "+" defaults here), Upcoming (day-grouped + per-day add + day-jump chips + week-shift arrows Current/+1/+2…), Projects (project cards + roll-down subtasks). Subtask → auto P5 (green). Task rows: priority-colored circle checkbox, subtask SVG indicator + roll-down, "Add task" under each list. Full detail + slices in the PRD.
+**⟢ RESUME STATE — Tasks redesign (Todoist-style) BUILT on branch `tasks-ui` (2026-06-21). PRD: `explorations/tasks-redesign.md`. Awaiting Tyler's in-browser test, then `tasks-ui` → main.**
+
+**On main already:** canvas tabs (ADR-095, PR #55), ty-docs untrack (#56), **Priority P1–P6** (ADR-096, PR #57 — `urgency` is now a smallint 1–6, surfaced as "Priority"; colors P1 red/P2 gold/P3 purple/P4 blue/P5 green/P6 none).
+
+**Built on `tasks-ui` (all tsc/eslint clean; verify-priority 28/28, verify-project 7/7, verify-nl-task pass):**
+1. **`project` type** (migration 0031) — Todoist-bucket statuses (Ongoing/Waiting/Paused/Future/Done, configurable), repo/liveurl/stack props, a `project` relation field on `task` (so an event's E4 task-pull seeds by a project).
+2. **Four-tab `/tasks`** — Today (by priority), Inbox (ViewFilter.inbox), Upcoming (day-grouped + per-day add + day chips + far-right week nav Current/+1/+2…), Projects (cards + their tasks). The cross-type `ListTabs` strip was REMOVED from all list pages.
+3. **Bespoke two-pane task canvas** (`TaskCanvas`, registered `coreModule` task canvasId→"task" — a CORE touch via the ADR-041 seam).
+4. **Editor chrome redesign + SVG toolbar icons** (`toolbar-icons.tsx`); **configurable editor toolbar** (settings.editorToolbarHidden + Settings → Editor toolbar).
+5. **One shared `AddTaskCard`** everywhere a task is added (global "+", per-day, project cards, item "+ Task"): full-phrase inline token highlighting, SVG chip row, configurable Quick Add (settings.quickAddHidden + Settings → Quick Add), **Inbox by default / auto-associate when added from an item**, **`#project-name`** detect+highlight+attach, repeat-SVG + colored P-chip detected chips.
+
+**Remaining (after Tyler's test + merge):**
+- `tasks-ui` → main (PR). **Two CORE touches flagged for Brandon in COLLAB to peek first:** priority smallint (ADR-096, ratified) + the `task` bespoke canvas.
+- Capture-card cosmetic polish: the exact Image-#4 chip-row layout, a functional Attachment + Reminders, the "…" kebab revealing hidden Quick Add actions.
+- Thread the real host title into the item "+ Task" destination (shows "This item" today).
+- `#project` create-on-miss (matches existing projects only today).
+- **OPEN QUESTION** (logged in General Ledgr upgrades): cross-type discovery now that the ListTabs strip is gone — Tyler has ideas.
+- ADR for the Tasks redesign chunk (canvas/page/project) once merged.
 
 **Tyler's v1.0 bar:** *"Ledgr replaces Todoist + Apple Notes for me, and is my creative + dev workspace."* Tracked as a live progress bar on the Changelog page (`src/lib/v1-goals.ts`). Build queue, roughly in priority order:
 
