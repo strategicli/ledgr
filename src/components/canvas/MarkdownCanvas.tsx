@@ -70,7 +70,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // The type's resolved statuses (S2) for the status dropdown (labels + colors).
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const savedLayout = typeDef?.canvasLayout ?? null;
-  // Canvas tabs (ADR-094): auto-on for notes; opt-in for any other type via the
+  // Canvas tabs (ADR-095): auto-on for notes; opt-in for any other type via the
   // bespoke-tool catalog (the `tabs` capability, ADR-051). Tabs are sections of
   // the same markdown body, so this only changes the body editor.
   const tabsEnabled = item.type === "note" || typeDef?.capability === "tabs";
@@ -80,7 +80,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // Block anchors (ADR-090): a meeting's promoted lines (→ a "✓ task" badge), and
   // a promoted task's back-link to the exact meeting line it came from.
   const promotedRefs =
-    item.type === "meeting" ? await promotedBlockRefs(ownerId, item.id) : undefined;
+    item.type === "event" ? await promotedBlockRefs(ownerId, item.id) : undefined;
   const sourceObj =
     item.type === "task"
       ? ((item.properties as Record<string, unknown> | null)?.source as
@@ -174,7 +174,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           <ItemEditor
             item={{ id: item.id, title: item.title, body: item.body }}
             slot="body"
-            promoteToMeetingId={item.type === "meeting" ? item.id : undefined}
+            promoteToMeetingId={item.type === "event" ? item.id : undefined}
             promotedRefs={promotedRefs}
             tabsEnabled={tabsEnabled}
           />
@@ -287,7 +287,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} statuses={statuses} />
           ) : null
         }
-        promoteToMeetingId={item.type === "meeting" ? item.id : undefined}
+        promoteToMeetingId={item.type === "event" ? item.id : undefined}
         promotedRefs={promotedRefs}
         tabsEnabled={tabsEnabled}
       />
@@ -316,10 +316,10 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       )}
       {/* Meeting prep (PRD §5.1): the people, their open tasks, recent
           meetings, and action-item -> task promotion. */}
-      {item.type === "meeting" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
+      {item.type === "event" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
       {/* Transcripts (meeting recording v1a, ADR-087): paste/list a meeting's
           transcripts (each its own item), the pivot for Claude-over-MCP minutes. */}
-      {item.type === "meeting" && <MeetingTranscripts ownerId={ownerId} itemId={item.id} />}
+      {item.type === "event" && <MeetingTranscripts ownerId={ownerId} itemId={item.id} />}
       {/* Custom properties (PRD §3.6): the type's scalar Build-surface fields,
           edited in place over items.properties. CustomProperties skips relation
           kinds (their value is edges, not properties). */}

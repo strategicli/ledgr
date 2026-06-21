@@ -1,12 +1,14 @@
-// Calendar sync engine (slice 22, PRD §5.1, ADR-023). Deterministic plumbing,
-// no model in the loop: poll the next N days, reconcile each event to a
-// `meeting` item keyed by ms_event_id. Reschedule updates meeting_at; cancel
-// flags the item (prep survives) and never deletes. Entity/template matching
-// is the next slice (23); this slice stores attendees + metadata in
-// properties.calendar so those matchers have structured data to read.
+// Calendar sync engine (slice 22 / ADR-094 E3, PRD §5.1, ADR-023). Deterministic
+// plumbing, no model in the loop: poll the next N days and reconcile each event
+// against the calendar_events cache. The sync no longer auto-creates an item per
+// event (the ADR-023 firehose); it upserts every event into the cache,
+// AUTO-PROMOTES the ones a matcher recognizes (a standing 1:1, a series) into
+// real `event` items, and leaves the rest in the cache as one-click "Add"s in
+// the /events calendar feed. A promoted event keeps reschedule/cancel handling
+// on its item; cancel flags it (prep survives) and never deletes.
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items, jobState } from "@/db/schema";
+import { calendarEvents, items, jobState } from "@/db/schema";
 import type { CalendarEvent, CalendarSource } from "./types";
 
 export const CALENDAR_JOB_KEY = "calendar_sync";
@@ -14,7 +16,10 @@ export const DEFAULT_WINDOW_DAYS = 14;
 
 export type CalendarRunResult = {
   seen: number;
-  created: number;
+  // Matched events newly auto-promoted to `event` items this run.
+  promoted: number;
+  // Newly cached events left in the feed (un-promoted, waiting for a manual Add).
+  cached: number;
   updated: number;
   canceled: number;
   unchanged: number;
@@ -29,11 +34,10 @@ export type CalendarJobState = {
   windowDays: number;
 };
 
-// What we persist under items.properties.calendar. Attendees stay structured
-// (matchers key on emails); attendeeEmails + names also fall into the FTS
-// document (jsonb_to_tsvector indexes string values), so "Roger" finds his
-// meetings. canceled is here, not a column: it isn't a hot filter in v1, and
-// keeping it off the schema avoids a migration (hot-fields-are-columns, ADR-003).
+// What we persist under calendar_events.meta (and, for a promoted item, mirrored
+// into items.properties.calendar). Attendees stay structured (matchers key on
+// emails); for a promoted item attendeeEmails + names also fall into the FTS
+// document. canceled rides here too.
 type CalendarMeta = {
   organizer: CalendarEvent["organizer"];
   attendees: CalendarEvent["attendees"];
@@ -93,8 +97,8 @@ function unchangedSince(e: CalendarEvent, row: ExistingRow): boolean {
   );
 }
 
-// Merges calendar metadata into properties without clobbering keys a future
-// matcher (slice 23) may have written (matched template, default urgency, …).
+// Merges calendar metadata into a promoted item's properties without clobbering
+// keys a matcher wrote (matched template, default urgency, …).
 function mergeProps(existing: unknown, meta: CalendarMeta): Record<string, unknown> {
   const base =
     existing && typeof existing === "object" && !Array.isArray(existing)
@@ -109,12 +113,16 @@ export async function runCalendarSync(
   opts: {
     windowDays?: number;
     onError?: (eventId: string, err: unknown) => void;
-    // Invoked once per newly-created meeting (CREATE only, never on update, so
-    // a rejected suggestion isn't resurrected on a reschedule). The calendar
-    // routes wire this to the matcher engine (slice 23); it catches its own
-    // errors, so a matcher failure never fails the sync. Kept as a callback so
-    // the sync engine stays matcher-agnostic and verifies independently.
-    onCreated?: (itemId: string, event: CalendarEvent) => Promise<void>;
+    // Decide auto-promote: does any matcher recognize this event (a standing
+    // 1:1, a series)? The route wires this to the matcher engine (matchEvent →
+    // matchedMatcherIds non-empty). Kept a callback so the sync engine stays
+    // matcher-agnostic and verifies on its own. Absent => nothing auto-promotes
+    // (every new event waits in the feed).
+    shouldPromote?: (event: CalendarEvent) => Promise<boolean>;
+    // Invoked once per newly auto-promoted item, to attach the matched entities
+    // / template; the route wires it to applyMatchersToMeeting. It catches its
+    // own errors, so a matcher failure never fails the sync.
+    onPromoted?: (itemId: string, event: CalendarEvent) => Promise<void>;
   } = {}
 ): Promise<CalendarRunResult> {
   const db = getDb();
@@ -123,7 +131,8 @@ export async function runCalendarSync(
 
   const result: CalendarRunResult = {
     seen: events.length,
-    created: 0,
+    promoted: 0,
+    cached: 0,
     updated: 0,
     canceled: 0,
     unchanged: 0,
@@ -131,7 +140,7 @@ export async function runCalendarSync(
   };
 
   // One lookup for every event's existing item (incl. trashed, so a deleted
-  // meeting is never resurrected as a duplicate). Owner-scoped.
+  // event is never resurrected or duplicated). Owner-scoped.
   const ids = [...new Set(events.map((e) => e.id))];
   const existingRows = ids.length
     ? await db
@@ -151,66 +160,116 @@ export async function runCalendarSync(
     if (r.msEventId) byEventId.set(r.msEventId, r);
   }
 
-  const syncedAt = new Date().toISOString();
+  const syncStart = new Date();
+  const syncedAt = syncStart.toISOString();
   for (const e of events) {
     try {
-      const existing = byEventId.get(e.id);
       const meta = buildMeta(e, syncedAt);
+      const existing = byEventId.get(e.id);
 
-      if (!existing) {
-        // A meeting cancelled before we ever synced it has no prep to protect;
-        // don't create a tombstone.
-        if (e.isCancelled) {
+      // 1. Cache the event snapshot, keyed by ms_event_id. On conflict we update
+      // the snapshot but never the promotion link (set explicitly below), so an
+      // existing promotion survives a re-sync.
+      await db
+        .insert(calendarEvents)
+        .values({
+          ownerId,
+          msEventId: e.id,
+          title: e.title,
+          startAt: e.startUtc,
+          endAt: e.endUtc,
+          meta,
+          isCancelled: e.isCancelled,
+          lastModified: e.lastModified,
+          syncedAt: syncStart,
+          promotedItemId: existing?.id ?? null,
+        })
+        .onConflictDoUpdate({
+          target: [calendarEvents.ownerId, calendarEvents.msEventId],
+          set: {
+            title: e.title,
+            startAt: e.startUtc,
+            endAt: e.endUtc,
+            meta,
+            isCancelled: e.isCancelled,
+            lastModified: e.lastModified,
+            syncedAt: syncStart,
+          },
+        });
+
+      // 2. Already promoted (an item exists for this event, live or trashed):
+      // point the cache at it (so it stays out of the feed) and reconcile.
+      if (existing) {
+        await db
+          .update(calendarEvents)
+          .set({ promotedItemId: existing.id })
+          .where(
+            and(
+              eq(calendarEvents.ownerId, ownerId),
+              eq(calendarEvents.msEventId, e.id)
+            )
+          );
+        // Respect a user delete: never write to (or resurrect) a trashed item.
+        if (existing.deletedAt) {
           result.unchanged++;
           continue;
         }
+        if (unchangedSince(e, existing)) {
+          result.unchanged++;
+          continue;
+        }
+        const wasCanceled =
+          ((existing.properties ?? {}) as { calendar?: { canceled?: boolean } })
+            .calendar?.canceled === true;
+        await db
+          .update(items)
+          .set({
+            title: e.title,
+            meetingAt: e.startUtc,
+            properties: mergeProps(existing.properties, meta),
+          })
+          .where(and(eq(items.id, existing.id), eq(items.ownerId, ownerId)));
+        if (e.isCancelled && !wasCanceled) result.canceled++;
+        else result.updated++;
+        continue;
+      }
+
+      // 3. No item yet. Auto-promote when a matcher recognizes the event (and it
+      // isn't a cancellation); otherwise it waits in the feed as a one-click Add.
+      let promote = false;
+      if (!e.isCancelled && opts.shouldPromote) {
+        promote = await opts.shouldPromote(e);
+      }
+      if (promote) {
         const inserted = await db
           .insert(items)
           .values({
             ownerId,
-            type: "meeting",
+            type: "event",
             title: e.title,
             meetingAt: e.startUtc,
             msEventId: e.id,
             status: "open",
-            // Calendar events arrive fully-formed (type + time); they belong in
-            // Meetings/Today, not the triage queue (ADR-023). Entity links are
-            // matchers' job, not inbox triage.
+            // Auto-promoted events arrive fully-formed; they belong in
+            // Events/Today, not the triage queue (ADR-023).
             inbox: false,
             properties: { calendar: meta },
           })
           .returning({ id: items.id });
-        result.created++;
-        if (opts.onCreated) await opts.onCreated(inserted[0].id, e);
-        continue;
+        await db
+          .update(calendarEvents)
+          .set({ promotedItemId: inserted[0].id })
+          .where(
+            and(
+              eq(calendarEvents.ownerId, ownerId),
+              eq(calendarEvents.msEventId, e.id)
+            )
+          );
+        result.promoted++;
+        if (opts.onPromoted) await opts.onPromoted(inserted[0].id, e);
+      } else {
+        result.cached++;
       }
-
-      // Respect a user delete: never write to (or resurrect) a trashed item;
-      // the map already prevents a duplicate.
-      if (existing.deletedAt) {
-        result.unchanged++;
-        continue;
-      }
-      if (unchangedSince(e, existing)) {
-        result.unchanged++;
-        continue;
-      }
-
-      const wasCanceled =
-        ((existing.properties ?? {}) as { calendar?: { canceled?: boolean } })
-          .calendar?.canceled === true;
-      await db
-        .update(items)
-        .set({
-          title: e.title,
-          meetingAt: e.startUtc,
-          properties: mergeProps(existing.properties, meta),
-        })
-        .where(and(eq(items.id, existing.id), eq(items.ownerId, ownerId)));
-      // A fresh cancellation is the headline outcome; otherwise it's a
-      // reschedule/detail update.
-      if (e.isCancelled && !wasCanceled) result.canceled++;
-      else result.updated++;
     } catch (err) {
       result.errors++;
       opts.onError?.(e.id, err);

@@ -17,7 +17,7 @@ export type CanvasField =
 // ADR-073/076.
 const TOP_STRIP: Record<string, CanvasField[]> = {
   task: ["status", "scheduledDate", "dueDate", "urgency"],
-  meeting: ["meetingAt"],
+  event: ["meetingAt"],
   note: [],
   link: ["url"],
 };

@@ -151,7 +151,7 @@ try {
   check("list_items open no longer returns the done task", !itemsOf(stillOpen).some((i) => i.id === task.id));
 
   const typesOut = await callJson(ownerId, "list_types", {});
-  check("list_types lists the five system types", ["task", "meeting", "note", "link", "person"].every((k) => (typesOut.types as Json[]).some((t) => t.key === k)));
+  check("list_types lists the five system types", ["task", "event", "note", "link", "person"].every((k) => (typesOut.types as Json[]).some((t) => t.key === k)));
 
   // Full transport path: a tools/call routed through the dispatcher.
   const dispatched = await handleMcpMessage({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "list_types", arguments: {} } }, ownerId);

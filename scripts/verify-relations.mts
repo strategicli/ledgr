@@ -63,7 +63,7 @@ try {
   const T = await createItem(ownerId, { type: "task", title: "Verify Task" });
   const N = await createItem(ownerId, { type: "note", title: "Verify Note" });
   const L = await createItem(ownerId, { type: "link", title: "Verify Link", url: "https://example.com" });
-  const M = await createItem(ownerId, { type: "meeting", title: "Verify Meeting" });
+  const M = await createItem(ownerId, { type: "event", title: "Verify Meeting" });
   created.push(E.id, T.id, N.id, L.id, M.id);
 
   await db.insert(relations).values([

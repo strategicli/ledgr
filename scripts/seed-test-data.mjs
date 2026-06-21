@@ -348,7 +348,7 @@ console.log("Inserting meetings...");
 const M = {};
 
 M.staff1 = await insertItem({
-  type: "meeting", title: "Weekly Staff Meeting",
+  type: "event", title: "Weekly Staff Meeting",
   meetingAt: meetingTime(weeksAgo(4), 9),
   status: "done",
   body: md(
@@ -370,7 +370,7 @@ M.staff1 = await insertItem({
 });
 
 M.staff2 = await insertItem({
-  type: "meeting", title: "Weekly Staff Meeting",
+  type: "event", title: "Weekly Staff Meeting",
   meetingAt: meetingTime(weeksAgo(3), 9),
   status: "done",
   body: md(
@@ -391,7 +391,7 @@ M.staff2 = await insertItem({
 });
 
 M.staff3 = await insertItem({
-  type: "meeting", title: "Weekly Staff Meeting",
+  type: "event", title: "Weekly Staff Meeting",
   meetingAt: meetingTime(weeksAgo(2), 9),
   status: "done",
   body: md(
@@ -413,7 +413,7 @@ M.staff3 = await insertItem({
 });
 
 M.staff4 = await insertItem({
-  type: "meeting", title: "Weekly Staff Meeting",
+  type: "event", title: "Weekly Staff Meeting",
   meetingAt: meetingTime(daysFromNow(2), 9),
   status: "open",
   body: md(
@@ -430,7 +430,7 @@ M.staff4 = await insertItem({
 });
 
 M.elderQ2 = await insertItem({
-  type: "meeting", title: "Elder Board Q2 Review",
+  type: "event", title: "Elder Board Q2 Review",
   meetingAt: meetingTime(weeksAgo(6), 18, 30),
   status: "done",
   body: md(
@@ -453,7 +453,7 @@ M.elderQ2 = await insertItem({
 });
 
 M.building1 = await insertItem({
-  type: "meeting", title: "Building Committee Review",
+  type: "event", title: "Building Committee Review",
   meetingAt: meetingTime(weeksAgo(3), 10),
   status: "done",
   body: md(
@@ -475,7 +475,7 @@ M.building1 = await insertItem({
 });
 
 M.building2 = await insertItem({
-  type: "meeting", title: "Building Committee Review",
+  type: "event", title: "Building Committee Review",
   meetingAt: meetingTime(weeksFromNow(1), 10),
   status: "open",
   body: md(
@@ -491,7 +491,7 @@ M.building2 = await insertItem({
 });
 
 M.roger1on1 = await insertItem({
-  type: "meeting", title: "1:1 with Roger Martinez",
+  type: "event", title: "1:1 with Roger Martinez",
   meetingAt: meetingTime(daysAgo(10), 10, 30),
   status: "done",
   properties: { oneOnOne: { person: "Roger Martinez", quarter: "Q2 2026" } },
@@ -517,7 +517,7 @@ M.roger1on1 = await insertItem({
 });
 
 M.interview = await insertItem({
-  type: "meeting", title: "Interview: Communications Coordinator — Emma Wilson",
+  type: "event", title: "Interview: Communications Coordinator — Emma Wilson",
   meetingAt: meetingTime(daysFromNow(3), 14),
   status: "open",
   body: md(
@@ -540,7 +540,7 @@ M.interview = await insertItem({
 });
 
 M.retreat = await insertItem({
-  type: "meeting", title: "All-Staff Retreat Planning",
+  type: "event", title: "All-Staff Retreat Planning",
   meetingAt: meetingTime(weeksFromNow(2), 9),
   status: "open",
   body: md(

@@ -69,7 +69,7 @@ try {
   const tUndated = await createItem(ownerId, { type: "task", title: "V12 undated" });
   const tDone = await createItem(ownerId, { type: "task", title: "V12 done", dueDate: bounds.dueToday, status: "done" });
   const note = await createItem(ownerId, { type: "note", title: "V13 zebra note", body: para("The xylophone rehearsal went long on Tuesday evening.") });
-  const meeting = await createItem(ownerId, { type: "meeting", title: "V12 meeting", meetingAt: new Date() });
+  const meeting = await createItem(ownerId, { type: "event", title: "V12 meeting", meetingAt: new Date() });
   created.push(entity.id, entityB.id, tOverdue.id, tToday.id, tWeek.id, tFar.id, tUndated.id, tDone.id, note.id, meeting.id);
 
   // Confirmed edge task->entity, suggested edge for another task, and a

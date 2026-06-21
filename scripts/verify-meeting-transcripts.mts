@@ -62,7 +62,7 @@ const mk = async (v: Record<string, unknown>) =>
       .returning({ id: items.id })
   )[0].id;
 
-const meetingId = await mk({ type: "meeting", title: "Staff sync" });
+const meetingId = await mk({ type: "event", title: "Staff sync" });
 const noteId = await mk({ type: "note", title: "A note" });
 
 // --- create: child + edge + minutes=none ---------------------------------

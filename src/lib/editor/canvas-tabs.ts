@@ -1,4 +1,4 @@
-// Canvas tabs (ADR-094): split one item's markdown body into named tabs, each a
+// Canvas tabs (ADR-095): split one item's markdown body into named tabs, each a
 // SECTION of the same body, delimited by an invisible HTML-comment marker
 // (`<!-- tab: Title -->`). The canonical body stays one markdown document
 // (ADR-037/040), so every reader — render, FTS, share, print, clone, MCP — sees
@@ -14,7 +14,7 @@ export type CanvasTab = { title: string; body: string };
 
 // A marker is a lone line that is exactly an HTML comment `<!-- tab: Title -->`
 // (leading/trailing whitespace allowed). Chosen over `# H1`-as-tab so a stray
-// heading in pasted content can't accidentally create a tab (ADR-094 §3).
+// heading in pasted content can't accidentally create a tab (ADR-095 §3).
 const TAB_MARKER_RE = /^[ \t]*<!--[ \t]*tab:[ \t]*(.*?)[ \t]*-->[ \t]*$/;
 
 // A title can't carry a newline or the comment terminator, so a serialized

@@ -141,13 +141,13 @@ export const coreModule: ModuleManifest = {
   enabledByDefault: true,
   types: [
     { key: "task", label: "Task", icon: "check-square", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
-    { key: "meeting", label: "Meeting", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "event", label: "Event", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
     { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
     { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "link" },
     { key: "person", label: "Person", icon: "user", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
   ],
   exporters: [],
-  // Canvas tabs (ADR-094): a default-canvas behavior, not a separate canvas
+  // Canvas tabs (ADR-095): a default-canvas behavior, not a separate canvas
   // (canvasId stays the default markdown canvas — MarkdownCanvas turns tabs on
   // when a type carries this capability). Auto-on for `note`; attach to any
   // other type from the Build bespoke-tool catalog. Tabs are sections of the

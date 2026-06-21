@@ -85,7 +85,7 @@ check(
 // gets meetingPrep + sys:meetingAt; a custom type maps props and relations.
 check("note vocabulary has no system fields or subtasks", !cardVocabulary("note", []).some((id) => id.startsWith("sys:") || id === "subtasks"));
 check("meeting vocabulary has meetingPrep + sys:meetingAt", (() => {
-  const v = cardVocabulary("meeting", []);
+  const v = cardVocabulary("event", []);
   return v.includes("meetingPrep") && v.includes("sys:meetingAt") && !v.includes("subtasks");
 })());
 
