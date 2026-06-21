@@ -14,7 +14,8 @@ import { Placeholder } from "@tiptap/extensions";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useRouter } from "next/navigation";
 import {
   BLOCKNOTE_COLORS,
@@ -102,11 +103,13 @@ async function insertUploadedImages(
 
 function ToolbarButton({
   label,
+  icon,
   active,
   onClick,
   title,
 }: {
-  label: string;
+  label?: string;
+  icon?: ReactNode;
   active?: boolean;
   onClick: () => void;
   title: string;
@@ -115,15 +118,16 @@ function ToolbarButton({
     <button
       type="button"
       title={title}
+      aria-label={title}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`rounded px-2 py-1 text-sm ${
+      className={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-sm font-medium ${
         active
           ? "bg-neutral-700 text-neutral-100"
-          : "text-neutral-300 hover:bg-neutral-800"
+          : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
       }`}
     >
-      {label}
+      {icon ?? label}
     </button>
   );
 }
@@ -405,22 +409,22 @@ export default function MarkdownEditor({
   };
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-950">
-      <div className="flex flex-wrap items-center gap-1 border-b border-neutral-800 p-2">
+    <div className="border-b border-neutral-800">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-neutral-800/70 px-1 py-1.5">
         <ToolbarButton
-          label="B"
+          icon={TOOLBAR_ICONS.bold}
           title="Bold"
           active={toolbar.isBold}
           onClick={() => editor.chain().focus().toggleBold().run()}
         />
         <ToolbarButton
-          label="I"
+          icon={TOOLBAR_ICONS.italic}
           title="Italic"
           active={toolbar.isItalic}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         />
         <ToolbarButton
-          label="S"
+          icon={TOOLBAR_ICONS.strike}
           title="Strikethrough"
           active={toolbar.isStrike}
           onClick={() => editor.chain().focus().toggleStrike().run()}
@@ -442,37 +446,37 @@ export default function MarkdownEditor({
           }
         />
         <ToolbarButton
-          label="• List"
+          icon={TOOLBAR_ICONS.bulletList}
           title="Bullet list"
           active={toolbar.isBulletList}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         />
         <ToolbarButton
-          label="1. List"
+          icon={TOOLBAR_ICONS.orderedList}
           title="Numbered list"
           active={toolbar.isOrderedList}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         />
         <ToolbarButton
-          label="☑ Tasks"
+          icon={TOOLBAR_ICONS.tasks}
           title="Checklist (- [ ])"
           active={toolbar.isTaskList}
           onClick={() => editor.chain().focus().toggleTaskList().run()}
         />
         <ToolbarButton
-          label="❝"
+          icon={TOOLBAR_ICONS.quote}
           title="Quote"
           active={toolbar.isBlockquote}
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
         />
         <ToolbarButton
-          label="</>"
+          icon={TOOLBAR_ICONS.code}
           title="Code block"
           active={toolbar.isCodeBlock}
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         />
         <ToolbarButton
-          label="▦ Table"
+          icon={TOOLBAR_ICONS.table}
           title="Insert table"
           onClick={() =>
             editor
@@ -484,14 +488,14 @@ export default function MarkdownEditor({
         />
         {uploadImage ? (
           <ToolbarButton
-            label="🖼 Image"
+            icon={TOOLBAR_ICONS.image}
             title="Insert image (or paste/drop one)"
             onClick={() => fileInputRef.current?.click()}
           />
         ) : null}
         {itemId ? (
           <ToolbarButton
-            label={linkCopied ? "Copied ✓" : "🔗 Link"}
+            icon={TOOLBAR_ICONS.link}
             title="Copy a link to this line (from the cursor)"
             active={linkCopied}
             onClick={() => void copyLineLink()}
