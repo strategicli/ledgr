@@ -22,15 +22,20 @@ export default function ItemActionsMenu({
   type,
   title,
   locked,
+  favorited,
 }: {
   itemId: string;
   type: string;
   title: string;
   locked: boolean;
+  favorited: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Optimistic star state so the menu reflects the toggle instantly; the server
+  // is the source of truth and a refresh re-syncs it.
+  const [fav, setFav] = useState(favorited);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +58,37 @@ export default function ItemActionsMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // Re-adopt the server value if a refresh changes it (adjust-during-render).
+  const [prevFav, setPrevFav] = useState(favorited);
+  if (favorited !== prevFav) {
+    setPrevFav(favorited);
+    setFav(favorited);
+  }
+
+  // Star/unstar this item (the owner's favorites list lives in settings, not on
+  // the item). Optimistic; reverts on failure. The flyout reads the same list,
+  // so a refresh keeps the nav in sync.
+  async function toggleFavorite() {
+    if (busy) return;
+    const next = !fav;
+    setBusy(true);
+    setFav(next);
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, favorite: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setOpen(false);
+      router.refresh();
+    } catch {
+      setFav(!next); // revert
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Flip items.properties.locked via a per-key merge, then refresh so the canvas
   // re-renders read-only (or editable again). Leaves the menu open on failure so
@@ -94,6 +130,18 @@ export default function ItemActionsMenu({
           role="menu"
           className="absolute right-0 z-50 mt-1 w-56 rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl shadow-black/50"
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void toggleFavorite()}
+            disabled={busy}
+            className={`${rowClass} disabled:opacity-50`}
+          >
+            <span aria-hidden className={fav ? "text-[var(--accent)]" : undefined}>
+              {fav ? "★" : "☆"}
+            </span>
+            {fav ? "Remove from favorites" : "Add to favorites"}
+          </button>
           <button
             type="button"
             role="menuitem"
