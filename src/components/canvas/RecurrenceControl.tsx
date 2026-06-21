@@ -18,6 +18,7 @@ import {
   describeRule,
   makeRecurrence,
   parseRecurrence,
+  parseRRule,
   WEEKDAYS,
   WEEKDAY_LABELS,
   type AnchorMode,
@@ -55,12 +56,15 @@ export default function RecurrenceControl({
   scheduledDate,
   dueDate,
   today,
+  bare = false,
 }: {
   itemId: string;
   initial: ReturnType<typeof parseRecurrence>;
   scheduledDate: string | null; // ISO or null
   dueDate: string | null;
   today: string; // YYYY-MM-DD in the app timezone
+  // Drop the wide centered-column padding for a narrow rail (task canvas).
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [rule, setRule] = useState(initial);
@@ -136,10 +140,19 @@ export default function RecurrenceControl({
         : p === "weekly"
           ? overrides.byDay ?? (byDay.length ? byDay : [])
           : [];
+    // Monthly positional rules (nth-weekday / day-of-month, set via NL quick-add)
+    // have no UI here yet; carry them through unchanged so editing interval/anchor
+    // doesn't silently drop them. Dropped only when the preset leaves monthly.
+    const cur = parseRRule(rruleParts);
+    const monthlyExtras =
+      freq === "monthly"
+        ? { byDayOrdinal: cur?.byDayOrdinal, byMonthDay: cur?.byMonthDay }
+        : {};
     const next = makeRecurrence({
       freq,
       interval: overrides.interval ?? interval,
       byDay: days,
+      ...monthlyExtras,
       count: overrides.count !== undefined ? overrides.count ?? undefined : count ? Number(count) : undefined,
       until: overrides.until !== undefined ? overrides.until ?? undefined : until ?? undefined,
       dtstart,
@@ -159,7 +172,7 @@ export default function RecurrenceControl({
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pb-2 pt-2 sm:px-8 md:px-12">
+    <section className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pb-2 pt-2 sm:px-8 md:px-12"}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-neutral-500">
         <label className="flex items-center gap-1.5">
           Repeat

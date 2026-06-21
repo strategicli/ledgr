@@ -41,6 +41,7 @@ export default function CustomProperties({
   schema,
   initial,
   hideHeading = false,
+  bare = false,
   locked = false,
 }: {
   itemId: string;
@@ -51,6 +52,8 @@ export default function CustomProperties({
   // card (ADR-069) — the field's own label already names it, so the category
   // heading on every card was noise (Brandon, 2026-06-17).
   hideHeading?: boolean;
+  // Drop the wide centered-column padding for a narrow rail (task canvas).
+  bare?: boolean;
   // When true (the item lock toggle): every field (and its clear button) is
   // disabled and can't be clicked into, via a disabled <fieldset> wrapper.
   locked?: boolean;
@@ -209,7 +212,7 @@ export default function CustomProperties({
   if (scalarSchema.length === 0) return null;
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12">
+    <section className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12"}>
       {!hideHeading && (
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
           Properties

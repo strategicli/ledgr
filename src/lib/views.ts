@@ -50,6 +50,9 @@ export type ViewFilter = {
   // auto-clears overnight, ADR-078), so it can't be a stored date; the predicate
   // is an index-backed `properties @>` containment. Powers the Top-3 widget.
   focusedToday?: boolean;
+  // Untriaged bucket: items flagged inbox=true (the Tasks "Inbox" tab / quick
+  // capture default). Index-backed (items_inbox_idx).
+  inbox?: boolean;
 };
 
 export const SORT_FIELDS = [
@@ -101,6 +104,7 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
     }
   }
   if (filter.urgency) where.push(eq(items.urgency, filter.urgency));
+  if (filter.inbox) where.push(eq(items.inbox, true));
 
   if (filter.due || filter.withinDays != null) {
     const field = filter.dateField ?? "dueDate";

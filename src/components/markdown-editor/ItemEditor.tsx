@@ -60,6 +60,11 @@ export type ItemEditorProps = {
   // Canvas tabs (ADR-094): when true, the body is editable as named tabs (a
   // strip + "+ Add tab"); tabs are sections of the same markdown body.
   tabsEnabled?: boolean;
+  // Body-editor presentation (the task canvas opts in): hide the formatting bar
+  // behind a top-right toggle, and start one line tall + grow. Forwarded to the
+  // MarkdownEditor; default off keeps the roomy always-on editor.
+  collapsibleToolbar?: boolean;
+  compactBody?: boolean;
   // When true (the item lock toggle): the title and body are read-only and the
   // cursor can't enter them, and the body's toolbar hides. The field strip and
   // properties are locked by their own hosts (FieldStrip / CustomProperties).
@@ -73,6 +78,8 @@ export default function ItemEditor({
   promoteToMeetingId,
   promotedRefs,
   tabsEnabled = false,
+  collapsibleToolbar = false,
+  compactBody = false,
   locked = false,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
@@ -227,6 +234,8 @@ export default function ItemEditor({
       onChange={onBodyChange}
       promoteToMeetingId={promoteToMeetingId}
       promotedRefs={promotedRefs}
+      collapsibleToolbar={collapsibleToolbar}
+      compact={compactBody}
       // The promote flow flushes the body save first, so the line's ^id anchor
       // is persisted before the task is created and the page refreshes.
       onRequestSave={flush}

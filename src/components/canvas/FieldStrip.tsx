@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { CanvasField } from "@/lib/canvas-fields";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
+import { priorityStyle, type Priority } from "@/lib/priority";
 import type { StatusDef } from "@/lib/status";
 import { beginSave, endSave } from "@/lib/save-status";
 import { addDaysYmd } from "@/lib/recurrence";
@@ -49,11 +50,16 @@ export default function FieldStrip({
   initial,
   today,
   statuses,
+  layout = "strip",
   locked = false,
 }: {
   itemId: string;
   fields: CanvasField[];
   initial: StripValues;
+  // "strip" (default) = the horizontal one-line top strip of the classic canvas.
+  // "rail" = a vertical stack of labeled, divided sections for a narrow right
+  // pane (the task canvas), flush (no wide centered-column padding).
+  layout?: "strip" | "rail";
   // App-timezone today (YYYY-MM-DD); enables the reschedule shortcuts + natural-
   // language date entry on the scheduled field (native tasks, T2). Absent → the
   // scheduled field is a plain date picker.
@@ -190,7 +196,7 @@ export default function FieldStrip({
       case "urgency":
         return (
           <select
-            className={selectClass}
+            className={`${selectClass} ${values.urgency ? priorityStyle(values.urgency as Priority).text : ""}`}
             value={values.urgency ?? ""}
             onChange={(e) =>
               void save({ urgency: e.target.value ? Number(e.target.value) : null })
@@ -247,6 +253,29 @@ export default function FieldStrip({
     meetingAt: "When",
     url: "URL",
   };
+
+  if (layout === "rail") {
+    return (
+      <div className="flex flex-col">
+        {fields.map((name) => (
+          <div
+            key={name}
+            className="border-t border-neutral-800/60 py-3 first:border-t-0 first:pt-0"
+          >
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              {labels[name]}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-sm text-neutral-200">
+              {field(name)}
+            </div>
+          </div>
+        ))}
+        {error && (
+          <span className="text-xs text-red-400">Save failed, change reverted</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

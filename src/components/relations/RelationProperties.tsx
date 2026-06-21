@@ -18,6 +18,7 @@ export default async function RelationProperties({
   typeKey,
   props,
   hideHeading = false,
+  bare = false,
 }: {
   ownerId: string;
   itemId: string;
@@ -26,6 +27,9 @@ export default async function RelationProperties({
   // Drop the "Relations" section heading when rendered as a single per-field
   // card (ADR-069) — the field's own label names it (Brandon, 2026-06-17).
   hideHeading?: boolean;
+  // Drop the wide centered-column padding so it sits flush in a narrow rail
+  // (the task canvas right pane) instead of the full-width classic canvas.
+  bare?: boolean;
 }) {
   const relationProps = props.filter((p) => p.kind === "relation");
   if (relationProps.length === 0) return null;
@@ -41,7 +45,7 @@ export default async function RelationProperties({
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12">
+    <section className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12"}>
       {!hideHeading && (
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
           Relations

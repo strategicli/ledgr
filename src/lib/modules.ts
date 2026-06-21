@@ -140,7 +140,7 @@ export const coreModule: ModuleManifest = {
   label: "Core",
   enabledByDefault: true,
   types: [
-    { key: "task", label: "Task", icon: "check-square", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "task", label: "Task", icon: "check-square", canonicalFormat: MARKDOWN_FORMAT, canvasId: "task" },
     { key: "event", label: "Event", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
     { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
     { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "link" },

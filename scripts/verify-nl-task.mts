@@ -91,6 +91,53 @@ console.log("\n# Recurrence (→ RRULE)");
   eq("daily → title stripped", r.title, "journal");
 }
 
+console.log("\n# Recurrence: 'every other' (→ INTERVAL=2)");
+{
+  const r = parseTaskTitle("Trash every other week", TODAY);
+  eq("every other week → weekly interval 2", r.recurrence?.rrule, "FREQ=WEEKLY;INTERVAL=2");
+  eq("every other week → title stripped", r.title, "Trash");
+}
+{
+  const r = parseTaskTitle("Sermon edit every other friday", TODAY);
+  eq("every other friday → biweekly BYDAY=FR", r.recurrence?.rrule, "FREQ=WEEKLY;INTERVAL=2;BYDAY=FR");
+  eq("every other friday → label", r.detections[0].label, "Every other Friday");
+}
+{
+  const r = parseTaskTitle("Deep clean every other month", TODAY);
+  eq("every other month → monthly interval 2", r.recurrence?.rrule, "FREQ=MONTHLY;INTERVAL=2");
+}
+
+console.log("\n# Recurrence: monthly positional (ADR-076 amendment)");
+{
+  const r = parseTaskTitle("Pick service first sunday of the month", TODAY);
+  eq("first sunday → ordinal BYDAY", r.recurrence?.rrule, "FREQ=MONTHLY;BYDAY=1SU");
+  eq("first sunday → scheduled (June's passed → July)", r.scheduledDate, "2026-07-05");
+  eq("first sunday → title stripped", r.title, "Pick service");
+  eq("first sunday → label", r.detections[0].label, "First Sunday");
+}
+{
+  const r = parseTaskTitle("the third thursday review", TODAY);
+  eq("the third thursday → BYDAY=3TH", r.recurrence?.rrule, "FREQ=MONTHLY;BYDAY=3TH");
+  eq("third thursday → scheduled = today (June 18 is the 3rd Thu)", r.scheduledDate, "2026-06-18");
+  eq("the/of-the-month optional; title stripped", r.title, "review");
+}
+{
+  const r = parseTaskTitle("report first and second thursday", TODAY);
+  eq("first and second thursday → BYDAY=1TH,2TH", r.recurrence?.rrule, "FREQ=MONTHLY;BYDAY=1TH,2TH");
+  eq("multi-ordinal → label", r.detections[0].label, "First & Second Thursday");
+  eq("multi-ordinal → title stripped", r.title, "report");
+}
+{
+  const r = parseTaskTitle("Pay rent 3rd of the month", TODAY);
+  eq("3rd of the month → BYMONTHDAY=3", r.recurrence?.rrule, "FREQ=MONTHLY;BYMONTHDAY=3");
+  eq("bymonthday → label", r.detections[0].label, "Day 3");
+  eq("bymonthday → title stripped", r.title, "Pay rent");
+}
+{
+  const r = parseTaskTitle("Reconcile last of the month", TODAY);
+  eq("last of the month → BYMONTHDAY=-1", r.recurrence?.rrule, "FREQ=MONTHLY;BYMONTHDAY=-1");
+}
+
 console.log("\n# Urgency (p1..p4 / !1..!4)");
 {
   eq("p1 → P1", parseTaskTitle("Fix outage p1", TODAY).urgency, 1);
