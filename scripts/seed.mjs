@@ -20,7 +20,7 @@ const sql = neon(url);
 
 const systemTypes = [
   ["task", "Task", "check-square"],
-  ["meeting", "Meeting", "users"],
+  ["event", "Event", "users"],
   ["note", "Note", "file-text"],
   ["link", "Link", "link"],
   ["person", "Person", "user"],

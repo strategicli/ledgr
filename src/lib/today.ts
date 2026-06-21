@@ -105,7 +105,7 @@ export async function getTodayData(ownerId: string, now = new Date()) {
       .where(
         and(
           live,
-          eq(items.type, "meeting"),
+          eq(items.type, "event"),
           gte(items.meetingAt, bounds.dayStart),
           lt(items.meetingAt, bounds.dayEnd)
         )

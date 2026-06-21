@@ -88,7 +88,7 @@ export async function getMeetingPrep(
     people.map((e) =>
       queryViewItems(
         ownerId,
-        { type: "meeting", relatedTo: e.id },
+        { type: "event", relatedTo: e.id },
         { field: "meetingAt", dir: "desc" },
         RECENT_MEETINGS + 1 // room to drop this meeting before slicing
       )

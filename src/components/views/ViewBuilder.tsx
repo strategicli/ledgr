@@ -49,7 +49,7 @@ const GROUP_LABELS: Record<string, string> = {
 // current pick when the type changes.
 function dateFieldsFor(type: string): string[] {
   if (type === "task") return ["dueDate", "scheduledDate", "createdAt", "updatedAt"];
-  if (type === "meeting") return ["meetingAt", "createdAt", "updatedAt"];
+  if (type === "event") return ["meetingAt", "createdAt", "updatedAt"];
   if (type === "")
     return ["dueDate", "scheduledDate", "meetingAt", "createdAt", "updatedAt"];
   return ["createdAt", "updatedAt"]; // note / link / person
@@ -60,7 +60,7 @@ function sortFieldsFor(type: string): string[] {
 // urgency + due window are task-only in the UI (ADR-018).
 function groupFieldsFor(type: string): string[] {
   if (type === "task") return ["status", "urgency", "due", "scheduled", "type"];
-  if (type === "meeting") return ["status", "type"];
+  if (type === "event") return ["status", "type"];
   if (type === "") return ["status", "urgency", "due", "scheduled", "type"];
   return ["status", "type"]; // note / link / person
 }

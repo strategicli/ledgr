@@ -88,8 +88,8 @@ const ownerId = u.id;
 const mk = async (v: Record<string, unknown>) =>
   (await db.insert(items).values({ ownerId, ...(v as object) } as typeof items.$inferInsert).returning({ id: items.id }))[0].id;
 
-const meetingId = await mk({ type: "meeting", title: "Recorded meeting" });
-const otherMeetingId = await mk({ type: "meeting", title: "Other meeting" });
+const meetingId = await mk({ type: "event", title: "Recorded meeting" });
+const otherMeetingId = await mk({ type: "event", title: "Other meeting" });
 
 const mkAttachment = async (parentId: string, contentType: string) =>
   (

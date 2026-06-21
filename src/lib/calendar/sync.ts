@@ -168,7 +168,7 @@ export async function runCalendarSync(
           .insert(items)
           .values({
             ownerId,
-            type: "meeting",
+            type: "event",
             title: e.title,
             meetingAt: e.startUtc,
             msEventId: e.id,

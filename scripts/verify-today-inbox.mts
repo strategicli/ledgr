@@ -75,10 +75,10 @@ try {
   );
   const dayMs = 24 * 60 * 60 * 1000;
 
-  const mToday = await createItem(ownerId, { type: "meeting", title: "V9 meeting today", meetingAt: midday });
-  const mEarly = await createItem(ownerId, { type: "meeting", title: "V9 meeting early", meetingAt: bounds.dayStart });
-  const mTomorrow = await createItem(ownerId, { type: "meeting", title: "V9 meeting tomorrow", meetingAt: new Date(bounds.dayEnd.getTime() + 60_000) });
-  const mPast = await createItem(ownerId, { type: "meeting", title: "V9 meeting yesterday", meetingAt: new Date(bounds.dayStart.getTime() - 60_000) });
+  const mToday = await createItem(ownerId, { type: "event", title: "V9 meeting today", meetingAt: midday });
+  const mEarly = await createItem(ownerId, { type: "event", title: "V9 meeting early", meetingAt: bounds.dayStart });
+  const mTomorrow = await createItem(ownerId, { type: "event", title: "V9 meeting tomorrow", meetingAt: new Date(bounds.dayEnd.getTime() + 60_000) });
+  const mPast = await createItem(ownerId, { type: "event", title: "V9 meeting yesterday", meetingAt: new Date(bounds.dayStart.getTime() - 60_000) });
   const tDueToday = await createItem(ownerId, { type: "task", title: "V9 due today", dueDate: bounds.dueToday });
   const tOverdue = await createItem(ownerId, { type: "task", title: "V9 overdue", dueDate: new Date(bounds.dueToday.getTime() - 3 * dayMs) });
   const tFuture = await createItem(ownerId, { type: "task", title: "V9 due tomorrow", dueDate: bounds.dueCutoff });
@@ -134,7 +134,7 @@ try {
     .values({ email: `verify-today-${Date.now()}@example.org` })
     .returning({ id: users.id });
   tempUserId = temp[0].id;
-  const foreign = await createItem(tempUserId, { type: "meeting", title: "V9 foreign meeting", meetingAt: midday });
+  const foreign = await createItem(tempUserId, { type: "event", title: "V9 foreign meeting", meetingAt: midday });
   created.push(foreign.id);
   const data2 = await getTodayData(ownerId, now);
   check(

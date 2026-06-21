@@ -41,7 +41,7 @@ const relate = (s: string, t: string, state: "confirmed" | "suggested" = "confir
 try {
   const roger = await mk({ type: "person", title: "Roger" });
   const other = await mk({ type: "person", title: "Someone Else" });
-  const meeting = await mk({ type: "meeting", title: "Roger 1:1", meetingAt: new Date("2026-06-20T15:00:00Z") });
+  const meeting = await mk({ type: "event", title: "Roger 1:1", meetingAt: new Date("2026-06-20T15:00:00Z") });
 
   // Roger's tasks: one open (should appear), one done (excluded), plus a task
   // for the OTHER person (excluded). And a suggested edge that must not count.
@@ -59,10 +59,10 @@ try {
 
   // Past meetings with Roger: three older + one in the future; this meeting
   // (also Roger's) must be excluded from "recent".
-  const past1 = await mk({ type: "meeting", title: "1:1 May", meetingAt: new Date("2026-05-01T15:00:00Z") });
-  const past2 = await mk({ type: "meeting", title: "1:1 Apr", meetingAt: new Date("2026-04-01T15:00:00Z") });
-  const past3 = await mk({ type: "meeting", title: "1:1 Mar", meetingAt: new Date("2026-03-01T15:00:00Z") });
-  const past4 = await mk({ type: "meeting", title: "1:1 Feb", meetingAt: new Date("2026-02-01T15:00:00Z") });
+  const past1 = await mk({ type: "event", title: "1:1 May", meetingAt: new Date("2026-05-01T15:00:00Z") });
+  const past2 = await mk({ type: "event", title: "1:1 Apr", meetingAt: new Date("2026-04-01T15:00:00Z") });
+  const past3 = await mk({ type: "event", title: "1:1 Mar", meetingAt: new Date("2026-03-01T15:00:00Z") });
+  const past4 = await mk({ type: "event", title: "1:1 Feb", meetingAt: new Date("2026-02-01T15:00:00Z") });
   for (const m of [meeting, past1, past2, past3, past4]) await relate(m, roger);
 
   // Relate the person to the meeting as well (the meeting<->Roger edge).
@@ -83,7 +83,7 @@ try {
   );
 
   // --- empty prep (no related person) -------------------------------------
-  const lonelyMeeting = await mk({ type: "meeting", title: "Solo block" });
+  const lonelyMeeting = await mk({ type: "event", title: "Solo block" });
   const emptyPrep = await getMeetingPrep(ownerId, lonelyMeeting);
   check("a meeting with no people yields empty prep", emptyPrep.people.length === 0 && emptyPrep.openTasks.length === 0);
 
