@@ -15,7 +15,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, jobState, users } = await import("../src/db/schema");
+const { calendarEvents, items, jobState, users } = await import("../src/db/schema");
 const { runCalendarSync, getCalendarState, CALENDAR_JOB_KEY } = await import(
   "../src/lib/calendar/sync"
 );
@@ -65,6 +65,12 @@ const [tempUser] = await db
   .returning({ id: users.id });
 const ownerId = tempUser.id;
 
+// E3: the sync only auto-creates (promotes) events a matcher recognizes; force
+// "every event matches" here so this script keeps exercising the create /
+// reschedule / cancel / idempotence reconcile path (the feed/gating path has its
+// own verify-calendar-feed.mts).
+const promoteAll = { shouldPromote: async () => true };
+
 const stampedElsewhere = async () =>
   (
     await db
@@ -91,9 +97,9 @@ try {
     ev({ id: "evt-staff", title: "Staff meeting", startUtc: new Date("2026-06-21T14:00:00Z") }),
     ev({ id: "evt-ghost", title: "Cancelled before sync", isCancelled: true }),
   ];
-  const run1 = await runCalendarSync(ownerId, stub);
-  check("run 1 creates the two live events", run1.created === 2, JSON.stringify(run1));
-  check("run 1 skips a cancelled-before-sync event (no tombstone)", run1.unchanged === 1 && (await getByEvent("evt-ghost")).length === 0);
+  const run1 = await runCalendarSync(ownerId, stub, promoteAll);
+  check("run 1 creates the two live events", run1.promoted ===2, JSON.stringify(run1));
+  check("run 1 skips a cancelled-before-sync event (no tombstone)", run1.cached === 1 && (await getByEvent("evt-ghost")).length === 0);
   check("run 1 seen counts all events", run1.seen === 3);
 
   const roger = (await getByEvent("evt-roger"))[0];
@@ -116,8 +122,8 @@ try {
   const updatedAtBefore = (await getByEvent("evt-roger"))[0].updatedAt.getTime();
   // Same 3-event input (incl. the still-cancelled evt-ghost, which stays
   // uncreated): every event resolves to unchanged, nothing is written.
-  const run2 = await runCalendarSync(ownerId, stub);
-  check("run 2 is a no-op (all unchanged, ghost still uncreated)", run2.created === 0 && run2.updated === 0 && run2.canceled === 0 && run2.unchanged === 3, JSON.stringify(run2));
+  const run2 = await runCalendarSync(ownerId, stub, promoteAll);
+  check("run 2 is a no-op (all unchanged, ghost still uncreated)", run2.promoted ===0 && run2.updated === 0 && run2.canceled === 0 && run2.unchanged === 2 && run2.cached === 1, JSON.stringify(run2));
   check("unchanged run does not bump updated_at (no re-export churn)", (await getByEvent("evt-roger"))[0].updatedAt.getTime() === updatedAtBefore);
 
   // --- reschedule ---------------------------------------------------------
@@ -125,7 +131,7 @@ try {
     ev({ id: "evt-roger", title: "Roger 1:1", startUtc: new Date("2026-06-20T17:30:00Z"), lastModified: "2026-06-15T00:00:00Z", attendees: [{ name: UNIQUE_ATTENDEE, email: "roger@example.invalid" }] }),
     ev({ id: "evt-staff", title: "Staff meeting", startUtc: new Date("2026-06-21T14:00:00Z") }),
   ];
-  const run3 = await runCalendarSync(ownerId, stub);
+  const run3 = await runCalendarSync(ownerId, stub, promoteAll);
   check("run 3 reschedules exactly one (updated)", run3.updated === 1 && run3.unchanged === 1, JSON.stringify(run3));
   check("reschedule moved meeting_at", (await getByEvent("evt-roger"))[0].meetingAt?.toISOString() === "2026-06-20T17:30:00.000Z");
 
@@ -134,7 +140,7 @@ try {
     ev({ id: "evt-roger", title: "Canceled: Roger 1:1", startUtc: new Date("2026-06-20T17:30:00Z"), isCancelled: true, lastModified: "2026-06-16T00:00:00Z", attendees: [{ name: UNIQUE_ATTENDEE, email: "roger@example.invalid" }] }),
     ev({ id: "evt-staff", title: "Staff meeting", startUtc: new Date("2026-06-21T14:00:00Z") }),
   ];
-  const run4 = await runCalendarSync(ownerId, stub);
+  const run4 = await runCalendarSync(ownerId, stub, promoteAll);
   check("run 4 flags one cancellation", run4.canceled === 1 && run4.unchanged === 1, JSON.stringify(run4));
   const canceledRow = (await getByEvent("evt-roger"))[0];
   check("cancelled meeting still exists (not deleted)", !!canceledRow && canceledRow.deletedAt === null);
@@ -145,7 +151,7 @@ try {
     ev({ id: "evt-roger", title: "Roger 1:1 (back on)", startUtc: new Date("2026-06-20T17:30:00Z"), isCancelled: false, lastModified: "2026-06-17T00:00:00Z", attendees: [{ name: UNIQUE_ATTENDEE, email: "roger@example.invalid" }] }),
     ev({ id: "evt-staff", title: "Staff meeting", startUtc: new Date("2026-06-21T14:00:00Z") }),
   ];
-  const run5 = await runCalendarSync(ownerId, stub);
+  const run5 = await runCalendarSync(ownerId, stub, promoteAll);
   check("run 5 un-cancels (updated, not canceled)", run5.updated === 1 && run5.canceled === 0);
   check("un-cancel clears the canceled flag", ((await getByEvent("evt-roger"))[0].properties as { calendar?: { canceled?: boolean } }).calendar?.canceled === false);
 
@@ -155,7 +161,7 @@ try {
     ev({ id: "evt-roger", title: "Roger 1:1 (renamed again)", startUtc: new Date("2026-06-20T17:30:00Z"), lastModified: "2026-06-18T00:00:00Z", attendees: [{ name: UNIQUE_ATTENDEE, email: "roger@example.invalid" }] }),
     ev({ id: "evt-staff", title: "Staff meeting", startUtc: new Date("2026-06-21T14:00:00Z") }),
   ];
-  await runCalendarSync(ownerId, stub);
+  await runCalendarSync(ownerId, stub, promoteAll);
   const merged = (await getByEvent("evt-roger"))[0].properties as { calendar?: unknown; matchedTemplate?: string };
   check("sync merges properties (matcher-written key survives)", merged.matchedTemplate === "roger-1on1" && !!merged.calendar);
 
@@ -164,8 +170,8 @@ try {
   stub.events = [
     ev({ id: "evt-staff", title: "Staff meeting MOVED", startUtc: new Date("2026-06-22T14:00:00Z"), lastModified: "2026-06-19T00:00:00Z" }),
   ];
-  const run7 = await runCalendarSync(ownerId, stub);
-  check("trashed meeting is left alone (counts unchanged)", run7.unchanged === 1 && run7.created === 0, JSON.stringify(run7));
+  const run7 = await runCalendarSync(ownerId, stub, promoteAll);
+  check("trashed meeting is left alone (counts unchanged)", run7.unchanged === 1 && run7.promoted ===0, JSON.stringify(run7));
   const staffRows = await getByEvent("evt-staff");
   check("trashed meeting not resurrected and not duplicated", staffRows.length === 1 && staffRows[0].deletedAt !== null);
 
@@ -177,8 +183,9 @@ try {
   check("no other owner's event-items were touched", (await stampedElsewhere()) === otherEventItemsBefore);
 } finally {
   await db.delete(items).where(eq(items.ownerId, ownerId));
-  await db.delete(users).where(eq(users.id, ownerId));
+  await db.delete(calendarEvents).where(eq(calendarEvents.ownerId, ownerId));
   await db.delete(jobState).where(eq(jobState.key, CALENDAR_JOB_KEY));
+  await db.delete(users).where(eq(users.id, ownerId));
 }
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
