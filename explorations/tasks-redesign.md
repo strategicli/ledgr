@@ -76,10 +76,12 @@ Tasks need a **"Defer"** status. (Open: is "defer" a status label under not-star
 
 ## The `project` type (step 1 — built first)
 
+> **⚠️ Needs its own deeper-dive design session (Tyler, 2026-06-21).** The vision is bigger than a task bucket: a project is a **hub where meetings, notes, tasks, people, and the actual work come together in a way that's genuinely helpful** — open a project and see its people, its meetings, its notes, its tasks/progress, and the work in one coherent place. The scope below is the minimum to power the Tasks → Projects tab; the full hub UX (how all of it composes on the canvas) is the deep dive. Don't over-build the hub before that conversation.
+
 The hub type from the v1.0 queue, brought forward because the Projects tab needs it:
 - A bespoke `project` item: properties like **status, repo URL, live URL, stack** (dev-app variant) — but general (any tracked project).
 - **Status (Tyler, 2026-06-21): seed from my Todoist project buckets, but user-changeable** (rides the configurable category-statuses, ADR-082, so the type's status editor can change them): **Ongoing · Waiting for Others · Paused · Future · Done** (categories: Ongoing→in_progress, Waiting/Paused/Future→not_started, Done→done).
-- **Canvas = a hub:** a board/list of its **related tasks** + the attached **notes / files / meetings**, and progress.
+- **Canvas = a hub:** a board/list of its **related tasks** + the attached **notes / meetings / files / people** + progress — all the threads of the work in one place (the full composition is the deeper-dive above).
 - Tasks belong to a project via a **relation** (role `project`, ADR-067) — so "this task's project" is an edge, and the Projects tab lists projects + their related tasks. (The Todoist "# Project" chip on a task row = its project relation.)
 - Mostly Tyler's lane (a bespoke type/canvas = module internals, solo) unless the canvas reuses core seams.
 
