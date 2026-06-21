@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import type { PromotedRefs } from "./block-anchor-extension";
 import {
   parseTabs,
@@ -118,22 +119,20 @@ export default function TabbedBody({
                 >
                   {t.title.trim() || "Untitled"}
                 </button>
-                <button
-                  type="button"
-                  aria-label="Delete tab"
-                  title="Delete tab"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `Delete the "${t.title.trim() || "Untitled"}" tab? Its content is removed.`
-                      )
-                    )
-                      deleteTab(i);
-                  }}
-                  className="text-neutral-600 opacity-0 transition-opacity hover:text-rose-400 group-hover:opacity-100"
-                >
-                  ×
-                </button>
+                <ConfirmButton
+                  onConfirm={() => deleteTab(i)}
+                  title="Delete this tab?"
+                  description={
+                    tabs.length <= 1
+                      ? "This removes the tabs; the content stays as a plain note."
+                      : `"${t.title.trim() || "Untitled"}" and its content are removed.`
+                  }
+                  confirmLabel="Delete"
+                  align="right"
+                  trigger="×"
+                  triggerLabel="Delete tab"
+                  triggerClassName="leading-none text-neutral-600 opacity-0 transition-opacity hover:text-rose-400 group-hover:opacity-100"
+                />
               </span>
             );
           })}
