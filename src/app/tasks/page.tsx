@@ -8,6 +8,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
+import InlineAddTask from "@/components/tasks/InlineAddTask";
 import RowAction from "@/components/home/RowAction";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
@@ -203,11 +204,8 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 ? (
-                  <TaskList tasks={items} dueToday={dueToday} statuses={statuses} />
-                ) : (
-                  <p className="px-2 py-1 text-xs text-neutral-700">—</p>
-                )}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} />}
+                <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
           })}
@@ -249,6 +247,9 @@ export default async function Tasks({
                 ) : (
                   <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
                 )}
+                <div className="mt-1">
+                  <InlineAddTask host={{ id: project.id, label: project.title || "Untitled project", role: "project" }} />
+                </div>
               </div>
             );
           })}
@@ -260,6 +261,16 @@ export default async function Tasks({
     <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />}>
       {tabStrip}
       {body}
+      {tab === "today" && (
+        <div className="mt-3">
+          <InlineAddTask dueYmd={dayKey(dueToday)} />
+        </div>
+      )}
+      {tab === "inbox" && (
+        <div className="mt-3">
+          <InlineAddTask />
+        </div>
+      )}
     </ListPage>
   );
 }

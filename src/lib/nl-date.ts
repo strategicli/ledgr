@@ -211,6 +211,12 @@ type RecMatch = {
   interval: number;
   byDay?: Weekday[];
   label: string;
+  source: string; // the exact text stripped (for inline highlighting)
+};
+
+const FULL_WEEKDAY: Record<Weekday, string> = {
+  MO: "Monday", TU: "Tuesday", WE: "Wednesday", TH: "Thursday",
+  FR: "Friday", SA: "Saturday", SU: "Sunday",
 };
 
 const SHORT_WEEKDAY: Record<string, Weekday> = {
@@ -227,24 +233,25 @@ const SHORT_WEEKDAY: Record<string, Weekday> = {
 // a human label; the caller supplies dtstart.
 function matchRecurrence(state: { lower: string; orig: string }): RecMatch | null {
   // "every weekday" / "weekdays" → Mon–Fri
-  if (stripFirst(state, /\b(?:every weekday|weekdays)\b/)) {
-    return { freq: "weekly", interval: 1, byDay: ["MO", "TU", "WE", "TH", "FR"], label: "Every weekday" };
+  {
+    const src = stripFirst(state, /\b(?:every weekday|weekdays)\b/);
+    if (src) return { freq: "weekly", interval: 1, byDay: ["MO", "TU", "WE", "TH", "FR"], label: "Every weekday", source: src };
   }
   // "every <weekday>" → that weekday
   const wd = state.lower.match(new RegExp(`\\bevery (${WEEKDAY_ALT})\\b`));
   if (wd && wd.index !== undefined) {
-    stripFirst(state, new RegExp(`\\bevery (?:${WEEKDAY_ALT})\\b`));
+    const src = stripFirst(state, new RegExp(`\\bevery (?:${WEEKDAY_ALT})\\b`)) ?? wd[0];
     const day = SHORT_WEEKDAY[wd[1]];
-    return { freq: "weekly", interval: 1, byDay: [day], label: `Every ${WEEKDAY_LABELS[day]}` };
+    return { freq: "weekly", interval: 1, byDay: [day], label: `Every ${FULL_WEEKDAY[day]}`, source: src };
   }
   // "every N days|weeks|months|years"
   const everyN = state.lower.match(/\bevery (\d{1,3}) (day|week|month|year)s?\b/);
   if (everyN && everyN.index !== undefined) {
     const n = Number(everyN[1]);
     const unit = everyN[2] as "day" | "week" | "month" | "year";
-    stripFirst(state, /\bevery \d{1,3} (?:day|week|month|year)s?\b/);
+    const src = stripFirst(state, /\bevery \d{1,3} (?:day|week|month|year)s?\b/) ?? everyN[0];
     const freq: Frequency = unit === "day" ? "daily" : unit === "week" ? "weekly" : unit === "month" ? "monthly" : "yearly";
-    return { freq, interval: n, label: `Every ${n} ${unit}s` };
+    return { freq, interval: n, label: `Every ${n} ${unit}s`, source: src };
   }
   // single-word + "every day/week/month/year"
   const simple: [RegExp, Frequency, string][] = [
@@ -254,7 +261,8 @@ function matchRecurrence(state: { lower: string; orig: string }): RecMatch | nul
     [/\b(?:every year|yearly|annually)\b/, "yearly", "Yearly"],
   ];
   for (const [re, freq, label] of simple) {
-    if (stripFirst(state, re)) return { freq, interval: 1, label };
+    const src = stripFirst(state, re);
+    if (src) return { freq, interval: 1, label, source: src };
   }
   return null;
 }
@@ -333,7 +341,7 @@ export function parseTaskTitle(input: string, todayYmd: string): ParsedTaskTitle
     recurrence = makeRecurrence({ freq: rec.freq, interval: rec.interval, byDay: rec.byDay, dtstart });
     // No explicit date with a repeat: schedule the first occurrence.
     if (!scheduledDate) scheduledDate = nextOccurrenceOnOrAfter(recurrence, todayYmd) ?? dtstart;
-    detections.unshift({ field: "recurrence", label: rec.label, source: rec.label });
+    detections.unshift({ field: "recurrence", label: rec.label, source: rec.source });
   }
 
   return {
