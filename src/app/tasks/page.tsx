@@ -1,116 +1,87 @@
-// Tasks list (PRD §4.2): filterable by status, urgency, a date window, and
-// related person. The "Date" selector chooses which date — the due deadline or
-// the scheduled plan (ADR-076) — the window filters and the list sorts by; the
-// URL carries the filter (FilterBar contract). Absent status means active (the
-// daily-driver default). Sorted by the chosen date, undated last.
+// Tasks — a Todoist-style four-tab surface (Tasks redesign): Today · Inbox ·
+// Upcoming · Projects. Today groups by priority (P1–P6 colors); Inbox is the
+// untriaged bucket; Upcoming is a day-grouped, week-paged list (← Current → +1
+// week…); Projects shows each project with its open tasks. The tab + week are
+// URL params (?tab=, ?week=), so it's all server-rendered. (The richer capture
+// card + per-day add, and the bespoke task canvas, are later slices.)
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import FilterBar, { type FilterSelect } from "@/components/lists/FilterBar";
 import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
-import { URGENCIES } from "@/lib/item-enums";
-import { toPriority } from "@/lib/priority";
+import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema, type StatusDef } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
-import {
-  DUE_WINDOWS,
-  listPersonOptions,
-  PROPERTY_FILTER_NONE,
-  propertyFilterOptions,
-  propertyFiltersFromParams,
-  queryViewItems,
-  type DueWindow,
-  type ViewFilter,
-} from "@/lib/views";
+import { queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
 type ListedItem = Awaited<ReturnType<typeof queryViewItems>>[number];
+type Tab = "today" | "inbox" | "upcoming" | "projects";
+const TABS: { key: Tab; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "inbox", label: "Inbox" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "projects", label: "Projects" },
+];
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY_MS = 86400000;
+const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const weekdayFmt = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" });
+const shortDay = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 
-// Due dates are calendar days stored as UTC midnight; format in UTC so the
-// shown day can't shift with the timezone (ADR-008).
-const dueFmt = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
+const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+// The date that places a task on the board: the earliest of its due/scheduled.
+function effDate(t: ListedItem): Date | null {
+  const ds = [t.dueDate, t.scheduledDate].filter((d): d is Date => d != null);
+  if (ds.length === 0) return null;
+  return ds.reduce((a, b) => (a < b ? a : b));
+}
 
-function TaskRow({
-  task,
-  dueToday,
-  dateField,
-  statuses,
-}: {
-  task: ListedItem;
-  dueToday: Date;
-  dateField: "dueDate" | "scheduledDate";
-  statuses: StatusDef[];
-}) {
+function TaskRow({ task, dueToday, statuses }: { task: ListedItem; dueToday: Date; statuses: StatusDef[] }) {
   const done = task.statusCategory === "done";
   const sdef = statuses.find((s) => s.key === task.status);
-  // Show the date for the dimension the list is working in, and flag it
-  // red when it's in the past (a missed deadline, or a planned day gone by).
-  const date = dateField === "scheduledDate" ? task.scheduledDate : task.dueDate;
+  const date = effDate(task);
   const overdue = !done && date != null && date < dueToday;
-  // "Planned" (S6, ADR-086): in the due dimension, a task with a plan date but no
-  // deadline is planned work, not deadline-driven — mark it so the empty due
-  // column doesn't read as "no date at all" (mirrors the Today marker, ADR-077).
-  const planned =
-    !done && dateField === "dueDate" && !task.dueDate && task.scheduledDate != null;
+  const pri = task.urgency != null ? (task.urgency as Priority) : null;
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
       <SubtaskCheckbox id={task.id} done={done} />
       <Link
         href={`/items/${task.id}`}
-        className={`min-w-0 flex-1 truncate text-sm ${
-          task.title ? "text-neutral-200" : "text-neutral-500"
-        } ${done ? "line-through opacity-60" : ""}`}
+        className={`min-w-0 flex-1 truncate text-sm ${task.title ? "text-neutral-200" : "text-neutral-500"} ${done ? "line-through opacity-60" : ""}`}
       >
         {task.title || "Untitled"}
       </Link>
+      {pri != null && pri <= 5 && (
+        <span className={`shrink-0 rounded border px-1.5 text-xs ${priorityStyle(pri).text} ${priorityStyle(pri).border}`}>
+          P{pri}
+        </span>
+      )}
       {sdef && sdef.category !== "not_started" && (
-        // Secondary detail: hidden on phones to keep the title readable; the
-        // full status shows on sm+ and on the item canvas.
         <span className="hidden shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400 sm:inline-flex">
-          {sdef.color && (
-            <span
-              aria-hidden
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: sdef.color }}
-            />
-          )}
+          {sdef.color && <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: sdef.color }} />}
           {sdef.label}
         </span>
       )}
-      {task.urgency != null && task.urgency <= 2 && (
-        <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
-          {`P${task.urgency}`}
-        </span>
-      )}
-      {planned && (
-        <span
-          className="shrink-0 text-xs text-neutral-600"
-          title={`Planned for ${dueFmt.format(task.scheduledDate as Date)} (no deadline)`}
-        >
-          planned {dueFmt.format(task.scheduledDate as Date)}
-        </span>
-      )}
-      <span
-        className={`shrink-0 text-xs ${
-          overdue ? "text-red-400" : "text-neutral-600"
-        }`}
-      >
-        {date ? dueFmt.format(date) : ""}
+      <span className={`shrink-0 text-xs ${overdue ? "text-red-400" : "text-neutral-600"}`}>
+        {date ? dayFmt.format(date) : ""}
       </span>
       <RowAction id={task.id} action="trash" />
     </li>
+  );
+}
+
+function TaskList({ tasks, dueToday, statuses }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[] }) {
+  return (
+    <ul className="mt-1">
+      {tasks.map((t) => (
+        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} />
+      ))}
+    </ul>
   );
 }
 
@@ -121,135 +92,172 @@ export default async function Tasks({
 }) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
-
   const sp = await searchParams;
-  const param = (key: string) =>
-    typeof sp[key] === "string" ? (sp[key] as string) : undefined;
+  const tab: Tab = (TABS.find((t) => t.key === sp.tab)?.key ?? "today") as Tab;
+  const weekOffset = Math.max(0, Number.parseInt(typeof sp.week === "string" ? sp.week : "0", 10) || 0);
 
-  const filter: ViewFilter = { type: "task" };
-  // Status filter (S2): "active" (default) → the not-started/in-progress bucket;
-  // "any" → no status filter; anything else is an exact status key.
-  const statusParam = param("status") ?? "active";
-  if (statusParam === "active") filter.statusCategory = "active";
-  else if (statusParam !== "any") filter.status = statusParam;
-  const urgency = toPriority(param("urgency"));
-  if (urgency !== null) {
-    filter.urgency = urgency;
-  }
-  // Which date dimension this list works in: it drives both the date-window
-  // filter and the sort. Due (the deadline) is the default; scheduled (the
-  // planned date, ADR-076) is the "when I'll actually do it" lens.
-  const dateField =
-    param("datefield") === "scheduled" ? "scheduledDate" : "dueDate";
-  filter.dateField = dateField;
-  const when = param("when");
-  if (DUE_WINDOWS.includes(when as DueWindow)) filter.due = when as DueWindow;
-  const person = param("person");
-  if (person && UUID_RE.test(person)) filter.relatedTo = person;
-
-  // The task type's own custom select/multi_select properties become filters
-  // too (e.g. a "context" or "area" the user added). Scoped to the schema so a
-  // stray prop_ param can't inject a predicate.
   const taskType = await getType("task");
   const statuses = resolveStatusSchema(taskType.statusSchema);
-  const filterProps = propertyFilterOptions(taskType.propertySchema);
-  const propFilters = propertyFiltersFromParams(sp, taskType.propertySchema);
-  if (propFilters.length) filter.propertyFilters = propFilters;
-
-  const [tasks, people] = await Promise.all([
-    queryViewItems(owner.id, filter, { field: dateField, dir: "asc" }),
-    listPersonOptions(owner.id),
-  ]);
   const { dueToday } = todayBounds();
 
-  const selects: FilterSelect[] = [
-    {
-      param: "status",
-      label: "Status",
-      defaultValue: "active",
-      options: [
-        { value: "active", label: "active" },
-        ...statuses.map((s) => ({ value: s.key, label: s.label })),
-        { value: "any", label: "any" },
-      ],
-    },
-    {
-      param: "urgency",
-      label: "Urgency",
-      options: [
-        { value: "", label: "any" },
-        ...URGENCIES.map((u) => ({ value: String(u), label: `P${u}` })),
-      ],
-    },
-    {
-      param: "datefield",
-      label: "Date",
-      defaultValue: "due",
-      options: [
-        { value: "due", label: "due" },
-        { value: "scheduled", label: "scheduled" },
-      ],
-    },
-    {
-      param: "when",
-      label: "When",
-      options: [
-        { value: "", label: "any" },
-        { value: "overdue", label: "overdue" },
-        { value: "today", label: "today" },
-        { value: "week", label: "next 7 days" },
-        { value: "none", label: "no date" },
-      ],
-    },
-    {
-      param: "person",
-      label: "Person",
-      options: [
-        { value: "", label: "any" },
-        ...people.map((p) => ({
-          value: p.id,
-          label: p.title || "Untitled",
-        })),
-      ],
-    },
-    ...filterProps.map((fp) => ({
-      param: `prop_${fp.key}`,
-      label: fp.label,
-      options: [
-        { value: "", label: "any" },
-        ...fp.options.map((o) => ({ value: o, label: o })),
-        { value: PROPERTY_FILTER_NONE, label: "not set" },
-      ],
-    })),
-  ];
+  const tabStrip = (
+    <div className="mt-4 flex gap-1 border-b border-neutral-800">
+      {TABS.map((t) => (
+        <Link
+          key={t.key}
+          href={`/tasks?tab=${t.key}`}
+          className={`rounded-t px-3 py-1.5 text-sm ${
+            tab === t.key ? "border-b-2 border-[var(--accent)] text-neutral-100" : "text-neutral-400 hover:text-neutral-200"
+          }`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+
+  let body: React.ReactNode = null;
+
+  if (tab === "today") {
+    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "dueDate", dir: "asc" });
+    const today = active.filter((t) => {
+      const d = effDate(t);
+      return d != null && d <= dueToday;
+    });
+    // group by priority (1..6; null → 6/none)
+    const groups = new Map<number, ListedItem[]>();
+    for (const t of today) {
+      const k = prioritySortKey(t.urgency != null ? (t.urgency as Priority) : null);
+      (groups.get(k) ?? groups.set(k, []).get(k)!).push(t);
+    }
+    const ordered = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+    body =
+      today.length === 0 ? (
+        <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {ordered.map(([k, items]) => {
+            const s = priorityStyle(k as Priority);
+            return (
+              <div key={k}>
+                <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
+                  {k === 6 ? "No priority" : `Priority ${k}`}
+                </h3>
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} />
+              </div>
+            );
+          })}
+        </div>
+      );
+  } else if (tab === "inbox") {
+    const inbox = await queryViewItems(owner.id, { type: "task", inbox: true, statusCategory: "active" }, { field: "createdAt", dir: "desc" });
+    body =
+      inbox.length === 0 ? (
+        <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
+      ) : (
+        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} />
+      );
+  } else if (tab === "upcoming") {
+    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "dueDate", dir: "asc" });
+    // 7-day window starting at today + weekOffset*7
+    const windowStart = new Date(dueToday.getTime() + weekOffset * 7 * DAY_MS);
+    const days = Array.from({ length: 7 }, (_, i) => new Date(windowStart.getTime() + i * DAY_MS));
+    const byDay = new Map<string, ListedItem[]>();
+    for (const t of active) {
+      const d = effDate(t);
+      if (d == null || d <= dueToday) continue; // future only (overdue/today live on Today)
+      const k = dayKey(d);
+      (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(t);
+    }
+    const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
+    body = (
+      <div className="mt-4">
+        {/* week nav + day-jump chips */}
+        <div className="flex flex-wrap items-center gap-2 pb-2">
+          <Link
+            href={`/tasks?tab=upcoming&week=${Math.max(0, weekOffset - 1)}`}
+            aria-disabled={weekOffset === 0}
+            className={`rounded px-2 py-0.5 text-sm ${weekOffset === 0 ? "pointer-events-none text-neutral-700" : "text-neutral-400 hover:text-neutral-200"}`}
+          >
+            ←
+          </Link>
+          <span className="text-sm font-medium text-neutral-200">{label}</span>
+          <Link href={`/tasks?tab=upcoming&week=${weekOffset + 1}`} className="rounded px-2 py-0.5 text-sm text-neutral-400 hover:text-neutral-200">
+            →
+          </Link>
+          <span className="mx-1 h-4 w-px bg-neutral-800" />
+          {days.map((d, i) => (
+            <a key={i} href={`#day-${i}`} className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300">
+              {shortDay.format(d)}
+            </a>
+          ))}
+        </div>
+        <div className="space-y-4">
+          {days.map((d, i) => {
+            const items = byDay.get(dayKey(d)) ?? [];
+            const isToday = dayKey(d) === dayKey(dueToday);
+            return (
+              <div key={i} id={`day-${i}`}>
+                <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
+                  {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
+                </h3>
+                {items.length > 0 ? (
+                  <TaskList tasks={items} dueToday={dueToday} statuses={statuses} />
+                ) : (
+                  <p className="px-2 py-1 text-xs text-neutral-700">—</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  } else {
+    // projects: each project + its open tasks
+    const projects = await queryViewItems(owner.id, { type: "project" }, { field: "updatedAt", dir: "desc" });
+    const projStatuses = resolveStatusSchema((await getType("project")).statusSchema);
+    const cards = await Promise.all(
+      projects.map(async (p) => ({
+        project: p,
+        tasks: await queryViewItems(owner.id, { type: "task", relatedTo: p.id, statusCategory: "active" }, { field: "dueDate", dir: "asc" }),
+      }))
+    );
+    body =
+      cards.length === 0 ? (
+        <p className="mt-6 px-2 text-sm text-neutral-600">No projects yet. Create one to gather its tasks, notes, and events.</p>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {cards.map(({ project, tasks }) => {
+            const ps = projStatuses.find((s) => s.key === project.status);
+            return (
+              <div key={project.id} className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/items/${project.id}`} className="truncate font-semibold text-neutral-100 hover:text-[var(--accent)]">
+                    {project.title || "Untitled project"}
+                  </Link>
+                  {ps && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
+                      {ps.color && <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: ps.color }} />}
+                      {ps.label}
+                    </span>
+                  )}
+                </div>
+                {tasks.length > 0 ? (
+                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} />
+                ) : (
+                  <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+  }
 
   return (
-    <ListPage
-      tab="tasks"
-      title="Tasks"
-      subtitle={`${tasks.length} task${tasks.length === 1 ? "" : "s"}`}
-      actions={<NewItemButton type="task" />}
-    >
-      <div className="mt-4">
-        <FilterBar selects={selects} />
-      </div>
-      {tasks.length > 0 ? (
-        <ul className="mt-4">
-          {tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              dueToday={dueToday}
-              dateField={dateField}
-              statuses={statuses}
-            />
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-6 px-2 text-sm text-neutral-600">
-          No tasks match these filters.
-        </p>
-      )}
+    <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />}>
+      {tabStrip}
+      {body}
     </ListPage>
   );
 }

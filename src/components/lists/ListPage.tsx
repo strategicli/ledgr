@@ -11,7 +11,7 @@ export default function ListPage({
 }: {
   tab: ListTabKey;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -24,7 +24,7 @@ export default function ListPage({
           </h1>
           {actions}
         </div>
-        <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>
+        {subtitle && <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>}
         <div className="mt-6">
           <ListTabs active={tab} />
         </div>
