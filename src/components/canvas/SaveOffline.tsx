@@ -161,7 +161,7 @@ export default function SaveOffline({ itemId }: { itemId: string }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-2 sm:px-8 md:px-12">
+    <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void run()}

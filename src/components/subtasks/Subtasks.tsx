@@ -106,14 +106,14 @@ export default async function Subtasks({
   // No children yet: just the quiet capture affordance, no section chrome.
   if (children.length === 0) {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 pt-2 sm:px-8 md:px-12">
+      <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
         <AddSubtask parentId={itemId} />
       </div>
     );
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+    <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
       <h2 className="flex items-baseline gap-2 border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
         Subtasks
         {progress && (

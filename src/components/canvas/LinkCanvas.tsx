@@ -14,7 +14,7 @@ export default function LinkCanvas(props: CanvasProps) {
   return (
     <>
       {item.url && (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 sm:pt-6 md:px-12">
+        <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 sm:pt-6 md:px-12">
           <a
             href={item.url}
             target="_blank"

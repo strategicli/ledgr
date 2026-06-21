@@ -14,6 +14,8 @@
      in settings). Used for accent *fills* — checkbox checks, count badges — since
      a CSS gradient can't drive color/border/shadow. Falls back to the solid. */
   --accent-gradient: var(--accent);
+  /* Prose canvas font size. Overridden per-owner on <body> from user settings. */
+  --prose-font-size: 1rem;
 }
 
 @theme inline {

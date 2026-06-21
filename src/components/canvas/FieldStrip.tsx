@@ -250,7 +250,7 @@ export default function FieldStrip({
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 pb-3 sm:px-8 md:px-12 ${
+      className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 px-2 pb-3 sm:px-8 md:px-12 ${
         locked ? "opacity-60" : ""
       }`}
     >
