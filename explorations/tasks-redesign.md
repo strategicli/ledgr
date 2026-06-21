@@ -10,6 +10,15 @@
 2. **Subtask → auto P5 (green).** When a task gains its first subtask, bump it to P5/green automatically. (Green was the color Tyler named; the "priority 2" in the original ask was a slip.)
 3. **Build the `project` type first**, then the Tasks page (so the Projects tab is real on day one).
 
+## Reconciliation with Brandon's Events chunk (ADR-094, landed 2026-06-21)
+
+Brandon shipped Events (E1–E4) mid-build; it overlaps this redesign, so:
+- **"Labels" = Brandon's built-in `tags` field (E2), NOT a new field.** Tagging is a `relations` edge (role `tags`) to a `tag` item via the ADR-067 chip box + create-on-miss. The Labels chip / rail row here *is* that `tags` field. Don't build a separate labels field.
+- **`meeting` is now `event` (E1).** Everywhere this PRD says "meeting" (the task rail, the project hub, capture), read **event**. (Brandon kept internal names: `meeting_at`, `src/lib/meetings/`, `MeetingPrep`.)
+- **Project ↔ task-pull (Tyler, 2026-06-21): an event must pull "tasks for Project X."** A task relates to a project via a `relations` edge (role `project`). Brandon's E4 event task-pull (`properties.taskPull`) **already accepts any item id as a seed** and queries tasks `relatedTo` each seed — so adding a project as a seed pulls its tasks for free. The only requirements: (a) project↔task is a *confirmed* edge (which the `relatedTo` query counts), and (b) the `TaskPullControl` typeahead can pick a project. No new pull mechanism.
+- **Calendar feed (E3)** stays as-is (pull-from-calendar list; matched events auto-promote).
+- **Migrations** are at 0029 on main; the priority migration is **0030**.
+
 ## The four tabs (under the "Tasks" title)
 
 Order: **Today (1st) · Inbox (2nd) · Upcoming (3rd) · Projects (last).** A tab strip below the page title (reuse the canvas-tabs visual language where it fits).
@@ -73,7 +82,7 @@ A **"Quick Add"** panel in User Settings (Todoist-style, Image #5) lets the user
 - **"More actions"** — the hidden pool, each with a + to promote to shown. Defaults: **Labels · Deadline · Location**.
 - **"Show action labels"** toggle (On/Off) with a live example row (chips with vs. without text labels).
 - **Storage:** additive jsonb on `users.settings` (`quickAddActions: {shown: [...], showLabels: bool}`), tolerant parse — the `navSlots`/`highlightGradient` pattern (ADR-056). Non-core. The capture card reads this config to render its chip row; an unconfigured user gets the defaults.
-- Action ↔ field map: Date→scheduled, Deadline→due, Priority→P1–P6, Reminders→`properties.reminder`, Attachment→R2 upload, Labels→the built-in labels field (the COLLAB proposal), Assignee→below, Location→new (likely defer).
+- Action ↔ field map: Date→scheduled, Deadline→due, Priority→P1–P6, Reminders→`properties.reminder`, Attachment→R2 upload, Labels→Brandon's built-in `tags` field (E2, edges role `tags`), Assignee→below, Location→new (likely defer).
 
 ### Assignee
 
@@ -96,12 +105,12 @@ Tasks need a **"Defer"** status. (Open: is "defer" a status label under not-star
 
 ## The `project` type (step 1 — built first)
 
-> **⚠️ Needs its own deeper-dive design session (Tyler, 2026-06-21).** The vision is bigger than a task bucket: a project is a **hub where meetings, notes, tasks, people, and the actual work come together in a way that's genuinely helpful** — open a project and see its people, its meetings, its notes, its tasks/progress, and the work in one coherent place. The scope below is the minimum to power the Tasks → Projects tab; the full hub UX (how all of it composes on the canvas) is the deep dive. Don't over-build the hub before that conversation.
+> **⚠️ Needs its own deeper-dive design session (Tyler, 2026-06-21).** The vision is bigger than a task bucket: a project is a **hub where events, notes, tasks, people, and the actual work come together in a way that's genuinely helpful** — open a project and see its people, its events, its notes, its tasks/progress, and the work in one coherent place. The scope below is the minimum to power the Tasks → Projects tab; the full hub UX (how all of it composes on the canvas) is the deep dive. Don't over-build the hub before that conversation.
 
 The hub type from the v1.0 queue, brought forward because the Projects tab needs it:
 - A bespoke `project` item: properties like **status, repo URL, live URL, stack** (dev-app variant) — but general (any tracked project).
 - **Status (Tyler, 2026-06-21): seed from my Todoist project buckets, but user-changeable** (rides the configurable category-statuses, ADR-082, so the type's status editor can change them): **Ongoing · Waiting for Others · Paused · Future · Done** (categories: Ongoing→in_progress, Waiting/Paused/Future→not_started, Done→done).
-- **Canvas = a hub:** a board/list of its **related tasks** + the attached **notes / meetings / files / people** + progress — all the threads of the work in one place (the full composition is the deeper-dive above).
+- **Canvas = a hub:** a board/list of its **related tasks** + the attached **notes / events / files / people** + progress — all the threads of the work in one place (the full composition is the deeper-dive above).
 - Tasks belong to a project via a **relation** (role `project`, ADR-067) — so "this task's project" is an edge, and the Projects tab lists projects + their related tasks. (The Todoist "# Project" chip on a task row = its project relation.)
 - Mostly Tyler's lane (a bespoke type/canvas = module internals, solo) unless the canvas reuses core seams.
 
