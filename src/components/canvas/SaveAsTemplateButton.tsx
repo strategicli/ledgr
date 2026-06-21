@@ -63,7 +63,7 @@ export default function SaveAsTemplateButton({
   }
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => {

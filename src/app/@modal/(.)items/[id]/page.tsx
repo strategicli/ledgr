@@ -27,6 +27,7 @@ export default async function ItemModal({
   let title = "";
   let type = "";
   let isTemplate = false;
+  let locked = false;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -38,12 +39,15 @@ export default async function ItemModal({
       title = item.title;
       type = item.type;
       isTemplate = item.isTemplate;
+      locked = Boolean(
+        (item.properties as Record<string, unknown> | null)?.locked
+      );
     }
   } catch {
     // ignore — render the default modal width
   }
   return (
-    <Modal itemId={id} wide={wide} title={title} type={type} isTemplate={isTemplate}>
+    <Modal itemId={id} wide={wide} title={title} type={type} isTemplate={isTemplate} locked={locked}>
       <ItemCanvas id={id} variant="modal" />
     </Modal>
   );

@@ -60,6 +60,10 @@ export type ItemEditorProps = {
   // Canvas tabs (ADR-094): when true, the body is editable as named tabs (a
   // strip + "+ Add tab"); tabs are sections of the same markdown body.
   tabsEnabled?: boolean;
+  // When true (the item lock toggle): the title and body are read-only and the
+  // cursor can't enter them, and the body's toolbar hides. The field strip and
+  // properties are locked by their own hosts (FieldStrip / CustomProperties).
+  locked?: boolean;
 };
 
 export default function ItemEditor({
@@ -69,6 +73,7 @@ export default function ItemEditor({
   promoteToMeetingId,
   promotedRefs,
   tabsEnabled = false,
+  locked = false,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -176,7 +181,12 @@ export default function ItemEditor({
     <textarea
       ref={titleRef}
       rows={1}
-      className="w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-neutral-100 outline-none placeholder:text-neutral-600"
+      // A locked item's title is read-only and can't be clicked into.
+      readOnly={locked}
+      tabIndex={locked ? -1 : undefined}
+      className={`w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-neutral-100 outline-none placeholder:text-neutral-600 ${
+        locked ? "pointer-events-none" : ""
+      }`}
       placeholder="Untitled"
       value={title}
       onChange={(e) => {
@@ -207,6 +217,7 @@ export default function ItemEditor({
       promoteToMeetingId={promoteToMeetingId}
       promotedRefs={promotedRefs}
       onRequestSave={flush}
+      editable={!locked}
     />
   ) : (
     <LazyMarkdownEditor
@@ -219,6 +230,7 @@ export default function ItemEditor({
       // The promote flow flushes the body save first, so the line's ^id anchor
       // is persisted before the task is created and the page refreshes.
       onRequestSave={flush}
+      editable={!locked}
     />
   );
 

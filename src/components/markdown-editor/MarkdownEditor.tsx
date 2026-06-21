@@ -67,6 +67,10 @@ export type MarkdownEditorProps = {
   // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
   // those lines instead of the promote button, and links to the task.
   promotedRefs?: PromotedRefs;
+  // When false (a locked item, ADR — item lock toggle): the body is read-only.
+  // Tiptap drops contenteditable so the cursor can't enter, and the toolbar is
+  // hidden — the document still renders, it just can't be changed. Defaults true.
+  editable?: boolean;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -137,6 +141,7 @@ export default function MarkdownEditor({
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
+  editable = true,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
@@ -162,6 +167,7 @@ export default function MarkdownEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
+    editable,
     extensions: [
       StarterKit,
       Markdown,
@@ -277,6 +283,12 @@ export default function MarkdownEditor({
   useEffect(() => {
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  // Lock/unlock at runtime (the item lock toggle): a locked item drops
+  // contenteditable so the cursor can't enter, and the toolbar hides below.
+  useEffect(() => {
+    editor?.setEditable(editable);
+  }, [editor, editable]);
 
   // Promote affordance (ADR-090): a checkbox line's "→ task" button fires a DOM
   // event carrying its position. Ensure the line has an ^id anchor, then open
@@ -406,6 +418,9 @@ export default function MarkdownEditor({
 
   return (
     <div className="rounded border border-neutral-800 bg-neutral-950">
+      {/* The formatting toolbar is hidden on a locked item — nothing here can act
+          on a read-only document. */}
+      {editable && (
       <div className="flex flex-wrap items-center gap-1 border-b border-neutral-800 p-2">
         <ToolbarButton
           label="B"
@@ -538,6 +553,7 @@ export default function MarkdownEditor({
           Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
         </span>
       </div>
+      )}
 
       <EditorContent editor={editor} />
 
