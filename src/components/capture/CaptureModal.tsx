@@ -54,6 +54,17 @@ function buildSegments(title: string, detections: { source: string }[]): Seg[] {
   return segs;
 }
 
+// Configurable Quick Add (app-wide): capture-card action ids the user hid live
+// in settings.quickAddHidden. Fetched once per page load (memoized).
+let quickAddPromise: Promise<string[]> | null = null;
+function loadQuickAddHidden(): Promise<string[]> {
+  quickAddPromise ??= fetch("/api/settings")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => (Array.isArray(d?.settings?.quickAddHidden) ? (d.settings.quickAddHidden as string[]) : []))
+    .catch(() => []);
+  return quickAddPromise;
+}
+
 export default function CaptureModal({
   typeOptions,
   onClose,
@@ -104,6 +115,12 @@ export default function CaptureModal({
   const [personHits, setPersonHits] = useState<PersonHit[]>([]);
   const [activeHit, setActiveHit] = useState(0);
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+  // Quick Add config: hide capture actions the user turned off (Settings).
+  const [qaHidden, setQaHidden] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    loadQuickAddHidden().then((ids) => setQaHidden(new Set(ids)));
+  }, []);
+  const showAction = (id: string) => !qaHidden.has(id);
 
   // The document-level Esc handler below must close the person dropdown
   // (one layer per press) before it may close the modal; a ref carries the
@@ -302,49 +319,53 @@ export default function CaptureModal({
           </select>
           {type === "task" && (
             <>
-              <input
-                type="date"
-                value={due}
-                onChange={(e) => setDue(e.target.value)}
-                aria-label="Due date"
-                className={`${fieldClass} [color-scheme:dark]`}
-              />
-              <input
-                type="text"
-                placeholder="or 'next fri'"
-                aria-label="Due date in plain language"
-                // Natural-language due date (T2): parse on Enter/blur into the
-                // date field; an unrecognized phrase is left for the user.
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.stopPropagation();
-                    e.currentTarget.blur();
-                  }
-                }}
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  if (!v) return;
-                  const ymd = parseNaturalDate(v, localTodayYmd());
-                  if (ymd) {
-                    setDue(ymd);
-                    e.target.value = "";
-                  }
-                }}
-                className={`${fieldClass} w-24`}
-              />
-              <select
-                value={urgency}
-                onChange={(e) => setUrgency(e.target.value)}
-                aria-label="Urgency"
-                className={fieldClass}
-              >
-                <option value="">urgency</option>
-                {URGENCIES.map((u) => (
-                  <option key={u} value={u}>
-                    {`P${u}`}
-                  </option>
-                ))}
-              </select>
+              {showAction("deadline") && (
+                <>
+                  <input
+                    type="date"
+                    value={due}
+                    onChange={(e) => setDue(e.target.value)}
+                    aria-label="Due date"
+                    className={`${fieldClass} [color-scheme:dark]`}
+                  />
+                  <input
+                    type="text"
+                    placeholder="or 'next fri'"
+                    aria-label="Due date in plain language"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.stopPropagation();
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (!v) return;
+                      const ymd = parseNaturalDate(v, localTodayYmd());
+                      if (ymd) {
+                        setDue(ymd);
+                        e.target.value = "";
+                      }
+                    }}
+                    className={`${fieldClass} w-24`}
+                  />
+                </>
+              )}
+              {showAction("priority") && (
+                <select
+                  value={urgency}
+                  onChange={(e) => setUrgency(e.target.value)}
+                  aria-label="Priority"
+                  className={fieldClass}
+                >
+                  <option value="">priority</option>
+                  {URGENCIES.map((u) => (
+                    <option key={u} value={u}>
+                      {`P${u}`}
+                    </option>
+                  ))}
+                </select>
+              )}
               {scheduled && (
                 <span className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-xs text-neutral-200">
                   📅 {scheduled}
@@ -371,7 +392,7 @@ export default function CaptureModal({
               )}
             </>
           )}
-          {person ? (
+          {showAction("assignee") && (person ? (
             <span className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-1 text-xs text-neutral-200">
               @ {person.title || "Untitled"}
               <button
@@ -435,7 +456,7 @@ export default function CaptureModal({
                 </ul>
               )}
             </span>
-          )}
+          ))}
           <span className="ml-auto text-xs text-neutral-600">
             {state === "error" ? "Failed, retry" : "Enter or Create · Esc to close"}
           </span>
