@@ -62,3 +62,4 @@ tmp/
 .env*
 !.env.example
 .claude/
+ty-docs/
