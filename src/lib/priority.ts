@@ -1,4 +1,4 @@
-// Task priority P1–P6 (ADR-095): replaces the old 4-level `urgency` enum. 1 is
+// Task priority P1–P6 (ADR-096): replaces the old 4-level `urgency` enum. 1 is
 // highest, 6 is lowest / "no special priority". One vocab so the checkbox, the
 // capture-card chip, the row metadata, the Today grouping headers, the board,
 // and the NL quick-add all share the same numbers, labels, and colors.

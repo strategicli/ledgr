@@ -120,7 +120,7 @@ export function markdownToHtml(markdown: string): string {
   if (!markdown) return "";
   // Block anchors (^id, ADR-090) are an editor-only back-reference mechanism;
   // strip them so shared/printed/exported notes read as clean prose. Canvas tab
-  // markers (ADR-094) flatten to `## Title` sections so a multi-tab note reads
+  // markers (ADR-095) flatten to `## Title` sections so a multi-tab note reads
   // as titled sections when shared/printed/exported.
   return md.render(stripBlockAnchors(flattenTabs(markdown)));
 }

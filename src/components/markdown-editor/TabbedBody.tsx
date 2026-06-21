@@ -1,4 +1,4 @@
-// Canvas tabs (ADR-094): a thin client wrapper around the markdown editor that
+// Canvas tabs (ADR-095): a thin client wrapper around the markdown editor that
 // splits one item's body into named tabs (a strip + "+ Add tab" across the top,
 // an inline title for the active tab). Tabs are sections of the SAME body
 // (src/lib/editor/canvas-tabs.ts); this component only manages which section is

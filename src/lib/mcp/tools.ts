@@ -224,7 +224,7 @@ const TOOLS: McpTool[] = [
       type: "object",
       properties: {
         query: { type: "string", description: "Search words (supports \"quoted phrases\", OR, -exclude)." },
-        type: { type: "string", description: "Optional: restrict to one type key (e.g. task, meeting, note, person)." },
+        type: { type: "string", description: "Optional: restrict to one type key (e.g. task, event, note, person)." },
         limit: { type: "integer", description: "Max results (1–50, default 50).", minimum: 1, maximum: 50 },
       },
       required: ["query"],
@@ -249,18 +249,18 @@ const TOOLS: McpTool[] = [
       "List the owner's items with structured filters — by type, status, " +
       "due-date window, or related item. This is the 'list by person/date' " +
       "tool: e.g. open tasks related to a person (type=task, status=open, " +
-      "relatedTo=<person>), or meetings in the next 7 days (type=meeting, " +
+      "relatedTo=<person>), or events in the next 7 days (type=event, " +
       "dateField=meetingAt, withinDays=7). Bodies are not included; open an item " +
       "with get_item for its body.",
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", description: "Type key (e.g. task, meeting, note, link, person, or a custom type)." },
+        type: { type: "string", description: "Type key (e.g. task, event, note, link, person, or a custom type)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Item status filter." },
         relatedTo: { type: "string", description: "Only items with a confirmed relation to this item id (either direction)." },
         due: { type: "string", enum: [...DUE_WINDOWS], description: "Date window: overdue | today | week | none (no date)." },
         withinDays: { type: "integer", description: "Items dated today through N days out (1–366). Wins over `due`.", minimum: 1, maximum: 366 },
-        dateField: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date `due`/`withinDays` apply to (default dueDate; use meetingAt for meetings)." },
+        dateField: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date `due`/`withinDays` apply to (default dueDate; use meetingAt for events)." },
         sort: { type: "string", enum: [...SORT_FIELDS], description: "Sort field (default updatedAt)." },
         sortDir: { type: "string", enum: ["asc", "desc"], description: "Sort direction (default desc)." },
         limit: { type: "integer", description: "Max results (1–200, default 50).", minimum: 1, maximum: 200 },
@@ -343,12 +343,12 @@ const TOOLS: McpTool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", description: "Type key (task, meeting, note, link, person, or a custom type — see list_types)." },
+        type: { type: "string", description: "Type key (task, event, note, link, person, or a custom type — see list_types)." },
         title: { type: "string", description: "Item title." },
         bodyMarkdown: { type: "string", description: "Body as markdown." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
         dueDate: { type: "string", description: "Due date, ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
-        meetingAt: { type: "string", description: "Meeting time, ISO 8601 date-time. Meetings only." },
+        meetingAt: { type: "string", description: "Event start time, ISO 8601 date-time. Events only." },
         urgency: { type: "string", enum: [...URGENCIES], description: "Urgency (tasks)." },
         url: { type: "string", description: "URL (links)." },
         properties: { type: "object", description: "Custom property values keyed by the type's property keys (see list_types)." },
@@ -409,7 +409,7 @@ const TOOLS: McpTool[] = [
     title: "List types",
     description:
       "List every item type in this Ledgr (the five system types — task, " +
-      "meeting, note, link, person — plus any custom types) with each type's " +
+      "event, note, link, person — plus any custom types) with each type's " +
       "custom properties (key, label, kind, select options, and a relation " +
       "field's target type + cardinality). Call this before create_item/" +
       "list_items when you need the exact type key or the property keys to set.",
@@ -443,7 +443,7 @@ const TOOLS: McpTool[] = [
     title: "Relate items",
     description:
       "Create a link (relation) between two existing items — e.g. tag a task " +
-      "with a person, or relate a note to a meeting. Relating an already-" +
+      "with a person, or relate a note to an event. Relating an already-" +
       "suggested pair confirms it (relating is the confirm gesture). The " +
       "optional role names a typed relation field (a type's 'author' or " +
       "'attendees' field, see list_types); omit it for a plain link.",

@@ -120,9 +120,9 @@ export async function createTranscript(
     .where(
       and(eq(items.id, meetingId), eq(items.ownerId, ownerId), isNull(items.deletedAt))
     );
-  if (parent.length === 0) throw new ItemError("not_found", "meeting not found");
-  if (parent[0].type !== "meeting") {
-    throw new ItemError("bad_request", "transcripts attach to a meeting");
+  if (parent.length === 0) throw new ItemError("not_found", "event not found");
+  if (parent[0].type !== "event") {
+    throw new ItemError("bad_request", "transcripts attach to an event");
   }
 
   const title = opts.title?.trim() || "Transcript";

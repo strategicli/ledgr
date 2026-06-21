@@ -92,7 +92,7 @@ Tasks need a **"Defer"** status. (Open: is "defer" a status label under not-star
 - Replace `items.urgency` (enum critical/high/normal/low) with a **P1–P6 priority**. Likely: widen the enum / store 1–6; keep `urgency`'s column or rename to `priority` (decide in the ADR — leaning rename for clarity, with a migration mapping critical→P1, high→P2, normal→P4, low→P6, or similar).
 - **Colors** live in one place (a `priority.ts` vocab: number → {label, color}) so the checkbox, the Today grouping headers, the board, and the NL quick-add all share it.
 - NL quick-add (`parseTaskTitle`, ADR-084) already pulls `p1..p4`; extend to `p1..p6`.
-- **CORE → Brandon-agree + ADR (forthcoming, ~ADR-095).** Flagged in COLLAB.
+- **CORE → Brandon-agree + ADR (ADR-096).** Flagged in COLLAB.
 
 ## The `project` type (step 1 — built first)
 

@@ -23,7 +23,7 @@ function check(name: string, ok: boolean, detail = "") {
 check("the default canvas id is 'markdown'", DEFAULT_CANVAS === "markdown");
 check("link resolves to its own canvas", canvasIdForType("link") === "link");
 check("link is not the default", canvasIdForType("link") !== DEFAULT_CANVAS);
-for (const t of ["note", "task", "meeting", "person"]) {
+for (const t of ["note", "task", "event", "person"]) {
   check(`${t} falls back to the default canvas`, canvasIdForType(t) === DEFAULT_CANVAS);
 }
 check("an unregistered module type falls back to the default", canvasIdForType("song") === DEFAULT_CANVAS);

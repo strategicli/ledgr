@@ -39,6 +39,11 @@ export const V1_GOALS: GoalSet[] = [
   {
     person: "Brandon",
     bar: "Fully replace my Notion workflows with Ledgr.",
+    // Deferred to post-1.0 (Brandon, 2026-06-20): sermon writing/preaching
+    // workspace (PDF/MD/Notion suffice for a while; not needed for 1.0) and the
+    // web-clipped note archive (important long-term, not vital short-term — the
+    // PWA share target already captures URL+title today). Both dropped from the
+    // 1.0 bar below.
     goals: [
       {
         label: "Native task tracking (replaces Todoist)",
@@ -52,19 +57,18 @@ export const V1_GOALS: GoalSet[] = [
       },
       {
         label: "Templates (duplicate-a-prototype workflow)",
-        status: "in_progress",
-        note: "TPL1–TPL3 shipped; TPL4–TPL5 left (ADR-093)",
+        status: "done",
+        note: "TPL1–TPL5 shipped (ADR-093)",
       },
-      { label: "Sermon writing + preaching workspace", status: "todo" },
       {
-        label: "Web-clipped note archive",
-        status: "todo",
-        note: "web clipper — parked exploration",
+        label: "Calendar events + meeting task-matching",
+        status: "done",
+        note: "Events chunk E1–E4 shipped (ADR-094): meeting→event, tags, calendar feed + click-to-add, configurable task-pull",
       },
       {
         label: "Selective Notion data migration",
         status: "todo",
-        note: "Phase 3, deferred until closer to 1.0",
+        note: "have MD-file exports; exploring a direct Notion→Ledgr API transfer",
       },
       { label: "Alpha → v1.0 production flip", status: "todo" },
     ],

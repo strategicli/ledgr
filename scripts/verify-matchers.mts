@@ -122,14 +122,14 @@ try {
   check("no rule matches -> empty result", r7.entities.length === 0 && r7.matchedMatcherIds.length === 0);
 
   // --- applyMatchersToMeeting writes edges + records template -------------
-  const meeting = (await db.insert(items).values({ ownerId, type: "meeting", title: "Roger 1:1", msEventId: "evt-apply" }).returning({ id: items.id }))[0].id;
+  const meeting = (await db.insert(items).values({ ownerId, type: "event", title: "Roger 1:1", msEventId: "evt-apply" }).returning({ id: items.id }))[0].id;
   const applied = await applyMatchersToMeeting(ownerId, meeting, ev({ id: "evt-apply", title: "Roger 1:1", attendees: [{ name: "Roger", email: "roger@example.invalid" }] }));
   check("apply writes the suggested entity edge", applied.edges === 1 && (await relState(meeting, roger)) === "suggested");
   const props = (await db.select({ properties: items.properties }).from(items).where(eq(items.id, meeting)))[0].properties as { match?: { templateName?: string; matcherIds?: string[] } };
   check("apply records matched template + matcher ids in properties.match", props.match?.templateName === "roger-1on1" && (props.match?.matcherIds ?? []).includes(mAttendee.id));
 
   // --- no-downgrade of an already-confirmed edge --------------------------
-  const meeting2 = (await db.insert(items).values({ ownerId, type: "meeting", title: "Confirmed already", msEventId: "evt-confirmed" }).returning({ id: items.id }))[0].id;
+  const meeting2 = (await db.insert(items).values({ ownerId, type: "event", title: "Confirmed already", msEventId: "evt-confirmed" }).returning({ id: items.id }))[0].id;
   await db.insert(relations).values({ sourceId: meeting2, targetId: roger, role: "related", matchState: "confirmed" });
   await applyMatchersToMeeting(ownerId, meeting2, ev({ id: "evt-confirmed", title: "x", attendees: [{ name: "Roger", email: "roger@example.invalid" }] }));
   check("a suggested auto-match never downgrades a confirmed edge", (await relState(meeting2, roger)) === "confirmed");

@@ -190,6 +190,27 @@
       "when": 1781973744814,
       "tag": "0026_tpl1_template_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1782006205304,
+      "tag": "0027_rename_meeting_to_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1782007848685,
+      "tag": "0028_tag_type_and_tags_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1782008653591,
+      "tag": "0029_calendar_events_cache",
+      "breakpoints": true
     }
   ]
 }
