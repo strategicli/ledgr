@@ -1,6 +1,6 @@
 # Exploration: web clipper (browser extension + mobile content capture)
 
-**Status:** parked (Brandon, 2026-06-13; **reaffirmed as wanted in the 6.14 meeting** — "Evernote-style, save a web article as Markdown into Ledgr"). Post-v1.0. Not intent, not a decision.
+**Status:** **slice 1 BUILT (2026-06-21, ADR-099)** — Brandon pulled it forward. Shipped: a shared extraction module (Readability → Turndown markdown, **images stripped**, links absolutized), `POST /api/machine/capture` (api token, CORS-open), a Build → AI & MCP bookmarklet generator (desktop), and the mobile PWA share target extended to fetch + extract content. Deferred per Brandon: images (text-only for now; "archive images → R2" left as a future opt-in), a full Chrome/Firefox extension (bookmarklet first), paywall handling beyond URL-only fallback, `link`→`note` auto-promotion. *(Originally parked 2026-06-13, reaffirmed 6.14: "Evernote-style, save a web article as Markdown into Ledgr.")*
 
 ## What's already in v1
 

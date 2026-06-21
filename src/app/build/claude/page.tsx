@@ -10,6 +10,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasScopedToken } from "@/lib/auth/machine";
+import ClipperSetup from "@/components/build/ClipperSetup";
 import CopyField from "@/components/build/CopyField";
 import { SUPPORTED_PROTOCOL_VERSIONS } from "@/lib/mcp/protocol";
 import { resolveMcpOwner } from "@/lib/mcp/owner";
@@ -350,6 +351,34 @@ export default async function AiAndMcp() {
               duplicates.
             </p>
           </div>
+        </section>
+
+        {/* Web clipper — bookmarklet built on the same api token (ADR-099) */}
+        <section className="mt-12 border-t border-neutral-800 pt-8">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Web clipper
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+            Save a web page&rsquo;s readable content (images stripped) to your
+            Inbox as a link item, from desktop or mobile. The desktop bookmarklet
+            reads the live page and posts it to{" "}
+            <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-xs text-neutral-300">
+              /api/machine/capture
+            </code>{" "}
+            using the same api-scoped token as the HTTP API above; on mobile,
+            sharing a link to the installed app captures content the same way.
+          </p>
+
+          <div className="mt-3 flex items-center gap-2.5">
+            <StatusDot ok={hasApiToken} />
+            <p className="text-sm text-neutral-300">
+              {hasApiToken
+                ? "An api-scoped token is configured — paste it below to build your bookmarklet."
+                : "Generate an api-scoped token above first, then paste it below."}
+            </p>
+          </div>
+
+          <ClipperSetup origin={origin} />
         </section>
       </div>
     </main>
