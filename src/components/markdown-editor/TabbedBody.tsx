@@ -29,6 +29,9 @@ export type TabbedBodyProps = {
   onRequestSave?: () => Promise<void>;
   promoteToMeetingId?: string;
   promotedRefs?: PromotedRefs;
+  // When false (a locked item): the editor is read-only and the tab controls
+  // (add / rename / delete) are hidden, so the body can't be restructured.
+  editable?: boolean;
 };
 
 export default function TabbedBody({
@@ -39,6 +42,7 @@ export default function TabbedBody({
   onRequestSave,
   promoteToMeetingId,
   promotedRefs,
+  editable = true,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
@@ -119,51 +123,61 @@ export default function TabbedBody({
                 >
                   {t.title.trim() || "Untitled"}
                 </button>
-                <ConfirmButton
-                  onConfirm={() => deleteTab(i)}
-                  title="Delete this tab?"
-                  description={
-                    tabs.length <= 1
-                      ? "This removes the tabs; the content stays as a plain note."
-                      : `"${t.title.trim() || "Untitled"}" and its content are removed.`
-                  }
-                  confirmLabel="Delete"
-                  align="right"
-                  trigger="×"
-                  triggerLabel="Delete tab"
-                  triggerClassName="leading-none text-neutral-600 opacity-0 transition-opacity hover:text-rose-400 group-hover:opacity-100"
-                />
+                {editable && (
+                  <ConfirmButton
+                    onConfirm={() => deleteTab(i)}
+                    title="Delete this tab?"
+                    description={
+                      tabs.length <= 1
+                        ? "This removes the tabs; the content stays as a plain note."
+                        : `"${t.title.trim() || "Untitled"}" and its content are removed.`
+                    }
+                    confirmLabel="Delete"
+                    align="right"
+                    trigger="×"
+                    triggerLabel="Delete tab"
+                    triggerClassName="leading-none text-neutral-600 opacity-0 transition-opacity hover:text-rose-400 group-hover:opacity-100"
+                  />
+                )}
               </span>
             );
           })}
-          <button
-            type="button"
-            onClick={addTab}
-            className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
-          >
-            + Add tab
-          </button>
+          {editable && (
+            <button
+              type="button"
+              onClick={addTab}
+              className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+            >
+              + Add tab
+            </button>
+          )}
         </div>
       ) : (
-        <div className="mb-1 flex justify-end">
-          <button
-            type="button"
-            onClick={addTab}
-            className="rounded-md px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-900 hover:text-neutral-400"
-          >
-            + Add tab
-          </button>
-        </div>
+        editable && (
+          <div className="mb-1 flex justify-end">
+            <button
+              type="button"
+              onClick={addTab}
+              className="rounded-md px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-900 hover:text-neutral-400"
+            >
+              + Add tab
+            </button>
+          </div>
+        )
       )}
 
-      {/* Active tab title (inline-editable) */}
+      {/* Active tab title (inline-editable; read-only and unclickable when locked) */}
       {tabs && (
         <input
           type="text"
           value={tabs[activeIdx]?.title ?? ""}
           onChange={(e) => renameActive(sanitizeTabTitle(e.target.value))}
           placeholder="Tab title"
-          className="mb-2 w-full bg-transparent text-base font-semibold text-neutral-200 outline-none placeholder:text-neutral-600"
+          readOnly={!editable}
+          tabIndex={editable ? undefined : -1}
+          className={`mb-2 w-full bg-transparent text-base font-semibold text-neutral-200 outline-none placeholder:text-neutral-600 ${
+            editable ? "" : "pointer-events-none"
+          }`}
         />
       )}
 
@@ -178,6 +192,7 @@ export default function TabbedBody({
         promoteToMeetingId={promoteToMeetingId}
         promotedRefs={promotedRefs}
         onRequestSave={onRequestSave}
+        editable={editable}
       />
     </div>
   );

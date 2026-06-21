@@ -41,6 +41,7 @@ export default function CustomProperties({
   schema,
   initial,
   hideHeading = false,
+  locked = false,
 }: {
   itemId: string;
   typeKey: string;
@@ -50,6 +51,9 @@ export default function CustomProperties({
   // card (ADR-069) — the field's own label already names it, so the category
   // heading on every card was noise (Brandon, 2026-06-17).
   hideHeading?: boolean;
+  // When true (the item lock toggle): every field (and its clear button) is
+  // disabled and can't be clicked into, via a disabled <fieldset> wrapper.
+  locked?: boolean;
 }) {
   const [values, setValues] = useState<Values>(initial ?? {});
   const [error, setError] = useState(false);
@@ -211,7 +215,10 @@ export default function CustomProperties({
           Properties
         </h2>
       )}
-      <dl className="flex flex-col gap-2">
+      <dl className={`flex flex-col gap-2 ${locked ? "opacity-60" : ""}`}>
+        {/* A disabled fieldset locks every property control at once (a locked
+            item); `contents` keeps the definition-list layout flat. */}
+        <fieldset disabled={locked} className="contents">
         {scalarSchema.map((prop) => {
           const v = values[prop.key];
           // A value worth offering an explicit clear for. Checkbox has no
@@ -250,6 +257,7 @@ export default function CustomProperties({
             </div>
           );
         })}
+        </fieldset>
       </dl>
       {error && (
         <p className="mt-2 text-xs text-red-400">Save failed, change reverted</p>
