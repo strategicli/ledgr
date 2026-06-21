@@ -80,6 +80,29 @@ await sql`
     AND NOT (COALESCE(property_schema, '[]'::jsonb) @> '[{"key":"tags"}]'::jsonb)
 `;
 
+// The `project` type (Tasks redesign): a user-controllable hub type on the
+// default canvas (Related panel = its tasks/notes/events; repo/live-URL/stack
+// props). Statuses seed from Tyler's Todoist buckets (configurable). Mirrors
+// drizzle/0031_project_type.sql for fresh databases.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_schema, property_schema)
+  VALUES (
+    'project', 'Project', 'folder', false, true, false,
+    '[{"key":"ongoing","label":"Ongoing","category":"not_started","color":"#d97706","isDefault":true},{"key":"waiting","label":"Waiting for Others","category":"not_started","color":"#64748b"},{"key":"paused","label":"Paused","category":"not_started","color":"#6b7280"},{"key":"future","label":"Future","category":"not_started","color":"#475569"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
+    '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb
+  )
+  ON CONFLICT (key) DO NOTHING
+`;
+
+// A built-in `project` relation field on `task` (targetType=project, single).
+await sql`
+  UPDATE types
+  SET property_schema = COALESCE(property_schema, '[]'::jsonb)
+    || '[{"key":"project","label":"Project","kind":"relation","targetType":"project","cardinality":"single"}]'::jsonb
+  WHERE key = 'task'
+    AND NOT (COALESCE(property_schema, '[]'::jsonb) @> '[{"key":"project"}]'::jsonb)
+`;
+
 await sql`
   INSERT INTO users (email)
   VALUES ('brandoncollins@edgewoodcommunity.org')

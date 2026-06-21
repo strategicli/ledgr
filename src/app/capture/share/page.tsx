@@ -12,7 +12,7 @@ import { createItem } from "@/lib/items";
 // auto-triages (ADR-010). Middleware keeps the route signed-in-only; Clerk
 // bounces a signed-out share through /sign-in and back.
 //
-// Web clipper, mobile half (ADR-099): the share sheet hands us only a URL, so
+// Web clipper, mobile half (ADR-100): the share sheet hands us only a URL, so
 // for a link we fetch + extract the page's readable content into the body
 // (images stripped). Best-effort — a paywall/non-article page still lands the
 // URL + title, same as before.

@@ -13,6 +13,7 @@
 import ChordCanvas from "@/components/canvas/ChordCanvas";
 import LinkCanvas from "@/components/canvas/LinkCanvas";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
+import TaskCanvas from "@/components/canvas/TaskCanvas";
 import PaperCanvas from "@/components/canvas/PaperCanvas";
 import { DEFAULT_CANVAS, type CanvasComponent } from "@/lib/modules";
 // Side-effect import: registers the workflow modules (Songs, …) onto core so a
@@ -25,6 +26,7 @@ const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   link: LinkCanvas,
   chord: ChordCanvas,
   paper: PaperCanvas,
+  task: TaskCanvas,
 };
 
 // Resolve a canvas id (from `canvasIdForType`) to its component. Anything

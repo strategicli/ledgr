@@ -1,4 +1,4 @@
-// Web clipper extraction (ADR-099, explorations/web-clipper.md). The single
+// Web clipper extraction (ADR-100, explorations/web-clipper.md). The single
 // place that turns a page's HTML into clean article markdown, shared by the
 // bookmarklet capture endpoint (/api/machine/capture) and the mobile share
 // target (/capture/share) so the two surfaces can never drift.

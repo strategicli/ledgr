@@ -14,7 +14,8 @@ import { Placeholder } from "@tiptap/extensions";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useRouter } from "next/navigation";
 import {
   BLOCKNOTE_COLORS,
@@ -67,7 +68,15 @@ export type MarkdownEditorProps = {
   // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
   // those lines instead of the promote button, and links to the task.
   promotedRefs?: PromotedRefs;
-  // When false (a locked item, ADR — item lock toggle): the body is read-only.
+  // When true, the formatting toolbar starts HIDDEN behind a small top-right
+  // toggle button (the task canvas default — a task body is mostly plain text, so
+  // the bar is opt-in noise). Default false keeps the bar always-on (notes etc.).
+  collapsibleToolbar?: boolean;
+  // When true, the editor has no tall min-height: it starts one line tall and
+  // grows with content (the task canvas, where bodies are short). Default false
+  // keeps the roomy 14rem writing area.
+  compact?: boolean;
+  // When false (a locked item, item lock toggle): the body is read-only.
   // Tiptap drops contenteditable so the cursor can't enter, and the toolbar is
   // hidden — the document still renders, it just can't be changed. Defaults true.
   editable?: boolean;
@@ -104,13 +113,31 @@ async function insertUploadedImages(
   }
 }
 
+// Configurable toolbar (app-wide): the ids a user hid live in
+// settings.editorToolbarHidden. Fetched once per page load (memoized) so every
+// editor instance shares the single request.
+let hiddenToolbarPromise: Promise<string[]> | null = null;
+function loadHiddenToolbar(): Promise<string[]> {
+  hiddenToolbarPromise ??= fetch("/api/settings")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) =>
+      Array.isArray(d?.settings?.editorToolbarHidden)
+        ? (d.settings.editorToolbarHidden as string[])
+        : []
+    )
+    .catch(() => []);
+  return hiddenToolbarPromise;
+}
+
 function ToolbarButton({
   label,
+  icon,
   active,
   onClick,
   title,
 }: {
-  label: string;
+  label?: string;
+  icon?: ReactNode;
   active?: boolean;
   onClick: () => void;
   title: string;
@@ -119,15 +146,16 @@ function ToolbarButton({
     <button
       type="button"
       title={title}
+      aria-label={title}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`rounded px-2 py-1 text-sm ${
+      className={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-sm font-medium ${
         active
           ? "bg-neutral-700 text-neutral-100"
-          : "text-neutral-300 hover:bg-neutral-800"
+          : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
       }`}
     >
-      {label}
+      {icon ?? label}
     </button>
   );
 }
@@ -141,6 +169,8 @@ export default function MarkdownEditor({
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
+  collapsibleToolbar = false,
+  compact = false,
   editable = true,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
@@ -204,7 +234,7 @@ export default function MarkdownEditor({
     content: initialMarkdown,
     contentType: "markdown",
     editorProps: {
-      attributes: { class: "ProseMirror ledgr-prose" },
+      attributes: { class: compact ? "ProseMirror ledgr-prose ledgr-prose-compact" : "ProseMirror ledgr-prose" },
       // Paste/drop of image files → upload to R2, insert as a markdown image.
       // Only intercepts when an image is actually present and an uploader is
       // wired; everything else falls through to normal (markdown) paste.
@@ -357,6 +387,15 @@ export default function MarkdownEditor({
     }
   }, [initialMarkdown, editor]);
 
+  const [hiddenTb, setHiddenTb] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    loadHiddenToolbar().then((ids) => setHiddenTb(new Set(ids)));
+  }, []);
+  const showTb = (id: string) => !hiddenTb.has(id);
+  // The formatting bar is hidden by default when collapsible (task canvas); a
+  // top-right toggle reveals it. When not collapsible it's always shown.
+  const [toolbarOpen, setToolbarOpen] = useState(!collapsibleToolbar);
+
   if (!editor || !toolbar) {
     return (
       <div className="px-4 py-3 text-sm text-neutral-400">Loading editor…</div>
@@ -417,141 +456,98 @@ export default function MarkdownEditor({
   };
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-950">
-      {/* The formatting toolbar is hidden on a locked item — nothing here can act
-          on a read-only document. */}
+    <div className="border-b border-neutral-800">
+      {/* The formatting toolbar is hidden on a locked item — nothing here can
+          act on a read-only document (item lock toggle). */}
       {editable && (
-      <div className="flex flex-wrap items-center gap-1 border-b border-neutral-800 p-2">
-        <ToolbarButton
-          label="B"
-          title="Bold"
-          active={toolbar.isBold}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        />
-        <ToolbarButton
-          label="I"
-          title="Italic"
-          active={toolbar.isItalic}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        />
-        <ToolbarButton
-          label="S"
-          title="Strikethrough"
-          active={toolbar.isStrike}
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-        />
-        <ToolbarButton
-          label="H1"
-          title="Heading 1"
-          active={toolbar.isH1}
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 1 }).run()
-          }
-        />
-        <ToolbarButton
-          label="H2"
-          title="Heading 2"
-          active={toolbar.isH2}
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run()
-          }
-        />
-        <ToolbarButton
-          label="• List"
-          title="Bullet list"
-          active={toolbar.isBulletList}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        />
-        <ToolbarButton
-          label="1. List"
-          title="Numbered list"
-          active={toolbar.isOrderedList}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        />
-        <ToolbarButton
-          label="☑ Tasks"
-          title="Checklist (- [ ])"
-          active={toolbar.isTaskList}
-          onClick={() => editor.chain().focus().toggleTaskList().run()}
-        />
-        <ToolbarButton
-          label="❝"
-          title="Quote"
-          active={toolbar.isBlockquote}
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        />
-        <ToolbarButton
-          label="</>"
-          title="Code block"
-          active={toolbar.isCodeBlock}
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        />
-        <ToolbarButton
-          label="▦ Table"
-          title="Insert table"
-          onClick={() =>
-            editor
-              .chain()
-              .focus()
-              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-              .run()
-          }
-        />
-        {uploadImage ? (
+      <div className={`flex flex-wrap items-center gap-0.5 px-1 py-1.5 ${toolbarOpen ? "border-b border-neutral-800/70" : ""}`}>
+        {toolbarOpen && (<>{(
+          [
+            { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
+            { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
+            { id: "strike", title: "Strikethrough", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
+            { id: "h1", title: "Heading 1", label: "H1", active: toolbar.isH1, run: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+            { id: "h2", title: "Heading 2", label: "H2", active: toolbar.isH2, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+            { id: "bulletList", title: "Bullet list", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
+            { id: "orderedList", title: "Numbered list", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
+            { id: "tasks", title: "Checklist (- [ ])", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
+            { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
+            { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
+            { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+          ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; run: () => void }[]
+        )
+          .filter((b) => showTb(b.id))
+          .map((b) => (
+            <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} onClick={b.run} />
+          ))}
+
+        {showTb("image") && uploadImage && (
           <ToolbarButton
-            label="🖼 Image"
+            icon={TOOLBAR_ICONS.image}
             title="Insert image (or paste/drop one)"
             onClick={() => fileInputRef.current?.click()}
           />
-        ) : null}
-        {itemId ? (
+        )}
+        {showTb("link") && itemId && (
           <ToolbarButton
-            label={linkCopied ? "Copied ✓" : "🔗 Link"}
+            icon={TOOLBAR_ICONS.link}
             title="Copy a link to this line (from the cursor)"
             active={linkCopied}
             onClick={() => void copyLineLink()}
           />
-        ) : null}
+        )}
 
-        <span className="mx-1 h-5 w-px bg-neutral-700" />
+        {(showTb("color") || showTb("highlight")) && (
+          <span className="mx-1 h-5 w-px bg-neutral-700" />
+        )}
 
-        {/* Text color */}
-        <select
-          title="Text color"
-          className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-          value={toolbar.textColor}
-          onChange={(e) =>
-            setColor((e.target.value || null) as BlockNoteColor | null)
-          }
-        >
-          <option value="">Color…</option>
-          {COLOR_NAMES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        {showTb("color") && (
+          <select
+            title="Text color"
+            className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
+            value={toolbar.textColor}
+            onChange={(e) => setColor((e.target.value || null) as BlockNoteColor | null)}
+          >
+            <option value="">Color…</option>
+            {COLOR_NAMES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
 
-        {/* Highlight */}
-        <select
-          title="Highlight"
-          className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-          value={toolbar.highlight}
-          onChange={(e) =>
-            setHighlight((e.target.value || null) as BlockNoteColor | null)
-          }
-        >
-          <option value="">Highlight…</option>
-          {COLOR_NAMES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        {showTb("highlight") && (
+          <select
+            title="Highlight"
+            className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
+            value={toolbar.highlight}
+            onChange={(e) => setHighlight((e.target.value || null) as BlockNoteColor | null)}
+          >
+            <option value="">Highlight…</option>
+            {COLOR_NAMES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
 
-        <span className="ml-2 text-xs text-neutral-500">
-          Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
-        </span>
+        {showTb("mention") && (
+          <span className="ml-2 text-xs text-neutral-500">
+            Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
+          </span>
+        )}</>)}
+        {collapsibleToolbar && (
+          <button
+            type="button"
+            onClick={() => setToolbarOpen((v) => !v)}
+            title={toolbarOpen ? "Hide formatting" : "Formatting"}
+            aria-label={toolbarOpen ? "Hide formatting" : "Formatting"}
+            aria-pressed={toolbarOpen}
+            className="ml-auto rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {toolbarOpen ? <path d="M6 15l6-6 6 6" /> : <><path d="M4 7h16M4 12h10M4 17h13" /></>}
+            </svg>
+          </button>
+        )}
       </div>
       )}
 

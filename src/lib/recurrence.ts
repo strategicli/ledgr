@@ -17,9 +17,12 @@
 // RRULE is a deliberately CONSTRAINED RFC-5545 subset (Principle 5: justify any
 // dependency — the `rrule` npm package is the documented off-ramp if this proves
 // too small; see ADR-076). Supported: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY, INTERVAL,
-// BYDAY (weekly), COUNT, UNTIL. The rule is STORED as a standards-shaped string
-// so the ICS feed (T4) can emit it verbatim and a future swap to a full library
-// is a drop-in.
+// BYDAY (plain weekdays for WEEKLY; ordinal weekdays like 1SU/3TH/-1FR for
+// MONTHLY — "the first Sunday", "the third Thursday"), BYMONTHDAY (MONTHLY — "the
+// 3rd of the month"; -1 = last day), COUNT, UNTIL. The rule is STORED as a
+// standards-shaped string so the ICS feed (T4) can emit it verbatim and a future
+// swap to a full library is a drop-in. (Monthly ordinal BYDAY + BYMONTHDAY added
+// 2026-06-21 — ADR-076 amendment, Brandon agreed; back-compat, no migration.)
 
 export const WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
@@ -44,10 +47,17 @@ const RRULE_TO_FREQ: Record<string, Frequency> = {
 // 2000 daily occurrences ≈ 5.5 years; far past any window we render.
 const ENUMERATE_CAP = 2000;
 
+// A weekday with an optional monthly ordinal: { ordinal: 1, weekday: "SU" } =
+// "the first Sunday"; ordinal -1 = "the last". Serializes to RRULE BYDAY (1SU,
+// -1FR). Used for FREQ=MONTHLY only.
+export type ByDayOrdinal = { ordinal: number; weekday: Weekday };
+
 export type RRuleParts = {
   freq: Frequency;
   interval: number; // >= 1
-  byDay?: Weekday[]; // weekly only; ignored for other freqs
+  byDay?: Weekday[]; // WEEKLY: plain weekdays the rule fires on
+  byDayOrdinal?: ByDayOrdinal[]; // MONTHLY: nth weekday(s) ("1st & 2nd Thursday")
+  byMonthDay?: number[]; // MONTHLY: day(s) of month, 1..31 or -1 (last day)
   count?: number; // total occurrences from dtstart
   until?: string; // YYYY-MM-DD inclusive end
 };
@@ -139,6 +149,42 @@ export function compareYmd(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+function ymdOf(year: number, month1: number, day: number): string {
+  return `${year}-${String(month1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// The date of the `ordinal`-th `weekday` in a given month (ordinal -1 = the last
+// one). null when it doesn't exist (e.g. a 5th Friday some months lack).
+function nthWeekdayOfMonth(
+  year: number,
+  month1: number,
+  weekday: Weekday,
+  ordinal: number
+): string | null {
+  const dim = daysInMonth(year, month1);
+  if (ordinal === -1) {
+    for (let d = dim; d >= 1; d--) {
+      const ymd = ymdOf(year, month1, d);
+      if (weekdayOf(ymd) === weekday) return ymd;
+    }
+    return null;
+  }
+  let seen = 0;
+  for (let d = 1; d <= dim; d++) {
+    const ymd = ymdOf(year, month1, d);
+    if (weekdayOf(ymd) === weekday && ++seen === ordinal) return ymd;
+  }
+  return null;
+}
+
+// A day-of-month within a given month (day -1 = the last day). null when out of
+// range for that month (e.g. day 31 in a 30-day month — that month is skipped).
+function monthDayOf(year: number, month1: number, day: number): string | null {
+  const dim = daysInMonth(year, month1);
+  const d = day === -1 ? dim : day;
+  return d >= 1 && d <= dim ? ymdOf(year, month1, d) : null;
+}
+
 // ---------------------------------------------------------------------------
 // RRULE parse / format (the constrained subset)
 
@@ -167,10 +213,29 @@ export function parseRRule(raw: unknown): RRuleParts | null {
     if (Number.isInteger(n) && n >= 1) out.interval = n;
   }
   if (parts.BYDAY) {
-    const days = parts.BYDAY.split(",")
-      .map((d) => d.trim())
-      .filter((d): d is Weekday => (WEEKDAYS as readonly string[]).includes(d));
-    if (days.length) out.byDay = days;
+    // A BYDAY token is an optional signed ordinal + a 2-letter weekday: "MO"
+    // (plain, weekly) or "1SU"/"-1FR" (ordinal, monthly). Split the two out.
+    const plain: Weekday[] = [];
+    const ordinal: ByDayOrdinal[] = [];
+    for (const tok of parts.BYDAY.split(",").map((d) => d.trim())) {
+      const m = tok.match(/^(-?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$/);
+      if (!m) continue;
+      const weekday = m[2] as Weekday;
+      if (m[1]) {
+        const n = Number(m[1]);
+        if (n === -1 || (n >= 1 && n <= 5)) ordinal.push({ ordinal: n, weekday });
+      } else {
+        plain.push(weekday);
+      }
+    }
+    if (plain.length) out.byDay = plain;
+    if (ordinal.length) out.byDayOrdinal = ordinal;
+  }
+  if (parts.BYMONTHDAY) {
+    const days = parts.BYMONTHDAY.split(",")
+      .map((d) => Number(d.trim()))
+      .filter((n) => Number.isInteger(n) && ((n >= 1 && n <= 31) || n === -1));
+    if (days.length) out.byMonthDay = days;
   }
   if (parts.COUNT) {
     const n = Number(parts.COUNT);
@@ -196,6 +261,12 @@ export function formatRRule(parts: RRuleParts): string {
   if (parts.interval > 1) segs.push(`INTERVAL=${parts.interval}`);
   if (parts.freq === "weekly" && parts.byDay && parts.byDay.length) {
     segs.push(`BYDAY=${parts.byDay.join(",")}`);
+  }
+  if (parts.freq === "monthly" && parts.byDayOrdinal && parts.byDayOrdinal.length) {
+    segs.push(`BYDAY=${parts.byDayOrdinal.map((e) => `${e.ordinal}${e.weekday}`).join(",")}`);
+  }
+  if (parts.freq === "monthly" && parts.byMonthDay && parts.byMonthDay.length) {
+    segs.push(`BYMONTHDAY=${parts.byMonthDay.join(",")}`);
   }
   if (parts.count) segs.push(`COUNT=${parts.count}`);
   if (parts.until) segs.push(`UNTIL=${parts.until.replace(/-/g, "")}`);
@@ -242,6 +313,8 @@ export function makeRecurrence(input: {
   freq: Frequency;
   interval?: number;
   byDay?: Weekday[];
+  byDayOrdinal?: ByDayOrdinal[];
+  byMonthDay?: number[];
   count?: number;
   until?: string;
   dtstart: string;
@@ -254,6 +327,8 @@ export function makeRecurrence(input: {
     interval: input.interval && input.interval >= 1 ? Math.floor(input.interval) : 1,
   };
   if (input.freq === "weekly" && input.byDay?.length) parts.byDay = input.byDay;
+  if (input.freq === "monthly" && input.byDayOrdinal?.length) parts.byDayOrdinal = input.byDayOrdinal;
+  if (input.freq === "monthly" && input.byMonthDay?.length) parts.byMonthDay = input.byMonthDay;
   if (input.count && input.count >= 1) parts.count = Math.floor(input.count);
   if (input.until && isYmd(input.until)) parts.until = input.until;
   return {
@@ -308,6 +383,32 @@ export function enumerateOccurrences(
         if (compareYmd(day, rule.dtstart) < 0) continue;
         if (!byDaySet.has(WEEKDAYS[i])) continue;
         if (!emit(day)) return out;
+      }
+    }
+    return out;
+  }
+
+  // MONTHLY positional: nth-weekday(s) and/or day-of-month. Step whole months by
+  // INTERVAL from dtstart's month; within each active month emit every matching
+  // date (sorted, deduped) that is >= dtstart.
+  if (parts.freq === "monthly" && (parts.byDayOrdinal?.length || parts.byMonthDay?.length)) {
+    const [sy, sm] = rule.dtstart.split("-").map(Number);
+    for (let block = 0; block < ENUMERATE_CAP; block++) {
+      const total = sy * 12 + (sm - 1) + block * parts.interval;
+      const year = Math.floor(total / 12);
+      const month1 = (total % 12) + 1;
+      const dates = new Set<string>();
+      for (const e of parts.byDayOrdinal ?? []) {
+        const d = nthWeekdayOfMonth(year, month1, e.weekday, e.ordinal);
+        if (d) dates.add(d);
+      }
+      for (const md of parts.byMonthDay ?? []) {
+        const d = monthDayOf(year, month1, md);
+        if (d) dates.add(d);
+      }
+      for (const ymd of [...dates].sort(compareYmd)) {
+        if (compareYmd(ymd, rule.dtstart) < 0) continue;
+        if (!emit(ymd)) return out;
       }
     }
     return out;
@@ -521,6 +622,41 @@ export const WEEKDAY_LABELS: Record<Weekday, string> = {
   SU: "Sun",
 };
 
+const WEEKDAY_FULL: Record<Weekday, string> = {
+  MO: "Monday", TU: "Tuesday", WE: "Wednesday", TH: "Thursday",
+  FR: "Friday", SA: "Saturday", SU: "Sunday",
+};
+
+const ORDINAL_WORD: Record<number, string> = {
+  [-1]: "last", 1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+};
+
+// 1 → "1st", 2 → "2nd", 3 → "3rd", 11 → "11th", -1 → "last day".
+function dayOrdinal(n: number): string {
+  if (n === -1) return "last day";
+  const s = n % 100;
+  const suffix = s >= 11 && s <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+// The "X" in "on the X" for a monthly-positional rule: "first Sunday",
+// "first & second Thursday", "3rd", or a combination.
+function describeMonthlyOn(parts: RRuleParts): string {
+  const segs: string[] = [];
+  const ord = parts.byDayOrdinal ?? [];
+  if (ord.length) {
+    const sameWeekday = ord.every((e) => e.weekday === ord[0].weekday);
+    if (sameWeekday) {
+      const ords = ord.map((e) => ORDINAL_WORD[e.ordinal] ?? `${e.ordinal}`).join(" & ");
+      segs.push(`${ords} ${WEEKDAY_FULL[ord[0].weekday]}`);
+    } else {
+      for (const e of ord) segs.push(`${ORDINAL_WORD[e.ordinal] ?? e.ordinal} ${WEEKDAY_FULL[e.weekday]}`);
+    }
+  }
+  for (const md of parts.byMonthDay ?? []) segs.push(dayOrdinal(md));
+  return segs.join(", ");
+}
+
 export function describeRule(rule: RecurrenceRule | RRuleParts): string {
   const parts = "rrule" in rule ? parseRRule(rule.rrule) : rule;
   if (!parts) return "Does not repeat";
@@ -541,6 +677,9 @@ export function describeRule(rule: RecurrenceRule | RRuleParts): string {
   if (parts.freq === "weekly" && parts.byDay?.length) {
     const days = parts.byDay.map((d) => WEEKDAY_LABELS[d]).join(", ");
     base = n === 1 ? `Weekly on ${days}` : `Every ${n} weeks on ${days}`;
+  } else if (parts.freq === "monthly" && (parts.byDayOrdinal?.length || parts.byMonthDay?.length)) {
+    const on = describeMonthlyOn(parts);
+    base = n === 1 ? `Monthly on the ${on}` : `Every ${n} months on the ${on}`;
   } else {
     base = n === 1 ? adverb[parts.freq] : `Every ${n} ${unit[parts.freq]}s`;
   }

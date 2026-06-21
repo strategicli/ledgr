@@ -1,4 +1,4 @@
-// Web clipper bookmarklet generator (ADR-099). The clipper needs a bookmarklet
+// Web clipper bookmarklet generator (ADR-100). The clipper needs a bookmarklet
 // carrying an api-scoped token, but the server never holds the raw token (it's
 // stored hashed in LEDGR_API_TOKENS). So the user pastes the token they
 // generated on the CLI and this assembles the draggable bookmarklet entirely

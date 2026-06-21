@@ -6,7 +6,7 @@ import { extractArticle, fetchAndExtract } from "@/lib/clip/extract";
 import { createItem } from "@/lib/items";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 
-// Web clipper capture (ADR-099, explorations/web-clipper.md). The bookmarklet
+// Web clipper capture (ADR-100, explorations/web-clipper.md). The bookmarklet
 // (and a later browser extension) POSTs here: the live page URL, its title, and
 // optionally the rendered DOM html. We extract clean article markdown (images
 // stripped, src/lib/clip/extract.ts) and land a `link` item in the Inbox.

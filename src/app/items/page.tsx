@@ -5,7 +5,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
-import ListTabs from "@/components/lists/ListTabs";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import { listItems } from "@/lib/items";
@@ -78,10 +77,6 @@ export default async function AllItems() {
         <p className="mt-1 text-sm text-neutral-500">
           {live.length} item{live.length === 1 ? "" : "s"}
         </p>
-
-        <div className="mt-6">
-          <ListTabs active="all" />
-        </div>
 
         {typeRows.map(({ key, label }) => {
           const group = byType.get(key) ?? [];
