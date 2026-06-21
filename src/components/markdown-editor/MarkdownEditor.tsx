@@ -101,6 +101,22 @@ async function insertUploadedImages(
   }
 }
 
+// Configurable toolbar (app-wide): the ids a user hid live in
+// settings.editorToolbarHidden. Fetched once per page load (memoized) so every
+// editor instance shares the single request.
+let hiddenToolbarPromise: Promise<string[]> | null = null;
+function loadHiddenToolbar(): Promise<string[]> {
+  hiddenToolbarPromise ??= fetch("/api/settings")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) =>
+      Array.isArray(d?.settings?.editorToolbarHidden)
+        ? (d.settings.editorToolbarHidden as string[])
+        : []
+    )
+    .catch(() => []);
+  return hiddenToolbarPromise;
+}
+
 function ToolbarButton({
   label,
   icon,
@@ -349,6 +365,12 @@ export default function MarkdownEditor({
     }
   }, [initialMarkdown, editor]);
 
+  const [hiddenTb, setHiddenTb] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    loadHiddenToolbar().then((ids) => setHiddenTb(new Set(ids)));
+  }, []);
+  const showTb = (id: string) => !hiddenTb.has(id);
+
   if (!editor || !toolbar) {
     return (
       <div className="px-4 py-3 text-sm text-neutral-400">Loading editor…</div>
@@ -411,136 +433,79 @@ export default function MarkdownEditor({
   return (
     <div className="border-b border-neutral-800">
       <div className="flex flex-wrap items-center gap-0.5 border-b border-neutral-800/70 px-1 py-1.5">
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.bold}
-          title="Bold"
-          active={toolbar.isBold}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.italic}
-          title="Italic"
-          active={toolbar.isItalic}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.strike}
-          title="Strikethrough"
-          active={toolbar.isStrike}
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-        />
-        <ToolbarButton
-          label="H1"
-          title="Heading 1"
-          active={toolbar.isH1}
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 1 }).run()
-          }
-        />
-        <ToolbarButton
-          label="H2"
-          title="Heading 2"
-          active={toolbar.isH2}
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run()
-          }
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.bulletList}
-          title="Bullet list"
-          active={toolbar.isBulletList}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.orderedList}
-          title="Numbered list"
-          active={toolbar.isOrderedList}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.tasks}
-          title="Checklist (- [ ])"
-          active={toolbar.isTaskList}
-          onClick={() => editor.chain().focus().toggleTaskList().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.quote}
-          title="Quote"
-          active={toolbar.isBlockquote}
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.code}
-          title="Code block"
-          active={toolbar.isCodeBlock}
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        />
-        <ToolbarButton
-          icon={TOOLBAR_ICONS.table}
-          title="Insert table"
-          onClick={() =>
-            editor
-              .chain()
-              .focus()
-              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-              .run()
-          }
-        />
-        {uploadImage ? (
+        {(
+          [
+            { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
+            { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
+            { id: "strike", title: "Strikethrough", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
+            { id: "h1", title: "Heading 1", label: "H1", active: toolbar.isH1, run: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+            { id: "h2", title: "Heading 2", label: "H2", active: toolbar.isH2, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+            { id: "bulletList", title: "Bullet list", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
+            { id: "orderedList", title: "Numbered list", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
+            { id: "tasks", title: "Checklist (- [ ])", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
+            { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
+            { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
+            { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+          ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; run: () => void }[]
+        )
+          .filter((b) => showTb(b.id))
+          .map((b) => (
+            <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} onClick={b.run} />
+          ))}
+
+        {showTb("image") && uploadImage && (
           <ToolbarButton
             icon={TOOLBAR_ICONS.image}
             title="Insert image (or paste/drop one)"
             onClick={() => fileInputRef.current?.click()}
           />
-        ) : null}
-        {itemId ? (
+        )}
+        {showTb("link") && itemId && (
           <ToolbarButton
             icon={TOOLBAR_ICONS.link}
             title="Copy a link to this line (from the cursor)"
             active={linkCopied}
             onClick={() => void copyLineLink()}
           />
-        ) : null}
+        )}
 
-        <span className="mx-1 h-5 w-px bg-neutral-700" />
+        {(showTb("color") || showTb("highlight")) && (
+          <span className="mx-1 h-5 w-px bg-neutral-700" />
+        )}
 
-        {/* Text color */}
-        <select
-          title="Text color"
-          className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-          value={toolbar.textColor}
-          onChange={(e) =>
-            setColor((e.target.value || null) as BlockNoteColor | null)
-          }
-        >
-          <option value="">Color…</option>
-          {COLOR_NAMES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        {showTb("color") && (
+          <select
+            title="Text color"
+            className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
+            value={toolbar.textColor}
+            onChange={(e) => setColor((e.target.value || null) as BlockNoteColor | null)}
+          >
+            <option value="">Color…</option>
+            {COLOR_NAMES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
 
-        {/* Highlight */}
-        <select
-          title="Highlight"
-          className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-          value={toolbar.highlight}
-          onChange={(e) =>
-            setHighlight((e.target.value || null) as BlockNoteColor | null)
-          }
-        >
-          <option value="">Highlight…</option>
-          {COLOR_NAMES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        {showTb("highlight") && (
+          <select
+            title="Highlight"
+            className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
+            value={toolbar.highlight}
+            onChange={(e) => setHighlight((e.target.value || null) as BlockNoteColor | null)}
+          >
+            <option value="">Highlight…</option>
+            {COLOR_NAMES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
 
-        <span className="ml-2 text-xs text-neutral-500">
-          Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
-        </span>
+        {showTb("mention") && (
+          <span className="ml-2 text-xs text-neutral-500">
+            Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
+          </span>
+        )}
       </div>
 
       <EditorContent editor={editor} />

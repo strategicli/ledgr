@@ -15,6 +15,7 @@ import {
   type RailAnchor,
   type UserSettings,
 } from "@/lib/settings";
+import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   top: "Top",
@@ -90,6 +91,35 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
           onBlur={() => void save({ displayName: settings.displayName })}
           className="mt-2 w-48 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
         />
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Editor toolbar</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Which buttons show in the markdown editor toolbar (every canvas).
+          Unchecking hides one; takes effect on the next page load.
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
+          {TOOLBAR_ITEMS.map((it) => {
+            const shown = !settings.editorToolbarHidden.includes(it.id);
+            return (
+              <label key={it.id} className="flex items-center gap-2 text-sm text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={shown}
+                  onChange={() => {
+                    const set = new Set(settings.editorToolbarHidden);
+                    if (set.has(it.id)) set.delete(it.id);
+                    else set.add(it.id);
+                    void save({ editorToolbarHidden: [...set] });
+                  }}
+                  className="accent-[var(--accent)]"
+                />
+                {it.label}
+              </label>
+            );
+          })}
+        </div>
       </section>
 
       <section>

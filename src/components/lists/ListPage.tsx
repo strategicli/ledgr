@@ -1,15 +1,14 @@
 // Shared frame for the per-type list pages: title row (with the page's
 // actions on the right), subtitle, and the cross-list tab strip.
-import ListTabs, { type ListTabKey } from "@/components/lists/ListTabs";
+import { type ListTabKey } from "@/components/lists/ListTabs";
 
 export default function ListPage({
-  tab,
   title,
   subtitle,
   actions,
   children,
 }: {
-  tab: ListTabKey;
+  tab?: ListTabKey; // accepted but no longer rendered (cross-type strip removed)
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
@@ -25,9 +24,7 @@ export default function ListPage({
           {actions}
         </div>
         {subtitle && <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>}
-        <div className="mt-6">
-          <ListTabs active={tab} />
-        </div>
+        <div className="mt-6" />
         {children}
       </div>
     </main>

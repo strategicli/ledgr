@@ -37,3 +37,24 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   color: <Svg><path d="M12 3l5.5 9a5.5 5.5 0 1 1-11 0z" /></Svg>,
   highlight: <Svg><path d="M4 20h6" /><path d="M14 4l6 6-9 9H7v-4z" /></Svg>,
 };
+
+// The toolbar items in display order (id → label), for the configurable-toolbar
+// settings UI. Ids match the gating in MarkdownEditor.
+export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
+  { id: "bold", label: "Bold" },
+  { id: "italic", label: "Italic" },
+  { id: "strike", label: "Strikethrough" },
+  { id: "h1", label: "Heading 1" },
+  { id: "h2", label: "Heading 2" },
+  { id: "bulletList", label: "Bullet list" },
+  { id: "orderedList", label: "Numbered list" },
+  { id: "tasks", label: "Checklist" },
+  { id: "quote", label: "Quote" },
+  { id: "code", label: "Code" },
+  { id: "table", label: "Table" },
+  { id: "image", label: "Image" },
+  { id: "link", label: "Copy line link" },
+  { id: "color", label: "Text color" },
+  { id: "highlight", label: "Highlight" },
+  { id: "mention", label: "@ mention hint" },
+];

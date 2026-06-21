@@ -174,23 +174,25 @@ export default async function Tasks({
       <div className="mt-4">
         {/* week nav + day-jump chips */}
         <div className="flex flex-wrap items-center gap-2 pb-2">
-          <Link
-            href={`/tasks?tab=upcoming&week=${Math.max(0, weekOffset - 1)}`}
-            aria-disabled={weekOffset === 0}
-            className={`rounded px-2 py-0.5 text-sm ${weekOffset === 0 ? "pointer-events-none text-neutral-700" : "text-neutral-400 hover:text-neutral-200"}`}
-          >
-            ←
-          </Link>
-          <span className="text-sm font-medium text-neutral-200">{label}</span>
-          <Link href={`/tasks?tab=upcoming&week=${weekOffset + 1}`} className="rounded px-2 py-0.5 text-sm text-neutral-400 hover:text-neutral-200">
-            →
-          </Link>
-          <span className="mx-1 h-4 w-px bg-neutral-800" />
           {days.map((d, i) => (
             <a key={i} href={`#day-${i}`} className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300">
               {shortDay.format(d)}
             </a>
           ))}
+          {/* week navigator — far right (Tyler) */}
+          <div className="ml-auto flex items-center gap-2">
+            <Link
+              href={`/tasks?tab=upcoming&week=${Math.max(0, weekOffset - 1)}`}
+              aria-disabled={weekOffset === 0}
+              className={`rounded px-2 py-0.5 text-sm ${weekOffset === 0 ? "pointer-events-none text-neutral-700" : "text-neutral-400 hover:text-neutral-200"}`}
+            >
+              ←
+            </Link>
+            <span className="text-sm font-medium text-neutral-200">{label}</span>
+            <Link href={`/tasks?tab=upcoming&week=${weekOffset + 1}`} className="rounded px-2 py-0.5 text-sm text-neutral-400 hover:text-neutral-200">
+              →
+            </Link>
+          </div>
         </div>
         <div className="space-y-4">
           {days.map((d, i) => {

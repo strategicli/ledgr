@@ -124,6 +124,9 @@ export type NavSlotConfig =
     };
 
 export type UserSettings = {
+  // Configurable editor toolbar (app-wide): ids the user hid from the markdown
+  // toolbar. Empty = show all. See toolbar-icons / TOOLBAR_ITEMS.
+  editorToolbarHidden: string[];
   highlightColor: string; // solid hex (a HIGHLIGHT_COLORS value, or a gradient's representative accent)
   // When set, an accent gradient (a HIGHLIGHT_GRADIENTS value) layered over fills;
   // null = a plain solid accent. highlightColor still holds the representative solid.
@@ -163,6 +166,7 @@ export const DEFAULT_NAV_SLOTS: NavSlotConfig[] = [
 ];
 
 export const DEFAULT_SETTINGS: UserSettings = {
+  editorToolbarHidden: [],
   highlightColor: "#2563eb",
   highlightGradient: null,
   trashRetentionDays: 30,
@@ -269,6 +273,9 @@ export function parseSettings(raw: unknown): UserSettings {
     typeof r.icsToken === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(r.icsToken)
       ? r.icsToken
       : null;
+  const editorToolbarHidden = Array.isArray(r.editorToolbarHidden)
+    ? (r.editorToolbarHidden.filter((x) => typeof x === "string") as string[])
+    : DEFAULT_SETTINGS.editorToolbarHidden;
   const navSlots = parseNavSlots(r.navSlots, NAV_SLOTS_HARD_CAP, DEFAULT_NAV_SLOTS);
   // null (or absent) means mirror desktop; an array is a distinct mobile list.
   const mobileNavSlots =
@@ -278,6 +285,7 @@ export function parseSettings(raw: unknown): UserSettings {
   return {
     highlightColor,
     highlightGradient,
+    editorToolbarHidden,
     trashRetentionDays: days,
     navPosition,
     railSize,
