@@ -17,6 +17,7 @@ export default function Modal({
   type = "",
   isTemplate = false,
   locked = false,
+  favorited = false,
 }: {
   itemId: string;
   children: React.ReactNode;
@@ -33,6 +34,8 @@ export default function Modal({
   // Whether the item is locked (items.properties.locked) — drives the menu's
   // lock/unlock label.
   locked?: boolean;
+  // Whether the item is in the owner's favorites — drives the menu's star label.
+  favorited?: boolean;
 }) {
   const router = useRouter();
   const close = useCallback(() => router.back(), [router]);
@@ -95,7 +98,13 @@ export default function Modal({
             {/* Save as template, Apply template, Customize layout, and the lock
                 toggle all live behind the "⋯" menu (a template's are hidden). */}
             {!isTemplate && (
-              <ItemActionsMenu itemId={itemId} type={type} title={title} locked={locked} />
+              <ItemActionsMenu
+                itemId={itemId}
+                type={type}
+                title={title}
+                locked={locked}
+                favorited={favorited}
+              />
             )}
             {/* Plain <a>, not <Link>: a soft nav to the same URL would stay
                 intercepted; a document load renders the full page form. */}

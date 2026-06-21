@@ -152,6 +152,50 @@ check("a type with an unknown icon falls back to 'items'", findDestOption(opts, 
 check("Inbox is the badge-eligible builtin", findDestOption(opts, "/inbox")?.badgeEligible === true);
 check("Tasks is not badge-eligible", findDestOption(opts, "/tasks")?.badgeEligible === false);
 
+// --- 1. Pure: favorites validation + list ops ------------------------------
+const U1 = "11111111-1111-1111-1111-111111111111";
+const U2 = "22222222-2222-2222-2222-222222222222";
+const U3 = "33333333-3333-3333-3333-333333333333";
+const { FAVORITES_HARD_CAP } = await import("../src/lib/settings");
+check("favorites default to empty", base.favorites.length === 0);
+check(
+  "favorites keep only well-formed uuids, in order",
+  JSON.stringify(parseSettings({ favorites: [U1, "nope", U2] }).favorites) ===
+    JSON.stringify([U1, U2])
+);
+check(
+  "favorites dedupe (first wins)",
+  JSON.stringify(parseSettings({ favorites: [U1, U2, U1] }).favorites) ===
+    JSON.stringify([U1, U2])
+);
+check("garbage favorites fall back to empty", parseSettings({ favorites: "nope" }).favorites.length === 0);
+check(
+  "favorites are bounded by the hard cap",
+  parseSettings({
+    favorites: Array.from(
+      { length: FAVORITES_HARD_CAP + 5 },
+      (_, i) => `${(i % 10).toString().repeat(8)}-1111-1111-1111-111111111111`
+    ),
+  }).favorites.length <= FAVORITES_HARD_CAP
+);
+
+const { isFavorited, addFavorite, removeFavorite, applyReorder } = await import(
+  "../src/lib/favorites"
+);
+check("isFavorited reflects membership", isFavorited([U1, U2], U2) && !isFavorited([U1], U2));
+check("addFavorite appends a new id", JSON.stringify(addFavorite([U1], U2)) === JSON.stringify([U1, U2]));
+check("addFavorite is a no-op for an existing id", JSON.stringify(addFavorite([U1, U2], U1)) === JSON.stringify([U1, U2]));
+check("removeFavorite drops the id", JSON.stringify(removeFavorite([U1, U2], U1)) === JSON.stringify([U2]));
+check(
+  "applyReorder honors the requested order",
+  JSON.stringify(applyReorder([U1, U2, U3], [U3, U1, U2])) === JSON.stringify([U3, U1, U2])
+);
+check(
+  "applyReorder drops stale ids and keeps omitted favorites",
+  JSON.stringify(applyReorder([U1, U2, U3], [U2, "99999999-9999-9999-9999-999999999999"])) ===
+    JSON.stringify([U2, U1, U3])
+);
+
 // --- 2. Live Neon: type soft-delete + restore (ADR-058) --------------------
 const { getDb } = await import("../src/db");
 const { items, relations, types, users } = await import("../src/db/schema");

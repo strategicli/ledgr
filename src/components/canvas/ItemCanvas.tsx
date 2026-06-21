@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ItemError, getItem } from "@/lib/items";
+import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
 import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
@@ -55,6 +56,13 @@ export default async function ItemCanvas({
   // a template subtask still shows its ancestor chain up to the prototype.
   const showBreadcrumb =
     (variant === "page" && !item.isTemplate) || ancestors.length > 0;
+
+  // Star state for the actions menu (page chrome only; the modal's menu resolves
+  // it separately). Skipped otherwise to avoid an extra settings read.
+  const favorited =
+    variant === "page" && !item.isTemplate
+      ? await isItemFavorited(owner.id, item.id)
+      : false;
 
   // Owner-aware so the per-user enable flip (M6) can route a disabled module's
   // type back to the default canvas without touching this call site. The type's
@@ -120,6 +128,7 @@ export default async function ItemCanvas({
                   locked={Boolean(
                     (item.properties as Record<string, unknown> | null)?.locked
                   )}
+                  favorited={favorited}
                 />
               </span>
             )}
