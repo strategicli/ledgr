@@ -19,15 +19,45 @@ import {
   makeRecurrence,
   parseRecurrence,
   parseRRule,
+  weekdayOf,
   WEEKDAYS,
   WEEKDAY_LABELS,
   type AnchorMode,
+  type ByDayOrdinal,
   type OccurrenceMode,
   type Weekday,
 } from "@/lib/recurrence";
 
 type Preset = "none" | "daily" | "weekdays" | "weekly" | "monthly" | "yearly";
 const WEEKDAY_SET: Weekday[] = ["MO", "TU", "WE", "TH", "FR"];
+
+// How a Monthly rule repeats: the same calendar day (plain, clamped), an explicit
+// day-of-month (BYMONTHDAY — skips short months, supports the last day), or an
+// ordinal weekday (BYDAY like 3MO — "the third Monday").
+type MonthlyMode = "day" | "dom" | "weekday";
+const MONTHLY_ORDINALS: { value: number; label: string }[] = [
+  { value: 1, label: "first" },
+  { value: 2, label: "second" },
+  { value: 3, label: "third" },
+  { value: 4, label: "fourth" },
+  { value: 5, label: "fifth" },
+  { value: -1, label: "last" },
+];
+const WEEKDAY_FULL: Record<Weekday, string> = {
+  MO: "Monday", TU: "Tuesday", WE: "Wednesday", TH: "Thursday",
+  FR: "Friday", SA: "Saturday", SU: "Sunday",
+};
+// 1 → "1st", 21 → "21st", -1 → "last day".
+function dayOrdinalLabel(n: number): string {
+  if (n === -1) return "last day";
+  const s = n % 100;
+  const suffix = s >= 11 && s <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+const DAY_OF_MONTH_OPTIONS: { value: number; label: string }[] = [
+  ...Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: dayOrdinalLabel(i + 1) })),
+  { value: -1, label: "last day" },
+];
 
 const selectClass =
   "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600";
@@ -85,6 +115,24 @@ export default function RecurrenceControl({
   // The first occurrence anchor: the planned day, else the deadline, else today.
   const dtstart = (scheduledDate ?? dueDate)?.slice(0, 10) || today;
 
+  // Monthly picker state. Derive the mode + current selection from the stored
+  // rule; fall back to the anchor day (its day-of-month / its nth weekday) so
+  // switching modes starts from a sensible default rather than blank.
+  const curParts = rule ? parseRRule(rule.rrule) : null;
+  const monthlyOrdinalEntry = curParts?.byDayOrdinal?.[0] ?? null;
+  const monthlyDomValue = curParts?.byMonthDay?.[0] ?? null;
+  const dtDay = Number(dtstart.slice(8, 10));
+  const dtWeekday = weekdayOf(dtstart);
+  const dtOrdinal = Math.min(5, Math.ceil(dtDay / 7)); // dtstart's nth weekday (1–5)
+  const monthlyMode: MonthlyMode = monthlyOrdinalEntry
+    ? "weekday"
+    : monthlyDomValue != null
+      ? "dom"
+      : "day";
+  const effOrdinal = monthlyOrdinalEntry?.ordinal ?? dtOrdinal;
+  const effOrdWeekday = monthlyOrdinalEntry?.weekday ?? dtWeekday;
+  const effDom = monthlyDomValue ?? dtDay;
+
   async function persist(next: ReturnType<typeof parseRecurrence>) {
     const before = rule;
     setRule(next);
@@ -115,6 +163,8 @@ export default function RecurrenceControl({
       preset: Preset;
       interval: number;
       byDay: Weekday[];
+      byMonthDay: number[];
+      byDayOrdinal: ByDayOrdinal[];
       count: number | null;
       until: string | null;
       anchorMode: AnchorMode;
@@ -140,14 +190,25 @@ export default function RecurrenceControl({
         : p === "weekly"
           ? overrides.byDay ?? (byDay.length ? byDay : [])
           : [];
-    // Monthly positional rules (nth-weekday / day-of-month, set via NL quick-add)
-    // have no UI here yet; carry them through unchanged so editing interval/anchor
-    // doesn't silently drop them. Dropped only when the preset leaves monthly.
+    // Monthly positional rules (nth-weekday / day-of-month). When the monthly
+    // picker sets one explicitly we take it (empty array ⇒ clear back to plain
+    // monthly); otherwise carry the current values through unchanged so editing
+    // interval/anchor doesn't silently drop them. Dropped when the preset leaves
+    // monthly. The two are mutually exclusive in the picker.
     const cur = parseRRule(rruleParts);
-    const monthlyExtras =
-      freq === "monthly"
-        ? { byDayOrdinal: cur?.byDayOrdinal, byMonthDay: cur?.byMonthDay }
-        : {};
+    let monthlyExtras: { byDayOrdinal?: ByDayOrdinal[]; byMonthDay?: number[] } = {};
+    if (freq === "monthly") {
+      if (overrides.byMonthDay !== undefined || overrides.byDayOrdinal !== undefined) {
+        const bmd = overrides.byMonthDay ?? [];
+        const bdo = overrides.byDayOrdinal ?? [];
+        monthlyExtras = {
+          byMonthDay: bmd.length ? bmd : undefined,
+          byDayOrdinal: bdo.length ? bdo : undefined,
+        };
+      } else {
+        monthlyExtras = { byDayOrdinal: cur?.byDayOrdinal, byMonthDay: cur?.byMonthDay };
+      }
+    }
     const next = makeRecurrence({
       freq,
       interval: overrides.interval ?? interval,
@@ -222,6 +283,85 @@ export default function RecurrenceControl({
               </button>
             ))}
           </div>
+        )}
+
+        {preset === "monthly" && (
+          <label className="flex items-center gap-1.5">
+            on
+            <select
+              className={selectClass}
+              aria-label="Monthly repeat pattern"
+              value={monthlyMode}
+              onChange={(e) => {
+                const m = e.target.value as MonthlyMode;
+                if (m === "day") rebuild({ preset: "monthly", byMonthDay: [], byDayOrdinal: [] });
+                else if (m === "dom")
+                  rebuild({ preset: "monthly", byMonthDay: [effDom], byDayOrdinal: [] });
+                else
+                  rebuild({
+                    preset: "monthly",
+                    byDayOrdinal: [{ ordinal: effOrdinal, weekday: effOrdWeekday }],
+                    byMonthDay: [],
+                  });
+              }}
+            >
+              <option value="day">the {dayOrdinalLabel(dtDay)} (same as start)</option>
+              <option value="dom">a day of the month</option>
+              <option value="weekday">a day of the week</option>
+            </select>
+
+            {monthlyMode === "dom" && (
+              <select
+                className={selectClass}
+                aria-label="Day of the month"
+                value={effDom}
+                onChange={(e) =>
+                  rebuild({ preset: "monthly", byMonthDay: [Number(e.target.value)], byDayOrdinal: [] })
+                }
+              >
+                {DAY_OF_MONTH_OPTIONS.map((d) => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+            )}
+
+            {monthlyMode === "weekday" && (
+              <>
+                <select
+                  className={selectClass}
+                  aria-label="Which week of the month"
+                  value={effOrdinal}
+                  onChange={(e) =>
+                    rebuild({
+                      preset: "monthly",
+                      byDayOrdinal: [{ ordinal: Number(e.target.value), weekday: effOrdWeekday }],
+                      byMonthDay: [],
+                    })
+                  }
+                >
+                  {MONTHLY_ORDINALS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <select
+                  className={selectClass}
+                  aria-label="Weekday"
+                  value={effOrdWeekday}
+                  onChange={(e) =>
+                    rebuild({
+                      preset: "monthly",
+                      byDayOrdinal: [{ ordinal: effOrdinal, weekday: e.target.value as Weekday }],
+                      byMonthDay: [],
+                    })
+                  }
+                >
+                  {WEEKDAYS.map((w) => (
+                    <option key={w} value={w}>{WEEKDAY_FULL[w]}</option>
+                  ))}
+                </select>
+              </>
+            )}
+          </label>
         )}
 
         {preset !== "none" && (
