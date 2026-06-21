@@ -62,8 +62,8 @@ export const V1_GOALS: GoalSet[] = [
       },
       {
         label: "Calendar events + meeting task-matching",
-        status: "todo",
-        note: "active design 2026-06-20 — rename meeting→event, click-to-add from an imported calendar list (not auto-materialize all), pull relevant tasks in via person/tag",
+        status: "done",
+        note: "Events chunk E1–E4 shipped (ADR-094): meeting→event, tags, calendar feed + click-to-add, configurable task-pull",
       },
       {
         label: "Selective Notion data migration",
