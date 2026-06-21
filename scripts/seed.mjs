@@ -58,6 +58,28 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
+// The `tag` type (ADR-094 E2): an ordinary, non-privileged grouping type
+// (is_system=false, not in quick capture). Tagging is a relations edge pointed
+// at a tag item; the `tags` relation field below makes it ergonomic. Mirrors
+// drizzle/0028_tag_type_and_tags_field.sql for fresh databases.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden)
+  VALUES ('tag', 'Tag', 'tag', false, false, false)
+  ON CONFLICT (key) DO NOTHING
+`;
+
+// A built-in `tags` relation field (targetType=tag, cardinality=many) on the
+// three content types, so fresh installs get ergonomic tagging (chip box +
+// create-on-miss makes a tag). Merge-safe + idempotent: append only when the
+// type has no `tags` field yet.
+await sql`
+  UPDATE types
+  SET property_schema = COALESCE(property_schema, '[]'::jsonb)
+    || '[{"key":"tags","label":"Tags","kind":"relation","targetType":"tag","cardinality":"many"}]'::jsonb
+  WHERE key IN ('task', 'event', 'note')
+    AND NOT (COALESCE(property_schema, '[]'::jsonb) @> '[{"key":"tags"}]'::jsonb)
+`;
+
 await sql`
   INSERT INTO users (email)
   VALUES ('brandoncollins@edgewoodcommunity.org')
