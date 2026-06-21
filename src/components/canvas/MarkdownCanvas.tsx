@@ -70,6 +70,10 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // The type's resolved statuses (S2) for the status dropdown (labels + colors).
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const savedLayout = typeDef?.canvasLayout ?? null;
+  // Canvas tabs (ADR-095): auto-on for notes; opt-in for any other type via the
+  // bespoke-tool catalog (the `tabs` capability, ADR-051). Tabs are sections of
+  // the same markdown body, so this only changes the body editor.
+  const tabsEnabled = item.type === "note" || typeDef?.capability === "tabs";
   // Today (app timezone) anchors a newly-enabled repeat; computed once for both
   // the classic mount and the grid card.
   const today = appTodayYmd();
@@ -172,6 +176,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             slot="body"
             promoteToMeetingId={item.type === "event" ? item.id : undefined}
             promotedRefs={promotedRefs}
+            tabsEnabled={tabsEnabled}
           />
         );
       if (id.startsWith("sys:")) {
@@ -284,6 +289,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         }
         promoteToMeetingId={item.type === "event" ? item.id : undefined}
         promotedRefs={promotedRefs}
+        tabsEnabled={tabsEnabled}
       />
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}

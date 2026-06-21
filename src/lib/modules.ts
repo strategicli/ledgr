@@ -147,6 +147,22 @@ export const coreModule: ModuleManifest = {
     { key: "person", label: "Person", icon: "user", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
   ],
   exporters: [],
+  // Canvas tabs (ADR-095): a default-canvas behavior, not a separate canvas
+  // (canvasId stays the default markdown canvas — MarkdownCanvas turns tabs on
+  // when a type carries this capability). Auto-on for `note`; attach to any
+  // other type from the Build bespoke-tool catalog. Tabs are sections of the
+  // same markdown body, so the canonical format is unchanged.
+  capabilities: [
+    {
+      id: "tabs",
+      label: "Tabs",
+      description: "Split the canvas into named tabs, each a section of the same note.",
+      usage:
+        "Keep related-but-separate content apart on one item — e.g. several lyric versions plus notes on one song's note, or research vs. draft on a paper.",
+      canvasId: DEFAULT_CANVAS,
+      canonicalFormat: MARKDOWN_FORMAT,
+    },
+  ],
 };
 
 // --- the registry ----------------------------------------------------------
