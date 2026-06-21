@@ -36,6 +36,18 @@ Project **cards**, each with its **subtasks/related tasks below**. Depends on th
 - A **small SVG subtask indicator** when the task has children, with a **roll-down** (expand/collapse) to reveal the subtasks inline.
 - An **"Add task" button** below each list (and below a task's subtasks) for fast entry.
 
+## Task detail canvas (opening a task) — Tyler, 2026-06-21
+
+Tasks get their **own bespoke canvas** (not the default markdown canvas) — a focused, Todoist-style two-pane view (Images #7/#8), via the per-type canvas seam (ADR-041). Composes existing pieces (Subtasks panel, the field controls) rather than a new editor.
+
+- **Main pane (left):**
+  - Checkbox + **title** at the top.
+  - A **lightweight Description** — mostly short plain text. **The full markdown chrome (color, bold/italic, headings, etc.) is hidden by default but still available** (e.g. a small toggle / slash menu), so a task description stays simple but can go rich when needed. (A "minimal" mode of the markdown editor: no visible toolbar by default.)
+  - **Subtasks are central** — a prominent **"+ Add sub-task"** right under the description (more emphasis than on other types).
+  - **Comments** at the bottom: a **Comment box** (with attachment + the author avatar). *This is the task-comments capability* — newly in scope via this design. Open: storage shape (a lightweight comment list — timestamped entries; likely `properties.comments` or related sub-items; decide when built). Single-user today, so comments are mostly the user's own running log + attachments.
+- **Right rail (details):** a column of property rows, each showing a value or a **"+"** to set — **Project · Date · Deadline · Priority · Labels · Reminders · Location · Assignee.** Same action vocabulary as the capture-card chips and the Quick Add config (one shared set: Date→scheduled, Deadline→due, Priority→P1–P6, etc.). (Todoist's lock/Pro badges on Deadline/Location are theirs; in Ledgr Deadline = the existing due date, Location is deferred.)
+- **Core note:** this gives the core `task` type a bespoke canvas (uses the ADR-041 seam, doesn't change it). Mostly UI; flag to Brandon if any of it reaches the core type model (the priority change is already the core flag).
+
 ## Add-task capture card (Tyler, 2026-06-21)
 
 The redesigned capture UI, used by **both** the global "+" and the per-list "Add task" everywhere in the Tasks module (Image #4). NL parsing already works (`parseTaskTitle`, ADR-084); this is the UI on top.
