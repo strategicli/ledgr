@@ -154,7 +154,7 @@ try {
   check("the Gone subscription was pruned from the store", (await store.countSubscriptions(ownerId)) === 1);
 
   // --- 5. morning agenda ---------------------------------------------------
-  await mk({ type: "meeting", title: "Standup", meetingAt: new Date(Date.now() + 45 * 60_000) });
+  await mk({ type: "event", title: "Standup", meetingAt: new Date(Date.now() + 45 * 60_000) });
   const agendaSender = new StubSender();
   const agenda1 = await runAgendaNotify(ownerId, agendaSender);
   check("agenda send is not skipped on first run", agenda1.skipped === false);
@@ -168,15 +168,15 @@ try {
   // --- 6. meeting-prep-ready ----------------------------------------------
   const person = await mk({ type: "person", title: "Roger" });
   // In-window meeting WITH a confirmed person -> notified.
-  const soon = await mk({ type: "meeting", title: "Roger 1:1", meetingAt: new Date(Date.now() + 30 * 60_000) });
+  const soon = await mk({ type: "event", title: "Roger 1:1", meetingAt: new Date(Date.now() + 30 * 60_000) });
   await db.insert(relations).values({ sourceId: soon, targetId: person, role: "related", matchState: "confirmed" });
   // In-window meeting with NO entity -> not notified.
-  await mk({ type: "meeting", title: "Solo block", meetingAt: new Date(Date.now() + 30 * 60_000) });
+  await mk({ type: "event", title: "Solo block", meetingAt: new Date(Date.now() + 30 * 60_000) });
   // Out-of-window meeting (5h out) WITH an entity -> not notified.
-  const later = await mk({ type: "meeting", title: "Later 1:1", meetingAt: new Date(Date.now() + 5 * 60 * 60_000) });
+  const later = await mk({ type: "event", title: "Later 1:1", meetingAt: new Date(Date.now() + 5 * 60 * 60_000) });
   await db.insert(relations).values({ sourceId: later, targetId: person, role: "related", matchState: "confirmed" });
   // Canceled in-window meeting WITH an entity -> not notified.
-  const canceled = await mk({ type: "meeting", title: "Canceled 1:1", meetingAt: new Date(Date.now() + 30 * 60_000), properties: { calendar: { canceled: true } } });
+  const canceled = await mk({ type: "event", title: "Canceled 1:1", meetingAt: new Date(Date.now() + 30 * 60_000), properties: { calendar: { canceled: true } } });
   await db.insert(relations).values({ sourceId: canceled, targetId: person, role: "related", matchState: "confirmed" });
 
   const prepSender = new StubSender();

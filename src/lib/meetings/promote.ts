@@ -34,8 +34,8 @@ export async function promoteActionItem(
 
   // The source back-reference (ADR-090): always the meeting; blockRef only when
   // promoted from a specific body line.
-  const source: { type: "meeting"; itemId: string; blockRef?: string } = {
-    type: "meeting",
+  const source: { type: "event"; itemId: string; blockRef?: string } = {
+    type: "event",
     itemId: meetingId,
   };
   if (opts.blockRef) source.blockRef = opts.blockRef;

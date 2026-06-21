@@ -70,11 +70,11 @@ export const STARTER_WIDGETS: StarterWidget[] = [
   },
   {
     id: "meetings-this-week",
-    label: "Meetings This Week",
-    description: "Meetings scheduled in the next 7 days",
+    label: "Events This Week",
+    description: "Events scheduled in the next 7 days",
     view: list(
-      "Meetings This Week",
-      { type: "meeting", dateField: "meetingAt", withinDays: 7 },
+      "Events This Week",
+      { type: "event", dateField: "meetingAt", withinDays: 7 },
       { field: "meetingAt", dir: "asc" }
     ),
   },

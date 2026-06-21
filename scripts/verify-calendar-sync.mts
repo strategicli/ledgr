@@ -97,7 +97,7 @@ try {
   check("run 1 seen counts all events", run1.seen === 3);
 
   const roger = (await getByEvent("evt-roger"))[0];
-  check("created item is a meeting", roger?.type === "meeting");
+  check("created item is a meeting", roger?.type === "event");
   check("created item carries title + meeting_at", roger?.title === "Roger 1:1" && roger?.meetingAt?.toISOString() === "2026-06-20T15:00:00.000Z");
   check("created item is NOT in the inbox (fully-formed arrival, ADR-023)", roger?.inbox === false);
   check("created item stores ms_event_id", roger?.msEventId === "evt-roger");

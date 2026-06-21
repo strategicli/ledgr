@@ -77,7 +77,7 @@ try {
 
   const calendarDef = parseViewInput({ name: "Cal", layout: "calendar", filter: {} });
   check("calendar defaults dateProperty to dueDate", calendarDef.dateProperty === "dueDate");
-  const mtgCal = parseViewInput({ name: "Mtg cal", layout: "calendar", filter: { type: "meeting" } });
+  const mtgCal = parseViewInput({ name: "Mtg cal", layout: "calendar", filter: { type: "event" } });
   check("meeting calendar defaults dateProperty to meetingAt", mtgCal.dateProperty === "meetingAt");
 
   const dropped = parseViewInput({
@@ -290,13 +290,13 @@ try {
   const now = new Date();
   const plus = (d: number) => new Date(now.getTime() + d * 86400000);
   const mk = async (title: string, meetingAt: Date) =>
-    (await db.insert(items).values({ ownerId, type: "meeting", title, meetingAt }).returning({ id: items.id }))[0].id;
+    (await db.insert(items).values({ ownerId, type: "event", title, meetingAt }).returning({ id: items.id }))[0].id;
   const mToday = await mk("m today", now);
   const m3 = await mk("m +3d", plus(3));
   const m20 = await mk("m +20d", plus(20));
 
   const onWhen = (over: Record<string, unknown>) =>
-    queryViewItems(ownerId, { type: "meeting", dateField: "meetingAt", ...over });
+    queryViewItems(ownerId, { type: "event", dateField: "meetingAt", ...over });
 
   const todayMtgs = await onWhen({ due: "today" });
   check("meetingAt=today includes today's meeting", has(todayMtgs, mToday));
@@ -311,7 +311,7 @@ try {
 
   // The old behavior (default dueDate field) would miss these meetings — they
   // have no due date — which is exactly the gap this fixes.
-  const onDue = await queryViewItems(ownerId, { type: "meeting", due: "today" });
+  const onDue = await queryViewItems(ownerId, { type: "event", due: "today" });
   check("dueDate=today misses meetings (no due date)", !has(onDue, mToday));
 
   // --- property filtering: scalar select, multi_select element, "not set" ---

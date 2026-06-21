@@ -55,7 +55,7 @@ const db = getDb();
 const [u] = await db.insert(users).values({ email: `verify-retention-${Date.now()}@example.invalid` }).returning({ id: users.id });
 const [u2] = await db.insert(users).values({ email: `verify-retention-other-${Date.now()}@example.invalid` }).returning({ id: users.id });
 const ownerId = u.id;
-const meetingId = (await db.insert(items).values({ ownerId, type: "meeting", title: "M" }).returning({ id: items.id }))[0].id;
+const meetingId = (await db.insert(items).values({ ownerId, type: "event", title: "M" }).returning({ id: items.id }))[0].id;
 
 const mkAtt = async (owner: string, key: string, purgeAfter: Date | null) =>
   (

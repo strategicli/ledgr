@@ -18,7 +18,7 @@ export type ListTabKey = string;
 // hidden type (ADR-059) drops its tab.
 const SYSTEM_TABS = [
   { key: "tasks", typeKey: "task", label: "Tasks", href: "/tasks" },
-  { key: "meetings", typeKey: "meeting", label: "Meetings", href: "/meetings" },
+  { key: "events", typeKey: "event", label: "Events", href: "/events" },
   { key: "notes", typeKey: "note", label: "Notes", href: "/notes" },
   { key: "links", typeKey: "link", label: "Links", href: "/links" },
   { key: "person", typeKey: "person", label: "People", href: "/list/person" },

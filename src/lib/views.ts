@@ -475,7 +475,7 @@ export function parseViewInput(raw: unknown): ViewInput {
   // Calendar/agenda need a date to place items on; default to the one the
   // type actually has — a meeting has no due date, so it places by "When".
   if ((layout === "calendar" || layout === "agenda") && !dateProperty) {
-    dateProperty = filter.type === "meeting" ? "meetingAt" : "dueDate";
+    dateProperty = filter.type === "event" ? "meetingAt" : "dueDate";
   }
   return {
     name,

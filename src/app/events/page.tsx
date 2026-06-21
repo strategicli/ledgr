@@ -90,7 +90,7 @@ export default async function Meetings() {
 
   const meetings = await queryViewItems(
     owner.id,
-    { type: "meeting" },
+    { type: "event" },
     { field: "meetingAt", dir: "desc" }
   );
   const now = new Date();
@@ -102,13 +102,13 @@ export default async function Meetings() {
 
   return (
     <ListPage
-      tab="meetings"
-      title="Meetings"
-      subtitle={`${meetings.length} meeting${meetings.length === 1 ? "" : "s"}`}
-      actions={<NewItemButton type="meeting" />}
+      tab="events"
+      title="Events"
+      subtitle={`${meetings.length} event${meetings.length === 1 ? "" : "s"}`}
+      actions={<NewItemButton type="event" />}
     >
       {meetings.length === 0 && (
-        <p className="mt-6 px-2 text-sm text-neutral-600">No meetings yet.</p>
+        <p className="mt-6 px-2 text-sm text-neutral-600">No events yet.</p>
       )}
       <Section title="Upcoming" rows={upcoming} now={now} />
       <Section title="Past" rows={past} now={now} />

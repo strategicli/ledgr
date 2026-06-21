@@ -84,7 +84,7 @@ export async function runAgendaNotify(
 
   const { meetings, dueTasks } = await getTodayData(ownerId, now);
   const parts: string[] = [];
-  parts.push(meetings.length === 1 ? "1 meeting" : `${meetings.length} meetings`);
+  parts.push(meetings.length === 1 ? "1 event" : `${meetings.length} events`);
   parts.push(dueTasks.length === 1 ? "1 task due" : `${dueTasks.length} tasks due`);
   const firstMeeting = meetings[0];
   const lead = firstMeeting?.meetingAt
@@ -138,7 +138,7 @@ export async function runPrepNotify(
     .where(
       and(
         eq(items.ownerId, ownerId),
-        eq(items.type, "meeting"),
+        eq(items.type, "event"),
         ne(items.statusCategory, "archived"),
         isNull(items.deletedAt),
         // No prep push for a template meeting (ADR-093).
@@ -162,7 +162,7 @@ export async function runPrepNotify(
     const who = people.map((e) => e.title).slice(0, 2).join(", ");
     const t = await sendToOwner(ownerId, sender, {
       title: `Prep ready: ${m.title || "Untitled"}`,
-      body: `${when ? `${when.trim()}.` : ""}${who ? ` With ${who}.` : ""}`.trim() || "Open meeting prep.",
+      body: `${when ? `${when.trim()}.` : ""}${who ? ` With ${who}.` : ""}`.trim() || "Open event prep.",
       url: `/items/${m.id}`,
       tag: `ledgr-prep-${m.id}`,
     });

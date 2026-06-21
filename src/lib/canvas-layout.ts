@@ -152,7 +152,7 @@ export function cardVocabulary(
   for (const f of topStripFields(type)) ids.push(`sys:${f}`);
   ids.push("body");
   if (type === "task") ids.push("recurrence", "recurrenceCalendar", "subtasks");
-  if (type === "meeting") ids.push("meetingPrep", "meetingTranscripts");
+  if (type === "event") ids.push("meetingPrep", "meetingTranscripts");
   for (const p of propertySchema) {
     if (p.kind !== "relation") ids.push(`prop:${p.key}`);
   }
