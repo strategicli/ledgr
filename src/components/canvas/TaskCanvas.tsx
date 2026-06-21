@@ -61,8 +61,18 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
   const parentLink =
     parent && !parent.deletedAt ? { href: `/items/${parent.id}`, title: parent.title || "Untitled" } : null;
 
-  const railHeading = (label: string): ReactNode => (
-    <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{label}</h3>
+  // One right-rail section: an optional label over its control, separated from
+  // the section above by a hairline divider (the first section has none). Gives
+  // the Todoist-style "label · value, divider, label · value" rhythm.
+  const section = (label: string | null, content: ReactNode): ReactNode => (
+    <div className="border-t border-neutral-800/60 py-3 first:border-t-0 first:pt-0">
+      {label && (
+        <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          {label}
+        </div>
+      )}
+      {content}
+    </div>
   );
 
   return (
@@ -76,61 +86,69 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
         </Link>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Left: title · description · subtasks */}
         <div className="min-w-0">
           <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="title" />
           <div className="mt-3">
-            <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="body" />
+            <ItemEditor
+              item={{ id: item.id, title: item.title, body: item.body }}
+              slot="body"
+              collapsibleToolbar
+              compactBody
+            />
           </div>
           <div className="mt-4">
             <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
           </div>
         </div>
 
-        {/* Right rail: the task's details */}
-        <aside className="flex flex-col gap-4 lg:border-l lg:border-neutral-800 lg:pl-6">
-          <div>
-            {railHeading("Details")}
-            <div className="mt-2">
-              <FieldStrip
-                itemId={item.id}
-                fields={topStripFields("task")}
-                initial={strip}
-                today={today}
-                statuses={statuses}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-500">
-            <span className="flex items-center gap-1.5">
-              <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
-              Focus today
-            </span>
-            <ScheduledTimeControl itemId={item.id} initial={scheduledTime} hasSchedule={hasSchedule} />
-            <ReminderControl itemId={item.id} initialMinutes={reminderMinutes} />
-          </div>
-          <RecurrenceControl
+        {/* Right rail: the task's details, as clean labeled+divided sections. */}
+        <aside className="flex flex-col lg:border-l lg:border-neutral-800 lg:pl-6">
+          {/* Status · Scheduled · Due · Priority — each its own labeled section. */}
+          <FieldStrip
             itemId={item.id}
-            initial={recurrenceRule}
-            scheduledDate={item.scheduledDate?.toISOString() ?? null}
-            dueDate={item.dueDate?.toISOString() ?? null}
+            fields={topStripFields("task")}
+            initial={strip}
             today={today}
+            statuses={statuses}
+            layout="rail"
           />
-          {recurrenceRule && recurrenceRule.occurrenceMode === "virtual" && (
-            <RecurrenceCalendar itemId={item.id} initial={recurrenceRule} today={today} />
-          )}
-          {relationFields.length > 0 && (
-            <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} />
-          )}
-          {scalarFields.length > 0 && (
-            <CustomProperties
+          {relationFields.length > 0 &&
+            section(
+              null,
+              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} bare />
+            )}
+          {section(
+            "Repeat",
+            <RecurrenceControl
               itemId={item.id}
-              typeKey="task"
-              schema={scalarFields}
-              initial={props}
+              initial={recurrenceRule}
+              scheduledDate={item.scheduledDate?.toISOString() ?? null}
+              dueDate={item.dueDate?.toISOString() ?? null}
+              today={today}
+              bare
             />
           )}
+          {recurrenceRule &&
+            recurrenceRule.occurrenceMode === "virtual" &&
+            section(null, <RecurrenceCalendar itemId={item.id} initial={recurrenceRule} today={today} />)}
+          {section(
+            "Reminders & focus",
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-500">
+              <span className="flex items-center gap-1.5">
+                <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
+                Focus today
+              </span>
+              <ScheduledTimeControl itemId={item.id} initial={scheduledTime} hasSchedule={hasSchedule} />
+              <ReminderControl itemId={item.id} initialMinutes={reminderMinutes} />
+            </div>
+          )}
+          {scalarFields.length > 0 &&
+            section(
+              null,
+              <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} bare />
+            )}
         </aside>
       </div>
 

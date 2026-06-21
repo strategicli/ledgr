@@ -15,6 +15,13 @@
   outline: none;
 }
 
+/* Compact variant (task canvas): no tall floor + flush padding, so the body
+   starts one line tall and grows with content instead of reserving a 14rem box. */
+.ledgr-prose-compact {
+  min-height: 0;
+  padding: 0.25rem 0;
+}
+
 /* Empty-body placeholder (Placeholder extension). Shown only while the whole
    body is empty: the extension tags the first child with is-editor-empty and
    carries the text in data-placeholder. Quiet, non-interactive, no layout

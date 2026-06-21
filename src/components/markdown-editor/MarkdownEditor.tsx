@@ -68,6 +68,14 @@ export type MarkdownEditorProps = {
   // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
   // those lines instead of the promote button, and links to the task.
   promotedRefs?: PromotedRefs;
+  // When true, the formatting toolbar starts HIDDEN behind a small top-right
+  // toggle button (the task canvas default — a task body is mostly plain text, so
+  // the bar is opt-in noise). Default false keeps the bar always-on (notes etc.).
+  collapsibleToolbar?: boolean;
+  // When true, the editor has no tall min-height: it starts one line tall and
+  // grows with content (the task canvas, where bodies are short). Default false
+  // keeps the roomy 14rem writing area.
+  compact?: boolean;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -157,6 +165,8 @@ export default function MarkdownEditor({
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
+  collapsibleToolbar = false,
+  compact = false,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
@@ -218,7 +228,7 @@ export default function MarkdownEditor({
     content: initialMarkdown,
     contentType: "markdown",
     editorProps: {
-      attributes: { class: "ProseMirror ledgr-prose" },
+      attributes: { class: compact ? "ProseMirror ledgr-prose ledgr-prose-compact" : "ProseMirror ledgr-prose" },
       // Paste/drop of image files → upload to R2, insert as a markdown image.
       // Only intercepts when an image is actually present and an uploader is
       // wired; everything else falls through to normal (markdown) paste.
@@ -370,6 +380,9 @@ export default function MarkdownEditor({
     loadHiddenToolbar().then((ids) => setHiddenTb(new Set(ids)));
   }, []);
   const showTb = (id: string) => !hiddenTb.has(id);
+  // The formatting bar is hidden by default when collapsible (task canvas); a
+  // top-right toggle reveals it. When not collapsible it's always shown.
+  const [toolbarOpen, setToolbarOpen] = useState(!collapsibleToolbar);
 
   if (!editor || !toolbar) {
     return (
@@ -432,8 +445,8 @@ export default function MarkdownEditor({
 
   return (
     <div className="border-b border-neutral-800">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-neutral-800/70 px-1 py-1.5">
-        {(
+      <div className={`flex flex-wrap items-center gap-0.5 px-1 py-1.5 ${toolbarOpen ? "border-b border-neutral-800/70" : ""}`}>
+        {toolbarOpen && (<>{(
           [
             { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
             { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
@@ -505,6 +518,20 @@ export default function MarkdownEditor({
           <span className="ml-2 text-xs text-neutral-500">
             Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
           </span>
+        )}</>)}
+        {collapsibleToolbar && (
+          <button
+            type="button"
+            onClick={() => setToolbarOpen((v) => !v)}
+            title={toolbarOpen ? "Hide formatting" : "Formatting"}
+            aria-label={toolbarOpen ? "Hide formatting" : "Formatting"}
+            aria-pressed={toolbarOpen}
+            className="ml-auto rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {toolbarOpen ? <path d="M6 15l6-6 6 6" /> : <><path d="M4 7h16M4 12h10M4 17h13" /></>}
+            </svg>
+          </button>
         )}
       </div>
 

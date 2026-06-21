@@ -128,6 +128,41 @@ eq("until ends the series (inclusive)", enumerateOccurrences(untilRule, {}), [
   "2026-06-19",
 ]);
 
+console.log("\n# Pure: monthly positional (ordinal BYDAY + BYMONTHDAY) — ADR-076 amendment");
+eq("parse ordinal byday", parseRRule("FREQ=MONTHLY;BYDAY=1SU"), {
+  freq: "monthly", interval: 1, byDayOrdinal: [{ ordinal: 1, weekday: "SU" }],
+});
+eq("parse multi-ordinal byday", parseRRule("FREQ=MONTHLY;BYDAY=1TH,2TH")?.byDayOrdinal, [
+  { ordinal: 1, weekday: "TH" }, { ordinal: 2, weekday: "TH" },
+]);
+eq("parse last-weekday byday", parseRRule("FREQ=MONTHLY;BYDAY=-1FR")?.byDayOrdinal, [{ ordinal: -1, weekday: "FR" }]);
+eq("parse bymonthday", parseRRule("FREQ=MONTHLY;BYMONTHDAY=3")?.byMonthDay, [3]);
+eq("parse last-day bymonthday", parseRRule("FREQ=MONTHLY;BYMONTHDAY=-1")?.byMonthDay, [-1]);
+eq("ordinal byday round-trips", formatRRule(parseRRule("FREQ=MONTHLY;BYDAY=1TH,2TH")!), "FREQ=MONTHLY;BYDAY=1TH,2TH");
+eq("bymonthday round-trips", formatRRule(parseRRule("FREQ=MONTHLY;BYMONTHDAY=-1")!), "FREQ=MONTHLY;BYMONTHDAY=-1");
+eq("first Sunday of the month", enumerateOccurrences({ rrule: "FREQ=MONTHLY;BYDAY=1SU", dtstart: "2026-06-01" }, { max: 3 }), [
+  "2026-06-07", "2026-07-05", "2026-08-02",
+]);
+eq("1st & 2nd Thursday", enumerateOccurrences({ rrule: "FREQ=MONTHLY;BYDAY=1TH,2TH", dtstart: "2026-06-01" }, { max: 4 }), [
+  "2026-06-04", "2026-06-11", "2026-07-02", "2026-07-09",
+]);
+eq("last Friday of the month", enumerateOccurrences({ rrule: "FREQ=MONTHLY;BYDAY=-1FR", dtstart: "2026-06-01" }, { max: 3 }), [
+  "2026-06-26", "2026-07-31", "2026-08-28",
+]);
+eq("BYMONTHDAY=31 skips short months", enumerateOccurrences({ rrule: "FREQ=MONTHLY;BYMONTHDAY=31", dtstart: "2026-01-01" }, { max: 3 }), [
+  "2026-01-31", "2026-03-31", "2026-05-31",
+]);
+eq("BYMONTHDAY=-1 is each month's last day", enumerateOccurrences({ rrule: "FREQ=MONTHLY;BYMONTHDAY=-1", dtstart: "2026-01-01" }, { max: 3 }), [
+  "2026-01-31", "2026-02-28", "2026-03-31",
+]);
+eq("5th Friday skips months that lack one", enumerateOccurrences({ rrule: "FREQ=MONTHLY;BYDAY=5FR", dtstart: "2026-06-01" }, { max: 1 }), [
+  "2026-07-31",
+]);
+eq("describe ordinal byday", describeRule(parseRRule("FREQ=MONTHLY;BYDAY=1SU")!), "Monthly on the first Sunday");
+eq("describe multi-ordinal byday", describeRule(parseRRule("FREQ=MONTHLY;BYDAY=1TH,2TH")!), "Monthly on the first & second Thursday");
+eq("describe bymonthday", describeRule(parseRRule("FREQ=MONTHLY;BYMONTHDAY=3")!), "Monthly on the 3rd");
+eq("describe last day", describeRule(parseRRule("FREQ=MONTHLY;BYMONTHDAY=-1")!), "Monthly on the last day");
+
 console.log("\n# Pure: next-occurrence + log awareness");
 eq("nextOnOrAfter hits dtstart", nextOccurrenceOnOrAfter(daily, "2026-06-17"), "2026-06-17");
 eq("nextOnOrAfter future", nextOccurrenceOnOrAfter(every2d, "2026-06-18"), "2026-06-19");

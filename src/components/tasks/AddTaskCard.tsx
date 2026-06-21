@@ -1,7 +1,7 @@
 // The one task-add card, used everywhere a task is created (global capture, the
 // per-day Add task in Upcoming, project cards) so the experience is consistent
 // (Tyler, 2026-06-21 — Image #15). Title with live NL token highlighting +
-// Description + an SVG chip row (Date · Attachment · Priority · Reminders · …)
+// Description + an SVG chip row (Date · Priority · Assignee · …)
 // gated by the Quick Add config (settings.quickAddHidden) + a destination picker
 // (Inbox / a project) + Cancel / Add task. Inline (in a list) or inside the
 // capture modal — same component.
@@ -53,9 +53,7 @@ function I({ d, extra }: { d: string; extra?: React.ReactNode }) {
   );
 }
 const IconCalendar = <I d="M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" extra={<><path d="M4 9h16" /><path d="M8 3v3M16 3v3" /></>} />;
-const IconPaperclip = <I d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8" />;
 const IconFlag = <I d="M5 21V4" extra={<path d="M5 4h12l-2 4 2 4H5" />} />;
-const IconAlarm = <I d="M12 9v4l2 2" extra={<><circle cx="12" cy="13" r="7" /><path d="M5 3L2 6M19 3l3 3" /></>} />;
 const IconDots = <I d="M5 12h.01M12 12h.01M19 12h.01" />;
 const IconInbox = <I d="M4 13h4l1 3h6l1-3h4" extra={<path d="M4 13l2-7h12l2 7v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />} />;
 const IconDescription = <I d="M4 7h16M4 12h16M4 17h10" />;
@@ -64,6 +62,7 @@ const IconChevron = <I d="M6 9l6 6 6-6" />;
 const IconX = <I d="M6 6l12 12M18 6L6 18" />;
 const IconRepeat = <I d="M17 2l4 4-4 4" extra={<><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></>} />;
 const IconHash = <I d="M4 9h16M4 15h15M10 3L8 21M16 3l-2 18" />;
+const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />;
 
 let quickAddPromise: Promise<string[]> | null = null;
 function loadQuickAddHidden(): Promise<string[]> {
@@ -96,11 +95,16 @@ export default function AddTaskCard({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [showDesc, setShowDesc] = useState(false);
-  const [due, setDue] = useState(defaultDueYmd ?? "");
+  // due/scheduled hold an explicit PICK only. The defaultDueYmd is a fallback
+  // (used when nothing is typed or picked) so a typed date ("…Saturday") always
+  // wins over it; dateCleared lets the ✕ suppress that fallback too.
+  const [due, setDue] = useState("");
   const [scheduled, setScheduled] = useState("");
+  const [dateCleared, setDateCleared] = useState(false);
   const [urgency, setUrgency] = useState<Priority | null>(null);
   const [dest, setDest] = useState<string>(host?.id ?? "inbox");
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
+  const [people, setPeople] = useState<ProjectOpt[]>([]);
   const [qaHidden, setQaHidden] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pickDate, setPickDate] = useState(false);
@@ -111,6 +115,10 @@ export default function AddTaskCard({
     fetch("/api/items?type=project&limit=50")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setProjects(Array.isArray(d?.items) ? d.items : []))
+      .catch(() => {});
+    fetch("/api/items?type=person&limit=50")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setPeople(Array.isArray(d?.items) ? d.items : []))
       .catch(() => {});
   }, []);
 
@@ -123,27 +131,59 @@ export default function AddTaskCard({
     const project = projects.find((pr) => (pr.title || "").toLowerCase().includes(q)) ?? null;
     return { token: m[0], project };
   }, [title, projects]);
+  // @person-name → assign to a matching person (create-on-miss is a follow-up).
+  const personMatch = useMemo(() => {
+    const m = title.match(/@([\w-]+)/);
+    if (!m) return null;
+    const q = m[1].replace(/-/g, " ").toLowerCase();
+    const person = people.find((pr) => (pr.title || "").toLowerCase().includes(q)) ?? null;
+    return { token: m[0], person };
+  }, [title, people]);
   const segments = useMemo(
-    () => buildSegments(title, [...(preview?.detections ?? []), ...(projectMatch ? [{ source: projectMatch.token }] : [])]),
-    [title, preview, projectMatch]
+    () => buildSegments(title, [
+      ...(preview?.detections ?? []),
+      ...(projectMatch ? [{ source: projectMatch.token }] : []),
+      ...(personMatch ? [{ source: personMatch.token }] : []),
+    ]),
+    [title, preview, projectMatch, personMatch]
   );
 
+  // Effective dates: an explicit pick wins, then what was parsed from the title,
+  // then the host's default (suppressed once the user clears). This is the single
+  // source of truth for both the chip label and what create() saves.
+  const effDue = due || preview?.dueDate || "";
+  const effScheduled = scheduled || preview?.scheduledDate || "";
+  const effDefault = !effDue && !effScheduled && !dateCleared ? (defaultDueYmd ?? "") : "";
   const dateLabel = useMemo(() => {
-    const ymd = due || preview?.dueDate || scheduled || preview?.scheduledDate || "";
+    const ymd = effDue || effScheduled || effDefault;
     if (!ymd) return null;
     if (ymd === localTodayYmd()) return "Today";
     const [y, m, d] = ymd.split("-").map(Number);
     return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  }, [due, scheduled, preview]);
+  }, [effDue, effScheduled, effDefault]);
+  // Detected recurrence has no chip of its own; it folds into the Date chip
+  // (Todoist-style: a date with a repeat icon). The chip text shows both.
+  const recurrenceLabel = useMemo(
+    () => preview?.detections.find((d) => d.field === "recurrence")?.label ?? null,
+    [preview]
+  );
+  // The Date chip combines date + recurrence ("Today · Weekly"); falls back to either alone.
+  const scheduleLabel = [dateLabel, recurrenceLabel].filter(Boolean).join(" · ") || null;
+  // Priority shown reflects a manual pick first, otherwise what was parsed from the title.
+  const effUrgency = (urgency ?? preview?.urgency ?? null) as Priority | null;
+  const pStyle = effUrgency ? priorityStyle(effUrgency) : null;
+  // A "#project" in the title drives the destination directly; otherwise the manual pick.
+  const effDest = projectMatch?.project?.id ?? dest;
 
   async function create() {
     const raw = title.trim();
     if (!raw || busy) return;
     const p = parseTaskTitle(raw, localTodayYmd());
-    const finalTitle = (p.title || raw).replace(/#[\w-]+/g, "").replace(/\s+/g, " ").trim();
+    const finalTitle = (p.title || raw).replace(/[#@][\w-]+/g, "").replace(/\s+/g, " ").trim();
     const destId = projectMatch?.project?.id ?? dest;
-    const dueDay = due || p.dueDate || "";
-    const sched = scheduled || p.scheduledDate || "";
+    const assigneeId = personMatch?.person?.id ?? null;
+    const dueDay = effDue || effDefault;
+    const sched = effScheduled;
     const urg = urgency ?? p.urgency ?? null;
     const rec = p.recurrence ?? null;
     setBusy(true);
@@ -163,14 +203,16 @@ export default function AddTaskCard({
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
-      if (destId !== "inbox") {
+      if (destId !== "inbox" || assigneeId) {
         const { item } = (await res.json()) as { item: { id: string } };
-        const role = destId === host?.id ? host.role ?? "related" : "project";
-        await fetch(`/api/items/${item.id}/relations`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetId: destId, role }),
-        }).catch(() => {});
+        const rel = (targetId: string, role: string) =>
+          fetch(`/api/items/${item.id}/relations`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ targetId, role }),
+          }).catch(() => {});
+        if (destId !== "inbox") await rel(destId, destId === host?.id ? host.role ?? "related" : "project");
+        if (assigneeId) await rel(assigneeId, "assignee");
       }
       router.refresh();
       onDone();
@@ -182,26 +224,39 @@ export default function AddTaskCard({
   }
 
   const chip = "flex items-center gap-1.5 rounded-md border border-neutral-700 px-2 py-1 text-sm text-neutral-300 hover:border-neutral-600";
-  const destProject = projects.find((p) => p.id === dest);
+  const destProject = projects.find((p) => p.id === effDest);
 
   return (
     <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-lg shadow-black/40">
       {/* title + top-right toggles */}
       <div className="flex items-start gap-2">
+        {/* The title wraps to multiple lines as it grows: a textarea overlays an
+            in-flow mirror that holds the SAME wrapped text, so the mirror defines
+            the height (the textarea fills it, no JS resize) and the highlight stays
+            character-aligned. Both share identical typography + wrapping. */}
         <div className="relative min-w-0 flex-1">
-          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre text-base font-medium text-transparent">
-            {segments.map((s, i) =>
-              s.hl ? <mark key={i} className="rounded bg-[var(--accent)]/35 text-transparent">{s.text}</mark> : <span key={i}>{s.text}</span>
-            )}
+          <div aria-hidden className="pointer-events-none min-h-6 whitespace-pre-wrap break-words text-base font-medium leading-6 text-transparent">
+            {segments.length === 0
+              ? " "
+              : segments.map((s, i) =>
+                  // px adds the padding "around" the detected word; the matching -mx
+                  // pulls layout back so the mirror stays aligned with the textarea
+                  // (the bg just bleeds past the text). Kept to ~1.5px so two adjacent
+                  // tokens ("Saturday" + "every week") leave a visible gap rather than
+                  // merging. py rounds it into a pill.
+                  s.hl ? <mark key={i} className="rounded px-[1.5px] py-0.5 -mx-[1.5px] bg-[var(--accent)]/35 text-transparent">{s.text}</mark> : <span key={i}>{s.text}</span>
+                )}
           </div>
-          <input
+          <textarea
             autoFocus={autoFocus}
+            rows={1}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void create(); if (e.key === "Escape") onCancel(); }}
+            // Enter submits (no newlines in a title); Shift+Enter is ignored too.
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void create(); } if (e.key === "Escape") onCancel(); }}
             placeholder="Task name"
             aria-label="Task name"
-            className="relative w-full bg-transparent text-base font-medium text-neutral-100 outline-none placeholder:text-neutral-500"
+            className="absolute inset-0 h-full w-full resize-none overflow-hidden whitespace-pre-wrap break-words border-0 bg-transparent p-0 text-base font-medium leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
           />
         </div>
         <div className="flex shrink-0 items-center gap-1 text-neutral-500">
@@ -220,41 +275,14 @@ export default function AddTaskCard({
         />
       )}
 
-      {/* detected preview */}
-      {((preview && preview.detections.length > 0) || projectMatch?.project) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
-          <span>Detected</span>
-          {preview?.detections.map((d, i) => {
-            if (d.field === "urgency") {
-              const n = Number(d.label.replace(/\D/g, "")) as Priority;
-              const st = priorityStyle(n);
-              return <span key={i} className={`rounded border px-1.5 py-0.5 ${st.text} ${st.border}`}>{d.label}</span>;
-            }
-            return (
-              <span key={i} className="inline-flex items-center gap-1 rounded border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-1.5 py-0.5 text-neutral-300">
-                {d.field === "recurrence" ? IconRepeat : IconCalendar}
-                {d.label}
-              </span>
-            );
-          })}
-          {projectMatch?.project && (
-            <span className="inline-flex items-center gap-1 rounded border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-1.5 py-0.5 text-neutral-300">
-              {IconHash}
-              {projectMatch.project.title || "Project"}
-            </span>
-          )}
-          <span className="text-neutral-600">→ “{(preview?.title || title).replace(/#[\w-]+/g, "").trim() || "…"}”</span>
-        </div>
-      )}
-
-      {/* SVG chip row */}
+      {/* SVG chip row — detected date/recurrence/priority/project fill these in */}
       <div className="mt-2 flex flex-wrap items-center gap-2 border-b border-neutral-800 pb-3">
         {showAction("deadline") && (
           <span className="relative">
-            <button type="button" className={`${chip} ${dateLabel ? "text-[var(--accent)]" : ""}`} onClick={() => setPickDate((v) => !v)}>
-              {IconCalendar} {dateLabel ?? "Date"}
-              {dateLabel && (
-                <span role="button" aria-label="Clear date" onClick={(e) => { e.stopPropagation(); setDue(""); setScheduled(""); }} className="text-neutral-500 hover:text-neutral-200">{IconX}</span>
+            <button type="button" className={`${chip} ${scheduleLabel ? "text-[var(--accent)]" : ""}`} onClick={() => setPickDate((v) => !v)}>
+              {recurrenceLabel ? IconRepeat : IconCalendar} {scheduleLabel ?? "Date"}
+              {scheduleLabel && (
+                <span role="button" aria-label="Clear date" onClick={(e) => { e.stopPropagation(); setDue(""); setScheduled(""); setDateCleared(true); }} className="text-neutral-500 hover:text-neutral-200">{IconX}</span>
               )}
             </button>
             {pickDate && (
@@ -262,40 +290,47 @@ export default function AddTaskCard({
                 type="date"
                 value={due}
                 autoFocus
-                onChange={(e) => { setDue(e.target.value); setPickDate(false); }}
+                onChange={(e) => { setDue(e.target.value); setPickDate(false); setDateCleared(false); }}
                 className="absolute left-0 top-full z-10 mt-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 [color-scheme:dark]"
               />
             )}
           </span>
         )}
-        <button type="button" className={chip} title="Attachment">{IconPaperclip} Attachment</button>
         {showAction("priority") && (
           <span className="relative inline-flex items-center">
             <select
-              value={urgency ?? ""}
+              value={effUrgency ?? ""}
               onChange={(e) => setUrgency(e.target.value ? (Number(e.target.value) as Priority) : null)}
               aria-label="Priority"
-              className={`${chip} appearance-none pr-6 ${urgency ? priorityStyle(urgency).text : ""}`}
+              // Text + border take the priority color (P2 gold, P3 purple…); the
+              // neutral defaults are only applied when no priority is set, so they
+              // never fight the colored classes (Tailwind has no order guarantee).
+              className={`flex appearance-none items-center gap-1.5 rounded-md border py-1 pl-2 pr-7 text-sm ${pStyle ? `${pStyle.text} ${pStyle.border}` : "border-neutral-700 text-neutral-300 hover:border-neutral-600"}`}
             >
               <option value="">Priority</option>
               {[1, 2, 3, 4, 5, 6].map((u) => <option key={u} value={u}>P{u}</option>)}
             </select>
-            <span className="pointer-events-none absolute right-1 text-neutral-500">{IconFlag}</span>
+            <span className={`pointer-events-none absolute right-1.5 ${pStyle ? pStyle.text : "text-neutral-500"}`}>{IconFlag}</span>
           </span>
         )}
-        <button type="button" className={chip} title="Reminders">{IconAlarm} Reminders</button>
+        {showAction("assignee") && (
+          <span className={`${chip} ${personMatch?.person ? "text-[var(--accent)]" : ""}`} title={personMatch?.person ? `Assigned to ${personMatch.person.title}` : "Type @name to assign"}>
+            {IconUser} {personMatch?.person?.title ?? "Assignee"}
+          </span>
+        )}
         <button type="button" className="rounded-md border border-neutral-700 px-2 py-1 text-neutral-400 hover:border-neutral-600" title="More" aria-label="More">{IconDots}</button>
       </div>
 
       {/* footer: destination + actions */}
       <div className="mt-3 flex items-center justify-between gap-2">
         <span className="relative inline-flex items-center text-sm text-neutral-300">
-          <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? null : IconInbox}</span>
+          <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconHash : IconInbox}</span>
           <select
-            value={dest}
+            value={effDest}
             onChange={(e) => setDest(e.target.value)}
+            disabled={!!projectMatch?.project}
             aria-label="Destination"
-            className={`appearance-none rounded-md bg-transparent py-1 pr-5 text-sm text-neutral-300 outline-none ${destProject ? "pl-1.5" : "pl-7"}`}
+            className="appearance-none rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
           >
             {host && host.role !== "project" && <option value={host.id}>{host.label}</option>}
             <option value="inbox">Inbox</option>
