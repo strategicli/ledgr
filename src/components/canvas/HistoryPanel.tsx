@@ -160,7 +160,7 @@ export default function HistoryPanel({
     : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+    <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
       <button
         type="button"
         onClick={toggle}

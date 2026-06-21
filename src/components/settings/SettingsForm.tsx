@@ -12,7 +12,10 @@ import {
   HIGHLIGHT_COLORS,
   HIGHLIGHT_GRADIENTS,
   NAV_POSITIONS,
+  TEXT_SIZES,
+  TEXT_SIZE_PX,
   type RailAnchor,
+  type TextSize,
   type UserSettings,
 } from "@/lib/settings";
 
@@ -36,6 +39,10 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
   const applyAccent = (color: string, gradient: string | null) => {
     document.body.style.setProperty("--accent", color);
     document.body.style.setProperty("--accent-gradient", gradient ?? color);
+  };
+
+  const applyTextSize = (size: TextSize) => {
+    document.body.style.setProperty("--prose-font-size", TEXT_SIZE_PX[size]);
   };
 
   const save = async (patch: Partial<UserSettings>, refresh = false) => {
@@ -156,6 +163,30 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
           onChange={(e) => void save({ trashRetentionDays: Number(e.target.value) || 30 })}
           className="mt-2 w-24 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
         />
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Text size</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Font size for the reading and editing canvas.
+        </p>
+        <div className="mt-2 flex gap-1">
+          {TEXT_SIZES.map((size) => {
+            const labels: Record<TextSize, string> = { sm: "S", base: "M", lg: "L", xl: "XL" };
+            return (
+              <button
+                key={size}
+                onClick={() => {
+                  applyTextSize(size);
+                  void save({ textSize: size });
+                }}
+                className={segBtn(settings.textSize === size)}
+              >
+                {labels[size]}
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <section>

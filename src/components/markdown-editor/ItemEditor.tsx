@@ -242,9 +242,9 @@ export default function ItemEditor({
   // Classic stacked editor (the default canvas, unchanged).
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="px-4 pt-6 pb-2 sm:px-8 sm:pt-8 md:px-12">{titleInput}</div>
+      <div className="px-2 pt-6 pb-2 sm:px-8 sm:pt-8 md:px-12">{titleInput}</div>
       {fields}
-      <div className="px-4 pt-2 sm:px-8 md:px-12">{bodyEditor}</div>
+      <div className="px-2 pt-2 sm:px-8 md:px-12">{bodyEditor}</div>
     </div>
   );
 }

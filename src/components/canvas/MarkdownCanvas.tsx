@@ -134,7 +134,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const scheduledTime = parseScheduledTime(item.properties);
   const hasSchedule = item.scheduledDate != null || recurrenceRule != null;
   const taskExtrasNode = (
-    <section className="mx-auto w-full max-w-3xl px-4 pb-1 pt-1 sm:px-8 md:px-12">
+    <section className="mx-auto w-full max-w-3xl px-2 pb-1 pt-1 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <span className="flex items-center gap-1.5 text-xs text-neutral-500">
           <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
@@ -285,7 +285,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}
       {sourceLink && (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-1 text-xs text-neutral-500 sm:px-8 md:px-12">
+        <div className="mx-auto w-full max-w-3xl px-2 pt-1 text-xs text-neutral-500 sm:px-8 md:px-12">
           ↳ from{" "}
           <Link href={sourceLink.href} className="text-neutral-400 hover:text-neutral-200 hover:underline">
             {sourceLink.title}
@@ -342,7 +342,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Version history (Track changes): list snapshots, diff any two, restore
           (the general item-view undo). Lazy — fetches only when expanded. */}
       <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />
-      <details className="mx-auto w-full max-w-3xl px-4 pb-12 pt-4 sm:px-8 md:px-12">
+      <details className="mx-auto w-full max-w-3xl px-2 pb-12 pt-4 sm:px-8 md:px-12">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields
         </summary>

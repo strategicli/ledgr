@@ -209,7 +209,7 @@ export default function CustomProperties({
   if (scalarSchema.length === 0) return null;
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 pb-6 pt-2 sm:px-8 md:px-12">
+    <section className="mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12">
       {!hideHeading && (
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-600">
           Properties

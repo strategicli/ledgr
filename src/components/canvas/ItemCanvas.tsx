@@ -83,14 +83,14 @@ export default async function ItemCanvas({
               applyConfig={template.applyConfig}
             />
           ) : (
-            <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+            <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
               <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200/80">
                 Part of a template — edits here change the template, not a real item.
               </div>
             </div>
           ))}
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-4 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
                 <Link href="/items" className="hover:text-neutral-300">

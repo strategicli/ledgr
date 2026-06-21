@@ -52,6 +52,17 @@ const ALLOWED_ACCENTS = new Set<string>([
   ...HIGHLIGHT_GRADIENTS.map((g) => g.accent),
 ]);
 
+// Text size for the markdown prose canvas. Maps to the `--prose-font-size`
+// CSS variable; sm/base/lg/xl scale the reading body without touching UI chrome.
+export const TEXT_SIZES = ["sm", "base", "lg", "xl"] as const;
+export type TextSize = (typeof TEXT_SIZES)[number];
+export const TEXT_SIZE_PX: Record<TextSize, string> = {
+  sm: "0.875rem",
+  base: "1rem",
+  lg: "1.125rem",
+  xl: "1.25rem",
+};
+
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
@@ -151,6 +162,10 @@ export type UserSettings = {
   // Settings. The feed route resolves the owner by this token (no Clerk),
   // same posture as a share link.
   icsToken: string | null;
+  // Prose canvas font size (sm/base/lg/xl). Stored as a string key; layout
+  // maps it to the --prose-font-size CSS variable so the setting applies
+  // globally without a client-side effect.
+  textSize: TextSize;
 };
 
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
@@ -176,6 +191,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   homeDashboardId: null,
   todayDashboardId: null,
   icsToken: null,
+  textSize: "base",
 };
 
 const SETTINGS_UUID_RE =
@@ -275,6 +291,9 @@ export function parseSettings(raw: unknown): UserSettings {
     r.mobileNavSlots == null
       ? null
       : parseNavSlots(r.mobileNavSlots, NAV_SLOTS_HARD_CAP, []);
+  const textSize = (TEXT_SIZES as readonly string[]).includes(r.textSize as string)
+    ? (r.textSize as TextSize)
+    : DEFAULT_SETTINGS.textSize;
   return {
     highlightColor,
     highlightGradient,
@@ -289,6 +308,7 @@ export function parseSettings(raw: unknown): UserSettings {
     homeDashboardId,
     todayDashboardId,
     icsToken,
+    textSize,
   };
 }
 

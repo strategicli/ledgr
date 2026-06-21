@@ -106,7 +106,7 @@ export default function TemplateBanner({
     "rounded px-2 py-0.5 text-xs text-amber-200/80 hover:bg-amber-900/40 hover:text-amber-100 disabled:opacity-50";
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-8 md:px-12">
+    <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2">
         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
           Template
