@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { makeMarkdownBody } from "@/lib/body";
+import { fetchAndExtract } from "@/lib/clip/extract";
 import { resolveOwner } from "@/lib/owner";
 import { createItem } from "@/lib/items";
 
@@ -9,6 +11,11 @@ import { createItem } from "@/lib/items";
 // inbox: true — capture never
 // auto-triages (ADR-010). Middleware keeps the route signed-in-only; Clerk
 // bounces a signed-out share through /sign-in and back.
+//
+// Web clipper, mobile half (ADR-100): the share sheet hands us only a URL, so
+// for a link we fetch + extract the page's readable content into the body
+// (images stripped). Best-effort — a paywall/non-article page still lands the
+// URL + title, same as before.
 export const dynamic = "force-dynamic";
 
 // Android puts the URL in `url` or (commonly) at the end of `text`.
@@ -80,12 +87,17 @@ export default async function SharePage({
 
   let itemId: string;
   if (url) {
+    // Pull the readable article (one bounded fetch) so the clip carries content,
+    // not just the link. Null on a paywall/non-article page — we degrade to
+    // URL + title.
+    const article = await fetchAndExtract(url);
     // Shared title wins; then the text minus the URL (share sheets often
-    // send "Page title https://…"); then the page's own <title>; then host.
+    // send "Page title https://…"); then the extracted/page <title>; then host.
     const fromText = text?.replace(url, "").trim();
     const itemTitle =
       title ||
       fromText ||
+      article?.title ||
       (await fetchPageTitle(url)) ||
       new URL(url).hostname;
     const item = await createItem(owner.id, {
@@ -93,6 +105,7 @@ export default async function SharePage({
       title: itemTitle.slice(0, 300),
       url,
       inbox: true,
+      body: article ? makeMarkdownBody(article.markdown) : null,
     });
     itemId = item.id;
   } else {

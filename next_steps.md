@@ -13,6 +13,16 @@ Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core*
 
 **🎉 Events & calendar matching chunk (E1–E4, ADR-094) COMPLETE** — meeting→event · ordinary `tag` type + `tags` field · calendar feed (pull-on-add, matched auto-promote) · configurable task-pull. All four merged (PRs #51–#54) + live on Vercel; Brandon's "Calendar events + meeting task-matching" 1.0 goal is done (`v1-goals.ts`). **Remaining:** one in-browser eyeball pass over the live experience (deferred per slice; strong automated coverage + clean builds in the meantime).
 
+## ⟢ Session summary — Web clipper slice 1 (2026-06-21, ADR-100, branch `claude/browser-plugin-ledgr-capture-cngt52`)
+
+**Save a web page's readable content as Markdown into the Inbox, desktop + mobile, images stripped** (Brandon pulled `explorations/web-clipper.md` forward; "no images for now, build it later if I want"). Non-core — rides the existing machine-token API, the `link` type, and the `{format, text}` body; no schema/seam change.
+- **Shared extraction** `src/lib/clip/extract.ts` (deterministic, no model): Readability → Turndown markdown, **images stripped** (a removal `addRule` — turndown's built-in image rule beats `remove()`), relative links absolutized. `extractArticle(html, url)` (client DOM) + `fetchAndExtract(url)` (server fetch, bounded 8s/3MB/http(s)+html, best-effort).
+- **`POST /api/machine/capture`** — `api`-scoped token (same door as `/api/machine/items`), **CORS-open** (`*` + OPTIONS preflight; token is the credential, no cookies), `{url, html?, title?}` → `link` item `inbox:true` with the markdown body; extraction failure still lands URL-only. Covered by the existing `/api/machine(.*)` Clerk bypass.
+- **Desktop = bookmarklet:** Build → AI & MCP generator (`ClipperSetup.tsx`) bakes a pasted api token into a draggable `javascript:` link client-side (href set via ref to dodge React's sanitization); reads the live DOM (no injection → no CSP block), POSTs to the endpoint.
+- **Mobile = the PWA share target** (`/capture/share`) extended to fill the body via `fetchAndExtract`, degrading to URL+title on a paywall/non-article page.
+- **Verify:** `scripts/verify-clip-extract.mts` **12/12** (markdown structure, no image syntax/refs, relative→absolute links, empty page → null); `tsc`/eslint clean; `next build` clean (capture route present). **Remaining eyeball:** drag the live bookmarklet on a few real pages + a mobile share, once deployed.
+- **Deferred (Brandon):** images (text-only; "archive → resize/WebP/R2" left as a future opt-in behind the same contract), a full Chrome/Firefox extension (bookmarklet first), paywall handling beyond URL-only, `link`→`note` auto-promotion.
+
 ## ✅ COMPLETE — Templates redesign (TPL1–TPL5 SHIPPED 2026-06-20, ADR-093)
 
 **🎉 The whole chunk shipped 2026-06-20 (TPL1–TPL5).** Templates are real prototype items, applied by `cloneItemSubtree` with variable resolution + apply-to-existing; authored in the normal canvas; chooser + per-type default on "+ New"; full MCP parity; a `new-from-template` dashboard action widget. **The next build chunk is "Track changes" (below).** Original design record kept for context. Recorded as **ADR-093** (CORE — reverses ADR-045's "templates aren't items"; **Tyler ratified the direction**). Builds on the existing `templates` table + `TemplateBuilder` + relation-defaults (ADR-045/050) and, crucially, **`cloneItemSubtree`** (`src/lib/clone.ts`, ADR-076 — its header already names "the subtree-aware template apply" as a planned caller) + relative subtasks (ADR-085). **Supersedes `explorations/template-property-defaults.md`.**
@@ -822,7 +832,7 @@ New items from the 6.14 build meeting (the summary + full transcript). Kept gene
 - **MCP voice/text commands** — extend the shipped MCP (ADR-047) so Claude can add/move/complete tasks, fetch songs, "grab a PDF and save it in the key of G," etc., from voice/dictation. A later extension to `src/lib/mcp/tools.ts`, not new core.
 - **Bulk-convert legacy archives → Markdown** (old Word docs, Evernote, scanned image PDFs) via Claude + OCR, with AI smoothing OCR errors and optionally modernizing language. One-time import tooling, not a runtime feature.
 - **In-canvas `@`-mention to relate items mid-document** — see `explorations/quick-capture-at-mention.md` (reaffirmed).
-- **Web clipper** (Evernote-style, save an article as Markdown) — see `explorations/web-clipper.md` (reaffirmed).
+- **Web clipper** (Evernote-style, save an article as Markdown) — **slice 1 BUILT 2026-06-21 (ADR-100):** bookmarklet + share-target capture, images stripped. See `explorations/web-clipper.md`. Remaining (deferred): images, full browser extension, paywall handling.
 - **Markdown → styled-HTML re-render engine + a Presentations type** — see `explorations/rich-export-and-theming.md` §3b and the Presentations backlog item.
 - **GraphRAG / code-indexing tool** to speed up Claude's codebase scans — considered, deferred ("not that big yet").
 
