@@ -36,6 +36,24 @@ Project **cards**, each with its **subtasks/related tasks below**. Depends on th
 - A **small SVG subtask indicator** when the task has children, with a **roll-down** (expand/collapse) to reveal the subtasks inline.
 - An **"Add task" button** below each list (and below a task's subtasks) for fast entry.
 
+## Add-task capture card (Tyler, 2026-06-21)
+
+The redesigned capture UI, used by **both** the global "+" and the per-list "Add task" everywhere in the Tasks module (Image #4). NL parsing already works (`parseTaskTitle`, ADR-084); this is the UI on top.
+
+- **Inline token highlighting in the title input.** As the user types, recognized phrases — priority (`p3`), dates (`thursday`), recurrence (`every week`) — get a **highlight background in the user's accent/highlight color**, live (Image #3). *Implementation:* a plain `<input>` can't style spans of its own text, so render a **highlighted backdrop div behind a transparent input** (the text mirrored with `<mark>`-style spans on the detected ranges), or a contenteditable. **No dependency** (Principle 5); reuse the `parseTaskTitle` detections' ranges to place the highlights.
+- **Card layout:** title line (with highlights) → a muted **Description** line → a **chip row** → a footer.
+  - **Chip row** (SVG icons, replacing the current emoji/text icons): a **date chip** (calendar icon, shows the relative/absolute label, × to clear), **Attachment** (paperclip), a **priority chip** (flag icon, P-colored, × to clear), **Reminders** (alarm), and **"…"** (more). Chips reflect what the parser detected and are individually editable/clearable.
+  - **Footer:** a **destination picker** bottom-left (**"Inbox ▾"** — defaults to Inbox, dropdown to pick a project/area/today), and **Cancel** + **Add task** (accent) bottom-right.
+- **SVG icon set:** replace the current icons (the calendar/flag/alarm/paperclip/inbox) with clean inline SVGs (no icon-font/dependency).
+
+## Relative date labels
+
+Wherever a task's date shows (rows, the date chip, Today/Upcoming), show a **relative label when it's near** — "Today", "Tomorrow", or the weekday name ("Thursday") within the coming week — and **switch to an absolute date** once it's farther out (e.g. > 6–7 days). One shared formatter so rows, chips, and group headers agree.
+
+## Status: add a "Defer" option
+
+Tasks need a **"Defer"** status. (Open: is "defer" a status label under not-started, or the existing "future scheduled date → off Today until then" behavior, ADR-077, surfaced as a one-click status? Lean: a real status that also sets/asks a defer-until date. Confirm when built.) Rides the configurable category-statuses (ADR-082).
+
 ## Priority field (P1–P6) — the core change (step 2)
 
 - Replace `items.urgency` (enum critical/high/normal/low) with a **P1–P6 priority**. Likely: widen the enum / store 1–6; keep `urgency`'s column or rename to `priority` (decide in the ADR — leaning rename for clarity, with a migration mapping critical→P1, high→P2, normal→P4, low→P6, or similar).
@@ -47,6 +65,7 @@ Project **cards**, each with its **subtasks/related tasks below**. Depends on th
 
 The hub type from the v1.0 queue, brought forward because the Projects tab needs it:
 - A bespoke `project` item: properties like **status, repo URL, live URL, stack** (dev-app variant) — but general (any tracked project).
+- **Status (Tyler, 2026-06-21): seed from my Todoist project buckets, but user-changeable** (rides the configurable category-statuses, ADR-082, so the type's status editor can change them): **Ongoing · Waiting for Others · Paused · Future · Done** (categories: Ongoing→in_progress, Waiting/Paused/Future→not_started, Done→done).
 - **Canvas = a hub:** a board/list of its **related tasks** + the attached **notes / files / meetings**, and progress.
 - Tasks belong to a project via a **relation** (role `project`, ADR-067) — so "this task's project" is an edge, and the Projects tab lists projects + their related tasks. (The Todoist "# Project" chip on a task row = its project relation.)
 - Mostly Tyler's lane (a bespoke type/canvas = module internals, solo) unless the canvas reuses core seams.
