@@ -26,6 +26,34 @@ const fieldClass =
 
 type PersonHit = { id: string; title: string };
 
+// Inline token highlighting (Tyler 2026-06-21): split the title into plain +
+// highlighted segments at the NL parser's detected ranges (p3 / thursday /
+// every week), so a backdrop behind a transparent input paints the accent
+// highlight live as you type. Match by the detection's `source` substring.
+type Seg = { text: string; hl?: boolean };
+function buildSegments(title: string, detections: { source: string }[]): Seg[] {
+  if (!title) return [];
+  const lower = title.toLowerCase();
+  const ranges: [number, number][] = [];
+  for (const d of detections) {
+    const src = d.source?.trim();
+    if (!src) continue;
+    const idx = lower.indexOf(src.toLowerCase());
+    if (idx >= 0) ranges.push([idx, idx + src.length]);
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const segs: Seg[] = [];
+  let pos = 0;
+  for (const [start, end] of ranges) {
+    if (start < pos) continue; // drop overlaps
+    if (start > pos) segs.push({ text: title.slice(pos, start) });
+    segs.push({ text: title.slice(start, end), hl: true });
+    pos = end;
+  }
+  if (pos < title.length) segs.push({ text: title.slice(pos) });
+  return segs;
+}
+
 export default function CaptureModal({
   typeOptions,
   onClose,
@@ -53,6 +81,10 @@ export default function CaptureModal({
   const preview = useMemo(
     () => (type === "task" && title.trim() ? parseTaskTitle(title, localTodayYmd()) : null),
     [type, title]
+  );
+  const segments = useMemo(
+    () => buildSegments(title, preview?.detections ?? []),
+    [title, preview]
   );
 
   // Apply the parse: strip the tokens from the title and commit the fields. The
@@ -198,19 +230,37 @@ export default function CaptureModal({
         className="w-full max-w-lg rounded-xl border border-neutral-800 bg-neutral-900 p-4 shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
-        <input
-          ref={titleRef}
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={type === "task" ? "e.g. Call Bob tomorrow p1 every week" : "Capture…"}
-          aria-label="Title"
-          disabled={state === "busy"}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void capture();
-          }}
-          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
-        />
+        <div className="relative w-full rounded-lg border border-neutral-800 bg-neutral-950 focus-within:border-neutral-600">
+          {/* Backdrop: same text geometry as the input; paints the accent
+              highlight behind the detected tokens. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre px-3 py-2 text-sm text-transparent"
+          >
+            {segments.map((seg, i) =>
+              seg.hl ? (
+                <mark key={i} className="rounded bg-[var(--accent)]/35 text-transparent">
+                  {seg.text}
+                </mark>
+              ) : (
+                <span key={i}>{seg.text}</span>
+              )
+            )}
+          </div>
+          <input
+            ref={titleRef}
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={type === "task" ? "e.g. Call Bob tomorrow p1 every week" : "Capture…"}
+            aria-label="Title"
+            disabled={state === "busy"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void capture();
+            }}
+            className="relative w-full bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600"
+          />
+        </div>
         {/* Live NL detection (S4): a confirm-by-visibility preview + Apply (the
             manual trigger). Create also parses, so Apply is optional. */}
         {preview && preview.detections.length > 0 && (
