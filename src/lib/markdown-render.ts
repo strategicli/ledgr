@@ -17,6 +17,7 @@
 // server paths, so the editor bundle never pays for it.
 import MarkdownIt from "markdown-it";
 import { stripBlockAnchors } from "@/lib/editor/block-anchor";
+import { flattenTabs } from "@/lib/editor/canvas-tabs";
 import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
 
 // html:true passes raw inline HTML through, which is required: the editor
@@ -118,8 +119,10 @@ md.core.ruler.after("inline", "task_lists", (state) => {
 export function markdownToHtml(markdown: string): string {
   if (!markdown) return "";
   // Block anchors (^id, ADR-090) are an editor-only back-reference mechanism;
-  // strip them so shared/printed/exported notes read as clean prose.
-  return md.render(stripBlockAnchors(markdown));
+  // strip them so shared/printed/exported notes read as clean prose. Canvas tab
+  // markers (ADR-094) flatten to `## Title` sections so a multi-tab note reads
+  // as titled sections when shared/printed/exported.
+  return md.render(stripBlockAnchors(flattenTabs(markdown)));
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode
@@ -129,7 +132,7 @@ export function markdownToHtml(markdown: string): string {
 export function markdownToText(markdown: string): string {
   if (!markdown) return "";
   const text = md
-    .render(stripBlockAnchors(markdown))
+    .render(stripBlockAnchors(flattenTabs(markdown)))
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

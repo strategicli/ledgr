@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { beginSave, endSave, registerSaveRetry } from "@/lib/save-status";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
+import TabbedBody from "./TabbedBody";
 import type { PromotedRefs } from "./block-anchor-extension";
 
 const SAVE_DEBOUNCE_MS = 1500;
@@ -56,6 +57,9 @@ export type ItemEditorProps = {
   promoteToMeetingId?: string;
   // blockRef → promoted task (ADR-090), so already-promoted lines show a badge.
   promotedRefs?: PromotedRefs;
+  // Canvas tabs (ADR-094): when true, the body is editable as named tabs (a
+  // strip + "+ Add tab"); tabs are sections of the same markdown body.
+  tabsEnabled?: boolean;
 };
 
 export default function ItemEditor({
@@ -64,6 +68,7 @@ export default function ItemEditor({
   slot = "full",
   promoteToMeetingId,
   promotedRefs,
+  tabsEnabled = false,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -189,15 +194,26 @@ export default function ItemEditor({
       }}
     />
   );
-  const bodyEditor = (
+  const onBodyChange = (markdown: string) => {
+    pending.current.body = makeMarkdownBody(markdown);
+    schedule();
+  };
+  const bodyEditor = tabsEnabled ? (
+    <TabbedBody
+      itemId={item.id}
+      initialMarkdown={bodyMarkdown(item.body)}
+      uploadImage={(file) => uploadImage(item.id, file)}
+      onChange={onBodyChange}
+      promoteToMeetingId={promoteToMeetingId}
+      promotedRefs={promotedRefs}
+      onRequestSave={flush}
+    />
+  ) : (
     <LazyMarkdownEditor
       itemId={item.id}
       initialMarkdown={bodyMarkdown(item.body)}
       uploadImage={(file) => uploadImage(item.id, file)}
-      onChange={(markdown) => {
-        pending.current.body = makeMarkdownBody(markdown);
-        schedule();
-      }}
+      onChange={onBodyChange}
       promoteToMeetingId={promoteToMeetingId}
       promotedRefs={promotedRefs}
       // The promote flow flushes the body save first, so the line's ^id anchor
