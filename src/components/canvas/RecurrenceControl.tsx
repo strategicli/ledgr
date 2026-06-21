@@ -58,9 +58,28 @@ const DAY_OF_MONTH_OPTIONS: { value: number; label: string }[] = [
   ...Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: dayOrdinalLabel(i + 1) })),
   { value: -1, label: "last day" },
 ];
+const ORDINAL_LABEL: Record<number, string> = Object.fromEntries(
+  MONTHLY_ORDINALS.map((o) => [o.value, o.label])
+);
+const sortKey = (n: number) => (n === -1 ? 99 : n); // -1 (last) sorts after the rest
+
+function sortDoms(days: number[]): number[] {
+  return [...new Set(days)].sort((a, b) => sortKey(a) - sortKey(b));
+}
+function sortOrdinals(entries: ByDayOrdinal[]): ByDayOrdinal[] {
+  return [...entries].sort(
+    (a, b) =>
+      sortKey(a.ordinal) - sortKey(b.ordinal) ||
+      WEEKDAYS.indexOf(a.weekday) - WEEKDAYS.indexOf(b.weekday)
+  );
+}
 
 const selectClass =
   "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600";
+const chipClass =
+  "inline-flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-200";
+const addBtnClass =
+  "rounded border border-neutral-700 px-1.5 py-0.5 text-[11px] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200";
 
 function ymdToIso(ymd: string): string {
   return `${ymd}T00:00:00.000Z`;
@@ -115,23 +134,54 @@ export default function RecurrenceControl({
   // The first occurrence anchor: the planned day, else the deadline, else today.
   const dtstart = (scheduledDate ?? dueDate)?.slice(0, 10) || today;
 
-  // Monthly picker state. Derive the mode + current selection from the stored
-  // rule; fall back to the anchor day (its day-of-month / its nth weekday) so
-  // switching modes starts from a sensible default rather than blank.
+  // Monthly picker state. A rule may carry several ordinal weekdays ("1st & 2nd
+  // Thursday") or several days-of-month ("1st & 15th"); both are stored as arrays
+  // and shown as removable chips. The mode is whichever family the rule uses;
+  // the anchor day (its day-of-month / its nth weekday) seeds the add-form so a
+  // fresh selection starts from a sensible default rather than blank.
   const curParts = rule ? parseRRule(rule.rrule) : null;
-  const monthlyOrdinalEntry = curParts?.byDayOrdinal?.[0] ?? null;
-  const monthlyDomValue = curParts?.byMonthDay?.[0] ?? null;
+  const monthlyOrdinals = curParts?.byDayOrdinal ?? [];
+  const monthlyDoms = curParts?.byMonthDay ?? [];
   const dtDay = Number(dtstart.slice(8, 10));
   const dtWeekday = weekdayOf(dtstart);
   const dtOrdinal = Math.min(5, Math.ceil(dtDay / 7)); // dtstart's nth weekday (1–5)
-  const monthlyMode: MonthlyMode = monthlyOrdinalEntry
+  const monthlyMode: MonthlyMode = monthlyOrdinals.length
     ? "weekday"
-    : monthlyDomValue != null
+    : monthlyDoms.length
       ? "dom"
       : "day";
-  const effOrdinal = monthlyOrdinalEntry?.ordinal ?? dtOrdinal;
-  const effOrdWeekday = monthlyOrdinalEntry?.weekday ?? dtWeekday;
-  const effDom = monthlyDomValue ?? dtDay;
+  // The add-form's pending selection (defaults derived from the anchor day).
+  const [addOrdinal, setAddOrdinal] = useState<number>(dtOrdinal);
+  const [addWeekday, setAddWeekday] = useState<Weekday>(dtWeekday);
+  const [addDom, setAddDom] = useState<number>(dtDay);
+
+  function setMonthlyMode(m: MonthlyMode) {
+    if (m === "day") rebuild({ preset: "monthly", byMonthDay: [], byDayOrdinal: [] });
+    else if (m === "dom")
+      rebuild({ preset: "monthly", byMonthDay: sortDoms([addDom]), byDayOrdinal: [] });
+    else
+      rebuild({
+        preset: "monthly",
+        byDayOrdinal: sortOrdinals([{ ordinal: addOrdinal, weekday: addWeekday }]),
+        byMonthDay: [],
+      });
+  }
+  function addOrdinalChip() {
+    const exists = monthlyOrdinals.some((e) => e.ordinal === addOrdinal && e.weekday === addWeekday);
+    const next = exists ? monthlyOrdinals : [...monthlyOrdinals, { ordinal: addOrdinal, weekday: addWeekday }];
+    rebuild({ preset: "monthly", byDayOrdinal: sortOrdinals(next), byMonthDay: [] });
+  }
+  function removeOrdinalChip(target: ByDayOrdinal) {
+    const next = monthlyOrdinals.filter((e) => !(e.ordinal === target.ordinal && e.weekday === target.weekday));
+    rebuild({ preset: "monthly", byDayOrdinal: next, byMonthDay: [] });
+  }
+  function addDomChip() {
+    const next = monthlyDoms.includes(addDom) ? monthlyDoms : [...monthlyDoms, addDom];
+    rebuild({ preset: "monthly", byMonthDay: sortDoms(next), byDayOrdinal: [] });
+  }
+  function removeDomChip(d: number) {
+    rebuild({ preset: "monthly", byMonthDay: monthlyDoms.filter((x) => x !== d), byDayOrdinal: [] });
+  }
 
   async function persist(next: ReturnType<typeof parseRecurrence>) {
     const before = rule;
@@ -286,58 +336,72 @@ export default function RecurrenceControl({
         )}
 
         {preset === "monthly" && (
-          <label className="flex items-center gap-1.5">
-            on
-            <select
-              className={selectClass}
-              aria-label="Monthly repeat pattern"
-              value={monthlyMode}
-              onChange={(e) => {
-                const m = e.target.value as MonthlyMode;
-                if (m === "day") rebuild({ preset: "monthly", byMonthDay: [], byDayOrdinal: [] });
-                else if (m === "dom")
-                  rebuild({ preset: "monthly", byMonthDay: [effDom], byDayOrdinal: [] });
-                else
-                  rebuild({
-                    preset: "monthly",
-                    byDayOrdinal: [{ ordinal: effOrdinal, weekday: effOrdWeekday }],
-                    byMonthDay: [],
-                  });
-              }}
-            >
-              <option value="day">the {dayOrdinalLabel(dtDay)} (same as start)</option>
-              <option value="dom">a day of the month</option>
-              <option value="weekday">a day of the week</option>
-            </select>
-
-            {monthlyMode === "dom" && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label className="flex items-center gap-1.5">
+              on
               <select
                 className={selectClass}
-                aria-label="Day of the month"
-                value={effDom}
-                onChange={(e) =>
-                  rebuild({ preset: "monthly", byMonthDay: [Number(e.target.value)], byDayOrdinal: [] })
-                }
+                aria-label="Monthly repeat pattern"
+                value={monthlyMode}
+                onChange={(e) => setMonthlyMode(e.target.value as MonthlyMode)}
               >
-                {DAY_OF_MONTH_OPTIONS.map((d) => (
-                  <option key={d.value} value={d.value}>{d.label}</option>
-                ))}
+                <option value="day">the {dayOrdinalLabel(dtDay)} (same as start)</option>
+                <option value="dom">a day of the month</option>
+                <option value="weekday">a day of the week</option>
               </select>
+            </label>
+
+            {monthlyMode === "dom" && (
+              <>
+                {monthlyDoms.map((d) => (
+                  <span key={d} className={chipClass}>
+                    {dayOrdinalLabel(d)}
+                    <button
+                      type="button"
+                      onClick={() => removeDomChip(d)}
+                      aria-label={`Remove ${dayOrdinalLabel(d)}`}
+                      className="text-neutral-500 hover:text-neutral-200"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <select
+                  className={selectClass}
+                  aria-label="Day of the month to add"
+                  value={addDom}
+                  onChange={(e) => setAddDom(Number(e.target.value))}
+                >
+                  {DAY_OF_MONTH_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={addDomChip} className={addBtnClass}>
+                  + Add
+                </button>
+              </>
             )}
 
             {monthlyMode === "weekday" && (
               <>
+                {monthlyOrdinals.map((e) => (
+                  <span key={`${e.ordinal}${e.weekday}`} className={chipClass}>
+                    {ORDINAL_LABEL[e.ordinal] ?? e.ordinal} {WEEKDAY_FULL[e.weekday]}
+                    <button
+                      type="button"
+                      onClick={() => removeOrdinalChip(e)}
+                      aria-label={`Remove ${ORDINAL_LABEL[e.ordinal] ?? e.ordinal} ${WEEKDAY_FULL[e.weekday]}`}
+                      className="text-neutral-500 hover:text-neutral-200"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
                 <select
                   className={selectClass}
-                  aria-label="Which week of the month"
-                  value={effOrdinal}
-                  onChange={(e) =>
-                    rebuild({
-                      preset: "monthly",
-                      byDayOrdinal: [{ ordinal: Number(e.target.value), weekday: effOrdWeekday }],
-                      byMonthDay: [],
-                    })
-                  }
+                  aria-label="Which week of the month to add"
+                  value={addOrdinal}
+                  onChange={(e) => setAddOrdinal(Number(e.target.value))}
                 >
                   {MONTHLY_ORDINALS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -345,23 +409,20 @@ export default function RecurrenceControl({
                 </select>
                 <select
                   className={selectClass}
-                  aria-label="Weekday"
-                  value={effOrdWeekday}
-                  onChange={(e) =>
-                    rebuild({
-                      preset: "monthly",
-                      byDayOrdinal: [{ ordinal: effOrdinal, weekday: e.target.value as Weekday }],
-                      byMonthDay: [],
-                    })
-                  }
+                  aria-label="Weekday to add"
+                  value={addWeekday}
+                  onChange={(e) => setAddWeekday(e.target.value as Weekday)}
                 >
                   {WEEKDAYS.map((w) => (
                     <option key={w} value={w}>{WEEKDAY_FULL[w]}</option>
                   ))}
                 </select>
+                <button type="button" onClick={addOrdinalChip} className={addBtnClass}>
+                  + Add
+                </button>
               </>
             )}
-          </label>
+          </div>
         )}
 
         {preset !== "none" && (
