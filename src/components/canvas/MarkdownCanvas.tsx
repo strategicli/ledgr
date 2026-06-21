@@ -21,6 +21,8 @@ import ItemLayoutGrid from "@/components/canvas/ItemLayoutGrid";
 import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
+import HistoryPanel from "@/components/canvas/HistoryPanel";
+import { bodyMarkdown } from "@/lib/body";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
 import { promotedBlockRefs } from "@/lib/meetings/promote";
@@ -215,6 +217,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} />;
       if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
       if (id === "share") return <ShareLink itemId={item.id} />;
+      if (id === "history")
+        return <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />;
       if (id === "meta") return metaNode;
       return null;
     };
@@ -337,6 +341,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       <SaveOffline itemId={item.id} />
       {/* Public share link (PRD §4.12): read-only, print-friendly, PDF. */}
       <ShareLink itemId={item.id} />
+      {/* Version history (Track changes): list snapshots, diff any two, restore
+          (the general item-view undo). Lazy — fetches only when expanded. */}
+      <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />
       <details className="mx-auto w-full max-w-3xl px-4 pb-12 pt-4 sm:px-8 md:px-12">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
           Fields
