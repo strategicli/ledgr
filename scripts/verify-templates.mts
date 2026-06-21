@@ -303,7 +303,7 @@ try {
   await updateItem(owner.id, mtmpl.prototypeItemId, {
     title: "Tmpl title",
     body: { format: "markdown", text: "Due {{today+1d:iso}} for {{title}}" },
-    urgency: "high",
+    urgency: 2,
     properties: { stage: "Offer", round: "Phone" },
   });
   await updateTemplate(owner.id, mtmpl.id, { applyConfig: { scheduledDate: { mode: "offset", days: 2 } } });
@@ -325,7 +325,7 @@ try {
   const faProps = fa.properties as Record<string, unknown>;
   check("fill keeps a non-empty title", fa.title === "Existing title");
   check("fill skips a non-empty body", bodyMarkdown(fa.body) === "Existing body");
-  check("fill sets an empty scalar (urgency)", fa.urgency === "high");
+  check("fill sets an empty scalar (urgency)", fa.urgency === 2);
   check("fill keeps the target's own property value", faProps.stage === "Applied");
   check("fill adds a missing property", faProps.round === "Phone");
   check("fill preserves a target-only property", faProps.other === "keep");
@@ -340,7 +340,7 @@ try {
     type: typeKey,
     title: "Old title",
     body: { format: "markdown", text: "Old body" },
-    urgency: "low",
+    urgency: 6,
     properties: { stage: "Applied", other: "keep" },
   });
   await createItem(owner.id, { type: typeKey, title: "Existing-only sub", parentId: tgtB.id });

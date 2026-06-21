@@ -183,7 +183,7 @@ export default function ViewBuilder({
     initial?.filter.statusCategory ?? ""
   );
   const [urgency, setUrgency] = useState<string>(
-    showsUrgency(t0) ? initial?.filter.urgency ?? "" : ""
+    showsUrgency(t0) ? (initial?.filter.urgency != null ? String(initial.filter.urgency) : "") : ""
   );
   const [dateField, setDateField] = useState<string>(
     pick(df0, initial?.filter.dateField, df0[0])
@@ -277,7 +277,7 @@ export default function ViewBuilder({
     const filter: Record<string, unknown> = {};
     if (type) filter.type = type;
     if (statusCategory) filter.statusCategory = statusCategory;
-    if (urgency) filter.urgency = urgency;
+    if (urgency) filter.urgency = Number(urgency);
     if (relatedTo) filter.relatedTo = relatedTo;
     if (dateWindow) {
       if (dateField) filter.dateField = dateField;

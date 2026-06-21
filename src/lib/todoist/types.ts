@@ -39,14 +39,11 @@ export interface TodoistClient {
 }
 
 // Ledgr urgency -> Todoist priority (4 = most urgent; 1 = default/none).
-const PRIORITY_BY_URGENCY: Record<Urgency, number> = {
-  low: 1,
-  normal: 2,
-  high: 3,
-  critical: 4,
+const PRIORITY_BY_URGENCY: Record<number, number> = {
+  1: 4, 2: 3, 3: 2, 4: 1, 5: 1, 6: 1,
 };
 export function todoistPriority(urgency: Urgency | null): number {
-  return urgency ? PRIORITY_BY_URGENCY[urgency] : 1;
+  return urgency ? PRIORITY_BY_URGENCY[urgency] ?? 1 : 1;
 }
 
 // Ledgr stores due_date as a UTC-midnight instant for a calendar day (ADR-008);

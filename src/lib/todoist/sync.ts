@@ -42,7 +42,7 @@ type TaskRow = {
   title: string;
   status: "open" | "done" | "archived";
   dueDate: Date | null;
-  urgency: "low" | "normal" | "high" | "critical" | null;
+  urgency: number | null;
   todoistId: string | null;
   properties: unknown;
 };

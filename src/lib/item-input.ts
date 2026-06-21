@@ -7,12 +7,11 @@
 // request JSON into a well-formed ItemInput/ItemPatch.
 import { isItemBody } from "@/lib/body";
 import {
-  URGENCIES,
   ItemError,
   type ItemInput,
   type ItemPatch,
-  type Urgency,
 } from "@/lib/items";
+import { toPriority } from "@/lib/priority";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -89,13 +88,11 @@ export function parseItemPayload(
     out.status = status;
   }
   if (input.urgency !== undefined) {
-    if (
-      input.urgency !== null &&
-      !URGENCIES.includes(input.urgency as Urgency)
-    ) {
-      bad(`urgency must be null or one of: ${URGENCIES.join(", ")}`);
+    const p = input.urgency === null ? null : toPriority(input.urgency);
+    if (input.urgency !== null && p === null) {
+      bad("urgency (priority) must be null or an integer 1–6");
     }
-    out.urgency = input.urgency as Urgency | null;
+    out.urgency = p;
   }
   if (input.dueDate !== undefined) {
     out.dueDate = asNullableDate(input.dueDate, "dueDate");

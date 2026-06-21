@@ -105,7 +105,7 @@ const fake = new FakeTodoist();
 
 try {
   // --- Run A: push-create, undated-skip, priority, inbox pull-in ----------
-  const dated = await mkTask({ title: "Pay vendors", status: "open", dueDate: new Date("2026-06-20T00:00:00Z"), urgency: "high" });
+  const dated = await mkTask({ title: "Pay vendors", status: "open", dueDate: new Date("2026-06-20T00:00:00Z"), urgency: 2 });
   const undated = await mkTask({ title: "Someday idea", status: "open" });
   fake.seed({ id: "native-1", content: "Bought offline in Todoist", dueDate: "2026-06-25", projectId: INBOX });
 

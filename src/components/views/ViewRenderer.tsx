@@ -23,7 +23,7 @@ export type ViewItem = {
   statusCategory: string;
   dueDate: Date | null;
   scheduledDate: Date | null;
-  urgency: string | null;
+  urgency: number | null;
   meetingAt: Date | null;
   url: string | null;
   properties: unknown;
@@ -103,11 +103,11 @@ function StatusChip({ status, statuses }: { status: string; statuses?: StatusDef
   );
 }
 
-function UrgencyChip({ urgency }: { urgency: string | null }) {
-  if (urgency !== "high" && urgency !== "critical") return null;
+function UrgencyChip({ urgency }: { urgency: number | null }) {
+  if (urgency == null || urgency > 2) return null;
   return (
     <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
-      {urgency}
+      {`P${urgency}`}
     </span>
   );
 }
@@ -165,7 +165,7 @@ function columnText(item: ViewItem, col: ViewColumn): string {
     case "status":
       return item.status;
     case "urgency":
-      return item.urgency ?? "";
+      return item.urgency != null ? `P${item.urgency}` : "";
     case "url":
       return item.url ?? "";
     case "dueDate":
