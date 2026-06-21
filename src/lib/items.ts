@@ -17,6 +17,7 @@ import {
 import { getDb } from "@/db";
 import { items, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
+import { bodyMarkdown } from "@/lib/body";
 import { syncMentionRelations } from "@/lib/mentions";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
@@ -551,7 +552,7 @@ export async function restoreItem(ownerId: string, id: string) {
   return { restored: res.rows.length };
 }
 
-// Metadata only; a revision's body is only ever read by restoreRevision.
+// Metadata only; a revision's body is read by getRevision / restoreRevision.
 export async function listRevisions(ownerId: string, itemId: string) {
   await getItem(ownerId, itemId); // ownership check
   return getDb()
@@ -559,6 +560,28 @@ export async function listRevisions(ownerId: string, itemId: string) {
     .from(revisions)
     .where(eq(revisions.itemId, itemId))
     .orderBy(desc(revisions.createdAt));
+}
+
+// One revision's markdown text, for the "Show changes" diff. Owner-scoped via
+// the item (the by-id read path, like getItem — not the list path, so it can
+// load a body). Returns the canonical text; a foreign/legacy body degrades to
+// "" through bodyMarkdown rather than throwing.
+export async function getRevision(
+  ownerId: string,
+  itemId: string,
+  revisionId: string
+) {
+  await getItem(ownerId, itemId); // ownership check
+  const rev = await getDb()
+    .select({ id: revisions.id, body: revisions.body, createdAt: revisions.createdAt })
+    .from(revisions)
+    .where(and(eq(revisions.id, revisionId), eq(revisions.itemId, itemId)));
+  if (rev.length === 0) throw new ItemError("not_found", "revision not found");
+  return {
+    id: rev[0].id,
+    createdAt: rev[0].createdAt,
+    text: bodyMarkdown(rev[0].body),
+  };
 }
 
 export async function restoreRevision(
