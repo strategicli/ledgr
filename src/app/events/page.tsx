@@ -9,6 +9,8 @@ import RowAction from "@/components/home/RowAction";
 import { resolveOwner } from "@/lib/owner";
 import { APP_TIMEZONE } from "@/lib/today";
 import { queryViewItems } from "@/lib/views";
+import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
+import AddEventButton from "@/components/calendar/AddEventButton";
 
 export const dynamic = "force-dynamic";
 
@@ -84,16 +86,60 @@ function Section({
   );
 }
 
+// The calendar feed (ADR-094 E3): upcoming calendar events not yet pulled into
+// Ledgr. Matched events auto-promote on sync (they show in the lists below);
+// these are the rest, each a one-click Add.
+function CalendarFeedSection({ events, now }: { events: FeedEvent[]; now: Date }) {
+  if (events.length === 0) return null;
+  return (
+    <section className="mt-6">
+      <h2 className="flex items-center gap-2 border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+        From your calendar
+        <span className="rounded-full bg-neutral-800 px-1.5 text-[11px] font-normal normal-case text-neutral-400">
+          {events.length}
+        </span>
+      </h2>
+      <p className="mt-1 px-2 text-xs text-neutral-600">
+        Upcoming calendar events not yet in Ledgr. Add the ones you want to track.
+      </p>
+      <ul className="mt-1">
+        {events.map((e) => (
+          <li
+            key={e.id}
+            className="flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
+          >
+            <span className="w-40 shrink-0 text-xs tabular-nums text-neutral-500">
+              {e.startAt ? formatWhen(e.startAt, now) : ""}
+            </span>
+            <span
+              className={`min-w-0 flex-1 truncate text-sm ${
+                e.title ? "text-neutral-300" : "text-neutral-500"
+              }`}
+            >
+              {e.title || "Untitled"}
+              {e.attendeeCount > 0 && (
+                <span className="ml-1.5 text-xs text-neutral-600">
+                  · {e.attendeeCount} {e.attendeeCount === 1 ? "person" : "people"}
+                </span>
+              )}
+            </span>
+            <AddEventButton cacheId={e.id} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default async function Meetings() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const meetings = await queryViewItems(
-    owner.id,
-    { type: "event" },
-    { field: "meetingAt", dir: "desc" }
-  );
   const now = new Date();
+  const [meetings, feed] = await Promise.all([
+    queryViewItems(owner.id, { type: "event" }, { field: "meetingAt", dir: "desc" }),
+    listCalendarFeed(owner.id, { now }),
+  ]);
   const upcoming = meetings
     .filter((m) => m.meetingAt != null && m.meetingAt >= now)
     .reverse(); // desc fetch -> soonest first
@@ -107,7 +153,8 @@ export default async function Meetings() {
       subtitle={`${meetings.length} event${meetings.length === 1 ? "" : "s"}`}
       actions={<NewItemButton type="event" />}
     >
-      {meetings.length === 0 && (
+      <CalendarFeedSection events={feed} now={now} />
+      {meetings.length === 0 && feed.length === 0 && (
         <p className="mt-6 px-2 text-sm text-neutral-600">No events yet.</p>
       )}
       <Section title="Upcoming" rows={upcoming} now={now} />

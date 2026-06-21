@@ -404,6 +404,52 @@ export const matchers = pgTable(
   (t) => [index("matchers_owner_priority_idx").on(t.ownerId, t.priority)]
 );
 
+// Calendar feed cache (ADR-094 E3). The calendar sync no longer auto-creates an
+// item per event (the firehose, ADR-023); it upserts every polled event here,
+// keyed by ms_event_id. A MATCHED event (a matcher recognizes it — a standing
+// 1:1, a series) auto-promotes to an `event` item and sets promoted_item_id;
+// everything else stays here as a one-click "Add" in the calendar feed on
+// /events. Not items (CLAUDE.md rule 2 is user content; this is sync bookkeeping
+// until the user promotes it). promoted_item_id ON DELETE SET NULL: a purged
+// event item just frees its feed row, never a dangling FK.
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    msEventId: text("ms_event_id").notNull(),
+    title: text("title").notNull().default(""),
+    // Event start/end as real instants (UTC), like items.meeting_at. Nullable
+    // start guards a malformed feed row; the feed query orders by it.
+    startAt: timestamp("start_at", { withTimezone: true }),
+    endAt: timestamp("end_at", { withTimezone: true }),
+    // The CalendarMeta blob (attendees/location/series/join url/body preview).
+    meta: jsonb("meta"),
+    isCancelled: boolean("is_cancelled").notNull().default(false),
+    // Set once this event becomes an `event` item (auto-promote on match, a
+    // manual Add, or a pre-existing item detected by ms_event_id). Non-null =
+    // promoted, so it drops out of the feed.
+    promotedItemId: uuid("promoted_item_id").references(() => items.id, {
+      onDelete: "set null",
+    }),
+    lastModified: text("last_modified"),
+    syncedAt: timestamp("synced_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("calendar_events_owner_idx").on(t.ownerId),
+    uniqueIndex("calendar_events_owner_event_uq").on(t.ownerId, t.msEventId),
+    // The feed query: an owner's un-promoted upcoming events, ordered by start.
+    index("calendar_events_feed_idx").on(t.ownerId, t.startAt),
+  ]
+);
+
 // Web Push subscriptions (slice 30, PRD §4.11). One row per browser/device
 // the owner enabled notifications on; the endpoint is the push service URL
 // (unique), p256dh/auth are the RFC 8291 encryption keys the browser hands us
