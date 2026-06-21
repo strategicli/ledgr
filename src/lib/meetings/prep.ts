@@ -8,6 +8,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { queryViewItems } from "@/lib/views";
+import {
+  resolveEventTaskPull,
+  taskPullSeedLabels,
+} from "@/lib/events/task-pull-service";
+import { effectiveTaskPull, type TaskPull } from "@/lib/events/task-pull";
 
 export type PrepPerson = { id: string; title: string };
 type ListRow = Awaited<ReturnType<typeof queryViewItems>>[number];
@@ -19,6 +24,11 @@ export type MeetingPrep = {
   // The template a matcher chose (slice 23), if any — shown as a hint; the
   // full named-template system (agenda per template) is Phase 3.
   templateName: string | null;
+  // The event's effective task-pull rule (ADR-094 E4) + labels for its concrete
+  // seeds, for the TaskPullControl. The default rule = tasks related to anyone
+  // on the event.
+  taskPull: TaskPull;
+  taskPullSeeds: { id: string; title: string; type: string }[];
 };
 
 const RECENT_MEETINGS = 3;
@@ -68,38 +78,33 @@ export async function getMeetingPrep(
       ?.templateName) ?? null;
 
   const people = await getMeetingPeople(ownerId, meetingId);
-  if (people.length === 0) {
-    return { people, openTasks: [], recentMeetings: [], templateName };
-  }
+  const peopleIds = people.map((p) => p.id);
+  const rawRule = (self[0]?.properties as { taskPull?: unknown } | null)?.taskPull;
+  const rule = effectiveTaskPull(rawRule);
 
-  // Per-person queries (people per meeting are few) reusing the tested
-  // viewItemsQuery relatedTo filter; merge + dedupe across people.
-  const openTasksNested = await Promise.all(
-    people.map((e) =>
-      queryViewItems(
-        ownerId,
-        { type: "task", statusCategory: "active", relatedTo: e.id },
-        { field: "dueDate", dir: "asc" },
-        50
-      )
-    )
-  );
-  const recentNested = await Promise.all(
-    people.map((e) =>
-      queryViewItems(
-        ownerId,
-        { type: "event", relatedTo: e.id },
-        { field: "meetingAt", dir: "desc" },
-        RECENT_MEETINGS + 1 // room to drop this meeting before slicing
-      )
-    )
-  );
+  // Open tasks come from the event's configurable pull rule (ADR-094 E4; default
+  // = tasks related to anyone on the event). Recent meetings stay people-driven.
+  const [openTasks, taskPullSeeds, recentNested] = await Promise.all([
+    resolveEventTaskPull(ownerId, rawRule, peopleIds),
+    taskPullSeedLabels(ownerId, rule),
+    people.length === 0
+      ? Promise.resolve([] as ListRow[][])
+      : Promise.all(
+          people.map((e) =>
+            queryViewItems(
+              ownerId,
+              { type: "event", relatedTo: e.id },
+              { field: "meetingAt", dir: "desc" },
+              RECENT_MEETINGS + 1 // room to drop this meeting before slicing
+            )
+          )
+        ),
+  ]);
 
-  const openTasks = dedupeById(openTasksNested.flat());
   const recentMeetings = dedupeById(recentNested.flat())
     .filter((m) => m.id !== meetingId)
     .sort((a, b) => (b.meetingAt?.getTime() ?? 0) - (a.meetingAt?.getTime() ?? 0))
     .slice(0, RECENT_MEETINGS);
 
-  return { people, openTasks, recentMeetings, templateName };
+  return { people, openTasks, recentMeetings, templateName, taskPull: rule, taskPullSeeds };
 }
