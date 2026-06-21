@@ -42,9 +42,22 @@ The redesigned capture UI, used by **both** the global "+" and the per-list "Add
 
 - **Inline token highlighting in the title input.** As the user types, recognized phrases — priority (`p3`), dates (`thursday`), recurrence (`every week`) — get a **highlight background in the user's accent/highlight color**, live (Image #3). *Implementation:* a plain `<input>` can't style spans of its own text, so render a **highlighted backdrop div behind a transparent input** (the text mirrored with `<mark>`-style spans on the detected ranges), or a contenteditable. **No dependency** (Principle 5); reuse the `parseTaskTitle` detections' ranges to place the highlights.
 - **Card layout:** title line (with highlights) → a muted **Description** line → a **chip row** → a footer.
-  - **Chip row** (SVG icons, replacing the current emoji/text icons): a **date chip** (calendar icon, shows the relative/absolute label, × to clear), **Attachment** (paperclip), a **priority chip** (flag icon, P-colored, × to clear), **Reminders** (alarm), and **"…"** (more). Chips reflect what the parser detected and are individually editable/clearable.
+  - **Chip row** (SVG icons, replacing the current emoji/text icons): a **date chip** (calendar icon, shows the relative/absolute label, × to clear), **Attachment** (paperclip), a **priority chip** (flag icon, P-colored, × to clear), **Reminders** (alarm), and a **"…" kebab** (Image #6). Chips reflect what the parser detected and are individually editable/clearable. **The "…" kebab opens everything the user demoted to "More actions"** (the hidden pool from the Quick Add settings) so it's still reachable on demand, and is the **extensible home for future actions** the user sets up — anything not pinned as a visible chip lives behind the kebab.
   - **Footer:** a **destination picker** bottom-left (**"Inbox ▾"** — defaults to Inbox, dropdown to pick a project/area/today), and **Cancel** + **Add task** (accent) bottom-right.
 - **SVG icon set:** replace the current icons (the calendar/flag/alarm/paperclip/inbox) with clean inline SVGs (no icon-font/dependency).
+
+### Configurable Quick Add (User Settings, Tyler 2026-06-21)
+
+A **"Quick Add"** panel in User Settings (Todoist-style, Image #5) lets the user choose **which action chips appear on the capture card and in what order**:
+- **"Show task actions"** — the visible chips, **drag-to-reorder**, each with a − to demote to More. Defaults: **Date · Assignee · Attachment · Priority · Reminders**.
+- **"More actions"** — the hidden pool, each with a + to promote to shown. Defaults: **Labels · Deadline · Location**.
+- **"Show action labels"** toggle (On/Off) with a live example row (chips with vs. without text labels).
+- **Storage:** additive jsonb on `users.settings` (`quickAddActions: {shown: [...], showLabels: bool}`), tolerant parse — the `navSlots`/`highlightGradient` pattern (ADR-056). Non-core. The capture card reads this config to render its chip row; an unconfigured user gets the defaults.
+- Action ↔ field map: Date→scheduled, Deadline→due, Priority→P1–P6, Reminders→`properties.reminder`, Attachment→R2 upload, Labels→the built-in labels field (the COLLAB proposal), Assignee→below, Location→new (likely defer).
+
+### Assignee
+
+Tasks get an **assignee** (a relation to a `person`, role `assignee`). Single-user today (multi-user-ready, not multi-user — Principle 7), so it mostly serves delegation tracking (pairs with the project "Waiting for Others" status). A capture-card chip + a row affordance; surfaced via the Quick Add config above.
 
 ## Relative date labels
 
