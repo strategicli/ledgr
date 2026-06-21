@@ -48,7 +48,10 @@ export const statusCategory = pgEnum("status_category", [
 // stays additive — dropping the type would make drizzle-kit prompt to
 // disambiguate a rename. The Postgres type lingers harmlessly; no column uses it.
 export const itemStatus = pgEnum("item_status", ["open", "done", "archived"]);
-export const urgency = pgEnum("urgency", ["low", "normal", "high", "critical"]);
+// Priority P1–P6 (ADR-096): the `urgency` column is now a smallint 1..6 (1
+// highest … 6 lowest, null = unset). The old `urgency` pgEnum is dropped by
+// migration 0030. The column keeps its name to avoid a wide rename; surfaced as
+// "Priority" everywhere. See src/lib/priority.ts.
 export const matchState = pgEnum("match_state", ["confirmed", "suggested"]);
 export const viewLayout = pgEnum("view_layout", [
   "list",
@@ -223,7 +226,7 @@ export const items = pgTable(
     // auto-advances on completion to the next uncompleted occurrence; the rule +
     // completion log live in properties.recurrence (src/lib/recurrence.ts).
     scheduledDate: timestamp("scheduled_date", { withTimezone: true }),
-    urgency: urgency("urgency"),
+    urgency: integer("urgency"),
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
     url: text("url"),
     // Untriaged flag (PRD §4.2 Inbox): set by arrival paths (quick capture

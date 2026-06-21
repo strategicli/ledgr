@@ -100,9 +100,9 @@ function TaskRow({
       {task.scheduledDate && !task.dueDate && (
         <span className="shrink-0 text-xs text-neutral-600">planned</span>
       )}
-      {(task.urgency === "high" || task.urgency === "critical") && (
+      {task.urgency != null && task.urgency <= 2 && (
         <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
-          {task.urgency}
+          {`P${task.urgency}`}
         </span>
       )}
       <span

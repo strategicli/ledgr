@@ -6,7 +6,8 @@
 import { and, asc, desc, eq, inArray, isNull, lt, gte, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, views } from "@/db/schema";
-import { URGENCIES, type ItemStatus, type Urgency } from "@/lib/item-enums";
+import { type ItemStatus, type Urgency } from "@/lib/item-enums";
+import { toPriority } from "@/lib/priority";
 import { ItemError, listColumns } from "@/lib/items";
 import { APP_TIMEZONE, todayBounds, zonedMidnightUtc } from "@/lib/today";
 
@@ -317,8 +318,9 @@ export function parseViewFilter(raw: unknown): ViewFilter {
     out.statusCategory = c;
   }
   if (r.urgency != null) {
-    if (!URGENCIES.includes(r.urgency as Urgency)) bad("filter.urgency invalid");
-    out.urgency = r.urgency as Urgency;
+    const p = toPriority(r.urgency);
+    if (p === null) bad("filter.urgency invalid");
+    out.urgency = p;
   }
   if (r.dateField != null) {
     if (!DATE_PROPERTIES.includes(r.dateField as DateProperty)) {

@@ -122,7 +122,7 @@ try {
     bodyMarkdown: "Discuss the Zentaur **budget**.",
     dueDate: dueStr,
     status: "open",
-    urgency: "normal",
+    urgency: 4,
     relateTo: [entity.id as string],
   });
   check("create_item made an open task", task.type === "task" && task.status === "open");

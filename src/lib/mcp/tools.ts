@@ -149,7 +149,7 @@ function rowView(r: {
   type: string;
   title: string;
   status: string;
-  urgency: string | null;
+  urgency: number | null;
   dueDate: Date | null;
   meetingAt: Date | null;
   url: string | null;
@@ -349,7 +349,7 @@ const TOOLS: McpTool[] = [
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
         dueDate: { type: "string", description: "Due date, ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
         meetingAt: { type: "string", description: "Event start time, ISO 8601 date-time. Events only." },
-        urgency: { type: "string", enum: [...URGENCIES], description: "Urgency (tasks)." },
+        urgency: { type: "number", enum: [...URGENCIES], description: "Priority 1–6 (tasks; 1 highest)." },
         url: { type: "string", description: "URL (links)." },
         properties: { type: "object", description: "Custom property values keyed by the type's property keys (see list_types)." },
         inbox: { type: "boolean", description: "true = capture into the inbox for later triage; default false (filed)." },
@@ -387,7 +387,7 @@ const TOOLS: McpTool[] = [
         status: { type: "string", enum: [...ITEM_STATUSES], description: "New status." },
         dueDate: { type: "string", description: "New due date (ISO 8601), or null to clear." },
         meetingAt: { type: "string", description: "New meeting time (ISO 8601), or null to clear." },
-        urgency: { type: "string", enum: [...URGENCIES], description: "New urgency, or null to clear." },
+        urgency: { type: "number", enum: [...URGENCIES], description: "New priority 1–6, or null to clear." },
         url: { type: "string", description: "New URL, or null to clear." },
         properties: { type: "object", description: "Replace the whole custom-properties object. Prefer propertyPatch to change one key without clobbering the rest." },
         propertyPatch: { type: "object", description: "Merge these custom-property keys into the existing properties (atomic per-key; other keys untouched). Set a key to null to clear it." },

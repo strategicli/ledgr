@@ -171,10 +171,7 @@ const WEEKDAY_ALT =
 
 // p1..p4 (Todoist) and !1..!4 → Ledgr urgencies. p1 = most urgent.
 const URGENCY_BY_LEVEL: Record<string, Urgency> = {
-  "1": "critical",
-  "2": "high",
-  "3": "normal",
-  "4": "low",
+  "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
 };
 
 export type TaskTitleDetection = {
@@ -289,10 +286,10 @@ function matchUrgency(
 ): { urgency: Urgency; source: string } | null {
   // pN is word-boundary safe; !N is not (`!` is non-word, so `\b` never sits
   // before it) — anchor it on a preceding space/start instead.
-  let re = /\bp([1-4])\b/;
+  let re = /\bp([1-6])\b/;
   let m = state.lower.match(re);
   if (!m) {
-    re = /(?:^|\s)!([1-4])\b/;
+    re = /(?:^|\s)!([1-6])\b/;
     m = state.lower.match(re);
   }
   if (!m || m.index === undefined) return null;
@@ -327,7 +324,7 @@ export function parseTaskTitle(input: string, todayYmd: string): ParsedTaskTitle
   const sched = matchDate(state, todayYmd, false);
   if (sched) detections.push({ field: "scheduled", label: formatChipDate(sched.ymd), source: sched.source });
   const urg = matchUrgency(state);
-  if (urg) detections.push({ field: "urgency", label: capitalize(urg.urgency), source: urg.source });
+  if (urg) detections.push({ field: "urgency", label: `P${urg.urgency}`, source: urg.source });
 
   let scheduledDate = sched?.ymd ?? null;
   let recurrence: RecurrenceRule | null = null;
@@ -354,7 +351,4 @@ const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep
 function formatChipDate(ymd: string): string {
   const [, m, d] = ymd.split("-").map(Number);
   return `${MONTH_ABBR[m - 1]} ${d}`;
-}
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }

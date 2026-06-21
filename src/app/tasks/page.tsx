@@ -10,7 +10,8 @@ import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
-import { URGENCIES, type Urgency } from "@/lib/item-enums";
+import { URGENCIES } from "@/lib/item-enums";
+import { toPriority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema, type StatusDef } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
@@ -88,9 +89,9 @@ function TaskRow({
           {sdef.label}
         </span>
       )}
-      {(task.urgency === "high" || task.urgency === "critical") && (
+      {task.urgency != null && task.urgency <= 2 && (
         <span className="shrink-0 rounded bg-amber-950 px-1.5 text-xs text-amber-400">
-          {task.urgency}
+          {`P${task.urgency}`}
         </span>
       )}
       {planned && (
@@ -131,9 +132,9 @@ export default async function Tasks({
   const statusParam = param("status") ?? "active";
   if (statusParam === "active") filter.statusCategory = "active";
   else if (statusParam !== "any") filter.status = statusParam;
-  const urgency = param("urgency");
-  if (URGENCIES.includes(urgency as Urgency)) {
-    filter.urgency = urgency as Urgency;
+  const urgency = toPriority(param("urgency"));
+  if (urgency !== null) {
+    filter.urgency = urgency;
   }
   // Which date dimension this list works in: it drives both the date-window
   // filter and the sort. Due (the deadline) is the default; scheduled (the
@@ -177,7 +178,7 @@ export default async function Tasks({
       label: "Urgency",
       options: [
         { value: "", label: "any" },
-        ...URGENCIES.map((u) => ({ value: u, label: u })),
+        ...URGENCIES.map((u) => ({ value: String(u), label: `P${u}` })),
       ],
     },
     {

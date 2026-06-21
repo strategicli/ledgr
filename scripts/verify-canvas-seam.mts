@@ -51,7 +51,7 @@ check(
 
 // ADR-018: due/urgency are task-only, even when legacy data sets them on
 // another type — the canvas must not surface them.
-const noteWithTaskFields = { ...note, dueDate: t0, urgency: "high" };
+const noteWithTaskFields = { ...note, dueDate: t0, urgency: 2 };
 check(
   "a note with legacy due/urgency still hides them (ADR-018)",
   !labels(noteWithTaskFields).includes("Due") &&
@@ -61,7 +61,7 @@ check(
 
 // A task carries due/urgency in the top strip, so the footer doesn't repeat
 // them — Type/Created/Updated only.
-const task = { ...note, type: "task", dueDate: t0, urgency: "high" };
+const task = { ...note, type: "task", dueDate: t0, urgency: 2 };
 check(
   "a task's due/urgency live in the strip, not the footer",
   !labels(task).includes("Due") && !labels(task).includes("Urgency"),

@@ -22,7 +22,7 @@ export type BoardCard = {
   id: string;
   title: string;
   status: string;
-  urgency: string | null;
+  urgency: number | null;
   type: string;
   dueDate: Date | null;
   scheduledDate: Date | null;
@@ -43,7 +43,7 @@ function moveCard(card: BoardCard, grouping: ViewGrouping, col: string): BoardCa
   }
   const field = grouping?.field ?? "status";
   if (field === "status") return { ...card, status: col };
-  if (field === "urgency") return { ...card, urgency: col === NONE_GROUP ? null : col };
+  if (field === "urgency") return { ...card, urgency: col === NONE_GROUP ? null : Number(col) };
   return card;
 }
 
@@ -84,7 +84,7 @@ export default function BoardDnd({
     grouping && "propertyKey" in grouping
       ? [...(groupOrder ?? []), NONE_GROUP]
       : (grouping?.field ?? "status") === "urgency"
-        ? [...URGENCIES, NONE_GROUP]
+        ? [...URGENCIES.map(String), NONE_GROUP]
         : // status: every custom status as a column (S2), in schema order.
           [...(groupOrder ?? ITEM_STATUSES)];
   const present = new Set([

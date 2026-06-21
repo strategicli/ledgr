@@ -40,7 +40,7 @@ type FooterItem = {
   type: string;
   dueDate: Date | null;
   scheduledDate?: Date | null;
-  urgency: string | null;
+  urgency: number | null;
   meetingAt: Date | null;
   url: string | null;
   createdAt: Date;
@@ -67,7 +67,7 @@ export function footerFieldsFor(item: FooterItem): FooterField[] {
       item.scheduledDate ? tsFmt.format(item.scheduledDate) : null
     );
     maybe("dueDate", "Due", item.dueDate ? tsFmt.format(item.dueDate) : null);
-    maybe("urgency", "Urgency", item.urgency);
+    maybe("urgency", "Priority", item.urgency != null ? `P${item.urgency}` : null);
   }
   maybe("meetingAt", "When", item.meetingAt ? tsFmt.format(item.meetingAt) : null);
   maybe("url", "URL", item.url);

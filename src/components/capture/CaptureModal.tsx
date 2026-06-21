@@ -63,7 +63,7 @@ export default function CaptureModal({
     setTitle(p.title);
     if (p.scheduledDate) setScheduled(p.scheduledDate);
     if (p.dueDate) setDue(p.dueDate);
-    if (p.urgency) setUrgency(p.urgency);
+    if (p.urgency) setUrgency(String(p.urgency));
     if (p.recurrence) setRecurrence(p.recurrence);
     titleRef.current?.focus();
   }
@@ -155,7 +155,7 @@ export default function CaptureModal({
     // ignores them even if they were filled before the type changed.
     if (type === "task" && sched) body.scheduledDate = `${sched}T00:00:00.000Z`;
     if (type === "task" && dueDay) body.dueDate = `${dueDay}T00:00:00.000Z`;
-    if (type === "task" && urg) body.urgency = urg;
+    if (type === "task" && urg) body.urgency = Number(urg);
     if (type === "task" && rec) body.properties = { recurrence: rec };
     try {
       const res = await fetch("/api/items", {
@@ -291,7 +291,7 @@ export default function CaptureModal({
                 <option value="">urgency</option>
                 {URGENCIES.map((u) => (
                   <option key={u} value={u}>
-                    {u}
+                    {`P${u}`}
                   </option>
                 ))}
               </select>

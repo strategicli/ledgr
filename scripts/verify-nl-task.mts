@@ -93,11 +93,11 @@ console.log("\n# Recurrence (→ RRULE)");
 
 console.log("\n# Urgency (p1..p4 / !1..!4)");
 {
-  eq("p1 → critical", parseTaskTitle("Fix outage p1", TODAY).urgency, "critical");
-  eq("p2 → high", parseTaskTitle("Email p2", TODAY).urgency, "high");
-  eq("p3 → normal", parseTaskTitle("Tidy p3", TODAY).urgency, "normal");
-  eq("p4 → low", parseTaskTitle("Someday p4", TODAY).urgency, "low");
-  eq("!1 → critical", parseTaskTitle("Ship !1", TODAY).urgency, "critical");
+  eq("p1 → P1", parseTaskTitle("Fix outage p1", TODAY).urgency, 1);
+  eq("p2 → P2", parseTaskTitle("Email p2", TODAY).urgency, 2);
+  eq("p3 → P3", parseTaskTitle("Tidy p3", TODAY).urgency, 3);
+  eq("p4 → P4", parseTaskTitle("Someday p4", TODAY).urgency, 4);
+  eq("!1 → P1", parseTaskTitle("Ship !1", TODAY).urgency, 1);
   eq("urgency strips from title", parseTaskTitle("Fix outage p1", TODAY).title, "Fix outage");
 }
 
@@ -105,7 +105,7 @@ console.log("\n# Combined + detections");
 {
   const r = parseTaskTitle("Submit report every weekday p2", TODAY);
   eq("combined: recurrence", r.recurrence?.rrule, "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR");
-  eq("combined: urgency", r.urgency, "high");
+  eq("combined: urgency", r.urgency, 2);
   eq("combined: title clean", r.title, "Submit report");
   eq("combined: 2 detections (recurrence + urgency)", r.detections.length, 2);
   eq("combined: recurrence detection first", r.detections[0].field, "recurrence");

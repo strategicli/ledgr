@@ -14,7 +14,7 @@ import type { GroupField, ViewGrouping } from "@/lib/views";
 // properties is unknown (jsonb), cast once where it's read below.
 export type GroupableItem = {
   status: string;
-  urgency: string | null;
+  urgency: number | null;
   type: string;
   dueDate: Date | null;
   scheduledDate: Date | null;
@@ -59,7 +59,7 @@ export function groupValueFor(
     case "status":
       return item.status;
     case "urgency":
-      return item.urgency ?? NONE_GROUP;
+      return item.urgency != null ? String(item.urgency) : NONE_GROUP;
     case "type":
       return item.type;
     case "due":
@@ -86,7 +86,7 @@ export function boardDropPatch(
   }
   const field: GroupField = grouping?.field ?? "status";
   if (field === "status") return { status: col };
-  if (field === "urgency") return { urgency: col === NONE_GROUP ? null : col };
+  if (field === "urgency") return { urgency: col === NONE_GROUP ? null : Number(col) };
   return null;
 }
 
@@ -108,7 +108,7 @@ export function orderedGroups(
     // inherited-default fallback.
     known = {
       status: knownOrder ?? ITEM_STATUSES,
-      urgency: [...URGENCIES, NONE_GROUP],
+      urgency: [...URGENCIES.map(String), NONE_GROUP],
       due: DUE_ORDER,
       scheduled: DUE_ORDER,
       type: [] as readonly string[],

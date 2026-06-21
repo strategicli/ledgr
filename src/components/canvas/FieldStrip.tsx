@@ -16,7 +16,7 @@ export type StripValues = {
   status: string;
   dueDate: string | null; // ISO strings; Dates don't round-trip user edits
   scheduledDate: string | null;
-  urgency: string | null;
+  urgency: number | null;
   meetingAt: string | null;
   url: string | null;
 };
@@ -189,13 +189,13 @@ export default function FieldStrip({
             className={selectClass}
             value={values.urgency ?? ""}
             onChange={(e) =>
-              void save({ urgency: e.target.value || null })
+              void save({ urgency: e.target.value ? Number(e.target.value) : null })
             }
           >
             <option value="">none</option>
             {URGENCIES.map((u) => (
               <option key={u} value={u}>
-                {u}
+                {`P${u}`}
               </option>
             ))}
           </select>

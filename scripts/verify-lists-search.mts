@@ -63,7 +63,7 @@ try {
   const entity = await createItem(ownerId, { type: "person", title: "V12 Person Alpha" });
   const entityB = await createItem(ownerId, { type: "person", title: "V12 Person Beta" });
   const tOverdue = await createItem(ownerId, { type: "task", title: "V12 overdue", dueDate: new Date(bounds.dueToday.getTime() - dayMs) });
-  const tToday = await createItem(ownerId, { type: "task", title: "V12 due today", dueDate: bounds.dueToday, urgency: "high" });
+  const tToday = await createItem(ownerId, { type: "task", title: "V12 due today", dueDate: bounds.dueToday, urgency: 2 });
   const tWeek = await createItem(ownerId, { type: "task", title: "V12 due in 3 days", dueDate: new Date(bounds.dueToday.getTime() + 3 * dayMs) });
   const tFar = await createItem(ownerId, { type: "task", title: "V12 due in 30 days", dueDate: new Date(bounds.dueToday.getTime() + 30 * dayMs) });
   const tUndated = await createItem(ownerId, { type: "task", title: "V12 undated" });
@@ -89,7 +89,7 @@ try {
   );
   check("view rows carry no body", open.every((r) => !("body" in r) && !("bodyText" in r)));
 
-  const urgent = await queryViewItems(ownerId, { type: "task", urgency: "high" });
+  const urgent = await queryViewItems(ownerId, { type: "task", urgency: 2 });
   check(
     "urgency filter",
     urgent.some((t) => t.id === tToday.id) && !urgent.some((t) => t.id === tOverdue.id)
