@@ -1,1 +1,0 @@
-**Tyler · Jun 21 at 8:36 PM:** Change ToDOist UI stuff, and added notes tab. 
