@@ -29,3 +29,13 @@ Technically straightforward: a `touchstart`/`touchend` handler in the shell layo
 - **Does it feel right alongside the bottom bar?** Some apps use both (tap + swipe) cleanly; others feel redundant.
 - **Should item-open/close use a vertical swipe (up to open, down to dismiss), matching iOS sheet pattern?** This might address the separate problem of "hard to close items on mobile" more naturally than a button.
 - **Breadcrumb / back interaction:** does swipe-left on a canvas mean "close the item" or "go to the previous nav slot"? Needs a clear rule (probably: swipe from canvas → close; swipe from list → change slot).
+
+## Carried forward (Brandon, 2026-06-21; verified 2026-06-22) — mobile as its own surface, deferred
+
+The wider frame this swipe idea sits inside: **mobile should be its own surface, not just a responsive squeeze of the desktop one.** Desktop-first; mobile = its own shapes — quick-add, simplified views, and *not* every desktop tool (no papers/songs editing on a phone), likely its own Build section. Explicitly **deferred** — post-1.0, after the 1.0 sprint converges.
+
+**Known pain now (Brandon, from real phone use):** default fonts too small + low contrast on mobile. Partly addressed already — a configurable **prose text-size setting** shipped (commit `bcbf10d`, "Reduce mobile canvas margins and add prose text size setting") plus mobile kanban long-press drag and assorted mobile-row tweaks. But that's incremental responsive polish, not a dedicated mobile surface.
+
+**Verified state on main (2026-06-22):** there is **no** mobile-specific surface/route/Build section — the app is purely responsive via Tailwind `sm:` breakpoints, with `NavShell` rendering the floating bottom pill on mobile (`sm:hidden`) and the configurable layouts at `sm+`. A `mobileSlots` prop lets the bottom bar hold a different slot set, but it's the same component, not a distinct surface. The swipe-nav idea above is unbuilt (no `touchstart` nav handler).
+
+This is a roadmap/scope stance more than a single feature: when mobile is picked up, decide whether it's a parallel surface (its own nav model, simplified views, mobile-only Build) or continued responsive refinement. Lean: continued refinement through 1.0; a dedicated surface is a post-1.0 effort.
