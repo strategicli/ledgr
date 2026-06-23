@@ -115,7 +115,7 @@ A fresh session re-grounded a stale-branch handoff against current `origin/main`
 - [ ] **Inbox grouped/sorted by arrival source** (small, standalone). Group the Inbox by how an item arrived (quick-capture vs create-on-miss `unmarked`) with a per-source indicator. **Prerequisite:** arrival source isn't recorded today (quick-capture and create-on-miss write no `source`); add a capture-source marker first, then group. Inbox is currently a flat oldest-first queue.
 - [ ] **Mind map / spatial canvas** (post-v1, parked). Obsidian-Canvas-style freeform draggable markdown cards; any item placeable. Brandon: "probably a whole separate product." Sits in slight tension with markdown-canonical (a spatial layer outside the body). Park; relates to `canvas-drag-and-drop.md`.
 
-**Proposed CLAUDE.md working conventions** (Brandon's repeated norms from the call; verified absent from CLAUDE.md — *proposed; Tyler peek + flag*):
+**CLAUDE.md working conventions — ✅ ADOPTED (2026-06-23).** Brandon's repeated norms from the call, now live in CLAUDE.md → Working conventions (Tyler heads-up in COLLAB to peek + flag):
 - **"Scope the UI when you build something big."** A significant feature must be understandable to the other builder without a walkthrough, even if tucked behind *More*; don't leave unexplained bespoke controls (the cautionary case: an unlabeled event-canvas control).
 - **"Defer by hiding, not deleting/commenting."** Over-built / not-ready features get hidden (scoped to a default), not ripped out.
 - (Mobile-as-its-own-surface is captured as a roadmap stance in `explorations/mobile-swipe-navigation.md`, not a coding convention.)
