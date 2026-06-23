@@ -35,3 +35,11 @@ A genuinely customizable dashboard:
 
 - One dashboard or several (per context: a "Sunday" board, a "weekly review" board)? (If several, the merge-into-home picks a default.)
 - Widget config UI: inline on the card (like Notion) vs a separate edit mode?
+
+## Carried forward (Brandon, 2026-06-21; verified 2026-06-22) — universal, host-scoped placeable widgets
+
+A refinement on top of the now-shipped multi-dashboard build (ADR-064/065): **make a widget droppable onto any item or type canvas, scoped to its host.** Use case Brandon named: stop hand-building per-person query blocks on meeting notes — drop one standard "open tasks related to the people on this item" widget and it scopes itself per item. Pair it with **per-type default widget layouts** so a type comes with a sensible arrangement out of the box (not Notion-style homework).
+
+**Verified state on main:** the two building blocks exist but are not wired together. (1) Dashboard widgets are dashboard-only (`WIDGET_KINDS = view|stat|action|text`, `src/lib/dashboard-widgets.ts`); a *dashboard* can carry a `focusItemId` that `applyFocus()` merges as `relatedTo` into every widget — the host-scoping seed, but bound to a dashboard, not an item canvas. (2) The item canvas (`src/lib/canvas-layout.ts`, ADR-069) arranges a closed set of field-level cards (`title`/`body`/`related`/`prop:*`/`rel:*`/…) — there is **no `view`/`query`/`widget` card kind**. (3) The event task-pull (`src/lib/events/task-pull.ts`, ADR-094) is exactly "tasks related to the people on this item" via a `@people` sentinel — but it's a bespoke `event`-only card, not a generalized placeable widget. (4) Per-type layouts are *generated* (`defaultLayout`), not curated/shipped per type.
+
+The build is therefore: add a `view`/`query` card kind to the canvas vocabulary + a host-scoping mechanism on it (auto-bind `relatedTo: <this item>`, generalizing the proven `@people` / dashboard `applyFocus` patterns). This is the same convergence `flexible-surfaces.md` §2 describes (interactive embeds on any surface) and `flexible-surfaces.md`'s recommendation holds: build one block/layout engine shared with the dashboard, don't fork. Post-1.0.

@@ -23,3 +23,16 @@ When a task accumulates subtasks, it's often really a *project*. Ledgr could not
 - Automatic (has children → styled as project) vs explicit (user promotes)? Automatic is zero-friction but surprising; explicit matches "AI on purpose" culture.
 - Does a project deserve its own list page / nav slot, or is it a filter on /tasks?
 - Relationship to the Build surface: is "project" just the first workflow template (§4.14)?
+
+## Carried forward (Brandon, 2026-06-21; verified 2026-06-22) — the layer *above* a project ("initiative" / "arc" / "season")
+
+Distinct from the `project` *type* that now exists on main (Tyler's Tasks redesign: a `project` type with workflow statuses + repo/liveURL/stack props). Brandon wants the **layer above** a project: a multi-month, **no-due-date** container, only 2-3 active at once, a place to "keep tabs on everything related." He came full circle to: it's essentially **"a tag that is a type — a really specific dashboard you make."**
+
+**Resolution he reached:** make it a **TYPE that's built-in-by-default but hideable/renamable** (because a type item has a markdown body + can host scoped widgets), **not** a dashboard-only thing. He also wants a **"duplicate type" button** so a user can clone `tag`/`initiative` and rename it.
+
+**Verified state on main (2026-06-22):** every primitive this needs already exists, so this is *largely expressible today* — what's missing is the convenience wrapper and one shipped seed:
+- Hideable type (ADR-059, `/api/types/[key]/hidden`), renamable label (ADR-068, `/api/types/[key]/rename`, key immutable), markdown body (default canvas), the universal Related panel ("gathers everything related"), and dashboard focus (`focusItemId`, ADR-065) — all present. A type needs no due date and isn't required to.
+- **"Duplicate type" — NOT BUILT.** No clone-type route/UI (`/api/types` is GET/POST; `[key]` is GET/PATCH/DELETE). Notably *views* already have a `DuplicateViewButton` — the pattern exists, just not extended to types.
+- The "scoped widgets on a type/item canvas" half is the `dashboard-widgets.md` "host-scoped placeable widgets" refinement (also not built).
+
+So the honest build is small: (a) a **duplicate-type** button/API (mirror `DuplicateViewButton`), optionally (b) a seeded-but-hideable `initiative` type, and it inherits the host-scoped-widgets work when that lands. Before building a bespoke `initiative` type, confirm the existing `project` type + a focused dashboard + relations don't already deliver it (Brandon's own "came full circle" suggests they nearly do). Post-1.0.
