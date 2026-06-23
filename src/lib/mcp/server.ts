@@ -3,7 +3,7 @@
 // orchestration over the protocol envelope (protocol.ts) and the tool registry
 // (tools.ts) — the route owns transport (auth, headers, status codes), this
 // owns the MCP semantics. The method set is the stable core: initialize,
-// tools/list, tools/call, and ping.
+// tools/list, tools/call, resources/list, resources/read, and ping.
 import {
   JSONRPC,
   classifyMessage,
@@ -14,6 +14,7 @@ import {
   type JsonRpcResponse,
 } from "@/lib/mcp/protocol";
 import { callTool, listToolDefs } from "@/lib/mcp/tools";
+import { GUIDE_RESOURCE, readGuideResource } from "@/lib/mcp/guide";
 
 // Free-form version string for clients to display; tracks the PRD epoch
 // (v0.18, the Markdown epoch), not the package.json build number.
@@ -40,6 +41,14 @@ export const INSTRUCTIONS = [
   "filtering. A typical flow for \"what's open with Roger\": search_items for the",
   "Roger person, then list_items with that relatedTo, type=task, status=open.",
   "",
+  "You can also SHAPE the workspace, not just its content: call describe_workspace",
+  "for a snapshot of the types, views, dashboards, and navigation, then",
+  "create_type/update_type, create_view/update_view, create_dashboard/add_widget,",
+  "and update_nav to build what the owner asks for in plain language (\"make me a",
+  "place to track sermons\", \"set up my main toolbar\"). Read the",
+  "workspace-shaping-guide resource first, and confirm a config change with the",
+  "owner before committing it.",
+  "",
   "All data belongs to the single owner of this Ledgr; you only ever see and",
   "modify their items.",
 ].join("\n");
@@ -64,8 +73,12 @@ export async function handleMcpMessage(
       const params = (req.params ?? {}) as Record<string, unknown>;
       return rpcResult(id, {
         protocolVersion: negotiateProtocolVersion(params.protocolVersion),
-        // We offer tools only; listChanged false since the set is static.
-        capabilities: { tools: { listChanged: false } },
+        // tools + resources; listChanged false since both sets are static (no
+        // subscribe — the guide doesn't change per connection).
+        capabilities: {
+          tools: { listChanged: false },
+          resources: { listChanged: false },
+        },
         serverInfo: SERVER_INFO,
         instructions: INSTRUCTIONS,
       });
@@ -73,6 +86,27 @@ export async function handleMcpMessage(
 
     case "tools/list":
       return rpcResult(id, { tools: listToolDefs() });
+
+    case "resources/list":
+      // One stable resource: the workspace-shaping orientation guide (guide.ts).
+      return rpcResult(id, { resources: [GUIDE_RESOURCE] });
+
+    case "resources/templates/list":
+      // No templated resources; answer the optional probe cleanly rather than
+      // method-not-found so clients that call it don't log an error.
+      return rpcResult(id, { resourceTemplates: [] });
+
+    case "resources/read": {
+      const params = (req.params ?? {}) as Record<string, unknown>;
+      if (typeof params.uri !== "string") {
+        return rpcError(id, JSONRPC.INVALID_PARAMS, "resources/read requires a string 'uri'");
+      }
+      const contents = readGuideResource(params.uri);
+      if (!contents) {
+        return rpcError(id, JSONRPC.INVALID_PARAMS, `unknown resource '${params.uri}'`);
+      }
+      return rpcResult(id, { contents: [contents] });
+    }
 
     case "tools/call": {
       const params = (req.params ?? {}) as Record<string, unknown>;

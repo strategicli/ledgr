@@ -28,20 +28,51 @@ import {
   listTemplates,
   templateAskLabels,
 } from "@/lib/templates";
-import { listTypes } from "@/lib/types";
+import {
+  createType,
+  listTypes,
+  parseTypeInput,
+  updateType,
+  type TypeDefinition,
+} from "@/lib/types";
 import {
   DATE_PROPERTIES,
   DUE_WINDOWS,
   SORT_FIELDS,
+  VIEW_LAYOUTS,
+  createView,
   getView,
   listViews,
+  parseViewInput,
   queryViewItems,
+  updateView,
   type DateProperty,
   type DueWindow,
   type SortField,
+  type ViewDefinition,
   type ViewFilter,
   type ViewSort,
 } from "@/lib/views";
+import {
+  WIDGET_KINDS,
+  addWidget,
+  createDashboard,
+  listDashboards,
+  parseDashboardInput,
+  parseWidget,
+  type Dashboard,
+} from "@/lib/dashboards";
+import {
+  NAV_DENSITIES,
+  NAV_POSITIONS,
+  RAIL_ANCHORS,
+  RAIL_SIZES,
+  getSettings,
+  updateSettings,
+  type NavSlotConfig,
+  type UserSettings,
+} from "@/lib/settings";
+import { BUILD_NAV } from "@/lib/build-nav";
 import { captureError } from "@/lib/log";
 
 // --- wire types -----------------------------------------------------------
@@ -206,6 +237,104 @@ function buildWriteRaw(
     raw.body = makeMarkdownBody(args.bodyMarkdown);
   }
   return raw;
+}
+
+// --- config summaries (describe_workspace + the shaping tools' returns) ----
+// Body-free, index-backed config reads (rule 8). typeView/viewView echo the
+// list_types/list_views shapes so a create/update tool confirms what it set;
+// dashView/navView are compact summaries (describe_workspace's snapshot).
+
+// One type with its full property detail — the list_types per-type shape, reused
+// so create_type/update_type echo the stored schema back.
+function typeView(t: TypeDefinition) {
+  return {
+    key: t.key,
+    label: t.label,
+    icon: t.icon,
+    isSystem: t.isSystem,
+    hidden: t.hidden,
+    showInQuickCapture: t.showInQuickCapture,
+    ...(t.capability ? { capability: t.capability } : {}),
+    properties: t.propertySchema.map((p) => ({
+      key: p.key,
+      label: p.label,
+      kind: p.kind,
+      ...(p.options ? { options: p.options } : {}),
+      ...(p.targetType != null ? { targetType: p.targetType } : {}),
+      ...(p.cardinality ? { cardinality: p.cardinality } : {}),
+    })),
+  };
+}
+
+// One view's definition — the list_views shape plus columns/dateProperty, so
+// create_view/update_view echo the full stored view.
+function viewView(v: ViewDefinition) {
+  return {
+    id: v.id,
+    name: v.name,
+    isSystem: v.isSystem,
+    layout: v.layout,
+    filter: v.filter,
+    sort: v.sort,
+    grouping: v.grouping,
+    columns: v.columns,
+    dateProperty: v.dateProperty,
+  };
+}
+
+// A widget's human label without resolving its backing view (no extra query,
+// rule 8): the override/label/heading its settings carry, else null.
+function widgetLabel(settings: unknown): string | null {
+  const s = (settings ?? {}) as { titleOverride?: unknown; label?: unknown; heading?: unknown };
+  for (const v of [s.titleOverride, s.label, s.heading]) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+// One dashboard with a compact widget list (kind + backing viewId + label). The
+// model cross-refs viewId against the views list rather than us fanning out a
+// per-widget view query.
+function dashView(d: Dashboard) {
+  return {
+    id: d.id,
+    name: d.name,
+    focusItemId: d.focusItemId,
+    widgetCount: d.widgets.length,
+    widgets: d.widgets.map((w) => ({
+      id: w.id,
+      kind: w.kind,
+      viewId: w.viewId,
+      label: widgetLabel(w.settings),
+    })),
+  };
+}
+
+// A nav slot, compactly: a destination's route, or a tools group's children.
+function slotView(slot: NavSlotConfig) {
+  if (slot.type === "tools") {
+    return {
+      type: "tools" as const,
+      label: slot.label,
+      children: slot.children.map((c) => ({ label: c.label, href: c.href, kind: c.kind })),
+    };
+  }
+  return { type: "destination" as const, label: slot.label, href: slot.href, kind: slot.kind };
+}
+
+// The navigation shape describe_workspace + update_nav report: the layout knobs,
+// the assigned home/today dashboards, and the configurable middle slots.
+function navView(s: UserSettings) {
+  return {
+    position: s.navPosition,
+    railSize: s.railSize,
+    density: s.navDensity,
+    railAnchor: s.railAnchor,
+    homeDashboardId: s.homeDashboardId,
+    todayDashboardId: s.todayDashboardId,
+    slots: s.navSlots.map(slotView),
+    mobileSlots: s.mobileNavSlots ? s.mobileNavSlots.map(slotView) : null,
+  };
 }
 
 // --- the tools ------------------------------------------------------------
@@ -635,6 +764,323 @@ const TOOLS: McpTool[] = [
       }
       const created = await createItemFromTemplate(ownerId, id, { answers });
       return rowView(created);
+    },
+  },
+
+  // --- workspace shaping (ADR-102): config-level writes + the read-before-write
+  // snapshot. Each is a thin wrapper over the same owner-scoped parse*+create*/
+  // update* libs the Build REST routes use, so safety lives in the parsers (the
+  // model literally can't persist an illegal config) and the surface can't drift
+  // from the app's own contract. These create/update only — there is no config
+  // delete tool; destruction stays in the Build UI.
+  {
+    name: "describe_workspace",
+    title: "Describe workspace",
+    description:
+      "Read-before-write orientation: a compact snapshot of the owner's whole " +
+      "workspace so you can shape it correctly. Returns the types (key, label, " +
+      "property count), saved views (id, name, layout), dashboards (id, name, and " +
+      "a short widget list), the navigation (layout knobs + the configurable " +
+      "slots + the assigned home/today dashboards), and the catalog of Build " +
+      "tools a nav slot can point at. These are summaries — call list_types for a " +
+      "type's full property schema, or list_views for a view's full filter/sort. " +
+      "Call this first, then create_type / create_view / create_dashboard / " +
+      "add_widget / update_nav to make changes. Read the 'workspace-shaping-guide' " +
+      "resource for how the pieces fit together.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    handler: async (ownerId) => {
+      const [typeDefs, viewDefs, dashboardDefs, settings] = await Promise.all([
+        listTypes({ includeHidden: true }),
+        listViews(ownerId),
+        listDashboards(ownerId),
+        getSettings(ownerId),
+      ]);
+      return {
+        types: typeDefs.map((t) => ({
+          key: t.key,
+          label: t.label,
+          isSystem: t.isSystem,
+          hidden: t.hidden,
+          propertyCount: t.propertySchema.length,
+          ...(t.capability ? { capability: t.capability } : {}),
+        })),
+        views: viewDefs.map((v) => ({
+          id: v.id,
+          name: v.name,
+          isSystem: v.isSystem,
+          layout: v.layout,
+        })),
+        dashboards: dashboardDefs.map(dashView),
+        nav: navView(settings),
+        // The hardcoded Build sidebar (build-nav.ts) — the destinations a Work
+        // nav slot can point at (a "Clean" button → Data Hygiene, etc.).
+        buildTools: BUILD_NAV.flatMap((g) =>
+          g.entries.map((e) => ({ group: g.label, label: e.label, href: e.href }))
+        ),
+      };
+    },
+  },
+  {
+    name: "create_type",
+    title: "Create type",
+    description:
+      "Create a new item type (a kind of item with its own custom properties) — " +
+      "the 'make me a place to track X' move. `key` is a lowercase slug, " +
+      "immutable once created; `label` is the display name. `propertySchema` is " +
+      "the type's fields: each { key, label, kind } where kind is text | number | " +
+      "date | checkbox | url | select | multi_select (these need an `options` " +
+      "string array) | relation (a typed link — set `targetType` to the type key " +
+      "it links to, or omit for any, plus `cardinality` single|many). Example: a " +
+      "'sermon' type with a `series` select, a `date`, and a `passage` relation. " +
+      "Call describe_workspace/list_types first to avoid duplicating an existing " +
+      "type, and confirm the shape with the owner before creating.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Lowercase slug, immutable (letters, digits, _; starts with a letter). E.g. 'sermon'." },
+        label: { type: "string", description: "Display name. E.g. 'Sermon'." },
+        icon: { type: "string", description: "Optional icon key." },
+        propertySchema: {
+          type: "array",
+          description: "The type's custom fields (see the description for the per-field shape). Omit for none.",
+          items: { type: "object" },
+        },
+        showInQuickCapture: { type: "boolean", description: "Show this type in the quick-capture picker (default true)." },
+        capability: { type: "string", description: "Optional bespoke-tool capability id (advanced; omit for the default markdown canvas)." },
+      },
+      required: ["key", "label"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (_ownerId, args) => {
+      const created = await createType(parseTypeInput(args, "create"));
+      return typeView(created);
+    },
+  },
+  {
+    name: "update_type",
+    title: "Update type",
+    description:
+      "Edit an existing type by key. This REPLACES the type's editable fields " +
+      "(label, icon, propertySchema, showInQuickCapture, capability) wholesale, " +
+      "so to add one property you must resend the FULL propertySchema — read the " +
+      "current one (list_types/describe_workspace) and append your addition, or " +
+      "you'll drop the rest. The key is immutable and can't change here. System " +
+      "types (task, event, note, link, person) can be edited but not deleted. " +
+      "Confirm with the owner before changing a type that's in use.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "The type's key (slug) to edit." },
+        label: { type: "string", description: "Display name (required — resend the current one if unchanged)." },
+        icon: { type: "string", description: "Optional icon key." },
+        propertySchema: {
+          type: "array",
+          description: "The FULL property list to store (replaces the existing one). See create_type for the per-field shape.",
+          items: { type: "object" },
+        },
+        showInQuickCapture: { type: "boolean", description: "Show in the quick-capture picker." },
+        capability: { type: "string", description: "Bespoke-tool capability id, or omit/empty for the default canvas." },
+      },
+      required: ["key", "label"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async (_ownerId, args) => {
+      const key = reqString(args, "key").toLowerCase();
+      const updated = await updateType(key, parseTypeInput(args, "patch"));
+      return typeView(updated);
+    },
+  },
+  {
+    name: "create_view",
+    title: "Create view",
+    description:
+      "Create a saved view — a named, filtered, sorted list the owner reaches by " +
+      "name. `layout` is list | table | board | calendar | agenda. `filter` " +
+      "scopes the items: { type, status, due (overdue|today|week|none), " +
+      "dateField, withinDays, relatedTo (an item id), propertyFilters: " +
+      "[{key, value}] }. Optional `sort` { field, dir }, `grouping` ({ field } or " +
+      "{ propertyKey } for a board), `columns`, and `dateProperty` (which date a " +
+      "calendar/agenda places items on). Example: \"This week's tasks\" = " +
+      "{ name, layout:'list', filter:{ type:'task', due:'week' } }. Use run_view " +
+      "afterward to confirm what it returns.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Display name. E.g. \"This week's tasks\"." },
+        layout: { type: "string", enum: [...VIEW_LAYOUTS], description: "list | table | board | calendar | agenda." },
+        filter: { type: "object", description: "Item filter (see description). Omit for an unscoped list." },
+        sort: { type: "object", description: "{ field, dir } — field one of dueDate|scheduledDate|meetingAt|updatedAt|createdAt|title; dir asc|desc." },
+        grouping: { type: "object", description: "Board/agenda grouping: { field: status|urgency|type|due|scheduled } or { propertyKey } for a custom select." },
+        columns: { type: "array", description: "Ordered columns for list/table (advanced). Omit for the layout defaults.", items: { type: "object" } },
+        dateProperty: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date a calendar/agenda places items on (default dueDate; meetingAt for events)." },
+      },
+      required: ["name", "layout"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const created = await createView(ownerId, parseViewInput(args));
+      return viewView(created);
+    },
+  },
+  {
+    name: "update_view",
+    title: "Update view",
+    description:
+      "Edit a saved view by id. REPLACES the view's definition wholesale (name, " +
+      "layout, filter, sort, grouping, columns, dateProperty), so read the " +
+      "current one via list_views first and resend the full shape with your " +
+      "changes. System views can't be edited. See create_view for the field " +
+      "shapes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The view id (UUID), from list_views/describe_workspace." },
+        name: { type: "string", description: "Display name (resend the current one if unchanged)." },
+        layout: { type: "string", enum: [...VIEW_LAYOUTS], description: "list | table | board | calendar | agenda." },
+        filter: { type: "object", description: "Item filter (see create_view)." },
+        sort: { type: "object", description: "{ field, dir } (see create_view)." },
+        grouping: { type: "object", description: "Board/agenda grouping (see create_view)." },
+        columns: { type: "array", description: "Ordered columns for list/table.", items: { type: "object" } },
+        dateProperty: { type: "string", enum: [...DATE_PROPERTIES], description: "Calendar/agenda date field." },
+      },
+      required: ["id", "name", "layout"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const id = asUuid(args.id, "id");
+      const updated = await updateView(ownerId, id, parseViewInput(args));
+      return viewView(updated);
+    },
+  },
+  {
+    name: "create_dashboard",
+    title: "Create dashboard",
+    description:
+      "Create a dashboard — a named grid of widgets surfaced on Work. Optionally " +
+      "pass `widgets` inline, or create it empty and add_widget afterward. A " +
+      "`focusItemId` scopes every view widget to items related to that item (a " +
+      "person/project dashboard). Widget shape: { kind, viewId?, settings?, " +
+      "layout? } — see add_widget. Because view/stat widgets reference a saved " +
+      "view, create the view first (create_view) and pass its id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Display name. E.g. 'Sermon prep'." },
+        focusItemId: { type: "string", description: "Optional item id (UUID): scope every view widget to items related to it." },
+        widgets: { type: "array", description: "Optional inline widgets (see add_widget for the shape). Malformed widgets are dropped.", items: { type: "object" } },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const created = await createDashboard(ownerId, parseDashboardInput(args));
+      return dashView(created);
+    },
+  },
+  {
+    name: "add_widget",
+    title: "Add dashboard widget",
+    description:
+      "Append a widget to a dashboard. `kind` is view (a live list from a saved " +
+      "view — needs viewId), stat (a single count from a view — needs viewId), " +
+      "action (a button — settings.action quick-capture|new-from-template|link), " +
+      "or text (a heading/note — settings.heading/body). `settings` carries the " +
+      "per-kind options (a view widget's titleOverride/renderStyle; an action's " +
+      "label/targetType/href). Omit `layout` to let the widget auto-place on the " +
+      "grid. Create the backing view (create_view) before adding a view/stat " +
+      "widget.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dashboardId: { type: "string", description: "The dashboard id (UUID), from describe_workspace." },
+        kind: { type: "string", enum: [...WIDGET_KINDS], description: "view | stat | action | text." },
+        viewId: { type: "string", description: "The backing saved view id (UUID) — required for kind view/stat." },
+        settings: { type: "object", description: "Per-kind display settings (see description)." },
+        layout: { type: "object", description: "Optional grid placement per breakpoint; omit to auto-place." },
+      },
+      required: ["dashboardId", "kind"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const dashboardId = asUuid(args.dashboardId, "dashboardId");
+      const widget = parseWidget({
+        kind: args.kind,
+        viewId: args.viewId,
+        settings: args.settings,
+        layout: args.layout,
+      });
+      if (!widget) {
+        throw new ItemError(
+          "bad_request",
+          "invalid widget: check kind, and that a view/stat widget has a real viewId"
+        );
+      }
+      const updated = await addWidget(ownerId, dashboardId, widget);
+      return dashView(updated);
+    },
+  },
+  {
+    name: "update_nav",
+    title: "Update navigation",
+    description:
+      "Shape the Work navigation — the owner's main toolbar. Set `navSlots` (the " +
+      "configurable middle slots; a locked Home/New/More are added " +
+      "automatically) and/or the layout knobs `position` (top|bottom|left|right), " +
+      "`railSize` (fat|thin|hidden), `density` (spread|compact), `railAnchor` " +
+      "(top|bottom|center). A slot is either { type:'destination', kind, href, " +
+      "label, icon } (kind builtin|view|type|dashboard; href like /tasks, " +
+      "/views/<id>, /list/<key>) or { type:'tools', label, icon, " +
+      "children:[destinations] }. `mobileNavSlots` is a separate phone list (null " +
+      "mirrors desktop). Read the current nav via describe_workspace first, keep " +
+      "it to ~4–5 slots, and confirm with the owner. Only the fields you pass " +
+      "change; passing navSlots replaces the whole middle-slot list.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        navSlots: { type: "array", description: "The full ordered middle-slot list (replaces the current one). See the description for the slot shape.", items: { type: "object" } },
+        mobileNavSlots: { type: "array", description: "A distinct phone slot list, or null to mirror desktop.", items: { type: "object" } },
+        position: { type: "string", enum: [...NAV_POSITIONS], description: "Nav position: top | bottom | left | right." },
+        railSize: { type: "string", enum: [...RAIL_SIZES], description: "Side-rail width: fat | thin | hidden." },
+        density: { type: "string", enum: [...NAV_DENSITIES], description: "Packing: spread | compact." },
+        railAnchor: { type: "string", enum: [...RAIL_ANCHORS], description: "Cluster anchor for a compact rail/top bar: top | bottom | center." },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const patch: Partial<UserSettings> = {};
+      if (args.navSlots !== undefined) {
+        if (!Array.isArray(args.navSlots)) {
+          throw new ItemError("bad_request", "navSlots must be an array");
+        }
+        patch.navSlots = args.navSlots as NavSlotConfig[];
+      }
+      if (args.mobileNavSlots !== undefined) {
+        if (args.mobileNavSlots !== null && !Array.isArray(args.mobileNavSlots)) {
+          throw new ItemError("bad_request", "mobileNavSlots must be an array or null");
+        }
+        patch.mobileNavSlots = args.mobileNavSlots as NavSlotConfig[] | null;
+      }
+      const position = optEnum(args, "position", NAV_POSITIONS);
+      if (position) patch.navPosition = position;
+      const railSize = optEnum(args, "railSize", RAIL_SIZES);
+      if (railSize) patch.railSize = railSize;
+      const density = optEnum(args, "density", NAV_DENSITIES);
+      if (density) patch.navDensity = density;
+      const railAnchor = optEnum(args, "railAnchor", RAIL_ANCHORS);
+      if (railAnchor) patch.railAnchor = railAnchor;
+      if (Object.keys(patch).length === 0) {
+        throw new ItemError("bad_request", "pass at least one nav field to change");
+      }
+      const settings = await updateSettings(ownerId, patch);
+      return navView(settings);
     },
   },
 ];
