@@ -16,7 +16,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, users, views: viewsTable, templates: templatesTable } = await import("../src/db/schema");
+const { items, users, views: viewsTable, templates: templatesTable, types: typesTable, dashboards: dashboardsTable } = await import("../src/db/schema");
 const { eq } = await import("drizzle-orm");
 const protocol = await import("../src/lib/mcp/protocol");
 const { handleMcpMessage } = await import("../src/lib/mcp/server");
@@ -60,6 +60,7 @@ const initRes = await handleMcpMessage(
 const initResult = resultOf(initRes);
 check("initialize negotiates the client's version", initResult.protocolVersion === "2025-06-18");
 check("initialize advertises tools capability", !!(initResult.capabilities as { tools?: unknown })?.tools);
+check("initialize advertises resources capability", !!(initResult.capabilities as { resources?: unknown })?.resources);
 check("initialize serverInfo.name = ledgr", (initResult.serverInfo as { name?: string })?.name === "ledgr");
 check("initialize includes instructions", typeof initResult.instructions === "string" && (initResult.instructions as string).length > 0);
 
@@ -69,15 +70,18 @@ const EXPECTED = [
   "search_items", "list_items", "get_item", "create_item", "update_item",
   "list_types", "relate_items", "unrelate_items", "list_views", "run_view",
   "list_templates", "apply_template",
+  // workspace shaping (ADR-102)
+  "describe_workspace", "create_type", "update_type", "create_view",
+  "update_view", "create_dashboard", "add_widget", "update_nav",
 ];
 check(
-  "tools/list returns all twelve tools",
+  "tools/list returns all twenty tools",
   EXPECTED.every((n) => toolList.some((t) => t.name === n)) && toolList.length === EXPECTED.length
 );
 check("every tool has an object inputSchema", toolList.every((t) => t.inputSchema?.type === "object" && !!t.inputSchema.properties));
 check("every tool has a non-empty description", toolList.every((t) => typeof t.description === "string" && t.description.length > 0));
-check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
-check("write tools are not readOnly", ["create_item", "update_item", "relate_items", "unrelate_items", "apply_template"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
+check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates", "describe_workspace"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
+check("write tools are not readOnly", ["create_item", "update_item", "relate_items", "unrelate_items", "apply_template", "create_type", "update_type", "create_view", "update_view", "create_dashboard", "add_widget", "update_nav"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
 check("listToolDefs strips the handler", listToolDefs().every((d) => !("handler" in (d as Record<string, unknown>))));
 
 const pingRes = await handleMcpMessage({ jsonrpc: "2.0", id: 3, method: "ping" }, DUMMY);
@@ -89,6 +93,19 @@ check("notification -> null (route sends 202)", notifRes === null);
 const invalidRes = await handleMcpMessage({}, DUMMY);
 check("invalid message -> -32600", errorOf(invalidRes)?.code === -32600);
 
+// --- resources (ADR-102): the workspace-shaping orientation guide -----------
+const GUIDE_URI = "ledgr://guide/workspace-shaping";
+const resListRes = await handleMcpMessage({ jsonrpc: "2.0", id: 30, method: "resources/list" }, DUMMY);
+const resList = (resultOf(resListRes).resources ?? []) as { uri: string; name: string; mimeType?: string }[];
+check("resources/list returns the one shaping guide", resList.length === 1 && resList[0].uri === GUIDE_URI && resList[0].mimeType === "text/markdown");
+const resReadRes = await handleMcpMessage({ jsonrpc: "2.0", id: 31, method: "resources/read", params: { uri: GUIDE_URI } }, DUMMY);
+const resContents = (resultOf(resReadRes).contents ?? []) as { uri: string; text: string }[];
+check("resources/read returns the guide markdown", resContents[0]?.uri === GUIDE_URI && resContents[0].text.includes("Shaping a Ledgr workspace"));
+const resBadRes = await handleMcpMessage({ jsonrpc: "2.0", id: 32, method: "resources/read", params: { uri: "ledgr://nope" } }, DUMMY);
+check("resources/read unknown uri -> -32602", errorOf(resBadRes)?.code === -32602);
+const resTmplRes = await handleMcpMessage({ jsonrpc: "2.0", id: 33, method: "resources/templates/list" }, DUMMY);
+check("resources/templates/list returns an empty list", Array.isArray((resultOf(resTmplRes) as { resourceTemplates?: unknown }).resourceTemplates));
+
 // --- tools/call against live Neon -----------------------------------------
 type Json = Record<string, unknown>;
 const db = getDb();
@@ -97,6 +114,9 @@ const [owner] = await db.insert(users).values({ email: `verify-mcp-${stamp}@exam
 const [owner2] = await db.insert(users).values({ email: `verify-mcp2-${stamp}@example.invalid` }).returning({ id: users.id });
 const ownerId = owner.id;
 const owner2Id = owner2.id;
+// A unique, slug-valid type key for the shaping tools. Types are instance-global
+// (no owner_id), so this is cleaned up by key in finally, not by owner.
+const shapeTypeKey = `vmcptype${stamp}`;
 
 async function callJson(o: string, name: string, args: Json): Promise<Json> {
   const r = await callTool(o, name, args);
@@ -236,6 +256,93 @@ try {
   const taskList = await callJson(ownerId, "list_items", { type: "task" });
   check("list_items excludes the template prototype", !itemsOf(taskList).some((i) => i.id === template.prototypeItemId));
 
+  // --- workspace shaping (ADR-102): config-level write tools ---------------
+
+  // create_type — the "make me a place to track X" move.
+  const createdType = await callJson(ownerId, "create_type", {
+    key: shapeTypeKey,
+    label: "MCP Shape Type",
+    propertySchema: [{ key: "stage", label: "Stage", kind: "select", options: ["a", "b"] }],
+  });
+  check("create_type returns the new type with its property", createdType.key === shapeTypeKey && (createdType.properties as Json[]).length === 1);
+
+  // describe_workspace — the read-before-write snapshot.
+  const desc = await callJson(ownerId, "describe_workspace", {});
+  check("describe_workspace returns types/views/dashboards/nav", Array.isArray(desc.types) && Array.isArray(desc.views) && Array.isArray(desc.dashboards) && !!desc.nav);
+  check("describe_workspace includes the system types", ["task", "event", "note", "link", "person"].every((k) => (desc.types as Json[]).some((t) => t.key === k)));
+  check("describe_workspace summarizes the new type (propertyCount, no full schema)", (desc.types as Json[]).some((t) => t.key === shapeTypeKey && t.propertyCount === 1 && !("properties" in t)));
+  check("describe_workspace carries the Build-tool catalog", Array.isArray(desc.buildTools) && (desc.buildTools as Json[]).length > 0 && (desc.buildTools as Json[]).every((b) => typeof b.href === "string"));
+  check("describe_workspace nav reports the slots + layout", Array.isArray((desc.nav as Json).slots) && typeof (desc.nav as Json).position === "string");
+
+  // update_type — full-replace the schema with one property added.
+  const updatedType = await callJson(ownerId, "update_type", {
+    key: shapeTypeKey,
+    label: "MCP Shape Type",
+    propertySchema: [
+      { key: "stage", label: "Stage", kind: "select", options: ["a", "b"] },
+      { key: "owner_name", label: "Owner", kind: "text" },
+    ],
+  });
+  check("update_type replaced the schema (now two properties)", (updatedType.properties as Json[]).length === 2);
+
+  // create_view over the new type, then update_view to a grouped board.
+  const createdView = await callJson(ownerId, "create_view", {
+    name: `Shape view ${stamp}`,
+    layout: "list",
+    filter: { type: shapeTypeKey },
+    sort: { field: "updatedAt", dir: "desc" },
+  });
+  check("create_view returns a view id + layout", typeof createdView.id === "string" && createdView.layout === "list");
+  const updatedView = await callJson(ownerId, "update_view", {
+    id: createdView.id as string,
+    name: `Shape view ${stamp} (board)`,
+    layout: "board",
+    filter: { type: shapeTypeKey },
+    grouping: { propertyKey: "stage" },
+  });
+  check("update_view replaced layout + name", updatedView.layout === "board" && (updatedView.name as string).includes("board"));
+  const viewsAfter = await callJson(ownerId, "list_views", {});
+  check("list_views shows the shaped view", (viewsAfter.views as Json[]).some((v) => v.id === createdView.id));
+
+  // create_dashboard + add_widget (a view widget backed by the new view).
+  const createdDash = await callJson(ownerId, "create_dashboard", { name: `Shape dash ${stamp}` });
+  check("create_dashboard returns an id with no widgets", typeof createdDash.id === "string" && createdDash.widgetCount === 0);
+  const withWidget = await callJson(ownerId, "add_widget", {
+    dashboardId: createdDash.id as string,
+    kind: "view",
+    viewId: createdView.id as string,
+  });
+  check("add_widget appended a view widget backed by the view", withWidget.widgetCount === 1 && (withWidget.widgets as Json[])[0].viewId === createdView.id);
+  const descAfter = await callJson(ownerId, "describe_workspace", {});
+  check("describe_workspace reports the dashboard + its widget", (descAfter.dashboards as Json[]).some((d) => d.id === createdDash.id && d.widgetCount === 1));
+  await expectErr("add_widget rejects a view widget with no viewId", ownerId, "add_widget", { dashboardId: createdDash.id as string, kind: "view" });
+
+  // update_nav — set the middle slots + a layout knob, read them back.
+  const navOut = await callJson(ownerId, "update_nav", {
+    navSlots: [
+      { type: "destination", kind: "view", href: `/views/${createdView.id}`, label: "Sermons", icon: "views" },
+      { type: "destination", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks" },
+    ],
+    position: "left",
+  });
+  check("update_nav set the position", navOut.position === "left");
+  check("update_nav stored the two slots in order", (navOut.slots as Json[]).length === 2 && (navOut.slots as Json[])[0].href === `/views/${createdView.id}`);
+  await expectErr("update_nav with no fields errors", ownerId, "update_nav", {});
+  await expectErr("update_nav rejects a non-array navSlots", ownerId, "update_nav", { navSlots: "nope" });
+
+  // create_type validation (safety lives in the parsers).
+  await expectErr("create_type rejects a duplicate key", ownerId, "create_type", { key: shapeTypeKey, label: "Dup" });
+  await expectErr("create_type rejects an unknown property kind", ownerId, "create_type", { key: `vmcpbad${stamp}`, label: "Bad", propertySchema: [{ key: "x", label: "X", kind: "frobnicate" }] });
+  await expectErr("create_type rejects a bad key slug", ownerId, "create_type", { key: "Bad-Key!", label: "Bad" });
+  await expectErr("update_type on a missing type errors", ownerId, "update_type", { key: `vmcpmissing${stamp}`, label: "Nope" });
+
+  // owner scoping holds for the shaping write tools (views/dashboards/nav are
+  // owner-scoped; types are instance-global by design).
+  await expectErr("owner2 cannot update_view owner1's view", owner2Id, "update_view", { id: createdView.id as string, name: "x", layout: "list" });
+  await expectErr("owner2 cannot add_widget to owner1's dashboard", owner2Id, "add_widget", { dashboardId: createdDash.id as string, kind: "text" });
+  const desc2 = await callJson(owner2Id, "describe_workspace", {});
+  check("describe_workspace is owner-scoped for views + dashboards", !(desc2.views as Json[]).some((v) => v.id === createdView.id) && !(desc2.dashboards as Json[]).some((d) => d.id === createdDash.id));
+
   // owner scoping holds for the new tools too.
   await expectErr("owner2 cannot run_view owner1's view", owner2Id, "run_view", { id: view.id });
   await expectErr("owner2 cannot relate owner1's items", owner2Id, "relate_items", { sourceId: note.id as string, targetId: entity.id as string });
@@ -256,8 +363,12 @@ try {
 } finally {
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(items).where(eq(items.ownerId, owner2Id));
+  await db.delete(dashboardsTable).where(eq(dashboardsTable.ownerId, ownerId));
+  await db.delete(dashboardsTable).where(eq(dashboardsTable.ownerId, owner2Id));
   await db.delete(viewsTable).where(eq(viewsTable.ownerId, ownerId));
   await db.delete(templatesTable).where(eq(templatesTable.ownerId, ownerId));
+  // Types are instance-global (no owner_id) — clean up the shaping test type by key.
+  await db.delete(typesTable).where(eq(typesTable.key, shapeTypeKey));
   await db.delete(users).where(eq(users.id, ownerId));
   await db.delete(users).where(eq(users.id, owner2Id));
 }
