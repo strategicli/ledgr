@@ -1,13 +1,18 @@
-// Notes list (PRD §4.2): a simple recency-ordered list. Notes have no hot
-// fields beyond the shared set, so there's no filter bar until the view
-// builder (Phase 2) brings property filters.
+// Notes list (PRD §4.2): a recency-ordered list, now carrying the customizable
+// tab strip ("list lenses") every type's list shows — sort lenses order this
+// plain list; a view ("widget") lens renders its saved view via ViewRenderer.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import ListLenses from "@/components/lists/ListLenses";
 import ListPage from "@/components/lists/ListPage";
+import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
+import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
+import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE } from "@/lib/today";
+import { resolveViewLens } from "@/lib/view-render";
 import { queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -18,20 +23,45 @@ const dateFmt = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIMEZONE,
 });
 
-export default async function Notes() {
+export default async function Notes({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const notes = await queryViewItems(owner.id, { type: "note" });
+  const sp = await searchParams;
+  const settings = await getSettings(owner.id);
+  const lenses = lensesForType(settings, "note");
+  const active = selectLens(lenses, typeof sp.lens === "string" ? sp.lens : undefined);
+  const reversed = sp.rev === "1";
+
+  const viewData =
+    active.kind === "view" ? await resolveViewLens(owner.id, active.viewId, "note") : null;
+  const notes = viewData
+    ? []
+    : await queryViewItems(owner.id, { type: "note" }, resolveLensSort(active, reversed) ?? undefined);
+  const count = viewData ? viewData.count : notes.length;
 
   return (
     <ListPage
       tab="notes"
       title="Notes"
-      subtitle={`${notes.length} note${notes.length === 1 ? "" : "s"}`}
+      subtitle={`${count} note${count === 1 ? "" : "s"}`}
       actions={<NewItemButton type="note" />}
     >
-      {notes.length > 0 ? (
+      <ListLenses
+        lenses={lenses}
+        activeId={active.id}
+        reversed={reversed}
+        basePath="/notes"
+        params={sp}
+        editHref="/build/types/note/edit"
+      />
+      {viewData ? (
+        <ViewLensBody data={viewData} />
+      ) : notes.length > 0 ? (
         <ul className="mt-4">
           {notes.map((note) => (
             <li
