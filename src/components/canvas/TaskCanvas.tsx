@@ -4,24 +4,22 @@
 // and its relation fields (Project, Tags) + custom scalars. Composes the same
 // proven panels the default canvas uses, just laid out as two panes. Registered
 // for the `task` type via the canvas seam (ADR-041); falls back gracefully.
-import type { ReactNode } from "react";
 import Link from "next/link";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
-import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import Subtasks from "@/components/subtasks/Subtasks";
-import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import TaskTitle from "@/components/canvas/TaskTitle";
 import RelationProperties from "@/components/relations/RelationProperties";
 import CustomProperties from "@/components/build/CustomProperties";
-import RecurrenceControl from "@/components/canvas/RecurrenceControl";
-import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
-import ReminderControl from "@/components/canvas/ReminderControl";
-import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
+import SchedulePopover from "@/components/canvas/rail/SchedulePopover";
+import DueRow from "@/components/canvas/rail/DueRow";
+import PriorityRow from "@/components/canvas/rail/PriorityRow";
+import StatusRow from "@/components/canvas/rail/StatusRow";
+import { RAIL_ROW, RAIL_STATIC } from "@/components/canvas/rail/styles";
 import FocusStar from "@/components/today/FocusStar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
-import { topStripFields } from "@/lib/canvas-fields";
 import { getType } from "@/lib/types";
 import { getItem } from "@/lib/items";
 import { resolveStatusSchema } from "@/lib/status";
@@ -40,30 +38,15 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
   // back to checkbox. 'select' keeps status in the field strip (the dropdown);
   // 'checkbox' renders a done-checkbox section instead; 'none' shows no status.
   const statusMode = typeDef?.statusMode ?? "checkbox";
-  const stripFields =
-    statusMode === "select"
-      ? topStripFields("task")
-      : topStripFields("task").filter((f) => f !== "status");
   const statusDone = item.statusCategory === "done";
-  const statusLabel =
-    statuses.find((s) => s.key === item.status)?.label ?? item.status;
   const today = appTodayYmd();
   const props = (item.properties as Record<string, unknown>) ?? {};
 
-  const strip: StripValues = {
-    status: item.status,
-    dueDate: item.dueDate?.toISOString() ?? null,
-    scheduledDate: item.scheduledDate?.toISOString() ?? null,
-    urgency: item.urgency,
-    meetingAt: item.meetingAt?.toISOString() ?? null,
-    url: item.url,
-  };
   const recurrenceRule = parseRecurrence(props.recurrence);
   const reminderObj = props.reminder as Record<string, unknown> | undefined;
   const reminderMinutes =
     typeof reminderObj?.minutesBefore === "number" ? reminderObj.minutesBefore : null;
   const scheduledTime = parseScheduledTime(item.properties);
-  const hasSchedule = item.scheduledDate != null || recurrenceRule != null;
 
   const relationFields = propertySchema.filter((p) => p.kind === "relation");
   const scalarFields = propertySchema.filter((p) => p.kind !== "relation");
@@ -72,20 +55,6 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
   const parent = item.parentId ? await getItem(ownerId, item.parentId).catch(() => null) : null;
   const parentLink =
     parent && !parent.deletedAt ? { href: `/items/${parent.id}`, title: parent.title || "Untitled" } : null;
-
-  // One right-rail section: an optional label over its control, separated from
-  // the section above by a hairline divider (the first section has none). Gives
-  // the Todoist-style "label · value, divider, label · value" rhythm.
-  const section = (label: string | null, content: ReactNode): ReactNode => (
-    <div className="border-t border-neutral-800/60 py-3 first:border-t-0 first:pt-0">
-      {label && (
-        <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          {label}
-        </div>
-      )}
-      {content}
-    </div>
-  );
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 md:px-10">
@@ -101,7 +70,12 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Left: title · description · subtasks */}
         <div className="min-w-0">
-          <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="title" />
+          <TaskTitle
+            item={{ id: item.id, title: item.title, body: item.body }}
+            done={statusDone}
+            priority={item.urgency}
+            showCircle={statusMode === "checkbox"}
+          />
           <div className="mt-3">
             <ItemEditor
               item={{ id: item.id, title: item.title, body: item.body }}
@@ -115,64 +89,59 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
           </div>
         </div>
 
-        {/* Right rail: the task's details, as clean labeled+divided sections. */}
+        {/* Right rail: the task's details as a clean divided list of rows. The
+            heavy editors (date · time · repeat · reminder) collapse behind the
+            single Schedule row's popover (ADR-108); everything stays one tap
+            away but out of sight until needed. */}
         <aside className="flex flex-col lg:border-l lg:border-neutral-800 lg:pl-6">
-          {/* Status: a done-checkbox in checkbox mode (the task default); the
-              dropdown stays in the strip for 'select' mode; nothing for 'none'. */}
-          {statusMode === "checkbox" &&
-            section(
-              "Status",
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <SubtaskCheckbox id={item.id} done={statusDone} />
-                <span className={statusDone ? "text-neutral-400" : ""}>
-                  {statusLabel}
-                </span>
-              </label>
-            )}
-          {/* Scheduled · Due · Priority (and Status too, in 'select' mode). */}
-          <FieldStrip
-            itemId={item.id}
-            fields={stripFields}
-            initial={strip}
-            today={today}
-            statuses={statuses}
-            layout="rail"
-          />
-          {relationFields.length > 0 &&
-            section(
-              null,
-              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} bare />
-            )}
-          {section(
-            "Repeat",
-            <RecurrenceControl
-              itemId={item.id}
-              initial={recurrenceRule}
-              scheduledDate={item.scheduledDate?.toISOString() ?? null}
-              dueDate={item.dueDate?.toISOString() ?? null}
-              today={today}
-              bare
-            />
-          )}
-          {recurrenceRule &&
-            recurrenceRule.occurrenceMode === "virtual" &&
-            section(null, <RecurrenceCalendar itemId={item.id} initial={recurrenceRule} today={today} />)}
-          {section(
-            "Reminders & focus",
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-500">
-              <span className="flex items-center gap-1.5">
-                <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
-                Focus today
-              </span>
-              <ScheduledTimeControl itemId={item.id} initial={scheduledTime} hasSchedule={hasSchedule} />
-              <ReminderControl itemId={item.id} initialMinutes={reminderMinutes} />
+          {/* Status: the completion circle now lives next to the title in
+              checkbox mode (TaskTitle), so the rail only carries a status row
+              for multi-status 'select' types; 'none' shows nothing (ADR-106/108). */}
+          {statusMode === "select" && (
+            <div className={RAIL_ROW}>
+              <StatusRow itemId={item.id} statuses={statuses} initial={item.status} />
             </div>
           )}
-          {scalarFields.length > 0 &&
-            section(
-              null,
+
+          {/* Schedule: scheduled date + time-of-day + repeat + reminder, tucked
+              into one popover. */}
+          <div className={RAIL_ROW}>
+            <SchedulePopover
+              itemId={item.id}
+              today={today}
+              scheduled={item.scheduledDate?.toISOString() ?? null}
+              due={item.dueDate?.toISOString() ?? null}
+              recurrence={recurrenceRule}
+              scheduledTime={scheduledTime}
+              reminderMinutes={reminderMinutes}
+            />
+          </div>
+          <div className={RAIL_ROW}>
+            <DueRow itemId={item.id} initial={item.dueDate?.toISOString() ?? null} today={today} />
+          </div>
+          <div className={RAIL_ROW}>
+            <PriorityRow itemId={item.id} initial={item.urgency} />
+          </div>
+
+          {relationFields.length > 0 && (
+            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} bare />
+            </div>
+          )}
+          {scalarFields.length > 0 && (
+            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
               <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} bare />
-            )}
+            </div>
+          )}
+
+          {/* Focus today: a one-tap star, kept in plain sight (not behind a
+              popover) since it's a frequent daily action. */}
+          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+            <span className="flex items-center gap-2 text-sm text-neutral-300">
+              <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
+              Focus today
+            </span>
+          </div>
         </aside>
       </div>
 
