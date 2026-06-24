@@ -151,6 +151,15 @@ export const types = pgTable("types", {
   // inherit the system default (To Do / Done / Archived). The user adds/colors
   // statuses here; each maps to a fixed category the plumbing keys off.
   statusSchema: jsonb("status_schema"),
+  // Per-type status DISPLAY MODE (ADR-106): 'none' | 'checkbox' | 'select', the
+  // user's choice on Build → Types for how this type presents completion. text
+  // (not an enum) so adding a mode never needs a migration, matching items.status.
+  // null = resolve by src/lib/status.ts resolveStatusMode ('none', or 'select'
+  // when a custom status_schema is present). This is ONLY presentation — the
+  // category plumbing (status_category) is unchanged and stays the source of
+  // truth for "is it done". See the StatusMode block in src/lib/status.ts before
+  // touching this; do NOT collapse status into a boolean to "simplify" it.
+  statusMode: text("status_mode"),
   // Whether this type appears in the quick-capture type dropdown (PRD §4.4,
   // exploration type-and-kind-ux §2). Default true keeps the five core types
   // capturable; the builder toggles it so a "data only" custom type can stay
@@ -215,7 +224,7 @@ export const items = pgTable(
     // queries (Today, the default filter, recurrence) and the done-checkbox key
     // off an indexed enum, never the label. Kept in sync with `status` on every
     // write (items.ts); re-synced for affected items when a type's schema
-    // recategorizes a status (types.ts setTypeStatusSchema).
+    // recategorizes a status (types.ts setTypeStatusConfig).
     statusCategory: statusCategory("status_category").notNull().default("not_started"),
     dueDate: timestamp("due_date", { withTimezone: true }),
     // The concrete date the task is planned for (native tasks, ADR-073/076),

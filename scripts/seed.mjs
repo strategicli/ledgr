@@ -85,14 +85,22 @@ await sql`
 // props). Statuses seed from Tyler's Todoist buckets (configurable). Mirrors
 // drizzle/0031_project_type.sql for fresh databases.
 await sql`
-  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_schema, property_schema)
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, property_schema)
   VALUES (
-    'project', 'Project', 'folder', false, true, false,
+    'project', 'Project', 'folder', false, true, false, 'select',
     '[{"key":"ongoing","label":"Ongoing","category":"not_started","color":"#d97706","isDefault":true},{"key":"waiting","label":"Waiting for Others","category":"not_started","color":"#64748b"},{"key":"paused","label":"Paused","category":"not_started","color":"#6b7280"},{"key":"future","label":"Future","category":"not_started","color":"#475569"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
     '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb
   )
   ON CONFLICT (key) DO NOTHING
 `;
+
+// Per-type status DISPLAY MODE (ADR-106), idempotent + mirrors migration 0032.
+// Status is opt-in: rows left NULL resolve to 'none' (no status affordance) via
+// resolveStatusMode. `task` is the binary done/undone default; any type with a
+// custom status_schema (project + user types) is 'select' so it keeps its
+// statuses. WHERE status_mode IS NULL so a later user choice is never clobbered.
+await sql`UPDATE types SET status_mode = 'checkbox' WHERE key = 'task' AND status_mode IS NULL`;
+await sql`UPDATE types SET status_mode = 'select' WHERE status_schema IS NOT NULL AND status_mode IS NULL`;
 
 // A built-in `project` relation field on `task` (targetType=project, single).
 await sql`

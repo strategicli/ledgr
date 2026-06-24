@@ -18,10 +18,13 @@ import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { parseCanvasLayout, type CanvasLayout } from "@/lib/canvas-layout";
 import {
+  isStatusMode,
   parseStatusSchema,
+  resolveStatusMode,
   resolveStatusSchema,
   validateStatusSchema,
   type StatusDef,
+  type StatusMode,
 } from "@/lib/status";
 import { ItemError } from "@/lib/items";
 import { capabilityById } from "@/lib/modules";
@@ -84,6 +87,11 @@ export type TypeDefinition = {
   // default (To Do / Done / Archived). Parsed tolerantly on read — a malformed
   // value reads as null (inherit), mirroring how a bad property_schema → [].
   statusSchema: StatusDef[] | null;
+  // How this type presents completion (ADR-106): 'none' | 'checkbox' | 'select'.
+  // Resolved (never null) — an unset row resolves via resolveStatusMode. Drives
+  // the canvas control, the view-builder status filter/group/column, and list
+  // chips/checkboxes. Presentation only; status_category stays the plumbing.
+  statusMode: StatusMode;
   showInQuickCapture: boolean;
   // SPIKE (bespoke-tool catalog): the attached module-capability id, or null.
   // The registry (modules.ts) resolves this type's canvas/format/exporters from
@@ -286,13 +294,17 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
   } catch {
     propertySchema = [];
   }
+  const statusSchema = parseStatusSchema(row.statusSchema);
   return {
     key: row.key,
     label: row.label,
     icon: row.icon,
     isSystem: row.isSystem,
     propertySchema,
-    statusSchema: parseStatusSchema(row.statusSchema),
+    statusSchema,
+    // A custom schema with an unset mode resolves to 'select' (never hide a
+    // multi-status type's own statuses); otherwise unset resolves to 'none'.
+    statusMode: resolveStatusMode(row.statusMode, statusSchema != null),
     showInQuickCapture: row.showInQuickCapture,
     capability: row.capability,
     hidden: row.hidden,
@@ -470,25 +482,45 @@ export async function setTypeCanvasLayout(
   return rowToDefinition(rows[0]);
 }
 
-// Save (or reset) a type's configurable statuses (Tasks Polish S2, ADR-082).
-// A focused setter like setTypeCanvasLayout — the ClickUp-style editor PATCHes
-// just this, never the whole-definition builder, so it can't clobber a schema
-// edit. A null schema resets to the inherited system default. On save we re-sync
-// every item of this type's denormalized status_category to the new schema (a
-// recategorized status must re-bucket existing rows, or the hot queries would
-// read a stale category). status keys are validated slugs and categories are
-// enum values, so the dynamic CASE is built from bound params.
-export async function setTypeStatusSchema(
+// Save a type's status configuration — its display MODE (ADR-106) and, in
+// 'select' mode, its configurable statuses (Tasks Polish S2, ADR-082). A focused
+// setter like setTypeCanvasLayout: the editor PATCHes just this, never the
+// whole-definition builder, so it can't clobber a schema edit.
+//
+// DEFER-BY-HIDING: the stored status_schema is only written in 'select' mode (the
+// only mode that edits it). Switching to 'checkbox'/'none' sets the mode and
+// leaves the schema untouched, so flipping back to 'select' restores the user's
+// statuses verbatim. The category re-sync (re-bucketing items so the hot queries
+// never read a stale denormalized status_category) only runs when the schema is
+// (re)written. status keys are validated slugs and categories are enum values, so
+// the dynamic CASE is built from bound params.
+export async function setTypeStatusConfig(
   key: string,
+  rawMode: unknown,
   rawSchema: unknown
 ): Promise<TypeDefinition> {
   await getType(key); // existence (throws not_found)
+  if (!isStatusMode(rawMode)) {
+    bad("status mode must be 'none', 'checkbox', or 'select'");
+  }
+  const mode = rawMode;
+
+  // none / checkbox: set the mode, preserve the schema (no write, no re-sync).
+  if (mode !== "select") {
+    const rows = await getDb()
+      .update(types)
+      .set({ statusMode: mode })
+      .where(eq(types.key, key))
+      .returning();
+    return rowToDefinition(rows[0]);
+  }
+
+  // select: set the mode AND write the schema (null = inherit the default).
   const value: StatusDef[] | null =
     rawSchema == null ? null : validateStatusSchema(rawSchema, (m) => bad(m));
-
   const rows = await getDb()
     .update(types)
-    .set({ statusSchema: value })
+    .set({ statusMode: mode, statusSchema: value })
     .where(eq(types.key, key))
     .returning();
 

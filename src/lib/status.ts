@@ -82,6 +82,58 @@ export const SYSTEM_DEFAULT_STATUSES: StatusDef[] = [
   { key: "archived", label: "Archived", category: "archived", color: "#6b7280", isDefault: true },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-type status DISPLAY MODE (ADR-106). ORTHOGONAL to the categories above:
+// categories are the completion *plumbing* (every hot query, the done-checkbox,
+// and recurrence-complete key off them); the mode is only how a type *presents*
+// that plumbing. Three modes:
+//
+//   - "none"     — the type has no completion concept (person, link, most notes).
+//                  No status control on the canvas, no status filter/group/column
+//                  in the view builder, no chip/checkbox in lists. The row still
+//                  carries the harmless status/status_category defaults in the DB;
+//                  "none" only hides the affordance (defer-by-hiding).
+//   - "checkbox" — a binary done / not-done checkbox (the default for `task`).
+//                  Checking completes to the 'done' category default via the same
+//                  toggleItemDone the row/subtask checkboxes use; unchecking
+//                  returns to the 'not_started' default. Any extra statuses in the
+//                  resolved schema simply aren't surfaced.
+//   - "select"   — the full multi-status dropdown / colored kanban (e.g. project:
+//                  Ongoing / Waiting for Others / Paused / Future / Done).
+//
+// WHY a mode and NOT a boolean `done` column — DO NOT "simplify" this back to one
+// (ADR-106, building on ADR-082): the done/undone the user sees in checkbox mode
+// is ALREADY the category plumbing — `status_category === 'done'` IS the boolean.
+// Collapsing status to a real boolean would delete the category abstraction that
+// (a) lets a recurring task advance instead of "completing", (b) backs the
+// `archived` / `in_progress` buckets and the planned archive axis, (c) lets
+// `project` (and any type) keep genuine multi-status, and (d) keeps the
+// machine/MCP status contract (a text key + a category) stable. The mode is the
+// cheap, reversible presentation choice; the category is the load-bearing model.
+// Switching a type to checkbox/none NEVER rewrites its stored status_schema, so
+// flipping back to "select" restores the user's statuses untouched.
+export const STATUS_MODES = ["none", "checkbox", "select"] as const;
+export type StatusMode = (typeof STATUS_MODES)[number];
+
+export function isStatusMode(v: unknown): v is StatusMode {
+  return typeof v === "string" && (STATUS_MODES as readonly string[]).includes(v);
+}
+
+// Read-tolerant resolve of a type's stored status_mode (types.status_mode).
+// Status is opt-in: an unset/unknown mode resolves to "none" so a brand-new type
+// shows no status noise until the user enables it — UNLESS the type already
+// defines custom statuses, where it resolves to "select" so a multi-status type
+// can never accidentally hide its own statuses. System types are seeded
+// explicitly (task=checkbox, project=select, the rest=none); this default only
+// governs hand-edited or freshly-created rows.
+export function resolveStatusMode(
+  raw: unknown,
+  hasCustomSchema = false
+): StatusMode {
+  if (isStatusMode(raw)) return raw;
+  return hasCustomSchema ? "select" : "none";
+}
+
 // Slug shape shared with type/property keys (types.ts SLUG_RE): a stable JS-safe
 // identifier, lowercased so "Done" and "done" can't both exist.
 const STATUS_KEY_RE = /^[a-z][a-z0-9_]*$/;

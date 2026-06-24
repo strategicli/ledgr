@@ -9,6 +9,7 @@ import Link from "next/link";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import Subtasks from "@/components/subtasks/Subtasks";
+import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import RelationProperties from "@/components/relations/RelationProperties";
 import CustomProperties from "@/components/build/CustomProperties";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
@@ -35,6 +36,17 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
   const typeDef = await getType("task").catch(() => null);
   const propertySchema = typeDef?.propertySchema ?? [];
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
+  // Display mode (ADR-106): task seeds 'checkbox', so a missing typeDef falls
+  // back to checkbox. 'select' keeps status in the field strip (the dropdown);
+  // 'checkbox' renders a done-checkbox section instead; 'none' shows no status.
+  const statusMode = typeDef?.statusMode ?? "checkbox";
+  const stripFields =
+    statusMode === "select"
+      ? topStripFields("task")
+      : topStripFields("task").filter((f) => f !== "status");
+  const statusDone = item.statusCategory === "done";
+  const statusLabel =
+    statuses.find((s) => s.key === item.status)?.label ?? item.status;
   const today = appTodayYmd();
   const props = (item.properties as Record<string, unknown>) ?? {};
 
@@ -105,10 +117,22 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
 
         {/* Right rail: the task's details, as clean labeled+divided sections. */}
         <aside className="flex flex-col lg:border-l lg:border-neutral-800 lg:pl-6">
-          {/* Status · Scheduled · Due · Priority — each its own labeled section. */}
+          {/* Status: a done-checkbox in checkbox mode (the task default); the
+              dropdown stays in the strip for 'select' mode; nothing for 'none'. */}
+          {statusMode === "checkbox" &&
+            section(
+              "Status",
+              <label className="flex items-center gap-2 text-sm text-neutral-200">
+                <SubtaskCheckbox id={item.id} done={statusDone} />
+                <span className={statusDone ? "text-neutral-400" : ""}>
+                  {statusLabel}
+                </span>
+              </label>
+            )}
+          {/* Scheduled · Due · Priority (and Status too, in 'select' mode). */}
           <FieldStrip
             itemId={item.id}
-            fields={topStripFields("task")}
+            fields={stripFields}
             initial={strip}
             today={today}
             statuses={statuses}

@@ -4,12 +4,14 @@
 // Safe to delete once the slice is closed.
 import {
   ACTIVE_CATEGORIES,
-  SYSTEM_DEFAULT_STATUSES,
+  STATUS_MODES,
   categoryOfStatus,
   defaultStatusKey,
   isDoneCategory,
+  isStatusMode,
   orderedStatuses,
   parseStatusSchema,
+  resolveStatusMode,
   resolveStatusSchema,
   validateStatusSchema,
   type StatusDef,
@@ -130,6 +132,19 @@ const validated = validateStatusSchema(
 );
 check("validate accepts a full valid set", validated.length === 4);
 check("validate normalizes one default per present category", validated.filter((s) => s.isDefault).length === 4);
+
+// --- status display mode (ADR-106) -----------------------------------------
+check("STATUS_MODES is none/checkbox/select", STATUS_MODES.join(",") === "none,checkbox,select");
+check("isStatusMode accepts a valid mode", isStatusMode("checkbox"));
+check("isStatusMode rejects junk", !isStatusMode("kanban") && !isStatusMode(3) && !isStatusMode(null));
+check("resolveMode passes a valid mode through", resolveStatusMode("select") === "select");
+check("resolveMode none stays none", resolveStatusMode("none") === "none");
+// Status is opt-in: unset/unknown → none, UNLESS the type defines custom
+// statuses (then select, so a multi-status type never hides its own statuses).
+check("resolveMode null (no schema) → none", resolveStatusMode(null) === "none");
+check("resolveMode null (custom schema) → select", resolveStatusMode(null, true) === "select");
+check("resolveMode junk (no schema) → none", resolveStatusMode("nope") === "none");
+check("resolveMode junk (custom schema) → select", resolveStatusMode("nope", true) === "select");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

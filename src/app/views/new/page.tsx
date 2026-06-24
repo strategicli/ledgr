@@ -35,6 +35,7 @@ export default async function NewView() {
             key: t.key,
             label: t.label,
             propertySchema: t.propertySchema,
+            statusMode: t.statusMode,
           }))}
         />
       </div>
