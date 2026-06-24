@@ -69,6 +69,11 @@ export type ItemEditorProps = {
   // cursor can't enter them, and the body's toolbar hides. The field strip and
   // properties are locked by their own hosts (FieldStrip / CustomProperties).
   locked?: boolean;
+  // Task title slot (ADR-108): when the task is complete, strike through + dim
+  // the title (the done treatment). Driven by the adjacent completion circle
+  // (TaskTitle); the decoration must sit on the textarea itself, since
+  // text-decoration doesn't cross a textarea's boundary from a parent.
+  done?: boolean;
 };
 
 export default function ItemEditor({
@@ -81,6 +86,7 @@ export default function ItemEditor({
   collapsibleToolbar = false,
   compactBody = false,
   locked = false,
+  done = false,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -198,9 +204,9 @@ export default function ItemEditor({
       // A locked item's title is read-only and can't be clicked into.
       readOnly={locked}
       tabIndex={locked ? -1 : undefined}
-      className={`w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight text-neutral-100 outline-none placeholder:text-neutral-600 ${
-        locked ? "pointer-events-none" : ""
-      }`}
+      className={`w-full resize-none overflow-hidden bg-transparent text-3xl font-bold leading-tight outline-none placeholder:text-neutral-600 ${
+        done ? "text-neutral-500 line-through decoration-2" : "text-neutral-100"
+      } ${locked ? "pointer-events-none" : ""}`}
       placeholder="Untitled"
       value={title}
       onChange={(e) => {
