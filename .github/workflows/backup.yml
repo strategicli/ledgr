@@ -1,10 +1,12 @@
 # Weekly pg_dump of the Neon DB (runbook §4) + the tested-restore proof.
 #
 # Two jobs:
-#   backup       — weekly cron + manual: pg_dump -Fc, stored as a workflow
-#                  artifact (60-day retention, private repo), plus a copy to
-#                  OneDrive /Ledgr/Backups/ when the Graph secrets exist
-#                  (they arrive with runbook §1b).
+#   backup       — weekly cron + manual: pg_dump -Fc, uploaded to OneDrive
+#                  /Ledgr/Backups/ (private). The repo is PUBLIC (ADR-101) and
+#                  GitHub artifacts on a public repo are downloadable by any
+#                  signed-in user, so the dump is NOT kept as an artifact —
+#                  OneDrive is the sole destination and a missing Graph secret
+#                  fails the run loudly (ADR-103).
 #   restore-test — manual only: dumps production, restores into a throwaway
 #                  Postgres container, and compares per-table row counts.
 #                  "An untested backup is a hope, not a backup."
@@ -65,15 +67,7 @@ jobs:
           # or HTML-error file must fail loudly here, not at restore time.
           head -c 5 "ledgr-$STAMP.dump" | grep -q "PGDMP"
 
-      - name: Store as workflow artifact (60-day retention)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ledgr-backup-${{ env.STAMP }}
-          path: ledgr-${{ env.STAMP }}.dump
-          retention-days: 60
-          if-no-files-found: error
-
-      - name: Copy to OneDrive /Ledgr/Backups (when Graph secrets exist)
+      - name: Copy to OneDrive /Ledgr/Backups (sole destination — no public artifact)
         env:
           GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
           GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
@@ -81,8 +75,8 @@ jobs:
           ONEDRIVE_EXPORT_UPN: ${{ secrets.ONEDRIVE_EXPORT_UPN }}
         run: |
           if [ -z "$GRAPH_TENANT_ID" ] || [ -z "$GRAPH_CLIENT_ID" ] || [ -z "$GRAPH_CLIENT_SECRET" ] || [ -z "$ONEDRIVE_EXPORT_UPN" ]; then
-            echo "::warning::Graph secrets not configured; backup stored as artifact only (runbook §1b adds the OneDrive leg)"
-            exit 0
+            echo "::error::Graph secrets not configured — OneDrive is the only backup destination (no public artifact, ADR-103), so the run fails rather than silently produce no backup. Set GRAPH_TENANT_ID/GRAPH_CLIENT_ID/GRAPH_CLIENT_SECRET/ONEDRIVE_EXPORT_UPN as Actions secrets (runbook §1b/§4)."
+            exit 1
           fi
           TOKEN=$(curl -fsS -X POST \
             "https://login.microsoftonline.com/$GRAPH_TENANT_ID/oauth2/v2.0/token" \
