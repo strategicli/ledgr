@@ -37,7 +37,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `LEDGR_API_TOKENS` | Scoped machine tokens (MCP/cron/webhooks): comma-separated `name:scope1+scope2:sha256hex` entries, hashes only | `node scripts/make-token.mjs <name> <scopes>` (§3) |
 | `CRON_SECRET` | Raw `cron`-scoped machine token; Vercel sends it as the Bearer token on scheduled cron requests (§2a) | same generator as `LEDGR_API_TOKENS`; production only |
 | `GITHUB_TOKEN` | PAT for the Changelog (reads commit history) + shared collab notes (commits a repo file). Without it the Changelog page shows "not connected". `repo` scope, or fine-grained Contents read+write | GitHub → Developer settings → PATs (§1g) |
-| `GITHUB_REPO` / `GITHUB_BRANCH` | `owner/repo` (default `brandonscollins/ledgr`) and the commit-history branch (default `main`) | fixed value, optional |
+| `GITHUB_REPO` / `GITHUB_BRANCH` | `owner/repo` (default `strategicli/ledgr`) and the commit-history branch (default `main`) | fixed value, optional |
 | `GITHUB_NOTES_BRANCH` / `GITHUB_NOTES_PATH` | branch + path for the shared notes file. Branch defaults to `GITHUB_BRANCH`; set to e.g. `collab-notes` (auto-created) so a note Save doesn't trigger a rebuild. Path defaults to `COLLAB_NOTES.md` | fixed value, optional |
 | `ASSEMBLYAI_API_KEY` | Enables audio→transcription on meetings (meeting recording v1b, ADR-088/089). Without it, transcripts are paste-only and the audio-upload control is hidden; `/health` `checks.transcription` is `none`. With it set, `none`→`assemblyai` and audio upload appears (§1i) | AssemblyAI dashboard, optional |
 | `TRANSCRIPTION_ADAPTER` | Selects the transcription adapter (default `assemblyai`); set to `none` to disable even with a key | fixed value, optional |
@@ -160,12 +160,12 @@ The MCP server (ADR-047) makes Claude a first-class client: from Claude desktop/
 5. **Revoke:** delete the `claude-mcp` entry from `LEDGR_API_TOKENS`, redeploy (same flow as any machine token, §3). Rotate on any suspicion of leak — a token is the only credential on this endpoint.
 
 ## 1g. Changelog + shared collab notes (one-time, per builder — ADR-053)
-> **✅ Completed 2026-06-20.** Fine-grained `GITHUB_TOKEN` (Contents R/W on `brandonscollins/ledgr`) set in Vercel; `/health` `checks.github` is `{ok:true}`.
+> **✅ Completed 2026-06-20.** Fine-grained `GITHUB_TOKEN` (Contents R/W on `strategicli/ledgr`) set in Vercel; `/health` `checks.github` is `{ok:true}`.
 
 The Changelog page (in the kebab "More" menu) reads the repo's commit history live, and a shared notes scratchpad beside it reads and commits a notes file in the repo. Git is the shared medium across the two separate deploys, so both builders see each other's pushes and notes. Until a token is set the page shows a "not connected" note; `/health` `checks.github` is the canary.
 
-1. **Issue a token:** GitHub → Settings → Developer settings → Personal access tokens. A classic token with `repo` scope, or a fine-grained token scoped to `brandonscollins/ledgr` with **Contents: Read and write** (read powers the changelog, write powers the notes commits).
-2. **Set env:** `GITHUB_TOKEN` in Vercel (and `.env.local`). `GITHUB_REPO` defaults to `brandonscollins/ledgr` and `GITHUB_BRANCH` to `main`; set them only if yours differ. Redeploy.
+1. **Issue a token:** GitHub → Settings → Developer settings → Personal access tokens. A classic token with `repo` scope, or a fine-grained token scoped to `strategicli/ledgr` with **Contents: Read and write** (read powers the changelog, write powers the notes commits).
+2. **Set env:** `GITHUB_TOKEN` in Vercel (and `.env.local`). `GITHUB_REPO` defaults to `strategicli/ledgr` and `GITHUB_BRANCH` to `main`; set them only if yours differ. Redeploy.
 3. **Avoid rebuild churn (optional):** every notes Save commits the notes file, and a commit to the deploy branch triggers a Vercel build. To keep note edits from redeploying, set `GITHUB_NOTES_BRANCH="collab-notes"` (auto-created from `GITHUB_BRANCH` on first write, not deployed). Default leaves notes on the deploy branch.
 4. **Verify:** `/health` `checks.github` reads `{configured:true, ok:true, repo:"…"}`. Open the Changelog from the kebab — recent commits list with file/line counts; the notes panel loads, Save commits, Clear empties.
 5. **Rotate/revoke:** delete or regenerate the PAT on GitHub and update `GITHUB_TOKEN`, redeploy (§3).

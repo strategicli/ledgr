@@ -27,7 +27,7 @@ export class GithubError extends Error {
 
 export type GithubConfig = {
   token: string;
-  // owner/repo, e.g. "brandonscollins/ledgr".
+  // owner/repo, e.g. "strategicli/ledgr".
   repo: string;
   // Branch whose commit history feeds the Changelog (the deploy branch).
   branch: string;
@@ -46,7 +46,7 @@ export type GithubConfig = {
 export function getGithubConfig(): GithubConfig | null {
   const token = process.env.GITHUB_TOKEN;
   if (!token) return null;
-  const repo = process.env.GITHUB_REPO || "brandonscollins/ledgr";
+  const repo = process.env.GITHUB_REPO || "strategicli/ledgr";
   const branch = process.env.GITHUB_BRANCH || "main";
   const notesBranch = process.env.GITHUB_NOTES_BRANCH || branch;
   const notesPath = process.env.GITHUB_NOTES_PATH || "COLLAB_NOTES.md";

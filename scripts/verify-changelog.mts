@@ -18,7 +18,7 @@ function check(label: string, cond: boolean) {
 // ── toChangelogEntry ──────────────────────────────────────────────────────────
 const listItem = {
   sha: "abcdef1234567890",
-  html_url: "https://github.com/brandonscollins/ledgr/commit/abcdef1234567890",
+  html_url: "https://github.com/strategicli/ledgr/commit/abcdef1234567890",
   commit: {
     message: "Add changelog page\n\nLonger body explaining the change.",
     author: { name: "Tyler Collins", date: "2026-06-14T15:30:00Z" },
@@ -73,7 +73,7 @@ delete process.env.GITHUB_NOTES_BRANCH;
 delete process.env.GITHUB_NOTES_PATH;
 const cfg = getGithubConfig();
 check("token set → config returned", cfg !== null);
-check("repo defaults to brandonscollins/ledgr", cfg?.repo === "brandonscollins/ledgr");
+check("repo defaults to strategicli/ledgr", cfg?.repo === "strategicli/ledgr");
 check("branch defaults to main", cfg?.branch === "main");
 check("notesBranch defaults to the deploy branch", cfg?.notesBranch === "main");
 check("notesPath defaults to COLLAB_NOTES.md", cfg?.notesPath === "COLLAB_NOTES.md");
