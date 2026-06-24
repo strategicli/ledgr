@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import type { StatusMode } from "@/lib/status";
 import type { PropertyDef } from "@/lib/types";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 
@@ -129,8 +130,14 @@ export default function ViewBuilder({
   // The full type registry (system + custom), so a view can filter to a
   // user-created type, not just the five system ones. propertySchema rides
   // along so a board can group by the type's select properties (a workflow's
-  // "Stage", slice 35).
-  types: { key: string; label: string; propertySchema?: PropertyDef[] }[];
+  // "Stage", slice 35); statusMode (ADR-106) decides whether the Status filter/
+  // group/column appear for this type at all.
+  types: {
+    key: string;
+    label: string;
+    propertySchema?: PropertyDef[];
+    statusMode?: StatusMode;
+  }[];
 }) {
   // A type's select/multi_select properties, as group-by options encoded
   // "prop:<key>" so they share the one Group-by control with the built-in
@@ -156,10 +163,21 @@ export default function ViewBuilder({
       .filter((p) => p.kind === "select" || p.kind === "multi_select")
       .map((p) => ({ key: p.key, label: p.label, options: p.options ?? [] }));
   }
+  // Whether the view's type surfaces status at all (ADR-106). A type whose mode
+  // is 'none' (person, link, a note) hides the Status filter, the status group
+  // option, and the status column — the same "offer a field only if the type has
+  // it" rule the dates/urgency already follow. "any" (no type → undefined mode)
+  // keeps status, since a mixed view may include types that use it.
+  const usesStatus = (typeKey: string) =>
+    types.find((t) => t.key === typeKey)?.statusMode !== "none";
+  // The type's built-in field columns, minus status when the type doesn't use it.
+  const fieldColumnsForView = (typeKey: string): ColumnField[] =>
+    fieldColumnsFor(typeKey).filter((k) => k !== "status" || usesStatus(typeKey));
   const validGroup = (typeKey: string, val: string | undefined): string => {
     if (!val) return "";
     const ok =
-      groupFieldsFor(typeKey).includes(val) ||
+      (groupFieldsFor(typeKey).includes(val) &&
+        (val !== "status" || usesStatus(typeKey))) ||
       groupPropsFor(typeKey).some((o) => o.value === val);
     return ok ? val : "";
   };
@@ -238,7 +256,9 @@ export default function ViewBuilder({
   const canGroup = layout === "board" || layout === "agenda";
   const dateFields = dateFieldsFor(type);
   const sortFields = sortFieldsFor(type);
-  const groupFields = groupFieldsFor(type);
+  const groupFields = groupFieldsFor(type).filter(
+    (f) => f !== "status" || usesStatus(type)
+  );
 
   // Selecting a type reconciles every field pick to what that type supports —
   // the "lists update based on what the view shows" rule.
@@ -250,9 +270,11 @@ export default function ViewBuilder({
     setSortField((v) => (sortFieldsFor(t).includes(v) ? v : "updatedAt"));
     setGroupField((v) => validGroup(t, v));
     if (!showsUrgency(t)) setUrgency("");
+    // Clear a status filter the new type can't use (ADR-106), mirroring urgency.
+    if (!usesStatus(t)) setStatusCategory("");
     // Drop any column the new type doesn't have (a stale field or a property
-    // key that isn't in the new type's schema).
-    const okFields = new Set<string>(fieldColumnsFor(t));
+    // key that isn't in the new type's schema, or status on a none-status type).
+    const okFields = new Set<string>(fieldColumnsForView(t));
     const okProps = new Set(propColumnsFor(t).map((p) => p.key));
     setColumns((cs) =>
       cs.filter((c) =>
@@ -276,7 +298,8 @@ export default function ViewBuilder({
     setBusy(true);
     const filter: Record<string, unknown> = {};
     if (type) filter.type = type;
-    if (statusCategory) filter.statusCategory = statusCategory;
+    // Don't persist a status filter on a type that doesn't use status (ADR-106).
+    if (statusCategory && usesStatus(type)) filter.statusCategory = statusCategory;
     if (urgency) filter.urgency = Number(urgency);
     if (relatedTo) filter.relatedTo = relatedTo;
     if (dateWindow) {
@@ -390,18 +413,20 @@ export default function ViewBuilder({
             ))}
           </select>
         </Field>
-        <Field label="Status">
-          <select
-            value={statusCategory}
-            onChange={(e) => setStatusCategory(e.target.value)}
-            className={selectClass}
-          >
-            <Opt value="" label="any" />
-            {STATUS_CATEGORY_OPTS.map((s) => (
-              <Opt key={s.value} value={s.value} label={s.label} />
-            ))}
-          </select>
-        </Field>
+        {usesStatus(type) && (
+          <Field label="Status">
+            <select
+              value={statusCategory}
+              onChange={(e) => setStatusCategory(e.target.value)}
+              className={selectClass}
+            >
+              <Opt value="" label="any" />
+              {STATUS_CATEGORY_OPTS.map((s) => (
+                <Opt key={s.value} value={s.value} label={s.label} />
+              ))}
+            </select>
+          </Field>
+        )}
         {showsUrgency(type) && (
           <Field label="Urgency">
             <select
@@ -523,7 +548,12 @@ export default function ViewBuilder({
             onChange={(e) => setGroupField(e.target.value)}
             className={selectClass}
           >
-            <Opt value="" label={layout === "board" ? "status (default)" : "none"} />
+            <Opt
+              value=""
+              label={
+                layout === "board" && usesStatus(type) ? "status (default)" : "none"
+              }
+            />
             {groupFields.map((g) => (
               <Opt key={g} value={g} label={GROUP_LABELS[g]} />
             ))}
@@ -544,7 +574,7 @@ export default function ViewBuilder({
             (status, urgency, date).
           </p>
           <div className="flex flex-col gap-1.5">
-            {fieldColumnsFor(type).map((key) => {
+            {fieldColumnsForView(type).map((key) => {
               const col: ViewColumn = { source: "field", key };
               return (
                 <label key={`field:${key}`} className="flex items-center gap-2 text-sm text-neutral-300">

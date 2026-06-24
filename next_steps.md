@@ -13,6 +13,23 @@ Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core*
 
 **🎉 Events & calendar matching chunk (E1–E4, ADR-094) COMPLETE** — meeting→event · ordinary `tag` type + `tags` field · calendar feed (pull-on-add, matched auto-promote) · configurable task-pull. All four merged (PRs #51–#54) + live on Vercel; Brandon's "Calendar events + meeting task-matching" 1.0 goal is done (`v1-goals.ts`). **Remaining:** one in-browser eyeball pass over the live experience (deferred per slice; strong automated coverage + clean builds in the meantime).
 
+## ⟢ Session summary — Per-type status display mode (2026-06-24, ADR-106, branch `per-type-status-mode`)
+
+**Tasks default to a done/undone checkbox; multi-status is opt-in per type; the view builder stops offering Status for types that don't use it.** CORE (a `types` column + the `task` default), but **additive** and a **presentation layer over the ADR-082 category plumbing** — no boolean redesign, no change to `items.status`/`status_category` or the MCP contract. Tyler agreed up front.
+- **The model:** new nullable **`types.status_mode`** = `none` | `checkbox` | `select`, resolved (never null) by `resolveStatusMode` (`src/lib/status.ts`). `status_category === 'done'` is still the one source of truth for "done"; the mode is only how a type *presents* it. `checkbox` reuses the recurrence-aware `toggleItemDone`/complete endpoint. **Defer-by-hiding:** switching to checkbox/none never rewrites the stored `status_schema`.
+- **Defaults (status is opt-in):** migration **0032** + `seed.mjs` backfill `task` → checkbox, any type with a custom `status_schema` (`project` + user types) → select, **everything else → none**. ⚠️ Inherited-status user types with no custom schema (`hiring_candidate`/`paper`/`song`) defaulted to **none** — set their mode in Build if they want status (flagged in COLLAB). **`event` = none** (its default canvas has no status field today; checkbox would need canvas wiring, deferred).
+- **Surfaces:** Build → Types "Completion tracking" three-way control (`StatusSchemaEditor`); the task canvas shows a done-checkbox (no select) in checkbox mode (`TaskCanvas`); the view builder gates the Status filter/group/column by the selected type's mode (`ViewBuilder`, the same rule already used for dates/urgency).
+- **Verify:** `scripts/verify-statuses.mts` **35/35** (incl. 10 new mode checks); `verify-types`/`verify-views` green; tsc/`next build`/eslint clean; migration applied to Neon + backfill confirmed; **in-browser on Neon (dev-auth):** Build control (Person→None, schema editor hidden), view-builder gating (Status absent for person/note, present for any/task/project), task checkbox toggles done (non-recurring open→done→open; recurring advances), `PATCH …/statuses` round-trips + rejects a bad mode.
+- **Deferred (in ADR-106):** thread `status_mode` through `ViewRenderer` so a `none`-type **table** view drops its default Status column (list/agenda/calendar already clean); a status control on the **default canvas** for non-task checkbox/select types; MCP `list_types` exposure of `status_mode`.
+
+## ⟢ NEXT SLICE — Archive axis (cross-cutting `items.archived_at`, own ADR)
+
+**Brandon's decision (2026-06-24):** archive is a *different axis* from done/undone — "hide from most surfaces (search, sort, lenses, automations) but keep it recoverable," and it applies to **every type**, not just tasks. Today "archived" is only a task *status category* and doesn't even hide from search (`search.ts` excludes only `deleted_at`). Build a first-class lifecycle flag parallel to soft-delete:
+- **`items.archived_at`** (hot column, partial index like inbox/`deleted_at`) → **excluded by default** from search, lists, lenses, automations; an `/archive` view + unarchive action. Active → Archived → Trash (30-day purge) as three tiers.
+- **Reconcile** the existing `archived` *status category* — lean toward folding it into the flag (categories become not_started/in_progress/done), decide in the ADR.
+- **Optional fast-follow:** deterministic auto-archive-after-N-days-done (cron, no model — Principle 3), opt-in per type/user.
+- CORE (new column + a new "exclude archived by default" query invariant) → both-agree + its own ADR before building.
+
 ## ⟢ Session summary — List lenses: per-type tab strip (2026-06-24, ADR-105, branch `list-lenses`)
 
 **Every type's list page now has a `/tasks`-style tab strip ("list lenses"), customizable in Build.** Non-core (per-instance config in `users.settings.listTabs`, the navSlots/favorites posture); no migration, no dependency. The one shared-file touch is additive sort modes in the view query builder (`views.ts`), flagged for Tyler in COLLAB; the `ViewSort`/MCP `create_view` contract is unchanged.

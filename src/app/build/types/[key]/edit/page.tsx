@@ -65,7 +65,11 @@ export default async function EditType({
           itemCount={itemCount}
           availableTypes={availableTypes}
         />
-        <StatusSchemaEditor typeKey={key} initial={type.statusSchema} />
+        <StatusSchemaEditor
+          typeKey={key}
+          initialMode={type.statusMode}
+          initial={type.statusSchema}
+        />
         <ListTabsEditor
           typeKey={key}
           propertyOptions={propertyOptions}
