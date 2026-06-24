@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -51,6 +52,26 @@ const ResponsiveGridLayout = WidthProvider(Responsive);
 function rowsForHeight(px: number): number {
   const marginY = GRID_MARGIN[1];
   return Math.max(1, Math.ceil((px + marginY) / (GRID_ROW_HEIGHT + marginY)));
+}
+
+// The breakpoint RGL is rendering, by the grid container's width — mirroring
+// RGL's own getBreakpointFromWidth (the largest breakpoint whose min-width is
+// below the width). We recompute this ourselves rather than rely on
+// onBreakpointChange, which fires ONLY on a change: when the grid mounts
+// straight into `md` (the item modal, ~768px) no change event fires, so a
+// hardcoded activeBp seed would stay "lg". The flow measurer would then write
+// every card's measured height to `lg` while `md` renders with its stale
+// placeholder heights — the body card keeps its 8-row box, its taller content
+// overflows it (flow cards don't clip), and the cards below collapse onto the
+// spillover. That is the "body runs into the properties section" overlap. Do
+// not revert this to onBreakpointChange-only.
+function bpForWidth(width: number): Breakpoint {
+  const ascending = [...BREAKPOINTS].sort(
+    (a, b) => GRID_BREAKPOINT_PX[a] - GRID_BREAKPOINT_PX[b]
+  );
+  let match = ascending[0];
+  for (const bp of ascending) if (width > GRID_BREAKPOINT_PX[bp]) match = bp;
+  return match;
 }
 
 function stripCell(c: Cell): Cell {
@@ -213,8 +234,18 @@ export default function ItemRglInner({
   // via a key (see the grid's `key` below): a fresh mount measures the already-
   // constrained container cleanly and picks the right breakpoint.
   // The breakpoint RGL is currently showing, so the flow measurer writes a card's
-  // height to the right breakpoint only (heights differ by width).
+  // height to the right breakpoint only (heights differ by width). Seeded "lg"
+  // but corrected to the real rendered breakpoint by a width measurement on mount
+  // (see the layout effect below), because RGL won't report a breakpoint it
+  // mounted directly into.
   const activeBp = useRef<Breakpoint>("lg");
+  // Each flow card's last measured row count, so a breakpoint flip can re-seat
+  // known heights onto the now-active breakpoint: a full-width card is the same
+  // width across breakpoints, so its ResizeObserver doesn't re-fire on the flip
+  // and the new breakpoint would otherwise keep its stale placeholder `h`.
+  const measuredRows = useRef<Record<CardId, number>>({});
+  // Wraps the grid so we can measure the rendered grid element's width.
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   const visibleIds = useMemo(
     () => order.filter((id) => nodes[id] != null && !cards[id]?.hidden),
@@ -295,6 +326,7 @@ export default function ItemRglInner({
   const handleRows = useCallback((id: CardId, rows: number) => {
     // Only the breakpoint currently on screen — a card's natural height differs by
     // width, so a measurement at md shouldn't overwrite lg's height.
+    measuredRows.current[id] = rows;
     const bp = activeBp.current;
     setCells((prev) => {
       let changed = false;
@@ -308,6 +340,47 @@ export default function ItemRglInner({
       return changed ? { ...prev, [bp]: mapped } : prev;
     });
   }, []);
+
+  // Re-seat every known measured height onto a breakpoint — run when the active
+  // breakpoint flips so a card whose width didn't change (so its ResizeObserver
+  // never re-fired) still gets its real height instead of the placeholder.
+  const applyMeasured = useCallback((bp: Breakpoint) => {
+    setCells((prev) => {
+      let changed = false;
+      const mapped = prev[bp].map((c) => {
+        const m = measuredRows.current[c.i];
+        if (m != null && c.h !== m) {
+          changed = true;
+          return { ...c, h: m };
+        }
+        return c;
+      });
+      return changed ? { ...prev, [bp]: mapped } : prev;
+    });
+  }, []);
+
+  // Pin activeBp to the breakpoint actually on screen by measuring the rendered
+  // grid element (what RGL's WidthProvider measures too). This is the fix for the
+  // mount-at-md overlap: onBreakpointChange never fires for a directly-mounted
+  // breakpoint, so without this the flow heights land on the wrong breakpoint and
+  // the body overflows onto the cards below. Re-runs on arrange-width switch (the
+  // grid remounts via its key, so the element to observe is new).
+  useLayoutEffect(() => {
+    const grid =
+      wrapRef.current?.querySelector<HTMLElement>(".react-grid-layout") ?? null;
+    if (!grid) return;
+    const sync = () => {
+      const bp = bpForWidth(grid.clientWidth);
+      if (bp !== activeBp.current) {
+        activeBp.current = bp;
+        applyMeasured(bp);
+      }
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(grid);
+    return () => ro.disconnect();
+  }, [applyMeasured, arrangeWidth]);
 
   // RGL geometry on drag/resize/compaction/mount/flow-measure: merge reported
   // (visible) cells over stored cells, preserving any hidden card's saved
@@ -396,9 +469,6 @@ export default function ItemRglInner({
       draggableCancel=".cancel-drag"
       compactType="vertical"
       onLayoutChange={(_current, all) => handleLayoutChange(all)}
-      onBreakpointChange={(bp) => {
-        activeBp.current = bp as Breakpoint;
-      }}
       onDragStop={handleGestureEnd}
       onResizeStop={handleGestureEnd}
     >
@@ -421,11 +491,15 @@ export default function ItemRglInner({
   if (!arrange) {
     // Fill the container: the full page → full browser width (Desktop/lg), the
     // modal panel (~768) → Tablet/md. The breakpoint follows the surface.
-    return <div className="w-full px-6 py-6 sm:px-10">{grid}</div>;
+    return (
+      <div ref={wrapRef} className="w-full px-6 py-6 sm:px-10">
+        {grid}
+      </div>
+    );
   }
 
   return (
-    <div className="w-full px-6 py-6 sm:px-10">
+    <div ref={wrapRef} className="w-full px-6 py-6 sm:px-10">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-[var(--accent)]">Arranging</span>
         {/* Width switcher: arrange each responsive layout from the one editor. */}
