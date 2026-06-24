@@ -183,7 +183,7 @@ In-app recording stays deferred. **Live audio→transcript eyeball gated on a co
 ---
 
 ## Later / ideas parking lot
-Meeting capture + AI processing (PRD §4.15: Whisper or Teams-transcript + Anthropic API summary and suggested tasks; designed-for now, promoted when PRD Q10 resolves), pulpit mode (large-type distraction-free render), staff accounts (schema ready, product deferred), calendar time-blocking (schedule tasks onto the calendar à la Morgen: manual drag-to-calendar, a deterministic slot-finder + overdue-rescheduler, and an AI "slot N hours over 2 weeks" front-end over the placer; largely core, `explorations/calendar-time-blocking.md`), synced blocks, formulas/rollups, gallery/Gantt layouts, email-out, tiered attachment storage (cold-demotion, gated on a real R2-quota trigger; chosen variant is delete-from-R2-and-rehydrate-from-OneDrive).
+Meeting capture + AI processing (PRD §4.15: Whisper or Teams-transcript + Anthropic API summary and suggested tasks; designed-for now, promoted when PRD Q10 resolves), pulpit mode (large-type distraction-free render), staff accounts (schema ready, product deferred), calendar time-blocking (schedule tasks onto the calendar à la Morgen: manual drag-to-calendar, a deterministic slot-finder + overdue-rescheduler, and an AI "slot N hours over 2 weeks" front-end over the placer; largely core, `explorations/calendar-time-blocking.md`), synced blocks, formulas/rollups, gallery/Gantt layouts, email-out, tiered attachment storage (cold-demotion, gated on a real R2-quota trigger; chosen variant is delete-from-R2-and-rehydrate-from-OneDrive), human-readable item URLs (slug + id, UUID stays canonical so existing links/export/offline keep working; non-core; `explorations/human-readable-item-urls.md`).
 
 ---
 
