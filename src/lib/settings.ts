@@ -64,6 +64,24 @@ export const TEXT_SIZE_PX: Record<TextSize, string> = {
   xl: "1.25rem",
 };
 
+// Interface density (whole-UI scale). Unlike textSize, which sizes only the
+// markdown prose canvas, this scales the *entire* interface — nav, menus,
+// titles, buttons, toggles, spacing — at once. It does so by scaling the root
+// font-size (the --ui-scale CSS var, applied in globals.css), so every
+// rem-based dimension grows or shrinks together; nothing is enumerated, so new
+// UI built later inherits the scaling for free. "default" (1.0) leaves the app
+// pixel-identical to before, so it's a safe opt-in (Tyler's instance is
+// untouched until he chooses a level). The factors stay modest so the layout
+// never breaks. Distinct from navDensity, which is only how nav slots pack.
+export const UI_DENSITIES = ["compact", "default", "comfortable", "roomy"] as const;
+export type UiDensity = (typeof UI_DENSITIES)[number];
+export const UI_SCALE: Record<UiDensity, number> = {
+  compact: 0.9,
+  default: 1,
+  comfortable: 1.1,
+  roomy: 1.2,
+};
+
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
@@ -183,6 +201,12 @@ export type UserSettings = {
   // maps it to the --prose-font-size CSS variable so the setting applies
   // globally without a client-side effect.
   textSize: TextSize;
+  // Whole-UI density. uiDensity is the desktop level; mobileUiDensity null
+  // mirrors desktop, else overrides it on phones (< sm). Both map to UI_SCALE,
+  // emitted as the --ui-scale CSS var per surface in layout. Independent of
+  // textSize (which sizes the prose canvas only).
+  uiDensity: UiDensity;
+  mobileUiDensity: UiDensity | null;
   // Ordered item ids the owner has starred (the Favorites flyout). Order is the
   // list order; a missing/deleted id is silently dropped when the list resolves.
   favorites: string[];
@@ -219,6 +243,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   todayDashboardId: null,
   icsToken: null,
   textSize: "base",
+  uiDensity: "default",
+  mobileUiDensity: null,
   favorites: [],
   listTabs: {},
 };
@@ -345,6 +371,17 @@ export function parseSettings(raw: unknown): UserSettings {
   const textSize = (TEXT_SIZES as readonly string[]).includes(r.textSize as string)
     ? (r.textSize as TextSize)
     : DEFAULT_SETTINGS.textSize;
+  const uiDensity = (UI_DENSITIES as readonly string[]).includes(r.uiDensity as string)
+    ? (r.uiDensity as UiDensity)
+    : DEFAULT_SETTINGS.uiDensity;
+  // null (or absent) means mirror desktop; a known level is a distinct mobile
+  // override. An unknown value falls back to null rather than throwing.
+  const mobileUiDensity =
+    r.mobileUiDensity == null
+      ? null
+      : (UI_DENSITIES as readonly string[]).includes(r.mobileUiDensity as string)
+        ? (r.mobileUiDensity as UiDensity)
+        : null;
   const favorites = parseFavorites(r.favorites);
   const listTabs = parseListTabs(r.listTabs);
   return {
@@ -364,6 +401,8 @@ export function parseSettings(raw: unknown): UserSettings {
     todayDashboardId,
     icsToken,
     textSize,
+    uiDensity,
+    mobileUiDensity,
     favorites,
     listTabs,
   };

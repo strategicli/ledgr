@@ -22,6 +22,14 @@ Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core*
 - **Verify:** `scripts/verify-statuses.mts` **35/35** (incl. 10 new mode checks); `verify-types`/`verify-views` green; tsc/`next build`/eslint clean; migration applied to Neon + backfill confirmed; **in-browser on Neon (dev-auth):** Build control (Person→None, schema editor hidden), view-builder gating (Status absent for person/note, present for any/task/project), task checkbox toggles done (non-recurring open→done→open; recurring advances), `PATCH …/statuses` round-trips + rejects a bad mode.
 - **Deferred (in ADR-106):** thread `status_mode` through `ViewRenderer` so a `none`-type **table** view drops its default Status column (list/agenda/calendar already clean); a status control on the **default canvas** for non-task checkbox/select types; MCP `list_types` exposure of `status_mode`.
 
+## ⟢ Session summary — Interface density (2026-06-24, ADR-107, branch `feat/interface-density`)
+
+**A "Display density" setting (Compact / Default / Comfortable / Roomy) that scales the whole interface, not just the prose canvas, set separately for desktop and mobile.** Non-core (UI personalization on `users.settings`, no migration, the navSlots/favorites/textSize posture); `default` (1.0) is pixel-identical to before, so it is a safe opt-in and Tyler's instance is untouched.
+- **One knob:** `--ui-scale` drives the root font-size (`html { font-size: calc(100% * var(--ui-scale)) }`). The app is rem-based, so scaling the root rem scales nav, menus, titles, buttons, and spacing together, and future UI inherits it for free. Levels map to 0.9 / 1.0 / 1.1 / 1.2 (`UI_SCALE`, `src/lib/settings.ts`).
+- **Per surface:** `uiDensity` + `mobileUiDensity` (null mirrors desktop), emitted as a server-rendered `<style>` with a `max-width:639.98px` mobile override (the var must sit on `:root`, and a media query can't live in an inline style; 639.98px complements the nav's 640px `sm` line).
+- **Nav geometry px → rem:** `RAIL_W`/`TOP_BAR_H`/`BUILD_SIDEBAR_W` (`src/lib/nav-layout.ts`) so the nav frame and the body clearance scale together and stay locked. Coexists with the prose `textSize`.
+- **Verify:** tsc/eslint/`next build` clean (re-confirmed on apply; built + verified in the originating cloud session). Files: `settings.ts`, `globals.css`, `layout.tsx`, `SettingsForm.tsx`, `nav-layout.ts`, `NavShell.tsx`, `BuildSidebar.tsx`; logged as ADR-107.
+
 ## ⟢ NEXT SLICE — Archive axis (cross-cutting `items.archived_at`, own ADR)
 
 **Brandon's decision (2026-06-24):** archive is a *different axis* from done/undone — "hide from most surfaces (search, sort, lenses, automations) but keep it recoverable," and it applies to **every type**, not just tasks. Today "archived" is only a task *status category* and doesn't even hide from search (`search.ts` excludes only `deleted_at`). Build a first-class lifecycle flag parallel to soft-delete:

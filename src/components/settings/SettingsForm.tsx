@@ -14,8 +14,10 @@ import {
   NAV_POSITIONS,
   TEXT_SIZES,
   TEXT_SIZE_PX,
+  UI_DENSITIES,
   type RailAnchor,
   type TextSize,
+  type UiDensity,
   type UserSettings,
 } from "@/lib/settings";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
@@ -25,6 +27,13 @@ const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   bottom: "Bottom",
   left: "Left",
   right: "Right",
+};
+
+const UI_DENSITY_LABELS: Record<UiDensity, string> = {
+  compact: "Compact",
+  default: "Default",
+  comfortable: "Comfortable",
+  roomy: "Roomy",
 };
 
 export default function SettingsForm({ initial }: { initial: UserSettings }) {
@@ -248,6 +257,55 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Display density</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          How much space the whole interface uses. Menus, buttons, titles, and
+          spacing all scale together, so everything stays easy to read and tap.
+          Set desktop and mobile separately.
+        </p>
+        <div className="mt-3 flex flex-col gap-3">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-600">
+              Desktop
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {UI_DENSITIES.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => void save({ uiDensity: d }, true)}
+                  className={segBtn(settings.uiDensity === d)}
+                >
+                  {UI_DENSITY_LABELS[d]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-600">
+              Mobile
+            </p>
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => void save({ mobileUiDensity: null }, true)}
+                className={segBtn(settings.mobileUiDensity === null)}
+              >
+                Same as desktop
+              </button>
+              {UI_DENSITIES.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => void save({ mobileUiDensity: d }, true)}
+                  className={segBtn(settings.mobileUiDensity === d)}
+                >
+                  {UI_DENSITY_LABELS[d]}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

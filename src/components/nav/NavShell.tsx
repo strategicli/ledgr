@@ -25,7 +25,7 @@ import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import { isBuildPath } from "@/lib/build-nav";
-import { BUILD_SIDEBAR_PX, navPadVars, RAIL_PX } from "@/lib/nav-layout";
+import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
 import { navIconPaths } from "@/lib/nav-icons";
 import { FAVORITES_HREF, type NavDensity, type NavPosition, type RailAnchor, type RailSize } from "@/lib/settings";
 
@@ -293,7 +293,7 @@ export default function NavShell({
       style.setProperty("--nav-pt", "0px");
       style.setProperty("--nav-pb", "0px");
       style.setProperty("--nav-pr", "0px");
-      style.setProperty("--nav-pl", `${BUILD_SIDEBAR_PX}px`);
+      style.setProperty("--nav-pl", BUILD_SIDEBAR_W);
       return;
     }
     const vars = navPadVars(navPosition, railSize) as Record<string, string>;
@@ -823,7 +823,7 @@ export default function NavShell({
           className={`fixed inset-y-0 z-40 hidden flex-col gap-1 bg-neutral-900/95 p-2 shadow-xl shadow-black/30 backdrop-blur sm:flex ${
             navPosition === "left" ? "left-0 border-r border-neutral-800" : "right-0 border-l border-neutral-800"
           }`}
-          style={{ width: RAIL_PX[railSize] }}
+          style={{ width: RAIL_W[railSize] }}
         >
           {/* Top of the rail: Ledgr logo + the collapse arrow (pointing toward
               the docked edge). Fat puts them on one row (logo left, arrow at the

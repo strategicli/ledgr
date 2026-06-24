@@ -7,7 +7,7 @@ import OutboxSync from "@/components/pwa/OutboxSync";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
-import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX } from "@/lib/settings";
+import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX, UI_SCALE } from "@/lib/settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -66,6 +66,11 @@ export default async function RootLayout({
   let navPosition = DEFAULT_SETTINGS.navPosition;
   let railSize = DEFAULT_SETTINGS.railSize;
   let proseFontSize = TEXT_SIZE_PX[DEFAULT_SETTINGS.textSize];
+  // Interface-density scale, resolved per surface. The mobile value mirrors the
+  // desktop one unless an explicit mobile level is set. Emitted below as the
+  // --ui-scale CSS var, with the mobile value behind a max-width media query.
+  let uiScale = UI_SCALE[DEFAULT_SETTINGS.uiDensity];
+  let mobileUiScale = uiScale;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -75,10 +80,19 @@ export default async function RootLayout({
       navPosition = s.navPosition;
       railSize = s.railSize;
       proseFontSize = TEXT_SIZE_PX[s.textSize];
+      uiScale = UI_SCALE[s.uiDensity];
+      mobileUiScale = UI_SCALE[s.mobileUiDensity ?? s.uiDensity];
     }
   } catch {
     /* defaults */
   }
+  // Per-surface interface density. Must set --ui-scale on :root (custom
+  // properties inherit down, not up, and the html font-size rule in globals.css
+  // reads it); a media query can't live in an inline style, so it goes in a
+  // server-rendered <style>. The 639.98px ceiling complements the nav's 640px
+  // (sm) desktop breakpoint, so chrome and density switch surfaces together. The
+  // values are fixed numbers from UI_SCALE, so there's nothing to escape.
+  const uiScaleCss = `:root{--ui-scale:${uiScale}}@media (max-width:639.98px){:root{--ui-scale:${mobileUiScale}}}`;
   return (
     <AppAuthProvider>
       <html
@@ -89,6 +103,7 @@ export default async function RootLayout({
           className="min-h-full flex flex-col"
           style={{ "--accent": accent, "--accent-gradient": accentGradient, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
+          <style dangerouslySetInnerHTML={{ __html: uiScaleCss }} />
           {children}
           <Nav />
           {modal}
