@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { isNavIcon, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
+import { parseListTabs, type Lens } from "@/lib/list-lenses";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
 // straight into the `--accent` CSS variable.
@@ -185,6 +186,10 @@ export type UserSettings = {
   // Ordered item ids the owner has starred (the Favorites flyout). Order is the
   // list order; a missing/deleted id is silently dropped when the list resolves.
   favorites: string[];
+  // Per-type list-tab overrides (the customizable sort/view "lenses" on a type's
+  // list page). Keyed by type key; an absent key = the virtual defaults
+  // (defaultLenses). Additive, no migration, same posture as navSlots/favorites.
+  listTabs: Record<string, Lens[]>;
 };
 
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
@@ -215,6 +220,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   icsToken: null,
   textSize: "base",
   favorites: [],
+  listTabs: {},
 };
 
 const SETTINGS_UUID_RE =
@@ -340,6 +346,7 @@ export function parseSettings(raw: unknown): UserSettings {
     ? (r.textSize as TextSize)
     : DEFAULT_SETTINGS.textSize;
   const favorites = parseFavorites(r.favorites);
+  const listTabs = parseListTabs(r.listTabs);
   return {
     highlightColor,
     highlightGradient,
@@ -358,6 +365,7 @@ export function parseSettings(raw: unknown): UserSettings {
     icsToken,
     textSize,
     favorites,
+    listTabs,
   };
 }
 

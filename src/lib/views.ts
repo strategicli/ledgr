@@ -66,6 +66,16 @@ export const SORT_FIELDS = [
 export type SortField = (typeof SORT_FIELDS)[number];
 export type ViewSort = { field: SortField; dir: "asc" | "desc" };
 
+// Lens sort superset (internal to the list-lenses feature). The public ViewSort
+// / parseSort and the MCP create_view contract are unchanged; only
+// queryViewItems accepts the extra modes. "mostLinked" orders by the count of
+// confirmed relations; "property" orders by items.properties->>key (optional
+// numeric cast). Saved views and dashboards still pass a plain ViewSort.
+export type ListSort =
+  | ViewSort
+  | { field: "mostLinked"; dir: "asc" | "desc" }
+  | { field: "property"; propertyKey: string; numeric?: boolean; dir: "asc" | "desc" };
+
 const SORT_COLUMNS = {
   dueDate: items.dueDate,
   scheduledDate: items.scheduledDate,
@@ -177,37 +187,56 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
   return where;
 }
 
+// Numeric guard for a property sort: a value that isn't a number sorts as NULL
+// (last) rather than erroring the ::numeric cast.
+const NUMERIC_RE = "^-?[0-9]+(\\.[0-9]+)?$";
+
+// The primary ORDER BY expression for a ListSort. Built-in fields use their
+// column (nulls last in both directions, so an undated task sits at the bottom
+// of a due-sorted list, not the top); "mostLinked" orders by the confirmed-
+// relation count (the relatedTo EXISTS subquery's count sibling, served by
+// relations_source_idx / relations_target_idx); "property" orders by
+// items.properties->>key with an optional numeric cast.
+function listOrderExpr(sort: ListSort): SQL {
+  const asc = sort.dir === "asc";
+  if (sort.field === "mostLinked") {
+    const cnt = sql`(select count(*) from relations r where r.match_state = 'confirmed' and (r.source_id = ${items.id} or r.target_id = ${items.id}))`;
+    return asc ? sql`${cnt} asc` : sql`${cnt} desc`;
+  }
+  if (sort.field === "property") {
+    const val = sql`(${items.properties} ->> ${sort.propertyKey})`;
+    const expr = sort.numeric
+      ? sql`(case when ${val} ~ ${NUMERIC_RE} then (${val})::numeric end)`
+      : val;
+    return asc ? sql`${expr} asc nulls last` : sql`${expr} desc nulls last`;
+  }
+  const col = SORT_COLUMNS[sort.field];
+  return asc ? sql`${col} asc nulls last` : sql`${col} desc nulls last`;
+}
+
 // Exposed as a query builder (items.ts pattern) so verification can assert
 // the generated SQL carries owner_id and selects no body.
 export function viewItemsQuery(
   ownerId: string,
   filter: ViewFilter,
-  sort: ViewSort = { field: "updatedAt", dir: "desc" },
+  sort: ListSort = { field: "updatedAt", dir: "desc" },
   limit = VIEW_LIMIT
 ) {
   const where = viewWhere(ownerId, filter);
 
-  // Date sorts push nulls last in both directions (an undated task belongs
-  // at the bottom of a due-sorted list, not the top); updated_at breaks
-  // ties so the order is stable.
-  const col = SORT_COLUMNS[sort.field];
-  const primary =
-    sort.dir === "asc"
-      ? sql`${col} asc nulls last`
-      : sql`${col} desc nulls last`;
-
+  // updated_at breaks ties so the order is stable across renders.
   return getDb()
     .select(listColumns)
     .from(items)
     .where(and(...where))
-    .orderBy(primary, sql`${items.updatedAt} desc`)
+    .orderBy(listOrderExpr(sort), sql`${items.updatedAt} desc`)
     .limit(Math.min(Math.max(limit, 1), VIEW_LIMIT));
 }
 
 export async function queryViewItems(
   ownerId: string,
   filter: ViewFilter,
-  sort?: ViewSort,
+  sort?: ListSort,
   limit?: number
 ) {
   return viewItemsQuery(ownerId, filter, sort, limit);

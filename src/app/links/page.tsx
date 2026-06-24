@@ -1,13 +1,19 @@
-// Links list (PRD §4.2): recency-ordered, with the destination host shown
-// and clickable straight to the outside URL; the title opens the item
-// canvas as everywhere else.
+// Links list (PRD §4.2): the destination host shown and clickable straight to
+// the outside URL; the title opens the item canvas. Now carries the
+// customizable tab strip ("list lenses") every type's list shows — sort lenses
+// order this plain list; a view ("widget") lens renders its saved view.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import ListLenses from "@/components/lists/ListLenses";
 import ListPage from "@/components/lists/ListPage";
+import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
+import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
+import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE } from "@/lib/today";
+import { resolveViewLens } from "@/lib/view-render";
 import { queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -26,20 +32,45 @@ function hostOf(url: string): string {
   }
 }
 
-export default async function Links() {
+export default async function Links({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const links = await queryViewItems(owner.id, { type: "link" });
+  const sp = await searchParams;
+  const settings = await getSettings(owner.id);
+  const lenses = lensesForType(settings, "link");
+  const active = selectLens(lenses, typeof sp.lens === "string" ? sp.lens : undefined);
+  const reversed = sp.rev === "1";
+
+  const viewData =
+    active.kind === "view" ? await resolveViewLens(owner.id, active.viewId, "link") : null;
+  const links = viewData
+    ? []
+    : await queryViewItems(owner.id, { type: "link" }, resolveLensSort(active, reversed) ?? undefined);
+  const count = viewData ? viewData.count : links.length;
 
   return (
     <ListPage
       tab="links"
       title="Links"
-      subtitle={`${links.length} link${links.length === 1 ? "" : "s"}`}
+      subtitle={`${count} link${count === 1 ? "" : "s"}`}
       actions={<NewItemButton type="link" />}
     >
-      {links.length > 0 ? (
+      <ListLenses
+        lenses={lenses}
+        activeId={active.id}
+        reversed={reversed}
+        basePath="/links"
+        params={sp}
+        editHref="/build/types/link/edit"
+      />
+      {viewData ? (
+        <ViewLensBody data={viewData} />
+      ) : links.length > 0 ? (
         <ul className="mt-4">
           {links.map((link) => (
             <li
