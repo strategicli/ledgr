@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import Nav from "@/components/nav/Nav";
+import NavProgress from "@/components/nav/NavProgress";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import OutboxSync from "@/components/pwa/OutboxSync";
 import { AppAuthProvider } from "@/lib/auth/provider";
@@ -104,6 +105,7 @@ export default async function RootLayout({
           style={{ "--accent": accent, "--accent-gradient": accentGradient, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           <style dangerouslySetInnerHTML={{ __html: uiScaleCss }} />
+          <NavProgress />
           {children}
           <Nav />
           {modal}
