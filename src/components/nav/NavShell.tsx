@@ -19,7 +19,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import BuildSidebar from "@/components/nav/BuildSidebar";
 import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
 import CaptureModal from "@/components/capture/CaptureModal";
@@ -226,6 +226,36 @@ export default function NavShell({
   const [density, setDensity] = useState<NavDensity>(navDensityProp);
   const [anchor, setAnchor] = useState<RailAnchor>(railAnchorProp);
 
+  // Parent slots (tools groups + Favorites) open their popover on hover, not only
+  // on click. A short close delay bridges the gap between the trigger and the
+  // detached popover, so dragging the pointer across to it doesn't dismiss the
+  // menu. Hover is gated to hover-capable pointers, so a tap on the mobile pill
+  // keeps its click-to-toggle behavior (no open-then-close flicker on touch).
+  const hoverCapable = useRef(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    hoverCapable.current = window.matchMedia?.("(hover: hover)").matches ?? false;
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
+  }, []);
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const hoverOpen = (id: string) => {
+    if (!hoverCapable.current) return;
+    cancelClose();
+    setOpenTools(id);
+  };
+  const hoverClose = () => {
+    if (!hoverCapable.current) return;
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpenTools(null), 150);
+  };
+
   const isRail = navPosition === "left" || navPosition === "right";
   // Build mode is `/build*` only. `/views` is now the Work-side consumer surface
   // (the builder/manager moved to /build/views — ADR-063 producer/consumer split),
@@ -395,10 +425,13 @@ export default function NavShell({
     }`;
   const topSlot = (active: boolean) =>
     `relative flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${itemColors(active)}`;
+  // `w-full` so a tools/favorites button (wrapped in its own `relative` div for
+  // the popover) stretches edge-to-edge like a bare destination Link does as a
+  // direct flex child — otherwise its hover highlight only hugs the icon+label.
   const railFatSlot = (active: boolean) =>
-    `relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${itemColors(active)}`;
+    `relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm ${itemColors(active)}`;
   const railThinSlot = (active: boolean) =>
-    `relative flex items-center justify-center rounded-lg p-2.5 ${itemColors(active)}`;
+    `relative flex w-full items-center justify-center rounded-lg p-2.5 ${itemColors(active)}`;
 
   // A child row inside a tools popover (always icon + label + inline badge).
   function renderToolsChild(child: ShellDest, key: string) {
@@ -481,9 +514,19 @@ export default function NavShell({
     if (slot.kind === "tools") {
       const open = openTools === id;
       return (
-        <div key={id} data-nav-tools className="relative">
+        <div
+          key={id}
+          data-nav-tools
+          className="relative"
+          onMouseEnter={() => hoverOpen(id)}
+          onMouseLeave={hoverClose}
+        >
           <button
-            onClick={() => setOpenTools((o) => (o === id ? null : id))}
+            onClick={() =>
+              hoverCapable.current
+                ? setOpenTools(id)
+                : setOpenTools((o) => (o === id ? null : id))
+            }
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -502,9 +545,19 @@ export default function NavShell({
     if (isFavoritesHref(slot.href)) {
       const open = openTools === id;
       return (
-        <div key={id} data-nav-tools className="relative">
+        <div
+          key={id}
+          data-nav-tools
+          className="relative"
+          onMouseEnter={() => hoverOpen(id)}
+          onMouseLeave={hoverClose}
+        >
           <button
-            onClick={() => setOpenTools((o) => (o === id ? null : id))}
+            onClick={() =>
+              hoverCapable.current
+                ? setOpenTools(id)
+                : setOpenTools((o) => (o === id ? null : id))
+            }
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
