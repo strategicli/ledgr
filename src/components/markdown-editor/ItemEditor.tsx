@@ -84,6 +84,13 @@ export default function ItemEditor({
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
+  // The markdown of the body as last persisted, seeded from what loaded. The
+  // editor re-emits the loaded body once when it mounts (a programmatic editor
+  // transaction, not a user edit), so opening an item would otherwise schedule
+  // a debounced save of an unchanged body — flashing the save indicator and
+  // (before the API-side no-op guard in updateItem) bumping the item's edit
+  // date. We skip a body change identical to this; a real edit always differs.
+  const savedBodyText = useRef(bodyMarkdown(item.body));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -212,6 +219,8 @@ export default function ItemEditor({
     />
   );
   const onBodyChange = (markdown: string) => {
+    if (markdown === savedBodyText.current) return;
+    savedBodyText.current = markdown;
     pending.current.body = makeMarkdownBody(markdown);
     schedule();
   };
