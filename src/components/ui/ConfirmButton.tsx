@@ -48,15 +48,21 @@ export default function ConfirmButton({
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        e.preventDefault(); // don't let parent modal also close
+        // Claim the Esc so the parent modal doesn't also close. The item Modal
+        // skips closing when defaultPrevented is already set, but its listener
+        // sits earlier on `document`, so a bubble-phase preventDefault here runs
+        // too late. Listening in the CAPTURE phase runs us first — we mark the
+        // Esc handled, then the modal's bubble handler sees it and stands down
+        // (mirrors Popover.tsx, ADR-108).
+        e.preventDefault();
         close();
       }
     }
     document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
