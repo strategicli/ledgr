@@ -16,7 +16,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import NavGlyph from "@/components/nav/NavGlyph";
 import { BUILD_NAV } from "@/lib/build-nav";
-import { BUILD_SIDEBAR_PX } from "@/lib/nav-layout";
+import { BUILD_SIDEBAR_W } from "@/lib/nav-layout";
 
 type BuildType = { key: string; label: string; icon: string | null };
 
@@ -225,7 +225,7 @@ export default function BuildSidebar({
       {/* Desktop: a fixed full-height left rail. */}
       <aside
         className="fixed inset-y-0 left-0 z-40 hidden border-r border-neutral-800 bg-neutral-900/95 shadow-xl shadow-black/30 backdrop-blur sm:block"
-        style={{ width: BUILD_SIDEBAR_PX }}
+        style={{ width: BUILD_SIDEBAR_W }}
         aria-label="Build navigation"
       >
         <SidebarContent types={types} onOpenSearch={onOpenSearch} />
@@ -248,7 +248,7 @@ export default function BuildSidebar({
           <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)} />
           <div
             className="absolute inset-y-0 left-0 border-r border-neutral-800 bg-neutral-900"
-            style={{ width: BUILD_SIDEBAR_PX }}
+            style={{ width: BUILD_SIDEBAR_W }}
           >
             <SidebarContent
               types={types}

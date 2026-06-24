@@ -16,6 +16,23 @@
   --accent-gradient: var(--accent);
   /* Prose canvas font size. Overridden per-owner on <body> from user settings. */
   --prose-font-size: 1rem;
+  /* Interface density (whole-UI scale). Overridden per-owner AND per surface
+     (desktop vs mobile) by a <style> block in layout.tsx. Drives the root
+     font-size below, so every rem-based dimension — Tailwind spacing/type, the
+     nav chrome (nav-layout.ts is in rem), the prose canvas — scales together
+     from this one knob. 1 = unchanged. */
+  --ui-scale: 1;
+}
+
+/* Apply the interface-density scale at the root. font-size: 100% resolves to the
+   browser's base (typically 16px), so this multiplies it by --ui-scale and every
+   rem follows. Deliberately on the root font-size rather than per-component, so
+   UI added later scales for free. Two things intentionally do NOT move: px
+   borders stay crisp, and rem-based media-query breakpoints don't shift (a media
+   query evaluates rem against the initial 16px, not this override), so the
+   responsive layout and the mobile/desktop split stay put. */
+html {
+  font-size: calc(100% * var(--ui-scale));
 }
 
 @theme inline {
