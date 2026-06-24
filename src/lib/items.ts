@@ -17,7 +17,7 @@ import {
 import { getDb } from "@/db";
 import { items, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
-import { bodyMarkdown } from "@/lib/body";
+import { bodyMarkdown, isItemBody } from "@/lib/body";
 import { syncMentionRelations } from "@/lib/mentions";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
@@ -360,6 +360,7 @@ export async function updateItem(
       status: items.status,
       statusCategory: items.statusCategory,
       type: items.type,
+      body: items.body,
     })
     .from(items)
     .where(
@@ -412,6 +413,25 @@ export async function updateItem(
     }
   }
 
+  // The body editor re-emits the loaded body once when it mounts (a programmatic
+  // editor transaction, not a user edit), so merely opening an item PATCHes a
+  // body byte-identical to what's stored. Detect that no-op: a body whose text
+  // (and format, when both are well-formed bodies) matches the stored one isn't
+  // written, so it can't move updated_at — the `$onUpdate` column bumps on every
+  // UPDATE — or snapshot a redundant revision. This is the "viewing an item
+  // changes its edit date" bug; the guard lives here so every caller (editor,
+  // MCP, REST) is covered, not just the one client. A real format switch with
+  // identical text still counts as a change.
+  const prevBody = existing[0].body;
+  const writeBody =
+    patch.body !== undefined &&
+    !(
+      bodyMarkdown(patch.body) === bodyMarkdown(prevBody) &&
+      (!isItemBody(prevBody) ||
+        !isItemBody(patch.body) ||
+        patch.body.format === prevBody.format)
+    );
+
   const set: Record<string, unknown> = {};
   if (patch.type !== undefined) set.type = patch.type;
   if (patch.title !== undefined) set.title = patch.title;
@@ -437,11 +457,16 @@ export async function updateItem(
     )}::jsonb`;
   }
   if (patch.inbox !== undefined) set.inbox = patch.inbox;
-  if (patch.body !== undefined) {
+  if (writeBody) {
     set.body = patch.body;
     set.bodyText = extractBodyText(patch.body);
   }
   if (Object.keys(set).length === 0) {
+    // A patch that carried only a no-op body (the editor's on-open phantom
+    // save) leaves nothing to write: return the item untouched rather than
+    // bumping updated_at. A patch with no recognized fields at all is still
+    // a client error.
+    if (patch.body !== undefined) return await getItem(ownerId, id);
     throw new ItemError("bad_request", "no fields to update");
   }
 
@@ -451,7 +476,7 @@ export async function updateItem(
     .where(and(eq(items.id, id), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
   const updated = rows[0];
-  if (patch.body !== undefined) {
+  if (writeBody) {
     if (updated.body != null) await snapshotRevision(id, updated.body);
     // Runs on null bodies too: clearing a body clears its mention edges.
     await syncMentionRelations(ownerId, id, updated.body);
