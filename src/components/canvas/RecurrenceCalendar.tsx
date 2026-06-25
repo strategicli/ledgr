@@ -51,10 +51,15 @@ export default function RecurrenceCalendar({
   itemId,
   initial,
   today,
+  bare = false,
 }: {
   itemId: string;
   initial: RecurrenceRule;
   today: string; // YYYY-MM-DD in the app timezone
+  // Drop the wide centered-column padding so the month grid fills a narrow
+  // container (the Schedule popover) instead of being crushed by the
+  // full-width canvas's responsive px-* (ADR-108 polish).
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [rule, setRule] = useState(initial);
@@ -144,7 +149,13 @@ export default function RecurrenceCalendar({
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pb-2 pt-1 sm:px-8 md:px-12">
+    <section
+      className={
+        bare
+          ? "w-full"
+          : "mx-auto w-full max-w-3xl px-2 pb-2 pt-1 sm:px-8 md:px-12"
+      }
+    >
       <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
         {/* Month header */}
         <div className="mb-2 flex items-center justify-between">
