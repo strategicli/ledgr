@@ -27,9 +27,11 @@ export type ViewFilter = {
   // the indexed items.status_category; `status` above is the exact-key filter.
   statusCategory?: string;
   urgency?: Urgency;
-  // Which date the window applies to (default "dueDate"). "meetingAt" lets a
-  // meeting view filter by its "When"; due-date semantics are UTC-midnight
-  // calendar days, the timestamp fields use real timezone midnights.
+  // Which date the window applies to (default "plan" = the scheduled date if
+  // set, else the due deadline — scheduled-primary, due-secondary, ADR-109).
+  // "meetingAt" lets a meeting view filter by its "When". The calendar-day
+  // fields (plan/dueDate/scheduledDate) compare as UTC-midnight days; the
+  // timestamp fields use real timezone midnights.
   dateField?: DateProperty;
   due?: DueWindow;
   // Range window: today through today + N days (exclusive). Wins over `due`
@@ -56,6 +58,8 @@ export type ViewFilter = {
 };
 
 export const SORT_FIELDS = [
+  // "plan" = the effective plan date (scheduled ?? due, ADR-109).
+  "plan",
   "dueDate",
   "scheduledDate",
   "meetingAt",
@@ -84,6 +88,13 @@ const SORT_COLUMNS = {
   createdAt: items.createdAt,
   title: items.title,
 } as const;
+
+// The effective plan date (ADR-109): the scheduled (planned) day if set, else
+// the due (deadline) day. Tasks default to this everywhere a date window, sort,
+// placement, or board bucket is computed, so behavior is "scheduled primarily,
+// due secondarily." A task with no due date never breaks — COALESCE falls
+// through to NULL, which reads as "no date" exactly like an undated task.
+const PLAN_DATE = sql`coalesce(${items.scheduledDate}, ${items.dueDate})`;
 
 export const VIEW_LIMIT = 200;
 
@@ -117,19 +128,29 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
   if (filter.inbox) where.push(eq(items.inbox, true));
 
   if (filter.due || filter.withinDays != null) {
-    const field = filter.dateField ?? "dueDate";
-    const col = {
-      dueDate: items.dueDate,
-      scheduledDate: items.scheduledDate,
-      meetingAt: items.meetingAt,
-      createdAt: items.createdAt,
-      updatedAt: items.updatedAt,
-    }[field];
+    // Default to the effective plan date (scheduled ?? due, ADR-109), so an
+    // undated-but-scheduled task lands in "today"/"overdue" and a missing due
+    // date never hides a task. meetingAt is named explicitly by event views.
+    const field = filter.dateField ?? "plan";
+    // A single SQL expression either way (wrapping a column in sql`` unifies the
+    // type so lt/gte/isNull take one overload); "plan" is the COALESCE.
+    const col: SQL =
+      field === "plan"
+        ? PLAN_DATE
+        : sql`${{
+            dueDate: items.dueDate,
+            scheduledDate: items.scheduledDate,
+            meetingAt: items.meetingAt,
+            createdAt: items.createdAt,
+            updatedAt: items.updatedAt,
+          }[field]}`;
     const b = todayBounds();
     // Due and scheduled dates are UTC-midnight calendar days (ADR-008); the
     // timestamp fields use real timezone midnights (same split as today.ts).
+    // The plan date is a COALESCE of two calendar-day columns, so it's UTC too.
     // cutoff(n) is the start of the day n days from today in the right calendar.
-    const isCalendarDay = field === "dueDate" || field === "scheduledDate";
+    const isCalendarDay =
+      field === "plan" || field === "dueDate" || field === "scheduledDate";
     const startToday = isCalendarDay ? b.dueToday : b.dayStart;
     const tomorrow = isCalendarDay ? b.dueCutoff : b.dayEnd;
     const cutoff = (n: number) =>
@@ -210,7 +231,10 @@ function listOrderExpr(sort: ListSort): SQL {
       : val;
     return asc ? sql`${expr} asc nulls last` : sql`${expr} desc nulls last`;
   }
-  const col = SORT_COLUMNS[sort.field];
+  if (sort.field === "plan") {
+    return asc ? sql`${PLAN_DATE} asc nulls last` : sql`${PLAN_DATE} desc nulls last`;
+  }
+  const col = SORT_COLUMNS[sort.field as Exclude<SortField, "plan">];
   return asc ? sql`${col} asc nulls last` : sql`${col} desc nulls last`;
 }
 
@@ -265,14 +289,16 @@ export type ViewLayout = (typeof VIEW_LAYOUTS)[number];
 
 // Fields a board/agenda can group rows by. due/scheduled buckets reuse the
 // date-window labels (overdue/today/this week/later/no date).
-export const GROUP_FIELDS = ["status", "urgency", "type", "due", "scheduled"] as const;
+export const GROUP_FIELDS = ["status", "urgency", "type", "plan", "due", "scheduled"] as const;
 export type GroupField = (typeof GROUP_FIELDS)[number];
 // A board groups by a built-in field, or by a custom select/multi_select
 // property (a workflow's "Stage", slice 35) named by its property_schema key.
 export type ViewGrouping = { field: GroupField } | { propertyKey: string } | null;
 
-// Which date a calendar/agenda places an item on.
-export const DATE_PROPERTIES = ["dueDate", "scheduledDate", "meetingAt", "createdAt", "updatedAt"] as const;
+// Which date a calendar/agenda places an item on, and which date a list/board
+// window filters/groups by. "plan" = the effective plan date (scheduled ?? due,
+// ADR-109), the task default.
+export const DATE_PROPERTIES = ["plan", "dueDate", "scheduledDate", "meetingAt", "createdAt", "updatedAt"] as const;
 export type DateProperty = (typeof DATE_PROPERTIES)[number];
 
 // Columns the list + table layouts can show (Brandon feedback, 2026-06-14:
@@ -284,6 +310,7 @@ export const COLUMN_FIELDS = [
   "type",
   "status",
   "urgency",
+  "plan",
   "dueDate",
   "scheduledDate",
   "meetingAt",
@@ -508,9 +535,10 @@ export function parseViewInput(raw: unknown): ViewInput {
     dateProperty = r.dateProperty as DateProperty;
   }
   // Calendar/agenda need a date to place items on; default to the one the
-  // type actually has — a meeting has no due date, so it places by "When".
+  // type actually has — a meeting places by "When", everything else by its
+  // plan date (scheduled ?? due, ADR-109) so tasks land on their planned day.
   if ((layout === "calendar" || layout === "agenda") && !dateProperty) {
-    dateProperty = filter.type === "event" ? "meetingAt" : "dueDate";
+    dateProperty = filter.type === "event" ? "meetingAt" : "plan";
   }
   return {
     name,

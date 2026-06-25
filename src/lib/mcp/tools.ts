@@ -389,7 +389,7 @@ const TOOLS: McpTool[] = [
         relatedTo: { type: "string", description: "Only items with a confirmed relation to this item id (either direction)." },
         due: { type: "string", enum: [...DUE_WINDOWS], description: "Date window: overdue | today | week | none (no date)." },
         withinDays: { type: "integer", description: "Items dated today through N days out (1–366). Wins over `due`.", minimum: 1, maximum: 366 },
-        dateField: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date `due`/`withinDays` apply to (default dueDate; use meetingAt for events)." },
+        dateField: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date `due`/`withinDays` apply to (default `plan` = scheduled date if set, else due; use meetingAt for events)." },
         sort: { type: "string", enum: [...SORT_FIELDS], description: "Sort field (default updatedAt)." },
         sortDir: { type: "string", enum: ["asc", "desc"], description: "Sort direction (default desc)." },
         limit: { type: "integer", description: "Max results (1–200, default 50).", minimum: 1, maximum: 200 },

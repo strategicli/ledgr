@@ -62,6 +62,9 @@ export function groupValueFor(
       return item.urgency != null ? String(item.urgency) : NONE_GROUP;
     case "type":
       return item.type;
+    case "plan":
+      // Effective plan date bucket: scheduled if set, else due (ADR-109).
+      return dueBucket(item.scheduledDate ?? item.dueDate, now);
     case "due":
       return dueBucket(item.dueDate, now);
     case "scheduled":
@@ -109,6 +112,7 @@ export function orderedGroups(
     known = {
       status: knownOrder ?? ITEM_STATUSES,
       urgency: [...URGENCIES.map(String), NONE_GROUP],
+      plan: DUE_ORDER,
       due: DUE_ORDER,
       scheduled: DUE_ORDER,
       type: [] as readonly string[],
