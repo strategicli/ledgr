@@ -8,6 +8,7 @@ export type CanvasField =
   | "scheduledDate"
   | "urgency"
   | "meetingAt"
+  | "noteDate"
   | "url";
 
 // Baked-in fields stay core to their type (ADR-018): status, scheduled, due
@@ -18,7 +19,9 @@ export type CanvasField =
 const TOP_STRIP: Record<string, CanvasField[]> = {
   task: ["status", "scheduledDate", "dueDate", "urgency"],
   event: ["meetingAt"],
-  note: [],
+  // The note's one baked-in field (ADR-100): the date it was taken, editable,
+  // defaulting to the creation day. Notes otherwise stay deliberately minimal.
+  note: ["noteDate"],
   link: ["url"],
 };
 

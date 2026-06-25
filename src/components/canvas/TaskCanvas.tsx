@@ -44,6 +44,7 @@ export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
     scheduledDate: item.scheduledDate?.toISOString() ?? null,
     urgency: item.urgency,
     meetingAt: item.meetingAt?.toISOString() ?? null,
+    noteDate: item.noteDate?.toISOString() ?? null,
     url: item.url,
   };
   const recurrenceRule = parseRecurrence(props.recurrence);

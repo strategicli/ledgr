@@ -181,6 +181,7 @@ const STATIC_LABELS: Record<string, string> = {
   "sys:scheduledDate": "Scheduled",
   "sys:urgency": "Urgency",
   "sys:meetingAt": "When",
+  "sys:noteDate": "Date taken",
   "sys:url": "URL",
 };
 

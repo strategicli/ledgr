@@ -18,6 +18,14 @@ const dateFmt = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIMEZONE,
 });
 
+// note_date is a calendar day stored UTC-midnight (ADR-100), so format it in UTC
+// (not the app zone) or an evening-saved day would render as the day before.
+const dayFmt = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
 export default async function Notes() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
@@ -46,8 +54,11 @@ export default async function Notes() {
               >
                 {note.title || "Untitled"}
               </Link>
-              <span className="shrink-0 text-xs text-neutral-600">
-                {dateFmt.format(note.updatedAt)}
+              <span
+                className="shrink-0 text-xs text-neutral-600"
+                title={note.noteDate ? "Date taken" : "Last edited"}
+              >
+                {note.noteDate ? dayFmt.format(note.noteDate) : dateFmt.format(note.updatedAt)}
               </span>
               <RowAction id={note.id} action="trash" />
             </li>

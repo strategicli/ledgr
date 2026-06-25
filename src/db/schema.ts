@@ -228,6 +228,15 @@ export const items = pgTable(
     scheduledDate: timestamp("scheduled_date", { withTimezone: true }),
     urgency: integer("urgency"),
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
+    // The date a NOTE was actually taken (ADR-100), distinct from created_at
+    // (the row's birth) and updated_at (last edit). Defaults to the creation
+    // day for notes and is user-editable in the canvas. A real column, not a
+    // property, because it's hot: the natural sort/group key for notes and what
+    // the notes list and future "notes from last week" views key off (schema
+    // rule "hot fields are columns"). Stored UTC-midnight like
+    // scheduled_date/due_date (ADR-008). Note-scoped in behavior; physically on
+    // items like the other type-specific date columns.
+    noteDate: timestamp("note_date", { withTimezone: true }),
     url: text("url"),
     // Untriaged flag (PRD §4.2 Inbox): set by arrival paths (quick capture
     // now; email-in/Todoist/share-target later), cleared by triage. A real
@@ -279,6 +288,7 @@ export const items = pgTable(
     index("items_status_category_idx").on(t.statusCategory),
     index("items_due_date_idx").on(t.dueDate),
     index("items_scheduled_date_idx").on(t.scheduledDate),
+    index("items_note_date_idx").on(t.noteDate),
     index("items_parent_idx").on(t.parentId),
     // Partial: the badge count and Inbox view only ever read live inbox
     // rows, and those should stay few by design.

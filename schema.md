@@ -66,6 +66,7 @@ Seed rows (Phase 1): `task`, `meeting`, `note`, `link`, `person`, all `is_system
 | `scheduled_date` | timestamptz | nullable (migration 0021, ADR-076). The **planned date**, distinct from the due-date deadline (native tasks, ADR-073). A real column because it is hot (Today, the focus layer, the ICS feed, the overdue auto-roll all query it); UTC-midnight calendar day like `due_date` (ADR-008). For a recurring task it auto-advances on completion to the next uncompleted occurrence. Indexed (`items_scheduled_date_idx`) |
 | `urgency` | enum | `low` \| `normal` \| `high` \| `critical`; nullable |
 | `meeting_at` | timestamptz | meetings only |
+| `note_date` | timestamptz | nullable (migration 0032, ADR-100). Notes only: the **date the note was taken**, distinct from `created_at` (row birth) / `updated_at` (last edit). A real column because it is hot (the natural sort/group key for notes + future date-window views); UTC-midnight calendar day like `due_date`/`scheduled_date` (ADR-008). Defaults to the creation day on create; user-editable. Indexed (`items_note_date_idx`) |
 | `url` | text | links only; original web address |
 | `inbox` | boolean | not null, default false; untriaged flag (PRD §4.2 Inbox). Arrival paths (quick capture; later email-in/Todoist/share-target) set it, triage clears it |
 | `todoist_id` | text | nullable; set when synced to Todoist |
@@ -240,7 +241,7 @@ A core set covers nearly everything. **Built in the slice-33 builder (ADR-044):*
 ---
 
 ## Index plan
-- B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.parent_id`; partial on `items.owner_id where inbox and deleted_at is null` (nav badge count + Inbox view).
+- B-tree: `items.type`, `items.owner_id`, `items.status`, `items.due_date`, `items.scheduled_date`, `items.note_date`, `items.parent_id`; partial on `items.owner_id where inbox and deleted_at is null` (nav badge count + Inbox view).
 - `relations.source_id` and `relations.target_id` indexed **separately** so both-direction backlink queries use bitmap index scans.
 - GIN on `items.properties`.
 - FTS: a `GENERATED ALWAYS AS ... STORED` `tsvector` column on `items`, GIN-indexed, weighted (ADR-014): title (`A`), body_text (`B`), then url (punctuation-split so URL words match) and `properties` string values via `jsonb_to_tsvector` (both `C`). Status/urgency/dates deliberately excluded (enums are filters, not prose). Not computed per query. (`body_text` is app-maintained: it strips markdown syntax from `body.text`. Generating the tsvector straight from the raw `body` jsonb would index structural noise, ADR-003; with markdown canonical the extraction is a light strip rather than a JSON walk.)

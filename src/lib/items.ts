@@ -22,6 +22,7 @@ import { syncMentionRelations } from "@/lib/mentions";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
 import {
+  appTodayYmd,
   completeMaterializedOccurrence,
   completeVirtualSeries,
   ensureFirstOccurrence,
@@ -70,6 +71,10 @@ export type ItemInput = {
   scheduledDate?: Date | null;
   urgency?: Urgency | null;
   meetingAt?: Date | null;
+  // The date a note was actually taken (ADR-100), distinct from created_at /
+  // updated_at. Stored UTC-midnight like dueDate. createItem defaults it to the
+  // creation day for notes; user-editable thereafter.
+  noteDate?: Date | null;
   url?: string | null;
   parentId?: string | null;
   properties?: Record<string, unknown> | null;
@@ -116,6 +121,7 @@ export const listColumns = {
   scheduledDate: items.scheduledDate,
   urgency: items.urgency,
   meetingAt: items.meetingAt,
+  noteDate: items.noteDate,
   url: items.url,
   parentId: items.parentId,
   inbox: items.inbox,
@@ -333,6 +339,14 @@ export async function createItem(ownerId: string, input: ItemInput) {
       scheduledDate: input.scheduledDate ?? null,
       urgency: input.urgency ?? null,
       meetingAt: input.meetingAt ?? null,
+      // A note's "date taken" defaults to the creation calendar day (in the app
+      // timezone), stored UTC-midnight like scheduled/due (ADR-008/ADR-100).
+      // User-editable afterward. Other types leave it null.
+      noteDate:
+        input.noteDate ??
+        (input.type === "note"
+          ? new Date(`${appTodayYmd()}T00:00:00.000Z`)
+          : null),
       url: input.url ?? null,
       parentId: input.parentId ?? null,
       properties: input.properties ?? null,
@@ -423,6 +437,7 @@ export async function updateItem(
   if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
   if (patch.urgency !== undefined) set.urgency = patch.urgency;
   if (patch.meetingAt !== undefined) set.meetingAt = patch.meetingAt;
+  if (patch.noteDate !== undefined) set.noteDate = patch.noteDate;
   if (patch.url !== undefined) set.url = patch.url;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;
   if (patch.properties !== undefined) set.properties = patch.properties;
