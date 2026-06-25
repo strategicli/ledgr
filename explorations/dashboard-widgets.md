@@ -2,6 +2,8 @@
 
 **Status:** parked (Brandon, 2026-06-13). Not intent, not a decision; a Phase 2 follow-on or Phase 3 Build-surface feature. Raised reviewing slice 29.
 
+> **Follow-on (2026-06-25):** the *visual* customization of the dashboard (full-bleed backgrounds, per-widget chrome toggles, any-item embed/sticky notes, tab/section containers) is now decided and planned separately in **`dashboard-canvas.md`** (ADR-111). This doc's "richer widget types/sizes" half shipped via ADR-064/065; the "universal placeable widgets on item canvases" carry-forward below is still post-1.0 and distinct from both.
+
 ## What's there now (slice 29 / ADR-031)
 
 The dashboard pins View Definitions as cards in a uniform responsive grid (1/2/3 columns), each card a list preview + a count badge, with native drag-reorder and an equal-height toggle. Every widget renders the same way **regardless of the view's layout** — a calendar view and a table view both show as a list preview.

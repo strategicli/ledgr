@@ -47,6 +47,18 @@ Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core*
 - **Nav geometry px → rem:** `RAIL_W`/`TOP_BAR_H`/`BUILD_SIDEBAR_W` (`src/lib/nav-layout.ts`) so the nav frame and the body clearance scale together and stay locked. Coexists with the prose `textSize`.
 - **Verify:** tsc/eslint/`next build` clean (re-confirmed on apply; built + verified in the originating cloud session). Files: `settings.ts`, `globals.css`, `layout.tsx`, `SettingsForm.tsx`, `nav-layout.ts`, `NavShell.tsx`, `BuildSidebar.tsx`; logged as ADR-107.
 
+## ⟢ NEXT INITIATIVE — Dashboard canvas (ADR-111, 2026-06-25; non-core/solo)
+
+**Brandon's ask:** make the dashboard MORE of a dashboard — a customizable *canvas*, not a uniform card grid. Decided + planned this session; **full plan in `explorations/dashboard-canvas.md`**, decision in **ADR-111**. Non-core (Work-surface dashboard, move-fast-solo side); one additive column (`dashboards.appearance`), everything else rides the `widgets` jsonb or reuses shipped machinery (react-grid-layout, the autosaving editor, R2). Five slices, cheapest-first, each shippable on its own:
+
+- [ ] **DC1 — Per-widget appearance + collapse.** A cross-cutting `appearance` on `DashboardWidget` (rides `widgets` jsonb, **no migration**): show/hide header, show/hide border, background color, accent, collapsible/collapsed. `WidgetFrame` branches on it (generalizes today's chrome-free `text` path); the gear popover gains an Appearance section; collapse is a view-mode chevron that persists. Existing dashboards must look identical (defaults = today's chrome). **Biggest visible win, lowest cost — start here.**
+- [ ] **DC2 — Dashboard background.** New `dashboards.appearance` jsonb column (one additive migration) + a Background panel: color/gradient/image with an adjustable scrim + blur, title-visibility + density toggles, R2 upload reuse. `null` = today's look. **Video** as a guarded opt-in sub-step (off by default, muted/looped/`playsInline`, paused when hidden, reduced-motion-aware, poster fallback). Export/print ignore appearance (Sunday-proof).
+- [ ] **DC3 — Item-embed widget (any item).** New `embed` kind + `itemId`; renders an item's title (toggleable) + body via the existing autosaving editor, editable in place. Sticky note = embed + color + no header. Any item, not just notes (Brandon). Keep the `text` widget for pure labels.
+- [ ] **DC4 — Tab/section container.** New `container` kind holding child widgets with a `mode` (tabs/stack/section) + activeTab; one-level nesting; single-recursion fan-out; drag-into in edit mode. Heaviest slice, last.
+- [ ] **DC5 — (Future) Journal / daily-note mode.** "New page" creates an item titled by date (from a template) and surfaces today's entry. More plumbing; revisit after DC1–DC4.
+
+Courtesy COLLAB note to Tyler when DC2's migration lands.
+
 ## ⟢ NEXT SLICE — Archive axis (cross-cutting `items.archived_at`, own ADR)
 
 **Brandon's decision (2026-06-24):** archive is a *different axis* from done/undone — "hide from most surfaces (search, sort, lenses, automations) but keep it recoverable," and it applies to **every type**, not just tasks. Today "archived" is only a task *status category* and doesn't even hide from search (`search.ts` excludes only `deleted_at`). Build a first-class lifecycle flag parallel to soft-delete:
