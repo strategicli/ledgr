@@ -7,6 +7,12 @@
 // art serves purpose "any" and "maskable"; the glyph sits inside the inner
 // 50%, well within the maskable safe zone) and src/app/apple-icon.png (180,
 // Next's apple-touch-icon convention).
+//
+// Also writes public/icons/badge-96.png, the Web Push notification *badge*
+// (the small status-bar glyph). Android masks the badge to its alpha channel
+// alone, so a full-bleed icon would render as a solid white square. The badge
+// is therefore transparent with only a white "L" silhouette, and the glyph is
+// drawn larger to stay legible at status-bar size.
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,6 +23,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Theme tokens from globals.css / the mention chip.
 const BG = [0x19, 0x19, 0x19];
 const BLUE = [0x52, 0x9c, 0xca];
+const WHITE = [0xff, 0xff, 0xff];
 
 // --- minimal PNG encoder -----------------------------------------------
 
@@ -83,9 +90,35 @@ function drawIcon(size) {
   return encodePng(size, px);
 }
 
+// The notification badge: a transparent tile with only a white "L" silhouette
+// (Android keys the status-bar glyph off the alpha channel). The buffer starts
+// fully transparent, so we draw nothing for the background and paint the glyph
+// at full alpha. The L is enlarged versus the app icon to read at the tiny
+// status-bar size, staying inside an ~16% margin so it isn't clipped.
+function drawBadge(size) {
+  const px = Buffer.alloc(size * size * 4);
+  const rect = (x0, y0, x1, y1) => {
+    for (let y = Math.round(y0 * size); y < Math.round(y1 * size); y++)
+      for (let x = Math.round(x0 * size); x < Math.round(x1 * size); x++) {
+        const i = (y * size + x) * 4;
+        px[i] = WHITE[0];
+        px[i + 1] = WHITE[1];
+        px[i + 2] = WHITE[2];
+        px[i + 3] = 255;
+      }
+  };
+  // Vertical bar + foot, centered, stroke width ~18% of the tile.
+  rect(0.3, 0.18, 0.48, 0.82);
+  rect(0.3, 0.64, 0.7, 0.82);
+  return encodePng(size, px);
+}
+
 mkdirSync(join(root, "public", "icons"), { recursive: true });
 for (const size of [192, 512]) {
   writeFileSync(join(root, "public", "icons", `icon-${size}.png`), drawIcon(size));
 }
+writeFileSync(join(root, "public", "icons", "badge-96.png"), drawBadge(96));
 writeFileSync(join(root, "src", "app", "apple-icon.png"), drawIcon(180));
-console.log("wrote public/icons/icon-{192,512}.png and src/app/apple-icon.png");
+console.log(
+  "wrote public/icons/icon-{192,512}.png, public/icons/badge-96.png and src/app/apple-icon.png"
+);

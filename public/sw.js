@@ -10,11 +10,18 @@
 // drops older shell caches (pins survive — they are user-meaningful data).
 // v3 (slice 30): push + notificationclick handlers for Web Push notifications
 // (morning agenda, meeting-prep-ready). These never touch any cache.
-const VERSION = "v3";
+// v4: notification badge points at a monochrome silhouette (badge-96.png) so
+// Android renders the "L" mark in the status bar, not a solid white square.
+const VERSION = "v4";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
-const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png"];
+const PRECACHE = [
+  OFFLINE_URL,
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/badge-96.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -118,7 +125,9 @@ self.addEventListener("push", (event) => {
     // Replace a same-tag notification rather than stacking duplicates.
     renotify: !!data.tag,
     icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
+    // Status-bar glyph: a monochrome silhouette (Android masks the badge to its
+    // alpha channel, so the full-color app icon would show as a white square).
+    badge: "/icons/badge-96.png",
     data: { url: data.url || "/" },
   };
   event.waitUntil(self.registration.showNotification(title, options));
