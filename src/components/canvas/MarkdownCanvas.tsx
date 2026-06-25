@@ -65,6 +65,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
     scheduledDate: item.scheduledDate?.toISOString() ?? null,
     urgency: item.urgency,
     meetingAt: item.meetingAt?.toISOString() ?? null,
+    noteDate: item.noteDate?.toISOString() ?? null,
     url: item.url,
   };
   const footerFields = footerFieldsFor(item);

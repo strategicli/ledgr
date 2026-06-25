@@ -19,6 +19,7 @@ export type StripValues = {
   scheduledDate: string | null;
   urgency: number | null;
   meetingAt: string | null;
+  noteDate: string | null;
   url: string | null;
 };
 
@@ -225,6 +226,18 @@ export default function FieldStrip({
             }
           />
         );
+      case "noteDate":
+        return (
+          <input
+            type="date"
+            className={inputClass}
+            // The date the note was taken; stored UTC-midnight like due/scheduled
+            // (ADR-110), so slice the ISO rather than local-format to keep the
+            // picked day stable. Clearing reverts it to empty (no date taken).
+            value={values.noteDate ? values.noteDate.slice(0, 10) : ""}
+            onChange={(e) => void save({ noteDate: e.target.value || null })}
+          />
+        );
       case "url":
         return (
           <input
@@ -251,6 +264,7 @@ export default function FieldStrip({
     scheduledDate: "Scheduled",
     urgency: "Urgency",
     meetingAt: "When",
+    noteDate: "Date taken",
     url: "URL",
   };
 
