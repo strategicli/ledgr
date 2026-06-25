@@ -81,9 +81,14 @@ check(
   taskDefault.layouts.lg.every((c) => c.x + c.w <= GRID_COLS.lg)
 );
 
-// Type-conditional + field cards: note has no system strip / subtasks; meeting
-// gets meetingPrep + sys:meetingAt; a custom type maps props and relations.
-check("note vocabulary has no system fields or subtasks", !cardVocabulary("note", []).some((id) => id.startsWith("sys:") || id === "subtasks"));
+// Type-conditional + field cards: note carries exactly its date-taken field and
+// no subtasks (ADR-110); meeting gets meetingPrep + sys:meetingAt; a custom type
+// maps props and relations.
+check("note vocabulary is exactly the date-taken field (ADR-110), no subtasks", (() => {
+  const v = cardVocabulary("note", []);
+  const sys = v.filter((id) => id.startsWith("sys:"));
+  return sys.length === 1 && sys[0] === "sys:noteDate" && !v.includes("subtasks");
+})());
 check("meeting vocabulary has meetingPrep + sys:meetingAt", (() => {
   const v = cardVocabulary("event", []);
   return v.includes("meetingPrep") && v.includes("sys:meetingAt") && !v.includes("subtasks");

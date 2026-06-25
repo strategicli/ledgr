@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## 🟢 Merged (2026-06-25) — Note "date taken" (ADR-110)
+
+An editable `items.note_date` column: a note's "date taken," defaulting to the creation day, distinct from `created_at`/`updated_at` (CORE; Brandon approved). Migration **0033** (additive nullable column + index + one-time backfill of existing notes, alpha). Note gains its one baked-in strip field "Date taken" (amends ADR-018); save path + notes-list display wired. Merged onto main after Brandon's ADR-102–109 batch (renumbered from a provisional ADR-100/migration 0032 to dodge collisions). `verify-note-date` 11/11, `verify-canvas-layout` updated. **Remaining:** in-browser eyeball; a `note_date` sort lens for the notes list is a natural follow-up.
+
 ## ⟢ NOW BUILDING — Events & calendar matching (E1–E4, ADR-094, 2026-06-20)
 
 Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core**). Four slices, one PR each (per the T1–T6 / TPL precedent). Full design in **ADR-094**. **Deferred off Brandon's 1.0 bar this session:** the sermons workspace (PDF/MD/Notion suffice for now) and the web-clipped archive (post-1.0); `src/lib/v1-goals.ts` updated. Notion migration stays on the bar (exploring a direct Notion→Ledgr API path vs. the MD-file exports).
