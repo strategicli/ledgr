@@ -35,11 +35,11 @@ const weekdayFmt = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone:
 const shortDay = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-// The date that places a task on the board: the earliest of its due/scheduled.
+// The date that places a task: its effective plan date — scheduled (planned)
+// day if set, else the due deadline (ADR-109). Scheduled-primary, due-secondary,
+// and undated when neither is set.
 function effDate(t: ListedItem): Date | null {
-  const ds = [t.dueDate, t.scheduledDate].filter((d): d is Date => d != null);
-  if (ds.length === 0) return null;
-  return ds.reduce((a, b) => (a < b ? a : b));
+  return t.scheduledDate ?? t.dueDate ?? null;
 }
 
 function TaskRow({ task, dueToday, statuses }: { task: ListedItem; dueToday: Date; statuses: StatusDef[] }) {
@@ -120,7 +120,7 @@ export default async function Tasks({
   let body: React.ReactNode = null;
 
   if (tab === "today") {
-    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "dueDate", dir: "asc" });
+    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
     const today = active.filter((t) => {
       const d = effDate(t);
       return d != null && d <= dueToday;
@@ -159,7 +159,7 @@ export default async function Tasks({
         <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} />
       );
   } else if (tab === "upcoming") {
-    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "dueDate", dir: "asc" });
+    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
     // 7-day window starting at today + weekOffset*7
     const windowStart = new Date(dueToday.getTime() + weekOffset * 7 * DAY_MS);
     const days = Array.from({ length: 7 }, (_, i) => new Date(windowStart.getTime() + i * DAY_MS));

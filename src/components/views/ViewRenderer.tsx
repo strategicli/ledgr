@@ -61,6 +61,9 @@ const tzKey = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE });
 
 function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | null {
   switch (prop) {
+    case "plan":
+      // Effective plan date: scheduled if set, else the due deadline (ADR-109).
+      return item.scheduledDate ?? item.dueDate;
     case "dueDate":
       return item.dueDate;
     case "scheduledDate":
@@ -72,12 +75,12 @@ function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | nu
     case "updatedAt":
       return item.updatedAt;
     default:
-      return item.dueDate ?? item.meetingAt;
+      return item.scheduledDate ?? item.dueDate ?? item.meetingAt;
   }
 }
 
 const usesUtc = (prop: ViewDefinition["dateProperty"]) =>
-  prop === "dueDate" || prop === "scheduledDate";
+  prop === "plan" || prop === "dueDate" || prop === "scheduledDate";
 
 function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
   return (usesUtc(prop) ? utcKey : tzKey).format(date);
@@ -128,6 +131,7 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
   type: "Type",
   status: "Status",
   urgency: "Urgency",
+  plan: "Plan",
   dueDate: "Due",
   scheduledDate: "Scheduled",
   meetingAt: "When",
@@ -168,6 +172,10 @@ function columnText(item: ViewItem, col: ViewColumn): string {
       return item.urgency != null ? `P${item.urgency}` : "";
     case "url":
       return item.url ?? "";
+    case "plan": {
+      const d = item.scheduledDate ?? item.dueDate;
+      return d ? utcDay.format(d) : "";
+    }
     case "dueDate":
       return item.dueDate ? utcDay.format(item.dueDate) : "";
     case "scheduledDate":
@@ -298,7 +306,11 @@ function TableLayout({
         ? "createdAt"
         : view.dateProperty === "updatedAt"
           ? "updatedAt"
-          : "dueDate";
+          : view.dateProperty === "scheduledDate"
+            ? "scheduledDate"
+            : view.dateProperty === "dueDate"
+              ? "dueDate"
+              : "plan";
   const columns: ViewColumn[] =
     view.columns && view.columns.length > 0
       ? view.columns

@@ -76,9 +76,12 @@ try {
     parseViewInput({ name: "x", layout: "list", filter: { relatedTo: "abc" } }), "bad_request");
 
   const calendarDef = parseViewInput({ name: "Cal", layout: "calendar", filter: {} });
-  check("calendar defaults dateProperty to dueDate", calendarDef.dateProperty === "dueDate");
+  check("calendar defaults dateProperty to plan (ADR-109)", calendarDef.dateProperty === "plan");
   const mtgCal = parseViewInput({ name: "Mtg cal", layout: "calendar", filter: { type: "event" } });
   check("meeting calendar defaults dateProperty to meetingAt", mtgCal.dateProperty === "meetingAt");
+  check("accepts plan dateField", parseViewInput({ name: "x", layout: "list", filter: { dateField: "plan" } }).filter.dateField === "plan");
+  check("accepts plan sort", parseViewInput({ name: "x", layout: "list", sort: { field: "plan", dir: "asc" } }).sort.field === "plan");
+  check("accepts plan grouping", (() => { const g = parseViewInput({ name: "x", layout: "board", grouping: { field: "plan" } }).grouping; return !!g && "field" in g && g.field === "plan"; })());
 
   const dropped = parseViewInput({
     name: "  Trimmed  ",
@@ -221,6 +224,7 @@ try {
       JSON.stringify({ propertyPatch: { stage: null } })
   );
   check("board drop: due grouping isn't draggable", boardDropPatch({ field: "due" }, "today") === null);
+  check("board drop: plan grouping isn't draggable", boardDropPatch({ field: "plan" }, "today") === null);
   check("board drop: type grouping isn't draggable", boardDropPatch({ field: "type" }, "task") === null);
 
   // --- store CRUD ---
@@ -311,8 +315,60 @@ try {
 
   // The old behavior (default dueDate field) would miss these meetings — they
   // have no due date — which is exactly the gap this fixes.
-  const onDue = await queryViewItems(ownerId, { type: "event", due: "today" });
+  const onDue = await queryViewItems(ownerId, { type: "event", due: "today", dateField: "dueDate" });
   check("dueDate=today misses meetings (no due date)", !has(onDue, mToday));
+
+  // --- effective plan date (ADR-109): scheduled-primary, due-secondary -------
+  const { todayBounds } = await import("../src/lib/today");
+  const { dueToday } = todayBounds();
+  const dayUtc = (n: number) => new Date(dueToday.getTime() + n * 86400000);
+  const mkTask = async (
+    title: string,
+    dates: { scheduledDate?: Date; dueDate?: Date }
+  ) =>
+    (await db.insert(items).values({ ownerId, type: "task", title, ...dates }).returning({ id: items.id }))[0].id;
+  // A: scheduled in the past, no due → overdue by plan.
+  const tSchedPast = await mkTask("sched past", { scheduledDate: dayUtc(-1) });
+  // B: scheduled in the FUTURE but due in the past → NOT overdue (scheduled wins).
+  const tSchedFutureDuePast = await mkTask("sched future, due past", { scheduledDate: dayUtc(2), dueDate: dayUtc(-1) });
+  // C: due today, no scheduled → today by plan (falls back to due).
+  const tDueTodayOnly = await mkTask("due today only", { dueDate: dueToday });
+  // D: scheduled today → today by plan.
+  const tSchedToday = await mkTask("sched today", { scheduledDate: dueToday });
+
+  // No dateField → plan is the default (the straggler fix).
+  const planOverdue = await queryViewItems(ownerId, { type: "task", due: "overdue" });
+  check("plan overdue: scheduled-past task is overdue", has(planOverdue, tSchedPast));
+  check(
+    "plan overdue: future-scheduled (past-due) task is NOT overdue — scheduled wins",
+    !has(planOverdue, tSchedFutureDuePast)
+  );
+  check(
+    "plan overdue: excludes today/future tasks",
+    !has(planOverdue, tDueTodayOnly) && !has(planOverdue, tSchedToday)
+  );
+
+  const planToday = await queryViewItems(ownerId, { type: "task", due: "today" });
+  check(
+    "plan today: due-only-today and scheduled-today both land today",
+    has(planToday, tDueTodayOnly) && has(planToday, tSchedToday)
+  );
+  check("plan today: excludes the overdue task", !has(planToday, tSchedPast));
+
+  // The contrast: filtering by dueDate alone still flags B as overdue (its
+  // deadline IS past) — proving plan changed the default, not the column.
+  const dueOverdue = await queryViewItems(ownerId, { type: "task", due: "overdue", dateField: "dueDate" });
+  check("dueDate overdue still flags the past-due task", has(dueOverdue, tSchedFutureDuePast));
+
+  // Sort by plan orders by the effective date (scheduled ?? due), nulls last.
+  const planSorted = await queryViewItems(ownerId, { type: "task" }, { field: "plan", dir: "asc" });
+  const idx = (id: string) => planSorted.findIndex((r) => r.id === id);
+  check(
+    "sort by plan: scheduled-past (−1) precedes today precedes future (+2)",
+    idx(tSchedPast) < idx(tDueTodayOnly) && idx(tDueTodayOnly) < idx(tSchedFutureDuePast)
+  );
+  const planSql = viewItemsQuery(ownerId, { type: "task", due: "overdue" }).toSQL();
+  check("plan window targets coalesce(scheduled_date, due_date)", /coalesce/i.test(planSql.sql));
 
   // --- property filtering: scalar select, multi_select element, "not set" ---
   const mkProp = async (title: string, properties: Record<string, unknown>) =>

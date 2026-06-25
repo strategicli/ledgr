@@ -29,6 +29,7 @@ const FILTER_NONE = "__none__";
 
 // Friendly labels for the "by which field" selects.
 const DATE_LABELS: Record<string, string> = {
+  plan: "plan date (scheduled, else due)",
   dueDate: "due date",
   scheduledDate: "scheduled date",
   meetingAt: "when",
@@ -39,6 +40,7 @@ const GROUP_LABELS: Record<string, string> = {
   status: "status",
   urgency: "urgency",
   type: "type",
+  plan: "plan window",
   due: "due window",
   scheduled: "scheduled window",
 };
@@ -49,10 +51,12 @@ const GROUP_LABELS: Record<string, string> = {
 // Every field select below draws from these, and changeType() reconciles the
 // current pick when the type changes.
 function dateFieldsFor(type: string): string[] {
-  if (type === "task") return ["dueDate", "scheduledDate", "createdAt", "updatedAt"];
+  // "plan" (scheduled ?? due, ADR-109) is offered first for tasks/any, so it's
+  // the default the builder picks — scheduled-primary, due-secondary.
+  if (type === "task") return ["plan", "scheduledDate", "dueDate", "createdAt", "updatedAt"];
   if (type === "event") return ["meetingAt", "createdAt", "updatedAt"];
   if (type === "")
-    return ["dueDate", "scheduledDate", "meetingAt", "createdAt", "updatedAt"];
+    return ["plan", "scheduledDate", "dueDate", "meetingAt", "createdAt", "updatedAt"];
   return ["createdAt", "updatedAt"]; // note / link / person
 }
 function sortFieldsFor(type: string): string[] {
@@ -60,9 +64,9 @@ function sortFieldsFor(type: string): string[] {
 }
 // urgency + due window are task-only in the UI (ADR-018).
 function groupFieldsFor(type: string): string[] {
-  if (type === "task") return ["status", "urgency", "due", "scheduled", "type"];
+  if (type === "task") return ["status", "urgency", "plan", "due", "scheduled", "type"];
   if (type === "event") return ["status", "type"];
-  if (type === "") return ["status", "urgency", "due", "scheduled", "type"];
+  if (type === "") return ["status", "urgency", "plan", "due", "scheduled", "type"];
   return ["status", "type"]; // note / link / person
 }
 const showsUrgency = (type: string) => type === "task" || type === "";
@@ -78,6 +82,7 @@ const FIELD_COLUMN_LABELS: Record<ColumnField, string> = {
   type: "Type",
   status: "Status",
   urgency: "Urgency",
+  plan: "Plan date",
   dueDate: "Due date",
   scheduledDate: "Scheduled date",
   meetingAt: "When",

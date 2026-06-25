@@ -5,6 +5,7 @@
 // proven panels the default canvas uses, just laid out as two panes. Registered
 // for the `task` type via the canvas seam (ADR-041); falls back gracefully.
 import Link from "next/link";
+import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import Subtasks from "@/components/subtasks/Subtasks";
 import TaskTitle from "@/components/canvas/TaskTitle";
@@ -30,8 +31,18 @@ import { isFocusedOn } from "@/lib/focus";
 import { bodyMarkdown } from "@/lib/body";
 import type { CanvasProps } from "@/lib/modules";
 
-export default async function TaskCanvas({ item, ownerId }: CanvasProps) {
+export default async function TaskCanvas(canvasProps: CanvasProps) {
+  const { item, ownerId, arrange = false } = canvasProps;
   const typeDef = await getType("task").catch(() => null);
+  // Per-type layout (ADR-069, Feature B): the bespoke compact rail below is the
+  // DEFAULT, but a saved custom layout — or entering arrange mode (?arrange=1) —
+  // renders the same field-level draggable grid every other type gets. The grid
+  // path lives in the default canvas; tasks delegate to it so "Customize layout"
+  // works again on the task type (it regressed when ADR-108 moved tasks off the
+  // default canvas onto this bespoke rail). Reset (layout → null) returns here.
+  if (arrange || typeDef?.canvasLayout != null) {
+    return <MarkdownCanvas {...canvasProps} />;
+  }
   const propertySchema = typeDef?.propertySchema ?? [];
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   // Display mode (ADR-106): task seeds 'checkbox', so a missing typeDef falls
