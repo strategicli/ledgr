@@ -126,6 +126,12 @@ export default function SchedulePopover({
             hasSchedule={hasSchedule}
           />
         </div>
+        {/* Reminder sits above Repeat: it's a far more frequent setting than
+            recurrence on a typical task (Brandon, 2026-06-24). */}
+        <div className="border-t border-neutral-800 pt-3">
+          <div className={sectionLabel}>Reminder</div>
+          <ReminderControl itemId={itemId} initialMinutes={reminderMinutes} />
+        </div>
         <div className="border-t border-neutral-800 pt-3">
           <div className={sectionLabel}>Repeat</div>
           <RecurrenceControl
@@ -138,12 +144,13 @@ export default function SchedulePopover({
           />
         </div>
         {recurrence && recurrence.occurrenceMode === "virtual" && (
-          <RecurrenceCalendar itemId={itemId} initial={recurrence} today={today} />
+          <RecurrenceCalendar
+            itemId={itemId}
+            initial={recurrence}
+            today={today}
+            bare
+          />
         )}
-        <div className="border-t border-neutral-800 pt-3">
-          <div className={sectionLabel}>Reminder</div>
-          <ReminderControl itemId={itemId} initialMinutes={reminderMinutes} />
-        </div>
       </div>
     </Popover>
   );

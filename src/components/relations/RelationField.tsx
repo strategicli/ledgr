@@ -175,7 +175,7 @@ export default function RelationField({
       {chips.map((chip) => (
         <span
           key={chip.id}
-          className="group/chip inline-flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800/60 py-0.5 pl-2 pr-1 text-sm"
+          className="group/chip inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-neutral-700 bg-neutral-800/60 py-0.5 pl-2 pr-1 text-sm"
         >
           <InlineTitle
             id={chip.id}
@@ -186,7 +186,7 @@ export default function RelationField({
             onClick={() => void onRemove(chip)}
             disabled={busy}
             aria-label={`Remove ${chip.title || "link"}`}
-            className="rounded px-0.5 text-neutral-500 hover:text-red-400 disabled:opacity-50"
+            className="shrink-0 rounded px-0.5 text-neutral-500 hover:text-red-400 disabled:opacity-50"
           >
             ✕
           </button>
