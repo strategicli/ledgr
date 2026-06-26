@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { errorResponse, parseItemPayload } from "@/lib/api";
+import { asUuid, errorResponse, parseItemPayload } from "@/lib/api";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import {
   ITEM_STATUSES,
   ItemError,
   createItem,
   listItems,
+  updateItem,
   type ItemStatus,
   type ListOptions,
 } from "@/lib/items";
@@ -123,5 +124,71 @@ export async function POST(request: Request) {
   return NextResponse.json(
     { count: created.length, created, errors },
     { status: created.length > 0 ? 201 : 400 }
+  );
+}
+
+// PATCH /api/machine/items — update one item (a bare { id, ...patch }) or a
+// batch ({ items: [{ id, ...patch }] }, max 100). Each entry names its target
+// by `id` and carries the same fields POST accepts (title, status, parentId,
+// body, properties, …); every entry is validated through the same
+// parseItemPayload + updateItem the in-app PATCH /api/items/:id uses, so this
+// surface can't drift from the app contract or skip owner-scoping — and
+// parent_id changes still go through assertValidParent (no cycles). Added
+// (ADR-113) for the migration's two remaining update passes: the not-done task
+// hierarchy re-pull (set parent_id) and the attachment body-ref rewrite. A bad
+// entry is reported in `errors` and skipped, never failing the rest. Response:
+// { count, updated, errors }; 200 if anything updated, 400 if every entry failed.
+export async function PATCH(request: Request) {
+  const identity = verifyMachineToken(request.headers.get("authorization"), "api");
+  if (!identity) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const ownerId = await resolveMachineOwner();
+  if (!ownerId) {
+    return NextResponse.json({ error: "owner not configured" }, { status: 503 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+
+  const batch = (body as { items?: unknown })?.items;
+  const rawItems = Array.isArray(batch) ? batch : [body];
+  if (rawItems.length === 0) {
+    return NextResponse.json({ count: 0, updated: [], errors: [] });
+  }
+  if (rawItems.length > MAX_BATCH) {
+    return NextResponse.json(
+      { error: `too many items (max ${MAX_BATCH} per request)` },
+      { status: 400 }
+    );
+  }
+
+  const updated: unknown[] = [];
+  const errors: { index: number; error: string }[] = [];
+  for (let i = 0; i < rawItems.length; i++) {
+    try {
+      const entry = rawItems[i] as Record<string, unknown>;
+      const id = asUuid(entry.id, "id");
+      const patch = parseItemPayload(entry, "patch");
+      updated.push(await updateItem(ownerId, id, patch));
+    } catch (err) {
+      if (err instanceof ItemError) {
+        errors.push({ index: i, error: err.message });
+      } else {
+        const correlationId = crypto.randomUUID();
+        await captureError("machine-items", err, { correlationId, detail: { index: i } });
+        errors.push({ index: i, error: `internal error (correlationId ${correlationId})` });
+      }
+    }
+  }
+
+  return NextResponse.json(
+    { count: updated.length, updated, errors },
+    { status: updated.length > 0 ? 200 : 400 }
   );
 }
