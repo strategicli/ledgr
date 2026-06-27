@@ -4,11 +4,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import ListPage from "@/components/lists/ListPage";
+import LoadMore from "@/components/lists/LoadMore";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
 import { resolveOwner } from "@/lib/owner";
 import { APP_TIMEZONE } from "@/lib/today";
-import { queryViewItems } from "@/lib/views";
+import { countViewItems, parseListWindow, queryViewItems } from "@/lib/views";
 import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
 import AddEventButton from "@/components/calendar/AddEventButton";
 
@@ -131,13 +132,24 @@ function CalendarFeedSection({ events, now }: { events: FeedEvent[]; now: Date }
   );
 }
 
-export default async function Meetings() {
+export default async function Meetings({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
+  const sp = await searchParams;
   const now = new Date();
-  const [meetings, feed] = await Promise.all([
-    queryViewItems(owner.id, { type: "event" }, { field: "meetingAt", dir: "desc" }),
+  // A window of events (Load-more grows it, oldest-past first to fall off the
+  // bottom) plus the true total, so the subtitle counts every event, not the
+  // window. The upcoming/past/undated split is presentation over this one fetch.
+  const show = parseListWindow(sp.show);
+  const filter = { type: "event" };
+  const [meetings, total, feed] = await Promise.all([
+    queryViewItems(owner.id, filter, { field: "meetingAt", dir: "desc" }, show),
+    countViewItems(owner.id, filter),
     listCalendarFeed(owner.id, { now }),
   ]);
   const upcoming = meetings
@@ -150,7 +162,7 @@ export default async function Meetings() {
     <ListPage
       tab="events"
       title="Events"
-      subtitle={`${meetings.length} event${meetings.length === 1 ? "" : "s"}`}
+      subtitle={`${total} event${total === 1 ? "" : "s"}`}
       actions={<NewItemButton type="event" />}
     >
       <CalendarFeedSection events={feed} now={now} />
@@ -160,6 +172,7 @@ export default async function Meetings() {
       <Section title="Upcoming" rows={upcoming} now={now} />
       <Section title="Past" rows={past} now={now} />
       <Section title="No date" rows={undated} now={now} />
+      <LoadMore shown={meetings.length} total={total} basePath="/events" params={sp} />
     </ListPage>
   );
 }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import ListLenses from "@/components/lists/ListLenses";
 import ListPage from "@/components/lists/ListPage";
+import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
@@ -14,7 +15,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE } from "@/lib/today";
 import { resolveViewLens } from "@/lib/view-render";
-import { queryViewItems } from "@/lib/views";
+import { countViewItems, parseListWindow, queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +49,20 @@ export default async function Links({
 
   const viewData =
     active.kind === "view" ? await resolveViewLens(owner.id, active.viewId, "link") : null;
-  const links = viewData
-    ? []
-    : await queryViewItems(owner.id, { type: "link" }, resolveLensSort(active, reversed) ?? undefined);
-  const count = viewData ? viewData.count : links.length;
+
+  // Sort-lens path: a window of rows (Load-more grows it) plus the true count.
+  const show = parseListWindow(sp.show);
+  let links: Awaited<ReturnType<typeof queryViewItems>> = [];
+  let count: number;
+  if (viewData) {
+    count = viewData.count;
+  } else {
+    const filter = { type: "link" };
+    [links, count] = await Promise.all([
+      queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
+      countViewItems(owner.id, filter),
+    ]);
+  }
 
   return (
     <ListPage
@@ -71,38 +82,41 @@ export default async function Links({
       {viewData ? (
         <ViewLensBody data={viewData} />
       ) : links.length > 0 ? (
-        <ul className="mt-4">
-          {links.map((link) => (
-            <li
-              key={link.id}
-              className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
-            >
-              <Link
-                href={`/items/${link.id}`}
-                className={`min-w-0 flex-1 truncate text-sm ${
-                  link.title ? "text-neutral-200" : "text-neutral-500"
-                }`}
+        <>
+          <ul className="mt-4">
+            {links.map((link) => (
+              <li
+                key={link.id}
+                className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
               >
-                {link.title || "Untitled"}
-              </Link>
-              {link.url && (
-                <a
-                  href={link.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="max-w-40 shrink-0 truncate rounded bg-neutral-800 px-1.5 text-xs text-[var(--accent)] hover:brightness-110"
-                  title={link.url}
+                <Link
+                  href={`/items/${link.id}`}
+                  className={`min-w-0 flex-1 truncate text-sm ${
+                    link.title ? "text-neutral-200" : "text-neutral-500"
+                  }`}
                 >
-                  {hostOf(link.url)} ↗
-                </a>
-              )}
-              <span className="shrink-0 text-xs text-neutral-600">
-                {dateFmt.format(link.updatedAt)}
-              </span>
-              <RowAction id={link.id} action="trash" />
-            </li>
-          ))}
-        </ul>
+                  {link.title || "Untitled"}
+                </Link>
+                {link.url && (
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="max-w-40 shrink-0 truncate rounded bg-neutral-800 px-1.5 text-xs text-[var(--accent)] hover:brightness-110"
+                    title={link.url}
+                  >
+                    {hostOf(link.url)} ↗
+                  </a>
+                )}
+                <span className="shrink-0 text-xs text-neutral-600">
+                  {dateFmt.format(link.updatedAt)}
+                </span>
+                <RowAction id={link.id} action="trash" />
+              </li>
+            ))}
+          </ul>
+          <LoadMore shown={links.length} total={count} basePath="/links" params={sp} />
+        </>
       ) : (
         <p className="mt-6 px-2 text-sm text-neutral-600">No links yet.</p>
       )}

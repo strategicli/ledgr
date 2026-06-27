@@ -96,7 +96,27 @@ const SORT_COLUMNS = {
 // through to NULL, which reads as "no date" exactly like an undated task.
 const PLAN_DATE = sql`coalesce(${items.scheduledDate}, ${items.dueDate})`;
 
+// Default page size for a plain list / view render, and the increment the list
+// pages "Load more" by (ADR-116). A render may request a larger window (paging)
+// up to VIEW_MAX.
 export const VIEW_LIMIT = 200;
+
+// Hard ceiling on a single render: the perf backstop behind paging. "Load more"
+// grows a list's window a page at a time up to this many rows, never unbounded;
+// past it the user narrows with a filter or search instead. List rows are
+// body-free (no body in list queries), so this is comfortably renderable for a
+// single-user workspace.
+export const VIEW_MAX = 2000;
+
+// Parse the list window from a ?show= param: how many rows a plain list renders
+// this load. Floors at one page (the default) and clamps to VIEW_MAX, so a
+// hand-edited or stale value can never under- or over-shoot the safe range.
+export function parseListWindow(raw: string | string[] | undefined): number {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  const n = s ? parseInt(s, 10) : NaN;
+  if (!Number.isFinite(n) || n < VIEW_LIMIT) return VIEW_LIMIT;
+  return Math.min(n, VIEW_MAX);
+}
 
 // The WHERE clause for a filter, shared by the list query and the count so a
 // dashboard badge can never disagree with the view it labels. Owner-scoped
@@ -254,7 +274,7 @@ export function viewItemsQuery(
     .from(items)
     .where(and(...where))
     .orderBy(listOrderExpr(sort), sql`${items.updatedAt} desc`)
-    .limit(Math.min(Math.max(limit, 1), VIEW_LIMIT));
+    .limit(Math.min(Math.max(limit, 1), VIEW_MAX));
 }
 
 export async function queryViewItems(
