@@ -246,6 +246,13 @@
       "when": 1782567410027,
       "tag": "0034_gorgeous_hitman",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1782580819416,
+      "tag": "0035_eager_vanisher",
+      "breakpoints": true
     }
   ]
 }
