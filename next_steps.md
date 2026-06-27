@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## 🚀 v1.0 PRODUCTION — flipped 2026-06-26 (ADR-115)
+
+Ledgr is **out of alpha**. Brandon's Notion import landed (ledgr#84), so the app holds real data and is in daily use. The ADR-039 alpha exemptions are withdrawn: schema changes get real migrations (additive, then backfill; no reseed of live owner data), back-compat matters, and **no deploys Saturday night**. CLAUDE.md status line + runbook §0 updated; the v1.0-goal bar (`src/lib/v1-goals.ts`) marks the flip done; `package.json` is at 1.0.0. Per-instance, so Tyler flips his own on his timeline (COLLAB heads-up posted).
+
 ## 🟢 Merged (2026-06-25) — Note "date taken" (ADR-110)
 
 An editable `items.note_date` column: a note's "date taken," defaulting to the creation day, distinct from `created_at`/`updated_at` (CORE; Brandon approved). Migration **0033** (additive nullable column + index + one-time backfill of existing notes, alpha). Note gains its one baked-in strip field "Date taken" (amends ADR-018); save path + notes-list display wired. Merged onto main after Brandon's ADR-102–109 batch (renumbered from a provisional ADR-100/migration 0032 to dodge collisions). `verify-note-date` 11/11, `verify-canvas-layout` updated. **Remaining:** in-browser eyeball; a `note_date` sort lens for the notes list is a natural follow-up.
@@ -255,7 +259,7 @@ Full record in **ADR-037**; PRD bumped to **v0.18 "Markdown epoch"**; git tag `v
 
 **The next build work is the foundation rework** (roadmap **Phase M**), which gates the new modules (Papers, Songs, etc.) and is more pressing than opening Phase 3.
 
-> **🚧 Alpha / build phase (ADR-039, 2026-06-13).** Ledgr is pre-production — **no data to protect.** The original "each slice leaves the app working / careful staged migration" framing is dropped: get fully onto Tiptap/markdown the cleanest way, convert-or-reseed dev data freely, no DB-copy dry runs. **M3 and M4 are collapsed into one direct cutover.**
+> **🚧 Alpha / build phase (ADR-039, 2026-06-13; HISTORICAL, ended by ADR-115's v1.0 production flip on 2026-06-26: data is now real, reseed-freely no longer applies).** Ledgr was pre-production then with **no data to protect.** The original "each slice leaves the app working / careful staged migration" framing is dropped: get fully onto Tiptap/markdown the cleanest way, convert-or-reseed dev data freely, no DB-copy dry runs. **M3 and M4 are collapsed into one direct cutover.**
 
 - **M1 — Editor selection (spike + ADR)** ✓ **decided (ADR-038, 2026-06-13, accepted — Brandon + Tyler agreed): Tiptap + first-party `@tiptap/markdown`.** Custom marks via `renderMarkdown`/`parseMarkdown` emit the exact `colors.ts` inline-HTML; official Mention/slash/drag extensions for the deferred Notion feel; Savor-proven in Tyler's prod. Milkdown documented as runner-up, Lexical rejected.
 - **M2 — Markdown editor stood up in isolation** ✓ **built (2026-06-13).** Tiptap v3.26.1 + first-party `@tiptap/markdown` on `/scratch/editor`, with a WordPress-style **Visual / Markdown toggle** (WYSIWYG + Ctrl-shortcuts ⇄ editable raw source). New `src/components/markdown-editor/` (BlockNote's `editor/` dir still present until M3's cutover): `TextColor`/`Highlight` marks + `LedgrMention` node whose `renderMarkdown` emits the **exact** `colors.ts` inline-HTML and `[@Title](ledgr://item/<uuid>)`; hand-rolled `@`-mention popup (no popup dep) over `/api/items`; lazy-loaded. Pure bespoke logic in `src/lib/editor/mention-markdown.ts` + `colors.ts` reverse lookups. `scripts/verify-tiptap-markdown.mts` covers the color/mention encode↔decode round-trip; `tsc` clean. **(In-browser eyeball + `next build` were closed as part of M3.)**
@@ -303,7 +307,7 @@ Brandon: kanban DnD works on desktop but not mobile. Add long-press-and-drag on 
 
 **🎉 The Native Tasks chunk (T1–T6, ADR-073) is complete — Ledgr replaces Todoist end to end on Brandon's instance.**
 
-**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the matcher setup-wizard + learn-by-confirmation UIs (Phase 2; §1c is live as of 2026-06-19, so these are now unblocked); the **alpha → v1.0 production flip** (record in `decisions.md` — turns on migration-caution + no-Saturday-deploys).
+**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the matcher setup-wizard + learn-by-confirmation UIs (Phase 2; §1c is live as of 2026-06-19, so these are now unblocked); the **alpha → v1.0 production flip** (✅ DONE 2026-06-26, ADR-115: migration-caution + no-Saturday-deploys now in force).
 
 ---
 

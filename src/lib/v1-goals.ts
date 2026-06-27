@@ -70,7 +70,11 @@ export const V1_GOALS: GoalSet[] = [
         status: "todo",
         note: "have MD-file exports; exploring a direct Notion→Ledgr API transfer",
       },
-      { label: "Alpha → v1.0 production flip", status: "todo" },
+      {
+        label: "Alpha → v1.0 production flip",
+        status: "done",
+        note: "Flipped 2026-06-26 (ADR-115): production data, migration caution + no-Saturday-deploys in force",
+      },
     ],
   },
   {
