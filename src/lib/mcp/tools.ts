@@ -54,7 +54,6 @@ import {
   type ViewSort,
 } from "@/lib/views";
 import {
-  WIDGET_KINDS,
   addWidget,
   createDashboard,
   listDashboards,
@@ -62,6 +61,12 @@ import {
   parseWidget,
   type Dashboard,
 } from "@/lib/dashboards";
+
+// The widget kinds the MCP add_widget tool advertises. Pinned to the ADR-064/065
+// base — the dashboard-canvas kinds (tree/embed/container, ADR-111) are UI-built
+// and deliberately NOT on the machine/MCP contract (which is frozen-core), so
+// this enum stays stable even as WIDGET_KINDS grows.
+const MCP_WIDGET_KINDS = ["view", "stat", "action", "text"] as const;
 import {
   NAV_DENSITIES,
   NAV_POSITIONS,
@@ -999,7 +1004,7 @@ const TOOLS: McpTool[] = [
       type: "object",
       properties: {
         dashboardId: { type: "string", description: "The dashboard id (UUID), from describe_workspace." },
-        kind: { type: "string", enum: [...WIDGET_KINDS], description: "view | stat | action | text." },
+        kind: { type: "string", enum: [...MCP_WIDGET_KINDS], description: "view | stat | action | text." },
         viewId: { type: "string", description: "The backing saved view id (UUID) — required for kind view/stat." },
         settings: { type: "object", description: "Per-kind display settings (see description)." },
         layout: { type: "object", description: "Optional grid placement per breakpoint; omit to auto-place." },

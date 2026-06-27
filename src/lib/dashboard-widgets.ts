@@ -9,7 +9,12 @@ import type { ViewDefinition, ViewFilter, ViewSort } from "@/lib/views";
 
 // --- Widget kinds & settings ---------------------------------------------
 
-export const WIDGET_KINDS = ["view", "stat", "action", "text"] as const;
+// view/stat/action/text are the ADR-064/065 base. tree/embed/container are the
+// dashboard-canvas additions (ADR-111 + the nested-widget follow-on):
+//   • tree     — N parent items, each with its children listed under it.
+//   • embed    — any item, edited in place (the sticky note is this + a color).
+//   • container — a tab/stack/section holding child widgets (one-level nesting).
+export const WIDGET_KINDS = ["view", "stat", "action", "text", "tree", "embed", "container"] as const;
 export type WidgetKind = (typeof WIDGET_KINDS)[number];
 
 // How a view-backed widget renders: "compact" is the cheap list preview (title
@@ -53,11 +58,101 @@ export type TextWidgetSettings = {
   body: string;
 };
 
+// Nested-list widget (tree): N parent items (from a backing view), each with its
+// children listed under it. Children come either from the parent_id item
+// hierarchy ("children": subtasks under a task, sub-pages under a note) or a
+// confirmed relation edge ("relation": e.g. a task's role="project" link, so a
+// project lists its tasks). hideCompletedChildren defaults on so a dashboard
+// shows live work. The parents are a real saved view (viewId), so filter/sort
+// come free; childLimit caps the rows shown per parent before "+N more".
+export const CHILD_SOURCES = ["children", "relation"] as const;
+export type ChildSource = (typeof CHILD_SOURCES)[number];
+export type TreeWidgetSettings = {
+  titleOverride: string | null; // null = use the view's name
+  parentLimit: number | null; // how many parents (null = default)
+  childLimit: number; // children shown per parent before "+N more"
+  childSource: ChildSource; // "children" = parent_id tree; "relation" = an edge
+  relationRole: string | null; // when childSource = "relation": the edge role (e.g. "project")
+  childType: string | null; // optional: only children of this type
+  hideCompletedChildren: boolean; // default true (show live work)
+  sortOverride: ViewSort | null; // parent sort (null = the view's stored sort)
+};
+
+// Item-embed widget: renders ONE item's title (toggled by appearance.showHeader)
+// + body through the autosaving editor, editable in place. The "sticky note" is
+// an embed with a colored background and the header off. Honors Principle 2:
+// the content is a real, searchable, exportable item.
+export type EmbedWidgetSettings = {
+  showBody: boolean; // default true (a header-only embed is unusual but allowed)
+};
+
+// Tab/stack/section container: holds child widgets in its settings, displayed by
+// `mode`. One-level nesting only (a container's children are never containers),
+// so the server fan-out stays a single recursion.
+export const CONTAINER_MODES = ["tabs", "stack", "section"] as const;
+export type ContainerMode = (typeof CONTAINER_MODES)[number];
+export type ContainerWidgetSettings = {
+  mode: ContainerMode;
+  title: string; // section label / fallback tab group title
+  activeTab: number; // which tab is shown (tabs mode)
+  children: DashboardWidget[]; // one level deep; parsed non-container
+};
+
 export type WidgetSettings =
   | ViewWidgetSettings
   | StatWidgetSettings
   | ActionWidgetSettings
-  | TextWidgetSettings;
+  | TextWidgetSettings
+  | TreeWidgetSettings
+  | EmbedWidgetSettings
+  | ContainerWidgetSettings;
+
+// --- Per-widget appearance (cross-cutting, ADR-111 DC1) ------------------
+// One optional object on every widget. Absent = today's per-kind chrome (so
+// existing dashboards render identically). Present = an override the frame
+// branches on, generalizing the chrome-free `text` path to all kinds.
+export const WIDGET_BACKGROUNDS = [
+  "panel",
+  "transparent",
+  "amber",
+  "blue",
+  "green",
+  "rose",
+  "violet",
+  "slate",
+] as const;
+export type WidgetBackground = (typeof WIDGET_BACKGROUNDS)[number];
+
+export const WIDGET_ACCENTS = ["none", "amber", "blue", "green", "rose", "violet", "slate"] as const;
+export type WidgetAccent = (typeof WIDGET_ACCENTS)[number];
+
+export type WidgetAppearance = {
+  showHeader: boolean;
+  showBorder: boolean;
+  background: WidgetBackground;
+  accent: WidgetAccent;
+  collapsible: boolean;
+  collapsed: boolean;
+};
+
+// Today's chrome by kind: text is structure (chrome-free); every other kind is a
+// full card. effectiveAppearance() falls back to this when a widget has no saved
+// appearance, so an untouched dashboard looks exactly as before.
+export function defaultAppearance(kind: WidgetKind): WidgetAppearance {
+  const chromeFree = kind === "text";
+  return {
+    showHeader: !chromeFree,
+    showBorder: !chromeFree,
+    background: chromeFree ? "transparent" : "panel",
+    accent: "none",
+    collapsible: false,
+    collapsed: false,
+  };
+}
+
+export function effectiveAppearance(widget: DashboardWidget): WidgetAppearance {
+  return widget.appearance ?? defaultAppearance(widget.kind);
+}
 
 // --- Grid layout (react-grid-layout). One cell per breakpoint. -----------
 export const GRID_BREAKPOINTS = ["lg", "md", "sm"] as const;
@@ -72,18 +167,91 @@ export const GRID_COLS = 12;
 export type DashboardWidget = {
   id: string;
   kind: WidgetKind;
-  // Required for "view"/"stat" (every data widget is backed by a real view);
-  // null for "action".
+  // Required for "view"/"stat"/"tree" (each is backed by a real view); null for
+  // action/text/container; the embed kind uses itemId instead.
   viewId: string | null;
+  // The embedded item (kind "embed"); null otherwise.
+  itemId: string | null;
   settings: WidgetSettings;
+  // Per-widget chrome override (DC1). Absent = today's per-kind defaults.
+  appearance?: WidgetAppearance;
   layout: WidgetLayout;
 };
+
+// --- Dashboard stage appearance (whole-board, ADR-111 DC2) ---------------
+// A nullable jsonb column on dashboards. null = today's plain dark dashboard,
+// untouched (never forced — the canvas_layout precedent). The grid floats over a
+// full-bleed background; the scrim (a dark overlay) + blur keep widgets legible
+// over a photo. value holds a curated token (color/gradient) or an image URL —
+// never bytes. (Video + raw byte upload are a guarded future sub-step: the
+// parser accepts "video" so the seam stays, but the UI doesn't offer it yet.)
+export const STAGE_BG_KINDS = ["none", "color", "gradient", "image", "video"] as const;
+export type StageBgKind = (typeof STAGE_BG_KINDS)[number];
+export type StageBackground = {
+  kind: StageBgKind;
+  value: string; // curated color/gradient token, or an image/video URL
+  scrim: number; // 0..1 darken overlay
+  blur: number; // 0..1 background blur
+};
+export const STAGE_DENSITIES = ["comfortable", "compact"] as const;
+export type StageDensity = (typeof STAGE_DENSITIES)[number];
+export type DashboardAppearance = {
+  background: StageBackground;
+  showTitle: boolean;
+  density: StageDensity;
+  accent: string | null; // reserved; optional dashboard-level accent
+};
+
+// The starting point when an owner first opens the Background panel on a plain
+// (null-appearance) dashboard. A mid scrim is pre-set so an image is legible.
+export const DEFAULT_DASHBOARD_APPEARANCE: DashboardAppearance = {
+  background: { kind: "none", value: "", scrim: 0.4, blur: 0 },
+  showTitle: true,
+  density: "comfortable",
+  accent: null,
+};
+
+// Curated color + gradient tokens (a swatch set, not a color-picker lib —
+// Principle 5). Client-safe; the page maps a token → CSS via these tables.
+export const STAGE_COLOR_TOKENS: Record<string, string> = {
+  slate: "#0f172a",
+  ink: "#0a0a0a",
+  midnight: "#0b1020",
+  forest: "#0c1f17",
+  wine: "#1c0f14",
+  cocoa: "#1a1410",
+};
+export const STAGE_GRADIENT_TOKENS: Record<string, string> = {
+  dusk: "linear-gradient(160deg, #1e1b4b 0%, #0f172a 60%, #020617 100%)",
+  ember: "linear-gradient(160deg, #3b0d0d 0%, #1a1410 60%, #0a0a0a 100%)",
+  aurora: "linear-gradient(160deg, #042f2e 0%, #0c1f2b 55%, #06070f 100%)",
+  plum: "linear-gradient(160deg, #2a1037 0%, #170b2b 60%, #050510 100%)",
+  steel: "linear-gradient(160deg, #1f2937 0%, #111827 60%, #030712 100%)",
+};
+
+// Resolve a stage background into a CSS value (background-color or
+// background-image) for the page wrapper. Image/video resolve to the element's
+// own tags, so this returns null for those (handled in the page).
+export function stageBackgroundCss(
+  bg: StageBackground
+): { color?: string; image?: string } | null {
+  if (bg.kind === "color") {
+    const c = STAGE_COLOR_TOKENS[bg.value] ?? (bg.value.startsWith("#") ? bg.value : null);
+    return c ? { color: c } : null;
+  }
+  if (bg.kind === "gradient") {
+    const g = STAGE_GRADIENT_TOKENS[bg.value] ?? null;
+    return g ? { image: g } : null;
+  }
+  return null;
+}
 
 export type Dashboard = {
   id: string;
   name: string;
   position: number;
   focusItemId: string | null;
+  appearance: DashboardAppearance | null;
   widgets: DashboardWidget[];
   createdAt: Date;
 };
@@ -92,6 +260,7 @@ export type Dashboard = {
 export type DashboardInput = {
   name: string;
   focusItemId: string | null;
+  appearance: DashboardAppearance | null;
   widgets: DashboardWidget[];
 };
 
@@ -104,7 +273,7 @@ export type DashboardInput = {
 // carried so a faithful render has the layout/columns/grouping it needs.
 export type WidgetData = {
   widget: DashboardWidget;
-  // Backing view definition; null for action widgets or a missing/deleted view.
+  // Backing view definition; null for action/text/embed/container or a missing view.
   view: ViewDefinition | null;
   items: ViewItem[]; // view kind (capped); empty for stat/action
   count: number; // view/stat total
@@ -114,6 +283,16 @@ export type WidgetData = {
   propertyLabels?: Record<string, string>;
   // Per-item confirmed related items (the compact list's "associated with" chip).
   related?: Record<string, { id: string; title: string; type: string }[]>;
+  // tree kind: the parent rows, plus each parent's (capped) child rows and the
+  // true child count (for the "+N more" overflow).
+  parents?: ViewItem[];
+  childrenByParent?: Record<string, ViewItem[]>;
+  childCountByParent?: Record<string, number>;
+  // embed kind: the embedded item's title + body (the one place a widget reads a
+  // body — it IS the content). null when the item is missing/deleted.
+  embedItem?: { id: string; title: string; body: unknown } | null;
+  // container kind: the resolved data for each child widget (one level deep).
+  childData?: WidgetData[];
 };
 
 // --- Pure helpers ---------------------------------------------------------

@@ -10,8 +10,10 @@ import { Responsive, WidthProvider, type Layout, type Layouts } from "react-grid
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import {
+  effectiveAppearance,
   GRID_BREAKPOINTS,
   type GridBreakpoint,
+  type WidgetAppearance,
   type WidgetData,
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
@@ -29,11 +31,13 @@ const ROW_HEIGHT = 40;
 type Kind = WidgetData["widget"]["kind"];
 
 // Default cell height (in rows) by kind: a heading is one short row; a count a
-// few; a list/board the tallest.
+// few; an embed/list taller; a container the tallest.
 function defaultH(kind: Kind) {
   if (kind === "text") return 1;
   if (kind === "action") return 2;
   if (kind === "stat") return 3;
+  if (kind === "embed") return 6;
+  if (kind === "container") return 10;
   return 8;
 }
 
@@ -50,15 +54,24 @@ function minFor(kind: Kind) {
   if (kind === "stat") return { minW: 2, minH: 2 };
   if (kind === "action") return { minW: 2, minH: 1 };
   if (kind === "text") return { minW: 2, minH: 1 }; // a heading can be one short row
+  if (kind === "embed") return { minW: 2, minH: 3 };
+  if (kind === "container") return { minW: 3, minH: 5 };
   return { minW: 3, minH: 4 };
 }
 
-function buildLayouts(widgets: WidgetData[]): Layouts {
+// editMode is needed so a collapsed widget folds to one row in VIEW mode only —
+// the forced height never persists (handleLayoutChange ignores view mode), so
+// the stored expanded height survives and restores on expand.
+function buildLayouts(widgets: WidgetData[], editMode: boolean): Layouts {
   const out: Layouts = { lg: [], md: [], sm: [] };
   widgets.forEach((wd, i) => {
-    const m = minFor(wd.widget.kind);
+    const kind = wd.widget.kind;
+    const collapsed = !editMode && effectiveAppearance(wd.widget).collapsed;
+    const min = minFor(kind);
     for (const bp of GRID_BREAKPOINTS) {
-      const cell = wd.widget.layout[bp] ?? defaultCell(bp, i, wd.widget.kind);
+      const base = wd.widget.layout[bp] ?? defaultCell(bp, i, kind);
+      const cell = collapsed ? { ...base, h: 1 } : base;
+      const m = collapsed ? { minW: min.minW, minH: 1 } : min;
       (out[bp] as Layout[]).push({ i: wd.widget.id, ...cell, ...m });
     }
   });
@@ -71,17 +84,19 @@ export default function RglInner({
   onLayoutChange,
   onRemove,
   onSettings,
+  onAppearance,
 }: {
   widgets: WidgetData[];
   editMode: boolean;
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
+  onAppearance: (id: string, appearance: WidgetAppearance) => void;
 }) {
   return (
     <ResponsiveGridLayout
       className={editMode ? "layout dash-edit" : "layout"}
-      layouts={buildLayouts(widgets)}
+      layouts={buildLayouts(widgets, editMode)}
       breakpoints={BREAKPOINT_PX}
       cols={COLS}
       rowHeight={ROW_HEIGHT}
@@ -96,7 +111,13 @@ export default function RglInner({
     >
       {widgets.map((wd) => (
         <div key={wd.widget.id}>
-          <WidgetFrame data={wd} editMode={editMode} onRemove={onRemove} onSettings={onSettings} />
+          <WidgetFrame
+            data={wd}
+            editMode={editMode}
+            onRemove={onRemove}
+            onSettings={onSettings}
+            onAppearance={onAppearance}
+          />
         </div>
       ))}
     </ResponsiveGridLayout>

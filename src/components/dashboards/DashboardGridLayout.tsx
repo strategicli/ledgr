@@ -6,7 +6,7 @@
 
 import dynamic from "next/dynamic";
 import type { Layouts } from "react-grid-layout";
-import type { WidgetData, WidgetSettings } from "@/lib/dashboard-widgets";
+import type { WidgetAppearance, WidgetData, WidgetSettings } from "@/lib/dashboard-widgets";
 
 export type DashboardGridLayoutProps = {
   widgets: WidgetData[];
@@ -14,6 +14,7 @@ export type DashboardGridLayoutProps = {
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
+  onAppearance: (id: string, appearance: WidgetAppearance) => void;
 };
 
 const DashboardGridLayout = dynamic<DashboardGridLayoutProps>(

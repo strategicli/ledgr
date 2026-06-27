@@ -1,30 +1,56 @@
 // Per-widget settings (the gear, edit mode only). A small popover anchored to
 // the gear button — matches the ConfirmButton chrome (dark panel, outside-click
-// / Esc close). Fields by kind; every change calls onChange with the FULL new
-// settings object (display-only — never mutates the backing view). The parent
-// persists + refetches where the change affects data.
+// / Esc close). Two parts: the per-kind data/display fields (onChange → the full
+// new settings), and a cross-cutting Appearance section (onAppearance → the full
+// new appearance: header/border/background/accent/collapse). Neither mutates the
+// backing view; the parent persists + refetches where the change affects data.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type {
-  ActionKind,
-  ActionWidgetSettings,
-  DashboardWidget,
-  RenderStyle,
-  StatWidgetSettings,
-  TextWidgetSettings,
-  ViewWidgetSettings,
-  WidgetSettings,
+import {
+  CHILD_SOURCES,
+  CONTAINER_MODES,
+  effectiveAppearance,
+  WIDGET_ACCENTS,
+  WIDGET_BACKGROUNDS,
+  type ActionKind,
+  type ActionWidgetSettings,
+  type ChildSource,
+  type ContainerMode,
+  type ContainerWidgetSettings,
+  type DashboardWidget,
+  type EmbedWidgetSettings,
+  type RenderStyle,
+  type StatWidgetSettings,
+  type TextWidgetSettings,
+  type TreeWidgetSettings,
+  type ViewWidgetSettings,
+  type WidgetAccent,
+  type WidgetAppearance,
+  type WidgetBackground,
+  type WidgetSettings,
 } from "@/lib/dashboard-widgets";
+import { SWATCH_DOT } from "./appearance-styles";
 
 // Client-safe copy of the view sort fields (views.ts is server-only).
 const SORT_FIELD_OPTS = ["updatedAt", "createdAt", "dueDate", "meetingAt", "title"] as const;
 const ITEM_LIMIT_OPTS = [5, 10, 15, 20, 50] as const;
+const PARENT_LIMIT_OPTS = [3, 5, 8, 10] as const;
+const CHILD_LIMIT_OPTS = [3, 5, 10, 20] as const;
 const ACTION_OPTS: { value: ActionKind; label: string }[] = [
   { value: "quick-capture", label: "Quick capture" },
   { value: "new-from-template", label: "New from template" },
   { value: "link", label: "Link" },
 ];
+const CONTAINER_MODE_LABELS: Record<ContainerMode, string> = {
+  tabs: "Tabs",
+  stack: "Stack",
+  section: "Section",
+};
+const CHILD_SOURCE_LABELS: Record<ChildSource, string> = {
+  children: "Sub-items (hierarchy)",
+  relation: "Related by role",
+};
 
 const field = "text-xs text-neutral-400";
 const input =
@@ -33,10 +59,12 @@ const input =
 export default function WidgetSettingsPopover({
   widget,
   onChange,
+  onAppearance,
   onClose,
 }: {
   widget: DashboardWidget;
   onChange: (settings: WidgetSettings) => void;
+  onAppearance: (appearance: WidgetAppearance) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -59,9 +87,10 @@ export default function WidgetSettingsPopover({
   return (
     <div
       ref={ref}
-      className="cancel-drag absolute right-0 z-40 mt-2 w-64 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl"
+      className="cancel-drag absolute right-0 z-40 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl"
     >
       <div className="flex flex-col gap-2">{renderFields(widget, onChange)}</div>
+      <AppearanceSection widget={widget} onAppearance={onAppearance} />
     </div>
   );
 }
@@ -99,45 +128,10 @@ function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => 
             ))}
           </select>
         </label>
-        <label className={field}>
-          Sort
-          <div className="flex gap-1">
-            <select
-              value={s.sortOverride?.field ?? ""}
-              onChange={(e) =>
-                onChange({
-                  ...s,
-                  sortOverride: e.target.value
-                    ? { field: e.target.value as (typeof SORT_FIELD_OPTS)[number], dir: s.sortOverride?.dir ?? "desc" }
-                    : null,
-                })
-              }
-              className={input}
-            >
-              <option value="">View default</option>
-              {SORT_FIELD_OPTS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-            {s.sortOverride && (
-              <select
-                value={s.sortOverride.dir}
-                onChange={(e) =>
-                  onChange({
-                    ...s,
-                    sortOverride: { field: s.sortOverride!.field, dir: e.target.value as "asc" | "desc" },
-                  })
-                }
-                className={input}
-              >
-                <option value="desc">↓</option>
-                <option value="asc">↑</option>
-              </select>
-            )}
-          </div>
-        </label>
+        <SortField
+          value={s.sortOverride}
+          onChange={(sortOverride) => onChange({ ...s, sortOverride })}
+        />
         <label className={field}>
           Title
           <input
@@ -165,6 +159,58 @@ function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => 
           className={input}
         />
       </label>
+    );
+  }
+
+  if (widget.kind === "tree") {
+    return <TreeFields s={widget.settings as TreeWidgetSettings} onChange={onChange} />;
+  }
+
+  if (widget.kind === "embed") {
+    const s = widget.settings as EmbedWidgetSettings;
+    return (
+      <label className="flex items-center gap-2 text-xs text-neutral-400">
+        <input
+          type="checkbox"
+          checked={s.showBody}
+          onChange={(e) => onChange({ ...s, showBody: e.target.checked })}
+        />
+        Show the item body
+        <span className="text-neutral-600">(off = title only)</span>
+      </label>
+    );
+  }
+
+  if (widget.kind === "container") {
+    const s = widget.settings as ContainerWidgetSettings;
+    return (
+      <>
+        <label className={field}>
+          Layout
+          <select
+            value={s.mode}
+            onChange={(e) => onChange({ ...s, mode: e.target.value as ContainerMode })}
+            className={input}
+          >
+            {CONTAINER_MODES.map((m) => (
+              <option key={m} value={m}>
+                {CONTAINER_MODE_LABELS[m]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={field}>
+          Title
+          <input
+            type="text"
+            value={s.title}
+            placeholder="Group"
+            onChange={(e) => onChange({ ...s, title: e.target.value })}
+            className={input}
+          />
+        </label>
+        <p className="text-[11px] text-neutral-600">Add widgets to this group from inside it.</p>
+      </>
     );
   }
 
@@ -200,6 +246,268 @@ function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => 
   return <ActionFields s={widget.settings as ActionWidgetSettings} onChange={onChange} />;
 }
 
+// A reusable sort field+direction control (shared by view + tree).
+function SortField({
+  value,
+  onChange,
+}: {
+  value: ViewWidgetSettings["sortOverride"];
+  onChange: (v: ViewWidgetSettings["sortOverride"]) => void;
+}) {
+  return (
+    <label className={field}>
+      Sort
+      <div className="flex gap-1">
+        <select
+          value={value?.field ?? ""}
+          onChange={(e) =>
+            onChange(
+              e.target.value
+                ? { field: e.target.value as (typeof SORT_FIELD_OPTS)[number], dir: value?.dir ?? "desc" }
+                : null
+            )
+          }
+          className={input}
+        >
+          <option value="">View default</option>
+          {SORT_FIELD_OPTS.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+        {value && (
+          <select
+            value={value.dir}
+            onChange={(e) => onChange({ field: value.field, dir: e.target.value as "asc" | "desc" })}
+            className={input}
+          >
+            <option value="desc">↓</option>
+            <option value="asc">↑</option>
+          </select>
+        )}
+      </div>
+    </label>
+  );
+}
+
+// Nested-list (tree) fields. childType uses a types dropdown (like quick-capture);
+// relationRole is a free text role (e.g. "project") shown only for the relation
+// source.
+function TreeFields({
+  s,
+  onChange,
+}: {
+  s: TreeWidgetSettings;
+  onChange: (settings: WidgetSettings) => void;
+}) {
+  const [types, setTypes] = useState<{ key: string; label: string }[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/types")
+      .then((r) => r.json())
+      .then((d: { types: { key: string; label: string }[] }) => {
+        if (alive) setTypes(d.types);
+      })
+      .catch(() => {
+        if (alive) setTypes([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <label className={field}>
+        Children come from
+        <select
+          value={s.childSource}
+          onChange={(e) => onChange({ ...s, childSource: e.target.value as ChildSource })}
+          className={input}
+        >
+          {CHILD_SOURCES.map((c) => (
+            <option key={c} value={c}>
+              {CHILD_SOURCE_LABELS[c]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {s.childSource === "relation" && (
+        <label className={field}>
+          Relation role
+          <input
+            type="text"
+            value={s.relationRole ?? ""}
+            placeholder="e.g. project"
+            onChange={(e) => onChange({ ...s, relationRole: e.target.value || null })}
+            className={input}
+          />
+        </label>
+      )}
+      <label className={field}>
+        Child type
+        <select
+          value={s.childType ?? ""}
+          onChange={(e) => onChange({ ...s, childType: e.target.value || null })}
+          className={input}
+        >
+          <option value="">{types === null ? "Loading…" : "Any type"}</option>
+          {s.childType && !types?.some((t) => t.key === s.childType) && (
+            <option value={s.childType}>{s.childType}</option>
+          )}
+          {types?.map((t) => (
+            <option key={t.key} value={t.key}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="flex gap-2">
+        <label className={`${field} flex-1`}>
+          Parents
+          <select
+            value={s.parentLimit ?? ""}
+            onChange={(e) =>
+              onChange({ ...s, parentLimit: e.target.value ? Number(e.target.value) : null })
+            }
+            className={input}
+          >
+            <option value="">Default</option>
+            {PARENT_LIMIT_OPTS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={`${field} flex-1`}>
+          Children each
+          <select
+            value={s.childLimit}
+            onChange={(e) => onChange({ ...s, childLimit: Number(e.target.value) })}
+            className={input}
+          >
+            {CHILD_LIMIT_OPTS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-neutral-400">
+        <input
+          type="checkbox"
+          checked={s.hideCompletedChildren}
+          onChange={(e) => onChange({ ...s, hideCompletedChildren: e.target.checked })}
+        />
+        Hide completed children
+      </label>
+      <SortField value={s.sortOverride} onChange={(sortOverride) => onChange({ ...s, sortOverride })} />
+      <label className={field}>
+        Title
+        <input
+          type="text"
+          value={s.titleOverride ?? ""}
+          placeholder="(view name)"
+          onChange={(e) => onChange({ ...s, titleOverride: e.target.value || null })}
+          className={input}
+        />
+      </label>
+    </>
+  );
+}
+
+// Cross-cutting appearance (DC1): header/border/collapsible toggles + background
+// and accent swatch rows. Seeds from the widget's effective appearance and always
+// emits the full object.
+function AppearanceSection({
+  widget,
+  onAppearance,
+}: {
+  widget: DashboardWidget;
+  onAppearance: (appearance: WidgetAppearance) => void;
+}) {
+  const ap = effectiveAppearance(widget);
+  const set = (patch: Partial<WidgetAppearance>) => onAppearance({ ...ap, ...patch });
+  const toggle = "flex items-center gap-2 text-xs text-neutral-400";
+
+  return (
+    <div className="mt-3 border-t border-neutral-800 pt-2">
+      <p className="pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+        Appearance
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <label className={toggle}>
+          <input type="checkbox" checked={ap.showHeader} onChange={(e) => set({ showHeader: e.target.checked })} />
+          Header
+        </label>
+        <label className={toggle}>
+          <input type="checkbox" checked={ap.showBorder} onChange={(e) => set({ showBorder: e.target.checked })} />
+          Border
+        </label>
+        <label className={toggle}>
+          <input
+            type="checkbox"
+            checked={ap.collapsible}
+            onChange={(e) => set({ collapsible: e.target.checked })}
+          />
+          Collapsible
+        </label>
+        <div className={field}>
+          Background
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {WIDGET_BACKGROUNDS.map((b) => (
+              <Swatch
+                key={b}
+                token={b}
+                selected={ap.background === b}
+                onClick={() => set({ background: b as WidgetBackground })}
+              />
+            ))}
+          </div>
+        </div>
+        <div className={field}>
+          Accent
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {WIDGET_ACCENTS.map((a) => (
+              <Swatch
+                key={a}
+                token={a}
+                selected={ap.accent === a}
+                onClick={() => set({ accent: a as WidgetAccent })}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Swatch({
+  token,
+  selected,
+  onClick,
+}: {
+  token: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={token}
+      aria-label={token}
+      className={`h-5 w-5 rounded-full ${SWATCH_DOT[token] ?? "bg-neutral-700"} ${
+        selected ? "ring-2 ring-offset-1 ring-offset-neutral-900 ring-neutral-300" : ""
+      }`}
+    />
+  );
+}
+
 // A picked template: id, name, and the type it builds (sets the widget's
 // targetType so the apply opens the right type).
 type TemplateOption = { id: string; name: string; type: string };
@@ -208,9 +516,6 @@ type TypeOption = { key: string; label: string };
 
 // The action-widget fields. A separate component so it can fetch the owner's
 // templates + types (for the pickers) without conditional hooks in renderFields.
-// The dropdowns replace pasting a raw template UUID / typing a type key (TPL5,
-// Tyler's "richer action-widget pickers" follow-up); choosing a template also
-// sets targetType (the template implies its type).
 function ActionFields({
   s,
   onChange,
@@ -285,7 +590,6 @@ function ActionFields({
             className={input}
           >
             <option value="">{types === null ? "Loading types…" : "Select a type…"}</option>
-            {/* Keep a stale/hidden current value selectable so it isn't lost. */}
             {s.targetType && !types?.some((t) => t.key === s.targetType) && (
               <option value={s.targetType}>{s.targetType}</option>
             )}
@@ -307,7 +611,6 @@ function ActionFields({
               onChange({
                 ...s,
                 templateId: e.target.value || null,
-                // Carry the template's type so the applied item opens correctly.
                 targetType: picked ? picked.type : s.targetType,
               });
             }}

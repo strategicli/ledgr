@@ -1,20 +1,21 @@
 // Add-widget menu (edit mode), sections:
-//   • Structure — a text/heading block.
-//   • Actions — non-data buttons (quick capture, new-from-template, link). Each
-//     adds an action widget configured afterwards via its gear (TPL5).
-//   • Prebuilt — ready-made starter widgets (Tasks Due Today, Upcoming Tasks,
-//     Meetings This Week, …). Picking one creates (or reuses) its backing saved
-//     view and adds the widget — no view builder needed.
+//   • Structure — a text/heading block, and a container (tabs/stack/section).
+//   • Embed — embed an existing item (search), or create + embed a new note.
+//   • Actions — non-data buttons (quick capture, new-from-template, link).
+//   • Prebuilt — ready-made starter widgets (Tasks Due Today, …).
 //   • From Views — the owner's existing saved views.
-// View/Prebuilt add as a List or a Count widget.
+// View/Prebuilt/View add as a List, a Count, or a Nested list (parents + their
+// children). The Embed/Container sections only appear when their handlers are
+// passed (the top-level menu), so the container's own child menu omits them.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ActionKind } from "@/lib/dashboard-widgets";
+import type { ActionKind, ContainerMode } from "@/lib/dashboard-widgets";
 import { STARTER_WIDGETS, type StarterWidget } from "@/lib/starter-widgets";
 import type { ViewDefinition } from "@/lib/views";
+import type { ViewWidgetKind } from "./widget-defaults";
 
-type Kind = "view" | "stat";
+type Hit = { id: string; type: string; title: string };
 
 const ACTION_ITEMS: { action: ActionKind; label: string; description: string }[] = [
   { action: "new-from-template", label: "New from template", description: "Create an item from a template in one click" },
@@ -27,11 +28,18 @@ export default function AddWidgetMenu({
   onAddStarter,
   onAddText,
   onAddAction,
+  onAddEmbed,
+  onAddNote,
+  onAddContainer,
 }: {
-  onAdd: (view: ViewDefinition, kind: Kind) => void;
-  onAddStarter: (starter: StarterWidget, kind: Kind) => void;
+  onAdd: (view: ViewDefinition, kind: ViewWidgetKind) => void;
+  onAddStarter: (starter: StarterWidget, kind: ViewWidgetKind) => void;
   onAddText: () => void;
   onAddAction: (action: ActionKind) => void;
+  // Only the top-level menu passes these; the container child menu omits them.
+  onAddEmbed?: (itemId: string, title: string) => void;
+  onAddNote?: () => void;
+  onAddContainer?: (mode: ContainerMode) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<ViewDefinition[] | null>(null);
@@ -56,7 +64,7 @@ export default function AddWidgetMenu({
 
   // A prebuilt pick: reuse a same-named view if one already exists (so repeat
   // picks don't pile up duplicate views), else create it.
-  function pickStarter(s: StarterWidget, kind: Kind) {
+  function pickStarter(s: StarterWidget, kind: ViewWidgetKind) {
     const existing = views?.find((v) => v.name === s.label);
     if (existing) onAdd(existing, kind);
     else onAddStarter(s, kind);
@@ -73,48 +81,67 @@ export default function AddWidgetMenu({
       </button>
       {open && (
         <div className="absolute right-0 z-30 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl">
-          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Structure
-          </p>
-          <button
+          <SectionLabel>Structure</SectionLabel>
+          <MenuItem
+            title="Text / Heading"
+            description="A section title or note to group widgets"
             onClick={() => {
               onAddText();
               setOpen(false);
             }}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800/60"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm text-neutral-200">Text / Heading</span>
-              <span className="block truncate text-xs text-neutral-600">
-                A section title or note to group widgets
-              </span>
-            </span>
-          </button>
+          />
+          {onAddContainer && (
+            <MenuItem
+              title="Container"
+              description="A tabbed / stacked group that holds other widgets"
+              onClick={() => {
+                onAddContainer("tabs");
+                setOpen(false);
+              }}
+            />
+          )}
 
-          <div className="my-1 border-t border-neutral-800" />
-          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Actions
-          </p>
+          {(onAddNote || onAddEmbed) && (
+            <>
+              <Divider />
+              <SectionLabel>Embed</SectionLabel>
+              {onAddNote && (
+                <MenuItem
+                  title="New note"
+                  description="Create a note and edit it right here (a sticky note)"
+                  onClick={() => {
+                    onAddNote();
+                    setOpen(false);
+                  }}
+                />
+              )}
+              {onAddEmbed && (
+                <EmbedPicker
+                  onPick={(id, title) => {
+                    onAddEmbed(id, title);
+                    setOpen(false);
+                  }}
+                />
+              )}
+            </>
+          )}
+
+          <Divider />
+          <SectionLabel>Actions</SectionLabel>
           {ACTION_ITEMS.map((a) => (
-            <button
+            <MenuItem
               key={a.action}
+              title={a.label}
+              description={a.description}
               onClick={() => {
                 onAddAction(a.action);
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800/60"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-neutral-200">{a.label}</span>
-                <span className="block truncate text-xs text-neutral-600">{a.description}</span>
-              </span>
-            </button>
+            />
           ))}
 
-          <div className="my-1 border-t border-neutral-800" />
-          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Prebuilt
-          </p>
+          <Divider />
+          <SectionLabel>Prebuilt</SectionLabel>
           {STARTER_WIDGETS.map((s) => (
             <div
               key={s.id}
@@ -128,10 +155,8 @@ export default function AddWidgetMenu({
             </div>
           ))}
 
-          <div className="my-1 border-t border-neutral-800" />
-          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            From Views
-          </p>
+          <Divider />
+          <SectionLabel>From Views</SectionLabel>
           {views === null ? (
             <p className="px-3 py-2 text-sm text-neutral-500">Loading views…</p>
           ) : views.length === 0 ? (
@@ -160,23 +185,116 @@ export default function AddWidgetMenu({
   );
 }
 
-function KindButtons({ onPick }: { onPick: (kind: Kind) => void }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+      {children}
+    </p>
+  );
+}
+
+function Divider() {
+  return <div className="my-1 border-t border-neutral-800" />;
+}
+
+function MenuItem({
+  title,
+  description,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800/60"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-neutral-200">{title}</span>
+        <span className="block truncate text-xs text-neutral-600">{description}</span>
+      </span>
+    </button>
+  );
+}
+
+function KindButtons({ onPick }: { onPick: (kind: ViewWidgetKind) => void }) {
+  const btn = "shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200";
   return (
     <>
-      <button
-        onClick={() => onPick("view")}
-        className="shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200"
-        title="Add as a list widget"
-      >
+      <button onClick={() => onPick("view")} className={btn} title="Add as a list widget">
         List
       </button>
-      <button
-        onClick={() => onPick("stat")}
-        className="shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200"
-        title="Add as a count widget"
-      >
+      <button onClick={() => onPick("stat")} className={btn} title="Add as a count widget">
         Count
       </button>
+      <button
+        onClick={() => onPick("tree")}
+        className={btn}
+        title="Add as a nested list (items + their children)"
+      >
+        Nested
+      </button>
     </>
+  );
+}
+
+// Inline item search → embed. Modeled on AddRelation's typeahead over /api/items.
+function EmbedPicker({ onPick }: { onPick: (id: string, title: string) => void }) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<Hit[]>([]);
+  const trimmed = q.trim();
+
+  // Empty queries clear hits in onChange (not here), so the effect only ever
+  // talks to the network (react-hooks/set-state-in-effect).
+  useEffect(() => {
+    if (!trimmed) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=8`, {
+          signal: ctrl.signal,
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { items: Hit[] };
+        setHits(data.items);
+      } catch {
+        /* aborted/offline — next keystroke retries */
+      }
+    }, 200);
+    return () => {
+      ctrl.abort();
+      clearTimeout(t);
+    };
+  }, [trimmed]);
+
+  return (
+    <div className="px-2 py-1">
+      <input
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          if (!e.target.value.trim()) setHits([]);
+        }}
+        placeholder="Embed an item — search…"
+        className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
+      />
+      {hits.length > 0 && (
+        <ul className="mt-1 overflow-hidden rounded border border-neutral-800">
+          {hits.map((hit) => (
+            <li key={hit.id}>
+              <button
+                onClick={() => onPick(hit.id, hit.title)}
+                className="flex w-full items-center gap-2 px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800"
+              >
+                <span className="min-w-0 flex-1 truncate">{hit.title || "Untitled"}</span>
+                <span className="shrink-0 text-xs text-neutral-500">{hit.type}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -126,6 +126,10 @@ export const dashboards = pgTable(
       onDelete: "set null",
     }),
     widgets: jsonb("widgets"),
+    // Dashboard-canvas stage (ADR-111 DC2): background (color/gradient/image +
+    // scrim/blur), title visibility, density. Nullable — null = today's plain
+    // dark dashboard, untouched. Shape parsed/defaulted in src/lib/dashboards.ts.
+    appearance: jsonb("appearance"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

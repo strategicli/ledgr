@@ -1,6 +1,6 @@
 # Plan: the dashboard canvas
 
-**Status:** decided 2026-06-25 (Brandon), logged as **ADR-111**. **Not core** (the Work-surface dashboard; the "views/dashboard widgets, move fast solo" side of the collab line, like ADR-064/065). One additive schema change (`dashboards.appearance`); everything else rides existing jsonb or reuses shipped machinery. This is the build plan; the decision record is ADR-111.
+**Status:** decided 2026-06-25 (Brandon), logged as **ADR-111**; **BUILT 2026-06-27 (DC1–DC4 + a new nested-list `tree` widget), build record ADR-120**, branch `dashboard-canvas`. **Not core** (the Work-surface dashboard; the "views/dashboard widgets, move fast solo" side of the collab line, like ADR-064/065). One additive schema change (`dashboards.appearance`, migration 0034); everything else rides existing jsonb or reuses shipped machinery. **Shipped:** per-widget appearance + view-mode collapse (DC1), the stage background with scrim/blur (DC2; video + raw byte-upload deferred behind the parser seam), any-item embed (DC3), tab/stack/section container (DC4), and the nested-list widget (parents + children by `parent_id` hierarchy OR a relation role). **Deferred:** DC5 (journal/daily-note mode). This is the build plan; the decision records are ADR-111 (intent) + ADR-120 (build).
 
 ## The idea
 
