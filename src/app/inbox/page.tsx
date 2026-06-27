@@ -27,7 +27,10 @@ export default async function Inbox() {
 
   const [typeRows, inboxItems] = await Promise.all([
     getDb().select({ key: types.key, label: types.label }).from(types),
-    listItems(owner.id, { inbox: true, limit: 200 }),
+    // Active-only: a completed/archived item is no longer awaiting triage, and
+    // completion clears the inbox flag (see updateItem). This also keeps done
+    // items from ever showing here while the import-flag backlog is cleaned up.
+    listItems(owner.id, { inbox: true, statusCategory: "active", limit: 200 }),
   ]);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
   // Oldest first: the Inbox is a queue, and the back of it is the debt.

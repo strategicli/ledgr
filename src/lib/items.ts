@@ -97,6 +97,10 @@ export type ItemPatch = Partial<ItemInput> & {
 export type ListOptions = {
   type?: string;
   status?: ItemStatus;
+  // Restrict to a status category, or "active" (not_started + in_progress) — the
+  // same set the task views use (see views.ts viewWhere). Lets the Inbox hide
+  // completed/archived items so a finished-but-untriaged item drops out of view.
+  statusCategory?: StatusCategory | "active";
   parentId?: string;
   inbox?: boolean;
   // Title substring match (powers the @-mention picker). Full-text search
@@ -150,6 +154,13 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
   if (opts.inbox !== undefined) where.push(eq(items.inbox, opts.inbox));
+  if (opts.statusCategory) {
+    where.push(
+      opts.statusCategory === "active"
+        ? inArray(items.statusCategory, ["not_started", "in_progress"])
+        : eq(items.statusCategory, opts.statusCategory)
+    );
+  }
   if (opts.q) {
     where.push(ilike(items.title, `%${opts.q.replace(/[\\%_]/g, "\\$&")}%`));
   }
@@ -169,6 +180,10 @@ export async function listItems(ownerId: string, opts: ListOptions = {}) {
 }
 
 // The nav badge (PRD §4.11): live untriaged items. Rides items_inbox_idx.
+// Active-only so it matches the Inbox page (which hides done/archived): a
+// finished item is no longer "awaiting triage", and completion clears the flag
+// anyway (see updateItem). Pre-fix done items still carrying the flag are
+// excluded here too, so the badge can't overcount the list.
 export async function countInbox(ownerId: string): Promise<number> {
   const rows = await getDb()
     .select({ count: sql<number>`count(*)::int` })
@@ -177,6 +192,7 @@ export async function countInbox(ownerId: string): Promise<number> {
       and(
         eq(items.ownerId, ownerId),
         eq(items.inbox, true),
+        inArray(items.statusCategory, ["not_started", "in_progress"]),
         isNull(items.deletedAt),
         eq(items.isTemplate, false)
       )
@@ -452,6 +468,14 @@ export async function updateItem(
   if (patch.status !== undefined) {
     set.status = patch.status;
     set.statusCategory = nextCategory;
+    // Completing an item triages it out of the Inbox (PRD §4.2): a finished task
+    // is no longer "awaiting triage", so completion IS triage. Only on the
+    // transition into done; an explicit `patch.inbox` below still wins. The
+    // recurring-series case returns earlier (it advances, never completes), so
+    // it never reaches here — correct, the series isn't done.
+    if (nextCategory === "done" && existing[0].statusCategory !== "done") {
+      set.inbox = false;
+    }
   }
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
   if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
