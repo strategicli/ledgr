@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ActionKind, ContainerMode } from "@/lib/dashboard-widgets";
 import { STARTER_WIDGETS, type StarterWidget } from "@/lib/starter-widgets";
 import type { ViewDefinition } from "@/lib/views";
+import { usePopoverAlign } from "./use-popover-align";
 import type { ViewWidgetKind } from "./widget-defaults";
 
 type Hit = { id: string; type: string; title: string };
@@ -44,6 +45,7 @@ export default function AddWidgetMenu({
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<ViewDefinition[] | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const { triggerRef, alignLeft, measure } = usePopoverAlign(328);
 
   useEffect(() => {
     if (!open || views) return;
@@ -74,13 +76,19 @@ export default function AddWidgetMenu({
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        ref={triggerRef}
+        onClick={() => {
+          if (!open) measure();
+          setOpen((v) => !v);
+        }}
         className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-300 hover:border-neutral-600"
       >
         + Add widget
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl">
+        <div
+          className={`absolute ${alignLeft ? "left-0" : "right-0"} z-30 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl`}
+        >
           <SectionLabel>Structure</SectionLabel>
           <MenuItem
             title="Text / Heading"

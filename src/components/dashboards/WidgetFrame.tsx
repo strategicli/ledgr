@@ -20,6 +20,7 @@ import {
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
 import { ACCENT_CLASS, BG_CLASS } from "./appearance-styles";
+import { usePopoverAlign } from "./use-popover-align";
 import { titleHref, widgetTitle } from "./widget-title";
 import WidgetBody from "./WidgetBody";
 import WidgetSettingsPopover from "./WidgetSettingsPopover";
@@ -40,11 +41,16 @@ function EditControls({
 }) {
   const { widget } = data;
   const [gearOpen, setGearOpen] = useState(false);
+  const { triggerRef, alignLeft, measure } = usePopoverAlign(256);
   return (
     <>
       <div className="relative shrink-0">
         <button
-          onClick={() => setGearOpen((v) => !v)}
+          ref={triggerRef}
+          onClick={() => {
+            if (!gearOpen) measure();
+            setGearOpen((v) => !v);
+          }}
           className="cancel-drag text-neutral-500 hover:text-neutral-300"
           title="Widget settings"
           aria-label="Widget settings"
@@ -54,6 +60,7 @@ function EditControls({
         {gearOpen && (
           <WidgetSettingsPopover
             widget={widget}
+            alignLeft={alignLeft}
             onChange={(settings) => onSettings(widget.id, settings)}
             onAppearance={(appearance) => onAppearance(widget.id, appearance)}
             onClose={() => setGearOpen(false)}

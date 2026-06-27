@@ -91,6 +91,7 @@ export default function DashboardClient({
   const widgetsRef = useRef(widgets);
   const appearanceRef = useRef(appearance);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Re-adopt the server name after a refresh (adjust-during-render pattern).
   const [prevName, setPrevName] = useState(nameProp);
@@ -174,15 +175,28 @@ export default function DashboardClient({
     [commit]
   );
 
+  // Settings edits update the widget optimistically + immediately (so a controlled
+  // input never loses a keystroke), then DEBOUNCE the persist + refetch. Without
+  // the debounce, a text/select change that refetches (view/tree/container) fired
+  // router.refresh() per keystroke, and a stale refresh would race the controlled
+  // input and blank it (the relation-role glitch). One refresh after typing stops.
   const handleSettings = useCallback(
     (id: string, settings: WidgetSettings) => {
       const next = widgetsRef.current.map((d) =>
         d.widget.id === id ? { ...d, widget: { ...d.widget, settings } } : d
       );
+      widgetsRef.current = next;
+      setWidgets(next);
       const kind = next.find((d) => d.widget.id === id)?.widget.kind ?? "";
-      void commit(next, REFETCH_KINDS.has(kind));
+      const refetch = REFETCH_KINDS.has(kind);
+      if (settingsTimer.current) clearTimeout(settingsTimer.current);
+      settingsTimer.current = setTimeout(() => {
+        void persistNow(widgetsRef.current).then(() => {
+          if (refetch) router.refresh();
+        });
+      }, 450);
     },
-    [commit]
+    [persistNow, router]
   );
 
   // Per-widget chrome (header/border/background/accent/collapse). Display-only —

@@ -16,6 +16,7 @@ import {
   type StageBgKind,
   type StageDensity,
 } from "@/lib/dashboard-widgets";
+import { usePopoverAlign } from "./use-popover-align";
 
 const KIND_OPTS: { value: StageBgKind; label: string }[] = [
   { value: "none", label: "None" },
@@ -35,6 +36,7 @@ export default function BackgroundPanel({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { triggerRef, alignLeft, measure } = usePopoverAlign(288);
   const ap = appearance ?? DEFAULT_DASHBOARD_APPEARANCE;
   const bg = ap.background;
 
@@ -53,13 +55,19 @@ export default function BackgroundPanel({
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        ref={triggerRef}
+        onClick={() => {
+          if (!open) measure();
+          setOpen((v) => !v);
+        }}
         className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-300 hover:border-neutral-600"
       >
         Background
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-72 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl">
+        <div
+          className={`absolute ${alignLeft ? "left-0" : "right-0"} z-30 mt-2 w-72 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl`}
+        >
           <div className="flex flex-col gap-2">
             <label className={field}>
               Background

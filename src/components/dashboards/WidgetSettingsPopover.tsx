@@ -58,11 +58,13 @@ const input =
 
 export default function WidgetSettingsPopover({
   widget,
+  alignLeft = false,
   onChange,
   onAppearance,
   onClose,
 }: {
   widget: DashboardWidget;
+  alignLeft?: boolean;
   onChange: (settings: WidgetSettings) => void;
   onAppearance: (appearance: WidgetAppearance) => void;
   onClose: () => void;
@@ -87,7 +89,7 @@ export default function WidgetSettingsPopover({
   return (
     <div
       ref={ref}
-      className="cancel-drag absolute right-0 z-40 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl"
+      className={`cancel-drag absolute ${alignLeft ? "left-0" : "right-0"} z-40 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl`}
     >
       <div className="flex flex-col gap-2">{renderFields(widget, onChange)}</div>
       <AppearanceSection widget={widget} onAppearance={onAppearance} />
@@ -291,9 +293,16 @@ function SortField({
   );
 }
 
+// /api/types rows, with the relation-kind properties we mine for the role picker.
+type ApiTypeWithRelations = {
+  key: string;
+  label: string;
+  propertySchema?: { key: string; label: string; kind: string }[];
+};
+
 // Nested-list (tree) fields. childType uses a types dropdown (like quick-capture);
-// relationRole is a free text role (e.g. "project") shown only for the relation
-// source.
+// relationRole is a select of the relation fields defined across types (its key
+// is the edge role), shown only for the relation source.
 function TreeFields({
   s,
   onChange,
@@ -301,12 +310,12 @@ function TreeFields({
   s: TreeWidgetSettings;
   onChange: (settings: WidgetSettings) => void;
 }) {
-  const [types, setTypes] = useState<{ key: string; label: string }[] | null>(null);
+  const [types, setTypes] = useState<ApiTypeWithRelations[] | null>(null);
   useEffect(() => {
     let alive = true;
     void fetch("/api/types")
       .then((r) => r.json())
-      .then((d: { types: { key: string; label: string }[] }) => {
+      .then((d: { types: ApiTypeWithRelations[] }) => {
         if (alive) setTypes(d.types);
       })
       .catch(() => {
@@ -316,6 +325,14 @@ function TreeFields({
       alive = false;
     };
   }, []);
+
+  // The relation roles a "related by role" tree can use = every relation-kind
+  // property defined across the types (its key IS the edge role), e.g. a task's
+  // "Project" field → role "project". Deduped by key.
+  const relationRoles = new Map<string, string>();
+  for (const t of types ?? [])
+    for (const p of t.propertySchema ?? [])
+      if (p.kind === "relation") relationRoles.set(p.key, p.label || p.key);
 
   return (
     <>
@@ -336,13 +353,28 @@ function TreeFields({
       {s.childSource === "relation" && (
         <label className={field}>
           Relation role
-          <input
-            type="text"
+          <select
             value={s.relationRole ?? ""}
-            placeholder="e.g. project"
             onChange={(e) => onChange({ ...s, relationRole: e.target.value || null })}
             className={input}
-          />
+          >
+            <option value="">
+              {types === null
+                ? "Loading…"
+                : relationRoles.size === 0
+                  ? "No relation fields defined"
+                  : "Select a relation…"}
+            </option>
+            {/* Keep a stale/hidden current value selectable so it isn't lost. */}
+            {s.relationRole && !relationRoles.has(s.relationRole) && (
+              <option value={s.relationRole}>{s.relationRole}</option>
+            )}
+            {[...relationRoles.entries()].map(([key, label]) => (
+              <option key={key} value={key}>
+                {label} ({key})
+              </option>
+            ))}
+          </select>
         </label>
       )}
       <label className={field}>
