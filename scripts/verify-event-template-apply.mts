@@ -85,6 +85,7 @@ try {
   check("properties.match records the applied template", aProps.match?.templateId === tmpl.id);
   const prep = await getMeetingPrep(owner.id, eventA.id);
   check("getMeetingPrep surfaces the template name for display", prep.templateName === tmpl.name);
+  check("getMeetingPrep links the rule chip to the template prototype", prep.templatePrototypeId === tmpl.prototypeItemId);
 
   // --- a dormant (autoApply:false) rule does NOT apply — falls to suggestions ---
   const dom = await createItem(owner.id, { type: "person", title: "Dana Dormant", properties: { email: "dana@x.com" } });

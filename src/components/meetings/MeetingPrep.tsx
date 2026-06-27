@@ -26,11 +26,20 @@ export default async function MeetingPrep({
     <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-2">
         <SectionHeading icon="people">People</SectionHeading>
-        {prep.templateName && (
-          <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
-            auto-filled from rule: {prep.templateName}
-          </span>
-        )}
+        {prep.templateName &&
+          (prep.templatePrototypeId ? (
+            <Link
+              href={`/items/${prep.templatePrototypeId}`}
+              title="Edit or unpin this rule's template"
+              className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+            >
+              auto-filled from rule: {prep.templateName}
+            </Link>
+          ) : (
+            <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
+              auto-filled from rule: {prep.templateName}
+            </span>
+          ))}
         {/* Offer to pin a standing rule once people are confirmed, unless this
             event already came from one (templateName set). */}
         {prep.people.length > 0 && !prep.templateName && <PinRuleButton eventId={itemId} />}
