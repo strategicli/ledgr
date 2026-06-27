@@ -10,6 +10,7 @@ import RowAction from "@/components/home/RowAction";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
+import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { resolveOwner } from "@/lib/owner";
 import { APP_TIMEZONE } from "@/lib/today";
@@ -176,6 +177,7 @@ export default async function Meetings({
         <p className="mt-6 px-2 text-sm text-neutral-600">No events yet.</p>
       )}
       <SelectionProvider ids={[...upcoming, ...past, ...undated].map((m) => m.id)}>
+        <SelectModeToggle />
         <Section title="Upcoming" rows={upcoming} now={now} />
         <Section title="Past" rows={past} now={now} />
         <Section title="No date" rows={undated} now={now} />

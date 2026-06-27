@@ -13,6 +13,7 @@ import RowAction from "@/components/home/RowAction";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
+import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
@@ -274,6 +275,7 @@ export default async function Tasks({
     <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />}>
       {tabStrip}
       <SelectionProvider ids={selectableIds}>
+        <SelectModeToggle />
         {body}
         {tab === "today" && (
           <div className="mt-3">

@@ -9,6 +9,7 @@ import DuplicateViewButton from "@/components/views/DuplicateViewButton";
 import NewItemButton from "@/components/home/NewItemButton";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
+import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
@@ -130,6 +131,11 @@ export default async function ViewPage({ params, searchParams }: Context) {
         </p>
 
         <SelectionProvider ids={items.map((item) => item.id)}>
+          {/* Board/calendar render no row checkboxes (ADR-118), so they get no
+              select toggle either — list/table/agenda do. */}
+          {view.layout !== "board" && view.layout !== "calendar" && (
+            <SelectModeToggle />
+          )}
           <ViewRenderer
             view={view}
             items={items}

@@ -11,6 +11,7 @@ import RowAction from "@/components/home/RowAction";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
+import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import TriageControls from "@/components/inbox/TriageControls";
 import QuickCapture from "@/components/today/QuickCapture";
 import { listItems } from "@/lib/items";
@@ -59,6 +60,7 @@ export default async function Inbox() {
 
         {inboxItems.length > 0 && (
           <SelectionProvider ids={inboxItems.map((item) => item.id)}>
+          <SelectModeToggle />
           <ul className="mt-6">
             {inboxItems.map((item) => (
               <li

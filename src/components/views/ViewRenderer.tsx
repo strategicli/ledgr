@@ -7,6 +7,7 @@
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectTableCell";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
@@ -334,7 +335,7 @@ function TableLayout({
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
-            {selectable && <th className="w-6 py-1.5 pr-2" aria-hidden />}
+            {selectable && <SelectHeaderCell />}
             <th className="py-1.5 pr-3 font-medium">Title</th>
             {columns.map((col) => (
               <th key={`${col.source}:${col.key}`} className="py-1.5 pr-3 font-medium">
@@ -349,11 +350,7 @@ function TableLayout({
               key={item.id}
               className="group border-b border-neutral-900 hover:bg-neutral-800/40"
             >
-              {selectable && (
-                <td className="py-1.5 pr-2 align-middle">
-                  <SelectCheckbox id={item.id} />
-                </td>
-              )}
+              {selectable && <SelectBodyCell id={item.id} />}
               <td className="max-w-xs truncate py-1.5 pr-3">
                 <Link
                   href={`/items/${item.id}`}
