@@ -5,6 +5,7 @@
 // (e.g. the workflow Stage). The chord chart itself replaces the markdown
 // editor; everything below it is shared.
 import ChordCanvasClient from "@/components/canvas/ChordCanvasClient";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import CustomProperties from "@/components/build/CustomProperties";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
@@ -20,20 +21,30 @@ export default async function ChordCanvas({ item, ownerId }: CanvasProps) {
   return (
     <>
       <ChordCanvasClient itemId={item.id} initialTitle={item.title} initialBody={item.body} />
+      {/* Properties: scalar + relation fields under one header (the canvas
+          redesign), matching the default canvas. */}
       {propertySchema.length > 0 && (
-        <CustomProperties
-          itemId={item.id}
-          typeKey={item.type}
-          schema={propertySchema}
-          initial={(item.properties as Record<string, unknown>) ?? {}}
-        />
+        <CanvasSection icon="properties" title="Properties">
+          <div className="flex flex-col gap-2">
+            <CustomProperties
+              itemId={item.id}
+              typeKey={item.type}
+              schema={propertySchema}
+              initial={(item.properties as Record<string, unknown>) ?? {}}
+              hideHeading
+              bare
+            />
+            <RelationProperties
+              ownerId={ownerId}
+              itemId={item.id}
+              typeKey={item.type}
+              props={propertySchema}
+              hideHeading
+              bare
+            />
+          </div>
+        </CanvasSection>
       )}
-      <RelationProperties
-        ownerId={ownerId}
-        itemId={item.id}
-        typeKey={item.type}
-        props={propertySchema}
-      />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <SaveOffline itemId={item.id} />
       <ShareLink itemId={item.id} />

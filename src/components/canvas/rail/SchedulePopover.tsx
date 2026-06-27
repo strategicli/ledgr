@@ -27,8 +27,11 @@ function ymdToIso(ymd: string): string {
   return `${ymd}T00:00:00.000Z`;
 }
 
+// Matches the standardized CanvasSection header text (the canvas redesign) so a
+// popover's labels read consistently with the page's section headers — minus the
+// card chrome, which doesn't belong inside a floating popover (Brandon, 2026-06-27).
 const sectionLabel =
-  "mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500";
+  "mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--cs-label)]";
 
 export default function SchedulePopover({
   itemId,

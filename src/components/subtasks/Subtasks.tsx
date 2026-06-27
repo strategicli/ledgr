@@ -6,6 +6,7 @@
 // and owner-scoped (src/lib/subtasks.ts).
 import Link from "next/link";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import AddSubtask from "./AddSubtask";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 import SubtaskSchedule from "./SubtaskSchedule";
@@ -113,21 +114,17 @@ export default async function Subtasks({
   }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
-      <h2 className="flex items-baseline gap-2 border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Subtasks
-        {progress && (
-          <span className="font-normal normal-case tracking-normal">
-            <ProgressBadge {...progress} />
-          </span>
-        )}
-      </h2>
-      <ul className="mt-1">
+    <CanvasSection
+      icon="tasks"
+      title="Subtasks"
+      action={progress ? <ProgressBadge {...progress} /> : undefined}
+    >
+      <ul>
         {children.map((node) => (
           <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} />
         ))}
       </ul>
       <AddSubtask parentId={itemId} />
-    </section>
+    </CanvasSection>
   );
 }
