@@ -42,6 +42,10 @@ export const NAV_ICONS = {
   grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
   table: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
   board: '<rect x="3" y="3" width="5" height="18" rx="1.5"/><rect x="10" y="3" width="5" height="12" rx="1.5"/><rect x="17" y="3" width="4" height="15" rx="1.5"/>',
+  // Equalizer-style sliders — the item canvas "Properties" panel glyph.
+  properties: '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>',
+  // Connected nodes — the "Linked here" backlinks/connections panel glyph.
+  affiliate: '<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M10.6 7.1 6.4 16.9M13.4 7.1 17.6 16.9M7.5 19h9"/>',
   // Tools
   tools: '<path d="M14.5 6.5a3.5 3.5 0 0 0-4.6 4.2l-5.1 5.1a1.5 1.5 0 0 0 2.1 2.1l5.1-5.1a3.5 3.5 0 0 0 4.2-4.6l-2 2-1.7-1.7 2-2Z"/>',
   bolt: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
@@ -68,7 +72,7 @@ export const NAV_ICON_FALLBACK: NavIconKey = "items";
 export const NAV_ICON_GROUPS: { label: string; keys: NavIconKey[] }[] = [
   { label: "Navigation", keys: ["home", "inbox", "tasks", "search", "dashboard", "views", "navigation", "items", "recent", "starred", "archive"] },
   { label: "Content", keys: ["notes", "document", "meetings", "links", "people", "person", "song", "sermon", "paper", "book", "bookmark"] },
-  { label: "Organization", keys: ["folder", "tag", "collection", "filter", "layers", "grid", "table", "board"] },
+  { label: "Organization", keys: ["folder", "tag", "collection", "filter", "layers", "grid", "table", "board", "properties", "affiliate"] },
   { label: "Tools", keys: ["tools", "bolt", "flag", "bell"] },
   { label: "Misc", keys: ["changelog", "calendar", "compass", "target", "heart", "trophy"] },
 ];

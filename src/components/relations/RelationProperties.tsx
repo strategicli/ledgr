@@ -10,6 +10,7 @@ import { types } from "@/db/schema";
 import { outgoingRelationsByRole } from "@/lib/relations";
 import type { PropertyDef } from "@/lib/types";
 import InlineLabel from "@/components/build/InlineLabel";
+import NavGlyph from "@/components/nav/NavGlyph";
 import RelationField from "./RelationField";
 
 export default async function RelationProperties({
@@ -55,11 +56,21 @@ export default async function RelationProperties({
         {relationProps.map((prop) => (
           <div key={prop.key} className="flex items-start gap-3 text-sm">
             <dt className="w-32 shrink-0 pt-1 text-neutral-500">
-              <InlineLabel
-                typeKey={typeKey}
-                propertyKey={prop.key}
-                label={prop.label}
-              />
+              {/* A link glyph marks this as a relational property — a field whose
+                  value points at other items — distinct from scalar properties
+                  in the same Properties panel (the canvas redesign). */}
+              <span className="inline-flex items-center gap-1.5">
+                <NavGlyph
+                  icon="links"
+                  size={12}
+                  className="shrink-0 text-[var(--accent)]"
+                />
+                <InlineLabel
+                  typeKey={typeKey}
+                  propertyKey={prop.key}
+                  label={prop.label}
+                />
+              </span>
             </dt>
             <dd className="min-w-0 flex-1">
               <RelationField

@@ -25,6 +25,7 @@ import {
 } from "@/lib/relations";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import InlineLabel from "@/components/build/InlineLabel";
 import AddRelation from "./AddRelation";
 import NewRelatedTask from "./NewRelatedTask";
@@ -35,9 +36,13 @@ const UNMARKED = "unmarked";
 export default async function RelatedPanel({
   ownerId,
   itemId,
+  // Rendered as a grid card (ADR-069): drop the CanvasSection card chrome and the
+  // centered column so the grid's own card wraps it.
+  bare = false,
 }: {
   ownerId: string;
   itemId: string;
+  bare?: boolean;
 }) {
   const [related, typeRows, hostRows] = await Promise.all([
     listRelatedItems(ownerId, itemId),
@@ -58,7 +63,11 @@ export default async function RelatedPanel({
 
   // Nothing linked yet: just the quiet add affordances, no section chrome.
   if (related.length === 0) {
-    return <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>;
+    return bare ? (
+      <>{addBar}</>
+    ) : (
+      <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>
+    );
   }
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
@@ -81,18 +90,15 @@ export default async function RelatedPanel({
 
   const relatedById = new Map(related.map((r) => [r.id, r]));
 
-  // Field sections in schema order; claim their ids so the type grouping skips
-  // them (an item only appears once, under the first field that names it).
+  // Typed relation fields (Attending, References) now render under the Properties
+  // panel (the canvas redesign), so claim their items here to keep them from
+  // repeating down in Linked here. An item appears once: as its field above.
   const claimed = new Set<string>();
-  const fieldSections = relationFields
-    .map((f) => {
-      const rows = (byRole.get(f.key) ?? [])
-        .map((t) => relatedById.get(t.id))
-        .filter((r): r is RelatedItem => !!r && !claimed.has(r.id));
-      for (const r of rows) claimed.add(r.id);
-      return { field: f, rows };
-    })
-    .filter((s) => s.rows.length > 0);
+  for (const f of relationFields) {
+    for (const t of byRole.get(f.key) ?? []) {
+      if (relatedById.has(t.id)) claimed.add(t.id);
+    }
+  }
 
   // Everything not claimed by a field section, grouped by type; unmarked last.
   const byType = new Map<string, RelatedItem[]>();
@@ -132,29 +138,23 @@ export default async function RelatedPanel({
     );
   };
 
+  const visibleCount = [...byType.values()].reduce((n, g) => n + g.length, 0);
+  // Everything that links here is already a typed field (shown under Properties);
+  // nothing to list, so just offer the quiet add affordances.
+  if (visibleCount === 0) {
+    return bare ? (
+      <>{addBar}</>
+    ) : (
+      <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>
+    );
+  }
+
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
-      <h2 className="border-b border-neutral-800 pb-1 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Related
-        <span className="ml-2 font-normal text-neutral-600">{related.length}</span>
-      </h2>
-      {/* Typed relation fields first, labeled by the field (Attendees, References). */}
-      {fieldSections.map(({ field, rows }) => (
-        <div key={`field:${field.key}`} className="mt-4">
-          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            <InlineLabel
-              typeKey={hostType!}
-              propertyKey={field.key}
-              label={field.label}
-            />
-            <span className="ml-2 font-normal text-neutral-600">{rows.length}</span>
-          </h3>
-          <ul className="mt-1">{rows.map((item) => renderRow(item, field.key))}</ul>
-        </div>
-      ))}
-      {/* Then everything else, grouped by type (unmarked under its glyph). */}
+    <CanvasSection bare={bare} icon="affiliate" title="Linked here" count={visibleCount}>
+      {/* Inbound links grouped by type (unmarked under its glyph); typed
+          relation fields are excluded — they live under Properties. */}
       {typeGroups.map((key) => (
-        <div key={key} className="mt-4">
+        <div key={key} className="mt-3 first:mt-0">
           <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
             <InlineLabel typeKey={key} label={labels.get(key) ?? key} />
             <span className="ml-2 font-normal text-neutral-600">
@@ -165,6 +165,6 @@ export default async function RelatedPanel({
         </div>
       ))}
       <div className="mt-4">{addBar}</div>
-    </section>
+    </CanvasSection>
   );
 }

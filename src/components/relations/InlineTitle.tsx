@@ -21,12 +21,17 @@ export default function InlineTitle({
   done = false,
   className,
   linkClassName,
+  wrap = false,
 }: {
   id: string;
   title: string;
   done?: boolean;
   className?: string; // outer wrapper (e.g. flex-1 min-w-0 from the row)
   linkClassName?: string; // the link/input text styling
+  // Let a long title wrap to multiple lines instead of truncating. On for the
+  // full-width canvas rows (so nothing hides on a narrow screen, Brandon
+  // 2026-06-27); off for the fixed-width relation chips.
+  wrap?: boolean;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(title);
@@ -93,7 +98,7 @@ export default function InlineTitle({
     >
       <Link
         href={`/items/${id}`}
-        className={`min-w-0 truncate ${done ? "line-through opacity-60" : ""} ${linkClassName ?? ""}`}
+        className={`min-w-0 ${wrap ? "whitespace-normal break-words" : "truncate"} ${done ? "line-through opacity-60" : ""} ${linkClassName ?? ""}`}
       >
         {title || "Untitled"}
       </Link>

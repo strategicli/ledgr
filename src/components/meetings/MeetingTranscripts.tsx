@@ -11,7 +11,7 @@ import {
   type MinutesState,
 } from "@/lib/meetings/transcripts";
 import { getTranscription } from "@/lib/transcription/provider";
-import SectionHeading from "@/components/canvas/SectionHeading";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import AddTranscript from "./AddTranscript";
 import AudioUpload from "./AudioUpload";
 import TranscriptionPoller from "./TranscriptionPoller";
@@ -27,9 +27,12 @@ const MINUTES_BADGE: Record<MinutesState, { label: string; className: string }> 
 export default async function MeetingTranscripts({
   ownerId,
   itemId,
+  // Rendered as a single grid card (ADR-069): drop the section card chrome.
+  bare = false,
 }: {
   ownerId: string;
   itemId: string;
+  bare?: boolean;
 }) {
   const transcripts = await listMeetingTranscripts(ownerId, itemId);
   const transcriptionEnabled = getTranscription() != null;
@@ -39,11 +42,13 @@ export default async function MeetingTranscripts({
     .map((t) => t.id);
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
-      <SectionHeading icon="document">
-        Transcripts {transcripts.length > 0 && `(${transcripts.length})`}
-      </SectionHeading>
-
+    <>
+      <CanvasSection
+        bare={bare}
+        icon="document"
+        title="Transcripts"
+        count={transcripts.length || undefined}
+      >
       {transcripts.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
           {transcriptionEnabled
@@ -84,12 +89,13 @@ export default async function MeetingTranscripts({
         </ul>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-        <AddTranscript meetingId={itemId} />
-        {transcriptionEnabled && <AudioUpload meetingId={itemId} />}
-      </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <AddTranscript meetingId={itemId} />
+          {transcriptionEnabled && <AudioUpload meetingId={itemId} />}
+        </div>
+      </CanvasSection>
 
       {pendingIds.length > 0 && <TranscriptionPoller ids={pendingIds} />}
-    </section>
+    </>
   );
 }

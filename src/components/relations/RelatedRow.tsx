@@ -33,6 +33,8 @@ export default function RelatedRow({
   mention,
   mentionOnly,
   removalRole,
+  manageable = true,
+  wrap = true,
 }: {
   hostId: string;
   item: RelatedRowItem;
@@ -42,6 +44,14 @@ export default function RelatedRow({
   // In a typed relation-field section (ADR-067), removal is scoped to the
   // field's role so it doesn't drop other links to the same item.
   removalRole?: string;
+  // Let a long title wrap (the default for these full-width canvas rows) instead
+  // of truncating, so nothing hides on a narrow screen (Brandon, 2026-06-27).
+  wrap?: boolean;
+  // Whether to show the structural relation controls (confirm/reject/un-relate).
+  // Off for rows that aren't a managed edge of the host — e.g. an event's Open
+  // tasks, pulled by a rule (ADR-094), where "un-relate from the event" is
+  // meaningless. The check-off and due-date edit still work.
+  manageable?: boolean;
 }) {
   const [done, setDone] = useState(item.statusCategory === "done");
   const [dueDate, setDueDate] = useState(item.dueDate);
@@ -93,16 +103,16 @@ export default function RelatedRow({
 
   return (
     <li
-      className={`group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60 ${
-        suggested ? "opacity-60" : ""
-      }`}
+      className={`group flex gap-2 rounded px-2 py-1 hover:bg-neutral-800/60 ${
+        wrap ? "items-start" : "items-center"
+      } ${suggested ? "opacity-60" : ""}`}
     >
       {isTask && (
         <input
           type="checkbox"
           checked={done}
           onChange={toggle}
-          className="ledgr-check"
+          className={`ledgr-check ${wrap ? "mt-1" : ""}`}
           aria-label={done ? "Mark open" : "Mark done"}
         />
       )}
@@ -110,6 +120,7 @@ export default function RelatedRow({
         id={item.id}
         title={item.title}
         done={done}
+        wrap={wrap}
         className="flex-1"
         linkClassName={`text-sm ${
           item.title ? "text-neutral-200" : "text-neutral-500"
@@ -152,13 +163,15 @@ export default function RelatedRow({
       <span className="shrink-0 text-xs text-neutral-600">
         {dateFmt.format(new Date(item.updatedAt))}
       </span>
-      <RelationActions
-        itemId={hostId}
-        otherId={item.id}
-        suggested={suggested}
-        removable={!mentionOnly}
-        removalRole={removalRole}
-      />
+      {manageable && (
+        <RelationActions
+          itemId={hostId}
+          otherId={item.id}
+          suggested={suggested}
+          removable={!mentionOnly}
+          removalRole={removalRole}
+        />
+      )}
     </li>
   );
 }

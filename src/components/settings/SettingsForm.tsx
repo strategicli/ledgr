@@ -12,10 +12,12 @@ import {
   HIGHLIGHT_COLORS,
   HIGHLIGHT_GRADIENTS,
   NAV_POSITIONS,
+  SECTION_STYLES,
   TEXT_SIZES,
   TEXT_SIZE_PX,
   UI_DENSITIES,
   type RailAnchor,
+  type SectionStyle,
   type TextSize,
   type UiDensity,
   type UserSettings,
@@ -36,6 +38,12 @@ const UI_DENSITY_LABELS: Record<UiDensity, string> = {
   roomy: "Roomy",
 };
 
+const SECTION_STYLE_LABELS: Record<SectionStyle, string> = {
+  heavy: "Heavy",
+  light: "Light",
+  unified: "Unified",
+};
+
 export default function SettingsForm({ initial }: { initial: UserSettings }) {
   const [settings, setSettings] = useState<UserSettings>(initial);
   const [saved, setSaved] = useState(false);
@@ -53,6 +61,12 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
 
   const applyTextSize = (size: TextSize) => {
     document.body.style.setProperty("--prose-font-size", TEXT_SIZE_PX[size]);
+  };
+
+  // The section style is a body attribute the CanvasSection CSS reads, so setting
+  // it re-skins every item-canvas panel live, no reload.
+  const applySectionStyle = (style: SectionStyle) => {
+    document.body.setAttribute("data-section-style", style);
   };
 
   const save = async (patch: Partial<UserSettings>, refresh = false) => {
@@ -257,6 +271,29 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Section style</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          How much weight each panel on an item view carries (People, Open tasks,
+          Properties, Linked here). Heavy is bordered cards; Light is a divider
+          rule; Unified is flat with minimal chrome.
+        </p>
+        <div className="mt-2 flex gap-1">
+          {SECTION_STYLES.map((style) => (
+            <button
+              key={style}
+              onClick={() => {
+                applySectionStyle(style);
+                void save({ sectionStyle: style });
+              }}
+              className={segBtn(settings.sectionStyle === style)}
+            >
+              {SECTION_STYLE_LABELS[style]}
+            </button>
+          ))}
         </div>
       </section>
 
