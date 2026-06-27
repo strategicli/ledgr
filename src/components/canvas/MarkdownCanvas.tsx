@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import ItemLayoutGrid from "@/components/canvas/ItemLayoutGrid";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
@@ -198,9 +199,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         return (
           <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
         );
-      if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} />;
+      if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} bare />;
       if (id === "meetingTranscripts")
-        return <MeetingTranscripts ownerId={ownerId} itemId={item.id} />;
+        return <MeetingTranscripts ownerId={ownerId} itemId={item.id} bare />;
       if (id.startsWith("prop:")) {
         const key = id.slice(5);
         const def = propertySchema.find((p) => p.key === key);
@@ -228,7 +229,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           />
         ) : null;
       }
-      if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} />;
+      if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} bare />;
       if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
       if (id === "share") return <ShareLink itemId={item.id} />;
       if (id === "history")
@@ -312,29 +313,39 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Transcripts (meeting recording v1a, ADR-087): paste/list a meeting's
           transcripts (each its own item), the pivot for Claude-over-MCP minutes. */}
       {item.type === "event" && <MeetingTranscripts ownerId={ownerId} itemId={item.id} />}
-      {/* Custom properties (PRD §3.6): the type's scalar Build-surface fields,
-          edited in place over items.properties. CustomProperties skips relation
-          kinds (their value is edges, not properties). */}
+      {/* Properties (PRD §3.6, the canvas redesign): one panel for the type's
+          fields — scalar Build-surface fields (CustomProperties, over
+          items.properties) AND typed relation fields (RelationProperties, link
+          boxes over relations edges, ADR-067). A relation is a property whose
+          value points at other items, so it belongs here, marked with a link
+          glyph, not in a separate "Relations" section. */}
       {propertySchema.length > 0 && (
-        <CustomProperties
-          itemId={item.id}
-          typeKey={item.type}
-          schema={propertySchema}
-          initial={(item.properties as Record<string, unknown>) ?? {}}
-          locked={locked}
-        />
+        <CanvasSection icon="properties" title="Properties">
+          <div className="flex flex-col gap-2">
+            <CustomProperties
+              itemId={item.id}
+              typeKey={item.type}
+              schema={propertySchema}
+              initial={(item.properties as Record<string, unknown>) ?? {}}
+              locked={locked}
+              hideHeading
+              bare
+            />
+            <RelationProperties
+              ownerId={ownerId}
+              itemId={item.id}
+              typeKey={item.type}
+              props={propertySchema}
+              hideHeading
+              bare
+            />
+          </div>
+        </CanvasSection>
       )}
-      {/* Typed relation fields (ADR-067): the type's `relation` properties as
-          link boxes, reading/writing relations edges with role = the field key. */}
-      <RelationProperties
-        ownerId={ownerId}
-        itemId={item.id}
-        typeKey={item.type}
-        props={propertySchema}
-      />
-      {/* Related panel (PRD §4.9): every item shows what links here, with
-          related tasks check-off-able and due-dates editable in place — the
-          actionable "tag as dashboard" surface, now universal (ADR-055). */}
+      {/* Linked here (PRD §4.9, the canvas redesign): the connected data web —
+          inbound links, @-mentions, wiki-links — with related tasks check-off-able
+          and due-dates editable in place (ADR-055). Typed relation fields are
+          excluded here; they show under Properties above, so nothing repeats. */}
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       {/* Save Offline (PRD §4.7): export now, verified offline pin, print/PDF. */}
       <SaveOffline itemId={item.id} />

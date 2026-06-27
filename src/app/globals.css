@@ -222,3 +222,88 @@ body {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* --- Item-canvas sections (the canvas redesign) --------------------------
+   CanvasSection (src/components/canvas/CanvasSection.tsx) is the standardized
+   panel for every item view: People, Open tasks, Properties, Linked here,
+   Transcripts, a module's own panel. One body-level knob — [data-section-style],
+   a per-owner setting (settings.ts) — flips them all between three weights, so
+   a panel added later inherits the chosen weight for free. Only this block knows
+   what each skin looks like. Colors are vars so a future light theme overrides
+   them in one place (the same posture as --background). */
+:root {
+  --cs-card: #1e1e1e;
+  --cs-border: #2c2c2c;
+  --cs-divider: #262626;
+  --cs-label: #9a9a9a;
+  --cs-count: #8a8a8a;
+}
+
+.canvas-section-wrap {
+  margin-top: 0.75rem;
+}
+.canvas-section {
+  border-radius: 10px;
+}
+
+/* Heavy: a bordered, slightly-raised card. */
+[data-section-style="heavy"] .canvas-section:not(.canvas-section-bare) {
+  border: 1px solid var(--cs-border);
+  background: var(--cs-card);
+  padding: 0.7rem 0.85rem;
+}
+/* Light (the default): a divider rule above each section, no box. */
+[data-section-style="light"] .canvas-section:not(.canvas-section-bare) {
+  border-top: 1px solid var(--cs-border);
+  border-radius: 0;
+  padding-top: 0.85rem;
+}
+/* Unified: flat, minimal chrome — sections just stack with a little air. */
+[data-section-style="unified"] .canvas-section:not(.canvas-section-bare) {
+  padding-top: 0.4rem;
+}
+
+/* Header: icon + label + count, with an optional right-aligned action slot. */
+.canvas-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+.canvas-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cs-label);
+}
+.canvas-section-icon {
+  color: var(--accent);
+}
+.canvas-section-count {
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cs-count);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+/* Unified dims the chrome so sections read as one continuous surface. */
+[data-section-style="unified"] .canvas-section-title {
+  font-weight: 500;
+  color: #7a7a7a;
+}
+[data-section-style="unified"] .canvas-section-icon {
+  color: #6f6f6f;
+}
+
+/* A list of standard rows with hairline dividers between them (Open tasks,
+   Recent meetings, Linked here). The container; each child is one row. */
+.canvas-rows > * + * {
+  border-top: 1px solid var(--cs-divider);
+}

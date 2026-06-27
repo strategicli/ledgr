@@ -8,12 +8,16 @@
 // PaperCanvasClient as the single writer, so a second whole-object properties
 // writer can't clobber it. The title-page meta form lives inside the Draft tab.
 import PaperCanvasClient from "@/components/paper-editor/PaperCanvasClient";
+import RelationProperties from "@/components/relations/RelationProperties";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
+import { getType } from "@/lib/types";
 import type { CanvasProps } from "@/lib/modules";
 
 export default async function PaperCanvas({ item, ownerId }: CanvasProps) {
+  const typeDef = await getType(item.type).catch(() => null);
+  const propertySchema = typeDef?.propertySchema ?? [];
   return (
     <>
       <PaperCanvasClient
@@ -26,6 +30,17 @@ export default async function PaperCanvas({ item, ownerId }: CanvasProps) {
             ? item.createdAt.toISOString()
             : String(item.createdAt)
         }
+      />
+      {/* Relation fields (if the paper type declares any). Safe to render here
+          even though scalar CustomProperties is deliberately omitted: relations
+          live in the `relations` table, not items.properties, so this can't
+          clobber PaperCanvasClient's single-writer properties. Without it, the
+          Linked-here de-dup (the canvas redesign) would hide a relation field. */}
+      <RelationProperties
+        ownerId={ownerId}
+        itemId={item.id}
+        typeKey={item.type}
+        props={propertySchema}
       />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <SaveOffline itemId={item.id} />

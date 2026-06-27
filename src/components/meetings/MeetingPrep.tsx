@@ -1,118 +1,162 @@
-// Meeting prep panel (slice 24, PRD §5.1), rendered on a meeting canvas above
-// the backlinks panel. Deterministic assembly: the related people, their open
-// tasks, the last few meetings with them, and the action-item -> task
-// promotion. Server component; one getMeetingPrep call.
+// Meeting prep panel (slice 24, PRD §5.1), rendered on an event canvas above the
+// Linked-here panel. Deterministic assembly: the related people (with their live
+// suggestions inline), their open tasks, and the last few meetings with them.
+// Server component; one getMeetingPrep call. Each block is a standardized
+// CanvasSection so it carries the owner's chosen section weight (the canvas
+// redesign). Open tasks reuse the actionable RelatedRow (check off + edit due in
+// place). Action-item promotion now lives on the body's `[ ]` lines (block
+// anchors, ADR-090), so the old "+ Promote action item to task" button is gone.
 import Link from "next/link";
 import { getMeetingPrep } from "@/lib/meetings/prep";
-import SectionHeading from "@/components/canvas/SectionHeading";
-import PromoteTask from "./PromoteTask";
+import CanvasSection from "@/components/canvas/CanvasSection";
+import NavGlyph from "@/components/nav/NavGlyph";
+import RelatedRow from "@/components/relations/RelatedRow";
 import PinRuleButton from "./PinRuleButton";
 import SuggestedPeople from "./SuggestedPeople";
 import TaskPullControl from "@/components/events/TaskPullControl";
 
-const dateFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 const tsFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
+
+// Initials for a person chip's avatar: first + last word, else first two letters.
+function initials(title: string): string {
+  const parts = (title || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export default async function MeetingPrep({
   ownerId,
   itemId,
+  // Rendered as a single grid card (ADR-069): drop the per-section card chrome
+  // and centered column so the three blocks stack inside the one grid card.
+  bare = false,
 }: {
   ownerId: string;
   itemId: string;
+  bare?: boolean;
 }) {
   const prep = await getMeetingPrep(ownerId, itemId);
 
-  return (
-    <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
-      <div className="flex flex-wrap items-center gap-2">
-        <SectionHeading icon="people">People</SectionHeading>
-        {prep.templateName &&
-          (prep.templatePrototypeId ? (
-            <Link
-              href={`/items/${prep.templatePrototypeId}`}
-              title="Edit or unpin this rule's template"
-              className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
-            >
-              auto-filled from rule: {prep.templateName}
-            </Link>
-          ) : (
-            <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
-              auto-filled from rule: {prep.templateName}
-            </span>
-          ))}
-        {/* Offer to pin a standing rule once people are confirmed, unless this
-            event already came from one (templateName set). */}
-        {prep.people.length > 0 && !prep.templateName && <PinRuleButton eventId={itemId} />}
-      </div>
+  const templateChip = prep.templateName ? (
+    prep.templatePrototypeId ? (
+      <Link
+        href={`/items/${prep.templatePrototypeId}`}
+        title="Edit or unpin this rule's template"
+        className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-normal normal-case tracking-normal text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+      >
+        from rule: {prep.templateName}
+      </Link>
+    ) : (
+      <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-normal normal-case tracking-normal text-neutral-400">
+        from rule: {prep.templateName}
+      </span>
+    )
+  ) : null;
 
-      {prep.people.length === 0 ? (
-        <p className="mt-2 px-2 text-sm text-neutral-600">
-          {prep.suggestedPeople.length > 0
-            ? "No one confirmed yet — add a suggestion below, or relate a person."
-            : "No one matched this event. Relate a person below, or set a tag to pull its tasks."}
-        </p>
-      ) : (
-        <div className="mt-2 px-2 text-sm text-neutral-400">
-          {prep.people.map((e, i) => (
-            <span key={e.id}>
-              {i > 0 && ", "}
-              <Link href={`/items/${e.id}`} className="text-neutral-300 hover:underline">
+  return (
+    <>
+      <CanvasSection
+        bare={bare}
+        icon="people"
+        title="People"
+        count={prep.people.length}
+        action={
+          (templateChip || (prep.people.length > 0 && !prep.templateName)) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {templateChip}
+              {/* Offer to pin a standing rule once people are confirmed, unless
+                  this event already came from one. */}
+              {prep.people.length > 0 && !prep.templateName && (
+                <PinRuleButton eventId={itemId} />
+              )}
+            </div>
+          )
+        }
+      >
+        {prep.people.length === 0 && prep.suggestedPeople.length === 0 ? (
+          <p className="px-1 text-sm text-neutral-600">
+            No one matched this event yet. Relate a person below, or set a tag to
+            pull its tasks.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {prep.people.map((e) => (
+              <Link
+                key={e.id}
+                href={`/items/${e.id}`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-800/60 py-0.5 pl-1 pr-2.5 text-sm text-neutral-200 hover:border-neutral-600"
+              >
+                <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-neutral-700 text-[10px] text-neutral-100">
+                  {initials(e.title)}
+                </span>
                 {e.title || "Untitled"}
               </Link>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Live guesses (any event), one-click add → confirmed relation. */}
-      <SuggestedPeople eventId={itemId} people={prep.suggestedPeople} />
+            ))}
+            {/* Live guesses (any event), inline with the confirmed people; a
+                one-click add → confirmed relation. */}
+            <SuggestedPeople eventId={itemId} people={prep.suggestedPeople} />
+          </div>
+        )}
+      </CanvasSection>
 
       {/* Open tasks: always shown — its pull rule can reference tags, not just
-          the event's people (ADR-094 E4). */}
-      <div className="mt-4">
-        <SectionHeading icon="tasks">Open tasks ({prep.openTasks.length})</SectionHeading>
-        <div className="mt-1">
-          <TaskPullControl
-            eventId={itemId}
-            rule={prep.taskPull}
-            seeds={prep.taskPullSeeds}
-            peopleCount={prep.people.length}
-          />
-          {prep.openTasks.length === 0 ? (
-            <p className="px-2 text-sm text-neutral-600">No open tasks match.</p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {prep.openTasks.map((t) => (
-                <li key={t.id} className="flex items-baseline gap-2 px-2 text-sm">
-                  <Link href={`/items/${t.id}`} className="text-neutral-300 hover:underline">
-                    {t.title || "Untitled"}
-                  </Link>
-                  {t.dueDate && (
-                    <span className="text-xs text-neutral-600">
-                      due {dateFmt.format(t.dueDate)}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+          the event's people (ADR-094 E4). Rows reuse RelatedRow so they check
+          off and edit their due date in place. */}
+      <CanvasSection bare={bare} icon="tasks" title="Open tasks" count={prep.openTasks.length}>
+        <TaskPullControl
+          eventId={itemId}
+          rule={prep.taskPull}
+          seeds={prep.taskPullSeeds}
+          peopleCount={prep.people.length}
+        />
+        {prep.openTasks.length === 0 ? (
+          <p className="px-1 pt-1 text-sm text-neutral-600">No open tasks match.</p>
+        ) : (
+          <ul className="canvas-rows mt-1">
+            {prep.openTasks.map((t) => (
+              <RelatedRow
+                key={t.id}
+                hostId={itemId}
+                manageable={false}
+                suggested={false}
+                mention={false}
+                mentionOnly={false}
+                item={{
+                  id: t.id,
+                  type: t.type,
+                  title: t.title ?? "",
+                  status: t.status,
+                  statusCategory: t.statusCategory,
+                  dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+                  updatedAt: t.updatedAt.toISOString(),
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </CanvasSection>
 
       {prep.people.length > 0 && (
-        <div className="mt-4">
-          <SectionHeading icon="recent">Recent meetings</SectionHeading>
+        <CanvasSection bare={bare} icon="recent" title="Recent meetings">
           {prep.recentMeetings.length === 0 ? (
-            <p className="mt-1 px-2 text-sm text-neutral-600">None yet.</p>
+            <p className="px-1 text-sm text-neutral-600">None yet.</p>
           ) : (
-            <ul className="mt-1 flex flex-col gap-0.5">
+            <ul className="canvas-rows">
               {prep.recentMeetings.map((m) => (
-                <li key={m.id} className="flex items-baseline gap-2 px-2 text-sm">
-                  <Link href={`/items/${m.id}`} className="text-neutral-300 hover:underline">
+                <li
+                  key={m.id}
+                  className="flex items-center gap-2.5 rounded px-2 py-1.5 text-sm hover:bg-neutral-800/50"
+                >
+                  <NavGlyph icon="meetings" size={14} className="shrink-0 text-neutral-600" />
+                  <Link
+                    href={`/items/${m.id}`}
+                    className="min-w-0 flex-1 truncate text-neutral-200 hover:underline"
+                  >
                     {m.title || "Untitled"}
                   </Link>
                   {m.meetingAt && (
-                    <span className="text-xs text-neutral-600">
+                    <span className="shrink-0 text-xs text-neutral-500">
                       {tsFmt.format(m.meetingAt)}
                     </span>
                   )}
@@ -120,12 +164,8 @@ export default async function MeetingPrep({
               ))}
             </ul>
           )}
-        </div>
+        </CanvasSection>
       )}
-
-      <div className="mt-3">
-        <PromoteTask meetingId={itemId} />
-      </div>
-    </section>
+    </>
   );
 }

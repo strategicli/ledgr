@@ -72,6 +72,9 @@ export default async function RootLayout({
   // --ui-scale CSS var, with the mobile value behind a max-width media query.
   let uiScale = UI_SCALE[DEFAULT_SETTINGS.uiDensity];
   let mobileUiScale = uiScale;
+  // Item-canvas section style (the canvas redesign) — emitted as a body attribute
+  // the CanvasSection CSS reads, so the whole panel weight flips from one setting.
+  let sectionStyle = DEFAULT_SETTINGS.sectionStyle;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -83,6 +86,7 @@ export default async function RootLayout({
       proseFontSize = TEXT_SIZE_PX[s.textSize];
       uiScale = UI_SCALE[s.uiDensity];
       mobileUiScale = UI_SCALE[s.mobileUiDensity ?? s.uiDensity];
+      sectionStyle = s.sectionStyle;
     }
   } catch {
     /* defaults */
@@ -102,6 +106,7 @@ export default async function RootLayout({
       >
         <body
           className="min-h-full flex flex-col"
+          data-section-style={sectionStyle}
           style={{ "--accent": accent, "--accent-gradient": accentGradient, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           <style dangerouslySetInnerHTML={{ __html: uiScaleCss }} />

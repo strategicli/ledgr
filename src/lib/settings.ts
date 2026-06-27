@@ -83,6 +83,15 @@ export const UI_SCALE: Record<UiDensity, number> = {
   roomy: 1.2,
 };
 
+// Item-canvas section style (the canvas redesign). Drives how the standardized
+// CanvasSection panels (People, Open tasks, Properties, Linked here, …) carry
+// visual weight, set as `data-section-style` on <body> so the CSS in globals.css
+// styles every panel from one knob — same per-owner rail as accent/textSize.
+// "heavy" = bordered cards; "light" = a divider rule, no box; "unified" = flat,
+// minimal chrome. "light" is the default (clean for a fresh instance).
+export const SECTION_STYLES = ["heavy", "light", "unified"] as const;
+export type SectionStyle = (typeof SECTION_STYLES)[number];
+
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
@@ -208,6 +217,9 @@ export type UserSettings = {
   // textSize (which sizes the prose canvas only).
   uiDensity: UiDensity;
   mobileUiDensity: UiDensity | null;
+  // Item-canvas section style (heavy/light/unified). Maps to the
+  // `data-section-style` attribute on <body>; the CanvasSection CSS reads it.
+  sectionStyle: SectionStyle;
   // Ordered item ids the owner has starred (the Favorites flyout). Order is the
   // list order; a missing/deleted id is silently dropped when the list resolves.
   favorites: string[];
@@ -249,6 +261,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   textSize: "base",
   uiDensity: "default",
   mobileUiDensity: null,
+  sectionStyle: "light",
   favorites: [],
   listTabs: {},
   tocByType: {},
@@ -387,6 +400,9 @@ export function parseSettings(raw: unknown): UserSettings {
       : (UI_DENSITIES as readonly string[]).includes(r.mobileUiDensity as string)
         ? (r.mobileUiDensity as UiDensity)
         : null;
+  const sectionStyle = (SECTION_STYLES as readonly string[]).includes(r.sectionStyle as string)
+    ? (r.sectionStyle as SectionStyle)
+    : DEFAULT_SETTINGS.sectionStyle;
   const favorites = parseFavorites(r.favorites);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
@@ -409,6 +425,7 @@ export function parseSettings(raw: unknown): UserSettings {
     textSize,
     uiDensity,
     mobileUiDensity,
+    sectionStyle,
     favorites,
     listTabs,
     tocByType,
