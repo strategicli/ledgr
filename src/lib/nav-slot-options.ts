@@ -22,9 +22,10 @@ export type DestOption = {
   badgeEligible: boolean;
 };
 
-// The built-in pages that make sense as daily-nav destinations. Views/Items live
-// here too (they exist as routes); Archive is intentionally absent — there's no
-// /archive route yet, so offering it would dead-link.
+// The built-in pages that make sense as daily-nav destinations. Views/Items/Types
+// live here too (they exist as routes); Archive is intentionally absent — there's
+// no /archive route yet, so offering it would dead-link. "Types" points at the
+// Types directory (/list), the 30k-ft index of every type with its item count.
 export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badgeEligible: true },
   { group: "Built-in", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks", badgeEligible: false },
@@ -33,6 +34,7 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/dashboards", label: "Dashboards", icon: "dashboard", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/items", label: "Items", icon: "items", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/views", label: "Views", icon: "views", badgeEligible: false },
+  { group: "Built-in", kind: "builtin", href: "/list", label: "Types", icon: "layers", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/changelog", label: "Changelog", icon: "changelog", badgeEligible: false },
 ];
 
