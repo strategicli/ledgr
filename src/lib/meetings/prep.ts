@@ -17,6 +17,7 @@ import {
   eventItemToCalendarEvent,
   suggestPeopleForEvent,
 } from "@/lib/calendar/suggest-people";
+import { getTemplate } from "@/lib/templates";
 
 export type PrepPerson = { id: string; title: string };
 type ListRow = Awaited<ReturnType<typeof queryViewItems>>[number];
@@ -30,9 +31,10 @@ export type MeetingPrep = {
   suggestedPeople: PrepPerson[];
   openTasks: ListRow[];
   recentMeetings: ListRow[];
-  // The template a matcher chose (slice 23), if any — shown as a hint; the
-  // full named-template system (agenda per template) is Phase 3.
+  // The template a rule applied (ADR-123), if any — shown as a hint chip; the
+  // prototype id lets the chip link to the template (to edit / unpin the rule).
   templateName: string | null;
+  templatePrototypeId: string | null;
   // The event's effective task-pull rule (ADR-094 E4) + labels for its concrete
   // seeds, for the TaskPullControl. The default rule = tasks related to anyone
   // on the event.
@@ -85,9 +87,18 @@ export async function getMeetingPrep(
     .select({ title: items.title, properties: items.properties })
     .from(items)
     .where(and(eq(items.id, meetingId), eq(items.ownerId, ownerId), isNull(items.deletedAt)));
-  const templateName =
-    ((self[0]?.properties as { match?: { templateName?: string | null } } | null)?.match
-      ?.templateName) ?? null;
+  const match = (self[0]?.properties as { match?: { templateName?: string | null; templateId?: string | null } } | null)?.match;
+  const templateName = match?.templateName ?? null;
+  // Resolve the rule's template → its prototype, so the chip can link to it (to
+  // edit or unpin the rule). Tolerate a since-deleted template.
+  let templatePrototypeId: string | null = null;
+  if (match?.templateId) {
+    try {
+      templatePrototypeId = (await getTemplate(ownerId, match.templateId)).prototypeItemId;
+    } catch {
+      /* template gone — leave the chip unlinked */
+    }
+  }
 
   const people = await getMeetingPeople(ownerId, meetingId, "confirmed");
   const peopleIds = people.map((p) => p.id);
@@ -134,5 +145,5 @@ export async function getMeetingPrep(
     .sort((a, b) => (b.meetingAt?.getTime() ?? 0) - (a.meetingAt?.getTime() ?? 0))
     .slice(0, RECENT_MEETINGS);
 
-  return { people, suggestedPeople, openTasks, recentMeetings, templateName, taskPull: rule, taskPullSeeds };
+  return { people, suggestedPeople, openTasks, recentMeetings, templateName, templatePrototypeId, taskPull: rule, taskPullSeeds };
 }

@@ -11,6 +11,23 @@ import { useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import TemplateDatesControl from "@/components/canvas/TemplateDatesControl";
 import type { ApplyConfig } from "@/lib/template-vars";
+import type { TemplateMatchConfig } from "@/lib/templates/match-config";
+
+// Plain-language summary of a match rule (ADR-123) — "what events auto-apply
+// this template". Mirrors the condition kinds the pin/suggester use.
+function describeRule(mc: TemplateMatchConfig): string {
+  const c = mc.condition;
+  switch (c.kind) {
+    case "attendeeEmail":
+      return `events where ${c.email} is invited`;
+    case "seriesId":
+      return "events in this recurring calendar series";
+    case "titleRegex":
+      return `events whose title matches /${c.pattern}/${c.flags ?? ""}`;
+    case "titleFuzzy":
+      return `events titled like “${c.pattern}”`;
+  }
+}
 
 export default function TemplateBanner({
   templateId,
@@ -18,20 +35,30 @@ export default function TemplateBanner({
   isDefault,
   typeLabel,
   applyConfig,
+  matchConfig,
 }: {
   templateId: string;
   name: string;
   isDefault: boolean;
   typeLabel: string;
   applyConfig: ApplyConfig;
+  matchConfig: TemplateMatchConfig | null;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const [showDates, setShowDates] = useState(false);
-  const [busy, setBusy] = useState<null | "rename" | "default" | "duplicate">(null);
+  const [busy, setBusy] = useState<null | "rename" | "default" | "duplicate" | "unpin">(null);
   const [error, setError] = useState<string | null>(null);
   const hasDateRules = !!(applyConfig.dueDate || applyConfig.scheduledDate);
+
+  async function unpinRule() {
+    if (busy) return;
+    setBusy("unpin");
+    // Clear the rule but KEEP the template (it becomes a plain content template).
+    if (await patch({ matchConfig: null })) router.refresh();
+    setBusy(null);
+  }
 
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     setError(null);
@@ -182,6 +209,24 @@ export default function TemplateBanner({
             All templates
           </Link>
         </div>
+        {matchConfig && (
+          <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 border-t border-amber-800/30 pt-1.5 text-xs text-amber-200/80">
+            <span aria-hidden>⚡</span>
+            <span className="min-w-0 flex-1">
+              Auto-applies to {describeRule(matchConfig)}
+              {matchConfig.autoApply ? "" : " (paused)"}.
+            </span>
+            <button
+              type="button"
+              onClick={() => void unpinRule()}
+              disabled={busy !== null}
+              title="Remove the auto-apply rule (keeps the template)"
+              className={actionClass}
+            >
+              {busy === "unpin" ? "Removing…" : "Unpin rule"}
+            </button>
+          </div>
+        )}
         {error && <span className="w-full text-xs text-red-400">{error}</span>}
       </div>
       {showDates && (
