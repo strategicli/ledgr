@@ -16,7 +16,10 @@ import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
 import { getTemplateByPrototype } from "@/lib/templates";
 import { getType } from "@/lib/types";
+import { getSettings } from "@/lib/settings";
+import { tocForType } from "@/lib/toc";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
+import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 
@@ -74,13 +77,19 @@ export default async function ItemCanvas({
     canvasIdForType(item.type, owner.id, typeDef?.capability)
   );
 
+  // Floating table of contents (ADR-114): a per-type, owner-scoped reading
+  // preference resolved here so the outline mounts once, universally, over
+  // whatever canvas this type uses. The component self-gates on heading count.
+  const settings = await getSettings(owner.id);
+  const toc = tocForType(settings, item.type);
+
   return (
     <>
       {/* The full-page view is wider than the modal (Brandon, 2026-06-17):
           `canvas-wide` widens the standard max-w-3xl canvas blocks so "expand"
           actually gains room, and matches the grid width so entering Arrange
           doesn't jump. The modal stays the narrow quick reader. */}
-      <div className={variant === "page" ? "canvas-wide" : undefined}>
+      <div data-toc-scope className={variant === "page" ? "canvas-wide" : undefined}>
         {item.isTemplate &&
           (template ? (
             <TemplateBanner
@@ -139,6 +148,15 @@ export default async function ItemCanvas({
             identity is constant across renders, so React won't remount it. */}
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
+        {/* The outline reads this scope's body editor (.ledgr-prose) and floats
+            over the canvas; it renders nothing for an item with <2 headings. */}
+        {toc.enabled && (
+          <FloatingToc
+            variant={variant}
+            levels={toc.levels}
+            navPosition={settings.navPosition}
+          />
+        )}
       </div>
       {/* One always-visible autosave indicator for the whole canvas. */}
       <SaveStatusIndicator />
