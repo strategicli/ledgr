@@ -18,6 +18,10 @@ import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
+import BulkActionBar from "@/components/selection/BulkActionBar";
+import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import SelectionProvider from "@/components/selection/SelectionProvider";
+import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
@@ -111,7 +115,7 @@ export default async function TypeList({
         editHref={`/build/types/${type}/edit`}
       />
       {viewData ? (
-        <ViewLensBody data={viewData} />
+        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(typeDef)} />
       ) : (
         <>
           {selects.length > 0 && (
@@ -120,13 +124,14 @@ export default async function TypeList({
             </div>
           )}
           {items.length > 0 ? (
-            <>
+            <SelectionProvider ids={items.map((item) => item.id)}>
               <ul className="mt-4">
                 {items.map((item) => (
                   <li
                     key={item.id}
                     className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60"
                   >
+                    <SelectCheckbox id={item.id} />
                     <Link
                       href={`/items/${item.id}`}
                       className={`min-w-0 flex-1 truncate text-sm ${
@@ -143,7 +148,8 @@ export default async function TypeList({
                 ))}
               </ul>
               <LoadMore shown={items.length} total={count} basePath={`/list/${type}`} params={sp} />
-            </>
+              <BulkActionBar {...bulkConfigForType(typeDef)} />
+            </SelectionProvider>
           ) : (
             <p className="mt-6 px-2 text-sm text-neutral-600">
               {propFilters.length

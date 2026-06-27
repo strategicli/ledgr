@@ -10,7 +10,11 @@ import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
 import RowAction from "@/components/home/RowAction";
+import BulkActionBar from "@/components/selection/BulkActionBar";
+import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import SelectionProvider from "@/components/selection/SelectionProvider";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema, type StatusDef } from "@/lib/status";
@@ -50,6 +54,7 @@ function TaskRow({ task, dueToday, statuses }: { task: ListedItem; dueToday: Dat
   const pri = task.urgency != null ? (task.urgency as Priority) : null;
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+      <SelectCheckbox id={task.id} />
       <SubtaskCheckbox id={task.id} done={done} />
       <Link
         href={`/items/${task.id}`}
@@ -118,6 +123,10 @@ export default async function Tasks({
   );
 
   let body: React.ReactNode = null;
+  // The selectable task ids on the active tab, in display order (powers the
+  // multi-select range + select-all). Project headers and inline-add rows aren't
+  // selectable; only task rows are.
+  let selectableIds: string[] = [];
 
   if (tab === "today") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
@@ -132,6 +141,7 @@ export default async function Tasks({
       (groups.get(k) ?? groups.set(k, []).get(k)!).push(t);
     }
     const ordered = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+    selectableIds = ordered.flatMap(([, items]) => items.map((t) => t.id));
     body =
       today.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
@@ -152,6 +162,7 @@ export default async function Tasks({
       );
   } else if (tab === "inbox") {
     const inbox = await queryViewItems(owner.id, { type: "task", inbox: true, statusCategory: "active" }, { field: "createdAt", dir: "desc" });
+    selectableIds = inbox.map((t) => t.id);
     body =
       inbox.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
@@ -171,6 +182,7 @@ export default async function Tasks({
       (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(t);
     }
     const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
+    selectableIds = days.flatMap((d) => (byDay.get(dayKey(d)) ?? []).map((t) => t.id));
     body = (
       <div className="mt-4">
         {/* week nav + day-jump chips */}
@@ -222,6 +234,7 @@ export default async function Tasks({
         tasks: await queryViewItems(owner.id, { type: "task", relatedTo: p.id, statusCategory: "active" }, { field: "dueDate", dir: "asc" }),
       }))
     );
+    selectableIds = cards.flatMap(({ tasks }) => tasks.map((t) => t.id));
     body =
       cards.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">No projects yet. Create one to gather its tasks, notes, and events.</p>
@@ -260,17 +273,20 @@ export default async function Tasks({
   return (
     <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />}>
       {tabStrip}
-      {body}
-      {tab === "today" && (
-        <div className="mt-3">
-          <InlineAddTask dueYmd={dayKey(dueToday)} />
-        </div>
-      )}
-      {tab === "inbox" && (
-        <div className="mt-3">
-          <InlineAddTask />
-        </div>
-      )}
+      <SelectionProvider ids={selectableIds}>
+        {body}
+        {tab === "today" && (
+          <div className="mt-3">
+            <InlineAddTask dueYmd={dayKey(dueToday)} />
+          </div>
+        )}
+        {tab === "inbox" && (
+          <div className="mt-3">
+            <InlineAddTask />
+          </div>
+        )}
+        <BulkActionBar {...bulkConfigForType(taskType)} />
+      </SelectionProvider>
     </ListPage>
   );
 }

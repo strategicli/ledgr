@@ -7,8 +7,13 @@ import ListPage from "@/components/lists/ListPage";
 import LoadMore from "@/components/lists/LoadMore";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
+import BulkActionBar from "@/components/selection/BulkActionBar";
+import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import SelectionProvider from "@/components/selection/SelectionProvider";
+import { bulkConfigForType } from "@/lib/bulk-config";
 import { resolveOwner } from "@/lib/owner";
 import { APP_TIMEZONE } from "@/lib/today";
+import { getType } from "@/lib/types";
 import { countViewItems, parseListWindow, queryViewItems } from "@/lib/views";
 import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
 import AddEventButton from "@/components/calendar/AddEventButton";
@@ -47,6 +52,7 @@ function formatWhen(at: Date, now: Date) {
 function MeetingRow({ meeting, now }: { meeting: ListedItem; now: Date }) {
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+      <SelectCheckbox id={meeting.id} />
       <span className="w-40 shrink-0 text-xs tabular-nums text-neutral-500">
         {meeting.meetingAt ? formatWhen(meeting.meetingAt, now) : ""}
       </span>
@@ -169,10 +175,13 @@ export default async function Meetings({
       {meetings.length === 0 && feed.length === 0 && (
         <p className="mt-6 px-2 text-sm text-neutral-600">No events yet.</p>
       )}
-      <Section title="Upcoming" rows={upcoming} now={now} />
-      <Section title="Past" rows={past} now={now} />
-      <Section title="No date" rows={undated} now={now} />
-      <LoadMore shown={meetings.length} total={total} basePath="/events" params={sp} />
+      <SelectionProvider ids={[...upcoming, ...past, ...undated].map((m) => m.id)}>
+        <Section title="Upcoming" rows={upcoming} now={now} />
+        <Section title="Past" rows={past} now={now} />
+        <Section title="No date" rows={undated} now={now} />
+        <LoadMore shown={meetings.length} total={total} basePath="/events" params={sp} />
+        <BulkActionBar {...bulkConfigForType(await getType("event"))} />
+      </SelectionProvider>
     </ListPage>
   );
 }

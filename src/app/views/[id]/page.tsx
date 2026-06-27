@@ -7,6 +7,9 @@ import { notFound, redirect } from "next/navigation";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import DuplicateViewButton from "@/components/views/DuplicateViewButton";
 import NewItemButton from "@/components/home/NewItemButton";
+import BulkActionBar from "@/components/selection/BulkActionBar";
+import SelectionProvider from "@/components/selection/SelectionProvider";
+import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
@@ -126,16 +129,20 @@ export default async function ViewPage({ params, searchParams }: Context) {
           {items.length} item{items.length === 1 ? "" : "s"} · {view.layout}
         </p>
 
-        <ViewRenderer
-          view={view}
-          items={items}
-          groupOrder={groupOrder}
-          propertyLabels={propertyLabels}
-          boardDraggable={boardDraggable}
-          statuses={statuses}
-          month={month}
-          calendarNavHref={`/views/${view.id}`}
-        />
+        <SelectionProvider ids={items.map((item) => item.id)}>
+          <ViewRenderer
+            view={view}
+            items={items}
+            groupOrder={groupOrder}
+            propertyLabels={propertyLabels}
+            boardDraggable={boardDraggable}
+            statuses={statuses}
+            month={month}
+            calendarNavHref={`/views/${view.id}`}
+            selectable
+          />
+          <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />
+        </SelectionProvider>
       </div>
     </main>
   );
