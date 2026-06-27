@@ -179,6 +179,11 @@ export async function listItems(ownerId: string, opts: ListOptions = {}) {
   return listItemsQuery(ownerId, opts);
 }
 
+// The body-free row shape every list-shaped query returns (listColumns). Named
+// so other list-shaped readers (the dashboard nested-widget child fetch) can
+// type their results against the same set.
+export type ItemListRow = Awaited<ReturnType<typeof listItems>>[number];
+
 // The nav badge (PRD §4.11): live untriaged items. Rides items_inbox_idx.
 // Active-only so it matches the Inbox page (which hides done/archived): a
 // finished item is no longer "awaiting triage", and completion clears the flag

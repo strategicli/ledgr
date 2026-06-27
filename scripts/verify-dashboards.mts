@@ -56,9 +56,9 @@ try {
   check("no dashboards initially", (await listDashboards(ownerId)).length === 0);
 
   // 2. create
-  const home = await createDashboard(ownerId, { name: "Home", focusItemId: null, widgets: [] });
+  const home = await createDashboard(ownerId, { name: "Home", focusItemId: null, appearance: null, widgets: [] });
   check("create sets position 0 + empty widgets", home.position === 0 && home.widgets.length === 0);
-  const second = await createDashboard(ownerId, { name: "Project", focusItemId: null, widgets: [] });
+  const second = await createDashboard(ownerId, { name: "Project", focusItemId: null, appearance: null, widgets: [] });
   check("second dashboard gets next position", second.position === 1);
 
   // 3. add a widget of each kind, round-trip through the store
@@ -66,6 +66,7 @@ try {
     id: crypto.randomUUID(),
     kind: "view" as const,
     viewId: viewA.id,
+    itemId: null,
     settings: { titleOverride: "Open Tasks", itemLimit: 10, sortOverride: null, renderStyle: "compact" as const },
     layout: { lg: cell(0, 0, 6, 4), sm: cell(0, 0, 1, 4) },
   };
@@ -73,6 +74,7 @@ try {
     id: crypto.randomUUID(),
     kind: "stat" as const,
     viewId: viewA.id,
+    itemId: null,
     settings: { label: "Open", metric: "count" as const },
     layout: { lg: cell(6, 0, 2, 2) },
   };
@@ -80,12 +82,14 @@ try {
     id: crypto.randomUUID(),
     kind: "action" as const,
     viewId: null,
+    itemId: null,
     settings: { action: "quick-capture" as const, label: "New Task", icon: null, targetType: "task", templateId: null, href: null },
     layout: { lg: cell(8, 0, 4, 2) },
   };
   await updateDashboard(ownerId, home.id, {
     name: "Home",
     focusItemId: null,
+    appearance: null,
     widgets: [viewWidget, statWidget, actionWidget],
   });
   let got = await getDashboard(ownerId, home.id);
@@ -176,7 +180,7 @@ try {
   check("reorder persists", ordered.map((d) => d.id).join() === [second.id, home.id].join());
 
   // 10. delete + focus SET NULL
-  const focused = await createDashboard(ownerId, { name: "Focused", focusItemId: person.id, widgets: [] });
+  const focused = await createDashboard(ownerId, { name: "Focused", focusItemId: person.id, appearance: null, widgets: [] });
   await db.delete(relations).where(eq(relations.targetId, person.id));
   await db.delete(items).where(eq(items.id, person.id)); // hard delete → FK SET NULL fires
   const afterFocusDelete = await getDashboard(ownerId, focused.id);

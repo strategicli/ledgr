@@ -239,6 +239,13 @@
       "when": 1782402925216,
       "tag": "0033_parallel_toad",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1782567410027,
+      "tag": "0034_gorgeous_hitman",
+      "breakpoints": true
     }
   ]
 }

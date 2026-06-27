@@ -16,16 +16,33 @@ import { getDb } from "@/db";
 import { dashboards } from "@/db/schema";
 import {
   ACTION_KINDS,
+  CHILD_SOURCES,
+  CONTAINER_MODES,
   GRID_BREAKPOINTS,
   GRID_COLS,
+  IMAGE_FITS,
   RENDER_STYLES,
+  STAGE_BG_KINDS,
+  STAGE_DENSITIES,
+  WIDGET_ACCENTS,
+  WIDGET_BACKGROUNDS,
   WIDGET_KINDS,
   type ActionKind,
+  type ChildSource,
+  type ContainerMode,
   type Dashboard,
+  type DashboardAppearance,
   type DashboardInput,
   type DashboardWidget,
   type GridCell,
+  type ImageFit,
   type RenderStyle,
+  type StageBackground,
+  type StageBgKind,
+  type StageDensity,
+  type WidgetAccent,
+  type WidgetAppearance,
+  type WidgetBackground,
   type WidgetKind,
   type WidgetLayout,
   type WidgetSettings,
@@ -74,6 +91,66 @@ function str(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
+function bool(v: unknown, fallback: boolean): boolean {
+  return typeof v === "boolean" ? v : fallback;
+}
+
+function clamp01(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+}
+
+function intIn(v: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
+// Per-widget chrome (DC1). Absent (undefined) = today's per-kind defaults, so an
+// untouched dashboard renders identically; present = a full object (the gear
+// always sends every field). Tolerant: a partial object fills with card defaults.
+function parseWidgetAppearance(raw: unknown): WidgetAppearance | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  return {
+    showHeader: bool(r.showHeader, true),
+    showBorder: bool(r.showBorder, true),
+    background: WIDGET_BACKGROUNDS.includes(r.background as WidgetBackground)
+      ? (r.background as WidgetBackground)
+      : "panel",
+    accent: WIDGET_ACCENTS.includes(r.accent as WidgetAccent) ? (r.accent as WidgetAccent) : "none",
+    collapsible: bool(r.collapsible, false),
+    collapsed: bool(r.collapsed, false),
+  };
+}
+
+// Dashboard stage (DC2). null = today's plain dark dashboard. value holds a
+// curated color/gradient token or an image/video URL — never bytes.
+export function parseDashboardAppearance(raw: unknown): DashboardAppearance | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const bgRaw = (r.background && typeof r.background === "object" ? r.background : {}) as Record<
+    string,
+    unknown
+  >;
+  const kind = STAGE_BG_KINDS.includes(bgRaw.kind as StageBgKind)
+    ? (bgRaw.kind as StageBgKind)
+    : "none";
+  const background: StageBackground = {
+    kind,
+    value: str(bgRaw.value, 1000),
+    scrim: clamp01(bgRaw.scrim),
+    blur: clamp01(bgRaw.blur),
+  };
+  return {
+    background,
+    showTitle: bool(r.showTitle, true),
+    density: STAGE_DENSITIES.includes(r.density as StageDensity)
+      ? (r.density as StageDensity)
+      : "comfortable",
+    accent: str(r.accent, 40) || null,
+  };
+}
+
 function parseWidgetSettings(kind: WidgetKind, raw: unknown): WidgetSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   if (kind === "view") {
@@ -95,6 +172,52 @@ function parseWidgetSettings(kind: WidgetKind, raw: unknown): WidgetSettings {
   if (kind === "text") {
     return { heading: str(r.heading, 120), body: str(r.body, 2000) };
   }
+  if (kind === "tree") {
+    const childSource: ChildSource = CHILD_SOURCES.includes(r.childSource as ChildSource)
+      ? (r.childSource as ChildSource)
+      : "children";
+    return {
+      titleOverride: str(r.titleOverride, 120) || null,
+      parentLimit: r.parentLimit != null ? intIn(r.parentLimit, 1, VIEW_LIMIT, 5) : null,
+      childLimit: intIn(r.childLimit, 1, 50, 5),
+      childSource,
+      relationRole: str(r.relationRole, 60) || null,
+      childType: str(r.childType, 60) || null,
+      hideCompletedChildren: bool(r.hideCompletedChildren, true),
+      sortOverride: r.sortOverride != null ? parseSort(r.sortOverride) : null,
+    };
+  }
+  if (kind === "embed") {
+    return { showBody: bool(r.showBody, true) };
+  }
+  if (kind === "image") {
+    const fit: ImageFit = IMAGE_FITS.includes(r.fit as ImageFit) ? (r.fit as ImageFit) : "cover";
+    return { url: str(r.url, 2000), alt: str(r.alt, 300), fit, link: str(r.link, 500) || null };
+  }
+  if (kind === "container") {
+    const mode: ContainerMode = CONTAINER_MODES.includes(r.mode as ContainerMode)
+      ? (r.mode as ContainerMode)
+      : "tabs";
+    // One-level nesting: a container's children are parsed as widgets but any
+    // nested container is dropped, so the server fan-out stays a single recursion.
+    const children: DashboardWidget[] = [];
+    const seen = new Set<string>();
+    if (Array.isArray(r.children)) {
+      for (const c of r.children) {
+        const parsed = parseWidget(c);
+        if (parsed && parsed.kind !== "container" && !seen.has(parsed.id)) {
+          seen.add(parsed.id);
+          children.push(parsed);
+        }
+      }
+    }
+    return {
+      mode,
+      title: str(r.title, 120),
+      activeTab: intIn(r.activeTab, 0, Math.max(children.length - 1, 0), 0),
+      children,
+    };
+  }
   // action
   const action = ACTION_KINDS.includes(r.action as ActionKind)
     ? (r.action as ActionKind)
@@ -115,16 +238,19 @@ export function parseWidget(raw: unknown): DashboardWidget | null {
   const kind = r.kind as WidgetKind;
   if (!WIDGET_KINDS.includes(kind)) return null;
   const viewId = r.viewId != null ? String(r.viewId) : null;
-  // "view"/"stat" must be backed by a real view; drop the widget if it isn't.
-  if ((kind === "view" || kind === "stat") && (!viewId || !UUID_RE.test(viewId))) {
-    return null;
-  }
+  const itemId = r.itemId != null ? String(r.itemId) : null;
+  // "view"/"stat"/"tree" must be backed by a real view; drop the widget if not.
+  const viewBacked = kind === "view" || kind === "stat" || kind === "tree";
+  if (viewBacked && (!viewId || !UUID_RE.test(viewId))) return null;
+  // "embed" must name a real item.
+  if (kind === "embed" && (!itemId || !UUID_RE.test(itemId))) return null;
   return {
     id: typeof r.id === "string" && UUID_RE.test(r.id) ? r.id : crypto.randomUUID(),
     kind,
-    // Only view/stat are view-backed; action + text carry no view.
-    viewId: kind === "view" || kind === "stat" ? viewId : null,
+    viewId: viewBacked ? viewId : null,
+    itemId: kind === "embed" ? itemId : null,
     settings: parseWidgetSettings(kind, r.settings),
+    appearance: parseWidgetAppearance(r.appearance),
     layout: parseWidgetLayout(r.layout),
   };
 }
@@ -157,7 +283,12 @@ export function parseDashboardInput(raw: unknown): DashboardInput {
     if (!UUID_RE.test(String(r.focusItemId))) bad("focusItemId must be a UUID");
     focusItemId = String(r.focusItemId);
   }
-  return { name, focusItemId, widgets: parseWidgets(r.widgets) };
+  return {
+    name,
+    focusItemId,
+    appearance: parseDashboardAppearance(r.appearance),
+    widgets: parseWidgets(r.widgets),
+  };
 }
 
 function rowToDashboard(row: typeof dashboards.$inferSelect): Dashboard {
@@ -166,6 +297,7 @@ function rowToDashboard(row: typeof dashboards.$inferSelect): Dashboard {
     name: row.name,
     position: row.position,
     focusItemId: row.focusItemId,
+    appearance: parseDashboardAppearance(row.appearance),
     widgets: parseWidgets(row.widgets),
     createdAt: row.createdAt,
   };
@@ -207,6 +339,7 @@ export async function createDashboard(
       name: input.name,
       position,
       focusItemId: input.focusItemId,
+      appearance: input.appearance,
       widgets: input.widgets,
     })
     .returning();
@@ -227,6 +360,7 @@ export async function updateDashboard(
     .set({
       name: input.name,
       focusItemId: input.focusItemId,
+      appearance: input.appearance,
       widgets: input.widgets,
     })
     .where(and(eq(dashboards.id, id), eq(dashboards.ownerId, ownerId)))
@@ -272,6 +406,7 @@ export async function addWidget(
   return updateDashboard(ownerId, dashboardId, {
     name: dash.name,
     focusItemId: dash.focusItemId,
+    appearance: dash.appearance,
     widgets: [...dash.widgets, widget],
   });
 }
@@ -289,6 +424,7 @@ export async function updateWidget(
   return updateDashboard(ownerId, dashboardId, {
     name: dash.name,
     focusItemId: dash.focusItemId,
+    appearance: dash.appearance,
     widgets,
   });
 }
@@ -302,6 +438,7 @@ export async function removeWidget(
   return updateDashboard(ownerId, dashboardId, {
     name: dash.name,
     focusItemId: dash.focusItemId,
+    appearance: dash.appearance,
     widgets: dash.widgets.filter((w) => w.id !== widgetId),
   });
 }
@@ -320,11 +457,17 @@ export async function addViewToDefaultDashboard(
   const existing = await listDashboards(ownerId);
   const dash =
     existing[0] ??
-    (await createDashboard(ownerId, { name: "Home", focusItemId: null, widgets: [] }));
+    (await createDashboard(ownerId, {
+      name: "Home",
+      focusItemId: null,
+      appearance: null,
+      widgets: [],
+    }));
   await addWidget(ownerId, dash.id, {
     id: crypto.randomUUID(),
     kind: "view",
     viewId,
+    itemId: null,
     settings: { titleOverride: null, itemLimit: null, sortOverride: null, renderStyle: "compact" },
     layout: {},
   });
@@ -337,6 +480,14 @@ export async function addViewToDefaultDashboard(
 export async function usedViewIds(ownerId: string): Promise<Set<string>> {
   const all = await listDashboards(ownerId);
   const set = new Set<string>();
-  for (const d of all) for (const w of d.widgets) if (w.viewId) set.add(w.viewId);
+  const scan = (w: DashboardWidget) => {
+    if (w.viewId) set.add(w.viewId);
+    // A view can also live inside a container (one-level), so count those too.
+    if (w.kind === "container") {
+      const s = w.settings as { children?: DashboardWidget[] };
+      for (const c of s.children ?? []) if (c.viewId) set.add(c.viewId);
+    }
+  };
+  for (const d of all) for (const w of d.widgets) scan(w);
   return set;
 }
