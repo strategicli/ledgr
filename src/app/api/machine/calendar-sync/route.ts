@@ -4,7 +4,6 @@ import { getGraphCalendarSource } from "@/lib/calendar/graph-source";
 import { resolveMailboxOwner } from "@/lib/calendar/owner";
 import { runCalendarSync } from "@/lib/calendar/sync";
 import { getGraphMailboxUpn, GraphError } from "@/lib/graph/client";
-import { applyMatchersToMeeting, matchEvent } from "@/lib/matchers/engine";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // Scheduled calendar sync (slice 22, PRD §5.1). Sub-daily, so it runs from
@@ -35,27 +34,12 @@ export async function GET(request: Request) {
     const ownerId = await resolveMailboxOwner(upn);
     if (!ownerId) throw new Error(`no users row matches mailbox UPN ${upn}`);
     const eventErrors: { eventId: string; message: string }[] = [];
+    // Promotion is MANUAL (ADR-123): the cron only caches events into the feed;
+    // they become items when the owner clicks Add, where applyEventIntake (the
+    // template-rule + person-suggester) runs. No auto-promote, so no
+    // shouldPromote/onPromoted — the matcher engine is retired from this path.
     const result = await runCalendarSync(ownerId, source, {
       onError: (eventId, err) => eventErrors.push({ eventId, message: errorMessage(err) }),
-      // Auto-promote only events a matcher recognizes (a standing 1:1, a series);
-      // everything else waits in the /events calendar feed. A matcher error never
-      // fails the sync — the event just isn't auto-promoted this run.
-      shouldPromote: async (event) => {
-        try {
-          return (await matchEvent(ownerId, event)).matchedMatcherIds.length > 0;
-        } catch (err) {
-          log.warn("matcher evaluation failed", { message: errorMessage(err) });
-          return false;
-        }
-      },
-      // Attach the matched entities/template to the freshly auto-promoted item.
-      onPromoted: async (itemId, event) => {
-        try {
-          await applyMatchersToMeeting(ownerId, itemId, event);
-        } catch (err) {
-          log.warn("matcher application failed", { itemId, message: errorMessage(err) });
-        }
-      },
     });
     log.info("calendar sync finished", { ...result });
     if (eventErrors.length > 0) {

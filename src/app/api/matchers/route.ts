@@ -4,9 +4,11 @@ import { errorResponse } from "@/lib/api";
 import { ItemError } from "@/lib/items";
 import { createMatcher, listMatchers } from "@/lib/matchers/store";
 
-// Matcher rules (slice 23). User-authed and owner-scoped. The setup wizard and
-// learn-by-confirmation (and a future Build-surface UI) write rules here; the
-// calendar matcher engine reads them. No seeded rules (PRD §5.1).
+// Matcher rules (slice 23). User-authed and owner-scoped.
+// DORMANT as of EM3 (ADR-123): the calendar rule source moved onto templates
+// (`templates.match_config`), so rules written here are no longer read by any
+// live path. Kept functional-but-ignored (defer-by-hiding) until the matchers
+// table is removed in a later cleanup; pin-as-rule (EM4) writes templates.
 export const dynamic = "force-dynamic";
 
 export async function GET() {

@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { addMatchEdge } from "@/lib/relations";
+import { applyTemplateToExisting } from "@/lib/templates";
 import { matchEventToTemplate } from "./event-rules";
 import { suggestPeopleForEvent, type PersonSuggestion } from "./suggest-people";
 import type { CalendarEvent } from "./types";
@@ -63,11 +64,19 @@ export async function applyEventIntake(
   event: CalendarEvent,
   opts: { onError?: (personId: string, err: unknown) => void } = {}
 ): Promise<IntakeResult> {
-  // Tier A — recognized (a pinned template's condition matches).
+  // Tier A — recognized (a pinned template's condition matches): apply the
+  // template, so its pre-related people land as CONFIRMED edges (they flow
+  // straight into prep/task-pull) and its recurring content is copied on. "fill"
+  // never clobbers what the event already has (title, calendar metadata). A
+  // since-deleted/mismatched template must not fail the add — fall through to
+  // recording the match either way.
   const match = await matchEventToTemplate(ownerId, event);
   if (match && match.rule.autoApply) {
-    // EM3 wires applyTemplateToExisting here (confirmed people + content); EM2
-    // records the match so the gap is just "not yet applied", not "lost".
+    try {
+      await applyTemplateToExisting(ownerId, match.rule.templateId, itemId, { mode: "fill" });
+    } catch (err) {
+      opts.onError?.(match.rule.templateId, err);
+    }
     await recordEventMatch(ownerId, itemId, {
       templateId: match.rule.templateId,
       templateName: match.rule.templateName,

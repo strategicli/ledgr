@@ -1,3 +1,11 @@
+// DORMANT as of EM3 (ADR-123): the calendar rule SOURCE moved off the `matchers`
+// table onto templates (`templates.match_config`; see src/lib/calendar/
+// event-rules.ts + intake.ts). `matchEvent`/`applyMatchersToMeeting` are no
+// longer called by any live path (feed Add + both sync routes use applyEventIntake).
+// Left in place, not deleted (defer-by-hiding, reversible; the table is empty).
+// The condition VOCABULARY (MatcherCondition / CONDITION_RANK / defaultMatchState
+// in ./types, validateCondition in ./store) is still shared and very much in use.
+//
 // Matcher engine (slice 23, PRD §5.1). Deterministic, no model in the loop:
 // given a calendar event, evaluate the owner's rules in kind precedence
 // (attendee-email -> series-id -> title-regex -> fuzzy) and return the entities

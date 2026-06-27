@@ -3,7 +3,6 @@ import { requireOwner } from "@/lib/api";
 import { getGraphCalendarSource } from "@/lib/calendar/graph-source";
 import { runCalendarSync } from "@/lib/calendar/sync";
 import { GraphError } from "@/lib/graph/client";
-import { applyMatchersToMeeting, matchEvent } from "@/lib/matchers/engine";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // "Sync now" (slice 22, PRD §5.1): the user-authed twin of the GitHub Actions
@@ -29,24 +28,12 @@ export async function POST() {
 
   try {
     const eventErrors: { eventId: string; message: string }[] = [];
+    // Promotion is MANUAL (ADR-123): the sync only caches events; they wait in
+    // the /events feed until the owner clicks Add, where applyEventIntake (the
+    // template-rule + person-suggester) runs. No auto-promote here, so no
+    // shouldPromote/onPromoted (the matcher engine is retired from this path).
     const result = await runCalendarSync(owner.id, source, {
       onError: (eventId, err) => eventErrors.push({ eventId, message: errorMessage(err) }),
-      // Auto-promote only matched events; the rest wait in the /events feed.
-      shouldPromote: async (event) => {
-        try {
-          return (await matchEvent(owner.id, event)).matchedMatcherIds.length > 0;
-        } catch (err) {
-          log.warn("matcher evaluation failed", { message: errorMessage(err) });
-          return false;
-        }
-      },
-      onPromoted: async (itemId, event) => {
-        try {
-          await applyMatchersToMeeting(owner.id, itemId, event);
-        } catch (err) {
-          log.warn("matcher application failed", { itemId, message: errorMessage(err) });
-        }
-      },
     });
     log.info("calendar sync (now) finished", { ...result });
     if (eventErrors.length > 0) {
