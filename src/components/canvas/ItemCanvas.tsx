@@ -21,6 +21,7 @@ import { tocForType } from "@/lib/toc";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
 import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
+import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 
 export default async function ItemCanvas({
@@ -110,13 +111,11 @@ export default async function ItemCanvas({
           <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
-                <Link href="/items" className="hover:text-neutral-300">
-                  ← All items
-                </Link>
+                <PageTrashButton itemId={item.id} parentId={item.parentId ?? null} />
               )}
               {ancestors.map((a, i) => (
                 <span key={a.id} className="flex min-w-0 items-center gap-1">
-                  {((variant === "page" && !item.isTemplate) || i > 0) && (
+                  {i > 0 && (
                     <span className="text-neutral-700">/</span>
                   )}
                   <Link
