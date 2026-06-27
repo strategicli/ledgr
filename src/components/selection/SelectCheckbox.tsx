@@ -4,9 +4,10 @@
 // shared row component (e.g. ViewRenderer's ItemRow) can be dropped into a
 // non-selectable surface (a dashboard widget) unchanged.
 //
-// Visibility follows the RowAction convention: hover-revealed on desktop while
-// nothing is selected, and pinned visible once a selection is in progress (and
-// always on touch, which has no hover). Soft-delete + the explicit action bar
+// Gated by select mode (the SelectModeToggle): off by default, this renders
+// NOTHING — not an invisible box — so an idle list reserves no leading space on
+// desktop and shows no clutter on touch (which has no hover to reveal on). When
+// select mode is on, the box shows solid. Soft-delete + the explicit action bar
 // keep an accidental tap harmless.
 "use client";
 
@@ -14,10 +15,11 @@ import { useSelectionOptional } from "@/components/selection/SelectionProvider";
 
 export default function SelectCheckbox({ id }: { id: string }) {
   const selection = useSelectionOptional();
-  if (!selection) return null;
+  // A null child takes no flex gap, so an off row is byte-for-byte the layout it
+  // had before the multi-select feature existed.
+  if (!selection || !selection.selectMode) return null;
 
   const checked = selection.isSelected(id);
-  const active = selection.count > 0;
 
   return (
     <input
@@ -32,9 +34,7 @@ export default function SelectCheckbox({ id }: { id: string }) {
         selection.toggle(id, e.shiftKey);
       }}
       onChange={() => {}}
-      className={`h-4 w-4 shrink-0 cursor-pointer rounded border-neutral-600 bg-transparent accent-[var(--accent)] transition-opacity ${
-        checked || active ? "opacity-100" : "opacity-0 group-hover:opacity-100 max-sm:opacity-100"
-      }`}
+      className="h-4 w-4 shrink-0 cursor-pointer rounded border-neutral-600 bg-transparent accent-[var(--accent)]"
     />
   );
 }

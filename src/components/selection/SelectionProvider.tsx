@@ -23,6 +23,9 @@ import {
 type SelectionContextValue = {
   selected: ReadonlySet<string>;
   count: number;
+  // The number of selectable rows in view (ids.length). Lets a control hide
+  // itself when there's nothing to select.
+  total: number;
   isSelected: (id: string) => boolean;
   // Toggle one id. With shiftKey, select the contiguous range from the last
   // toggled row to this one (in the list's visual order).
@@ -30,6 +33,11 @@ type SelectionContextValue = {
   clear: () => void;
   selectAll: () => void;
   allSelected: boolean;
+  // Select mode: off by default, so rows render with no checkbox and no
+  // reserved space (the SelectModeToggle turns it on). Turning it off clears
+  // the selection — leaving select mode is the natural "done/cancel".
+  selectMode: boolean;
+  setSelectMode: (on: boolean) => void;
 };
 
 const SelectionContext = createContext<SelectionContextValue | null>(null);
@@ -59,6 +67,7 @@ export default function SelectionProvider({
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selectMode, setSelectModeState] = useState(false);
   const anchor = useRef<string | null>(null);
 
   const toggle = useCallback(
@@ -94,18 +103,31 @@ export default function SelectionProvider({
     setSelected(new Set(ids));
   }, [ids]);
 
+  // Leaving select mode clears the selection (and the range anchor) so the next
+  // entry starts clean; entering just flips the flag.
+  const setSelectMode = useCallback((on: boolean) => {
+    setSelectModeState(on);
+    if (!on) {
+      anchor.current = null;
+      setSelected(new Set());
+    }
+  }, []);
+
   const value = useMemo<SelectionContextValue>(() => {
     const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
     return {
       selected,
       count: selected.size,
+      total: ids.length,
       isSelected: (id) => selected.has(id),
       toggle,
       clear,
       selectAll,
       allSelected,
+      selectMode,
+      setSelectMode,
     };
-  }, [selected, ids, toggle, clear, selectAll]);
+  }, [selected, ids, toggle, clear, selectAll, selectMode, setSelectMode]);
 
   return (
     <SelectionContext.Provider value={value}>

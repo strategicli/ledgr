@@ -12,6 +12,7 @@ import RowAction from "@/components/home/RowAction";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
+import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
@@ -88,6 +89,7 @@ export default async function Notes({
         <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(await getType("note"))} />
       ) : notes.length > 0 ? (
         <SelectionProvider ids={notes.map((note) => note.id)}>
+          <SelectModeToggle />
           <ul className="mt-4">
             {notes.map((note) => (
               <li

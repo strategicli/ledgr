@@ -9,6 +9,7 @@
 // checkboxes, so the bar simply never appears there.
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
+import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import type { BulkActionConfig } from "@/lib/bulk-config";
 import type { ViewLensData } from "@/lib/view-render";
@@ -36,6 +37,10 @@ export default function ViewLensBody({
 
   return (
     <SelectionProvider ids={data.items.map((item) => item.id)}>
+      {/* Board/calendar render no row checkboxes (ADR-118), so no toggle. */}
+      {data.view.layout !== "board" && data.view.layout !== "calendar" && (
+        <SelectModeToggle />
+      )}
       <div className="mt-4">{renderer}</div>
       <BulkActionBar {...bulkConfig} />
     </SelectionProvider>
