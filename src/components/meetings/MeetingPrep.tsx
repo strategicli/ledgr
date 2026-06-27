@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getMeetingPrep } from "@/lib/meetings/prep";
 import SectionHeading from "@/components/canvas/SectionHeading";
 import PromoteTask from "./PromoteTask";
+import PinRuleButton from "./PinRuleButton";
 import TaskPullControl from "@/components/events/TaskPullControl";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
@@ -22,18 +23,23 @@ export default async function MeetingPrep({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <SectionHeading icon="people">People</SectionHeading>
         {prep.templateName && (
           <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
-            template: {prep.templateName}
+            auto-filled from rule: {prep.templateName}
           </span>
         )}
+        {/* Offer to pin a standing rule once people are confirmed, unless this
+            event already came from one (templateName set). */}
+        {prep.people.length > 0 && !prep.templateName && <PinRuleButton eventId={itemId} />}
       </div>
 
       {prep.people.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
-          Relate a person to see recent meetings here, or set a tag below to pull its tasks.
+          {prep.suggestedPeople.length > 0
+            ? "No one confirmed yet — confirm a suggestion below (✓), or relate a person."
+            : "No one matched this event. Relate a person below, or set a tag to pull its tasks."}
         </p>
       ) : (
         <div className="mt-2 px-2 text-sm text-neutral-400">
@@ -46,6 +52,20 @@ export default async function MeetingPrep({
             </span>
           ))}
         </div>
+      )}
+
+      {prep.suggestedPeople.length > 0 && (
+        <p className="mt-1 px-2 text-xs text-neutral-500">
+          Suggested (confirm below):{" "}
+          {prep.suggestedPeople.map((e, i) => (
+            <span key={e.id}>
+              {i > 0 && ", "}
+              <Link href={`/items/${e.id}`} className="text-neutral-400 hover:underline">
+                {e.title || "Untitled"}
+              </Link>
+            </span>
+          ))}
+        </p>
       )}
 
       {/* Open tasks: always shown — its pull rule can reference tags, not just
