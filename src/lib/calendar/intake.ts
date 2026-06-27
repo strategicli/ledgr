@@ -1,43 +1,34 @@
-// Event intake (EM2, ADR-123). The single entry point run when a calendar event
-// becomes an `event` item (the manual Add today; create-only, never on re-sync,
-// so a suggestion the owner rejected is not resurrected). Three tiers:
-//   A — recognized: a pinned (autoApply) template's condition matches the event.
-//       EM3 applies the template (confirmed people + content); EM2 records it.
-//   B — unrecognized: the always-on suggester proposes people, written as
-//       `suggested` edges so the existing ✓/✕ confirm-reject UX surfaces them.
-//   C — nothing determinable: no edges; the UI shows an empty-state.
-// Provenance (the chosen template / the suggestions + why) is recorded in
-// items.properties.match for display + debugging.
+// Event intake (ADR-123). Run when a calendar event becomes an `event` item
+// (the manual Add today; create-only, never on re-sync). Two outcomes:
+//   A — recognized: a pinned (autoApply) template's condition matches → apply it,
+//       so its pre-related people land as CONFIRMED edges (they flow straight
+//       into prep/task-pull) and its recurring content copies on.
+//   none — no pinned template matches: nothing is written here. PERSON
+//       SUGGESTIONS ARE COMPUTED LIVE ON THE EVENT CANVAS (getMeetingPrep), not
+//       pre-written as edges, so they show for ANY event (added, imported, or
+//       hand-made), and the canvas offers a one-click add. (This replaced the
+//       earlier "write suggested edges at intake" approach, which only surfaced
+//       on feed-Added events.)
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
-import { addMatchEdge } from "@/lib/relations";
 import { applyTemplateToExisting } from "@/lib/templates";
 import { matchEventToTemplate } from "./event-rules";
-import { suggestPeopleForEvent, type PersonSuggestion } from "./suggest-people";
 import type { CalendarEvent } from "./types";
 
 export type EventMatchRecord = {
-  // Tier A: the template a rule chose.
   templateId?: string;
   templateName?: string;
   // Why it matched (the condition kind), for provenance/debugging.
   condition?: string;
-  // Tier B: the suggested people + the signal that surfaced each.
-  suggestions?: {
-    personId: string;
-    reason: PersonSuggestion["reason"];
-    confidence: PersonSuggestion["confidence"];
-  }[];
 };
 
 export type IntakeResult =
   | { tier: "recognized"; templateId: string }
-  | { tier: "suggested"; count: number }
   | { tier: "none" };
 
 // Merge the match record into items.properties.match without clobbering other
-// keys (calendar metadata, taskPull, …) — the applyMatchersToMeeting pattern.
+// keys (calendar metadata, taskPull, …).
 async function recordEventMatch(
   ownerId: string,
   itemId: string,
@@ -62,14 +53,11 @@ export async function applyEventIntake(
   ownerId: string,
   itemId: string,
   event: CalendarEvent,
-  opts: { onError?: (personId: string, err: unknown) => void } = {}
+  opts: { onError?: (templateId: string, err: unknown) => void } = {}
 ): Promise<IntakeResult> {
-  // Tier A — recognized (a pinned template's condition matches): apply the
-  // template, so its pre-related people land as CONFIRMED edges (they flow
-  // straight into prep/task-pull) and its recurring content is copied on. "fill"
+  // Tier A — recognized (a pinned template's condition matches): apply it. "fill"
   // never clobbers what the event already has (title, calendar metadata). A
-  // since-deleted/mismatched template must not fail the add — fall through to
-  // recording the match either way.
+  // since-deleted/mismatched template must not fail the add — record either way.
   const match = await matchEventToTemplate(ownerId, event);
   if (match && match.rule.autoApply) {
     try {
@@ -85,29 +73,6 @@ export async function applyEventIntake(
     return { tier: "recognized", templateId: match.rule.templateId };
   }
 
-  // Tier B — suggestions, written as `suggested` edges (best-effort: a vanished
-  // person never fails the others, and the add succeeds regardless).
-  const suggestions = await suggestPeopleForEvent(ownerId, event, { limit: 3 });
-  const written: typeof suggestions = [];
-  for (const s of suggestions) {
-    try {
-      await addMatchEdge(ownerId, itemId, s.personId, "suggested");
-      written.push(s);
-    } catch (err) {
-      opts.onError?.(s.personId, err);
-    }
-  }
-  if (written.length > 0) {
-    await recordEventMatch(ownerId, itemId, {
-      suggestions: written.map((s) => ({
-        personId: s.personId,
-        reason: s.reason,
-        confidence: s.confidence,
-      })),
-    });
-    return { tier: "suggested", count: written.length };
-  }
-
-  // Tier C — nothing determinable.
+  // Otherwise nothing is written — suggestions are live on the canvas.
   return { tier: "none" };
 }

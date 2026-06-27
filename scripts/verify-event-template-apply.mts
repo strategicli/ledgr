@@ -94,10 +94,12 @@ try {
   await updateTemplate(owner.id, domTmpl.id, { matchConfig: { condition: { kind: "attendeeEmail", email: "dana@x.com" }, autoApply: false } });
   const eventD = await createItem(owner.id, { type: "event", title: "Dana sync" });
   const rD = await applyEventIntake(owner.id, eventD.id, ev({ title: "Dana sync", attendees: [{ name: "Dana", email: "dana@x.com" }] }));
-  check("a dormant rule is not Tier A (falls to suggestions)", rD.tier === "suggested");
-  check("dormant rule: the person is SUGGESTED, not confirmed", (await edgeState(eventD.id, dom.id)) === "suggested");
+  check("a dormant rule is not applied (tier none)", rD.tier === "none");
+  check("dormant rule: no edge is written at intake", (await edgeState(eventD.id, dom.id)) === null);
   const dFull = await getItem(owner.id, eventD.id);
   check("dormant rule: the template body is NOT applied", !((dFull.body as { text?: string } | null)?.text ?? "").includes("Dormant agenda"));
+  const prepD = await getMeetingPrep(owner.id, eventD.id);
+  check("dormant rule: the person is live-suggested on the canvas instead", prepD.suggestedPeople.some((p) => p.id === dom.id));
 } finally {
   await db.delete(items).where(eq(items.ownerId, owner.id));
   await db.delete(templates).where(eq(templates.ownerId, owner.id));

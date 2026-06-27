@@ -5,14 +5,52 @@
 //   2. title/details token containment → a person whose name token appears as a
 //      whole word in the event title (e.g. "Roger/Brandon 1:1" → Roger Knowlton)
 //      (medium). A full-title pg_trgm fallback (low) only fires when 1+2 miss.
-// Suggestions are proposals to confirm, never auto-confirmed (the caller writes
-// them as `suggested` edges). The owner is always excluded — their own person id
+// Suggestions are proposals to confirm, never auto-confirmed. They are computed
+// LIVE on the event canvas (getMeetingPrep) and offered with a one-click add —
+// not pre-written as edges. The owner is always excluded: their own person id
 // and name tokens are resolved once and filtered out, so a meeting "with" the
 // owner never suggests the owner.
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, users } from "@/db/schema";
-import type { CalendarEvent } from "./types";
+import type { CalendarEvent, CalendarPerson } from "./types";
+
+// Build the minimal CalendarEvent the suggester needs from a stored `event`
+// ITEM, so suggestions can be computed LIVE on the canvas for ANY event (not
+// only ones freshly Added from the calendar feed). Calendar-sourced events carry
+// attendees/organizer/series in properties.calendar; a hand-made event has just
+// its title, and the title-token signal still works.
+export function eventItemToCalendarEvent(item: {
+  title: string | null;
+  properties: unknown;
+}): CalendarEvent {
+  const cal =
+    (item.properties as {
+      calendar?: {
+        attendees?: CalendarPerson[];
+        organizer?: CalendarPerson | null;
+        seriesMasterId?: string | null;
+        location?: string | null;
+        bodyPreview?: string | null;
+      };
+    } | null)?.calendar ?? {};
+  return {
+    id: "",
+    title: item.title ?? "",
+    startUtc: new Date(),
+    endUtc: null,
+    isCancelled: false,
+    organizer: cal.organizer ?? null,
+    attendees: Array.isArray(cal.attendees) ? cal.attendees : [],
+    location: cal.location ?? null,
+    isOnline: false,
+    joinUrl: null,
+    webLink: null,
+    seriesMasterId: cal.seriesMasterId ?? null,
+    bodyPreview: cal.bodyPreview ?? null,
+    lastModified: null,
+  };
+}
 
 export type PersonSuggestion = {
   personId: string;
