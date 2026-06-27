@@ -19,6 +19,10 @@ type ListRow = Awaited<ReturnType<typeof queryViewItems>>[number];
 
 export type MeetingPrep = {
   people: PrepPerson[];
+  // Provisional matches from intake's suggester (ADR-123): person edges still
+  // `suggested`. Surfaced as a hint; the actual ✓/✕ confirm lives in the
+  // Related panel. Confirming one moves it into `people`.
+  suggestedPeople: PrepPerson[];
   openTasks: ListRow[];
   recentMeetings: ListRow[];
   // The template a matcher chose (slice 23), if any — shown as a hint; the
@@ -33,10 +37,13 @@ export type MeetingPrep = {
 
 const RECENT_MEETINGS = 3;
 
-// The meeting's confirmed related people (both directions), title order.
+// The meeting's related people (both directions), title order, for one trust
+// level — confirmed (the real attendees, default) or suggested (provisional
+// guesses awaiting ✓/✕). Same query, one `match_state` filter.
 export async function getMeetingPeople(
   ownerId: string,
-  meetingId: string
+  meetingId: string,
+  matchState: "confirmed" | "suggested" = "confirmed"
 ): Promise<PrepPerson[]> {
   const rows = await getDb().execute(sql`
     select distinct e.id, e.title
@@ -44,7 +51,7 @@ export async function getMeetingPeople(
     join items e
       on e.id = case when r.source_id = ${meetingId} then r.target_id else r.source_id end
     where (r.source_id = ${meetingId} or r.target_id = ${meetingId})
-      and r.match_state = 'confirmed'
+      and r.match_state = ${matchState}
       and e.type = 'person'
       and e.owner_id = ${ownerId}
       and e.deleted_at is null
@@ -77,7 +84,10 @@ export async function getMeetingPrep(
     ((self[0]?.properties as { match?: { templateName?: string | null } } | null)?.match
       ?.templateName) ?? null;
 
-  const people = await getMeetingPeople(ownerId, meetingId);
+  const [people, suggestedPeople] = await Promise.all([
+    getMeetingPeople(ownerId, meetingId, "confirmed"),
+    getMeetingPeople(ownerId, meetingId, "suggested"),
+  ]);
   const peopleIds = people.map((p) => p.id);
   const rawRule = (self[0]?.properties as { taskPull?: unknown } | null)?.taskPull;
   const rule = effectiveTaskPull(rawRule);
@@ -106,5 +116,5 @@ export async function getMeetingPrep(
     .sort((a, b) => (b.meetingAt?.getTime() ?? 0) - (a.meetingAt?.getTime() ?? 0))
     .slice(0, RECENT_MEETINGS);
 
-  return { people, openTasks, recentMeetings, templateName, taskPull: rule, taskPullSeeds };
+  return { people, suggestedPeople, openTasks, recentMeetings, templateName, taskPull: rule, taskPullSeeds };
 }
