@@ -9,11 +9,11 @@
 // passed (the top-level menu), so the container's own child menu omits them.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ActionKind, ContainerMode } from "@/lib/dashboard-widgets";
 import { STARTER_WIDGETS, type StarterWidget } from "@/lib/starter-widgets";
 import type { ViewDefinition } from "@/lib/views";
-import { usePopoverAlign } from "./use-popover-align";
+import { FloatingMenu, usePopoverPosition } from "./floating-menu";
 import type { ViewWidgetKind } from "./widget-defaults";
 
 type Hit = { id: string; type: string; title: string };
@@ -32,6 +32,7 @@ export default function AddWidgetMenu({
   onAddEmbed,
   onAddNote,
   onAddContainer,
+  onAddImage,
 }: {
   onAdd: (view: ViewDefinition, kind: ViewWidgetKind) => void;
   onAddStarter: (starter: StarterWidget, kind: ViewWidgetKind) => void;
@@ -41,11 +42,11 @@ export default function AddWidgetMenu({
   onAddEmbed?: (itemId: string, title: string) => void;
   onAddNote?: () => void;
   onAddContainer?: (mode: ContainerMode) => void;
+  onAddImage?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<ViewDefinition[] | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-  const { triggerRef, alignLeft, measure } = usePopoverAlign(328);
+  const { triggerRef, pos, measure } = usePopoverPosition(320);
 
   useEffect(() => {
     if (!open || views) return;
@@ -54,15 +55,6 @@ export default function AddWidgetMenu({
       .then((d: { views: ViewDefinition[] }) => setViews(d.views))
       .catch(() => setViews([]));
   }, [open, views]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
 
   // A prebuilt pick: reuse a same-named view if one already exists (so repeat
   // picks don't pile up duplicate views), else create it.
@@ -74,7 +66,7 @@ export default function AddWidgetMenu({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
         ref={triggerRef}
         onClick={() => {
@@ -86,8 +78,12 @@ export default function AddWidgetMenu({
         + Add widget
       </button>
       {open && (
-        <div
-          className={`absolute ${alignLeft ? "left-0" : "right-0"} z-30 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl`}
+        <FloatingMenu
+          pos={pos}
+          width={320}
+          anchorRef={triggerRef}
+          onClose={() => setOpen(false)}
+          className="rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl"
         >
           <SectionLabel>Structure</SectionLabel>
           <MenuItem
@@ -104,6 +100,16 @@ export default function AddWidgetMenu({
               description="A tabbed / stacked group that holds other widgets"
               onClick={() => {
                 onAddContainer("tabs");
+                setOpen(false);
+              }}
+            />
+          )}
+          {onAddImage && (
+            <MenuItem
+              title="Image"
+              description="A picture from a URL — a header image or a quote graphic"
+              onClick={() => {
+                onAddImage();
                 setOpen(false);
               }}
             />
@@ -187,9 +193,9 @@ export default function AddWidgetMenu({
               </div>
             ))
           )}
-        </div>
+        </FloatingMenu>
       )}
-    </div>
+    </>
   );
 }
 

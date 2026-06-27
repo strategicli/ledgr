@@ -20,6 +20,7 @@ import {
   CONTAINER_MODES,
   GRID_BREAKPOINTS,
   GRID_COLS,
+  IMAGE_FITS,
   RENDER_STYLES,
   STAGE_BG_KINDS,
   STAGE_DENSITIES,
@@ -34,6 +35,7 @@ import {
   type DashboardInput,
   type DashboardWidget,
   type GridCell,
+  type ImageFit,
   type RenderStyle,
   type StageBackground,
   type StageBgKind,
@@ -187,6 +189,10 @@ function parseWidgetSettings(kind: WidgetKind, raw: unknown): WidgetSettings {
   }
   if (kind === "embed") {
     return { showBody: bool(r.showBody, true) };
+  }
+  if (kind === "image") {
+    const fit: ImageFit = IMAGE_FITS.includes(r.fit as ImageFit) ? (r.fit as ImageFit) : "cover";
+    return { url: str(r.url, 2000), alt: str(r.alt, 300), fit, link: str(r.link, 500) || null };
   }
   if (kind === "container") {
     const mode: ContainerMode = CONTAINER_MODES.includes(r.mode as ContainerMode)

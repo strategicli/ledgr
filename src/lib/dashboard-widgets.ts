@@ -9,12 +9,13 @@ import type { ViewDefinition, ViewFilter, ViewSort } from "@/lib/views";
 
 // --- Widget kinds & settings ---------------------------------------------
 
-// view/stat/action/text are the ADR-064/065 base. tree/embed/container are the
-// dashboard-canvas additions (ADR-111 + the nested-widget follow-on):
+// view/stat/action/text are the ADR-064/065 base. tree/embed/container/image are
+// the dashboard-canvas additions (ADR-111 + the nested-widget follow-on):
 //   • tree     — N parent items, each with its children listed under it.
 //   • embed    — any item, edited in place (the sticky note is this + a color).
 //   • container — a tab/stack/section holding child widgets (one-level nesting).
-export const WIDGET_KINDS = ["view", "stat", "action", "text", "tree", "embed", "container"] as const;
+//   • image    — a picture from a URL (a header image, a quote graphic); chrome-free.
+export const WIDGET_KINDS = ["view", "stat", "action", "text", "tree", "embed", "container", "image"] as const;
 export type WidgetKind = (typeof WIDGET_KINDS)[number];
 
 // How a view-backed widget renders: "compact" is the cheap list preview (title
@@ -98,6 +99,18 @@ export type ContainerWidgetSettings = {
   children: DashboardWidget[]; // one level deep; parsed non-container
 };
 
+// Image widget: a picture from a URL (a header image, a quote graphic). Like the
+// stage background, it takes a URL — never bytes — so it needs no upload plumbing;
+// for an UPLOADED image, embed a note and paste into it (that uploads to R2).
+export const IMAGE_FITS = ["cover", "contain"] as const;
+export type ImageFit = (typeof IMAGE_FITS)[number];
+export type ImageWidgetSettings = {
+  url: string;
+  alt: string;
+  fit: ImageFit; // cover = fill + crop; contain = whole image, letterboxed
+  link: string | null; // optional click-through (a path or URL)
+};
+
 export type WidgetSettings =
   | ViewWidgetSettings
   | StatWidgetSettings
@@ -105,7 +118,8 @@ export type WidgetSettings =
   | TextWidgetSettings
   | TreeWidgetSettings
   | EmbedWidgetSettings
-  | ContainerWidgetSettings;
+  | ContainerWidgetSettings
+  | ImageWidgetSettings;
 
 // --- Per-widget appearance (cross-cutting, ADR-111 DC1) ------------------
 // One optional object on every widget. Absent = today's per-kind chrome (so
@@ -139,7 +153,8 @@ export type WidgetAppearance = {
 // full card. effectiveAppearance() falls back to this when a widget has no saved
 // appearance, so an untouched dashboard looks exactly as before.
 export function defaultAppearance(kind: WidgetKind): WidgetAppearance {
-  const chromeFree = kind === "text";
+  // text + image are structure/media, not cards: no header/border by default.
+  const chromeFree = kind === "text" || kind === "image";
   return {
     showHeader: !chromeFree,
     showBorder: !chromeFree,

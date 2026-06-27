@@ -97,9 +97,12 @@ Reframing calendar/meetings (design settled with Brandon; **Tyler OK'd the core*
 - [x] **DC3 — Item-embed widget (any item).** New `embed` kind + `itemId`; renders the item's body via the autosaving `ItemEditor`, editable in place (title via the frame header, toggled by `showHeader`). Sticky note = embed + color + no header. `text` widget kept for labels.
 - [x] **DC4 — Tab/section container.** New `container` kind (tabs/stack/section + activeTab) holding child widgets; one-level nesting; single-recursion fan-out; add/remove/configure children from inside the container.
 - [x] **Nested-list (`tree`) widget — the new ask.** N parents from a backing view, each with its children listed under it; children sourced EITHER from the `parent_id` hierarchy OR a relation role (e.g. `project`, since project↔task is a relation, not parent_id); hide-completed default on; "+N more" overflow; batched body-free fetch in `src/lib/dashboard-tree.ts`.
+- [x] **`image` widget** (Brandon's "header image / quote pic" ask, added after preview review). A chrome-free picture from a URL (`{url, alt, fit, link}`); for an uploaded image, embed a note and paste (uploads to R2).
 - [ ] **DC5 — (Future) Journal / daily-note mode.** "New page" creates a date-titled item (from a template) + surfaces today's entry. Deferred; revisit later.
 
-**Verify:** `verify-dashboard-canvas` 26/26 + `verify-dashboards` 19/19 on Neon; tsc/eslint/`next build` clean. **Remaining eyeball:** in-browser at deploy (dev-auth local preview doesn't hydrate the RGL edit-mode islands). MCP `add_widget` enum pinned to the original 4 kinds (contract held). COLLAB heads-up to Tyler posted (migration 0034).
+**Post-preview-review fixes (PR #93):** relation role is now a **select** (from the relation fields across types), settings persist+refetch is **debounced** (was a per-keystroke `router.refresh()` racing the input), and all popovers render in a **portal** (`floating-menu.tsx`) so a short widget no longer clips the gear menu and it flips to stay in the viewport.
+
+**Verify:** `verify-dashboard-canvas` 28/28 + `verify-dashboards` 19/19 on Neon; tsc/eslint/`next build` clean. **Remaining eyeball:** in-browser at deploy (dev-auth local preview doesn't hydrate the RGL edit-mode islands). MCP `add_widget` enum pinned to the original 4 kinds (contract held). COLLAB heads-up to Tyler posted (migration 0034).
 
 ## ⟢ NEXT SLICE — Archive axis (cross-cutting `items.archived_at`, own ADR)
 

@@ -6,7 +6,7 @@
 // backing view; the parent persists + refetches where the change affects data.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import {
   CHILD_SOURCES,
   CONTAINER_MODES,
@@ -20,6 +20,8 @@ import {
   type ContainerWidgetSettings,
   type DashboardWidget,
   type EmbedWidgetSettings,
+  type ImageFit,
+  type ImageWidgetSettings,
   type RenderStyle,
   type StatWidgetSettings,
   type TextWidgetSettings,
@@ -31,6 +33,7 @@ import {
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
 import { SWATCH_DOT } from "./appearance-styles";
+import { FloatingMenu, type PopoverPos } from "./floating-menu";
 
 // Client-safe copy of the view sort fields (views.ts is server-only).
 const SORT_FIELD_OPTS = ["updatedAt", "createdAt", "dueDate", "meetingAt", "title"] as const;
@@ -58,42 +61,30 @@ const input =
 
 export default function WidgetSettingsPopover({
   widget,
-  alignLeft = false,
+  pos,
+  anchorRef,
   onChange,
   onAppearance,
   onClose,
 }: {
   widget: DashboardWidget;
-  alignLeft?: boolean;
+  pos: PopoverPos | null;
+  anchorRef: RefObject<HTMLElement | null>;
   onChange: (settings: WidgetSettings) => void;
   onAppearance: (appearance: WidgetAppearance) => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
   return (
-    <div
-      ref={ref}
-      className={`cancel-drag absolute ${alignLeft ? "left-0" : "right-0"} z-40 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl`}
+    <FloatingMenu
+      pos={pos}
+      width={256}
+      anchorRef={anchorRef}
+      onClose={onClose}
+      className="cancel-drag rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl"
     >
       <div className="flex flex-col gap-2">{renderFields(widget, onChange)}</div>
       <AppearanceSection widget={widget} onAppearance={onAppearance} />
-    </div>
+    </FloatingMenu>
   );
 }
 
@@ -180,6 +171,58 @@ function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => 
         Show the item body
         <span className="text-neutral-600">(off = title only)</span>
       </label>
+    );
+  }
+
+  if (widget.kind === "image") {
+    const s = widget.settings as ImageWidgetSettings;
+    return (
+      <>
+        <label className={field}>
+          Image URL
+          <input
+            type="text"
+            value={s.url}
+            placeholder="https://…"
+            onChange={(e) => onChange({ ...s, url: e.target.value })}
+            className={input}
+          />
+        </label>
+        <label className={field}>
+          Alt text
+          <input
+            type="text"
+            value={s.alt}
+            placeholder="describe the image"
+            onChange={(e) => onChange({ ...s, alt: e.target.value })}
+            className={input}
+          />
+        </label>
+        <label className={field}>
+          Fit
+          <select
+            value={s.fit}
+            onChange={(e) => onChange({ ...s, fit: e.target.value as ImageFit })}
+            className={input}
+          >
+            <option value="cover">Cover (fill + crop)</option>
+            <option value="contain">Contain (whole image)</option>
+          </select>
+        </label>
+        <label className={field}>
+          Link (optional)
+          <input
+            type="text"
+            value={s.link ?? ""}
+            placeholder="/path or https://…"
+            onChange={(e) => onChange({ ...s, link: e.target.value || null })}
+            className={input}
+          />
+        </label>
+        <p className="text-[11px] text-neutral-600">
+          For an uploaded image, embed a note and paste into it.
+        </p>
+      </>
     );
   }
 

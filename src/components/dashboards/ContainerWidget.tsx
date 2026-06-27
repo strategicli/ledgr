@@ -23,7 +23,7 @@ import type { StarterWidget } from "@/lib/starter-widgets";
 import type { ViewDefinition } from "@/lib/views";
 import AddWidgetMenu from "./AddWidgetMenu";
 import WidgetFrame from "./WidgetFrame";
-import { buildActionWidget, buildTextWidget, buildViewWidget } from "./widget-defaults";
+import { buildActionWidget, buildImageWidget, buildTextWidget, buildViewWidget } from "./widget-defaults";
 import { widgetTitle } from "./widget-title";
 
 export default function ContainerWidget({
@@ -55,6 +55,7 @@ export default function ContainerWidget({
       onAdd={(view, kind) => addChild(buildViewWidget(view, kind))}
       onAddText={() => addChild(buildTextWidget())}
       onAddAction={(action) => addChild(buildActionWidget(action))}
+      onAddImage={() => addChild(buildImageWidget())}
       onAddStarter={async (starter: StarterWidget, kind) => {
         try {
           const res = await fetch("/api/views", {

@@ -102,3 +102,14 @@ export function buildContainerWidget(mode: ContainerMode): DashboardWidget {
     layout: {},
   };
 }
+
+export function buildImageWidget(): DashboardWidget {
+  return {
+    id: crypto.randomUUID(),
+    kind: "image",
+    viewId: null,
+    itemId: null,
+    settings: { url: "", alt: "", fit: "cover", link: null },
+    layout: {},
+  };
+}

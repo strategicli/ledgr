@@ -124,6 +124,22 @@ try {
     embed.itemId === someId && (embed.settings as { showBody: boolean }).showBody === false
   );
 
+  // image widget: url/alt/link kept, fit clamped, chrome-free by default.
+  const image = parseWidget({
+    kind: "image",
+    settings: { url: "https://x/y.png", alt: "Quote", fit: "weird", link: "/notes" },
+    layout: {},
+  })!;
+  const imgS = image.settings as { url: string; alt: string; fit: string; link: string | null };
+  check(
+    "image keeps url/alt/link + clamps fit to cover",
+    imgS.url === "https://x/y.png" && imgS.alt === "Quote" && imgS.link === "/notes" && imgS.fit === "cover"
+  );
+  check(
+    "image defaults chrome-free",
+    effectiveAppearance(image).showHeader === false && effectiveAppearance(image).background === "transparent"
+  );
+
   // 3. Container: one-level nesting (a nested container child is dropped).
   const container = parseWidget({
     kind: "container",

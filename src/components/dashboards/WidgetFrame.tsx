@@ -20,7 +20,7 @@ import {
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
 import { ACCENT_CLASS, BG_CLASS } from "./appearance-styles";
-import { usePopoverAlign } from "./use-popover-align";
+import { usePopoverPosition } from "./floating-menu";
 import { titleHref, widgetTitle } from "./widget-title";
 import WidgetBody from "./WidgetBody";
 import WidgetSettingsPopover from "./WidgetSettingsPopover";
@@ -41,7 +41,7 @@ function EditControls({
 }) {
   const { widget } = data;
   const [gearOpen, setGearOpen] = useState(false);
-  const { triggerRef, alignLeft, measure } = usePopoverAlign(256);
+  const { triggerRef, pos, measure } = usePopoverPosition(256);
   return (
     <>
       <div className="relative shrink-0">
@@ -60,7 +60,8 @@ function EditControls({
         {gearOpen && (
           <WidgetSettingsPopover
             widget={widget}
-            alignLeft={alignLeft}
+            pos={pos}
+            anchorRef={triggerRef}
             onChange={(settings) => onSettings(widget.id, settings)}
             onAppearance={(appearance) => onAppearance(widget.id, appearance)}
             onClose={() => setGearOpen(false)}

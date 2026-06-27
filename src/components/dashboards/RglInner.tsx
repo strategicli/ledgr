@@ -37,6 +37,7 @@ function defaultH(kind: Kind) {
   if (kind === "action") return 2;
   if (kind === "stat") return 3;
   if (kind === "embed") return 6;
+  if (kind === "image") return 5;
   if (kind === "container") return 10;
   return 8;
 }
@@ -55,6 +56,7 @@ function minFor(kind: Kind) {
   if (kind === "action") return { minW: 2, minH: 1 };
   if (kind === "text") return { minW: 2, minH: 1 }; // a heading can be one short row
   if (kind === "embed") return { minW: 2, minH: 3 };
+  if (kind === "image") return { minW: 2, minH: 2 };
   if (kind === "container") return { minW: 3, minH: 5 };
   return { minW: 3, minH: 4 };
 }

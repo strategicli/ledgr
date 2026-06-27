@@ -6,7 +6,7 @@
 // that's a guarded follow-up; the parser keeps the seam.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   DEFAULT_DASHBOARD_APPEARANCE,
   STAGE_COLOR_TOKENS,
@@ -16,7 +16,7 @@ import {
   type StageBgKind,
   type StageDensity,
 } from "@/lib/dashboard-widgets";
-import { usePopoverAlign } from "./use-popover-align";
+import { FloatingMenu, usePopoverPosition } from "./floating-menu";
 
 const KIND_OPTS: { value: StageBgKind; label: string }[] = [
   { value: "none", label: "None" },
@@ -35,25 +35,15 @@ export default function BackgroundPanel({
   onChange: (appearance: DashboardAppearance | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const { triggerRef, alignLeft, measure } = usePopoverAlign(288);
+  const { triggerRef, pos, measure } = usePopoverPosition(288);
   const ap = appearance ?? DEFAULT_DASHBOARD_APPEARANCE;
   const bg = ap.background;
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
 
   const setBg = (patch: Partial<StageBackground>) =>
     onChange({ ...ap, background: { ...bg, ...patch } });
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
         ref={triggerRef}
         onClick={() => {
@@ -65,8 +55,12 @@ export default function BackgroundPanel({
         Background
       </button>
       {open && (
-        <div
-          className={`absolute ${alignLeft ? "left-0" : "right-0"} z-30 mt-2 w-72 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl`}
+        <FloatingMenu
+          pos={pos}
+          width={288}
+          anchorRef={triggerRef}
+          onClose={() => setOpen(false)}
+          className="rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl"
         >
           <div className="flex flex-col gap-2">
             <label className={field}>
@@ -154,9 +148,9 @@ export default function BackgroundPanel({
               Clear background
             </button>
           </div>
-        </div>
+        </FloatingMenu>
       )}
-    </div>
+    </>
   );
 }
 

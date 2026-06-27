@@ -19,6 +19,7 @@ import {
   applySettings,
   type ActionWidgetSettings,
   type EmbedWidgetSettings,
+  type ImageWidgetSettings,
   type StatWidgetSettings,
   type TextWidgetSettings,
   type TreeWidgetSettings,
@@ -102,6 +103,32 @@ export default function WidgetBody({
   if (widget.kind === "embed") {
     const s = widget.settings as EmbedWidgetSettings;
     return <EmbedWidget item={data.embedItem ?? null} showBody={s.showBody} />;
+  }
+
+  if (widget.kind === "image") {
+    const s = widget.settings as ImageWidgetSettings;
+    if (!s.url) {
+      return (
+        <div className="flex h-full items-center justify-center p-3 text-center text-sm text-neutral-600">
+          Open the gear to set an image URL.
+        </div>
+      );
+    }
+    const img = (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={s.url}
+        alt={s.alt}
+        className={`h-full w-full ${s.fit === "contain" ? "object-contain" : "object-cover"}`}
+      />
+    );
+    return s.link ? (
+      <Link href={s.link} className="cancel-drag block h-full w-full">
+        {img}
+      </Link>
+    ) : (
+      <div className="h-full w-full">{img}</div>
+    );
   }
 
   if (widget.kind === "container") {

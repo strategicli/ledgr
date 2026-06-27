@@ -26,6 +26,7 @@ import {
   buildActionWidget,
   buildContainerWidget,
   buildEmbedWidget,
+  buildImageWidget,
   buildTextWidget,
   buildViewWidget,
   type ViewWidgetKind,
@@ -274,6 +275,11 @@ export default function DashboardClient({
     [commit]
   );
 
+  const handleAddImage = useCallback(() => {
+    const widget = buildImageWidget();
+    void commit([...widgetsRef.current, { widget, view: null, items: [], count: 0 }], false);
+  }, [commit]);
+
   // A prebuilt/starter widget: create its backing view first (a real saved
   // view), then add it via handleAdd.
   const handleAddStarter = useCallback(
@@ -428,6 +434,7 @@ export default function DashboardClient({
                 onAddEmbed={handleAddEmbed}
                 onAddNote={handleAddNote}
                 onAddContainer={handleAddContainer}
+                onAddImage={handleAddImage}
               />
             )}
             <button
