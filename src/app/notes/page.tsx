@@ -9,10 +9,15 @@ import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
+import BulkActionBar from "@/components/selection/BulkActionBar";
+import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import SelectionProvider from "@/components/selection/SelectionProvider";
+import { bulkConfigForType } from "@/lib/bulk-config";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE } from "@/lib/today";
+import { getType } from "@/lib/types";
 import { resolveViewLens } from "@/lib/view-render";
 import { countViewItems, parseListWindow, queryViewItems } from "@/lib/views";
 
@@ -80,15 +85,16 @@ export default async function Notes({
         editHref="/build/types/note/edit"
       />
       {viewData ? (
-        <ViewLensBody data={viewData} />
+        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(await getType("note"))} />
       ) : notes.length > 0 ? (
-        <>
+        <SelectionProvider ids={notes.map((note) => note.id)}>
           <ul className="mt-4">
             {notes.map((note) => (
               <li
                 key={note.id}
                 className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
               >
+                <SelectCheckbox id={note.id} />
                 <Link
                   href={`/items/${note.id}`}
                   className={`min-w-0 flex-1 truncate text-sm ${
@@ -108,7 +114,8 @@ export default async function Notes({
             ))}
           </ul>
           <LoadMore shown={notes.length} total={count} basePath="/notes" params={sp} />
-        </>
+          <BulkActionBar {...bulkConfigForType(await getType("note"))} />
+        </SelectionProvider>
       ) : (
         <p className="mt-6 px-2 text-sm text-neutral-600">No notes yet.</p>
       )}

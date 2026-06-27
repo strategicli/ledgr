@@ -159,6 +159,10 @@ Brandon's toward-1.0 pass settled four things and lined up one build chunk. Deci
 
 **Other committed 1.0 work:** selective Notion migration (Phase 3 Tier 3, above); the §1c-gated matcher UIs (Phase 2); the **alpha → v1.0 production flip** (✅ **DONE 2026-06-26, ADR-115**: migration-caution + no-Saturday-deploys now in force; data is production data).
 
+**Post-import list ergonomics (from the production data load):**
+- [x] **List paging past the 200-row cap** — Load-more + true count + window growth (✅ **DONE 2026-06-26, ADR-116**).
+- [x] **Multi-select + bulk item operations** — a reusable selection layer (provider + row checkbox + floating action bar) on every list, with bulk Delete / Set property·status / Move; batch endpoint `/api/items/batch`. "Every list includes multi-select" is now a working convention. Bulk Archive deferred to the future archive feature (✅ **DONE 2026-06-26, ADR-118**).
+
 **🎙️ Meeting recording chunk — Tyler pre-approved 2026-06-18 (`explorations/meeting-recording.md`).** Transcript-as-pivot, upload/paste-only for v1, minutes/action-items via a **Claude-over-MCP workflow** (no in-app LLM call). v1a (paste-first) then v1b (transcription seam + storage). 3 core touches (transcription seam, audio-retention column, Principle-3 interpretation) pre-approved; ADR each at build.
 
 **v1a — paste-first (✅ COMPLETE 2026-06-18, ADR-087):**

@@ -6,6 +6,7 @@
 // control so a view of tasks behaves like the Tasks list.
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
+import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
@@ -195,17 +196,20 @@ function ItemRow({
   columns,
   propertyLabels = {},
   statuses,
+  selectable,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
   columns?: ViewColumn[] | null;
   propertyLabels?: Record<string, string>;
   statuses?: StatusDef[];
+  selectable?: boolean;
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+      {selectable && <SelectCheckbox id={item.id} />}
       {isTask ? (
         <SubtaskCheckbox id={item.id} done={done} />
       ) : (
@@ -265,11 +269,13 @@ function ListLayout({
   view,
   propertyLabels,
   statuses,
+  selectable,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
   statuses?: StatusDef[];
+  selectable?: boolean;
 }) {
   return (
     <ul className="mt-4">
@@ -281,6 +287,7 @@ function ListLayout({
           columns={view.columns}
           propertyLabels={propertyLabels}
           statuses={statuses}
+          selectable={selectable}
         />
       ))}
     </ul>
@@ -291,10 +298,12 @@ function TableLayout({
   items,
   view,
   propertyLabels,
+  selectable,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
+  selectable?: boolean;
 }) {
   // The view's chosen columns, or the default four (Type/Status/Urgency/Date)
   // expressed as field columns so one rendering path serves both. "Date" maps
@@ -325,6 +334,7 @@ function TableLayout({
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
+            {selectable && <th className="w-6 py-1.5 pr-2" aria-hidden />}
             <th className="py-1.5 pr-3 font-medium">Title</th>
             {columns.map((col) => (
               <th key={`${col.source}:${col.key}`} className="py-1.5 pr-3 font-medium">
@@ -337,8 +347,13 @@ function TableLayout({
           {items.map((item) => (
             <tr
               key={item.id}
-              className="border-b border-neutral-900 hover:bg-neutral-800/40"
+              className="group border-b border-neutral-900 hover:bg-neutral-800/40"
             >
+              {selectable && (
+                <td className="py-1.5 pr-2 align-middle">
+                  <SelectCheckbox id={item.id} />
+                </td>
+              )}
               <td className="max-w-xs truncate py-1.5 pr-3">
                 <Link
                   href={`/items/${item.id}`}
@@ -464,11 +479,13 @@ function AgendaLayout({
   view,
   propertyLabels,
   statuses,
+  selectable,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
   statuses?: StatusDef[];
+  selectable?: boolean;
 }) {
   const prop = view.dateProperty;
   const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
@@ -502,6 +519,7 @@ function AgendaLayout({
                 columns={view.columns}
                 propertyLabels={propertyLabels}
                 statuses={statuses}
+                selectable={selectable}
               />
             ))}
           </ul>
@@ -521,6 +539,7 @@ function AgendaLayout({
                 columns={view.columns}
                 propertyLabels={propertyLabels}
                 statuses={statuses}
+                selectable={selectable}
               />
             ))}
           </ul>
@@ -682,6 +701,7 @@ export default function ViewRenderer({
   statuses,
   month,
   calendarNavHref,
+  selectable = false,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -705,6 +725,11 @@ export default function ViewRenderer({
   // the view page; widgets leave it unset so a calendar widget shows the current
   // month with no nav.
   calendarNavHref?: string;
+  // Render per-row selection checkboxes (the multi-select layer, ADR-118). The
+  // caller wraps this renderer in a SelectionProvider + BulkActionBar; here it
+  // only toggles the row affordance. Off for dashboard widgets (read-only) and
+  // the board/calendar layouts (selection there is deferred — defer-by-hiding).
+  selectable?: boolean;
 }) {
   if (items.length === 0) {
     return (
@@ -715,7 +740,14 @@ export default function ViewRenderer({
   }
   switch (view.layout) {
     case "table":
-      return <TableLayout items={items} view={view} propertyLabels={propertyLabels} />;
+      return (
+        <TableLayout
+          items={items}
+          view={view}
+          propertyLabels={propertyLabels}
+          selectable={selectable}
+        />
+      );
     case "board":
       return (
         <BoardLayout
@@ -745,6 +777,7 @@ export default function ViewRenderer({
               view={view}
               propertyLabels={propertyLabels}
               statuses={statuses}
+              selectable={selectable}
             />
           </div>
         </>
@@ -756,6 +789,7 @@ export default function ViewRenderer({
           view={view}
           propertyLabels={propertyLabels}
           statuses={statuses}
+          selectable={selectable}
         />
       );
     default:
@@ -765,6 +799,7 @@ export default function ViewRenderer({
           view={view}
           propertyLabels={propertyLabels}
           statuses={statuses}
+          selectable={selectable}
         />
       );
   }

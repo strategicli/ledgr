@@ -8,6 +8,9 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
 import RowAction from "@/components/home/RowAction";
+import BulkActionBar from "@/components/selection/BulkActionBar";
+import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import SelectionProvider from "@/components/selection/SelectionProvider";
 import TriageControls from "@/components/inbox/TriageControls";
 import QuickCapture from "@/components/today/QuickCapture";
 import { listItems } from "@/lib/items";
@@ -55,12 +58,15 @@ export default async function Inbox() {
         </div>
 
         {inboxItems.length > 0 && (
+          <SelectionProvider ids={inboxItems.map((item) => item.id)}>
           <ul className="mt-6">
             {inboxItems.map((item) => (
               <li
                 key={item.id}
                 className="group flex flex-col gap-1 rounded px-2 py-1 hover:bg-neutral-800/60 sm:flex-row sm:items-center sm:gap-2"
               >
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                <SelectCheckbox id={item.id} />
                 <Link
                   href={`/items/${item.id}`}
                   className={`min-w-0 flex-1 truncate text-sm ${
@@ -69,6 +75,7 @@ export default async function Inbox() {
                 >
                   {item.title || "Untitled"}
                 </Link>
+                </div>
                 {/* On phones the date + triage controls wrap to their own row
                     under the title (the dense one-line row crushed the title);
                     on sm+ they rejoin the title's row via display:contents. */}
@@ -86,6 +93,8 @@ export default async function Inbox() {
               </li>
             ))}
           </ul>
+          <BulkActionBar />
+          </SelectionProvider>
         )}
       </div>
     </main>
