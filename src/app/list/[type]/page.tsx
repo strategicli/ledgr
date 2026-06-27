@@ -14,6 +14,7 @@ import { notFound, redirect } from "next/navigation";
 import FilterBar, { type FilterSelect } from "@/components/lists/FilterBar";
 import ListLenses from "@/components/lists/ListLenses";
 import ListPage from "@/components/lists/ListPage";
+import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
@@ -24,6 +25,8 @@ import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
 import { resolveViewLens } from "@/lib/view-render";
 import {
+  countViewItems,
+  parseListWindow,
   PROPERTY_FILTER_NONE,
   propertyFilterOptions,
   propertyFiltersFromParams,
@@ -65,16 +68,22 @@ export default async function TypeList({
     active.kind === "view" ? await resolveViewLens(owner.id, active.viewId, type) : null;
 
   // Sort path: the type's select/multi_select properties become list filters,
-  // and the active sort lens (reversible) orders the rows.
+  // and the active sort lens (reversible) orders a window of rows (Load-more
+  // grows it). The count is the true match total (filters included).
   const filterProps = propertyFilterOptions(typeDef.propertySchema);
   const propFilters = propertyFiltersFromParams(sp, typeDef.propertySchema);
-  const items = viewData
-    ? []
-    : await queryViewItems(
-        owner.id,
-        { type, ...(propFilters.length ? { propertyFilters: propFilters } : {}) },
-        resolveLensSort(active, reversed) ?? undefined
-      );
+  const filter = { type, ...(propFilters.length ? { propertyFilters: propFilters } : {}) };
+  const show = parseListWindow(sp.show);
+  let items: Awaited<ReturnType<typeof queryViewItems>> = [];
+  let count: number;
+  if (viewData) {
+    count = viewData.count;
+  } else {
+    [items, count] = await Promise.all([
+      queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
+      countViewItems(owner.id, filter),
+    ]);
+  }
 
   const selects: FilterSelect[] = filterProps.map((fp) => ({
     param: `prop_${fp.key}`,
@@ -85,8 +94,6 @@ export default async function TypeList({
       { value: PROPERTY_FILTER_NONE, label: "not set" },
     ],
   }));
-
-  const count = viewData ? viewData.count : items.length;
 
   return (
     <ListPage
@@ -113,27 +120,30 @@ export default async function TypeList({
             </div>
           )}
           {items.length > 0 ? (
-            <ul className="mt-4">
-              {items.map((item) => (
-                <li
-                  key={item.id}
-                  className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60"
-                >
-                  <Link
-                    href={`/items/${item.id}`}
-                    className={`min-w-0 flex-1 truncate text-sm ${
-                      item.title ? "text-neutral-200" : "text-neutral-500"
-                    }`}
+            <>
+              <ul className="mt-4">
+                {items.map((item) => (
+                  <li
+                    key={item.id}
+                    className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60"
                   >
-                    {item.title || "Untitled"}
-                  </Link>
-                  <span className="shrink-0 text-xs text-neutral-600">
-                    {dateFmt.format(new Date(item.updatedAt))}
-                  </span>
-                  <RowAction id={item.id} action="trash" />
-                </li>
-              ))}
-            </ul>
+                    <Link
+                      href={`/items/${item.id}`}
+                      className={`min-w-0 flex-1 truncate text-sm ${
+                        item.title ? "text-neutral-200" : "text-neutral-500"
+                      }`}
+                    >
+                      {item.title || "Untitled"}
+                    </Link>
+                    <span className="shrink-0 text-xs text-neutral-600">
+                      {dateFmt.format(new Date(item.updatedAt))}
+                    </span>
+                    <RowAction id={item.id} action="trash" />
+                  </li>
+                ))}
+              </ul>
+              <LoadMore shown={items.length} total={count} basePath={`/list/${type}`} params={sp} />
+            </>
           ) : (
             <p className="mt-6 px-2 text-sm text-neutral-600">
               {propFilters.length

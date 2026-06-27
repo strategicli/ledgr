@@ -5,6 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import ListLenses from "@/components/lists/ListLenses";
 import ListPage from "@/components/lists/ListPage";
+import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
 import RowAction from "@/components/home/RowAction";
@@ -13,7 +14,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE } from "@/lib/today";
 import { resolveViewLens } from "@/lib/view-render";
-import { queryViewItems } from "@/lib/views";
+import { countViewItems, parseListWindow, queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
@@ -47,10 +48,21 @@ export default async function Notes({
 
   const viewData =
     active.kind === "view" ? await resolveViewLens(owner.id, active.viewId, "note") : null;
-  const notes = viewData
-    ? []
-    : await queryViewItems(owner.id, { type: "note" }, resolveLensSort(active, reversed) ?? undefined);
-  const count = viewData ? viewData.count : notes.length;
+
+  // Sort-lens path: render a window of rows (Load-more grows it) and the true
+  // match count, so the subtitle and footer never disagree with what's stored.
+  const show = parseListWindow(sp.show);
+  let notes: Awaited<ReturnType<typeof queryViewItems>> = [];
+  let count: number;
+  if (viewData) {
+    count = viewData.count;
+  } else {
+    const filter = { type: "note" };
+    [notes, count] = await Promise.all([
+      queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
+      countViewItems(owner.id, filter),
+    ]);
+  }
 
   return (
     <ListPage
@@ -70,30 +82,33 @@ export default async function Notes({
       {viewData ? (
         <ViewLensBody data={viewData} />
       ) : notes.length > 0 ? (
-        <ul className="mt-4">
-          {notes.map((note) => (
-            <li
-              key={note.id}
-              className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
-            >
-              <Link
-                href={`/items/${note.id}`}
-                className={`min-w-0 flex-1 truncate text-sm ${
-                  note.title ? "text-neutral-200" : "text-neutral-500"
-                }`}
+        <>
+          <ul className="mt-4">
+            {notes.map((note) => (
+              <li
+                key={note.id}
+                className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
               >
-                {note.title || "Untitled"}
-              </Link>
-              <span
-                className="shrink-0 text-xs text-neutral-600"
-                title={note.noteDate ? "Date taken" : "Last edited"}
-              >
-                {note.noteDate ? dayFmt.format(note.noteDate) : dateFmt.format(note.updatedAt)}
-              </span>
-              <RowAction id={note.id} action="trash" />
-            </li>
-          ))}
-        </ul>
+                <Link
+                  href={`/items/${note.id}`}
+                  className={`min-w-0 flex-1 truncate text-sm ${
+                    note.title ? "text-neutral-200" : "text-neutral-500"
+                  }`}
+                >
+                  {note.title || "Untitled"}
+                </Link>
+                <span
+                  className="shrink-0 text-xs text-neutral-600"
+                  title={note.noteDate ? "Date taken" : "Last edited"}
+                >
+                  {note.noteDate ? dayFmt.format(note.noteDate) : dateFmt.format(note.updatedAt)}
+                </span>
+                <RowAction id={note.id} action="trash" />
+              </li>
+            ))}
+          </ul>
+          <LoadMore shown={notes.length} total={count} basePath="/notes" params={sp} />
+        </>
       ) : (
         <p className="mt-6 px-2 text-sm text-neutral-600">No notes yet.</p>
       )}
