@@ -20,8 +20,8 @@ const { createItem } = await import("../src/lib/items");
 const { createTemplate, updateTemplate } = await import("../src/lib/templates");
 const { suggestPeopleForEvent } = await import("../src/lib/calendar/suggest-people");
 const { applyEventIntake } = await import("../src/lib/calendar/intake");
-const { getMeetingPeople } = await import("../src/lib/meetings/prep");
-const { confirmRelations } = await import("../src/lib/relations");
+const { getMeetingPrep } = await import("../src/lib/meetings/prep");
+const { relateItems } = await import("../src/lib/relations");
 const { and, eq, inArray, or } = await import("drizzle-orm");
 
 type CalendarEvent = import("../src/lib/calendar/types").CalendarEvent;
@@ -119,23 +119,22 @@ try {
   const s6 = await suggestPeopleForEvent(owner.id, ev({ title: "Roger planning" }), { limit: 1 });
   check("limit caps the suggestions", s6.length <= 1);
 
-  // --- Tier B: intake writes SUGGESTED edges, not confirmed ---
+  // --- intake writes NO edges for a non-template event; suggestions are LIVE
+  //     on the canvas (getMeetingPrep), so opening ANY event shows them ---
   const eventB = await createItem(owner.id, { type: "event", title: "Roger / Brandon 1:1" });
   const rB = await applyEventIntake(owner.id, eventB.id, ev({ title: "Roger / Brandon 1:1", attendees: [{ name: "Roger", email: "roger@x.com" }] }));
-  check("Tier B reports suggested", rB.tier === "suggested" && rB.count >= 1);
-  check("Tier B wrote a SUGGESTED edge to Roger", (await edgeState(eventB.id, roger.id)) === "suggested");
-  check("a suggested person does NOT yet count as a meeting person", !(await getMeetingPeople(owner.id, eventB.id)).some((p) => p.id === roger.id));
-  const propsB = (await db.select({ p: items.properties }).from(items).where(eq(items.id, eventB.id)))[0].p as { match?: { suggestions?: unknown[] } };
-  check("Tier B records suggestions in properties.match", Array.isArray(propsB.match?.suggestions) && propsB.match!.suggestions!.length >= 1);
+  check("intake writes no edge for a non-template event", rB.tier === "none" && (await edgeState(eventB.id, roger.id)) === null);
+  const prepB = await getMeetingPrep(owner.id, eventB.id);
+  check("getMeetingPrep live-suggests Roger for the event", prepB.suggestedPeople.some((p) => p.id === roger.id));
+  check("the owner is not live-suggested", !prepB.suggestedPeople.some((p) => p.id === ownerPerson.id));
+  check("no one is confirmed yet", prepB.people.length === 0);
+  // adding (a confirmed relate) moves Roger into people + out of suggestions
+  await relateItems(owner.id, eventB.id, roger.id);
+  const prepB2 = await getMeetingPrep(owner.id, eventB.id);
+  check("after add, Roger is a confirmed meeting person", prepB2.people.some((p) => p.id === roger.id));
+  check("after add, Roger drops out of live suggestions", !prepB2.suggestedPeople.some((p) => p.id === roger.id));
 
-  // confirming the suggestion flows it into prep (the confirm-reject UX path)
-  await confirmRelations(owner.id, eventB.id, roger.id);
-  check("confirming the suggestion makes Roger a meeting person", (await getMeetingPeople(owner.id, eventB.id)).some((p) => p.id === roger.id));
-  // re-running intake must NOT downgrade the now-confirmed edge
-  await applyEventIntake(owner.id, eventB.id, ev({ title: "Roger / Brandon 1:1", attendees: [{ name: "Roger", email: "roger@x.com" }] }));
-  check("re-intake never downgrades a confirmed edge", (await edgeState(eventB.id, roger.id)) === "confirmed");
-
-  // --- Tier A: a pinned (autoApply) template short-circuits to record-only (EM2) ---
+  // --- Tier A: a pinned (autoApply) template is applied (empty here → no people) ---
   const tmpl = await createTemplate(owner.id, { type: "event", name: `Pat 1:1 ${stamp}` });
   await updateTemplate(owner.id, tmpl.id, { matchConfig: { condition: { kind: "attendeeEmail", email: "pat@x.com" }, autoApply: true } });
   const eventA = await createItem(owner.id, { type: "event", title: "Pat sync" });
@@ -143,14 +142,14 @@ try {
   check("Tier A reports recognized with the template id", rA.tier === "recognized" && rA.templateId === tmpl.id);
   const propsA = (await db.select({ p: items.properties }).from(items).where(eq(items.id, eventA.id)))[0].p as { match?: { templateId?: string } };
   check("Tier A records the matched template id", propsA.match?.templateId === tmpl.id);
-  check("Tier A is record-only in EM2 (no suggested edge written to Pat)", (await edgeState(eventA.id, pat.id)) === null);
+  check("Tier A with an empty template adds no people (no Pat edge)", (await edgeState(eventA.id, pat.id)) === null);
 
-  // --- Tier C: nothing determinable ---
+  // --- no template + no guess: intake writes nothing ---
   const eventC = await createItem(owner.id, { type: "event", title: "Quarterly budget offsite" });
   const rC = await applyEventIntake(owner.id, eventC.id, ev({ title: "Quarterly budget offsite" }));
-  check("Tier C reports none", rC.tier === "none");
+  check("no-match intake reports none", rC.tier === "none");
   const edgesC = await db.select({ id: relations.id }).from(relations).where(or(eq(relations.sourceId, eventC.id), eq(relations.targetId, eventC.id)));
-  check("Tier C writes no edges", edgesC.length === 0);
+  check("no-match intake writes no edges", edgesC.length === 0);
 
   // --- owner-scoped: another owner sees nothing ---
   const [other] = await db.insert(users).values({ email: `verify-suggest-other-${stamp}@example.invalid` }).returning({ id: users.id });

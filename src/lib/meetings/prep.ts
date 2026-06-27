@@ -13,15 +13,20 @@ import {
   taskPullSeedLabels,
 } from "@/lib/events/task-pull-service";
 import { effectiveTaskPull, type TaskPull } from "@/lib/events/task-pull";
+import {
+  eventItemToCalendarEvent,
+  suggestPeopleForEvent,
+} from "@/lib/calendar/suggest-people";
 
 export type PrepPerson = { id: string; title: string };
 type ListRow = Awaited<ReturnType<typeof queryViewItems>>[number];
 
 export type MeetingPrep = {
   people: PrepPerson[];
-  // Provisional matches from intake's suggester (ADR-123): person edges still
-  // `suggested`. Surfaced as a hint; the actual ✓/✕ confirm lives in the
-  // Related panel. Confirming one moves it into `people`.
+  // Live person guesses for this event (ADR-123) — attendee email + fuzzy title,
+  // owner-excluded, minus the people already confirmed-related. Computed LIVE so
+  // it works for ANY event (not only ones Added from the calendar feed); the
+  // canvas offers a one-click add for each.
   suggestedPeople: PrepPerson[];
   openTasks: ListRow[];
   recentMeetings: ListRow[];
@@ -77,18 +82,31 @@ export async function getMeetingPrep(
 ): Promise<MeetingPrep> {
   // The matched template name, if a matcher recorded one (slice 23).
   const self = await getDb()
-    .select({ properties: items.properties })
+    .select({ title: items.title, properties: items.properties })
     .from(items)
     .where(and(eq(items.id, meetingId), eq(items.ownerId, ownerId), isNull(items.deletedAt)));
   const templateName =
     ((self[0]?.properties as { match?: { templateName?: string | null } } | null)?.match
       ?.templateName) ?? null;
 
-  const [people, suggestedPeople] = await Promise.all([
-    getMeetingPeople(ownerId, meetingId, "confirmed"),
-    getMeetingPeople(ownerId, meetingId, "suggested"),
-  ]);
+  const people = await getMeetingPeople(ownerId, meetingId, "confirmed");
   const peopleIds = people.map((p) => p.id);
+
+  // Live person guesses (ADR-123): run the suggester over this event item every
+  // render, minus the people already confirmed-related — so opening ANY event
+  // shows suggestions, not just ones Added through the calendar feed.
+  const confirmedIds = new Set(peopleIds);
+  const guesses = self[0]
+    ? await suggestPeopleForEvent(
+        ownerId,
+        eventItemToCalendarEvent({ title: self[0].title, properties: self[0].properties }),
+        { limit: 6 }
+      )
+    : [];
+  const suggestedPeople: PrepPerson[] = guesses
+    .filter((g) => !confirmedIds.has(g.personId))
+    .slice(0, 3)
+    .map((g) => ({ id: g.personId, title: g.title }));
   const rawRule = (self[0]?.properties as { taskPull?: unknown } | null)?.taskPull;
   const rule = effectiveTaskPull(rawRule);
 

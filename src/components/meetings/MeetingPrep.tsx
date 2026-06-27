@@ -7,6 +7,7 @@ import { getMeetingPrep } from "@/lib/meetings/prep";
 import SectionHeading from "@/components/canvas/SectionHeading";
 import PromoteTask from "./PromoteTask";
 import PinRuleButton from "./PinRuleButton";
+import SuggestedPeople from "./SuggestedPeople";
 import TaskPullControl from "@/components/events/TaskPullControl";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
@@ -38,7 +39,7 @@ export default async function MeetingPrep({
       {prep.people.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
           {prep.suggestedPeople.length > 0
-            ? "No one confirmed yet — confirm a suggestion below (✓), or relate a person."
+            ? "No one confirmed yet — add a suggestion below, or relate a person."
             : "No one matched this event. Relate a person below, or set a tag to pull its tasks."}
         </p>
       ) : (
@@ -54,19 +55,8 @@ export default async function MeetingPrep({
         </div>
       )}
 
-      {prep.suggestedPeople.length > 0 && (
-        <p className="mt-1 px-2 text-xs text-neutral-500">
-          Suggested (confirm below):{" "}
-          {prep.suggestedPeople.map((e, i) => (
-            <span key={e.id}>
-              {i > 0 && ", "}
-              <Link href={`/items/${e.id}`} className="text-neutral-400 hover:underline">
-                {e.title || "Untitled"}
-              </Link>
-            </span>
-          ))}
-        </p>
-      )}
+      {/* Live guesses (any event), one-click add → confirmed relation. */}
+      <SuggestedPeople eventId={itemId} people={prep.suggestedPeople} />
 
       {/* Open tasks: always shown — its pull rule can reference tags, not just
           the event's people (ADR-094 E4). */}
