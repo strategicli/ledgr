@@ -11,7 +11,13 @@
 // tool result so Claude sees a clean message and the session stays open;
 // unexpected errors are captured (rule 9) and returned with a correlation id.
 import { asUuid, parseItemPayload } from "@/lib/api";
-import { makeMarkdownBody, bodyMarkdown } from "@/lib/body";
+import {
+  makeMarkdownBody,
+  bodyMarkdown,
+  isLargeBody,
+  windowBody,
+  BODY_WINDOW_CHARS,
+} from "@/lib/body";
 import {
   ITEM_STATUSES,
   URGENCIES,
@@ -435,11 +441,32 @@ const TOOLS: McpTool[] = [
       "Read one item in full by id: its fields, its markdown body, and its " +
       "related items (the relations graph — backlinks, mentions, tagged " +
       "people, with each edge's role and whether it's confirmed or only " +
-      "suggested). Use after search_items/list_items to read an item's contents.",
+      "suggested). Use after search_items/list_items to read an item's contents. " +
+      "Normal-size bodies come back whole. A very large body (an imported PDF/" +
+      "ebook) is PAGED so it can't flood the context: the read returns the first " +
+      `~${BODY_WINDOW_CHARS} characters with a truncation marker, plus a bodyInfo ` +
+      "object {totalChars, offset, returnedChars, truncated, nextOffset}. To read " +
+      "more, call get_item again with bodyOffset set to the previous nextOffset.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "The item id (UUID)." },
+        bodyOffset: {
+          type: "integer",
+          description:
+            "Start reading the body at this character offset (default 0). Pass the " +
+            "nextOffset from a previous truncated read to page through a long body.",
+          minimum: 0,
+        },
+        bodyLimit: {
+          type: "integer",
+          description:
+            `Max characters of body to return this read (1–${BODY_WINDOW_CHARS}, ` +
+            `default ${BODY_WINDOW_CHARS}). Smaller windows page a huge body in more, ` +
+            "lighter reads; a body under the limit always returns whole.",
+          minimum: 1,
+          maximum: BODY_WINDOW_CHARS,
+        },
       },
       required: ["id"],
       additionalProperties: false,
@@ -447,20 +474,48 @@ const TOOLS: McpTool[] = [
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
       const id = asUuid(args.id, "id");
+      const bodyOffset = optInt(args, "bodyOffset");
+      const bodyLimit = optInt(args, "bodyLimit");
       const item = await getItem(ownerId, id);
       const related = await listRelatedItems(ownerId, id);
+      const relatedView = related.map((r) => ({
+        id: r.id,
+        type: r.type,
+        title: r.title,
+        status: r.status,
+        dueDate: r.dueDate,
+        roles: r.roles,
+        matchState: r.matchState,
+      }));
+
+      const fullText = bodyMarkdown(item.body);
+      const paging = bodyOffset !== undefined || bodyLimit !== undefined;
+      // A normal-size body (and no explicit paging) returns whole and byte-for-
+      // byte unchanged — the body contract is untouched. Only a large body, or a
+      // caller that explicitly pages, takes the windowed path below.
+      if (!isLargeBody(fullText) && !paging) {
+        return { ...rowView(item), body: fullText, related: relatedView };
+      }
+
+      const win = windowBody(fullText, { offset: bodyOffset, limit: bodyLimit });
+      let body = win.text;
+      if (win.truncated) {
+        body +=
+          `\n\n…[truncated: ${win.returnedChars} of ${win.totalChars} chars shown ` +
+          `(offset ${win.offset}–${win.nextOffset}). Call get_item again with ` +
+          `bodyOffset=${win.nextOffset} to read the next window.]`;
+      }
       return {
         ...rowView(item),
-        body: bodyMarkdown(item.body),
-        related: related.map((r) => ({
-          id: r.id,
-          type: r.type,
-          title: r.title,
-          status: r.status,
-          dueDate: r.dueDate,
-          roles: r.roles,
-          matchState: r.matchState,
-        })),
+        body,
+        bodyInfo: {
+          totalChars: win.totalChars,
+          offset: win.offset,
+          returnedChars: win.returnedChars,
+          truncated: win.truncated,
+          nextOffset: win.nextOffset,
+        },
+        related: relatedView,
       };
     },
   },
