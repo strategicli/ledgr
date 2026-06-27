@@ -10,6 +10,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasScopedToken } from "@/lib/auth/machine";
+import { oauthConfigured } from "@/lib/auth/oauth";
 import ClipperSetup from "@/components/build/ClipperSetup";
 import CopyField from "@/components/build/CopyField";
 import { SUPPORTED_PROTOCOL_VERSIONS } from "@/lib/mcp/protocol";
@@ -45,6 +46,7 @@ export default async function AiAndMcp() {
   if (!owner) redirect("/sign-in");
 
   const hasToken = hasScopedToken("mcp");
+  const oauthReady = oauthConfigured();
   const ownerResolves = !!(await resolveMcpOwner());
   const configured = hasToken && ownerResolves;
   const hasApiToken = hasScopedToken("api");
@@ -204,15 +206,62 @@ export default async function AiAndMcp() {
                 <CopyField value={addCommand} label="claude mcp add command" />
               </div>
               <p className="mt-1.5 text-xs text-neutral-500">
-                For claude.ai or Claude Desktop, add a custom connector with the
-                endpoint URL above and an{" "}
+                For <strong className="text-neutral-300">claude.ai or the Claude
+                mobile apps</strong>, add a custom connector with just the
+                endpoint URL above (no token field needed): those clients connect
+                over OAuth, so Claude discovers the flow and you approve it with a
+                normal sign-in. Add it once and it&rsquo;s available on web,
+                desktop, and your phone. The OAuth shim must be configured for
+                this path (see below). Any MCP-speaking client that does the
+                manual-header style (like Claude Code, above) can still use the{" "}
                 <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
                   Authorization: Bearer &lt;token&gt;
                 </code>{" "}
-                header. Any MCP-speaking client connects the same way.
+                token instead.
               </p>
             </li>
           </ol>
+        </section>
+
+        {/* Phone / claude.ai — the OAuth connector path (ADR-117) */}
+        <section className="mt-10">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Phone &amp; claude.ai (OAuth connector)
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+            The consumer Claude apps (claude.ai web and the iOS/Android apps)
+            connect to a custom connector over OAuth, not a pasted token. The
+            server runs a minimal OAuth flow so you can add it there with just
+            the endpoint URL above and a normal sign-in. Connectors are
+            account-level, so adding it once makes it available on web, desktop,
+            and your phone.
+          </p>
+          <div className="mt-3 flex items-center gap-2.5">
+            <StatusDot ok={oauthReady} />
+            <p className="text-sm text-neutral-300">
+              {oauthReady ? (
+                "OAuth shim is configured — add the endpoint as a custom connector in Claude."
+              ) : (
+                <>
+                  Not configured — set{" "}
+                  <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-xs text-neutral-300">
+                    LEDGR_OAUTH_SECRET
+                  </code>{" "}
+                  on Vercel and redeploy (runbook §3a). Until then, only the
+                  manual-token clients above can connect.
+                </>
+              )}
+            </p>
+          </div>
+          <p className="mt-3 text-xs text-neutral-500">
+            Revoking phone/web access is rotating{" "}
+            <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+              LEDGR_OAUTH_SECRET
+            </code>
+            , which signs every OAuth token out at once. It does not affect the
+            manual-token clients above, and nothing about your non-Ledgr
+            connectors.
+          </p>
         </section>
 
         {/* Tools the server exposes */}

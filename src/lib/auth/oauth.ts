@@ -1,0 +1,285 @@
+// OAuth 2.1 shim for the MCP server (ADR-117). Consumer Claude's custom
+// connectors (claude.ai web + the mobile apps) are OAuth-only — there is no
+// field for a static Bearer token or a custom header (Anthropics
+// claude-ai-mcp#112, "not planned") — so to reach the Ledgr MCP from a phone we
+// front /api/mcp with the smallest OAuth surface a connector needs:
+// discovery (RFC 9728 / RFC 8414), Dynamic Client Registration (RFC 7591), an
+// authorization-code + PKCE flow, and refresh.
+//
+// The design choice that keeps this off the shared schema (ADR-117 Decision 7):
+// nothing is stored. Authorization codes, access tokens, refresh tokens, and
+// even the registered client are all HMAC-signed, self-describing blobs,
+// validated by signature + expiry — the same "the secret in env IS the
+// credential, no DB row" model as the static machine tokens (ADR-004). This
+// module is PURE node:crypto (no DB, no Next, no Clerk): no new dependency
+// (Principle 5), and revocation is rotating LEDGR_OAUTH_SECRET (ADR-117
+// Decision 8). The OAuth path is ADDITIVE — /api/mcp still accepts the static
+// LEDGR_API_TOKENS Bearer, so Claude Code/Desktop and the HTTP-API callers are
+// untouched.
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+// The single scope the MCP server grants. Mirrors the static token's `mcp`
+// scope so both credential paths authorize the same capability.
+export const MCP_SCOPE = "mcp";
+
+// Lifetimes. Codes are single-use-ish and short (the client redeems
+// immediately); access tokens are an hour (the client refreshes); refresh
+// tokens are long-lived (a connected phone shouldn't re-consent often). All are
+// bounded by the signing secret: rotate it and every issued token dies at once.
+const CODE_TTL_SECONDS = 60;
+const ACCESS_TTL_SECONDS = 60 * 60; // 1h
+const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 90; // 90d
+
+// Token "kinds" carried in the `t` claim so a code can never be replayed as an
+// access token (or vice versa): verifyToken pins the expected kind.
+type TokenKind = "code" | "access" | "refresh" | "client";
+
+type BasePayload = {
+  t: TokenKind;
+  iat: number;
+  exp: number;
+};
+
+export type ClientPayload = BasePayload & {
+  t: "client";
+  redirect_uris: string[];
+};
+
+export type CodePayload = BasePayload & {
+  t: "code";
+  redirect_uri: string;
+  code_challenge: string; // S256 challenge from the authorize request
+  scope: string;
+  sub: string; // owner email, captured at authorize time (audit only)
+};
+
+export type AccessPayload = BasePayload & {
+  t: "access";
+  scope: string;
+  sub: string;
+};
+
+export type RefreshPayload = BasePayload & {
+  t: "refresh";
+  scope: string;
+  sub: string;
+};
+
+// --- secret + configured-ness ------------------------------------------------
+
+function secret(): string | undefined {
+  return process.env.LEDGR_OAUTH_SECRET || undefined;
+}
+
+// Whether the OAuth shim is wired up. When false, the discovery routes 404 and
+// the MCP 401 stays flat (no resource_metadata hint) — there's no point
+// advertising a flow that can't issue tokens. The /health and AI & MCP surfaces
+// can use this the same way hasScopedToken reports the static path.
+export function oauthConfigured(): boolean {
+  return !!secret();
+}
+
+// --- compact signed tokens ---------------------------------------------------
+// Format: base64url(JSON(payload)) "." base64url(HMAC-SHA256(payload, secret)).
+// Not a full JWT (no alg-negotiation header) on purpose: one fixed algorithm,
+// our own issuer and consumer, so there's no alg-confusion surface and no
+// library. Comparable to the hand-rolled MCP protocol envelope (ADR-047).
+
+function b64url(input: Buffer | string): string {
+  return Buffer.from(input).toString("base64url");
+}
+
+function sign(body: string, key: string): string {
+  return createHmac("sha256", key).update(body).digest("base64url");
+}
+
+function signToken(payload: Record<string, unknown>): string {
+  const key = secret();
+  if (!key) throw new Error("LEDGR_OAUTH_SECRET not configured");
+  const body = b64url(JSON.stringify(payload));
+  return `${body}.${sign(body, key)}`;
+}
+
+// Verifies signature, kind, and expiry. Returns the payload or null — callers
+// turn null into the right OAuth error and never explain which check failed
+// (same discipline as verifyMachineToken).
+function verifyToken<P extends BasePayload>(
+  token: string | null | undefined,
+  kind: TokenKind
+): P | null {
+  const key = secret();
+  if (!key || !token) return null;
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+  const body = token.slice(0, dot);
+  const providedSig = token.slice(dot + 1);
+  const expectedSig = sign(body, key);
+  // Constant-time compare; both are base64url of a 32-byte digest, equal length.
+  const a = Buffer.from(providedSig);
+  const b = Buffer.from(expectedSig);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+
+  let payload: P;
+  try {
+    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as P;
+  } catch {
+    return null;
+  }
+  if (payload.t !== kind) return null;
+  if (typeof payload.exp !== "number" || payload.exp < nowSeconds()) return null;
+  return payload;
+}
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+// --- client registration (stateless DCR, RFC 7591) ---------------------------
+// The client_id IS a signed token carrying the registered redirect_uris, so
+// there's no client store: /authorize and /token trust the signature, not a
+// row. Single-user, so registration is permissive (any well-formed request
+// succeeds); the signature is what binds the redirect_uri at authorize time.
+
+export function issueClientId(redirectUris: string[]): string {
+  const iat = nowSeconds();
+  const payload: ClientPayload = {
+    t: "client",
+    iat,
+    // Clients are effectively permanent; give a long horizon rather than no
+    // exp so the same verify path (which requires exp) applies uniformly.
+    exp: iat + REFRESH_TTL_SECONDS,
+    redirect_uris: redirectUris,
+  };
+  return signToken(payload);
+}
+
+export function verifyClientId(clientId: string | null | undefined): ClientPayload | null {
+  return verifyToken<ClientPayload>(clientId, "client");
+}
+
+// --- authorization code ------------------------------------------------------
+
+export function issueCode(args: {
+  redirectUri: string;
+  codeChallenge: string;
+  scope: string;
+  sub: string;
+}): string {
+  const iat = nowSeconds();
+  const payload: CodePayload = {
+    t: "code",
+    iat,
+    exp: iat + CODE_TTL_SECONDS,
+    redirect_uri: args.redirectUri,
+    code_challenge: args.codeChallenge,
+    scope: args.scope,
+    sub: args.sub,
+  };
+  return signToken(payload);
+}
+
+export function verifyCode(code: string | null | undefined): CodePayload | null {
+  return verifyToken<CodePayload>(code, "code");
+}
+
+// --- access + refresh tokens -------------------------------------------------
+
+export function issueAccessToken(sub: string, scope: string): string {
+  const iat = nowSeconds();
+  const payload: AccessPayload = {
+    t: "access",
+    iat,
+    exp: iat + ACCESS_TTL_SECONDS,
+    scope,
+    sub,
+  };
+  return signToken(payload);
+}
+
+export function issueRefreshToken(sub: string, scope: string): string {
+  const iat = nowSeconds();
+  const payload: RefreshPayload = {
+    t: "refresh",
+    iat,
+    exp: iat + REFRESH_TTL_SECONDS,
+    scope,
+    sub,
+  };
+  return signToken(payload);
+}
+
+export function verifyRefreshToken(token: string | null | undefined): RefreshPayload | null {
+  return verifyToken<RefreshPayload>(token, "refresh");
+}
+
+// Verifies an OAuth access token from an incoming MCP request and checks it
+// carries the required scope. Returns the payload or null. The MCP route tries
+// this AFTER the static-token check, so the two credential paths coexist.
+export function verifyAccessToken(
+  authorizationHeader: string | null,
+  requiredScope: string
+): AccessPayload | null {
+  if (!authorizationHeader?.startsWith("Bearer ")) return null;
+  const token = authorizationHeader.slice("Bearer ".length).trim();
+  const payload = verifyToken<AccessPayload>(token, "access");
+  if (!payload) return null;
+  if (!payload.scope.split(" ").includes(requiredScope)) return null;
+  return payload;
+}
+
+export const ACCESS_TOKEN_TTL_SECONDS = ACCESS_TTL_SECONDS;
+
+// --- PKCE (S256 only) --------------------------------------------------------
+// RFC 7636: challenge = base64url(SHA256(verifier)). We require S256 (the
+// metadata advertises only it), so `plain` is never accepted.
+
+export function verifyPkceS256(verifier: string, challenge: string): boolean {
+  if (!verifier || !challenge) return false;
+  const computed = createHash("sha256").update(verifier).digest("base64url");
+  const a = Buffer.from(computed);
+  const b = Buffer.from(challenge);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// --- discovery metadata builders ---------------------------------------------
+// Pure shapes; the routes wrap them with the request origin.
+
+export function protectedResourceMetadata(origin: string) {
+  return {
+    resource: `${origin}/api/mcp`,
+    authorization_servers: [origin],
+    scopes_supported: [MCP_SCOPE],
+    bearer_methods_supported: ["header"],
+  };
+}
+
+export function authorizationServerMetadata(origin: string) {
+  return {
+    issuer: origin,
+    authorization_endpoint: `${origin}/api/oauth/authorize`,
+    token_endpoint: `${origin}/api/oauth/token`,
+    registration_endpoint: `${origin}/api/oauth/register`,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: ["none"],
+    scopes_supported: [MCP_SCOPE],
+  };
+}
+
+// The WWW-Authenticate value the MCP 401 carries so a connector can discover
+// the flow (RFC 9728 §5.1). Only emitted when OAuth is configured.
+export function wwwAuthenticate(origin: string): string {
+  return `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
+}
+
+// Request origin (preview / prod / localhost) from the forwarded headers, the
+// same resolution the AI & MCP page uses so the advertised endpoints always
+// match the host the client reached us on — no env var needed.
+export function originFromRequest(request: Request): string {
+  const h = request.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const proto =
+    h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
+}

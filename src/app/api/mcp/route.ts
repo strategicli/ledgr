@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import {
+  MCP_SCOPE,
+  oauthConfigured,
+  originFromRequest,
+  verifyAccessToken,
+  wwwAuthenticate,
+} from "@/lib/auth/oauth";
+import {
   JSONRPC,
   classifyMessage,
   isSupportedProtocolVersion,
@@ -21,11 +28,22 @@ export const dynamic = "force-dynamic";
 type WithId = { id?: string | number | null };
 
 export async function POST(request: Request) {
-  // Auth first: a machine token carrying the `mcp` scope (ADR-004). A bad or
-  // unscoped token gets a flat 401; we never say which check failed.
-  const identity = verifyMachineToken(request.headers.get("authorization"), "mcp");
-  if (!identity) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Auth first, two credential paths (ADR-117), both granting the `mcp` scope:
+  // the static machine token (ADR-004, used by Claude Code/Desktop + machine
+  // callers) OR an OAuth access token (used by claude.ai web + the mobile apps,
+  // which only speak OAuth). A bad or unscoped credential gets a flat 401; we
+  // never say which check failed. When the OAuth shim is configured, the 401
+  // carries a WWW-Authenticate hint (RFC 9728) so a connector can discover the
+  // flow instead of just failing.
+  const authz = request.headers.get("authorization");
+  const authorized =
+    verifyMachineToken(authz, "mcp") || verifyAccessToken(authz, MCP_SCOPE);
+  if (!authorized) {
+    const headers: Record<string, string> = {};
+    if (oauthConfigured()) {
+      headers["WWW-Authenticate"] = wwwAuthenticate(originFromRequest(request));
+    }
+    return NextResponse.json({ error: "unauthorized" }, { status: 401, headers });
   }
 
   // The MCP-Protocol-Version header rides every post-initialize request. The

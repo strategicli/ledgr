@@ -14,6 +14,17 @@ const isPublicRoute = createRouteMatcher([
   // The MCP server (slice 36, ADR-047) authenticates with a scoped machine
   // token in the handler, never Clerk — same door as /api/machine/*.
   "/api/mcp(.*)",
+  // OAuth shim for the MCP server (ADR-117). Discovery, registration, and the
+  // token exchange must be reachable before any credential exists, so they're
+  // public; the /.well-known paths rewrite onto the two metadata routes
+  // (middleware sees the pre-rewrite path, so match it here). NOTE the
+  // authorize endpoint (/api/oauth/authorize) is deliberately NOT listed: it
+  // stays Clerk-protected so only the signed-in owner can mint MCP tokens.
+  "/.well-known/(.*)",
+  "/api/oauth/protected-resource",
+  "/api/oauth/authorization-server",
+  "/api/oauth/register",
+  "/api/oauth/token",
   // Todoist signs its webhook with an HMAC (no Bearer token); the route
   // verifies the signature itself (slice 25). Only the webhook is public —
   // /api/todoist/sync stays Clerk-protected.
