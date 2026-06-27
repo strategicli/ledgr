@@ -426,7 +426,7 @@ Capture works off a dedicated Outlook folder, not a separate inbound email addre
 - Weekly scheduled Claude task hits `/health` and emails Brandon on failure
 - Dependencies pinned; updates batched intentionally, never auto
 - Calendar reminders for Azure client secret expiry
-- Rule: no deploys Saturday night
+- Rule: be deliberate with production deploys (prefer additive, reversible changes; git + the safety net make mistakes recoverable). No fixed weekend/Saturday no-deploy window (reframed by ADR-119); use judgment on the rare sermon-sensitive weekend.
 - Runbook file in the repo documenting token rotation and common fixes (written for future-Brandon with Claude Code)
 
 ### 6.3 Security and sensitive content

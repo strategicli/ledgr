@@ -7,7 +7,7 @@ Written for future-Brandon working with Claude Code on a Saturday when something
 ---
 
 ## 0. The two rules that override everything
-1. **No deploys Saturday night.** Sunday is sermon delivery. Don't touch production into the weekend.
+1. **Be deliberate with production (ADR-119).** Ledgr is in daily use, so prefer additive, reversible changes and lean on the safety net (soft-delete + revisions + the weekly backup + git revert); don't ship large, risky changes carelessly. There is no fixed weekend/Saturday no-deploy window: Brandon preaches only a few times a year, so use judgment on the rare sermon-sensitive weekend rather than a blanket calendar ban.
 2. **Sunday-proof.** If the app is down, the sermon still comes off the OneDrive export and the Pulpit Ready PDF. When debugging, never disable or weaken those paths to fix something else.
 
 ---
