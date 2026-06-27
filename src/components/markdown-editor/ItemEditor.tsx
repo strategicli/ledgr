@@ -9,8 +9,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { beginSave, endSave, registerSaveRetry } from "@/lib/save-status";
-import LazyMarkdownEditor from "./LazyMarkdownEditor";
-import TabbedBody from "./TabbedBody";
+import BodyEditor from "./BodyEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
 
 const SAVE_DEBOUNCE_MS = 1500;
@@ -230,19 +229,14 @@ export default function ItemEditor({
     pending.current.body = makeMarkdownBody(markdown);
     schedule();
   };
-  const bodyEditor = tabsEnabled ? (
-    <TabbedBody
-      itemId={item.id}
-      initialMarkdown={bodyMarkdown(item.body)}
-      uploadImage={(file) => uploadImage(item.id, file)}
-      onChange={onBodyChange}
-      promoteToMeetingId={promoteToMeetingId}
-      promotedRefs={promotedRefs}
-      onRequestSave={flush}
-      editable={!locked}
-    />
-  ) : (
-    <LazyMarkdownEditor
+  // Body rendering (mode + size gate) lives in BodyEditor (ADR-125): rich Tiptap
+  // for normal notes (TabbedBody when the type uses tabs), a raw-markdown Source
+  // textarea available on any note, and a read-only Preview that becomes the
+  // default for large "document" notes the rich editor can't load. The promote
+  // flow's onRequestSave flush persists a line's ^id anchor before a task is
+  // created and the page refreshes.
+  const bodyEditor = (
+    <BodyEditor
       itemId={item.id}
       initialMarkdown={bodyMarkdown(item.body)}
       uploadImage={(file) => uploadImage(item.id, file)}
@@ -251,10 +245,9 @@ export default function ItemEditor({
       promotedRefs={promotedRefs}
       collapsibleToolbar={collapsibleToolbar}
       compact={compactBody}
-      // The promote flow flushes the body save first, so the line's ^id anchor
-      // is persisted before the task is created and the page refreshes.
       onRequestSave={flush}
       editable={!locked}
+      tabsEnabled={tabsEnabled}
     />
   );
 

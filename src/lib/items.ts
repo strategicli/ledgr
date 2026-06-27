@@ -17,7 +17,7 @@ import {
 import { getDb } from "@/db";
 import { items, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
-import { bodyMarkdown, isItemBody } from "@/lib/body";
+import { bodyMarkdown, isItemBody, isLargeBody } from "@/lib/body";
 import { syncMentionRelations } from "@/lib/mentions";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
@@ -36,6 +36,13 @@ import { statusSchemaForType } from "@/lib/status-schema";
 // (PRD §4.6 "debounced").
 const REVISION_DEBOUNCE_MS = 5 * 60 * 1000;
 const REVISION_CAP = 50;
+// Large bodies (ADR-125) snapshot far less and keep fewer copies: a multi-MB
+// document edited at the normal cap could pile up 50× its size in history and
+// pressure Neon's storage. A longer debounce + smaller cap bound that to a
+// sane fraction while still leaving real restore points. Small bodies are
+// unaffected (the common case keeps the original behavior exactly).
+const LARGE_REVISION_DEBOUNCE_MS = 60 * 60 * 1000;
+const LARGE_REVISION_CAP = 10;
 const TRASH_RETENTION_DAYS = 30;
 
 // Re-exported from item-enums.ts (client-safe home) so server callers keep
@@ -301,6 +308,12 @@ async function snapshotRevision(
   opts: { force?: boolean } = {}
 ) {
   const db = getDb();
+  // A large body throttles harder and keeps fewer snapshots (ADR-125), so a
+  // multi-MB document's history can't balloon storage; small bodies keep the
+  // original 5-minute / 50-snapshot behavior unchanged.
+  const large = isLargeBody(bodyMarkdown(body));
+  const debounceMs = large ? LARGE_REVISION_DEBOUNCE_MS : REVISION_DEBOUNCE_MS;
+  const cap = large ? LARGE_REVISION_CAP : REVISION_CAP;
   if (!opts.force) {
     const latest = await db
       .select({ createdAt: revisions.createdAt })
@@ -310,7 +323,7 @@ async function snapshotRevision(
       .limit(1);
     if (
       latest.length > 0 &&
-      Date.now() - latest[0].createdAt.getTime() < REVISION_DEBOUNCE_MS
+      Date.now() - latest[0].createdAt.getTime() < debounceMs
     ) {
       return;
     }
@@ -323,7 +336,7 @@ async function snapshotRevision(
         select id from revisions
         where item_id = ${itemId}
         order by created_at desc
-        limit ${REVISION_CAP}
+        limit ${cap}
       )
   `);
 }
