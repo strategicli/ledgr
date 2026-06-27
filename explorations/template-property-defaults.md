@@ -2,6 +2,8 @@
 
 **Superseded / expanded (2026-06-20, ADR-093):** the templates feature is being redesigned. Templates become real prototype items (clone-to-apply via `cloneItemSubtree`), gaining child items, dynamic variables (dates + `{{ask:…}}` prompts + computed tokens), and apply-to-existing (fill-blanks/overwrite), with a per-type default + chooser. See `next_steps.md` "Templates redesign" (slices TPL1–TPL5) + ADR-093. Option A (relation defaults) shipped (below) and folds into the prototype item's real relations. This doc is kept for the record.
 
+**Extended again (2026-06-27, ADR-123):** option C below (presets via matchers) is now being built, but *better* — instead of a separate `matchers` table, a template carries an optional **`match_config`** (a calendar-match condition + `autoApply`), so a template both selects which events it governs AND pre-relates the people (its prototype edges) + holds recurring content. A pinned event→person match becomes exactly such a template. Paired with an always-on person suggester (attendee email + fuzzy title/details). See `next_steps.md` "Auto-match events to people via templates" (EM1–EM4) + ADR-123. This doc stays for the record.
+
 **Status:** option A **BUILT** (2026-06-14, ADR-050); the rest still parked. What shipped: `relation_defaults` on `templates` (migration 0010) + the "Related items" picker in `TemplateBuilder` + apply-writes-edges via `relateItems`. Brandon waived Tyler's core sign-off (he's not on core yet). Still open: the broader **`relation` property kind** (option B — folds into `entity-vs-custom-type.md`) and presetting **core structured fields** (the "adjacent ask" below). Original note kept below for the record.
 
 ## What Brandon hit

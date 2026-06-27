@@ -562,6 +562,12 @@ export const templates = pgTable(
     // Apply-time configuration (TPL3): date-field rules, variable defaults.
     // Reserved now (null), populated when variable resolution lands.
     applyConfig: jsonb("apply_config"),
+    // Calendar match rule (EM1, ADR-123): { condition: MatcherCondition;
+    // autoApply: boolean }. NULL = a plain content template (no rule). When set
+    // on an `event` template, the condition decides which calendar events this
+    // template governs; autoApply=true makes a matching event apply it on Add.
+    // This is the rule source that supersedes the (now-dormant) `matchers` table.
+    matchConfig: jsonb("match_config"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -572,6 +578,10 @@ export const templates = pgTable(
     uniqueIndex("templates_one_default_per_type")
       .on(t.ownerId, t.type)
       .where(sql`${t.isDefault}`),
+    // The rule-source hot path: the owner's match-rule templates for a type.
+    index("templates_match_idx")
+      .on(t.ownerId, t.type)
+      .where(sql`${t.matchConfig} is not null`),
   ]
 );
 

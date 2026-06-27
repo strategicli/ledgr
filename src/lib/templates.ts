@@ -31,6 +31,11 @@ import {
   scanAskLabels,
   type ApplyConfig,
 } from "@/lib/template-vars";
+import {
+  parseMatchConfig,
+  validateMatchConfig,
+  type TemplateMatchConfig,
+} from "@/lib/templates/match-config";
 import { APP_TIMEZONE, todayBounds } from "@/lib/today";
 
 export type ItemTemplate = {
@@ -45,6 +50,8 @@ export type ItemTemplate = {
   // Apply-time config (TPL3b): rules for the dated fields (none | fixed | offset
   // from the apply date). {} = no rules (the clone's cleared dates stand).
   applyConfig: ApplyConfig;
+  // Calendar match rule (EM1, ADR-123), or null for a plain content template.
+  matchConfig: TemplateMatchConfig | null;
   createdAt: Date;
 };
 
@@ -56,6 +63,8 @@ export type TemplatePatchInput = {
   name?: string;
   isDefault?: boolean;
   applyConfig?: ApplyConfig;
+  // null clears the rule; an object sets it (strictly validated).
+  matchConfig?: TemplateMatchConfig | null;
 };
 
 function bad(message: string): never {
@@ -94,10 +103,16 @@ export function parseTemplateInput(
     // Tolerant: invalid rules are dropped to {} rather than rejected.
     patch.applyConfig = parseApplyConfig(r.applyConfig);
   }
+  if (r.matchConfig !== undefined) {
+    // Strict: null clears the rule, an object must validate (a silently-dropped
+    // match rule would be a confusing footgun, unlike the date-rule parser).
+    patch.matchConfig = r.matchConfig === null ? null : validateMatchConfig(r.matchConfig);
+  }
   if (
     patch.name === undefined &&
     patch.isDefault === undefined &&
-    patch.applyConfig === undefined
+    patch.applyConfig === undefined &&
+    patch.matchConfig === undefined
   ) {
     bad("nothing to update");
   }
@@ -120,6 +135,7 @@ function rowToTemplate(row: typeof templates.$inferSelect): ItemTemplate {
     prototypeItemId: row.prototypeItemId,
     isDefault: row.isDefault,
     applyConfig: parseApplyConfig(row.applyConfig),
+    matchConfig: parseMatchConfig(row.matchConfig),
     createdAt: row.createdAt,
   };
 }
@@ -261,6 +277,7 @@ export async function updateTemplate(
   if (input.name !== undefined) set.name = input.name;
   if (input.isDefault !== undefined) set.isDefault = input.isDefault;
   if (input.applyConfig !== undefined) set.applyConfig = input.applyConfig;
+  if (input.matchConfig !== undefined) set.matchConfig = input.matchConfig;
   const rows = await getDb()
     .update(templates)
     .set(set)

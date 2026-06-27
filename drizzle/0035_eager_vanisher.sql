@@ -1,0 +1,2 @@
+ALTER TABLE "templates" ADD COLUMN "match_config" jsonb;--> statement-breakpoint
+CREATE INDEX "templates_match_idx" ON "templates" USING btree ("owner_id","type") WHERE "templates"."match_config" is not null;
