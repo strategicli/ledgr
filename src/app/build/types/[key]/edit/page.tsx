@@ -5,10 +5,12 @@ import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
 import StatusSchemaEditor from "@/components/build/StatusSchemaEditor";
 import ListTabsEditor from "@/components/build/ListTabsEditor";
+import TocSettingsEditor from "@/components/build/TocSettingsEditor";
 import { lensesForType, lensPropertyOptions } from "@/lib/list-lenses";
 import { capabilityById } from "@/lib/modules";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
+import { tocForType } from "@/lib/toc";
 import { countItemsOfType, getType, listTypes } from "@/lib/types";
 import { ItemError } from "@/lib/items";
 
@@ -75,6 +77,11 @@ export default async function EditType({
           propertyOptions={propertyOptions}
           initialLenses={lensesForType(settings, key)}
           customized={Boolean(settings.listTabs[key])}
+        />
+        <TocSettingsEditor
+          typeKey={key}
+          initial={tocForType(settings, key)}
+          customized={Boolean(settings.tocByType[key])}
         />
       </div>
     </main>
