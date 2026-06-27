@@ -10,6 +10,21 @@
 
 export const MARKDOWN_FORMAT = "markdown";
 
+// Large-body threshold (ADR-125). At or above this many characters of markdown,
+// a body is treated as a "document" rather than a "note": the canvas declines to
+// mount the rich Tiptap editor (a single contenteditable tree of that many nodes
+// freezes the tab) and opens read-only Preview by default with a raw-Source
+// editor for edits. One tunable knob, shared by the client (which picks the body
+// mode) and the server (which throttles revision snapshots for big bodies).
+// 100K chars is ~16k words / ~40 pages: well past any real note, while leaving
+// ~99% of items (measured p99 ≈ 96K) on the rich editor. Measured, not magic.
+export const LARGE_BODY_THRESHOLD = 100_000;
+
+// True once a body's markdown is large enough to skip the rich editor (ADR-125).
+export function isLargeBody(text: string | null | undefined): boolean {
+  return (text?.length ?? 0) >= LARGE_BODY_THRESHOLD;
+}
+
 export type ItemBody = { format: string; text: string };
 
 export function makeMarkdownBody(text: string): ItemBody {
