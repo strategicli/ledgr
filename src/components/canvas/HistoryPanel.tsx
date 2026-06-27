@@ -160,22 +160,19 @@ export default function HistoryPanel({
     : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
+    <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">
+      <section className="canvas-section">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={expanded}
-        className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400"
+        className="canvas-section-title hover:text-neutral-300"
       >
-        <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
+        <span className={`canvas-section-icon transition-transform ${expanded ? "rotate-90" : ""}`}>
           ▸
         </span>
         Version history
-        {revisions && (
-          <span className="font-normal normal-case text-neutral-600">
-            · {revisions.length}
-          </span>
-        )}
+        {revisions && <span className="canvas-section-count">{revisions.length}</span>}
       </button>
 
       {expanded && (
@@ -282,6 +279,7 @@ export default function HistoryPanel({
           )}
         </div>
       )}
+      </section>
     </div>
   );
 }

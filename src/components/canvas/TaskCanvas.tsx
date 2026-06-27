@@ -11,6 +11,7 @@ import Subtasks from "@/components/subtasks/Subtasks";
 import TaskTitle from "@/components/canvas/TaskTitle";
 import RelationProperties from "@/components/relations/RelationProperties";
 import CustomProperties from "@/components/build/CustomProperties";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import SchedulePopover from "@/components/canvas/rail/SchedulePopover";
 import DueRow from "@/components/canvas/rail/DueRow";
 import PriorityRow from "@/components/canvas/rail/PriorityRow";
@@ -134,14 +135,17 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             <PriorityRow itemId={item.id} initial={item.urgency} />
           </div>
 
-          {relationFields.length > 0 && (
+          {/* Properties: scalar + relation fields under one header (the canvas
+              redesign), bare so the compact rail stays a divided list, not a card
+              (Brandon, 2026-06-27). Relations are marked with a link glyph. */}
+          {propertySchema.length > 0 && (
             <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
-              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} bare />
-            </div>
-          )}
-          {scalarFields.length > 0 && (
-            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
-              <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} bare />
+              <CanvasSection bare icon="properties" title="Properties">
+                <div className="flex flex-col gap-2">
+                  <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
+                  <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} hideHeading bare />
+                </div>
+              </CanvasSection>
             </div>
           )}
 

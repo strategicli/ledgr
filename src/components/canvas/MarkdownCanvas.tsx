@@ -354,8 +354,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Version history (Track changes): list snapshots, diff any two, restore
           (the general item-view undo). Lazy — fetches only when expanded. */}
       <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />
-      <details className="mx-auto w-full max-w-3xl px-2 pb-12 pt-4 sm:px-8 md:px-12">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-neutral-600 hover:text-neutral-400">
+      <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 pb-12 sm:px-8 md:px-12">
+        <details className="canvas-section">
+        <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--cs-label)] hover:text-neutral-300">
           Fields
         </summary>
         <dl className="mt-2 flex flex-col gap-1 px-2">
@@ -366,7 +367,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             </div>
           ))}
         </dl>
-      </details>
+        </details>
+      </div>
     </>
   );
 }
