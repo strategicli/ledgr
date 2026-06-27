@@ -5,7 +5,7 @@ import { and, asc, eq, gte, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { calendarEvents, items } from "@/db/schema";
 import { ItemError } from "@/lib/items";
-import { applyMatchersToMeeting } from "@/lib/matchers/engine";
+import { applyEventIntake } from "./intake";
 import type { CalendarEvent } from "./types";
 
 export type FeedEvent = {
@@ -139,10 +139,10 @@ export async function promoteCalendarEvent(
     .set({ promotedItemId: itemId })
     .where(and(eq(calendarEvents.id, cacheId), eq(calendarEvents.ownerId, ownerId)));
 
-  // Attach matched people/template (a no-op when no matcher hits). Best-effort:
-  // the event is added either way.
+  // Run intake (EM2, ADR-123): apply a pinned template, else attach suggested
+  // people. Best-effort — the event is added either way.
   try {
-    await applyMatchersToMeeting(ownerId, itemId, toCalendarEvent(row));
+    await applyEventIntake(ownerId, itemId, toCalendarEvent(row));
   } catch {
     /* swallow — the add succeeded; matching is best-effort */
   }
