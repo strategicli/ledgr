@@ -40,8 +40,9 @@ type HealthCheckState = {
 // Per-integration freshness budget. We only alert on a *stalled* job — one that
 // ran successfully before (its `run` canary is set) but whose last clean
 // success is now older than `maxAgeHours`. A job that has never run (canary
-// null) is unconfigured, not broken, so it stays quiet — the alpha posture and
-// Sunday-proofing both say don't cry wolf. Budgets are a generous multiple of
+// null) is unconfigured, not broken, so it stays quiet: Sunday-proofing and a
+// deliberate don't-cry-wolf policy say an unset integration isn't an alert (this
+// no longer leans on the now-ended alpha posture; behavior is unchanged). Budgets are a generous multiple of
 // each job's cadence so a single missed poll doesn't page.
 type FreshnessRule = {
   code: string;

@@ -2,6 +2,8 @@
 
 Written for future-Brandon working with Claude Code on a Saturday when something's broken. Keep it current as the build proceeds: a runbook that lags reality is worse than none. Sections marked *(stub)* fill in once that piece exists.
 
+> **Status: v1.0 PRODUCTION since 2026-06-26 (ADR-115).** Ledgr holds real data and is in daily use. The two rules below are in force, and operational caution (real migrations, backups, restore drills) is now live, not theoretical.
+
 ---
 
 ## 0. The two rules that override everything
