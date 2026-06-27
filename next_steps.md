@@ -4,7 +4,7 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 ## 🚀 v1.0 PRODUCTION — flipped 2026-06-26 (ADR-115)
 
-Ledgr is **out of alpha**. Brandon's Notion import landed (ledgr#84), so the app holds real data and is in daily use. The ADR-039 alpha exemptions are withdrawn: schema changes get real migrations (additive, then backfill; no reseed of live owner data), back-compat matters, and **no deploys Saturday night**. CLAUDE.md status line + runbook §0 updated; the v1.0-goal bar (`src/lib/v1-goals.ts`) marks the flip done; `package.json` is at 1.0.0. Per-instance, so Tyler flips his own on his timeline (COLLAB heads-up posted).
+Ledgr is **out of alpha**. Brandon's Notion import landed (ledgr#84), so the app holds real data and is in daily use. The ADR-039 alpha exemptions are withdrawn: schema changes get real migrations (additive, then backfill; no reseed of live owner data) and back-compat matters; production changes get ordinary production care (be deliberate, prefer reversible steps), with **no fixed weekend/Saturday no-deploy window** (ADR-119 reframed it). CLAUDE.md status line + runbook §0 updated; the v1.0-goal bar (`src/lib/v1-goals.ts`) marks the flip done; `package.json` is at 1.0.0. Per-instance, so Tyler flips his own on his timeline (COLLAB heads-up posted).
 
 ## ⟢ Session summary — Multi-select + bulk item operations (2026-06-26, ADR-118, branch `feat/multi-select-bulk`)
 
@@ -13,7 +13,7 @@ Ledgr is **out of alpha**. Brandon's Notion import landed (ledgr#84), so the app
 - **Selection layer (`src/components/selection/`, new):** `SelectionProvider` (context: selected set + ordered in-view ids → shift-click range + select-all), `SelectCheckbox` (per-row island; renders nothing without a provider), `BulkActionBar` (floating bar), `bulk-actions.ts` (chunked batch calls). Config from `src/lib/bulk-config.ts` (`bulkConfigForType`).
 - **Actions:** **Delete** (Trash, `ConfirmButton`, notes the child cascade), **Set…** (status / any select·multi_select property / due·scheduled date, via `propertyPatch`), **Move…** (typeahead → `parentId`, like AddRelation, + "top level"). Config-driven: status-less types hide status/date; mixed-type Inbox shows only Move + Delete. **Archive deliberately not built** (Brandon scoped it for the future archive feature; the Set… field list is the seam).
 - **Wired:** `/tasks` (all tabs), `/notes`, `/links`, `/events`, `/inbox`, `/list/[type]` (= People + every custom type), and the shared `ViewRenderer` list/table/agenda (so `ViewLensBody` lenses + `/views/[id]` get it via a `selectable` prop). **Deferred (defer-by-hiding):** board/calendar layouts, dashboard widgets, Trash.
-- **Status:** built; tsc + eslint clean. **Remaining:** in-browser eyeball (select incl. shift-range, Set, Move, Delete) and a `verify-items-batch.mts`; then PR. No Saturday deploy (ADR-115).
+- **Status:** built; tsc + eslint clean. **Remaining:** in-browser eyeball (select incl. shift-range, Set, Move, Delete) and a `verify-items-batch.mts`; then PR.
 
 ## ⟢ Session summary — MCP OAuth shim: connect Ledgr's MCP from claude.ai + the phone (2026-06-26, ADR-117, branch `feat/mcp-oauth-shim`)
 
@@ -21,7 +21,7 @@ Ledgr is **out of alpha**. Brandon's Notion import landed (ledgr#84), so the app
 - **Lib (`src/lib/auth/oauth.ts`, new):** dependency-free HMAC-signed tokens (node:crypto, Principle 5) for client_id / authorization code / access / refresh, each kind-pinned + expiry-checked; PKCE S256 verify; discovery-metadata builders; `originFromRequest`. Signed with new `LEDGR_OAUTH_SECRET` — **no DB tables, no dependency**, which is what keeps it off the shared schema.
 - **Routes:** `/.well-known/oauth-protected-resource` + `…-authorization-server` (RFC 9728/8414, via `next.config.ts` rewrites onto `/api/oauth/*`), stateless DCR `POST /api/oauth/register` (RFC 7591), the Clerk-gated `GET /api/oauth/authorize` (owner login = consent), PKCE `POST /api/oauth/token`. `/api/mcp` now accepts an OAuth access token **in addition to** the static `LEDGR_API_TOKENS` bearer and emits a `WWW-Authenticate` discovery hint on its 401. `proxy.ts` public-set updated (discovery/register/token public; authorize stays gated).
 - **Verify:** `verify-oauth-mcp.mts` **37/37** (sign/verify, kind-pinning, expiry, tamper, PKCE, scope, metadata, secret-rotation isolation, configured gate). **Live HTTP round-trip** on the dev server (full discovery → register → authorize → token → authenticated `/api/mcp` returning all 20 tools; 401+WWW-Authenticate; refresh; bad-code→invalid_grant — all green). tsc + eslint clean. Docs: AI & MCP page (new "Phone & claude.ai" section + status dot), runbook §1f/§3a + env table, `.env.example`.
-- **Status:** built + verified locally. **Remaining:** set `LEDGR_OAUTH_SECRET` on Vercel + redeploy (no Saturday deploy — ADR-115), then a real claude.ai-mobile connect. PR next.
+- **Status:** built + verified locally. **Remaining:** set `LEDGR_OAUTH_SECRET` on Vercel + redeploy, then a real claude.ai-mobile connect. PR next.
 
 ## ⟢ Session summary — List paging: Load-more past the 200-row cap (2026-06-26, ADR-116, branch `fix/list-paging-load-more`)
 
@@ -332,7 +332,7 @@ Brandon: kanban DnD works on desktop but not mobile. Add long-press-and-drag on 
 
 **🎉 The Native Tasks chunk (T1–T6, ADR-073) is complete — Ledgr replaces Todoist end to end on Brandon's instance.**
 
-**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the matcher setup-wizard + learn-by-confirmation UIs (Phase 2; §1c is live as of 2026-06-19, so these are now unblocked); the **alpha → v1.0 production flip** (✅ DONE 2026-06-26, ADR-115: migration-caution + no-Saturday-deploys now in force).
+**Other committed 1.0 work (tracked elsewhere, not in this chunk):** selective Notion migration (Phase 3 Tier 3); the matcher setup-wizard + learn-by-confirmation UIs (Phase 2; §1c is live as of 2026-06-19, so these are now unblocked); the **alpha → v1.0 production flip** (✅ DONE 2026-06-26, ADR-115: migration-caution now in force; the no-Saturday-deploys rule was later reframed to general production-mindfulness, ADR-119).
 
 ---
 
