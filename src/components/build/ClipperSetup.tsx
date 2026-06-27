@@ -39,8 +39,8 @@ export default function ClipperSetup({ origin }: { origin: string }) {
     <div className="mt-4 flex flex-col gap-3">
       <div>
         <label className="mb-1 block text-xs text-neutral-500">
-          Paste an api-scoped token (generated above). It&rsquo;s baked into the
-          bookmarklet and stays in your browser.
+          Paste an api-scoped token. It&rsquo;s baked into the bookmarklet and
+          stays in your browser.
         </label>
         <input
           type="text"
