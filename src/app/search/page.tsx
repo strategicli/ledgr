@@ -11,9 +11,17 @@ import { listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
-export default async function Search() {
+export default async function Search({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
+
+  // Prefill from ?q= for the Discover "Search everything about this" handoff
+  // (ADR-127).
+  const initialQuery = (await searchParams).q ?? "";
 
   const [typeRows, people] = await Promise.all([
     getDb().select({ key: types.key, label: types.label }).from(types),
@@ -32,6 +40,7 @@ export default async function Search() {
         </p>
         <div className="mt-6">
           <SearchClient
+            initialQuery={initialQuery}
             types={typeRows.map((t) => ({ value: t.key, label: t.label }))}
             people={people.map((p) => ({
               value: p.id,

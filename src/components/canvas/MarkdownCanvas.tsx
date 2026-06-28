@@ -37,6 +37,7 @@ import { parseScheduledTime } from "@/lib/scheduled-time";
 import FocusStar from "@/components/today/FocusStar";
 import { isFocusedOn } from "@/lib/focus";
 import RelatedPanel from "@/components/relations/RelatedPanel";
+import DiscoverPanel from "@/components/relations/DiscoverPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, footerFieldsFor, type CanvasField } from "@/lib/canvas-fields";
@@ -230,6 +231,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         ) : null;
       }
       if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} bare />;
+      if (id === "discover")
+        return <DiscoverPanel itemId={item.id} anchorTitle={item.title} bare />;
       if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
       if (id === "share") return <ShareLink itemId={item.id} />;
       if (id === "history")
@@ -347,6 +350,11 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           and due-dates editable in place (ADR-055). Typed relation fields are
           excluded here; they show under Properties above, so nothing repeats. */}
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
+      {/* Discover related (ADR-127): deterministically ranked items worth
+          linking but not linked yet, directly under Linked here. Collapsed,
+          auto-hides when nothing clears the floor; Link graduates a row up into
+          the panel above. */}
+      <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
       {/* Save Offline (PRD §4.7): export now, verified offline pin, print/PDF. */}
       <SaveOffline itemId={item.id} />
       {/* Public share link (PRD §4.12): read-only, print-friendly, PDF. */}

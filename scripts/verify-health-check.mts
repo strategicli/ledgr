@@ -60,6 +60,7 @@ function baseReport(): HealthReport {
       lastEmailRunAt: iso(1),
       lastAgendaNotifyAt: iso(10),
       lastPrepNotifyAt: iso(1),
+      lastRelatednessRunAt: iso(20),
       mcp: { configured: true, hasToken: true, ownerResolves: true },
       graph: { configured: true, ok: true },
       github: { configured: true, ok: true, repo: "strategicli/ledgr" },

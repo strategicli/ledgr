@@ -65,6 +65,7 @@ type CardKind =
   | "title"
   | "body"
   | "related"
+  | "discover"
   | "saveOffline"
   | "share"
   | "history"
@@ -86,6 +87,7 @@ function kindOf(id: CardId): CardKind {
     case "title":
     case "body":
     case "related":
+    case "discover":
     case "saveOffline":
     case "share":
     case "history":
@@ -119,6 +121,7 @@ const SPECS: Record<CardKind, CardSpec> = {
   recurrence: { mode: "flow", flowable: true, w: 12, h: 2 },
   recurrenceCalendar: { mode: "flow", flowable: true, w: 12, h: 9 },
   related: { mode: "flow", flowable: true, w: 12, h: 6 },
+  discover: { mode: "flow", flowable: true, w: 12, h: 4 },
   relation: { mode: "flow", flowable: true, w: 6, h: 4 },
   saveOffline: { mode: "flow", flowable: true, w: 12, h: 2 },
   share: { mode: "flow", flowable: true, w: 12, h: 2 },
@@ -159,7 +162,7 @@ export function cardVocabulary(
   for (const p of propertySchema) {
     if (p.kind === "relation") ids.push(`rel:${p.key}`);
   }
-  ids.push("related", "saveOffline", "share", "history", "meta");
+  ids.push("related", "discover", "saveOffline", "share", "history", "meta");
   return ids;
 }
 
@@ -167,6 +170,7 @@ const STATIC_LABELS: Record<string, string> = {
   title: "Title",
   body: "Body",
   related: "Related",
+  discover: "Discover related",
   saveOffline: "Save Offline",
   share: "Share",
   history: "Version History",
