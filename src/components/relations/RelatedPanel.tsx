@@ -25,11 +25,14 @@ import {
 } from "@/lib/relations";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
-import CanvasSection from "@/components/canvas/CanvasSection";
 import InlineLabel from "@/components/build/InlineLabel";
 import AddRelation from "./AddRelation";
 import NewRelatedTask from "./NewRelatedTask";
-import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
+import { type RelatedRowItem } from "./RelatedRow";
+import RelatedPanelClient, {
+  type RelatedGroup,
+  type RelatedRowDescriptor,
+} from "./RelatedPanelClient";
 
 const UNMARKED = "unmarked";
 
@@ -115,7 +118,7 @@ export default async function RelatedPanel({
     return compareTypeKeys(a, b);
   });
 
-  const renderRow = (item: RelatedItem, removalRole?: string) => {
+  const buildRow = (item: RelatedItem, removalRole?: string): RelatedRowDescriptor => {
     const row: RelatedRowItem = {
       id: item.id,
       type: item.type,
@@ -125,17 +128,14 @@ export default async function RelatedPanel({
       dueDate: item.dueDate ? item.dueDate.toISOString() : null,
       updatedAt: item.updatedAt.toISOString(),
     };
-    return (
-      <RelatedRow
-        key={item.id}
-        hostId={itemId}
-        item={row}
-        suggested={item.matchState === "suggested"}
-        mention={item.roles.includes(MENTION_ROLE)}
-        mentionOnly={item.roles.every((r) => r === MENTION_ROLE)}
-        removalRole={removalRole}
-      />
-    );
+    return {
+      item: row,
+      suggested: item.matchState === "suggested",
+      mention: item.roles.includes(MENTION_ROLE),
+      mentionOnly: item.roles.every((r) => r === MENTION_ROLE),
+      removalRole,
+      done: item.statusCategory === "done",
+    };
   };
 
   const visibleCount = [...byType.values()].reduce((n, g) => n + g.length, 0);
@@ -149,22 +149,17 @@ export default async function RelatedPanel({
     );
   }
 
+  // Inbound links grouped by type (unmarked under its glyph); typed relation
+  // fields are excluded — they live under Properties. The header label is
+  // rendered here (server) and handed to the client shell, which owns the
+  // show/hide-completed toggle and the visible counts.
+  const groups: RelatedGroup[] = typeGroups.map((key) => ({
+    key,
+    header: <InlineLabel typeKey={key} label={labels.get(key) ?? key} />,
+    rows: byType.get(key)!.map((item) => buildRow(item)),
+  }));
+
   return (
-    <CanvasSection bare={bare} icon="affiliate" title="Linked here" count={visibleCount}>
-      {/* Inbound links grouped by type (unmarked under its glyph); typed
-          relation fields are excluded — they live under Properties. */}
-      {typeGroups.map((key) => (
-        <div key={key} className="mt-3 first:mt-0">
-          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            <InlineLabel typeKey={key} label={labels.get(key) ?? key} />
-            <span className="ml-2 font-normal text-neutral-600">
-              {byType.get(key)!.length}
-            </span>
-          </h3>
-          <ul className="mt-1">{byType.get(key)!.map((item) => renderRow(item))}</ul>
-        </div>
-      ))}
-      <div className="mt-4">{addBar}</div>
-    </CanvasSection>
+    <RelatedPanelClient hostId={itemId} groups={groups} addBar={addBar} bare={bare} />
   );
 }
