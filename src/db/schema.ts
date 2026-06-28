@@ -18,6 +18,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -339,6 +340,46 @@ export const relations = pgTable(
       t.targetId,
       t.role
     ),
+  ]
+);
+
+// Deterministic relatedness cache (Discover, ADR-127). Derived machinery like
+// revisions / the search tsvector — NOT user content (rule 2) and NOT on
+// items.properties (that would bump items.updated_at on every recompute,
+// re-triggering export + a rescore loop, and pollute the FTS tsvector). A
+// bounded nightly job (src/lib/discovery/refresh.ts) runs the pure scorer
+// (src/lib/discovery/score.ts) and upserts each item's top-N scored candidates
+// here; the suggested-relations endpoint reads it (live-compute fallback on a
+// miss). signals is the reason-chip list ([{kind,label}]) so the guess can show
+// its work. Both FK columns cascade so a purged item drops its cache rows as
+// anchor AND as candidate (self-healing). Score is unitless and comparable only
+// within one anchor; computed_at vs items.updated_at drives the dirty rescore.
+export const itemRelatedness = pgTable(
+  "item_relatedness",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    score: real("score").notNull(),
+    signals: jsonb("signals"),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // The read path: an anchor's candidates, and the upsert key (one row per
+    // anchor→candidate pair).
+    uniqueIndex("item_relatedness_item_candidate_uq").on(
+      t.itemId,
+      t.candidateId
+    ),
+    // So a candidate's cache rows are reachable for cleanup independent of the
+    // FK cascade.
+    index("item_relatedness_candidate_idx").on(t.candidateId),
   ]
 );
 

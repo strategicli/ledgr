@@ -50,11 +50,15 @@ const selectClass =
 export default function SearchClient({
   types,
   people,
+  initialQuery = "",
 }: {
   types: Option[];
   people: Option[];
+  // Prefill from ?q= (the Discover panel's "Search everything about this"
+  // handoff, ADR-127): the effect below fetches on mount when q is non-empty.
+  initialQuery?: string;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [type, setType] = useState("");
   const [person, setPerson] = useState("");
   const [from, setFrom] = useState("");

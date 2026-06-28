@@ -11,6 +11,10 @@
     {
       "path": "/api/machine/notify-agenda",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/machine/relatedness",
+      "schedule": "0 9 * * *"
     }
   ]
 }

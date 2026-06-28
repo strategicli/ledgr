@@ -11,6 +11,7 @@ import { resolveMcpOwner } from "@/lib/mcp/owner";
 import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
 import { getExportState } from "@/lib/export/engine";
+import { getRelatednessState } from "@/lib/discovery/refresh";
 import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
 import { checkGithub, type GithubHealth } from "@/lib/github/client";
 import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
@@ -52,6 +53,8 @@ export type HealthReport = {
     lastEmailRunAt: string | null;
     lastAgendaNotifyAt: string | null;
     lastPrepNotifyAt: string | null;
+    // Last successful nightly relatedness-cache refresh (Discover, ADR-127).
+    lastRelatednessRunAt: string | null;
     mcp: McpCanary;
     graph: GraphHealth;
     github: GithubHealth;
@@ -122,6 +125,7 @@ export async function gatherHealth(): Promise<HealthReport> {
   let lastEmailRunAt: string | null = null;
   let lastAgendaNotifyAt: string | null = null;
   let lastPrepNotifyAt: string | null = null;
+  let lastRelatednessRunAt: string | null = null;
   let mcp: McpCanary = { configured: false, hasToken: false, ownerResolves: false };
   let healthCheck: HealthCheckCanary = { lastRunAt: null, lastSuccessAt: null, lastAlertAt: null, alerts: [] };
   let errors: ErrorsCheck = null;
@@ -159,6 +163,12 @@ export async function gatherHealth(): Promise<HealthReport> {
       const push = await getPushState();
       lastAgendaNotifyAt = push.agenda?.lastSuccessAt ?? null;
       lastPrepNotifyAt = push.prep?.lastSuccessAt ?? null;
+    } catch {
+      // same posture as the export state read.
+    }
+    try {
+      const rel = await getRelatednessState();
+      lastRelatednessRunAt = rel?.lastRunAt ?? null;
     } catch {
       // same posture as the export state read.
     }
@@ -214,6 +224,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastEmailRunAt,
       lastAgendaNotifyAt,
       lastPrepNotifyAt,
+      lastRelatednessRunAt,
       mcp,
       graph,
       github,
