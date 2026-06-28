@@ -263,6 +263,29 @@ body {
   padding-top: 0.4rem;
 }
 
+/* Grid item views honor the section style too (Brandon, 2026-06-28). A grid type
+   (Note, Project, Hiring Candidate — those with a saved canvasLayout) renders its
+   panels bare inside read-only grid cards, which are otherwise chrome-free, so the
+   skin above never reached them and the setting looked dead on the most-opened
+   types. Apply the same three weights to EVERY read-only grid card (Brandon's call:
+   a grid item should read as a uniform set of cards, body included). Scoped to
+   `.layout:not(.dash-edit)` so the arrange grid keeps its own edit frame, and the
+   `.canvas-card-content > *` chrome-strip above still neutralizes the panels'
+   own padding so the weight lives on the card, not doubled inside it. */
+[data-section-style="heavy"] .layout:not(.dash-edit) .canvas-card-content {
+  border: 1px solid var(--cs-border);
+  background: var(--cs-card);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+}
+[data-section-style="light"] .layout:not(.dash-edit) .canvas-card-content {
+  border-top: 1px solid var(--cs-border);
+  padding-top: 0.85rem;
+}
+[data-section-style="unified"] .layout:not(.dash-edit) .canvas-card-content {
+  padding-top: 0.4rem;
+}
+
 /* Header: icon + label + count, with an optional right-aligned action slot. */
 .canvas-section-head {
   display: flex;

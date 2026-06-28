@@ -396,7 +396,15 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
         </section>
       )}
 
-      {saved && <p className="text-xs text-neutral-500">Saved</p>}
+      {/* Floating, not inline: the form is long and controls live throughout it,
+          so an inline confirmation at the bottom is invisible when you change a
+          mid-form control (e.g. Section style). A fixed pill is seen from any
+          scroll position. */}
+      {saved && (
+        <p className="fixed bottom-4 right-4 z-50 rounded-md bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 shadow-lg ring-1 ring-neutral-700">
+          Saved
+        </p>
+      )}
     </div>
   );
 }
