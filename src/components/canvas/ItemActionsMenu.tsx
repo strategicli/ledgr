@@ -157,6 +157,13 @@ export default function ItemActionsMenu({
             <span aria-hidden>▦</span>
             Customize layout
           </a>
+          {/* Related Explorer (ADR-127 Phase 2): the always-available entry to
+              the score-sorted neighborhood map, reachable even when the Discover
+              panel auto-hid. */}
+          <a role="menuitem" href={`/items/${itemId}/explore`} className={rowClass}>
+            <span aria-hidden>🕸</span>
+            Explore related
+          </a>
           <div className="my-1 h-px bg-neutral-800" />
           <SaveAsTemplateButton
             itemId={itemId}

@@ -154,10 +154,16 @@ export default function DiscoverPanel({
           </button>
         )}
         <Link
-          href={`/search?q=${encodeURIComponent(anchorTitle)}`}
-          className="ml-auto text-xs text-neutral-600 hover:text-neutral-300"
+          href={`/items/${itemId}/explore`}
+          className="ml-auto text-xs text-neutral-500 hover:text-neutral-300"
         >
-          Search everything about this →
+          Explore the map →
+        </Link>
+        <Link
+          href={`/search?q=${encodeURIComponent(anchorTitle)}`}
+          className="text-xs text-neutral-600 hover:text-neutral-300"
+        >
+          Search everything →
         </Link>
       </div>
     </details>
