@@ -58,6 +58,9 @@ export const BUILD_NAV: BuildGroup[] = [
       // Model Overview is the /build home — the bird's-eye view you land on.
       { label: "Model Overview", href: "/build", icon: "compass" },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
+      // Loose Ends (ADR-127 Phase 3): under-connected items + their top
+      // suggested links — the relatedness engine inverted across the corpus.
+      { label: "Loose Ends", href: "/build/loose-ends", icon: "affiliate" },
       { label: "Import & Migration", href: "/build/import", icon: "folder" },
       // Labelled "AI & MCP", not "Claude": the MCP server is client-agnostic
       // (any MCP-speaking AI can connect), so the surface name stays generic
