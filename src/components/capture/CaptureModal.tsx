@@ -57,15 +57,17 @@ export default function CaptureModal({
       aria-label="Quick capture"
     >
       <div className="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
-        {/* Type picker header — the choice that makes capture multi-type. */}
-        <div className="mb-2 flex items-center gap-2 px-1">
+        {/* Type picker header — the choice that makes capture multi-type. Its
+            own panel bar so it reads as part of the modal, not bare text
+            floating on the dimmed backdrop. */}
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 shadow-lg shadow-black/40">
           <span className="text-xs uppercase tracking-wide text-neutral-500">New</span>
           <span className="relative inline-flex items-center">
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
               aria-label="Type to capture"
-              className="appearance-none rounded-md border border-neutral-700 bg-neutral-900 py-1 pl-2.5 pr-7 text-sm text-neutral-200 outline-none hover:border-neutral-600 focus:border-neutral-500"
+              className="appearance-none rounded-md border border-neutral-700 bg-neutral-800 py-1 pl-2.5 pr-7 text-sm text-neutral-200 outline-none hover:border-neutral-600 focus:border-neutral-500"
             >
               {captureOptions.map((t) => (
                 <option key={t.key} value={t.key}>
