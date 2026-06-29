@@ -23,6 +23,11 @@ export type PushMessage = {
   // Coalescing tag so a re-sent agenda replaces the prior one rather than
   // stacking (Notification API `tag`).
   tag?: string;
+  // Unread notification count to set as the PWA app-icon badge (ADR-129). The
+  // SW push handler calls navigator.setAppBadge(count) when present, so the
+  // installed-app icon reflects the unread total. Omitted = leave the badge
+  // untouched.
+  count?: number;
 };
 
 // The result of one send. `gone` means the push service reported the

@@ -323,8 +323,9 @@ function DestinationFields({
       href: o.href,
       label: o.label,
       icon: o.icon,
-      // Drop the badge if the new destination can't carry one.
-      ...(o.badgeEligible && value.badge ? { badge: "inbox" as const } : {}),
+      // Carry this destination's own badge if it has one (inbox / notifications);
+      // a destination that can't carry a badge drops it.
+      ...(o.badge ? { badge: o.badge } : {}),
     });
   }
 
@@ -361,11 +362,13 @@ function DestinationFields({
         <label className="flex items-center gap-2 text-sm text-neutral-300">
           <input
             type="checkbox"
-            checked={value.badge === "inbox"}
+            checked={!!value.badge}
             onChange={(e) =>
               onChange({
                 ...value,
-                ...(e.target.checked ? { badge: "inbox" as const } : { badge: undefined }),
+                ...(e.target.checked && current?.badge
+                  ? { badge: current.badge }
+                  : { badge: undefined }),
               })
             }
             className="ledgr-check"

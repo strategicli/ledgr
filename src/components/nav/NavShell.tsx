@@ -22,6 +22,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import BuildSidebar from "@/components/nav/BuildSidebar";
 import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
+import AppBadgeSync from "@/components/pwa/AppBadgeSync";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import { isBuildPath } from "@/lib/build-nav";
@@ -199,6 +200,7 @@ const RAIL_NEXT_LABEL: Record<RailSize, string> = {
 export default function NavShell({
   slots,
   mobileSlots,
+  unreadCount,
   typeOptions,
   buildTypes,
   navPosition,
@@ -208,6 +210,8 @@ export default function NavShell({
 }: {
   slots: ShellSlot[];
   mobileSlots: ShellSlot[];
+  // Unread notification count: seeds the PWA app-icon badge + the More-menu link.
+  unreadCount: number;
   typeOptions: { key: string; label: string }[];
   // The owner's types, for the Build sidebar's Types & Properties dropdown.
   buildTypes: { key: string; label: string; icon: string | null }[];
@@ -618,6 +622,15 @@ export default function NavShell({
         <WrenchIcon />
         Build
       </Link>
+      <Link
+        href="/notifications"
+        role="menuitem"
+        onClick={() => setMenuOpen(false)}
+        className={`${menuItem} flex items-center`}
+      >
+        Notifications
+        <InlineBadge count={unreadCount} />
+      </Link>
       <Link href="/settings" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
         User Settings
       </Link>
@@ -730,6 +743,7 @@ export default function NavShell({
   // the Work side. The capture + command palette overlays are shared by both.
   return (
     <nav aria-label="Main">
+      <AppBadgeSync count={unreadCount} />
       {inBuild && (
         <BuildSidebar types={buildTypes} onOpenSearch={() => setSearchOpen(true)} />
       )}

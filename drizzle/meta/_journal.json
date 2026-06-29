@@ -260,6 +260,13 @@
       "when": 1782609330314,
       "tag": "0036_keen_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1782705503050,
+      "tag": "0037_brave_ultron",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,11 @@
 // (morning agenda, meeting-prep-ready). These never touch any cache.
 // v4: notification badge points at a monochrome silhouette (badge-96.png) so
 // Android renders the "L" mark in the status bar, not a solid white square.
-const VERSION = "v4";
+// v5 (ADR-129): the push handler sets the PWA app-icon badge to the unread
+// notification count (data.count), and a message listener lets the page sync
+// the badge after read/archive actions. Both no-op where the Badging API is
+// unsupported.
+const VERSION = "v5";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -130,7 +134,27 @@ self.addEventListener("push", (event) => {
     badge: "/icons/badge-96.png",
     data: { url: data.url || "/" },
   };
+  // Reflect the unread total on the installed-app icon (ADR-129). The Badging
+  // API is exposed on the worker's navigator; guard for browsers without it.
+  if (typeof data.count === "number" && self.navigator && "setAppBadge" in self.navigator) {
+    if (data.count > 0) self.navigator.setAppBadge(data.count).catch(() => {});
+    else self.navigator.clearAppBadge?.().catch(() => {});
+  }
   event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Let an open page push the authoritative unread count to the app-icon badge
+// (ADR-129) after the owner reads/archives notifications, without a round-trip
+// through the push service. The page posts { type: "set-badge", count }.
+self.addEventListener("message", (event) => {
+  const msg = event.data || {};
+  if (msg.type !== "set-badge") return;
+  if (!self.navigator || !("setAppBadge" in self.navigator)) return;
+  if (typeof msg.count === "number" && msg.count > 0) {
+    self.navigator.setAppBadge(msg.count).catch(() => {});
+  } else {
+    self.navigator.clearAppBadge?.().catch(() => {});
+  }
 });
 
 // Tapping a notification focuses an existing app window (navigating it to the

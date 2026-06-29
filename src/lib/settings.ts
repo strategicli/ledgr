@@ -154,7 +154,7 @@ export const FAVORITES_HARD_CAP = 100;
 export const NAV_DEST_KINDS = ["builtin", "view", "type", "dashboard"] as const;
 export type NavDestKind = (typeof NAV_DEST_KINDS)[number];
 
-export type NavBadge = "inbox";
+export type NavBadge = "inbox" | "notifications";
 
 export type NavDestination = {
   kind: NavDestKind;
@@ -230,13 +230,53 @@ export type UserSettings = {
   // Per-type floating-TOC overrides (ADR-114). Keyed by type key; an absent key
   // resolves to DEFAULT_TOC (auto-on). Additive, no migration.
   tocByType: Record<string, TocConfig>;
+  // Per-source notification toggles (ADR-129). One on/off switch per
+  // notification source; a falsy switch makes recordNotification a no-op for
+  // that kind, so the single toggle gates BOTH the persisted row and the push.
+  // An absent key defaults to on (see NOTIFICATION_KINDS / notificationEnabled),
+  // so a new source is on until the owner turns it off. Additive, no migration.
+  notificationPrefs: Record<string, boolean>;
 };
+
+// The notification sources (ADR-129), in the order the settings UI lists them.
+// Each is individually on/off-toggleable (Brandon). `kind` is the value stored
+// on notifications.kind and keyed in settings.notificationPrefs.
+export const NOTIFICATION_KINDS = [
+  { kind: "agenda", label: "Morning agenda", help: "A daily summary of today's events and due tasks." },
+  { kind: "meeting_prep", label: "Event prep ready", help: "When an event with people is coming up soon." },
+  { kind: "task_due", label: "Task due", help: "When a task is due or overdue." },
+  { kind: "calendar_soon", label: "Event starting soon", help: "When a calendar event is about to begin." },
+  { kind: "sync_error", label: "Sync & system errors", help: "When a sync or background job fails." },
+] as const;
+
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
+
+// A source is enabled unless its toggle is explicitly false (default-on).
+export function notificationEnabled(
+  prefs: Record<string, boolean>,
+  kind: string
+): boolean {
+  return prefs[kind] !== false;
+}
+
+// Keep only known kinds with boolean values; an unknown key or non-boolean is
+// dropped (an absent key already defaults to on).
+function parseNotificationPrefs(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const r = raw as Record<string, unknown>;
+  const out: Record<string, boolean> = {};
+  for (const { kind } of NOTIFICATION_KINDS) {
+    if (typeof r[kind] === "boolean") out[kind] = r[kind] as boolean;
+  }
+  return out;
+}
 
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
 // developer/admin destinations (Views, Items) that used to live in the nav are
 // intentionally not here — they belong in Build, not daily nav.
 export const DEFAULT_NAV_SLOTS: NavSlotConfig[] = [
   { type: "destination", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badge: "inbox" },
+  { type: "destination", kind: "builtin", href: "/notifications", label: "Notifications", icon: "bell", badge: "notifications" },
   { type: "destination", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks" },
   { type: "destination", kind: "builtin", href: FAVORITES_HREF, label: "Favorites", icon: "starred" },
   { type: "destination", kind: "builtin", href: "/search", label: "Search", icon: "search" },
@@ -265,6 +305,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   favorites: [],
   listTabs: {},
   tocByType: {},
+  notificationPrefs: {},
 };
 
 const SETTINGS_UUID_RE =
@@ -285,7 +326,7 @@ function parseNavDestination(raw: unknown): NavDestination | null {
     : "builtin";
   const icon = isNavIcon(r.icon) ? r.icon : NAV_ICON_FALLBACK;
   const dest: NavDestination = { kind, href, label, icon };
-  if (r.badge === "inbox") dest.badge = "inbox";
+  if (r.badge === "inbox" || r.badge === "notifications") dest.badge = r.badge;
   return dest;
 }
 
@@ -406,6 +447,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const favorites = parseFavorites(r.favorites);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
+  const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
   return {
     highlightColor,
     highlightGradient,
@@ -429,6 +471,7 @@ export function parseSettings(raw: unknown): UserSettings {
     favorites,
     listTabs,
     tocByType,
+    notificationPrefs,
   };
 }
 

@@ -12,6 +12,8 @@ import {
   HIGHLIGHT_COLORS,
   HIGHLIGHT_GRADIENTS,
   NAV_POSITIONS,
+  NOTIFICATION_KINDS,
+  notificationEnabled,
   SECTION_STYLES,
   TEXT_SIZES,
   TEXT_SIZE_PX,
@@ -248,6 +250,40 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
           onChange={(e) => void save({ trashRetentionDays: Number(e.target.value) || 30 })}
           className="mt-2 w-24 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
         />
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Notifications</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Which events show up in your notification center (and send a push when
+          enabled). Turning one off silences both the entry and the push.
+        </p>
+        <div className="mt-2 flex flex-col gap-2">
+          {NOTIFICATION_KINDS.map(({ kind, label, help }) => {
+            const on = notificationEnabled(settings.notificationPrefs, kind);
+            return (
+              <label key={kind} className="flex items-start gap-2 text-sm text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) =>
+                    void save({
+                      notificationPrefs: {
+                        ...settings.notificationPrefs,
+                        [kind]: e.target.checked,
+                      },
+                    })
+                  }
+                  className="ledgr-check mt-0.5"
+                />
+                <span>
+                  {label}
+                  <span className="block text-xs text-neutral-500">{help}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
       </section>
 
       <section>
