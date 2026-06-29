@@ -14,9 +14,13 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
     process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
   }
 }
-// Force the no-storage path: attachment byte copies are exercised in the
-// configured end-to-end run (runbook §1b), not here, where a fixture
-// attachment's storageKey points at nothing.
+// Force the no-storage path for the main run: attachment byte copies are
+// exercised in the configured end-to-end run (runbook §1b). Saved first so the
+// 404-skip section below can re-enable storage and exercise a real fetch miss.
+const r2Creds = {
+  id: process.env.R2_ACCESS_KEY_ID,
+  secret: process.env.R2_SECRET_ACCESS_KEY,
+};
 delete process.env.R2_ACCESS_KEY_ID;
 delete process.env.R2_SECRET_ACCESS_KEY;
 
@@ -48,6 +52,12 @@ const [tempUser] = await db
   .values({ email: `verify-export-${Date.now()}@example.invalid` })
   .returning({ id: users.id });
 const ownerId = tempUser.id;
+
+// Local env points at the prod DB, and runExport writes the shared
+// onedrive_export job_state row. Snapshot it now and restore it in finally so
+// a verify run never clobbers production's last-clean canary.
+const priorJobState =
+  (await db.select({ value: jobState.value }).from(jobState).where(eq(jobState.key, EXPORT_JOB_KEY)))[0]?.value ?? null;
 
 // Snapshot: no other owner's stamps may change during this run.
 const stampedElsewhere = async () =>
@@ -124,8 +134,11 @@ try {
   check("due date present", md.includes(`due: "2026-06-19T00:00:00.000Z"`));
   check("confirmed person listed, suggested excluded",
     md.includes(`people: ["Verify Person"]`) && !md.includes("Suggested Person"));
-  check("attachment path listed",
-    md.includes(`_attachments/${task.id}/`) && md.includes("-chart.png"));
+  // With no storage the bytes aren't copied, so the path is omitted: the
+  // frontmatter never references a file absent from the export tree (the
+  // copied-and-listed case is covered by the configured e2e run, runbook §1b).
+  check("uncopied attachment path omitted (no storage)",
+    !md.includes(`_attachments/${task.id}/`) && !md.includes("chart.png"));
   check("markdown body serialized", md.includes("Sermon outline body text"));
   check("attachment bytes skipped without storage (stamp stays null)",
     (await db.select().from(attachments).where(eq(attachments.parentItemId, task.id)))[0].exportedAt === null);
@@ -153,9 +166,52 @@ try {
   check("restore moves it back out of _archive", run5.exported === 1 && onDisk(renamedPath) && !onDisk(archivePath));
 
   // --- archived status also lands in _archive -----------------------------
-  await db.update(items).set({ status: "archived", updatedAt: new Date() }).where(eq(items.id, task.id));
+  // The engine routes to _archive on statusCategory (not the display status),
+  // so the fixture must move both.
+  await db.update(items).set({ status: "archived", statusCategory: "archived", updatedAt: new Date() }).where(eq(items.id, task.id));
   await runExport(ownerId, target);
   check("status archived lands in _archive too", onDisk(archivePath) && !onDisk(renamedPath));
+
+  // --- a missing attachment is skipped, not fatal -------------------------
+  // A 404/unreadable object must not block the item's body from exporting
+  // (Sunday-proof: the markdown is the fallback, an image is not). It's
+  // surfaced via attachmentsFailed + onAttachmentError, never silent.
+  if (r2Creds.id && r2Creds.secret) {
+    process.env.R2_ACCESS_KEY_ID = r2Creds.id;
+    process.env.R2_SECRET_ACCESS_KEY = r2Creds.secret;
+    const orphan = await mkItem({
+      type: "note",
+      title: "Orphan attachment note",
+      body: makeMarkdownBody("body survives a missing image"),
+    });
+    await db.insert(attachments).values({
+      ownerId,
+      parentItemId: orphan.id,
+      filename: "missing.png",
+      contentType: "image/png",
+      sizeBytes: 1,
+      storageKey: `${ownerId}/does-not-exist/missing.png`,
+    });
+    let failedSeen: { storageKey: string; status: number }[] = [];
+    const runMiss = await runExport(ownerId, target, {
+      onAttachmentError: (_id, f) => {
+        failedSeen = f;
+      },
+    });
+    const orphanPath = `note/${year}/orphan-attachment-note-${id8(orphan.id)}.md`;
+    check("missing attachment does not error the item", runMiss.errors === 0, JSON.stringify(runMiss));
+    check("missing attachment counted as failed and surfaced",
+      runMiss.attachmentsFailed === 1 && failedSeen.length === 1);
+    check("item body still exported despite the missing attachment", onDisk(orphanPath));
+    const omd = await readFile(join(exportDir, ...orphanPath.split("/")), "utf8");
+    check("body present, no dangling attachment path in frontmatter",
+      omd.includes("body survives a missing image") && !omd.includes("missing.png"));
+    check("orphan item stamped exported; attachment stamp stays null",
+      (await db.select().from(items).where(eq(items.id, orphan.id)))[0].exportedAt !== null &&
+        (await db.select().from(attachments).where(eq(attachments.parentItemId, orphan.id)))[0].exportedAt === null);
+  } else {
+    check("R2 creds available to test 404-skip (no creds: section skipped)", true);
+  }
 
   // --- job state + /health source ----------------------------------------
   const state = await getExportState();
@@ -166,11 +222,19 @@ try {
   // --- owner scoping -------------------------------------------------------
   check("no other owner's items were stamped", (await stampedElsewhere()) === stampedBefore);
 } finally {
-  // Hard-delete fixtures (relations/attachments cascade), then the user and
-  // the polluted job-state row so /health's canary stays honest.
+  // Hard-delete fixtures (relations/attachments cascade), then the user.
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(users).where(eq(users.id, ownerId));
-  await db.delete(jobState).where(eq(jobState.key, EXPORT_JOB_KEY));
+  // Restore (not delete) the shared onedrive_export canary: this DB is also
+  // production's, so the verify run must leave /health's last-clean intact.
+  if (priorJobState !== null) {
+    await db
+      .insert(jobState)
+      .values({ key: EXPORT_JOB_KEY, value: priorJobState })
+      .onConflictDoUpdate({ target: jobState.key, set: { value: priorJobState } });
+  } else {
+    await db.delete(jobState).where(eq(jobState.key, EXPORT_JOB_KEY));
+  }
   rmSync(exportDir, { recursive: true, force: true });
 }
 
