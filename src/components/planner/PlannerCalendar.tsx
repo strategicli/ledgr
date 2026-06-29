@@ -6,7 +6,7 @@
 // only owns the mode segmented control.
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PlannerMonth from "@/components/planner/PlannerMonth";
 import PlannerTimeGrid from "@/components/planner/PlannerTimeGrid";
 import type { DateProperty, PlaceBy, ViewDisplay, CalendarMode } from "@/lib/views";
@@ -29,6 +29,25 @@ export default function PlannerCalendar({
   navHref?: string;
 }) {
   const [mode, setMode] = useState<CalendarMode>(display?.mode ?? DISPLAY_DEFAULTS.mode);
+  // Show/hide tasks with no due/scheduled date (the Unscheduled rail). Off by
+  // default — most days you want to see only what's already placed; persisted
+  // per browser so the choice sticks.
+  const [showUnscheduled, setShowUnscheduled] = useState(false);
+  useEffect(() => {
+    // Read after mount, not in a lazy initializer: localStorage isn't available
+    // during SSR, and reading it in the initializer would cause a hydration
+    // mismatch. This is the intended client-only-preference pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowUnscheduled(localStorage.getItem("planner:showUnscheduled") === "1");
+  }, []);
+  function toggleUnscheduled(v: boolean) {
+    setShowUnscheduled(v);
+    try {
+      localStorage.setItem("planner:showUnscheduled", v ? "1" : "0");
+    } catch {
+      /* ignore storage failures */
+    }
+  }
 
   const seg = (m: CalendarMode, label: string) => (
     <button
@@ -53,11 +72,19 @@ export default function PlannerCalendar({
         <span className="ml-2 text-[11px] text-neutral-600">
           Drag to plan · places by {placeBy === "due" ? "due date" : "scheduled date"}
         </span>
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-400">
+          <input
+            type="checkbox"
+            checked={showUnscheduled}
+            onChange={(e) => toggleUnscheduled(e.target.checked)}
+          />
+          Show unscheduled
+        </label>
       </div>
       {mode === "month" ? (
-        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} />
+        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} />
       ) : (
-        <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} />
+        <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} />
       )}
     </div>
   );

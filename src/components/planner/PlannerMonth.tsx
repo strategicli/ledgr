@@ -32,12 +32,14 @@ export default function PlannerMonth({
   placeBy,
   month,
   navHref,
+  showUnscheduled = true,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
   placeBy: PlaceBy;
   month?: string;
   navHref?: string;
+  showUnscheduled?: boolean;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -193,12 +195,14 @@ export default function PlannerMonth({
 
   return (
     <div ref={containerRef} className="mt-4 flex flex-col gap-3 sm:flex-row">
-      <UnscheduledRail
-        items={unscheduled}
-        dropProps={dropProps(RAIL)}
-        highlight={overDay === RAIL}
-        renderChip={(item) => chip(item)}
-      />
+      {showUnscheduled && (
+        <UnscheduledRail
+          items={unscheduled}
+          dropProps={dropProps(RAIL)}
+          highlight={overDay === RAIL}
+          renderChip={(item) => chip(item)}
+        />
+      )}
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">

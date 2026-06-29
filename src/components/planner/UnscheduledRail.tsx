@@ -80,7 +80,13 @@ export default function UnscheduledRail({
             {items.length === 0 ? "Nothing waiting." : "No matches."}
           </p>
         ) : (
-          shown.map((item) => renderChip(item))
+          // sm:shrink-0 keeps each chip its natural height in the column so the
+          // rail SCROLLS past 60vh instead of squishing rows infinitely thin.
+          shown.map((item) => (
+            <div key={item.id} className="sm:shrink-0">
+              {renderChip(item)}
+            </div>
+          ))
         )}
       </div>
       {filtered.length > limit && (

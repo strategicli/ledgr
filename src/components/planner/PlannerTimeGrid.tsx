@@ -43,11 +43,13 @@ export default function PlannerTimeGrid({
   prop,
   placeBy,
   display,
+  showUnscheduled = true,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
   placeBy: PlaceBy;
   display: ViewDisplay | null;
+  showUnscheduled?: boolean;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -281,6 +283,7 @@ export default function PlannerTimeGrid({
 
   return (
     <div ref={containerRef} className="mt-4 flex flex-col gap-3 sm:flex-row">
+      {showUnscheduled && (
       <UnscheduledRail
         items={unscheduled}
         dropProps={dropProps(RAIL)}
@@ -299,6 +302,7 @@ export default function PlannerTimeGrid({
           </div>
         )}
       />
+      )}
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
