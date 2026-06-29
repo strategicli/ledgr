@@ -30,6 +30,11 @@ import {
 } from "@/lib/recurrence-service";
 import { categoryOfStatus, defaultStatusKey, type StatusCategory } from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
+import {
+  emitActivity,
+  homeParentOf,
+  isTrackedSubjectType,
+} from "@/lib/activity";
 
 // A new revision is skipped when the latest one is younger than this; the
 // editor autosaves often (slice 5) and one snapshot per burst is enough
@@ -359,6 +364,18 @@ export async function createItem(ownerId: string, input: ItemInput) {
     await snapshotRevision(created.id, created.body);
     await syncMentionRelations(ownerId, created.id, created.body);
   }
+  // Activity log (ADR-111): a tracked record (a project) being born is the first
+  // line of its own timeline. Best-effort — a failed log line never breaks the
+  // create.
+  if (!isTemplate && isTrackedSubjectType(created.type)) {
+    await emitActivity({
+      ownerId,
+      subjectId: created.id,
+      kind: "record_created",
+      summary: `Created ${created.title || "untitled"}`,
+      payload: { type: created.type },
+    }).catch(() => {});
+  }
   return created;
 }
 
@@ -519,6 +536,35 @@ export async function updateItem(
     (patch.properties != null && "recurrence" in patch.properties);
   if (touchedRecurrence) {
     await ensureFirstOccurrence(ownerId, id).catch(() => {});
+  }
+  // Activity log (ADR-111). Two independent lines, both best-effort:
+  // (1) a tracked record's OWN status change narrates itself;
+  // (2) a contained item moving into the done category narrates its home parent
+  //     (a task finishing shows on its project's timeline). Inbox items with no
+  //     tracked home parent log nothing — keeps the log a project narrative.
+  const statusChanged =
+    set.status !== undefined && existing[0].status !== patch.status;
+  if (statusChanged && isTrackedSubjectType(updated.type)) {
+    await emitActivity({
+      ownerId,
+      subjectId: updated.id,
+      kind: "status_changed",
+      summary: `Status → ${updated.status}`,
+      payload: { from: existing[0].status, to: updated.status },
+    }).catch(() => {});
+  }
+  if (nextCategory === "done" && existing[0].statusCategory !== "done") {
+    const parent = await homeParentOf(ownerId, updated.id).catch(() => null);
+    if (parent && isTrackedSubjectType(parent.type)) {
+      await emitActivity({
+        ownerId,
+        subjectId: parent.id,
+        actorId: updated.id,
+        kind: "task_completed",
+        summary: `Completed “${updated.title || "untitled"}”`,
+        payload: { childType: updated.type },
+      }).catch(() => {});
+    }
   }
   return updated;
 }
