@@ -9,6 +9,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments, items, jobState } from "@/db/schema";
 import { bodyMarkdown } from "@/lib/body";
+import { normalizeListIndent } from "@/lib/markdown-render";
 import { getStorage } from "@/lib/storage";
 import { APP_TIMEZONE } from "@/lib/today";
 import type { ExportTarget } from "./target";
@@ -224,7 +225,12 @@ export async function runExport(
       ];
       result.attachmentsCopied += atts.copied;
 
-      const content = `${buildFrontmatter(item, people, atts.paths)}\n\n${bodyMarkdown(item.body)}\n`;
+      // normalizeListIndent: re-indent nested lists to CommonMark widths so the
+      // exported .md nests correctly in any reader (Obsidian, GitHub, pandoc),
+      // matching the in-app editor and print/share render. Legacy import content
+      // nested at 2 spaces would otherwise flatten. (Same pass markdown-render
+      // applies; see its rationale.)
+      const content = `${buildFrontmatter(item, people, atts.paths)}\n\n${normalizeListIndent(bodyMarkdown(item.body))}\n`;
       await target.putFile(desired, content);
       // A rename, retype, or live<->archive move leaves a stale file at the
       // old path; the put above already wrote the replacement.

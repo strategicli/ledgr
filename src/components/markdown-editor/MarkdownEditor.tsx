@@ -206,7 +206,15 @@ export default function MarkdownEditor({
     editable,
     extensions: [
       StarterKit,
-      Markdown,
+      // Serialize nested lists at a 4-space step. @tiptap/markdown defaults to
+      // 2 spaces, which the editor's own (lenient) parser nests fine but
+      // CommonMark renderers (markdown-it, on the print/share/export path, and
+      // any external tool reading the exported .md) read as too shallow under an
+      // ordered "1. " marker (needs >=3), flattening the list. 4 keeps the
+      // canonical markdown nestable everywhere. The render path also normalizes
+      // legacy 2-space content (markdown-render.ts), so this is the source-side
+      // half of keeping the editor and every render in agreement.
+      Markdown.configure({ indentation: { style: "space", size: 4 } }),
       // Empty-state hint: a quiet "Start writing…" while the body is empty, the
       // first impression of every new note. First-party (@tiptap/extensions),
       // styled via the is-editor-empty class in markdown-editor.css. No "/" hint
