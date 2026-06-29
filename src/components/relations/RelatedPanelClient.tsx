@@ -6,9 +6,17 @@
 // the toggle is instant with no refetch; the counts here track what's visible.
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { setShowCompleted, useShowCompleted } from "@/lib/related-prefs";
+import {
+  RELATED_LENS_MIN_ROWS,
+  filterByQuery,
+  setRelatedSort,
+  sortRows,
+  useRelatedSort,
+} from "@/lib/related-lens";
 import CanvasSection from "@/components/canvas/CanvasSection";
+import RelatedLensBar from "./RelatedLensBar";
 import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
 
 export type RelatedRowDescriptor = {
@@ -41,21 +49,42 @@ export default function RelatedPanelClient({
   // preference takes over after mount (the store's server snapshot is off, so
   // SSR and first paint agree — no hydration mismatch).
   const showCompleted = useShowCompleted(hostId);
+  // Lightweight lens: a title filter + a sort applied to the rows the panel
+  // would already show. Default matches the server query's order (most recently
+  // updated first). Grouping by type is preserved — the sort orders rows WITHIN
+  // each type group, never across, so the type sections stay intact.
+  const sort = useRelatedSort(hostId, { field: "updatedAt", dir: "desc" });
+  const [query, setQuery] = useState("");
 
   const doneCount = groups.reduce(
     (n, g) => n + g.rows.filter((r) => r.done).length,
     0
   );
 
-  // Groups with nothing left after the filter drop out entirely (no empty header).
-  const visibleGroups = groups
+  // Step 1: drop completed unless revealed (existing behavior). This is the set
+  // the lens (and its "of N" count) operates on.
+  const liveGroups = groups.map((g) => ({
+    ...g,
+    rows: showCompleted ? g.rows : g.rows.filter((r) => !r.done),
+  }));
+  const liveCount = liveGroups.reduce((n, g) => n + g.rows.length, 0);
+
+  // Step 2: apply the filter + sort per group; empty groups drop out (no header).
+  const visibleGroups = liveGroups
     .map((g) => ({
       ...g,
-      rows: showCompleted ? g.rows : g.rows.filter((r) => !r.done),
+      rows: sortRows(
+        filterByQuery(
+          g.rows.map((r) => ({ ...r, ...r.item })),
+          query
+        ),
+        sort
+      ),
     }))
     .filter((g) => g.rows.length > 0);
 
   const visibleCount = visibleGroups.reduce((n, g) => n + g.rows.length, 0);
+  const filtered = query.trim().length > 0;
 
   // Only worth a toggle when something is actually hidden/hideable.
   const toggleBtn =
@@ -85,9 +114,19 @@ export default function RelatedPanelClient({
       bare={bare}
       icon="affiliate"
       title="Linked here"
-      count={visibleCount}
+      count={liveCount}
       action={toggleBtn}
     >
+      {liveCount >= RELATED_LENS_MIN_ROWS && (
+        <RelatedLensBar
+          sort={sort}
+          onSortChange={(s) => setRelatedSort(hostId, s)}
+          query={query}
+          onQueryChange={setQuery}
+          visibleCount={visibleCount}
+          totalCount={liveCount}
+        />
+      )}
       {visibleGroups.map((g) => (
         <div key={g.key} className="mt-3 first:mt-0">
           <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -97,10 +136,13 @@ export default function RelatedPanelClient({
           <ul className="mt-1">{g.rows.map(renderRow)}</ul>
         </div>
       ))}
-      {/* Everything visible is completed-and-now-hidden: keep the panel present
-          so the toggle can bring them back. */}
+      {/* Nothing to show: either the filter matched nothing, or everything is
+          completed-and-now-hidden. Keep the panel present so the filter can be
+          cleared / the toggle can bring rows back. */}
       {visibleGroups.length === 0 && (
-        <p className="px-2 py-1 text-sm text-neutral-600">No open items linked here.</p>
+        <p className="px-2 py-1 text-sm text-neutral-600">
+          {filtered ? "No items match your filter." : "No open items linked here."}
+        </p>
       )}
       <div className="mt-4">{addBar}</div>
     </CanvasSection>

@@ -10,10 +10,10 @@ import Link from "next/link";
 import { getMeetingPrep } from "@/lib/meetings/prep";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import NavGlyph from "@/components/nav/NavGlyph";
-import RelatedRow from "@/components/relations/RelatedRow";
 import PinRuleButton from "./PinRuleButton";
 import SuggestedPeople from "./SuggestedPeople";
 import TaskPullControl from "@/components/events/TaskPullControl";
+import PrepTaskList from "./PrepTaskList";
 
 const tsFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
 
@@ -110,31 +110,18 @@ export default async function MeetingPrep({
           seeds={prep.taskPullSeeds}
           peopleCount={prep.people.length}
         />
-        {prep.openTasks.length === 0 ? (
-          <p className="px-1 pt-1 text-sm text-neutral-600">No open tasks match.</p>
-        ) : (
-          <ul className="canvas-rows mt-1">
-            {prep.openTasks.map((t) => (
-              <RelatedRow
-                key={t.id}
-                hostId={itemId}
-                manageable={false}
-                suggested={false}
-                mention={false}
-                mentionOnly={false}
-                item={{
-                  id: t.id,
-                  type: t.type,
-                  title: t.title ?? "",
-                  status: t.status,
-                  statusCategory: t.statusCategory,
-                  dueDate: t.dueDate ? t.dueDate.toISOString() : null,
-                  updatedAt: t.updatedAt.toISOString(),
-                }}
-              />
-            ))}
-          </ul>
-        )}
+        <PrepTaskList
+          hostId={itemId}
+          tasks={prep.openTasks.map((t) => ({
+            id: t.id,
+            type: t.type,
+            title: t.title ?? "",
+            status: t.status,
+            statusCategory: t.statusCategory,
+            dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+            updatedAt: t.updatedAt.toISOString(),
+          }))}
+        />
       </CanvasSection>
 
       {prep.people.length > 0 && (
