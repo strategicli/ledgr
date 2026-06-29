@@ -9,6 +9,12 @@ import { getDb } from "@/db";
 import { notifications } from "@/db/schema";
 import { getSettings, notificationEnabled, type NotificationKind } from "@/lib/settings";
 
+// Notification center paused (ADR-130). The flag lives in its own db-free leaf
+// module so client components can read it too; re-exported here for the server
+// callers that already import from this file. See notifications-enabled.ts for
+// the full rationale + how to re-enable.
+export { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
+
 // The lifecycle states (notifications.state). Linear: unread → read → archived,
 // with unread reachable again via "mark unread".
 export const NOTIFICATION_STATES = ["unread", "read", "archived"] as const;
