@@ -16,6 +16,8 @@ const { getDb } = await import("../src/db");
 const { items, views, users } = await import("../src/db/schema");
 const { parseDisplay, parseViewInput, createView, getView, DISPLAY_DEFAULTS } =
   await import("../src/lib/views");
+const { updateItem } = await import("../src/lib/items");
+const { cellAtPoint } = await import("../src/lib/board-touch-drag");
 const { eq } = await import("drizzle-orm");
 
 let failures = 0;
@@ -70,6 +72,18 @@ check(
   parseViewInput({ name: "Cal", layout: "calendar" }).display === null
 );
 
+// --- cellAtPoint: 2D hit-test for the month-grid touch drag ---
+const grid = [
+  { day: "2026-06-01", left: 0, right: 100, top: 0, bottom: 100 },
+  { day: "2026-06-02", left: 100, right: 200, top: 0, bottom: 100 },
+  { day: "__none__", left: 0, right: 200, top: 100, bottom: 160 }, // rail row
+];
+check("cellAtPoint direct hit", cellAtPoint(grid, 150, 50) === "2026-06-02");
+check("cellAtPoint hits the rail sentinel", cellAtPoint(grid, 50, 130) === "__none__");
+check("cellAtPoint nearest when in a gutter", cellAtPoint(grid, 250, 50) === "2026-06-02");
+check("cellAtPoint nearest below the grid", cellAtPoint(grid, 10, 50) === "2026-06-01");
+check("cellAtPoint empty → null", cellAtPoint([], 5, 5) === null);
+
 // --- round-trip through the owner-scoped store (the new column) ---
 const db = getDb();
 const [tempUser] = await db
@@ -93,6 +107,26 @@ try {
 
   const plain = await createView(ownerId, parseViewInput({ name: "Plain list", layout: "list" }));
   check("non-calendar view leaves display null", plain.display === null);
+
+  // --- a drag DROP writes the placement date (the storage the PATCH performs) ---
+  const [task] = await db
+    .insert(items)
+    .values({ ownerId, type: "task", title: "Drop me" })
+    .returning({ id: items.id });
+  const onJul2 = new Date(Date.UTC(2026, 6, 2)); // a dropped day cell
+  const movedToDay = await updateItem(ownerId, task.id, { scheduledDate: onJul2 });
+  check(
+    "drop on a day writes scheduled_date",
+    movedToDay.scheduledDate?.toISOString().startsWith("2026-07-02") === true
+  );
+  const movedToRail = await updateItem(ownerId, task.id, { scheduledDate: null });
+  check("drop on the Unscheduled rail clears scheduled_date", movedToRail.scheduledDate === null);
+  // The "Place by Due" path writes the deadline instead, leaving scheduled untouched.
+  const dueDrop = await updateItem(ownerId, task.id, { dueDate: onJul2 });
+  check(
+    "place-by-due drop writes due_date, not scheduled",
+    dueDrop.dueDate?.toISOString().startsWith("2026-07-02") === true && dueDrop.scheduledDate === null
+  );
 } finally {
   await db.delete(views).where(eq(views.ownerId, ownerId));
   await db.delete(items).where(eq(items.ownerId, ownerId));

@@ -50,6 +50,35 @@ export function columnAtPoint(rects: ColumnRect[], x: number): string | null {
   return best;
 }
 
+// A planner day-cell's full rectangle in viewport coordinates. Unlike a board
+// column (full-height, an x-only question), a month grid is 2D, so the planner's
+// touch hit-test needs both axes. A sentinel `day` (e.g. "__none__" for the
+// Unscheduled rail) rides through unchanged.
+export type CellRect = { day: string; left: number; right: number; top: number; bottom: number };
+
+// Which day cell is under the pointer? Prefer a direct hit; otherwise the
+// nearest cell by squared edge-distance, so a drop that lands in a gutter or
+// just past the grid still targets the closest day rather than dropping the
+// move. Returns null only when there are no cells. (The 2D sibling of
+// columnAtPoint — the board path is unchanged.)
+export function cellAtPoint(rects: CellRect[], x: number, y: number): string | null {
+  for (const r of rects) {
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return r.day;
+  }
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (const r of rects) {
+    const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+    const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = r.day;
+    }
+  }
+  return best;
+}
+
 // How close (px) to a scroll edge the finger must be while dragging before the
 // board (horizontal) / page (vertical) starts auto-scrolling, and the fastest
 // it scrolls.

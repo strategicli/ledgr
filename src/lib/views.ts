@@ -407,7 +407,10 @@ export type ViewInput = {
   columns: ViewColumn[] | null;
   layout: ViewLayout;
   dateProperty: DateProperty | null;
-  display: ViewDisplay | null;
+  // Optional in the input contract (additive, nullable): hand-built callers and
+  // non-calendar views can omit it; parseViewInput always sets it (null when
+  // absent), and the store coalesces undefined → null.
+  display?: ViewDisplay | null;
 };
 
 export const UUID_RE =
@@ -707,7 +710,7 @@ export async function createView(
       columns: input.columns,
       layout: input.layout,
       dateProperty: input.dateProperty,
-      display: input.display,
+      display: input.display ?? null,
     })
     .returning();
   return rowToDefinition(rows[0]);
@@ -730,7 +733,7 @@ export async function updateView(
       columns: input.columns,
       layout: input.layout,
       dateProperty: input.dateProperty,
-      display: input.display,
+      display: input.display ?? null,
     })
     .where(and(eq(views.id, id), eq(views.ownerId, ownerId)))
     .returning();
