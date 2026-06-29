@@ -19,6 +19,8 @@ import MarkdownIt from "markdown-it";
 import { stripBlockAnchors } from "@/lib/editor/block-anchor";
 import { flattenTabs } from "@/lib/editor/canvas-tabs";
 import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
+import { mentionGlyphSvg } from "@/lib/mention-glyph";
+import type { ResolvedMention } from "@/lib/mentions";
 
 // html:true passes raw inline HTML through, which is required: the editor
 // encodes sermon colors/highlights as <span style>/<mark class> (colors.ts).
@@ -49,6 +51,16 @@ md.core.ruler.push("ledgr_transforms", (state) => {
     // the in-app item route: a tappable link on the print/share view (the
     // hover-target span was dead on touch). Links never nest in markdown, so the
     // first link_close after a mention link_open is its match.
+    //
+    // Type-aware mentions: when the caller passes a resolved-mentions map via the
+    // render env (markdownToHtml's second arg), each mention also gets its target
+    // type's glyph prepended and a `mention--<type>` class. With NO map (the FTS
+    // path, or a share with icons turned off) the behavior is exactly as before:
+    // a plain styled link. With a map present but the id unresolved (trashed,
+    // not the owner's, or template), the mention flattens to a muted,
+    // non-navigating span instead of a dead link.
+    const mentions = (state.env as { mentions?: Map<string, ResolvedMention> })
+      ?.mentions;
     if (token.type === "inline" && token.children) {
       const kids = token.children;
       for (let j = 0; j < kids.length; j++) {
@@ -56,18 +68,32 @@ md.core.ruler.push("ledgr_transforms", (state) => {
         const href = kids[j].attrGet("href") ?? "";
         if (!href.startsWith(MENTION_URI_PREFIX)) continue;
         const id = mentionItemId(href);
-        if (id) {
-          // Tappable in-app link, with the mention styling preserved.
+        const resolved = id && mentions ? mentions.get(id) : undefined;
+        if (id && (!mentions || resolved)) {
+          // Tappable in-app link. With a resolved map, add the type class and
+          // prepend the type glyph (an html_inline token) inside the anchor.
           kids[j].attrs = [
             ["href", `/items/${id}`],
-            ["class", "mention"],
+            ["class", resolved ? `mention mention--${resolved.type}` : "mention"],
+            ...(resolved ? [["data-type", resolved.type] as [string, string]] : []),
           ];
+          if (resolved) {
+            const iconTok = new state.Token("html_inline", "", 0);
+            iconTok.content = mentionGlyphSvg({
+              type: resolved.type,
+              icon: resolved.icon,
+              statusCategory: resolved.statusCategory,
+            });
+            kids.splice(j + 1, 0, iconTok); // before the label text
+            j++; // skip the token we just inserted
+          }
           continue;
         }
-        // Malformed mention (empty id): flatten to a plain span so no broken
-        // anchor or ledgr:// URI ever reaches the page.
+        // Malformed mention (empty id) OR a present-but-unresolved target:
+        // flatten to a muted span so no broken anchor or ledgr:// URI reaches
+        // the page.
         kids[j].tag = "span";
-        kids[j].attrs = [["class", "mention"]];
+        kids[j].attrs = [["class", id ? "mention mention--missing" : "mention"]];
         for (let k = j + 1; k < kids.length; k++) {
           if (kids[k].type === "link_close") {
             kids[k].tag = "span";
@@ -116,13 +142,21 @@ md.core.ruler.after("inline", "task_lists", (state) => {
 
 // Markdown → HTML for the print/share document body and export. Empty in,
 // empty out (the document shell renders the title and an empty body).
-export function markdownToHtml(markdown: string): string {
+//
+// Pass `mentions` (a resolved-mentions map, owner-scoped) to render @-mentions
+// type-aware: each gets its target type's glyph and a `mention--<type>` class,
+// and an unresolved target renders muted instead of as a dead link. Omit it for
+// the plain-link behavior (the FTS path, or a share with icons turned off).
+export function markdownToHtml(
+  markdown: string,
+  mentions?: Map<string, ResolvedMention>
+): string {
   if (!markdown) return "";
   // Block anchors (^id, ADR-090) are an editor-only back-reference mechanism;
   // strip them so shared/printed/exported notes read as clean prose. Canvas tab
   // markers (ADR-095) flatten to `## Title` sections so a multi-tab note reads
   // as titled sections when shared/printed/exported.
-  return md.render(stripBlockAnchors(flattenTabs(markdown)));
+  return md.render(stripBlockAnchors(flattenTabs(markdown)), { mentions });
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode

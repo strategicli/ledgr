@@ -17,6 +17,9 @@ export default function ShareLink({ itemId }: { itemId: string }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+  // Bakes into the next link: off → the shared/PDF render drops @-mention icons
+  // for a cleaner document. The choice rides the token, so the recipient sees it.
+  const [showIcons, setShowIcons] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +39,11 @@ export default function ShareLink({ itemId }: { itemId: string }) {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/items/${itemId}/share`, { method: "POST" });
+      const res = await fetch(`/api/items/${itemId}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showIcons }),
+      });
       if (!res.ok) throw new Error(`failed (${res.status})`);
       const { token } = (await res.json()) as { token: string };
       setActive((prev) => [{ token, revokedAt: null, createdAt: new Date().toISOString() }, ...prev]);
@@ -80,6 +87,15 @@ export default function ShareLink({ itemId }: { itemId: string }) {
         >
           {busy ? "Creating…" : active.length > 0 ? "New share link" : "Share link"}
         </button>
+        <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+          <input
+            type="checkbox"
+            checked={showIcons}
+            onChange={(e) => setShowIcons(e.target.checked)}
+            className="ledgr-check"
+          />
+          Show item icons
+        </label>
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
       {active.length > 0 && (

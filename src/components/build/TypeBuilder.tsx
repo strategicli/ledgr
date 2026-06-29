@@ -8,6 +8,8 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import NavIconPicker from "@/components/build/NavIconPicker";
+import NavGlyph from "@/components/nav/NavGlyph";
 import type {
   PropertyDef,
   PropertyKind,
@@ -71,6 +73,47 @@ function Field({
       {children}
       {hint && <span className="text-xs text-neutral-600">{hint}</span>}
     </label>
+  );
+}
+
+// Compact icon chooser: a trigger showing the current glyph + key that opens the
+// searchable NavIconPicker grid (the same picker the nav slot editor uses), so
+// the type icon is picked visually instead of typed. Keeps the form tight — the
+// grid only appears while open.
+function IconField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`${selectClass} flex w-44 items-center gap-2`}
+      >
+        <span className="text-neutral-300">
+          <NavGlyph icon={value || "items"} size={18} />
+        </span>
+        <span className="flex-1 truncate text-left">{value || "Choose icon…"}</span>
+        <span className="text-neutral-500">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="w-72">
+          <NavIconPicker
+            value={value}
+            onChange={(key) => {
+              onChange(key);
+              setOpen(false);
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -323,17 +366,15 @@ export default function TypeBuilder({
       </Field>
 
       <div className="flex flex-wrap items-end gap-4">
-        <Field
-          label="Icon"
-          hint="Optional. The name of an icon shown next to this type, e.g. music, file-text, user-plus."
-        >
-          <input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value)}
-            placeholder="e.g. file-text"
-            className={`${selectClass} w-40`}
-          />
-        </Field>
+        {/* A div, not a Field: Field wraps a <label>, which would hijack clicks
+            on the picker's buttons/search input. Same label styling, manual. */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-neutral-400">Icon</span>
+          <IconField value={icon} onChange={setIcon} />
+          <span className="text-xs text-neutral-600">
+            The glyph shown next to this type in the nav and on its @-mentions.
+          </span>
+        </div>
         <label className="flex items-center gap-2 pb-2 text-sm text-neutral-300">
           <input
             type="checkbox"

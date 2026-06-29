@@ -14,8 +14,35 @@
 
 import type { MentionOptions } from "@tiptap/extension-mention";
 import type { SuggestionProps } from "@tiptap/suggestion";
+import { mentionGlyphSvg } from "@/lib/mention-glyph";
 
-type Item = { id: string; label: string };
+// `type` is the target's type key; it rides onto the inserted mention node's
+// attrs so the chip is glyphed instantly (the default Mention command copies the
+// item's fields onto the node). label/id are the existing contract.
+type Item = { id: string; label: string; type: string | null };
+
+// The type registry (key → icon + label), fetched once and shared across every
+// editor on the page, so each suggestion row can show the right type glyph and a
+// readable type name without a per-keystroke lookup.
+type TypeMeta = { icon: string | null; label: string };
+let typeMetaPromise: Promise<Map<string, TypeMeta>> | null = null;
+function loadTypeMeta(): Promise<Map<string, TypeMeta>> {
+  typeMetaPromise ??= fetch("/api/types")
+    .then((r) => (r.ok ? r.json() : { types: [] }))
+    .then(
+      (d: { types?: { key: string; icon: string | null; label: string }[] }) =>
+        new Map((d.types ?? []).map((t) => [t.key, { icon: t.icon, label: t.label }]))
+    )
+    .catch(() => new Map<string, TypeMeta>());
+  return typeMetaPromise;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
   const params = new URLSearchParams({ limit: "10" });
@@ -23,11 +50,11 @@ async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
   const res = await fetch(`/api/items?${params}`);
   if (!res.ok) return [];
   const data = (await res.json()) as {
-    items: { id: string; title: string }[];
+    items: { id: string; title: string; type?: string | null }[];
   };
   return data.items
     .filter((it) => it.id !== selfId)
-    .map((it) => ({ id: it.id, label: it.title || "Untitled" }));
+    .map((it) => ({ id: it.id, label: it.title || "Untitled", type: it.type ?? null }));
 }
 
 // Create an `unmarked` item (the type is unknown from a free-text @) flagged
@@ -41,9 +68,9 @@ async function createUnmarked(title: string): Promise<Item | null> {
     });
     if (!res.ok) return null;
     const { item } = (await res.json()) as {
-      item: { id: string; title: string };
+      item: { id: string; title: string; type?: string | null };
     };
-    return { id: item.id, label: item.title || title };
+    return { id: item.id, label: item.title || title, type: item.type ?? "unmarked" };
   } catch {
     return null;
   }
@@ -70,6 +97,23 @@ export function createMentionSuggestion(
       let creating = false;
       let cmd: SuggestionProps<Item>["command"] | null = null;
       let onDocPointer: ((e: MouseEvent) => void) | null = null;
+      // Type registry for the row icons/labels; loaded once, repaints when ready.
+      let typeMeta = new Map<string, TypeMeta>();
+
+      // The leading type glyph + trailing type label for one result row.
+      const rowInner = (it: Item) => {
+        const meta = it.type ? typeMeta.get(it.type) : undefined;
+        const glyph = mentionGlyphSvg(
+          { type: it.type, icon: meta?.icon ?? null, statusCategory: null },
+          16
+        );
+        const typeLabel = meta?.label
+          ? `<span class="ledgr-mention-item-type">${escapeHtml(meta.label)}</span>`
+          : "";
+        return `<span class="ledgr-mention-item-icon">${glyph}</span><span class="ledgr-mention-item-label">${escapeHtml(
+          it.label
+        )}</span>${typeLabel}`;
+      };
 
       // Whether to show the create-on-miss row: a non-empty query with no
       // exact (case-insensitive) title match among the hits.
@@ -122,7 +166,7 @@ export function createMentionSuggestion(
           row.type = "button";
           row.className =
             "ledgr-mention-item" + (i === selected ? " is-selected" : "");
-          row.textContent = it.label;
+          row.innerHTML = rowInner(it);
           row.addEventListener("mousedown", (e) => {
             e.preventDefault();
             cmd?.(it);
@@ -191,6 +235,13 @@ export function createMentionSuggestion(
           mount();
           paint();
           place(props.clientRect?.() ?? null);
+          // Fill the type glyphs/labels once the registry arrives, then repaint.
+          if (typeMeta.size === 0) {
+            void loadTypeMeta().then((m) => {
+              typeMeta = m;
+              paint();
+            });
+          }
         },
         onUpdate: (props: SuggestionProps<Item>) => {
           items = props.items;

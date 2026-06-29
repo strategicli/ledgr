@@ -8,6 +8,9 @@
 import { NextResponse } from "next/server";
 import { renderPrintDocument } from "@/lib/print-html";
 import { resolveShareToken } from "@/lib/share";
+import { resolveMentions } from "@/lib/mentions";
+import { bodyMarkdown } from "@/lib/body";
+import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import { captureError, createLogger } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
@@ -29,8 +32,20 @@ export async function GET(
   }
   if (!shared) return new NextResponse(NOT_FOUND, { status: 404 });
 
+  // Type-aware @-mention icons unless this link was created with them off
+  // (showIcons defaults on). The flag rides the token, so the recipient renders
+  // exactly what the owner chose. Resolved owner-scoped against the link's owner.
+  const showIcons = shared.options.showIcons ?? true;
+  const mentions = showIcons
+    ? await resolveMentions(
+        shared.ownerId,
+        collectMentionIdsFromMarkdown(bodyMarkdown(shared.body))
+      )
+    : undefined;
+
   const html = renderPrintDocument(shared.title, shared.body, {
     footerHtml: "Shared from Ledgr · read-only",
+    mentions,
   });
 
   return new NextResponse(html, {
