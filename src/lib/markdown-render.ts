@@ -140,6 +140,67 @@ md.core.ruler.after("inline", "task_lists", (state) => {
   }
 });
 
+// Re-indent indentation-nested lists to CommonMark-correct widths so this
+// renderer nests them the same way the editor shows them. (Don't undo this
+// without re-checking the editor's serializer.)
+//
+// WHY: the editor (Tiptap @tiptap/markdown, on the lenient `marked` parser)
+// treats a sub-list item indented by as little as 2 spaces as a child, and that
+// is exactly what it serializes — its default indent step is 2 spaces. But
+// markdown-it follows CommonMark, where a sub-list must be indented to its
+// parent item's content column: for an ordered marker "1. " that column is 3,
+// so a 2-space indent is too shallow and the whole list collapses into one
+// renumbered top-level sequence. That is the "the editor shows nested numbered
+// lists but the print/PDF/share view renders one flat 1..N list" bug, and the
+// Notion import wrote its nesting at 2 spaces, so most imported notes hit it.
+//
+// This pass reads the document's own indentation as relative nesting (the way
+// the editor interprets it) and re-emits each list line indented to its
+// parent's content column, which is also marker-width-aware (a "10." parent
+// needs 4), so markdown-it nests it identically. Already-correct documents are
+// effectively unchanged. Fenced code is passed through untouched; a flush-left
+// non-list line ends the current list (clears the nesting stack).
+const LIST_ITEM_RE = /^( *)([-+*]|\d{1,9}[.)])( +)(.*)$/;
+const CODE_FENCE_RE = /^ *(`{3,}|~{3,})/;
+
+export function normalizeListIndent(markdown: string): string {
+  if (!markdown.includes("\n") && !LIST_ITEM_RE.test(markdown)) return markdown;
+  // Each open list level: how deep it was indented in the source, what we
+  // re-indent it to, and the column its own children must reach.
+  const stack: { srcIndent: number; outIndent: number; contentCol: number }[] = [];
+  let inCode = false;
+  const out = markdown.split("\n").map((line) => {
+    if (CODE_FENCE_RE.test(line)) {
+      inCode = !inCode;
+      return line;
+    }
+    if (inCode) return line;
+    if (/^\s*$/.test(line)) return line; // blank lines keep a (loose) list open
+
+    const m = LIST_ITEM_RE.exec(line);
+    if (!m) {
+      // A flush-left paragraph/heading/HR ends any open list; an indented
+      // continuation line is left as-is (rare in practice).
+      if ((line.match(/^ */)?.[0].length ?? 0) === 0) stack.length = 0;
+      return line;
+    }
+
+    const srcIndent = m[1].length;
+    const marker = m[2];
+    const content = m[4];
+    while (stack.length && stack[stack.length - 1].srcIndent >= srcIndent) {
+      stack.pop();
+    }
+    const parent = stack[stack.length - 1];
+    const outIndent = parent ? parent.contentCol : 0;
+    // We always emit a single space after the marker, so the child column is
+    // outIndent + marker length + 1.
+    stack.push({ srcIndent, outIndent, contentCol: outIndent + marker.length + 1 });
+    return " ".repeat(outIndent) + marker + " " + content;
+  });
+  return out.join("\n");
+}
+
 // Markdown → HTML for the print/share document body and export. Empty in,
 // empty out (the document shell renders the title and an empty body).
 //
@@ -156,7 +217,10 @@ export function markdownToHtml(
   // strip them so shared/printed/exported notes read as clean prose. Canvas tab
   // markers (ADR-095) flatten to `## Title` sections so a multi-tab note reads
   // as titled sections when shared/printed/exported.
-  return md.render(stripBlockAnchors(flattenTabs(markdown)), { mentions });
+  return md.render(
+    normalizeListIndent(stripBlockAnchors(flattenTabs(markdown))),
+    { mentions }
+  );
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode
@@ -166,7 +230,7 @@ export function markdownToHtml(
 export function markdownToText(markdown: string): string {
   if (!markdown) return "";
   const text = md
-    .render(stripBlockAnchors(flattenTabs(markdown)))
+    .render(normalizeListIndent(stripBlockAnchors(flattenTabs(markdown))))
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
