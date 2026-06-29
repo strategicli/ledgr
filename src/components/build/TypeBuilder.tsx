@@ -97,6 +97,16 @@ export default function TypeBuilder({
   const editing = !!initial;
   const isSystem = initial?.isSystem ?? false;
   const capability = attached?.id ?? null;
+  // Tabs (ADR-095) are surfaced here as a plain per-type toggle rather than only
+  // via the bespoke-tool catalog, so ANY type — new or existing — can turn the
+  // canvas tabs strip on/off without the "create a bespoke type" detour. Under
+  // the hood it's still the "tabs" capability; we keep any OTHER attached
+  // capability (a real bespoke canvas like the chord grid) untouched, since
+  // `capability` is single-valued.
+  const otherCapability = capability && capability !== "tabs" ? capability : null;
+  // The built-in Note type always has tabs (MarkdownCanvas hardcodes it), so the
+  // toggle is shown checked + locked there for honesty rather than hidden.
+  const isNote = initial?.key === "note";
   const hasItems = itemCount > 0;
   const [deleteItems, setDeleteItems] = useState(false);
 
@@ -121,6 +131,7 @@ export default function TypeBuilder({
   const [showInQuickCapture, setShowInQuickCapture] = useState(
     initial?.showInQuickCapture ?? true
   );
+  const [tabsEnabled, setTabsEnabled] = useState(capability === "tabs");
   // Seed rows from the existing schema with index ids (no ref read in render).
   const [rows, setRows] = useState<Row[]>(() =>
     (initial?.propertySchema ?? []).map((p, i) => ({
@@ -216,7 +227,9 @@ export default function TypeBuilder({
       icon: icon.trim() || null,
       showInQuickCapture,
       propertySchema: schema,
-      capability, // SPIKE: the borrowed bespoke tool (null for a plain type)
+      // The "tabs" toggle wins for the capability slot; otherwise preserve any
+      // real bespoke canvas the type already borrowed (null for a plain type).
+      capability: tabsEnabled ? "tabs" : otherCapability,
       ...(editing ? {} : { key: finalKey }),
     };
     try {
@@ -270,7 +283,7 @@ export default function TypeBuilder({
 
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
-      {attached && (
+      {attached && attached.id !== "tabs" && (
         <div className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-sm">
           <span className="text-neutral-500">Bespoke tool: </span>
           <span className="font-medium text-neutral-200">{attached.label}</span>
@@ -329,6 +342,26 @@ export default function TypeBuilder({
             className="ledgr-check"
           />
           Show in quick capture
+        </label>
+        <label className="group relative flex items-center gap-2 pb-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={isNote || tabsEnabled}
+            disabled={isNote}
+            onChange={(e) => setTabsEnabled(e.target.checked)}
+            className="ledgr-check"
+          />
+          <span className="cursor-help underline decoration-dotted decoration-neutral-600 underline-offset-2">
+            Enable tabs
+          </span>
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs normal-case text-neutral-300 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+          >
+            {isNote
+              ? "Notes always have canvas tabs."
+              : "Split this type's canvas into named tabs, each a section of the same body — e.g. research vs. draft on one item."}
+          </span>
         </label>
       </div>
 

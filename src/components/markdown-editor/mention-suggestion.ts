@@ -55,6 +55,13 @@ export function createMentionSuggestion(
   return {
     items: ({ query }) => fetchItems(query, selfId),
 
+    // Titles routinely contain spaces ("Roger Smith", "Elder Board Meeting"),
+    // so the suggestion must NOT terminate at the first space — otherwise most
+    // items are untypeable. Tiptap defaults allowSpaces to false; turn it on so
+    // the query keeps growing across spaces until a row is picked or the match
+    // breaks.
+    allowSpaces: true,
+
     render: () => {
       let popup: HTMLDivElement | null = null;
       let items: Item[] = [];
@@ -146,31 +153,42 @@ export function createMentionSuggestion(
         popup.style.top = `${rect.bottom + 4}px`;
       };
 
+      // Build the popup + wire its click-away dismiss. Extracted so onUpdate can
+      // re-open it after a space-led query closed it (e.g. "@ " then backspace),
+      // not just onStart.
+      const mount = () => {
+        // Clear any orphan popup left by a previous session that didn't tear
+        // down cleanly (belt-and-suspenders with close()).
+        document
+          .querySelectorAll(".ledgr-mention-popup")
+          .forEach((n) => n.remove());
+        popup = document.createElement("div");
+        popup.className = "ledgr-mention-popup";
+        document.body.appendChild(popup);
+        // Clicking anywhere outside the popup dismisses it (capture phase so we
+        // see the click before it's swallowed; row mousedowns live inside).
+        onDocPointer = (e: MouseEvent) => {
+          if (popup && !popup.contains(e.target as Node)) close();
+        };
+        document.addEventListener("mousedown", onDocPointer, true);
+      };
+
+      // "@" immediately followed by a space is plain text, not a mention ("email
+      // me @ 3pm"), so the popup should stay shut. allowSpaces lets a space
+      // *inside* a query through ("@Elder Board"); those queries never BEGIN
+      // with a space, so a leading space is the unambiguous "this isn't a
+      // mention" signal.
+      const isLiteralAt = (query: string) => query.startsWith(" ");
+
       return {
         onStart: (props: SuggestionProps<Item>) => {
-          // Defensive: clear any orphan popup left by a previous session that
-          // didn't tear down cleanly (belt-and-suspenders with close()).
-          document
-            .querySelectorAll(".ledgr-mention-popup")
-            .forEach((n) => n.remove());
           items = props.items;
           query = props.query;
           selected = 0;
           creating = false;
           cmd = props.command;
-          popup = document.createElement("div");
-          popup.className = "ledgr-mention-popup";
-          document.body.appendChild(popup);
-          // Clicking anywhere outside the popup dismisses it. Tiptap's
-          // suggestion only fires onExit when the matched range changes in the
-          // doc, so a plain blur (click away, never finishing the @) never
-          // closed it on its own. Capture phase so we see the click before it
-          // is swallowed elsewhere; row clicks use mousedown and live inside
-          // the popup, so they're excluded by the contains() check.
-          onDocPointer = (e: MouseEvent) => {
-            if (popup && !popup.contains(e.target as Node)) close();
-          };
-          document.addEventListener("mousedown", onDocPointer, true);
+          if (isLiteralAt(query)) return; // "@ …" — leave the @ as plain text
+          mount();
           paint();
           place(props.clientRect?.() ?? null);
         },
@@ -179,6 +197,16 @@ export function createMentionSuggestion(
           query = props.query;
           selected = 0;
           cmd = props.command;
+          // A space right after "@" means it isn't a mention — dismiss. (A space
+          // later in the query doesn't begin with one, so multi-word titles are
+          // unaffected.)
+          if (isLiteralAt(query)) {
+            close();
+            return;
+          }
+          // Re-open if a previous space-led query had closed us but the user
+          // backspaced into a real query again.
+          if (!popup) mount();
           paint();
           place(props.clientRect?.() ?? null);
         },
