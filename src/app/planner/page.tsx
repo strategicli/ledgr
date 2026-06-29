@@ -44,7 +44,7 @@ export default async function PlannerPage({
   const statuses = resolveStatusSchema((await getType("task")).statusSchema);
 
   return (
-    <ListPage tab="planner" title="Planner" actions={<NewItemButton type="task" />}>
+    <ListPage tab="planner" title="Planner" actions={<NewItemButton type="task" />} wide>
       <p className="mt-1 text-sm text-neutral-500">
         {items.length} active task{items.length === 1 ? "" : "s"} · drag to schedule
       </p>

@@ -20,6 +20,7 @@ const { updateItem } = await import("../src/lib/items");
 const { cellAtPoint } = await import("../src/lib/board-touch-drag");
 const { slotCount, slotStartHhmm, blockTopPx, blockHeightPx, durationFromResizePx } =
   await import("../src/lib/planner-grid");
+const { compareRail, urgencyRank } = await import("../src/lib/planner-rail");
 const { eq } = await import("drizzle-orm");
 
 let failures = 0;
@@ -96,6 +97,22 @@ check("blockHeightPx 90min @30/22px = 66", blockHeightPx(90, 30, 22) === 66);
 check("blockHeightPx floors at one slot", blockHeightPx(10, 30, 22) === 22);
 check("durationFromResizePx 66px → 90min", durationFromResizePx(66, 30, 22) === 90);
 check("durationFromResizePx tiny → one slot (30)", durationFromResizePx(5, 30, 22) === 30);
+
+// --- planner-rail: Unscheduled sort/compare ---
+check("urgencyRank P1=1, P6=6", urgencyRank(1) === 1 && urgencyRank(6) === 6);
+check("urgencyRank none → 7 (last)", urgencyRank(null) === 7 && urgencyRank(0) === 7 && urgencyRank(9) === 7);
+const old = new Date("2026-06-01T00:00:00Z");
+const recent = new Date("2026-06-28T00:00:00Z");
+const p1 = { urgency: 1, updatedAt: old, createdAt: old, title: "b" };
+const p3 = { urgency: 3, updatedAt: recent, createdAt: recent, title: "a" };
+check("smart: priority wins over recency", compareRail(p1, p3, "smart") < 0);
+const aRecent = { urgency: 3, updatedAt: recent, createdAt: old, title: "z" };
+const aOld = { urgency: 3, updatedAt: old, createdAt: old, title: "a" };
+check("smart: same priority → newer edited first", compareRail(aRecent, aOld, "smart") < 0);
+check("edited: newer first regardless of priority", compareRail(p3, p1, "edited") < 0);
+check("title: A–Z", compareRail(aOld, aRecent, "title") < 0);
+const sorted = [p3, p1].sort((a, b) => compareRail(a, b, "smart"));
+check("smart sort puts P1 first", sorted[0] === p1);
 
 // --- round-trip through the owner-scoped store (the new column) ---
 const db = getDb();
