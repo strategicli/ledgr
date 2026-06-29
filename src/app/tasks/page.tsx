@@ -295,7 +295,7 @@ export default async function Tasks({
   }
 
   return (
-    <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />}>
+    <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />} wide={tab === "planner"}>
       {tabStrip}
       <SelectionProvider ids={selectableIds}>
         {/* Calendar layout renders no row checkboxes (ADR-118), so the planner
