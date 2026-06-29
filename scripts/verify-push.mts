@@ -24,7 +24,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, relations, users, pushSubscriptions, jobState } = await import("../src/db/schema");
+const { items, relations, users, pushSubscriptions, jobState, notifications } = await import("../src/db/schema");
 const { generateVapidKeys, signVapidJwt, audienceFor, b64urlEncode, b64urlDecode } = await import("../src/lib/push/vapid");
 const { encryptPush } = await import("../src/lib/push/encrypt");
 const store = await import("../src/lib/push/store");
@@ -207,6 +207,9 @@ try {
   check("sends are owner-scoped (other owner has no subscriptions)", crossClean);
 } finally {
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, ownerId));
+  // The agenda/prep senders now also persist a notification row (ADR-129);
+  // clear them before the user FK delete.
+  await db.delete(notifications).where(eq(notifications.ownerId, ownerId));
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(users).where(eq(users.id, ownerId));
   // The notify job_state keys are global (single-user); clear what this run

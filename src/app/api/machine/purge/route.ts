@@ -3,6 +3,7 @@ import { verifyMachineToken } from "@/lib/auth/machine";
 import { captureError, createLogger } from "@/lib/log";
 import { purgeExpiredTrash } from "@/lib/items";
 import { purgeExpiredAudio } from "@/lib/attachments";
+import { purgeArchivedNotifications } from "@/lib/notifications";
 
 // Daily Trash purge (vercel.json cron). Vercel sends GET with
 // `Authorization: Bearer $CRON_SECRET`; CRON_SECRET holds a raw machine
@@ -25,12 +26,15 @@ export async function GET(request: Request) {
   try {
     const result = await purgeExpiredTrash();
     const audio = await purgeExpiredAudio();
-    log.info("purge run finished", { ...result, ...audio });
+    // 30-day purge of archived notifications (ADR-129), matching Trash's window.
+    const notifications = await purgeArchivedNotifications();
+    log.info("purge run finished", { ...result, ...audio, ...notifications });
     return NextResponse.json({
       ok: true,
       correlationId: log.correlationId,
       ...result,
       ...audio,
+      ...notifications,
     });
   } catch (err) {
     // No silent failures: cron errors land in error_log and surface

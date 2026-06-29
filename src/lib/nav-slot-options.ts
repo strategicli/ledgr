@@ -9,7 +9,7 @@
 // count badge for now.
 import { BUILD_ENTRIES } from "@/lib/build-nav";
 import { isNavIcon } from "@/lib/nav-icons";
-import type { NavDestKind } from "@/lib/settings";
+import type { NavBadge, NavDestKind } from "@/lib/settings";
 
 export type DestGroup = "Built-in" | "Dashboards" | "Views" | "Types" | "Build tools";
 
@@ -20,6 +20,10 @@ export type DestOption = {
   label: string;
   icon: string;
   badgeEligible: boolean;
+  // Which count this destination shows when its badge is on. Set only on
+  // badge-eligible built-ins (inbox / notifications); the editor stamps it onto
+  // the stored slot so Nav.tsx reads the right counter.
+  badge?: NavBadge;
 };
 
 // The built-in pages that make sense as daily-nav destinations. Views/Items/Types
@@ -27,7 +31,8 @@ export type DestOption = {
 // no /archive route yet, so offering it would dead-link. "Types" points at the
 // Types directory (/list), the 30k-ft index of every type with its item count.
 export const BUILTIN_DESTS: DestOption[] = [
-  { group: "Built-in", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badgeEligible: true },
+  { group: "Built-in", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badgeEligible: true, badge: "inbox" },
+  { group: "Built-in", kind: "builtin", href: "/notifications", label: "Notifications", icon: "bell", badgeEligible: true, badge: "notifications" },
   { group: "Built-in", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/favorites", label: "Favorites", icon: "starred", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/search", label: "Search", icon: "search", badgeEligible: false },

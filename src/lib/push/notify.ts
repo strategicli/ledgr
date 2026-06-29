@@ -7,6 +7,8 @@ import { and, eq, gt, isNull, lte, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, jobState } from "@/db/schema";
 import { getMeetingPeople } from "@/lib/meetings/prep";
+import { countUnread, recordNotification } from "@/lib/notifications";
+import { getSettings, notificationEnabled } from "@/lib/settings";
 import { getTodayData, APP_TIMEZONE, ymdInZone } from "@/lib/today";
 import { listSubscriptions, pruneSubscription } from "./store";
 import type { PushMessage, PushSender } from "./types";
@@ -100,6 +102,26 @@ export async function runAgendaNotify(
     tag: "ledgr-agenda",
   };
 
+  // Persist the notification (ADR-129) and gate on the per-source toggle: a null
+  // return means the owner turned "Morning agenda" off, which silences both the
+  // row and the push (one switch). Still stamp the day so the cron doesn't retry.
+  const recorded = await recordNotification(ownerId, {
+    kind: "agenda",
+    title: message.title,
+    body: message.body,
+    url: "/",
+  });
+  if (recorded === null) {
+    await writeState(AGENDA_JOB_KEY, {
+      ...state,
+      lastRunAt: now.toISOString(),
+      lastDay: todayKey,
+    });
+    return { skipped: true };
+  }
+  // Carry the unread total so the SW sets the PWA app-icon badge.
+  message.count = await countUnread(ownerId);
+
   const tally = await sendToOwner(ownerId, sender, message);
   await writeState(AGENDA_JOB_KEY, {
     ...state,
@@ -127,6 +149,13 @@ export async function runPrepNotify(
   windowMinutes = PREP_WINDOW_MINUTES
 ): Promise<{ notified: number; tally: SendTally }> {
   const db = getDb();
+  // Per-source toggle (ADR-129): if "Event prep ready" is off, do nothing — no
+  // rows, no pushes, and crucially no prepNotifiedAt stamps, so re-enabling
+  // still surfaces a meeting that's in-window.
+  const settings = await getSettings(ownerId);
+  if (!notificationEnabled(settings.notificationPrefs, "meeting_prep")) {
+    return { notified: 0, tally: { sent: 0, pruned: 0, failed: 0 } };
+  }
   const windowEnd = new Date(now.getTime() + windowMinutes * 60_000);
   const candidates = await db
     .select({
@@ -160,11 +189,24 @@ export async function runPrepNotify(
 
     const when = m.meetingAt ? ` at ${timeFmt.format(m.meetingAt)}` : "";
     const who = people.map((e) => e.title).slice(0, 2).join(", ");
+    const title = `Prep ready: ${m.title || "Untitled"}`;
+    const body =
+      `${when ? `${when.trim()}.` : ""}${who ? ` With ${who}.` : ""}`.trim() ||
+      "Open event prep.";
+    // Persist the notification deep-linked to the event (ADR-129).
+    await recordNotification(ownerId, {
+      kind: "meeting_prep",
+      title,
+      body,
+      url: `/items/${m.id}`,
+      relatedItemId: m.id,
+    });
     const t = await sendToOwner(ownerId, sender, {
-      title: `Prep ready: ${m.title || "Untitled"}`,
-      body: `${when ? `${when.trim()}.` : ""}${who ? ` With ${who}.` : ""}`.trim() || "Open event prep.",
+      title,
+      body,
       url: `/items/${m.id}`,
       tag: `ledgr-prep-${m.id}`,
+      count: await countUnread(ownerId),
     });
     tally.sent += t.sent;
     tally.pruned += t.pruned;

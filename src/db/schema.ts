@@ -540,6 +540,63 @@ export const pushSubscriptions = pgTable(
   (t) => [index("push_subscriptions_owner_idx").on(t.ownerId)]
 );
 
+// Notification center (ADR-129). One row per notification EVENT (three tasks
+// notifying at once = three rows; never a rolled-up digest). Persists what Web
+// Push (ADR-034) only ever delivered fire-and-forget, so the owner has a
+// history they can mark read/unread and archive. NOT notifications-as-items
+// (rule 2 bend, justified): read/unread doesn't map onto status_category, and
+// as items they'd pollute items/FTS/Discover — same call as revisions /
+// item_relatedness / push_subscriptions (derived/system machinery, not user
+// content). `kind` is the source (agenda/meeting_prep/task_due/calendar_soon/
+// sync_error); the per-source on/off toggle lives in users.settings
+// (notificationPrefs), not here. `state` + its timestamps are the linear
+// lifecycle (unread → read → archived); the badge query is a single
+// state='unread' count. related_item_id deep-links the source item and cascades
+// at item purge. Owner-scoped like everything else. recordNotification writes;
+// the 30-day archived purge (machine/purge) reclaims.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    // The source/category. Free text (not an enum) so a new source never needs
+    // a migration, matching items.status; validated in src/lib/notifications.
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    // Optional secondary line. Plain text — NOT the items.body {format,text}
+    // contract; a notification is not a content item.
+    body: text("body"),
+    // Where the row's click navigates (same-origin path), mirroring
+    // PushMessage.url. Null = no deep link.
+    url: text("url"),
+    relatedItemId: uuid("related_item_id").references(() => items.id, {
+      onDelete: "cascade",
+    }),
+    // Lifecycle: 'unread' (default) → 'read' → 'archived'. Free text for the
+    // same migration-free reason as kind; the set is fixed in app code.
+    state: text("state").notNull().default("unread"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // The list + the unread-count badge: an owner's notifications in a state,
+    // newest first.
+    index("notifications_owner_state_idx").on(
+      t.ownerId,
+      t.state,
+      t.createdAt
+    ),
+    // So a purged item's notifications are reachable for cleanup independent of
+    // the FK cascade.
+    index("notifications_related_item_idx").on(t.relatedItemId),
+  ]
+);
+
 // Public share links (slice 31, PRD §4.12). One row per issued link: an
 // unguessable token that grants read-only access to one item's print render,
 // no Clerk on the public path. Owner-scoped issuance; revocation is a stamp

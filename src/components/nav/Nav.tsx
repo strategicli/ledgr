@@ -11,6 +11,7 @@ import NavShell, {
   type ShellSlot,
 } from "@/components/nav/NavShell";
 import { countInbox } from "@/lib/items";
+import { countUnread } from "@/lib/notifications";
 import { resolveOwner } from "@/lib/owner";
 import {
   getSettings,
@@ -27,8 +28,9 @@ export default async function Nav() {
   // Quick-capture types are data-driven and opt-in (type-and-kind-ux §2): only
   // types flagged show_in_quick_capture appear, so a custom type can be
   // captured into and a "data only" one can stay out of the dropdown.
-  const [inboxCount, typeRows, settings, buildTypes] = await Promise.all([
+  const [inboxCount, unreadCount, typeRows, settings, buildTypes] = await Promise.all([
     countInbox(owner.id),
+    countUnread(owner.id),
     getDb()
       .select({ key: types.key, label: types.label })
       .from(types)
@@ -46,7 +48,10 @@ export default async function Nav() {
   ]);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
 
-  const counts: Record<NavBadge, number | null> = { inbox: inboxCount };
+  const counts: Record<NavBadge, number | null> = {
+    inbox: inboxCount,
+    notifications: unreadCount,
+  };
   const badgeCount = (badge?: NavBadge) => (badge ? counts[badge] : null);
 
   const toDest = (d: {
@@ -63,10 +68,13 @@ export default async function Nav() {
 
   const toShellSlot = (slot: NavSlotConfig): ShellSlot => {
     if (slot.type === "tools") {
-      // A group surfaces the inbox count if any of its children carries it
-      // (one badge source for now, kept simple — spec §Nav.tsx).
-      const groupCount = slot.children.some((c) => c.badge === "inbox")
-        ? counts.inbox
+      // A group surfaces the sum of its badge-carrying children's counts, so a
+      // collapsed group still shows there's something waiting inside.
+      const childCounts = slot.children
+        .map((c) => badgeCount(c.badge))
+        .filter((n): n is number => typeof n === "number");
+      const groupCount = childCounts.length
+        ? childCounts.reduce((a, b) => a + b, 0)
         : null;
       return {
         kind: "tools",
@@ -89,6 +97,7 @@ export default async function Nav() {
     <NavShell
       slots={slots}
       mobileSlots={mobileSlots}
+      unreadCount={unreadCount}
       typeOptions={typeRows}
       buildTypes={buildTypes.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
       navPosition={settings.navPosition}
