@@ -8,6 +8,7 @@ import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
+import TypeCue from "@/components/canvas/TypeCue";
 
 export default function Modal({
   itemId,
@@ -15,6 +16,8 @@ export default function Modal({
   wide = false,
   title = "",
   type = "",
+  typeLabel = "",
+  typeIcon = null,
   isTemplate = false,
   locked = false,
   favorited = false,
@@ -30,6 +33,10 @@ export default function Modal({
   title?: string;
   // The item's type, for the actions menu's "Apply template…" picker (TPL4b).
   type?: string;
+  // The type's human label + nav icon, for the quiet type cue beside "Trash"
+  // (ADR-132). Resolved by the modal page; empty label hides the cue.
+  typeLabel?: string;
+  typeIcon?: string | null;
   isTemplate?: boolean;
   // Whether the item is locked (items.properties.locked) — drives the menu's
   // lock/unlock label.
@@ -92,6 +99,10 @@ export default function Modal({
                   close();
                 }}
               />
+            )}
+            {/* Quiet type cue beside Trash (ADR-132): no extra vertical space. */}
+            {!isTemplate && typeLabel && (
+              <TypeCue icon={typeIcon} label={typeLabel} className="px-1" />
             )}
           </div>
           <div className="flex items-center gap-1">

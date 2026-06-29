@@ -23,6 +23,7 @@ import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
+import TypeCue from "@/components/canvas/TypeCue";
 
 export default async function ItemCanvas({
   id,
@@ -113,6 +114,15 @@ export default async function ItemCanvas({
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
                 <PageTrashButton itemId={item.id} parentId={item.parentId ?? null} />
+              )}
+              {/* Type cue (ADR-132): rides the breadcrumb row, no new vertical
+                  space. A separator follows only when an ancestor chain comes
+                  next, so a top-level item reads "🗒 Note" with nothing trailing. */}
+              {!item.isTemplate && (
+                <TypeCue icon={typeDef?.icon ?? null} label={typeDef?.label ?? item.type} />
+              )}
+              {!item.isTemplate && ancestors.length > 0 && (
+                <span className="text-neutral-700">·</span>
               )}
               {ancestors.map((a, i) => (
                 <span key={a.id} className="flex min-w-0 items-center gap-1">
