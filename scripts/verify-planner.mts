@@ -18,6 +18,8 @@ const { parseDisplay, parseViewInput, createView, getView, DISPLAY_DEFAULTS } =
   await import("../src/lib/views");
 const { updateItem } = await import("../src/lib/items");
 const { cellAtPoint } = await import("../src/lib/board-touch-drag");
+const { slotCount, slotStartHhmm, blockTopPx, blockHeightPx, durationFromResizePx } =
+  await import("../src/lib/planner-grid");
 const { eq } = await import("drizzle-orm");
 
 let failures = 0;
@@ -83,6 +85,17 @@ check("cellAtPoint hits the rail sentinel", cellAtPoint(grid, 50, 130) === "__no
 check("cellAtPoint nearest when in a gutter", cellAtPoint(grid, 250, 50) === "2026-06-02");
 check("cellAtPoint nearest below the grid", cellAtPoint(grid, 10, 50) === "2026-06-01");
 check("cellAtPoint empty → null", cellAtPoint([], 5, 5) === null);
+
+// --- planner-grid: pure time-grid geometry ---
+check("slotCount 7–19 @30 = 24", slotCount(7, 19, 30) === 24);
+check("slotCount 9–17 @15 = 32", slotCount(9, 17, 15) === 32);
+check("slotStartHhmm row 0 = 07:00", slotStartHhmm(0, 7, 30) === "07:00");
+check("slotStartHhmm row 2 = 08:00", slotStartHhmm(2, 7, 30) === "08:00");
+check("blockTopPx 9:00 in a 7am @30/22px grid = 88", blockTopPx(540, 7, 30, 22) === 88);
+check("blockHeightPx 90min @30/22px = 66", blockHeightPx(90, 30, 22) === 66);
+check("blockHeightPx floors at one slot", blockHeightPx(10, 30, 22) === 22);
+check("durationFromResizePx 66px → 90min", durationFromResizePx(66, 30, 22) === 90);
+check("durationFromResizePx tiny → one slot (30)", durationFromResizePx(5, 30, 22) === 30);
 
 // --- round-trip through the owner-scoped store (the new column) ---
 const db = getDb();

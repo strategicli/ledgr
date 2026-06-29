@@ -6,7 +6,7 @@
 // control so a view of tasks behaves like the Tasks list.
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
-import PlannerMonth from "@/components/planner/PlannerMonth";
+import PlannerCalendar from "@/components/planner/PlannerCalendar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectTableCell";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
@@ -768,10 +768,11 @@ export default function ViewRenderer({
         prop == null || prop === "plan" || prop === "scheduledDate" || prop === "dueDate";
       if (writable) {
         return (
-          <PlannerMonth
+          <PlannerCalendar
             items={items}
             prop={prop}
             placeBy={view.display?.placeBy ?? DISPLAY_DEFAULTS.placeBy}
+            display={view.display}
             month={month}
             navHref={calendarNavHref}
           />
