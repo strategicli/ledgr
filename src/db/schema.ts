@@ -96,6 +96,12 @@ export const views = pgTable("views", {
   columns: jsonb("columns"),
   layout: viewLayout("layout").notNull().default("list"),
   dateProperty: text("date_property"),
+  // Planner display config (ADR-131): a tolerant jsonb holding the calendar
+  // layout's interactive options — mode (month|timegrid), dayCount, slotMinutes,
+  // placeBy (scheduled|due), work-hours window, showWeekends. null = the
+  // layout's defaults, so every pre-existing calendar view is unchanged. Parsed
+  // leniently in src/lib/views.ts (the navSlots/ADR-056 pattern); additive.
+  display: jsonb("display"),
   // (views.dashboard_order was retired in the dashboards epoch, ADR-064 —
   // dashboards are now first-class rows in the dashboards table.)
   createdAt: timestamp("created_at", { withTimezone: true })

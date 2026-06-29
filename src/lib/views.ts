@@ -343,6 +343,44 @@ export type ViewColumn =
   | { source: "field"; key: ColumnField }
   | { source: "property"; key: string };
 
+// --- Planner display config (ADR-131) -----------------------------------
+// The interactive calendar layout's options, stored in views.display (jsonb).
+// null = the defaults below, so a pre-existing calendar view is unchanged.
+
+// The calendar sub-mode: a month grid (all-day chips) or a multi-day time-grid.
+export const CALENDAR_MODES = ["month", "timegrid"] as const;
+export type CalendarMode = (typeof CALENDAR_MODES)[number];
+
+// Which date a planner drag WRITES (and reads tasks by): the scheduled (planned)
+// day, or the due deadline. Scheduled is the default — the Planner plans work,
+// it doesn't move deadlines (ADR-131). The per-view "Place by Due" toggle flips it.
+export const PLACE_BY = ["scheduled", "due"] as const;
+export type PlaceBy = (typeof PLACE_BY)[number];
+
+// Allowed time-grid row sizes (minutes).
+export const SLOT_MINUTES = [15, 30, 60] as const;
+
+export type ViewDisplay = {
+  mode?: CalendarMode; // default "month"
+  dayCount?: number; // time-grid days shown, 1–7; default 7
+  slotMinutes?: number; // 15 | 30 | 60; default 30
+  placeBy?: PlaceBy; // default "scheduled"
+  workStartHour?: number; // 0–23, default 7
+  workEndHour?: number; // 1–24, default 19; always > workStartHour
+  showWeekends?: boolean; // default true
+};
+
+// Resolved defaults for a calendar view with no (or partial) display config.
+export const DISPLAY_DEFAULTS: Required<ViewDisplay> = {
+  mode: "month",
+  dayCount: 7,
+  slotMinutes: 30,
+  placeBy: "scheduled",
+  workStartHour: 7,
+  workEndHour: 19,
+  showWeekends: true,
+};
+
 export type ViewDefinition = {
   id: string;
   name: string;
@@ -355,6 +393,8 @@ export type ViewDefinition = {
   columns: ViewColumn[] | null;
   layout: ViewLayout;
   dateProperty: DateProperty | null;
+  // Planner display config (ADR-131); null = DISPLAY_DEFAULTS.
+  display: ViewDisplay | null;
   createdAt: Date;
 };
 
@@ -367,6 +407,7 @@ export type ViewInput = {
   columns: ViewColumn[] | null;
   layout: ViewLayout;
   dateProperty: DateProperty | null;
+  display: ViewDisplay | null;
 };
 
 export const UUID_RE =
@@ -536,6 +577,46 @@ export function parseColumns(raw: unknown): ViewColumn[] | null {
   return out.length ? out : null;
 }
 
+// Planner display config (ADR-131). Tolerant like parseColumns/parseGrouping:
+// unknown or malformed fields are dropped (not rejected), out-of-range numbers
+// are clamped, and an empty result collapses to null so the layout falls back
+// to DISPLAY_DEFAULTS. A stale or hand-edited row can never wedge a render.
+export function parseDisplay(raw: unknown): ViewDisplay | null {
+  if (raw == null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const out: ViewDisplay = {};
+  if (CALENDAR_MODES.includes(r.mode as CalendarMode)) out.mode = r.mode as CalendarMode;
+  if (r.dayCount != null) {
+    const n = Math.round(Number(r.dayCount));
+    if (Number.isFinite(n)) out.dayCount = Math.min(7, Math.max(1, n));
+  }
+  if (r.slotMinutes != null) {
+    const n = Number(r.slotMinutes);
+    if ((SLOT_MINUTES as readonly number[]).includes(n)) out.slotMinutes = n;
+  }
+  if (PLACE_BY.includes(r.placeBy as PlaceBy)) out.placeBy = r.placeBy as PlaceBy;
+  if (r.workStartHour != null) {
+    const n = Math.round(Number(r.workStartHour));
+    if (Number.isFinite(n)) out.workStartHour = Math.min(23, Math.max(0, n));
+  }
+  if (r.workEndHour != null) {
+    const n = Math.round(Number(r.workEndHour));
+    if (Number.isFinite(n)) out.workEndHour = Math.min(24, Math.max(1, n));
+  }
+  // Keep the window coherent: end must sit after start (fall back to a default
+  // span rather than rejecting an inverted pair).
+  if (
+    out.workStartHour != null &&
+    out.workEndHour != null &&
+    out.workEndHour <= out.workStartHour
+  ) {
+    delete out.workEndHour;
+  }
+  if (typeof r.showWeekends === "boolean") out.showWeekends = r.showWeekends;
+  return Object.keys(out).length ? out : null;
+}
+
 export function parseViewInput(raw: unknown): ViewInput {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     bad("request body must be a JSON object");
@@ -568,6 +649,7 @@ export function parseViewInput(raw: unknown): ViewInput {
     columns: parseColumns(r.columns),
     layout,
     dateProperty,
+    display: parseDisplay(r.display),
   };
 }
 
@@ -584,6 +666,7 @@ function rowToDefinition(row: typeof views.$inferSelect): ViewDefinition {
     columns: parseColumns(row.columns),
     layout: row.layout as ViewLayout,
     dateProperty: (row.dateProperty as DateProperty | null) ?? null,
+    display: parseDisplay(row.display),
     createdAt: row.createdAt,
   };
 }
@@ -624,6 +707,7 @@ export async function createView(
       columns: input.columns,
       layout: input.layout,
       dateProperty: input.dateProperty,
+      display: input.display,
     })
     .returning();
   return rowToDefinition(rows[0]);
@@ -646,6 +730,7 @@ export async function updateView(
       columns: input.columns,
       layout: input.layout,
       dateProperty: input.dateProperty,
+      display: input.display,
     })
     .where(and(eq(views.id, id), eq(views.ownerId, ownerId)))
     .returning();
