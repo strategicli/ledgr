@@ -2,6 +2,22 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ⟢ NOW BUILDING — Project Type & widget-composed homepages (PJ1–PJ11, ADR-111, 2026-06-29)
+
+Tyler's last v1.0 goal. PRD: `/Users/tylercollins/Downloads/ledgr-project-type-prd.md`. Plan: `~/.claude/plans/this-is-our-next-curious-starlight.md`. **Types become widget-composed**, reusing the dashboard widget engine (record page = a dashboard focused on the record); a universal per-type homepage capability, Project first. **CORE** (Brandon agreed to proceed); build on branches, merge per slice after Brandon eyeballs the core touches. Digest push-first; fresh-install project statuses = Planning/Active/On Hold/Done. Migrations from 0034.
+
+- [x] **PJ1 — Containment + activity log (CORE). ✅ DONE (2026-06-29; branch `pj1-containment-activity-log`, not yet merged).** `relations.home` boolean + one-home-per-source partial unique (containment residence bit); `setHome`/`relateItems({home})`/`homeParentOf` (containment via home edges, `parent_id` stays subtasks-only); `activity_events` table + `activity_kind` pgEnum; `emitActivity` in createItem/updateItem/setHome (record_created/status_changed/task_completed/task_added/note_added/…), tracked-subject-gated (project) so inbox items don't flood it; derived `last_reviewed_at` + `reviewCheckin`. Migration **0034**. `verify-containment` 11/11 + `verify-activity-log` 13/13 on Neon; relations/items/recurrence regress green; tsc/eslint/`next build` clean. Logged as **ADR-111**.
+- [ ] **PJ2 — Record base fields (CORE).** `items.next_action_task_id`/`next_action_text`/`composition`; `types.defaultWidgets`; project status_schema reset (fresh = Planning/Active/On Hold/Done) + fix Tyler's category mapping (Ongoing→in_progress); reuse Brandon's `items.archived_at`.
+- [ ] **PJ3 — Widget registry (CORE).** `src/lib/widgets.ts` catalog + `availableWidgets` (Layer 1); `src/lib/composition.ts` Layer-2/3 parsers; `resolveRecordWidgets` fan-out (generalize `DashboardView`); `homeOnly`/`role` refinement to `ViewFilter`/`viewWhere`.
+- [ ] **PJ4 — Widget canvas shell + gear (CORE).** `WidgetCanvas` + `widgets` canvasId; `RecordWidgetGrid`; 3-section gear; Layer-2 default / Layer-3 resolve-or-clone. Flips the project page off `MarkdownCanvas`.
+- [ ] **PJ5 — Editable collection widgets.** Tasks (source-of-truth via `Subtasks`; pin-as-Next-Action + auto-advance) + Notes (`NoteCaptureBar`) + the `milestone` type & widget (polymorphic, no done-state).
+- [ ] **PJ6 — Derived lenses → MILESTONE: usable page.** Progress (hierarchical, indeterminate at 0, suggest Done at 100%) + Next Action + Recent Activity timeline.
+- [ ] **PJ7 — Digest (CORE, push-first).** `notifications` table; `runDigestNotify`; `notify-digest` cron; review-resets-clock.
+- [ ] **PJ8 — Overview weave.** Head/Story two-zone body; bring-Story-up-to-date (one AI touchpoint, likely Claude-over-MCP per ADR-087); snapshot on Done.
+- [ ] **PJ9 — Containment up.** Related Records widget (home/referenced, type-filterable); Pursuit as a widget-Type; roll-up scope for derived widgets.
+- [ ] **PJ10 — Universal per-type homepages (Build editor).** Any type adopts `WidgetCanvas` + authors its `defaultWidgets`.
+- [ ] **PJ11 — Mindmap + Timeline widgets** (reuse `MindmapCanvas`); v2 node-promotion.
+
 ## 🟢 Merged (2026-06-25) — Note "date taken" (ADR-110)
 
 An editable `items.note_date` column: a note's "date taken," defaulting to the creation day, distinct from `created_at`/`updated_at` (CORE; Brandon approved). Migration **0033** (additive nullable column + index + one-time backfill of existing notes, alpha). Note gains its one baked-in strip field "Date taken" (amends ADR-018); save path + notes-list display wired. Merged onto main after Brandon's ADR-102–109 batch (renumbered from a provisional ADR-100/migration 0032 to dodge collisions). `verify-note-date` 11/11, `verify-canvas-layout` updated. **Remaining:** in-browser eyeball; a `note_date` sort lens for the notes list is a natural follow-up.
