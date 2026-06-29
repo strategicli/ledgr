@@ -102,76 +102,85 @@ export default function RelatedRow({
   }
 
   return (
+    // On a narrow screen the title and its trailing metadata (due picker, the
+    // updated date, relation actions) won't both fit on one line, so the title
+    // gets crushed into a tall sliver (Brandon, 2026-06-28). Stack them: the
+    // title takes the full width, and the meta drops to its own line, flush
+    // right. From `sm` up there's room, so it's the original single row.
     <li
-      className={`group flex gap-2 rounded px-2 py-1 hover:bg-neutral-800/60 ${
-        wrap ? "items-start" : "items-center"
+      className={`group flex flex-col gap-1 rounded px-2 py-1 hover:bg-neutral-800/60 sm:flex-row sm:gap-2 ${
+        wrap ? "sm:items-start" : "sm:items-center"
       } ${suggested ? "opacity-60" : ""}`}
     >
-      {isTask && (
-        <input
-          type="checkbox"
-          checked={done}
-          onChange={toggle}
-          className={`ledgr-check ${wrap ? "mt-1" : ""}`}
-          aria-label={done ? "Mark open" : "Mark done"}
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        {isTask && (
+          <input
+            type="checkbox"
+            checked={done}
+            onChange={toggle}
+            className={`ledgr-check ${wrap ? "mt-1" : ""}`}
+            aria-label={done ? "Mark open" : "Mark done"}
+          />
+        )}
+        <InlineTitle
+          id={item.id}
+          title={item.title}
+          done={done}
+          wrap={wrap}
+          className="min-w-0 flex-1"
+          linkClassName={`text-sm ${
+            item.title ? "text-neutral-200" : "text-neutral-500"
+          }`}
         />
-      )}
-      <InlineTitle
-        id={item.id}
-        title={item.title}
-        done={done}
-        wrap={wrap}
-        className="flex-1"
-        linkClassName={`text-sm ${
-          item.title ? "text-neutral-200" : "text-neutral-500"
-        }`}
-      />
-      {error && <span className="shrink-0 text-xs text-red-400">failed</span>}
-      {mention && (
-        <span
-          title="Linked by an @-mention in the body"
-          className="shrink-0 text-xs text-neutral-600"
-        >
-          @
-        </span>
-      )}
-      {suggested && (
-        <span className="shrink-0 rounded border border-dashed border-neutral-600 px-1.5 text-xs text-neutral-500">
-          suggested
-        </span>
-      )}
-      {!isTask && item.statusCategory !== "not_started" && (
-        <span className="shrink-0 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
-          {item.status}
-        </span>
-      )}
-      {isTask ? (
-        <input
-          type="date"
-          value={dueDate ? dueDate.slice(0, 10) : ""}
-          onChange={(e) => changeDue(e.target.value)}
-          className="shrink-0 rounded border border-transparent bg-transparent text-xs text-neutral-500 [color-scheme:dark] hover:border-neutral-700 focus:border-neutral-600 focus:text-neutral-300 focus:outline-none"
-          aria-label="Due date"
-        />
-      ) : (
-        dueDate && (
-          <span className="shrink-0 text-xs text-neutral-500">
-            due {dateFmt.format(new Date(dueDate))}
+      </div>
+      <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
+        {error && <span className="shrink-0 text-xs text-red-400">failed</span>}
+        {mention && (
+          <span
+            title="Linked by an @-mention in the body"
+            className="shrink-0 text-xs text-neutral-600"
+          >
+            @
           </span>
-        )
-      )}
-      <span className="shrink-0 text-xs text-neutral-600">
-        {dateFmt.format(new Date(item.updatedAt))}
-      </span>
-      {manageable && (
-        <RelationActions
-          itemId={hostId}
-          otherId={item.id}
-          suggested={suggested}
-          removable={!mentionOnly}
-          removalRole={removalRole}
-        />
-      )}
+        )}
+        {suggested && (
+          <span className="shrink-0 rounded border border-dashed border-neutral-600 px-1.5 text-xs text-neutral-500">
+            suggested
+          </span>
+        )}
+        {!isTask && item.statusCategory !== "not_started" && (
+          <span className="shrink-0 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400">
+            {item.status}
+          </span>
+        )}
+        {isTask ? (
+          <input
+            type="date"
+            value={dueDate ? dueDate.slice(0, 10) : ""}
+            onChange={(e) => changeDue(e.target.value)}
+            className="shrink-0 rounded border border-transparent bg-transparent text-xs text-neutral-500 [color-scheme:dark] hover:border-neutral-700 focus:border-neutral-600 focus:text-neutral-300 focus:outline-none"
+            aria-label="Due date"
+          />
+        ) : (
+          dueDate && (
+            <span className="shrink-0 text-xs text-neutral-500">
+              due {dateFmt.format(new Date(dueDate))}
+            </span>
+          )
+        )}
+        <span className="shrink-0 text-xs text-neutral-600">
+          {dateFmt.format(new Date(item.updatedAt))}
+        </span>
+        {manageable && (
+          <RelationActions
+            itemId={hostId}
+            otherId={item.id}
+            suggested={suggested}
+            removable={!mentionOnly}
+            removalRole={removalRole}
+          />
+        )}
+      </div>
     </li>
   );
 }
