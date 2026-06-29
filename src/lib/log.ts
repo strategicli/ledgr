@@ -64,6 +64,36 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// A query error's message is the whole failed SQL + params (a bulk body can be
+// tens of KB), so cap what we store/log. The root reason lives on err.cause
+// (the driver's pg error), which we surface separately.
+const MAX_MESSAGE = 2000;
+function truncate(s: string, max = MAX_MESSAGE): string {
+  return s.length > max ? `${s.slice(0, max)}… [+${s.length - max} chars]` : s;
+}
+
+// Drizzle wraps the driver error: its message is the query text, while the
+// actual Postgres reason (and its `code`) sit on err.cause. Pull both out so
+// error_log rows are diagnosable, not just "Failed query: ...".
+function errorDetail(err: unknown): Record<string, unknown> | null {
+  if (!(err instanceof Error)) return null;
+  const out: Record<string, unknown> = {};
+  if (err.stack) out.stack = truncate(err.stack, 4000);
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause !== undefined && cause !== null) {
+    if (cause instanceof Error) {
+      const code = (cause as { code?: unknown }).code;
+      out.cause = {
+        message: truncate(cause.message),
+        ...(typeof code === "string" ? { code } : {}),
+      };
+    } else {
+      out.cause = truncate(String(cause));
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 // Log an error and record it in error_log. detail lands in the jsonb column
 // (stack traces, item lists); /health shows counts always and messages only
 // in debug mode. Never throws.
@@ -73,22 +103,30 @@ export async function captureError(
   opts: { correlationId?: string; message?: string; detail?: unknown } = {}
 ): Promise<void> {
   const correlationId = opts.correlationId ?? crypto.randomUUID();
-  const message = opts.message ?? errorMessage(err);
+  const message = truncate(opts.message ?? errorMessage(err));
   emit("error", source, correlationId, message);
+  // Keep the caller's detail and fold in the error's cause/stack under _error,
+  // so a passed detail (e.g. { index } from a bulk load) no longer drops the
+  // underlying Postgres reason.
+  const auto = errorDetail(err);
+  let detail: unknown;
+  if (opts.detail !== undefined) {
+    detail =
+      auto == null
+        ? opts.detail
+        : opts.detail && typeof opts.detail === "object" && !Array.isArray(opts.detail)
+          ? { ...(opts.detail as Record<string, unknown>), _error: auto }
+          : { detail: opts.detail, _error: auto };
+  } else {
+    detail = auto;
+  }
   try {
-    await getDb()
-      .insert(errorLog)
-      .values({
-        correlationId,
-        source,
-        message,
-        detail:
-          opts.detail !== undefined
-            ? opts.detail
-            : err instanceof Error && err.stack
-              ? { stack: err.stack }
-              : null,
-      });
+    await getDb().insert(errorLog).values({
+      correlationId,
+      source,
+      message,
+      detail,
+    });
   } catch (insertErr) {
     // The console line above already exists; say the capture failed too.
     emit("warn", source, correlationId, "error_log insert failed", {

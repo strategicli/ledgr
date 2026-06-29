@@ -55,9 +55,12 @@ export async function GET(request: Request) {
       throw new Error(`no users row matches ONEDRIVE_EXPORT_UPN ${cfg.upn}`);
     }
     const itemErrors: { itemId: string; message: string }[] = [];
+    const attachmentErrors: { itemId: string; storageKey: string; status: number }[] = [];
     const result = await runExport(ownerId, new OneDriveExportTarget(cfg), {
       onError: (itemId, err) =>
         itemErrors.push({ itemId, message: errorMessage(err) }),
+      onAttachmentError: (itemId, failures) =>
+        attachmentErrors.push(...failures.map((f) => ({ itemId, ...f }))),
     });
     log.info("export run finished", { ...result });
     if (itemErrors.length > 0) {
@@ -65,6 +68,15 @@ export async function GET(request: Request) {
         correlationId: log.correlationId,
         message: `${itemErrors.length} item(s) failed to export`,
         detail: { itemErrors },
+      });
+    }
+    // Skipped attachments don't fail the run (the item still exported), but
+    // they're not silent: capture so the missing bytes are visible in /health.
+    if (attachmentErrors.length > 0) {
+      await captureError("export", null, {
+        correlationId: log.correlationId,
+        message: `${attachmentErrors.length} attachment(s) skipped (bytes unavailable)`,
+        detail: { attachmentErrors },
       });
     }
     return NextResponse.json({

@@ -25,6 +25,11 @@ export type ExportRunResult = {
   exported: number;
   archived: number;
   attachmentsCopied: number;
+  // Attachments whose bytes couldn't be fetched (e.g. missing in R2). Skipped,
+  // not fatal: the item still exports. Surfaced, never silent (rule 9), but
+  // deliberately NOT counted in `errors` so one orphaned image can't block a
+  // clean run forever.
+  attachmentsFailed: number;
   errors: number;
   remaining: number;
 };
@@ -124,10 +129,12 @@ async function listPersonTitles(
 // Bytes come off the public CDN URL (the same URL the editor renders), so
 // no new storage-provider method is needed. Attachment bytes are immutable
 // once uploaded: one copy is done forever.
+type AttachmentFailure = { storageKey: string; status: number };
+
 async function exportAttachments(
   item: ItemRow,
   target: ExportTarget
-): Promise<{ paths: string[]; copied: number }> {
+): Promise<{ paths: string[]; copied: number; failed: AttachmentFailure[] }> {
   const db = getDb();
   const rows = await db
     .select({
@@ -138,35 +145,45 @@ async function exportAttachments(
     })
     .from(attachments)
     .where(eq(attachments.parentItemId, item.id));
-  if (rows.length === 0) return { paths: [], copied: 0 };
+  if (rows.length === 0) return { paths: [], copied: 0, failed: [] };
 
   const storage = getStorage();
   const paths: string[] = [];
+  const failed: AttachmentFailure[] = [];
   let copied = 0;
   for (const att of rows) {
     // id prefix: filenames repeat freely within an item (paste.png).
     const path = `_attachments/${item.id}/${att.id.slice(0, 8)}-${att.filename}`;
-    paths.push(path);
-    if (att.exportedAt) continue;
+    if (att.exportedAt) {
+      // Already on OneDrive: list it, nothing to copy.
+      paths.push(path);
+      continue;
+    }
     if (!storage) {
       // Not an error: local/dev runs have no R2. The stamp stays null so a
-      // configured run copies it later.
+      // configured run copies it later. Don't list a file we didn't write.
       continue;
     }
     const res = await fetch(storage.publicUrl(att.storageKey));
     if (!res.ok) {
-      throw new Error(
-        `attachment fetch failed (${res.status}) for ${att.storageKey}`
-      );
+      // A missing/unreadable object (e.g. bytes that never finished uploading)
+      // must NOT block the item's body from exporting: the markdown is the
+      // Sunday-proof fallback, an image is not. Surface it (the caller logs to
+      // error_log), skip the byte copy, leave exportedAt null so a later run
+      // retries if it reappears, and omit the path so the frontmatter never
+      // lists a file that isn't there.
+      failed.push({ storageKey: att.storageKey, status: res.status });
+      continue;
     }
     await target.putFile(path, new Uint8Array(await res.arrayBuffer()));
     await db
       .update(attachments)
       .set({ exportedAt: new Date() })
       .where(eq(attachments.id, att.id));
+    paths.push(path);
     copied++;
   }
-  return { paths, copied };
+  return { paths, copied, failed };
 }
 
 function needsExportWhere(ownerId: string) {
@@ -192,7 +209,11 @@ function needsExportWhere(ownerId: string) {
 export async function runExport(
   ownerId: string,
   target: ExportTarget,
-  opts: { batch?: number; onError?: (itemId: string, err: unknown) => void } = {}
+  opts: {
+    batch?: number;
+    onError?: (itemId: string, err: unknown) => void;
+    onAttachmentError?: (itemId: string, failures: AttachmentFailure[]) => void;
+  } = {}
 ): Promise<ExportRunResult> {
   const db = getDb();
   const batch = Math.min(Math.max(opts.batch ?? DEFAULT_BATCH, 1), 500);
@@ -208,6 +229,7 @@ export async function runExport(
     exported: 0,
     archived: 0,
     attachmentsCopied: 0,
+    attachmentsFailed: 0,
     errors: 0,
     remaining: 0,
   };
@@ -224,6 +246,10 @@ export async function runExport(
         await exportAttachments(item, target),
       ];
       result.attachmentsCopied += atts.copied;
+      if (atts.failed.length > 0) {
+        result.attachmentsFailed += atts.failed.length;
+        opts.onAttachmentError?.(item.id, atts.failed);
+      }
 
       // normalizeListIndent: re-indent nested lists to CommonMark widths so the
       // exported .md nests correctly in any reader (Obsidian, GitHub, pandoc),
