@@ -25,6 +25,7 @@ import {
   type UserSettings,
 } from "@/lib/settings";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
+import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   top: "Top",
@@ -252,6 +253,10 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
         />
       </section>
 
+      {/* Notification center paused (ADR-130): the per-source toggles are hidden
+          while the center is detached. Flip NOTIFICATION_CENTER_ENABLED to bring
+          this section (and the prefs it edits) back. */}
+      {NOTIFICATION_CENTER_ENABLED && (
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Notifications</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
@@ -285,6 +290,7 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
           })}
         </div>
       </section>
+      )}
 
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Text size</h2>

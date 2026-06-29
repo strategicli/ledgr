@@ -50,6 +50,18 @@ export default function ScheduledTimeControl({
   const [duration, setDuration] = useState(initial?.durationMinutes ?? DEFAULT_DURATION_MINUTES);
   const [error, setError] = useState(false);
 
+  // Re-adopt the server value when it actually changes (compared by value, since
+  // `initial` is a fresh object each render) — so a time set elsewhere, e.g. the
+  // Schedule date box parsing "5am today", shows here after router.refresh
+  // without a remount. Same adjust-during-render pattern as SchedulePopover.
+  const initKey = initial ? `${initial.start}|${initial.durationMinutes}` : "";
+  const [prevKey, setPrevKey] = useState(initKey);
+  if (initKey !== prevKey) {
+    setPrevKey(initKey);
+    setStart(initial?.start ?? "");
+    setDuration(initial?.durationMinutes ?? DEFAULT_DURATION_MINUTES);
+  }
+
   // Write the merged block (or null to clear), reverting on failure.
   async function save(next: ScheduledTime | null) {
     const prev = { start, duration };

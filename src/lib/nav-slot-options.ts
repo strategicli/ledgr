@@ -9,6 +9,7 @@
 // count badge for now.
 import { BUILD_ENTRIES } from "@/lib/build-nav";
 import { isNavIcon } from "@/lib/nav-icons";
+import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import type { NavBadge, NavDestKind } from "@/lib/settings";
 
 export type DestGroup = "Built-in" | "Dashboards" | "Views" | "Types" | "Build tools";
@@ -64,7 +65,11 @@ export function buildDestOptions(
   dashboards: { id: string; name: string }[] = []
 ): DestOption[] {
   return [
-    ...BUILTIN_DESTS,
+    // Notification center paused (ADR-130): don't offer /notifications as a nav
+    // destination while it's detached. Re-enabling the flag restores it.
+    ...BUILTIN_DESTS.filter(
+      (d) => NOTIFICATION_CENTER_ENABLED || d.href !== "/notifications"
+    ),
     ...BUILD_TOOL_DESTS,
     ...dashboards.map((d) => ({
       group: "Dashboards" as const,

@@ -26,6 +26,7 @@ import AppBadgeSync from "@/components/pwa/AppBadgeSync";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import { isBuildPath } from "@/lib/build-nav";
+import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
 import { navIconPaths } from "@/lib/nav-icons";
 import { FAVORITES_HREF, type NavDensity, type NavPosition, type RailAnchor, type RailSize } from "@/lib/settings";
@@ -622,15 +623,18 @@ export default function NavShell({
         <WrenchIcon />
         Build
       </Link>
-      <Link
-        href="/notifications"
-        role="menuitem"
-        onClick={() => setMenuOpen(false)}
-        className={`${menuItem} flex items-center`}
-      >
-        Notifications
-        <InlineBadge count={unreadCount} />
-      </Link>
+      {/* Notification center paused (ADR-130): hidden, recoverable via the flag. */}
+      {NOTIFICATION_CENTER_ENABLED && (
+        <Link
+          href="/notifications"
+          role="menuitem"
+          onClick={() => setMenuOpen(false)}
+          className={`${menuItem} flex items-center`}
+        >
+          Notifications
+          <InlineBadge count={unreadCount} />
+        </Link>
+      )}
       <Link href="/settings" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
         User Settings
       </Link>
@@ -743,7 +747,8 @@ export default function NavShell({
   // the Work side. The capture + command palette overlays are shared by both.
   return (
     <nav aria-label="Main">
-      <AppBadgeSync count={unreadCount} />
+      {/* PWA app-icon badge: only while the notification center is live (ADR-130). */}
+      {NOTIFICATION_CENTER_ENABLED && <AppBadgeSync count={unreadCount} />}
       {inBuild && (
         <BuildSidebar types={buildTypes} onOpenSearch={() => setSearchOpen(true)} />
       )}

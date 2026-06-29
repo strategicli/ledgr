@@ -7,7 +7,11 @@ import { and, eq, gt, isNull, lte, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, jobState } from "@/db/schema";
 import { getMeetingPeople } from "@/lib/meetings/prep";
-import { countUnread, recordNotification } from "@/lib/notifications";
+import {
+  countUnread,
+  recordNotification,
+  NOTIFICATION_CENTER_ENABLED,
+} from "@/lib/notifications";
 import { getSettings, notificationEnabled } from "@/lib/settings";
 import { getTodayData, APP_TIMEZONE, ymdInZone } from "@/lib/today";
 import { listSubscriptions, pruneSubscription } from "./store";
@@ -80,6 +84,9 @@ export async function runAgendaNotify(
   sender: PushSender,
   now = new Date()
 ): Promise<{ skipped: boolean; tally?: SendTally }> {
+  // Notification center paused (ADR-130) — no rows, no push, even on a manual
+  // cron dispatch. The cron itself is disabled in config; this is the guard.
+  if (!NOTIFICATION_CENTER_ENABLED) return { skipped: true };
   const todayKey = `${ymdInZone(now, APP_TIMEZONE).y}-${ymdInZone(now, APP_TIMEZONE).m}-${ymdInZone(now, APP_TIMEZONE).d}`;
   const state = await readState(AGENDA_JOB_KEY);
   if (state.lastDay === todayKey) return { skipped: true };
@@ -148,6 +155,12 @@ export async function runPrepNotify(
   now = new Date(),
   windowMinutes = PREP_WINDOW_MINUTES
 ): Promise<{ notified: number; tally: SendTally }> {
+  // Notification center paused (ADR-130): no prep push, no rows, no stamps, even
+  // on a manual cron dispatch — so re-enabling later still surfaces in-window
+  // meetings. The cron itself is disabled in config; this is the guard.
+  if (!NOTIFICATION_CENTER_ENABLED) {
+    return { notified: 0, tally: { sent: 0, pruned: 0, failed: 0 } };
+  }
   const db = getDb();
   // Per-source toggle (ADR-129): if "Event prep ready" is off, do nothing — no
   // rows, no pushes, and crucially no prepNotifiedAt stamps, so re-enabling

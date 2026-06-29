@@ -6,7 +6,7 @@
 "use client";
 
 import { addDaysYmd } from "@/lib/recurrence";
-import { parseNaturalDate } from "@/lib/nl-date";
+import { parseNaturalDate, parseNaturalWhen } from "@/lib/nl-date";
 
 const inputClass =
   "rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-500 [color-scheme:dark]";
@@ -17,11 +17,17 @@ export default function DayField({
   valueYmd,
   today,
   onPick,
+  parseTime = false,
   autoFocus = false,
 }: {
   valueYmd: string | null; // YYYY-MM-DD or null
   today: string; // app-timezone YYYY-MM-DD
-  onPick: (ymd: string | null) => void;
+  // The picked day, plus an optional "HH:MM" time when `parseTime` is on and the
+  // free-text box carried one ("5am today"). The owning row does the PATCH.
+  onPick: (ymd: string | null, time?: string) => void;
+  // Schedule uses this so the free-text box also reads a time-of-day; Due leaves
+  // it off (a deadline has no clock time in this model).
+  parseTime?: boolean;
   autoFocus?: boolean;
 }) {
   return (
@@ -52,7 +58,7 @@ export default function DayField({
       <input
         type="text"
         className={`${inputClass} w-full`}
-        placeholder="e.g. next fri"
+        placeholder={parseTime ? "e.g. next fri 9am" : "e.g. next fri"}
         // Parse on Enter/blur; a phrase we don't understand is ignored (the box
         // clears), never guessed.
         onKeyDown={(e) => {
@@ -61,8 +67,15 @@ export default function DayField({
         onBlur={(e) => {
           const v = e.target.value.trim();
           if (!v) return;
-          const ymd = parseNaturalDate(v, today);
-          if (ymd) onPick(ymd);
+          if (parseTime) {
+            // parseNaturalWhen defaults the day to today whenever a time is
+            // present, so a truthy ymd covers both "5am today" and bare "5am".
+            const { ymd, time } = parseNaturalWhen(v, today);
+            if (ymd) onPick(ymd, time ?? undefined);
+          } else {
+            const ymd = parseNaturalDate(v, today);
+            if (ymd) onPick(ymd);
+          }
           e.target.value = "";
         }}
       />

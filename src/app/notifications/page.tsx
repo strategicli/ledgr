@@ -9,6 +9,7 @@ import NotificationList from "@/components/notifications/NotificationList";
 import {
   listNotifications,
   notificationCounts,
+  NOTIFICATION_CENTER_ENABLED,
   type ListFilter,
 } from "@/lib/notifications";
 import { resolveOwner } from "@/lib/owner";
@@ -32,6 +33,10 @@ export default async function NotificationsPage({
 }: {
   searchParams: Promise<{ filter?: string }>;
 }) {
+  // Notification center paused (ADR-130): keep the page in the tree but send a
+  // stray pin or bookmark home rather than showing an orphaned, never-fed list.
+  if (!NOTIFICATION_CENTER_ENABLED) redirect("/");
+
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 

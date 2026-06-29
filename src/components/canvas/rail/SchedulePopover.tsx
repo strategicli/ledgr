@@ -20,7 +20,11 @@ import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
 import ReminderControl from "@/components/canvas/ReminderControl";
 import { formatDayLabel } from "@/lib/format-date";
-import { formatTime12, type ScheduledTime } from "@/lib/scheduled-time";
+import {
+  DEFAULT_DURATION_MINUTES,
+  formatTime12,
+  type ScheduledTime,
+} from "@/lib/scheduled-time";
 import { describeRule, type RecurrenceRule } from "@/lib/recurrence";
 
 function ymdToIso(ymd: string): string {
@@ -61,16 +65,29 @@ export default function SchedulePopover({
     setIso(scheduled);
   }
 
-  async function pickDate(ymd: string | null) {
+  // The free-text box may hand back a time too ("5am today"); when it does we set
+  // the day and the scheduledTime block in one PATCH (keeping any existing
+  // duration). router.refresh re-feeds scheduledTime, so the Time control and
+  // summary pick it up.
+  async function pickDate(ymd: string | null, time?: string) {
     const before = iso;
     const next = ymd ? ymdToIso(ymd) : null;
     setIso(next);
     beginSave();
     try {
+      const body: Record<string, unknown> = { scheduledDate: next };
+      if (time) {
+        body.propertyPatch = {
+          scheduledTime: {
+            start: time,
+            durationMinutes: scheduledTime?.durationMinutes ?? DEFAULT_DURATION_MINUTES,
+          },
+        };
+      }
       const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduledDate: next }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
       endSave(true);
@@ -119,6 +136,7 @@ export default function SchedulePopover({
             valueYmd={iso ? iso.slice(0, 10) : null}
             today={today}
             onPick={pickDate}
+            parseTime
           />
         </div>
         <div className="border-t border-neutral-800 pt-3">
@@ -133,7 +151,11 @@ export default function SchedulePopover({
             recurrence on a typical task (Brandon, 2026-06-24). */}
         <div className="border-t border-neutral-800 pt-3">
           <div className={sectionLabel}>Reminder</div>
-          <ReminderControl itemId={itemId} initialMinutes={reminderMinutes} />
+          <ReminderControl
+            itemId={itemId}
+            initialMinutes={reminderMinutes}
+            hasTime={scheduledTime != null}
+          />
         </div>
         <div className="border-t border-neutral-800 pt-3">
           <div className={sectionLabel}>Repeat</div>

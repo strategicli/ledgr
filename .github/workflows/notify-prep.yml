@@ -14,8 +14,12 @@
 name: notify-prep
 
 on:
-  schedule:
-    - cron: "0 * * * *"
+  # Notification center PAUSED (ADR-130, 2026-06-29): the hourly schedule is
+  # disabled while the in-app center is detached (the ICS feed covers reminders).
+  # The endpoint itself short-circuits too (NOTIFICATION_CENTER_ENABLED). Kept as
+  # workflow_dispatch so it stays hand-runnable, and re-enabling is one uncomment.
+  # schedule:
+  #   - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:

@@ -138,6 +138,49 @@ export function parseNaturalDate(input: string, todayYmd: string): string | null
   return null;
 }
 
+// Parse a phrase that may carry a time-of-day on top of a date, for the Schedule
+// date box ("5am today", "next fri 2:30pm", "9am"). Returns the calendar day
+// (YYYY-MM-DD, defaulting to today when only a time is given) plus an "HH:MM" 24h
+// time when one is present. The time token is stripped first so the remainder
+// still matches parseNaturalDate's grammar. Same constrained, predictable
+// grammar as the rest of this file — a bare hour with no am/pm is left alone
+// rather than guessed (Principle 3).
+export function parseNaturalWhen(
+  input: string,
+  todayYmd: string
+): { ymd: string | null; time: string | null } {
+  if (!isYmd(todayYmd)) return { ymd: null, time: null };
+  let raw = input.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!raw) return { ymd: null, time: null };
+
+  // Pull one time token out of the phrase: 12-hour ("5am", "5:30 pm") wins, else
+  // a colon'd 24-hour clock ("17:00"). A bare hour with no meridiem/colon is too
+  // ambiguous to read as a time, so it's left for the date grammar.
+  let time: string | null = null;
+  const twelve = raw.match(/\b(\d{1,2})(?::([0-5]\d))?\s*(am|pm)\b/);
+  const twentyFour = raw.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if (twelve) {
+    let h = Number(twelve[1]);
+    const m = twelve[2] ? Number(twelve[2]) : 0;
+    if (h >= 1 && h <= 12) {
+      if (twelve[3] === "am") h = h === 12 ? 0 : h;
+      else h = h === 12 ? 12 : h + 12;
+      time = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      raw = raw.replace(twelve[0], " ");
+    }
+  } else if (twentyFour) {
+    time = `${twentyFour[1].padStart(2, "0")}:${twentyFour[2]}`;
+    raw = raw.replace(twentyFour[0], " ");
+  }
+
+  // Drop a connecting "at"/"@" the time left behind ("tomorrow at 9am" → "tomorrow").
+  raw = raw.replace(/\b(?:at|@)\b/g, " ").replace(/\s+/g, " ").trim();
+
+  // A time with no remaining date phrase means today; otherwise parse what's left.
+  const ymd = raw ? parseNaturalDate(raw, todayYmd) : time ? todayYmd : null;
+  return { ymd, time };
+}
+
 // ===========================================================================
 // Natural-language quick-add: parse date + recurrence + urgency OUT OF a task
 // TITLE (Tasks Polish S4, ADR-084). Todoist-style strip-and-confirm — the

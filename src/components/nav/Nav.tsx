@@ -12,6 +12,7 @@ import NavShell, {
 } from "@/components/nav/NavShell";
 import { countInbox } from "@/lib/items";
 import { countUnread } from "@/lib/notifications";
+import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { resolveOwner } from "@/lib/owner";
 import {
   getSettings,
@@ -30,7 +31,8 @@ export default async function Nav() {
   // captured into and a "data only" one can stay out of the dropdown.
   const [inboxCount, unreadCount, typeRows, settings, buildTypes] = await Promise.all([
     countInbox(owner.id),
-    countUnread(owner.id),
+    // Notification center paused (ADR-130): skip the unread query, badge stays 0.
+    NOTIFICATION_CENTER_ENABLED ? countUnread(owner.id) : Promise.resolve(0),
     getDb()
       .select({ key: types.key, label: types.label })
       .from(types)
