@@ -33,7 +33,11 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   code: <Svg><polyline points="8 6 3 12 8 18" /><polyline points="16 6 21 12 16 18" /></Svg>,
   table: <Svg><rect x="3" y="4" width="18" height="16" rx="1" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="9" y1="4" x2="9" y2="20" /></Svg>,
   image: <Svg><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="M21 16l-5-5L5 20" /></Svg>,
-  link: <Svg><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" /></Svg>,
+  // weblink: the conventional chain-link glyph, for inserting a hyperlink.
+  weblink: <Svg><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" /></Svg>,
+  // link: copy a deep link to the current line (a block anchor) — a hash glyph,
+  // distinct from the chain used for true hyperlinks.
+  link: <Svg><line x1="9" y1="3" x2="7" y2="21" /><line x1="17" y1="3" x2="15" y2="21" /><line x1="4" y1="9" x2="20" y2="9" /><line x1="3" y1="15" x2="19" y2="15" /></Svg>,
   color: <Svg><path d="M12 3l5.5 9a5.5 5.5 0 1 1-11 0z" /></Svg>,
   highlight: <Svg><path d="M4 20h6" /><path d="M14 4l6 6-9 9H7v-4z" /></Svg>,
 };
@@ -53,6 +57,7 @@ export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
   { id: "code", label: "Code" },
   { id: "table", label: "Table" },
   { id: "image", label: "Image" },
+  { id: "weblink", label: "Insert link" },
   { id: "link", label: "Copy line link" },
   { id: "color", label: "Text color" },
   { id: "highlight", label: "Highlight" },
