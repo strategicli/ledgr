@@ -13,10 +13,32 @@ import { items } from "@/db/schema";
 import { resolveOwner } from "@/lib/owner";
 import { exploreNeighborhood } from "@/lib/discovery/explore";
 import ExploreRow from "@/components/relations/ExploreRow";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 
 const TRAIL_MAX = 6;
+
+// Tab title reflects which item we're exploring (root layout appends " · Ledgr").
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    const owner = await resolveOwner();
+    if (!owner) return {};
+    const rows = await getDb()
+      .select({ title: items.title })
+      .from(items)
+      .where(and(eq(items.id, id), eq(items.ownerId, owner.id)));
+    const title = rows[0]?.title?.trim();
+    return { title: `Explore related: ${title || "Untitled"}` };
+  } catch {
+    return {};
+  }
+}
 
 export default async function ExplorePage({
   params,

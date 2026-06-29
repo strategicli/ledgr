@@ -31,7 +31,13 @@ const logoFont = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "Ledgr",
+  // `template` lets a page set just its own name (e.g. a note's title) and have
+  // " · Ledgr" appended for the browser tab / history / bookmarks; `default`
+  // covers pages that set no title of their own.
+  title: {
+    default: "Ledgr",
+    template: "%s · Ledgr",
+  },
   description: "Personal life management: meetings, tasks, notes, and links.",
   // Installed-PWA chrome on iOS (Android reads the manifest, slice 16).
   appleWebApp: {
