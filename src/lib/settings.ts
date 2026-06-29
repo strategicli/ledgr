@@ -278,6 +278,7 @@ export const DEFAULT_NAV_SLOTS: NavSlotConfig[] = [
   { type: "destination", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badge: "inbox" },
   { type: "destination", kind: "builtin", href: "/notifications", label: "Notifications", icon: "bell", badge: "notifications" },
   { type: "destination", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks" },
+  { type: "destination", kind: "builtin", href: "/planner", label: "Planner", icon: "calendar" },
   { type: "destination", kind: "builtin", href: FAVORITES_HREF, label: "Favorites", icon: "starred" },
   { type: "destination", kind: "builtin", href: "/search", label: "Search", icon: "search" },
 ];

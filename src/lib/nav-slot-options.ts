@@ -35,6 +35,7 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/inbox", label: "Inbox", icon: "inbox", badgeEligible: true, badge: "inbox" },
   { group: "Built-in", kind: "builtin", href: "/notifications", label: "Notifications", icon: "bell", badgeEligible: true, badge: "notifications" },
   { group: "Built-in", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks", badgeEligible: false },
+  { group: "Built-in", kind: "builtin", href: "/planner", label: "Planner", icon: "calendar", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/favorites", label: "Favorites", icon: "starred", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/search", label: "Search", icon: "search", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/dashboards", label: "Dashboards", icon: "dashboard", badgeEligible: false },
