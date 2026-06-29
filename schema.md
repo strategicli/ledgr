@@ -168,6 +168,8 @@ Every view is a stored View Definition. Built-in views (Today, Inbox, per-type l
 | `grouping` | jsonb | |
 | `layout` | enum | `list` \| `table` \| `board` \| `calendar` \| `agenda` (gallery/Gantt parked) |
 | `date_property` | text | for time-based layouts: which date drives placement |
+| `columns` | jsonb | ordered field/property selectors for list+table layouts; null = layout defaults |
+| `display` | jsonb | Planner display config (ADR-131, migration 0038): the interactive `calendar` layout's options — `mode` (month\|timegrid), `dayCount`, `slotMinutes`, `placeBy` (scheduled\|due), work-hours window, `showWeekends`. null = defaults. Tolerant-parsed in `views.ts`. |
 | `dashboard_order` | integer | dashboard config (slice 29, migration 0005): null = not a widget; a number = position in the widget grid. One dashboard per owner in v1 — the config rides the view it shows, no separate table. |
 | `created_at` | timestamptz | |
 

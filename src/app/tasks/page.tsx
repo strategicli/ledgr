@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import ListPage from "@/components/lists/ListPage";
+import ViewRenderer from "@/components/views/ViewRenderer";
 import NewItemButton from "@/components/home/NewItemButton";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
 import RowAction from "@/components/home/RowAction";
@@ -21,17 +22,18 @@ import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema, type StatusDef } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
-import { queryViewItems } from "@/lib/views";
+import { queryViewItems, type ViewDefinition } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
 type ListedItem = Awaited<ReturnType<typeof queryViewItems>>[number];
-type Tab = "today" | "inbox" | "upcoming" | "projects";
+type Tab = "today" | "inbox" | "upcoming" | "projects" | "planner";
 const TABS: { key: Tab; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "inbox", label: "Inbox" },
   { key: "upcoming", label: "Upcoming" },
   { key: "projects", label: "Projects" },
+  { key: "planner", label: "Planner" },
 ];
 
 const DAY_MS = 86400000;
@@ -225,6 +227,27 @@ export default async function Tasks({
         </div>
       </div>
     );
+  } else if (tab === "planner") {
+    // Drag-to-schedule calendar over all active tasks (ADR-131). Defaults to the
+    // multi-day time-grid (it self-navigates by day, so no ?month param is needed
+    // alongside ?tab); the in-tab Month toggle shows the current month, and the
+    // dedicated /planner destination carries full month navigation. No row
+    // selection on a calendar layout (defer-by-hiding, ADR-118).
+    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
+    const plannerView: ViewDefinition = {
+      id: "tasks-planner",
+      name: "Planner",
+      isSystem: false,
+      filter: { type: "task", statusCategory: "active" },
+      sort: { field: "plan", dir: "asc" },
+      grouping: null,
+      columns: null,
+      layout: "calendar",
+      dateProperty: "scheduledDate",
+      display: { mode: "timegrid", placeBy: "scheduled" },
+      createdAt: new Date(),
+    };
+    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} />;
   } else {
     // projects: each project + its open tasks
     const projects = await queryViewItems(owner.id, { type: "project" }, { field: "updatedAt", dir: "desc" });
@@ -275,7 +298,9 @@ export default async function Tasks({
     <ListPage tab="tasks" title="Tasks" actions={<NewItemButton type="task" />}>
       {tabStrip}
       <SelectionProvider ids={selectableIds}>
-        <SelectModeToggle />
+        {/* Calendar layout renders no row checkboxes (ADR-118), so the planner
+            tab gets no select toggle. */}
+        {tab !== "planner" && <SelectModeToggle />}
         {body}
         {tab === "today" && (
           <div className="mt-3">

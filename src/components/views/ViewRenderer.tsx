@@ -6,11 +6,13 @@
 // control so a view of tasks behaves like the Tasks list.
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
+import PlannerCalendar from "@/components/planner/PlannerCalendar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectTableCell";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
+import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 import type { StatusDef } from "@/lib/status";
 
@@ -755,9 +757,27 @@ export default function ViewRenderer({
           statuses={statuses}
         />
       );
-    case "calendar":
-      // Desktop gets the month grid (with nav); a 7-column grid is unreadable on
-      // a phone, so mobile falls back to the agenda list (all dated items).
+    case "calendar": {
+      // The Planner (ADR-131): when the calendar places items on a WRITABLE
+      // calendar-day field (scheduled/due/plan, or unset → defaults to plan),
+      // mount the interactive month grid so chips can be dragged to re-plan.
+      // Read-only calendars (events by meeting_at, created/updated) keep the
+      // static grid (desktop) + agenda (mobile) — dragging those isn't meaningful.
+      const prop = view.dateProperty;
+      const writable =
+        prop == null || prop === "plan" || prop === "scheduledDate" || prop === "dueDate";
+      if (writable) {
+        return (
+          <PlannerCalendar
+            items={items}
+            prop={prop}
+            placeBy={view.display?.placeBy ?? DISPLAY_DEFAULTS.placeBy}
+            display={view.display}
+            month={month}
+            navHref={calendarNavHref}
+          />
+        );
+      }
       return (
         <>
           <div className="hidden sm:block">
@@ -779,6 +799,7 @@ export default function ViewRenderer({
           </div>
         </>
       );
+    }
     case "agenda":
       return (
         <AgendaLayout
