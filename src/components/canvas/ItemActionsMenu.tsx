@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SaveAsTemplateButton from "./SaveAsTemplateButton";
 import ApplyTemplateButton from "./ApplyTemplateButton";
+import ChangeTypeDialog from "./ChangeTypeDialog";
 
 const rowClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800";
@@ -32,6 +33,7 @@ export default function ItemActionsMenu({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [changeTypeOpen, setChangeTypeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Optimistic star state so the menu reflects the toggle instantly; the server
   // is the source of truth and a refresh re-syncs it.
@@ -164,6 +166,18 @@ export default function ItemActionsMenu({
             <span aria-hidden>🕸</span>
             Explore related
           </a>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setChangeTypeOpen(true);
+              setOpen(false);
+            }}
+            className={rowClass}
+          >
+            <span aria-hidden>⇄</span>
+            Change type…
+          </button>
           <div className="my-1 h-px bg-neutral-800" />
           <SaveAsTemplateButton
             itemId={itemId}
@@ -173,6 +187,15 @@ export default function ItemActionsMenu({
           />
           <ApplyTemplateButton itemId={itemId} type={type} triggerClassName={rowClass} />
         </div>
+      )}
+      {/* Rendered outside the {open} block so closing the menu doesn't unmount
+          the dialog mid-move. */}
+      {changeTypeOpen && (
+        <ChangeTypeDialog
+          itemId={itemId}
+          currentType={type}
+          onClose={() => setChangeTypeOpen(false)}
+        />
       )}
     </div>
   );

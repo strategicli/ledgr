@@ -24,6 +24,7 @@ import {
   ItemError,
   createItem,
   getItem,
+  moveItemType,
   updateItem,
 } from "@/lib/items";
 import { listRelatedItems, relateItems, unrelateItems } from "@/lib/relations";
@@ -591,6 +592,38 @@ const TOOLS: McpTool[] = [
       const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"]), "patch");
       const updated = await updateItem(ownerId, id, patch);
       return rowView(updated);
+    },
+  },
+  {
+    name: "move_item_type",
+    title: "Change an item's type",
+    description:
+      "Move an item to a different type (e.g. a note that should become a " +
+      "meeting). Properties the target type also has carry over; properties it " +
+      "lacks are written into the body as a YAML block (and kept in the item too, " +
+      "so nothing is lost). Relations are unaffected. Pass dryRun:true first to " +
+      "preview what will carry over vs. be moved into the body. Call list_types " +
+      "to see target types and their properties.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The item id (UUID)." },
+        targetType: { type: "string", description: "The type key to move the item to (see list_types)." },
+        dryRun: { type: "boolean", description: "If true, return the reconciliation summary without changing the item." },
+      },
+      required: ["id", "targetType"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const id = asUuid(args.id, "id");
+      const targetType =
+        typeof args.targetType === "string" ? args.targetType.trim() : "";
+      if (!targetType) throw new ItemError("bad_request", "targetType is required");
+      const { summary, item } = await moveItemType(ownerId, id, targetType, {
+        dryRun: args.dryRun === true,
+      });
+      return item ? { summary, item: rowView(item) } : { summary };
     },
   },
   {

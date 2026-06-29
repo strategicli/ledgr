@@ -27,6 +27,8 @@ export default async function ItemModal({
   let wide = false;
   let title = "";
   let type = "";
+  let typeLabel = "";
+  let typeIcon: string | null = null;
   let isTemplate = false;
   let locked = false;
   let favorited = false;
@@ -40,6 +42,8 @@ export default async function ItemModal({
       wide = canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
       title = item.title;
       type = item.type;
+      typeLabel = typeDef?.label ?? item.type;
+      typeIcon = typeDef?.icon ?? null;
       isTemplate = item.isTemplate;
       locked = Boolean(
         (item.properties as Record<string, unknown> | null)?.locked
@@ -55,6 +59,8 @@ export default async function ItemModal({
       wide={wide}
       title={title}
       type={type}
+      typeLabel={typeLabel}
+      typeIcon={typeIcon}
       isTemplate={isTemplate}
       locked={locked}
       favorited={favorited}

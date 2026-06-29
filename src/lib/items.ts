@@ -11,13 +11,19 @@ import {
   inArray,
   isNull,
   isNotNull,
+  ne,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items, revisions, types } from "@/db/schema";
+import { items, relations, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
-import { bodyMarkdown, isItemBody, isLargeBody } from "@/lib/body";
+import { bodyMarkdown, isItemBody, isLargeBody, MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
+// Type-only (erased at runtime): types.ts imports ItemError from here, so a
+// value import of getType would form a circular dependency. getType is loaded
+// dynamically inside moveItemType instead.
+import type { PropertyDef } from "@/lib/types";
 import { syncMentionRelations } from "@/lib/mentions";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
@@ -563,6 +569,124 @@ export async function updateItem(
     await ensureFirstOccurrence(ownerId, id).catch(() => {});
   }
   return updated;
+}
+
+// The reconciliation summary for a type move (ADR-132). `carried` properties
+// exist on both the source and target type and keep rendering as fields;
+// `surfaced` properties are declared on the source type but not the target, so
+// their values are written into the body as a YAML block (and retained in
+// items.properties as a recoverable backup). `relationCount` is the user's
+// intentional relations (mention edges excluded) — all kept, untouched.
+export type MoveTypeSummary = {
+  from: string; // source type label
+  to: string; // target type label
+  carried: string[]; // property labels that carry over
+  surfaced: string[]; // property labels written into the body
+  relationCount: number;
+};
+
+// A YAML scalar for a property value — human-readable and editable, not a strict
+// serializer. Strings/numbers/booleans render bare; arrays/objects fall back to
+// compact JSON so nothing is silently dropped.
+function yamlScalar(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+// The fenced YAML block prepended to a body when a move orphans properties. Keyed
+// by property key (machine-stable), captioned with the former type so the reader
+// knows where it came from.
+function propertiesYamlBlock(
+  fromLabel: string,
+  defs: PropertyDef[],
+  props: Record<string, unknown>
+): string {
+  const lines = defs.map((d) => `${d.key}: ${yamlScalar(props[d.key])}`);
+  return ["```yaml", `# carried over from ${fromLabel}`, ...lines, "```"].join("\n");
+}
+
+// Move an item to another type (ADR-132). The data layer already lets updateItem
+// change `type`; this adds the property reconciliation around it so nothing is
+// lost. Only the SOURCE type's own declared properties are reconciled: keys it
+// shares with the target carry over untouched; keys the target lacks are surfaced
+// into the body as a YAML block. System keys (locked, recurrence, sync ids) and
+// anything not on the type schema stay in items.properties untouched and are
+// never surfaced. Relation-kind properties hold no jsonb value (their value is
+// the relation edges, which always survive), so they're skipped. Values are
+// RETAINED in jsonb, so a move back re-renders the original fields.
+//
+// `dryRun` computes and returns the summary without writing — the same code path
+// that powers the dialog's preview, so the preview can never drift from the
+// commit. Owner-scoped throughout.
+export async function moveItemType(
+  ownerId: string,
+  id: string,
+  targetType: string,
+  opts: { dryRun?: boolean } = {}
+): Promise<{ summary: MoveTypeSummary; item?: Awaited<ReturnType<typeof getItem>> }> {
+  const item = await getItem(ownerId, id); // owner-scoped; throws not_found
+  if (item.type === targetType) {
+    throw new ItemError("bad_request", "item is already that type");
+  }
+  await assertTypeExists(targetType); // bad_request for a missing/trashed type
+
+  // Dynamic import breaks the items.ts <-> types.ts value cycle (types.ts imports
+  // ItemError from here). Both type defs are best-effort: an unregistered type
+  // simply contributes no property schema.
+  const { getType } = await import("@/lib/types");
+  const fromDef = await getType(item.type).catch(() => null);
+  const toDef = await getType(targetType).catch(() => null);
+  const toKeys = new Set((toDef?.propertySchema ?? []).map((p) => p.key));
+  const props = (item.properties as Record<string, unknown> | null) ?? {};
+
+  const carriedDefs: PropertyDef[] = [];
+  const surfacedDefs: PropertyDef[] = [];
+  for (const pdef of fromDef?.propertySchema ?? []) {
+    const v = props[pdef.key];
+    if (v == null || v === "") continue; // unset on this item — nothing to move
+    if (pdef.kind === "relation") continue; // value is edges, not jsonb; edges stay
+    (toKeys.has(pdef.key) ? carriedDefs : surfacedDefs).push(pdef);
+  }
+
+  // Intentional relations only (mention edges are body-owned and re-sync from the
+  // body), counted across both directions.
+  const relRows = await getDb()
+    .select({ n: sql<number>`count(*)::int` })
+    .from(relations)
+    .where(
+      and(
+        or(eq(relations.sourceId, id), eq(relations.targetId, id)),
+        ne(relations.role, "mention")
+      )
+    );
+
+  const summary: MoveTypeSummary = {
+    from: fromDef?.label ?? item.type,
+    to: toDef?.label ?? targetType,
+    carried: carriedDefs.map((p) => p.label),
+    surfaced: surfacedDefs.map((p) => p.label),
+    relationCount: relRows[0]?.n ?? 0,
+  };
+  if (opts.dryRun) return { summary };
+
+  // Surface orphaned properties at the top of the body (decided: visible +
+  // copyable). updateItem snapshots a revision when the body changes, so the
+  // pre-move state stays restorable; values are also retained in jsonb.
+  let bodyPatch: ItemBody | undefined;
+  if (surfacedDefs.length > 0) {
+    const block = propertiesYamlBlock(summary.from, surfacedDefs, props);
+    const current = bodyMarkdown(item.body);
+    const format = isItemBody(item.body) ? item.body.format : MARKDOWN_FORMAT;
+    bodyPatch = { format, text: current ? `${block}\n\n${current}` : block };
+  }
+
+  const updated = await updateItem(ownerId, id, {
+    type: targetType,
+    ...(bodyPatch ? { body: bodyPatch } : {}),
+  });
+  return { summary, item: updated };
 }
 
 // Toggle a task's completion from a checkbox (S2). Statuses are user-defined, so
