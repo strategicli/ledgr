@@ -137,11 +137,18 @@ export default function PlannerMonth({
 
   const navLink = "rounded px-2 py-0.5 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200";
 
-  function Chip({ item }: { item: ViewItem }) {
+  // A plain render function (NOT an inner component): returning <Chip/> from a
+  // component declared in the render body gives it a new type every render, so
+  // setting dragId in onDragStart would unmount/remount the dragged node and
+  // cancel the native drag (the "drag twice" bug — month only, since the
+  // time-grid already renders chips inline). Calling chip(item) keeps the DOM
+  // node stable across the optimistic re-render.
+  function chip(item: ViewItem) {
     const done = item.statusCategory === "done";
     const lifted = dragId === item.id;
     return (
       <div
+        key={item.id}
         role="button"
         tabIndex={0}
         data-card-id={item.id}
@@ -190,7 +197,7 @@ export default function PlannerMonth({
         items={unscheduled}
         dropProps={dropProps(RAIL)}
         highlight={overDay === RAIL}
-        renderChip={(item) => <Chip key={item.id} item={item} />}
+        renderChip={(item) => chip(item)}
       />
 
       <div className="min-w-0 flex-1">
@@ -233,9 +240,7 @@ export default function PlannerMonth({
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  {dayItems.slice(0, 4).map((item) => (
-                    <Chip key={item.id} item={item} />
-                  ))}
+                  {dayItems.slice(0, 4).map((item) => chip(item))}
                   {dayItems.length > 4 && (
                     <span className="px-1 text-[11px] text-neutral-600">+{dayItems.length - 4} more</span>
                   )}
