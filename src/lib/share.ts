@@ -14,19 +14,28 @@ function newToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
+// Per-link render options, stored on the token so the setting travels with the
+// URL (the recipient can't change it). `showIcons` toggles type-aware @-mention
+// icons on the shared/printed document; absent means on.
+export type ShareOptions = {
+  showIcons?: boolean;
+};
+
 export type ShareTokenRow = {
   id: string;
   token: string;
+  options: ShareOptions;
   revokedAt: Date | null;
   createdAt: Date;
 };
 
 // Issues a new link for an item the caller owns. The item must be the owner's
 // own live item; a new token is minted each call (revoke the old one to kill
-// a leaked link without disturbing others).
+// a leaked link without disturbing others). `options` are baked into the link.
 export async function createShareToken(
   ownerId: string,
-  itemId: string
+  itemId: string,
+  options: ShareOptions = {}
 ): Promise<ShareTokenRow> {
   const db = getDb();
   const owned = await db
@@ -37,14 +46,15 @@ export async function createShareToken(
 
   const [row] = await db
     .insert(shareTokens)
-    .values({ ownerId, itemId, token: newToken() })
+    .values({ ownerId, itemId, token: newToken(), options })
     .returning({
       id: shareTokens.id,
       token: shareTokens.token,
+      options: shareTokens.options,
       revokedAt: shareTokens.revokedAt,
       createdAt: shareTokens.createdAt,
     });
-  return row;
+  return { ...row, options: (row.options as ShareOptions) ?? {} };
 }
 
 // Lists an item's links (owner-scoped), newest first. Includes revoked ones so
@@ -53,16 +63,18 @@ export async function listShareTokens(
   ownerId: string,
   itemId: string
 ): Promise<ShareTokenRow[]> {
-  return getDb()
+  const rows = await getDb()
     .select({
       id: shareTokens.id,
       token: shareTokens.token,
+      options: shareTokens.options,
       revokedAt: shareTokens.revokedAt,
       createdAt: shareTokens.createdAt,
     })
     .from(shareTokens)
     .where(and(eq(shareTokens.ownerId, ownerId), eq(shareTokens.itemId, itemId)))
     .orderBy(desc(shareTokens.createdAt));
+  return rows.map((r) => ({ ...r, options: (r.options as ShareOptions) ?? {} }));
 }
 
 // Revokes a link by token, owner-scoped (a caller can only revoke its own).
@@ -90,6 +102,7 @@ export type ResolvedShare = {
   itemId: string;
   title: string;
   body: unknown;
+  options: ShareOptions;
 };
 
 // The public path: a token → the item to render, or null. Joins so one query
@@ -106,6 +119,7 @@ export async function resolveShareToken(
       itemId: items.id,
       title: items.title,
       body: items.body,
+      options: shareTokens.options,
     })
     .from(shareTokens)
     .innerJoin(items, eq(items.id, shareTokens.itemId))
@@ -116,5 +130,7 @@ export async function resolveShareToken(
         isNull(items.deletedAt)
       )
     );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return { ...row, options: (row.options as ShareOptions) ?? {} };
 }

@@ -25,7 +25,7 @@ export async function GET(
 }
 
 export async function POST(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const owner = await requireOwner();
@@ -33,8 +33,17 @@ export async function POST(
   try {
     const { id } = await ctx.params;
     const itemId = asUuid(id, "id");
-    const row = await createShareToken(owner.id, itemId);
-    return NextResponse.json({ token: row.token, path: `/share/${row.token}` });
+    // Optional render options baked into the link. showIcons defaults on; the
+    // client sends false to mint a link with @-mention icons turned off.
+    const body = (await req.json().catch(() => ({}))) as { showIcons?: unknown };
+    const options =
+      body.showIcons === false ? { showIcons: false } : {};
+    const row = await createShareToken(owner.id, itemId, options);
+    return NextResponse.json({
+      token: row.token,
+      path: `/share/${row.token}`,
+      options: row.options,
+    });
   } catch (err) {
     if (err instanceof Error && err.message === "item not found") {
       return NextResponse.json({ error: "item not found" }, { status: 404 });

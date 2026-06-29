@@ -32,6 +32,9 @@ import {
   TextColor,
 } from "./extensions";
 import { createMentionSuggestion } from "./mention-suggestion";
+import { mentionStorage, type MentionStorage } from "./mention-node-view";
+import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
+import type { ResolvedMention } from "@/lib/mentions";
 import {
   BlockAnchor,
   PROMOTE_LINE_EVENT,
@@ -344,6 +347,51 @@ export default function MarkdownEditor({
     dom.addEventListener(PROMOTE_LINE_EVENT, handler);
     return () => dom.removeEventListener(PROMOTE_LINE_EVENT, handler);
   }, [editor, promoteToMeetingId]);
+
+  // Type-aware mention chips: resolve the type/icon/status for every mention in
+  // the doc (a body-free batch GET /api/items?ids=) into the mention extension's
+  // store, then repaint the chips. Runs once when the editor is ready and again,
+  // debounced, after edits (so a freshly inserted or re-typed mention resolves).
+  // Markdown stays the source of truth — nothing here is written back to it.
+  useEffect(() => {
+    if (!editor) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    const resolve = async () => {
+      const store = mentionStorage(editor) as MentionStorage | undefined;
+      if (!store) return;
+      const ids = collectMentionIdsFromMarkdown(editor.getMarkdown());
+      if (ids.length === 0) {
+        store.resolved = new Map();
+        store.ready = true;
+        store.rerender.forEach((fn) => fn());
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/items?ids=${ids.map(encodeURIComponent).join(",")}`
+        );
+        if (!res.ok || cancelled) return;
+        const { items } = (await res.json()) as { items: ResolvedMention[] };
+        store.resolved = new Map(items.map((it) => [it.id, it]));
+        store.ready = true;
+        store.rerender.forEach((fn) => fn());
+      } catch {
+        // Leave chips on their last-known glyph; a later edit retries.
+      }
+    };
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void resolve(), 350);
+    };
+    void resolve();
+    editor.on("update", schedule);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      editor.off("update", schedule);
+    };
+  }, [editor]);
 
   // A "✓ task" badge (or any deep link to a line) fires ledgr-open-item; navigate
   // there with the SPA router rather than a full reload.

@@ -29,6 +29,7 @@ import {
   type ImageToken,
 } from "@/lib/editor/image-markdown";
 import { tableToGfm } from "@/lib/editor/table-markdown";
+import { createMentionNodeView } from "./mention-node-view";
 
 // Text color → <span style="color:#hex"> (markdown) / styled span (editor DOM).
 export const TextColor = Mark.create({
@@ -130,14 +131,45 @@ export const Highlight = Mark.create({
 //         token before the Link mark can claim it, so the round-trip holds.
 // The suggestion items are supplied where the editor is created.
 export const LedgrMention = Mention.extend({
-  // Render the in-editor chip as a styled span carrying the item id, matching
-  // the v0.17 .ledgr-mention hook.
+  // A non-serialized `type` attr (the target's type key) on top of Mention's
+  // id/label. The suggestion sets it on insert so the chip is glyphed instantly;
+  // it never reaches the markdown (renderMarkdown below emits only id + label),
+  // so the canonical body contract is untouched.
+  addAttributes() {
+    return {
+      ...(this.parent?.() ?? {}),
+      type: { default: null, rendered: false },
+    };
+  },
+
+  // Per-editor store the mention chips (the NodeView) read for live type/icon/
+  // status. MarkdownEditor fills `resolved` via a batch resolve and calls every
+  // `rerender` callback; `ready` gates the "missing" state until the first load.
+  addStorage() {
+    return {
+      ...(this.parent?.() ?? {}),
+      resolved: new Map(),
+      rerender: new Set<() => void>(),
+      ready: false,
+    };
+  },
+
+  // The chip is a NodeView (mention-node-view.ts): live glyph, click-to-open,
+  // and an interactive task checkbox — none of which a static renderHTML can do.
+  addNodeView() {
+    return (props) => createMentionNodeView(props);
+  },
+
+  // Static fallback for getHTML()/clipboard (the NodeView owns the live editor
+  // DOM). Carries the id + the type class so a copied chip keeps its hook.
   renderHTML({ node }) {
+    const type = typeof node.attrs.type === "string" ? node.attrs.type : null;
     return [
       "span",
       mergeAttributes({
-        class: "ledgr-mention",
+        class: "ledgr-mention" + (type ? ` mention--${type}` : ""),
         "data-item-id": node.attrs.id ?? "",
+        ...(type ? { "data-item-type": type } : {}),
       }),
       `@${node.attrs.label || "untitled"}`,
     ];

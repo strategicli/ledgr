@@ -18,6 +18,7 @@ import { CHART_CSS } from "@/lib/chordpro/chart-css";
 import { chordProToHtml } from "@/lib/chordpro/render";
 import { CHORDPRO_FORMAT } from "@/lib/chordpro/types";
 import { markdownToHtml } from "@/lib/markdown-render";
+import type { ResolvedMention } from "@/lib/mentions";
 
 export function escapeHtml(text: string): string {
   return text
@@ -61,7 +62,9 @@ pre{background:#171717;border:1px solid #262626;border-radius:6px;
 code{font-family:ui-monospace,Consolas,monospace;font-size:.9em}
 p code,li code{background:#171717;border-radius:3px;padding:.1em .3em}
 a{color:#7cb3ff}
-.mention{color:#7cb3ff;font-weight:600}
+.mention{color:#7cb3ff;font-weight:600;text-decoration:none}
+.mention .mention-icon{width:1em;height:1em;vertical-align:-0.15em;margin-right:.12em}
+.mention--missing{color:#737373;font-weight:400}
 hr{border:none;border-top:1px solid #404040;margin:1.5em 0}
 img{max-width:100%;height:auto;border-radius:4px}
 table{border-collapse:collapse;width:100%}
@@ -81,6 +84,7 @@ ${HL_CSS}
   pre{background:#f5f5f5;border-color:#ddd}
   p code,li code{background:#f5f5f5}
   a,.mention{color:#1a4d8f;text-decoration:none}
+  .mention--missing{color:#666}
   hr{border-color:#ccc}
   td,th{border-color:#999}
   th{background:transparent}
@@ -98,7 +102,7 @@ ${CHART_CSS}
 export function renderPrintDocument(
   title: string,
   body: unknown,
-  opts: { footerHtml?: string } = {}
+  opts: { footerHtml?: string; mentions?: Map<string, ResolvedMention> } = {}
 ): string {
   const safeTitle = escapeHtml(title || "Untitled");
   const footer = opts.footerHtml ? `<div class="doc-footer">${opts.footerHtml}</div>` : "";
@@ -107,9 +111,12 @@ export function renderPrintDocument(
   // other body stays on the markdown path under the title heading, unchanged.
   const isChordpro = isItemBody(body) && body.format === CHORDPRO_FORMAT;
   const heading = isChordpro ? "" : `<h1>${safeTitle}</h1>`;
+  // The mentions map (when present) makes @-mentions type-aware on the rendered
+  // document; the caller resolves it owner-scoped and may omit it to render
+  // plain links (a share with icons turned off).
   const bodyHtml = isChordpro
     ? chordProToHtml(bodyMarkdown(body))
-    : markdownToHtml(bodyMarkdown(body));
+    : markdownToHtml(bodyMarkdown(body), opts.mentions);
   return `<!doctype html>
 <html lang="en">
 <head>

@@ -620,6 +620,11 @@ export const shareTokens = pgTable(
       .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
     token: text("token").notNull().unique(),
+    // Per-link render options (type-aware mentions): a small jsonb blob the
+    // public render reads, e.g. { showIcons: false } to drop @-mention icons for
+    // a cleaner shared document. Stored on the token so the setting travels with
+    // the URL — a recipient can't change it. Additive; old links default to {}.
+    options: jsonb("options").notNull().default(sql`'{}'::jsonb`),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
