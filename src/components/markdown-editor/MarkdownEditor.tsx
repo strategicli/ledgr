@@ -189,6 +189,9 @@ export default function MarkdownEditor({
   } | null>(null);
   // Brief "Copied" feedback on the copy-link-to-line button.
   const [linkCopied, setLinkCopied] = useState(false);
+  // The hyperlink editor's draft URL, or null when the editor is closed. Opened
+  // by the toolbar's Insert-link button; applies the StarterKit Link mark.
+  const [linkDraft, setLinkDraft] = useState<string | null>(null);
   useEffect(() => {
     onChangeRef.current = onChange;
     uploadRef.current = uploadImage;
@@ -290,6 +293,7 @@ export default function MarkdownEditor({
       isTaskList: editor?.isActive("taskList") ?? false,
       isBlockquote: editor?.isActive("blockquote") ?? false,
       isCodeBlock: editor?.isActive("codeBlock") ?? false,
+      isLink: editor?.isActive("link") ?? false,
       textColor: (editor?.getAttributes("textColor").color as string) || "",
       highlight: (editor?.getAttributes("highlight").color as string) || "",
     }),
@@ -435,6 +439,43 @@ export default function MarkdownEditor({
     }
   };
 
+  // Open the hyperlink editor, prefilled with the current link's href if the
+  // cursor sits inside one (so the button edits rather than stacks links).
+  const openLinkEditor = () => {
+    setLinkDraft((editor.getAttributes("link").href as string) || "");
+  };
+
+  // Apply the StarterKit Link mark from the editor's draft URL. With a selection
+  // (or cursor already in a link) we mark that range; with an empty selection we
+  // insert the URL as its own linked text. Bare domains get an https:// scheme.
+  const applyLink = (raw: string) => {
+    const url = raw.trim();
+    setLinkDraft(null);
+    if (!url) return;
+    const href = /^(https?:|mailto:|tel:|ledgr:|\/|#)/i.test(url)
+      ? url
+      : `https://${url}`;
+    if (editor.state.selection.empty && !editor.isActive("link")) {
+      const from = editor.state.selection.from;
+      editor
+        .chain()
+        .focus()
+        .insertContent(url)
+        .setTextSelection({ from, to: from + url.length })
+        .setLink({ href })
+        .setTextSelection(from + url.length)
+        .unsetMark("link")
+        .run();
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    }
+  };
+
+  const removeLink = () => {
+    setLinkDraft(null);
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
+  };
+
   // Copy a deep link to the cursor's line (ADR-090): ensure that line has an ^id
   // anchor, then copy an absolute /items/<id>#^<id> URL. Works on any line/type.
   const copyLineLink = async () => {
@@ -486,6 +527,14 @@ export default function MarkdownEditor({
             icon={TOOLBAR_ICONS.image}
             title="Insert image (or paste/drop one)"
             onClick={() => fileInputRef.current?.click()}
+          />
+        )}
+        {showTb("weblink") && (
+          <ToolbarButton
+            icon={TOOLBAR_ICONS.weblink}
+            title="Insert link"
+            active={toolbar.isLink || linkDraft !== null}
+            onClick={openLinkEditor}
           />
         )}
         {showTb("link") && itemId && (
@@ -549,6 +598,59 @@ export default function MarkdownEditor({
           </button>
         )}
       </div>
+      )}
+
+      {/* Hyperlink editor: a one-line URL input below the toolbar, open while
+          linkDraft is non-null. Enter applies, Escape cancels; Remove clears an
+          existing link. Markdown round-trips the resulting [text](url). */}
+      {editable && linkDraft !== null && (
+        <div className="flex items-center gap-1.5 border-b border-neutral-800/70 px-2 py-1.5">
+          <input
+            type="url"
+            autoFocus
+            value={linkDraft}
+            placeholder="https://… (or paste a URL)"
+            onChange={(e) => setLinkDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applyLink(linkDraft);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setLinkDraft(null);
+              }
+            }}
+            className="min-w-0 flex-1 rounded bg-neutral-800 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500"
+          />
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => applyLink(linkDraft)}
+            className="rounded bg-neutral-700 px-2 py-1 text-sm font-medium text-neutral-100 hover:bg-neutral-600"
+          >
+            Apply
+          </button>
+          {toolbar.isLink && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={removeLink}
+              className="rounded px-2 py-1 text-sm font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              Remove
+            </button>
+          )}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setLinkDraft(null)}
+            title="Cancel"
+            aria-label="Cancel"
+            className="rounded px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       <EditorContent editor={editor} />
