@@ -23,14 +23,29 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
-    // Share target (PRD §4.4): a URL or text shared to the installed app
-    // completes quick capture — /capture/share creates the inbox item.
-    // GET, so the share is just a navigation (Android; iOS has no share
-    // target support and stays on Todoist capture per §4.5).
+    // Share target (PRD §4.4): content shared to the installed app from
+    // Android's share sheet lands at /capture/share. POST + multipart so the
+    // app is offered for BOTH a shared URL/text (quick capture → inbox item)
+    // AND a shared text *file* (a recording app's transcript .txt → an inbox
+    // transcript, then a meeting picker). The route handler branches on what
+    // arrived. iOS has no share-target support and stays on the in-app
+    // paste/upload paths (§4.5). A manifest allows only one share_target, so
+    // file + url/text share the single POST entry.
     share_target: {
       action: "/capture/share",
-      method: "GET",
-      params: { title: "title", text: "text", url: "url" },
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: {
+        title: "title",
+        text: "text",
+        url: "url",
+        files: [
+          {
+            name: "transcript",
+            accept: ["text/plain", "text/markdown", ".txt", ".text", ".md", ".markdown"],
+          },
+        ],
+      },
     },
   };
 }
