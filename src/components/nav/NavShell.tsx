@@ -753,9 +753,12 @@ export default function NavShell({
         <BuildSidebar types={buildTypes} onOpenSearch={() => setSearchOpen(true)} />
       )}
 
-      {/* Mobile: always the floating bottom bar, whatever the desktop position. */}
+      {/* Mobile: always the floating bottom bar, whatever the desktop position.
+          data-work-nav-pill lets the markdown editor hide it while editing
+          (globals.css), so the floating formatting rail and this pill never
+          fight for the same bottom-of-screen spot. */}
       {!inBuild && (
-        <div className="sm:hidden">
+        <div className="sm:hidden" data-work-nav-pill>
           {floatingPill(mobileBarSlots, "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2")}
         </div>
       )}

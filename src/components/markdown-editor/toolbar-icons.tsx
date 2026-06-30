@@ -40,6 +40,11 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   link: <Svg><line x1="9" y1="3" x2="7" y2="21" /><line x1="17" y1="3" x2="15" y2="21" /><line x1="4" y1="9" x2="20" y2="9" /><line x1="3" y1="15" x2="19" y2="15" /></Svg>,
   color: <Svg><path d="M12 3l5.5 9a5.5 5.5 0 1 1-11 0z" /></Svg>,
   highlight: <Svg><path d="M4 20h6" /><path d="M14 4l6 6-9 9H7v-4z" /></Svg>,
+  // outdent/indent: list-nesting controls. Lines on the right with a left/right
+  // chevron — the conventional indent-decrease / indent-increase glyphs. Mobile
+  // has no Tab key, so these are the only way to nest a list there.
+  outdent: <Svg><line x1="21" y1="6" x2="9" y2="6" /><line x1="21" y1="12" x2="13" y2="12" /><line x1="21" y1="18" x2="9" y2="18" /><path d="M7 9l-3 3 3 3" /></Svg>,
+  indent: <Svg><line x1="21" y1="6" x2="9" y2="6" /><line x1="21" y1="12" x2="13" y2="12" /><line x1="21" y1="18" x2="9" y2="18" /><path d="M4 9l3 3-3 3" /></Svg>,
 };
 
 // The toolbar items in display order (id → label), for the configurable-toolbar
@@ -53,6 +58,8 @@ export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
   { id: "bulletList", label: "Bullet list" },
   { id: "orderedList", label: "Numbered list" },
   { id: "tasks", label: "Checklist" },
+  { id: "outdent", label: "Outdent (un-nest)" },
+  { id: "indent", label: "Indent (nest)" },
   { id: "quote", label: "Quote" },
   { id: "code", label: "Code" },
   { id: "table", label: "Table" },
