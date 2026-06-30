@@ -4,6 +4,7 @@
 // five layouts are different presentations of the same row set; none of them
 // re-queries or reaches for a body. Task rows carry the shared check-off
 // control so a view of tasks behaves like the Tasks list.
+import type { ReactNode } from "react";
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
 import PlannerCalendar from "@/components/planner/PlannerCalendar";
@@ -201,6 +202,7 @@ function ItemRow({
   propertyLabels = {},
   statuses,
   selectable,
+  rowAction,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
@@ -208,6 +210,10 @@ function ItemRow({
   propertyLabels?: Record<string, string>;
   statuses?: StatusDef[];
   selectable?: boolean;
+  // Optional trailing slot for this row (the related panel passes relation
+  // controls — confirm/reject/un-relate + mention/suggested markers). Other
+  // callers leave it undefined, so their rows are unchanged.
+  rowAction?: ReactNode;
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
@@ -261,6 +267,7 @@ function ItemRow({
           </span>
         </>
       )}
+      {rowAction}
     </li>
   );
 }
@@ -274,12 +281,14 @@ function ListLayout({
   propertyLabels,
   statuses,
   selectable,
+  rowActions,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
   statuses?: StatusDef[];
   selectable?: boolean;
+  rowActions?: Record<string, ReactNode>;
 }) {
   return (
     <ul className="mt-4">
@@ -292,6 +301,7 @@ function ListLayout({
           propertyLabels={propertyLabels}
           statuses={statuses}
           selectable={selectable}
+          rowAction={rowActions?.[item.id]}
         />
       ))}
     </ul>
@@ -703,6 +713,7 @@ export default function ViewRenderer({
   calendarNavHref,
   calendarEvents,
   selectable = false,
+  rowActions,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -735,6 +746,10 @@ export default function ViewRenderer({
   // only toggles the row affordance. Off for dashboard widgets (read-only) and
   // the board/calendar layouts (selection there is deferred — defer-by-hiding).
   selectable?: boolean;
+  // Optional per-row trailing slot, keyed by item id (the related panel passes
+  // relation controls). Honored by the list layout; other layouts ignore it for
+  // now (defer-by-hiding). Undefined for every other caller.
+  rowActions?: Record<string, ReactNode>;
 }) {
   if (items.length === 0) {
     return (
@@ -825,6 +840,7 @@ export default function ViewRenderer({
           propertyLabels={propertyLabels}
           statuses={statuses}
           selectable={selectable}
+          rowActions={rowActions}
         />
       );
   }
