@@ -171,8 +171,25 @@ function WidgetBody({
         </ul>
       );
     }
-    case "timeline":
-      return <EmptyState>Timeline arrives with PJ6/PJ11.</EmptyState>;
+    case "timeline": {
+      const entries = data.timeline ?? [];
+      if (entries.length === 0) return <EmptyState>No meetings or milestones yet.</EmptyState>;
+      return (
+        <ul className="flex flex-col gap-1">
+          {entries.map((e) => (
+            <li key={`${e.kind}-${e.id}`} className="flex items-center gap-2 text-sm">
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${e.kind === "milestone" ? "bg-amber-950/50 text-amber-300" : "bg-sky-950/50 text-sky-300"}`}>
+                {e.kind}
+              </span>
+              <Link href={`/items/${e.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
+                {e.title || "Untitled"}
+              </Link>
+              <span className="shrink-0 text-xs text-neutral-500">{fmtDay(e.date)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+    }
     default:
       // collection + relation + people widgets
       return <ItemList data={data} />;

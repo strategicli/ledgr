@@ -43,6 +43,8 @@ export type RecordWidgetData = {
   progress?: { done: number; total: number; fraction: number | null };
   // recentActivity
   activity?: { id: string; kind: string; summary: string; occurredAt: Date }[];
+  // timeline (meetings + milestones overlaid by date, read-only)
+  timeline?: { id: string; title: string; kind: "meeting" | "milestone"; date: Date }[];
 };
 
 type LoadedRecord = Awaited<ReturnType<typeof getItem>>;
@@ -236,6 +238,22 @@ async function dataForWidget(
       })),
       count: home.length,
     };
+  }
+
+  if (def.id === "timeline") {
+    // Read-only overlay of the record's Meetings + Milestones by date (PRD §6) —
+    // the two collections shown together without merging their data.
+    const [events, milestones] = await Promise.all([
+      queryViewItems(ownerId, { type: "event", relatedTo: record.id, relatedHome: true }, { field: "meetingAt", dir: "asc" }, 50),
+      queryViewItems(ownerId, { type: "milestone", relatedTo: record.id, relatedHome: true }, { field: "dueDate", dir: "asc" }, 50),
+    ]);
+    const entries = [
+      ...events.map((e) => ({ id: e.id, title: e.title, kind: "meeting" as const, date: e.meetingAt ?? e.scheduledDate ?? e.dueDate })),
+      ...milestones.map((m) => ({ id: m.id, title: m.title, kind: "milestone" as const, date: m.dueDate })),
+    ]
+      .filter((x): x is { id: string; title: string; kind: "meeting" | "milestone"; date: Date } => x.date != null)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    return { ...base, timeline: entries };
   }
 
   // Collection + people widgets: a bound query.
