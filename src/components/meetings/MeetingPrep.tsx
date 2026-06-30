@@ -8,12 +8,18 @@
 // anchors, ADR-090), so the old "+ Promote action item to task" button is gone.
 import Link from "next/link";
 import { getMeetingPrep } from "@/lib/meetings/prep";
+import { resolveProvidedGroup } from "@/lib/related-views";
+import { bulkConfigForType } from "@/lib/bulk-config";
+import { defaultLenses, lensesForType, relatedLensFor } from "@/lib/list-lenses";
+import { getSettings } from "@/lib/settings";
+import { getType } from "@/lib/types";
 import CanvasSection from "@/components/canvas/CanvasSection";
+import ViewLensBody from "@/components/lists/ViewLensBody";
 import NavGlyph from "@/components/nav/NavGlyph";
 import PinRuleButton from "./PinRuleButton";
+import RelatedLensPicker from "@/components/relations/RelatedLensPicker";
 import SuggestedPeople from "./SuggestedPeople";
 import TaskPullControl from "@/components/events/TaskPullControl";
-import PrepTaskList from "./PrepTaskList";
 
 const tsFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
 
@@ -37,6 +43,22 @@ export default async function MeetingPrep({
   bare?: boolean;
 }) {
   const prep = await getMeetingPrep(ownerId, itemId);
+
+  // "Open tasks" is rule-pulled (ADR-094 E4), so it renders through the same lens
+  // machinery as "Linked here" — the task type's SORT lenses (a view lens's filter
+  // can't apply to a rule-chosen set) + ViewRenderer + the multi-select layer
+  // (ADR-118). The lens choice shares the (event:task) key with the Linked-here
+  // task group, so "how I view this meeting's tasks" stays one setting.
+  const settings = await getSettings(ownerId);
+  const taskSortLenses = lensesForType(settings, "task").filter((l) => l.kind === "sort");
+  const chosenTaskLens = relatedLensFor(settings, "event", "task");
+  const taskLens =
+    chosenTaskLens.kind === "sort" ? chosenTaskLens : taskSortLenses[0] ?? defaultLenses()[0];
+  const [openTaskData, taskTypeDef] = await Promise.all([
+    resolveProvidedGroup(prep.openTasks, "task", taskLens, true),
+    getType("task").catch(() => null),
+  ]);
+  const taskBulkConfig = taskTypeDef ? bulkConfigForType(taskTypeDef) : undefined;
 
   const templateChip = prep.templateName ? (
     prep.templatePrototypeId ? (
@@ -103,25 +125,33 @@ export default async function MeetingPrep({
       {/* Open tasks: always shown — its pull rule can reference tags, not just
           the event's people (ADR-094 E4). Rows reuse RelatedRow so they check
           off and edit their due date in place. */}
-      <CanvasSection bare={bare} icon="tasks" title="Open tasks" count={prep.openTasks.length}>
+      <CanvasSection
+        bare={bare}
+        icon="tasks"
+        title="Open tasks"
+        count={openTaskData.count}
+        action={
+          taskSortLenses.length > 1 ? (
+            <RelatedLensPicker
+              hostType="event"
+              relatedType="task"
+              lenses={taskSortLenses}
+              currentId={taskLens.id}
+            />
+          ) : undefined
+        }
+      >
         <TaskPullControl
           eventId={itemId}
           rule={prep.taskPull}
           seeds={prep.taskPullSeeds}
           peopleCount={prep.people.length}
         />
-        <PrepTaskList
-          hostId={itemId}
-          tasks={prep.openTasks.map((t) => ({
-            id: t.id,
-            type: t.type,
-            title: t.title ?? "",
-            status: t.status,
-            statusCategory: t.statusCategory,
-            dueDate: t.dueDate ? t.dueDate.toISOString() : null,
-            updatedAt: t.updatedAt.toISOString(),
-          }))}
-        />
+        {prep.openTasks.length === 0 ? (
+          <p className="px-1 pt-1 text-sm text-neutral-600">No open tasks match.</p>
+        ) : (
+          <ViewLensBody data={openTaskData} bulkConfig={taskBulkConfig} />
+        )}
       </CanvasSection>
 
       {prep.people.length > 0 && (

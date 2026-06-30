@@ -7,7 +7,8 @@
 // only client islands.
 import type { ReactNode } from "react";
 import InlineLabel from "@/components/build/InlineLabel";
-import ViewRenderer from "@/components/views/ViewRenderer";
+import ViewLensBody from "@/components/lists/ViewLensBody";
+import type { BulkActionConfig } from "@/lib/bulk-config";
 import type { Lens } from "@/lib/list-lenses";
 import type { ViewLensData } from "@/lib/view-render";
 import RelatedLensPicker from "./RelatedLensPicker";
@@ -20,6 +21,7 @@ export default function RelatedGroupView({
   currentLensId,
   data,
   rowActions,
+  bulkConfig,
 }: {
   hostType: string;
   typeKey: string;
@@ -28,6 +30,11 @@ export default function RelatedGroupView({
   currentLensId: string;
   data: ViewLensData;
   rowActions?: Record<string, ReactNode>;
+  // When set, the group's rows carry the multi-select layer (checkboxes + the
+  // floating BulkActionBar, ADR-118). A related group is always one type, so the
+  // caller passes that type's full bulkConfigForType — richer than a mixed
+  // surface's Move+Delete. Omit to render the group read-only (as before).
+  bulkConfig?: BulkActionConfig;
 }) {
   return (
     <div className="mt-4 first:mt-0">
@@ -47,13 +54,7 @@ export default function RelatedGroupView({
           />
         )}
       </div>
-      <ViewRenderer
-        view={data.view}
-        items={data.items}
-        groupOrder={data.groupOrder}
-        propertyLabels={data.propertyLabels}
-        rowActions={rowActions}
-      />
+      <ViewLensBody data={data} bulkConfig={bulkConfig} rowActions={rowActions} />
     </div>
   );
 }
