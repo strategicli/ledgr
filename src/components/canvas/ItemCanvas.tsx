@@ -168,8 +168,9 @@ export default async function ItemCanvas({
           />
         )}
       </div>
-      {/* One always-visible autosave indicator for the whole canvas. */}
-      <SaveStatusIndicator />
+      {/* One always-visible autosave indicator for the whole canvas; also owns
+          the cross-device conflict banner + refresh-on-focus check (ADR-134). */}
+      <SaveStatusIndicator itemId={item.id} loadedAt={item.updatedAt.toISOString()} />
     </>
   );
 }

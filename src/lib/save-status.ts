@@ -13,16 +13,34 @@
 // indicator subscribes via useSaveStatus.
 import { useSyncExternalStore } from "react";
 
-export type SaveState = "idle" | "saving" | "saved" | "error";
+// "conflict" (ADR-134) latches when a body save is refused because the item
+// changed on another device; it outranks the ordinary states in the snapshot
+// and clears when the next save succeeds (the user resolved it) or on reload.
+export type SaveState = "idle" | "saving" | "saved" | "error" | "conflict";
 
 let inFlight = 0;
 let state: SaveState = "idle";
+let conflicted = false;
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
 // Editors register a flush here so the indicator's "Retry" can force an
 // immediate re-save after a failure, instead of the user waiting on the
 // debounce timer (or having to type again).
 const retryListeners = new Set<() => void>();
+// On a conflict the editor registers a "save mine anyway" flush here, so the
+// banner's "Keep mine" can re-send the pending body without the guard token
+// (overwriting the other device's change — an informed choice, and the
+// clobbered version stays in revision history).
+const forceSaveListeners = new Set<() => void>();
+
+// Refresh-on-focus baseline (ADR-134). knownVersion is the item updated_at the
+// canvas last saw; the focus check compares the server's value to it.
+// localSaveSinceSync absorbs the canvas's own writes — any successful save bumps
+// updated_at, so without it a refocus right after editing would read our own
+// change as "changed elsewhere". The indicator owns the comparison; this module
+// just holds the shared baseline (one canvas, many independent save surfaces).
+let knownVersion: string | null = null;
+let localSaveSinceSync = false;
 
 function emit() {
   for (const l of listeners) l();
@@ -46,6 +64,11 @@ export function endSave(ok: boolean) {
     emit();
     return;
   }
+  // A successful save is our own write: mark it so the focus check treats the
+  // resulting updated_at bump as local, and clear any latched conflict (whether
+  // this was the "Keep mine" force-save or a later normal save, we're in sync).
+  localSaveSinceSync = true;
+  conflicted = false;
   if (inFlight === 0 && state !== "error") {
     state = "saved";
     emit();
@@ -80,8 +103,44 @@ export function requestSaveRetry() {
   for (const fn of retryListeners) fn();
 }
 
+// Latch the cross-device conflict (ADR-134): a body save was refused (409). The
+// indicator shows the "edited elsewhere" banner until a save succeeds or reload.
+export function reportConflict() {
+  conflicted = true;
+  emit();
+}
+
+// The editor registers its force-flush (re-send the pending body without the
+// guard token); the returned fn unregisters on unmount.
+export function registerForceSave(fn: () => void): () => void {
+  forceSaveListeners.add(fn);
+  return () => {
+    forceSaveListeners.delete(fn);
+  };
+}
+
+// "Keep mine" — fire every registered force-flush.
+export function requestForceSave() {
+  for (const fn of forceSaveListeners) fn();
+}
+
+// Refresh-on-focus baseline accessors (ADR-134), used only by the indicator.
+export function setKnownVersion(iso: string) {
+  knownVersion = iso;
+}
+export function getKnownVersion(): string | null {
+  return knownVersion;
+}
+// True (and resets) if the canvas saved since the last sync, or a save is still
+// in flight — either way a fresh updated_at is our own work, not another device.
+export function consumeLocalSave(): boolean {
+  const had = localSaveSinceSync || inFlight > 0;
+  localSaveSinceSync = false;
+  return had;
+}
+
 function getSnapshot() {
-  return state;
+  return conflicted ? "conflict" : state;
 }
 
 export function useSaveStatus(): SaveState {
