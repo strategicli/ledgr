@@ -8,12 +8,26 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Meeting = { id: string; title: string; meetingAt: string | null };
+type Meeting = {
+  id: string;
+  title: string;
+  meetingAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const dateFmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
+});
+
+const dateTimeFmt = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
 });
 
 export default function TranscriptMeetingPicker({
@@ -31,6 +45,9 @@ export default function TranscriptMeetingPicker({
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState(defaultMeetingTitle);
+  // The meeting tapped in the list, held for a confirmation step before the
+  // attach commits — one tap is easy to misfire, so confirm the right meeting.
+  const [pending, setPending] = useState<Meeting | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -78,7 +95,10 @@ export default function TranscriptMeetingPicker({
           filtered.map((m) => (
             <li key={m.id}>
               <button
-                onClick={() => attach({ meetingId: m.id })}
+                onClick={() => {
+                  setError(null);
+                  setPending(m);
+                }}
                 disabled={busy}
                 className="flex w-full items-baseline justify-between gap-3 rounded px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
               >
@@ -136,7 +156,66 @@ export default function TranscriptMeetingPicker({
         )}
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && !pending && <p className="mt-3 text-sm text-red-400">{error}</p>}
+
+      {pending && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !busy && setPending(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-neutral-700 bg-neutral-900 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-medium text-neutral-200">
+              Attach this transcript?
+            </h3>
+            <p className="mt-2 text-sm text-neutral-400">
+              You selected{" "}
+              <span className="font-medium text-neutral-100">{pending.title}</span>.
+            </p>
+            <dl className="mt-2 space-y-0.5 text-xs text-neutral-500">
+              {pending.meetingAt && (
+                <div className="flex gap-2">
+                  <dt className="w-16 shrink-0">Meeting</dt>
+                  <dd className="text-neutral-400">
+                    {dateTimeFmt.format(new Date(pending.meetingAt))}
+                  </dd>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0">Created</dt>
+                <dd className="text-neutral-400">
+                  {dateTimeFmt.format(new Date(pending.createdAt))}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0">Updated</dt>
+                <dd className="text-neutral-400">
+                  {dateTimeFmt.format(new Date(pending.updatedAt))}
+                </dd>
+              </div>
+            </dl>
+            {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+            <div className="mt-4 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setPending(null)}
+                disabled={busy}
+                className="text-sm text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => attach({ meetingId: pending.id })}
+                disabled={busy}
+                className="rounded bg-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-50"
+              >
+                {busy ? "Attaching…" : "Attach transcript"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -76,6 +76,8 @@ export default async function TranscriptSharePicker({
           id: m.id,
           title: m.title || "Untitled",
           meetingAt: m.meetingAt ? m.meetingAt.toISOString() : null,
+          createdAt: m.createdAt.toISOString(),
+          updatedAt: m.updatedAt.toISOString(),
         }))}
       />
     </main>
