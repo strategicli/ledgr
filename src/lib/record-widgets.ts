@@ -5,7 +5,7 @@
 // scoped for contained collections), and derived/property widgets read the base
 // + the log. Server-only (queries the DB); the canvas renders what this returns,
 // with no widget-side branching on the record's Type.
-import { listActivity } from "@/lib/activity";
+import { listActivity, listActivityForSubjects } from "@/lib/activity";
 import type { Composition, RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
@@ -64,6 +64,48 @@ function rootFraction(rootCategory: string, children: SubtaskNode[]): number {
   return taskKids.reduce((a, c) => a + nodeFraction(c), 0) / taskKids.length;
 }
 
+type ProgressData = { done: number; total: number; fraction: number | null };
+
+// A record's OWN task progress (PRD §6 hierarchical, or flat). Extracted so a
+// Pursuit can roll up its projects' progress (PJ9).
+async function taskProgress(
+  ownerId: string,
+  recordId: string,
+  weighting: string
+): Promise<ProgressData> {
+  const tops = await queryViewItems(
+    ownerId,
+    { type: "task", relatedTo: recordId, relatedHome: true },
+    { field: "createdAt", dir: "asc" },
+    500
+  );
+  const total = tops.length;
+  if (total === 0) return { done: 0, total: 0, fraction: null };
+  const done = tops.filter((t) => t.statusCategory === "done").length;
+  if (weighting === "flat") return { done, total, fraction: done / total };
+  const DEEP = 200;
+  const fractions = await Promise.all(
+    tops.map(async (t, i) => {
+      if (i >= DEEP) return t.statusCategory === "done" ? 1 : 0;
+      const sub = await listSubtree(ownerId, t.id).catch(() => null);
+      return rootFraction(t.statusCategory, sub?.children ?? []);
+    })
+  );
+  return { done, total, fraction: fractions.reduce((a, b) => a + b, 0) / fractions.length };
+}
+
+// The tracked container records this record CONTAINS (home edges) — a Pursuit's
+// Projects. Drives the derived roll-ups (PJ9). A plain project contains tasks,
+// not projects, so this is empty for it (no roll-up; its own progress is used).
+async function containedProjects(ownerId: string, recordId: string) {
+  return queryViewItems(
+    ownerId,
+    { type: "project", relatedTo: recordId, relatedHome: true },
+    { field: "createdAt", dir: "asc" },
+    200
+  );
+}
+
 function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemRow {
   return {
     id: i.id,
@@ -108,57 +150,64 @@ async function dataForWidget(
 
   // Derived widgets.
   if (def.id === "nextAction") {
-    let taskTitle: string | null = null;
-    let done = false;
-    if (record.nextActionTaskId) {
-      const t = await getItem(ownerId, record.nextActionTaskId).catch(() => null);
-      taskTitle = t?.title ?? null;
-      done = t?.statusCategory === "done";
+    // Own pinned Next Action, else roll up: the single next step across the
+    // contained projects (the first project that has one) — PJ9.
+    if (record.nextActionTaskId || record.nextActionText) {
+      let taskTitle: string | null = null;
+      let done = false;
+      if (record.nextActionTaskId) {
+        const t = await getItem(ownerId, record.nextActionTaskId).catch(() => null);
+        taskTitle = t?.title ?? null;
+        done = t?.statusCategory === "done";
+      }
+      return {
+        ...base,
+        nextAction: { text: record.nextActionText ?? null, taskId: record.nextActionTaskId ?? null, taskTitle, done },
+      };
     }
-    return {
-      ...base,
-      nextAction: {
-        text: record.nextActionText ?? null,
-        taskId: record.nextActionTaskId ?? null,
-        taskTitle,
-        done,
-      },
-    };
+    const projects = await containedProjects(ownerId, record.id);
+    for (const p of projects) {
+      const proj = await getItem(ownerId, p.id).catch(() => null);
+      if (proj?.nextActionTaskId || proj?.nextActionText) {
+        let taskTitle: string | null = null;
+        if (proj.nextActionTaskId) {
+          const t = await getItem(ownerId, proj.nextActionTaskId).catch(() => null);
+          taskTitle = t?.title ?? null;
+        }
+        return {
+          ...base,
+          nextAction: { text: proj.nextActionText ?? null, taskId: proj.nextActionTaskId ?? null, taskTitle, done: false },
+        };
+      }
+    }
+    return { ...base, nextAction: { text: null, taskId: null, taskTitle: null, done: false } };
   }
   if (def.id === "progress") {
-    // Hierarchical by default (PRD §6): a leaf task is 0/1, a parent's fraction
-    // is the average of its task-children's fractions (recursive), and the bar is
-    // the average of the top-level contained tasks' fractions. `flat` weighting
-    // is plain done/total. Zero tasks → indeterminate (null), never 0%.
     const weighting = (instance.options?.weighting as string) ?? "hierarchical";
-    const tops = await queryViewItems(
-      ownerId,
-      { type: "task", relatedTo: record.id, relatedHome: true },
-      { field: "createdAt", dir: "asc" },
-      500
-    );
-    const total = tops.length;
-    if (total === 0) return { ...base, progress: { done: 0, total: 0, fraction: null } };
-    const done = tops.filter((t) => t.statusCategory === "done").length;
-    if (weighting === "flat") {
-      return { ...base, progress: { done, total, fraction: done / total } };
+    // Roll-up (PJ9): a record that contains projects (a Pursuit) shows the
+    // average of its projects' fractions — done = # projects fully complete,
+    // total = # projects. Otherwise the record's own task progress (PRD §6).
+    const projects = await containedProjects(ownerId, record.id);
+    if (projects.length > 0) {
+      const child = await Promise.all(projects.map((p) => taskProgress(ownerId, p.id, weighting)));
+      const fracs = child.map((c) => c.fraction).filter((f): f is number => f !== null);
+      const done = child.filter((c) => c.fraction === 1).length;
+      return {
+        ...base,
+        progress: { done, total: projects.length, fraction: fracs.length ? fracs.reduce((a, b) => a + b, 0) / fracs.length : null },
+      };
     }
-    // Hierarchical: deep-compute each top-level task's fraction over its subtree.
-    // Capped so a huge forest can't fan out unbounded (falls back to its own
-    // done-state beyond the cap — a rare, large project).
-    const DEEP = 200;
-    const fractions = await Promise.all(
-      tops.map(async (t, i) => {
-        if (i >= DEEP) return t.statusCategory === "done" ? 1 : 0;
-        const sub = await listSubtree(ownerId, t.id).catch(() => null);
-        return rootFraction(t.statusCategory, sub?.children ?? []);
-      })
-    );
-    const fraction = fractions.reduce((a, b) => a + b, 0) / fractions.length;
-    return { ...base, progress: { done, total, fraction } };
+    return { ...base, progress: await taskProgress(ownerId, record.id, weighting) };
   }
   if (def.id === "recentActivity") {
-    const events = await listActivity(ownerId, record.id, ACTIVITY_LIMIT);
+    // Roll-up (PJ9): a Pursuit's timeline is the union of its own + its projects'
+    // logs. A plain record just reads its own (subjects = [itself]).
+    const projects = await containedProjects(ownerId, record.id);
+    const subjects = [record.id, ...projects.map((p) => p.id)];
+    const events =
+      subjects.length === 1
+        ? await listActivity(ownerId, record.id, ACTIVITY_LIMIT)
+        : await listActivityForSubjects(ownerId, subjects, ACTIVITY_LIMIT);
     return {
       ...base,
       activity: events.map((e) => ({ id: e.id, kind: e.kind, summary: e.summary, occurredAt: e.occurredAt })),
@@ -168,7 +217,10 @@ async function dataForWidget(
   // relatedRecords: every contained record (home), any type.
   if (def.id === "relatedRecords") {
     const related = await listRelatedItems(ownerId, record.id).catch(() => []);
-    const home = related.filter((r) => (r as { home?: boolean }).home);
+    const typeFilter = (instance.options?.typeFilter as string | null | undefined) ?? null;
+    const home = related
+      .filter((r) => (r as { home?: boolean }).home)
+      .filter((r) => (typeFilter ? r.type === typeFilter : true));
     return {
       ...base,
       items: home.map((r) => ({

@@ -13,7 +13,7 @@
 //
 // This module imports no app code (only getDb + schema + drizzle) so it can be
 // imported by both items.ts and relations.ts without a cycle.
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { activityEvents, items, relations } from "@/db/schema";
 
@@ -22,7 +22,7 @@ export type ActivityKind = (typeof activityEvents.kind.enumValues)[number];
 // Types whose records carry an activity log / Digest. For now just `project`;
 // `pursuit` joins here when it lands (PJ9), and any type the user gives the
 // Digest behavior. Kept as one predicate so the rule has a single home.
-const TRACKED_SUBJECT_TYPES = new Set<string>(["project"]);
+const TRACKED_SUBJECT_TYPES = new Set<string>(["project", "pursuit"]);
 
 export function isTrackedSubjectType(type: string): boolean {
   return TRACKED_SUBJECT_TYPES.has(type);
@@ -96,6 +96,27 @@ export async function listActivity(
       and(
         eq(activityEvents.ownerId, ownerId),
         eq(activityEvents.subjectId, subjectId)
+      )
+    )
+    .orderBy(desc(activityEvents.occurredAt))
+    .limit(limit);
+}
+
+// A timeline over a SET of subjects, newest first (PJ9 roll-up): a Pursuit's
+// Recent Activity is the union of its own + its projects' logs. Owner-scoped.
+export async function listActivityForSubjects(
+  ownerId: string,
+  subjectIds: string[],
+  limit = 50
+) {
+  if (subjectIds.length === 0) return [];
+  return getDb()
+    .select()
+    .from(activityEvents)
+    .where(
+      and(
+        eq(activityEvents.ownerId, ownerId),
+        inArray(activityEvents.subjectId, subjectIds)
       )
     )
     .orderBy(desc(activityEvents.occurredAt))

@@ -267,6 +267,13 @@
       "when": 1782778276708,
       "tag": "0037_milestone_type",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1782778277708,
+      "tag": "0038_pursuit_type",
+      "breakpoints": true
     }
   ]
 }

@@ -109,6 +109,18 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
+// The pursuit type (ADR-111/PJ9): a widget-composed Type one scope up — contains
+// Projects, rolls them up. Mirrors migration 0038.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, capability)
+  VALUES (
+    'pursuit', 'Pursuit', 'target', false, true, false, 'select',
+    '[{"key":"planning","label":"Planning","category":"not_started","color":"#64748b","isDefault":true},{"key":"active","label":"Active","category":"in_progress","color":"#d97706"},{"key":"on_hold","label":"On Hold","category":"not_started","color":"#6b7280"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
+    'widget-home'
+  )
+  ON CONFLICT (key) DO NOTHING
+`;
+
 // Per-type status DISPLAY MODE (ADR-106), idempotent + mirrors migration 0032.
 // Status is opt-in: rows left NULL resolve to 'none' (no status affordance) via
 // resolveStatusMode. `task` is the binary done/undone default; any type with a

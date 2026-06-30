@@ -66,10 +66,29 @@ const GENERIC_DEFAULT_WIDGETS: RecordWidget[] = [
   w("status", { x: 0, y: 8, w: 4, h: 2 }),
 ];
 
+// A Pursuit's homepage (PRD §1/§9): the same widgets one scope up. Related
+// Records surfaces its Projects; Progress / Next Action / Recent Activity roll
+// up across them (record-widgets.ts aggregates when a record contains tracked
+// children). The header strip + a status, then the projects and the roll-up log.
+const PURSUIT_DEFAULT_WIDGETS: RecordWidget[] = [
+  w("status", { x: 0, y: 0, w: 3, h: 2 }),
+  w("nextAction", { x: 3, y: 0, w: 5, h: 2 }),
+  w("progress", { x: 8, y: 0, w: 4, h: 2 }),
+  w("overview", { x: 0, y: 2, w: 8, h: 6 }),
+  w("relatedRecords", { x: 0, y: 8, w: 8, h: 8 }, { typeFilter: "project" }),
+  w("recentActivity", { x: 8, y: 2, w: 4, h: 14 }),
+];
+
 export function generatedDefaultComposition(type: string): Composition {
-  const widgets = type === "project" ? PROJECT_DEFAULT_WIDGETS : GENERIC_DEFAULT_WIDGETS;
-  // Digest is a default behavior for Project (PRD §7); other types start without.
-  const behaviors = type === "project" ? { digest: { ...DEFAULT_DIGEST } } : {};
+  const widgets =
+    type === "project"
+      ? PROJECT_DEFAULT_WIDGETS
+      : type === "pursuit"
+        ? PURSUIT_DEFAULT_WIDGETS
+        : GENERIC_DEFAULT_WIDGETS;
+  // Digest is a default behavior for tracked container types (PRD §7).
+  const behaviors =
+    type === "project" || type === "pursuit" ? { digest: { ...DEFAULT_DIGEST } } : {};
   return { version: VERSION, widgets: widgets.map((x) => ({ ...x })), behaviors };
 }
 
