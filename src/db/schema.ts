@@ -203,6 +203,13 @@ export const types = pgTable("types", {
   // render is untouched). Shape parsed/defaulted in src/lib/canvas-layout.ts;
   // applies only to the default markdown canvas, not bespoke module canvases.
   canvasLayout: jsonb("canvas_layout"),
+  // Per-type default widget composition (Layer 2, ADR-111/PJ2): the default
+  // widget set + arrangement + behaviors (e.g. Digest) every new record of this
+  // type inherits, when the type's homepage is widget-composed (Project first,
+  // any type via the Build editor in PJ10). null = the generated default. Lives
+  // on the type, never the record; per-record overrides go in items.composition.
+  // Parsed tolerantly in src/lib/composition.ts (PJ3), the canvas_layout pattern.
+  defaultWidgets: jsonb("default_widgets"),
   defaultViewId: uuid("default_view_id").references(() => views.id),
   // Soft-delete (ADR-058): a deleted type stays as a row (its trashed items'
   // FK still points here) but drops out of the registry/pickers. Restored from
@@ -290,7 +297,22 @@ export const items = pgTable(
     exportedAt: timestamp("exported_at", { withTimezone: true }),
     exportPath: text("export_path"),
     parentId: uuid("parent_id").references((): AnyPgColumn => items.id),
+    // Next Action (Project Type, ADR-111/PJ2): a record's single pinned next step.
+    // A pointer to a task (auto-advances on completion) OR free text when there's
+    // no backing task. On the base because the Next Action header reads it hot on
+    // every record page. SET NULL so completing/deleting the pinned task clears it.
+    nextActionTaskId: uuid("next_action_task_id").references(
+      (): AnyPgColumn => items.id,
+      { onDelete: "set null" }
+    ),
+    nextActionText: text("next_action_text"),
     properties: jsonb("properties"),
+    // Per-record widget composition OVERRIDE (Layer 3, ADR-111/PJ2). null =
+    // inherit the type's default_widgets (Layer 2) verbatim — the common case, so
+    // a fresh record stores nothing. Set lazily the first time a widget is
+    // toggled/arranged on THIS record. Disabling a widget hides it here (keeps its
+    // data); the shape is parsed tolerantly in src/lib/composition.ts (PJ3).
+    composition: jsonb("composition"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

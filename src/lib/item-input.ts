@@ -115,6 +115,28 @@ export function parseItemPayload(
     if (typeof input.inbox !== "boolean") bad("inbox must be a boolean");
     out.inbox = input.inbox;
   }
+  // Next Action (ADR-111/PJ2): a task pointer (uuid) and/or free text, both
+  // nullable; the record page's Next Action widget sets them.
+  if (input.nextActionTaskId !== undefined) {
+    out.nextActionTaskId =
+      input.nextActionTaskId === null
+        ? null
+        : asUuid(input.nextActionTaskId, "nextActionTaskId");
+  }
+  if (input.nextActionText !== undefined) {
+    out.nextActionText = asNullableString(input.nextActionText, "nextActionText");
+  }
+  // Per-record widget composition override (Layer 3): an object or null. Shape
+  // validated where it's consumed (composition.ts, PJ3).
+  if (input.composition !== undefined) {
+    if (
+      input.composition !== null &&
+      (typeof input.composition !== "object" || Array.isArray(input.composition))
+    ) {
+      bad("composition must be an object or null");
+    }
+    out.composition = input.composition as Record<string, unknown> | null;
+  }
   if (input.properties !== undefined) {
     if (
       input.properties !== null &&

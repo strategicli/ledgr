@@ -80,15 +80,17 @@ await sql`
     AND NOT (COALESCE(property_schema, '[]'::jsonb) @> '[{"key":"tags"}]'::jsonb)
 `;
 
-// The `project` type (Tasks redesign): a user-controllable hub type on the
-// default canvas (Related panel = its tasks/notes/events; repo/live-URL/stack
-// props). Statuses seed from Tyler's Todoist buckets (configurable). Mirrors
-// drizzle/0031_project_type.sql for fresh databases.
+// The `project` type: the flagship widget-composed hub (Project Type, ADR-111).
+// Fresh installs get the PRD §5 workflow-agnostic statuses (Planning/Active/On
+// Hold/Done); a new project starts at Planning (initialStatusKey, ADR-111/PJ2).
+// Existing instances keep their own buckets — migration 0035 only adopts this
+// default where the project type is unused, else fixes the category mapping.
+// Configurable per instance via the type's status editor (ADR-082).
 await sql`
   INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, property_schema)
   VALUES (
     'project', 'Project', 'folder', false, true, false, 'select',
-    '[{"key":"ongoing","label":"Ongoing","category":"not_started","color":"#d97706","isDefault":true},{"key":"waiting","label":"Waiting for Others","category":"not_started","color":"#64748b"},{"key":"paused","label":"Paused","category":"not_started","color":"#6b7280"},{"key":"future","label":"Future","category":"not_started","color":"#475569"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
+    '[{"key":"planning","label":"Planning","category":"not_started","color":"#64748b","isDefault":true},{"key":"active","label":"Active","category":"in_progress","color":"#d97706"},{"key":"on_hold","label":"On Hold","category":"not_started","color":"#6b7280"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
     '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb
   )
   ON CONFLICT (key) DO NOTHING

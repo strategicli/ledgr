@@ -28,7 +28,12 @@ import {
   ensureFirstOccurrence,
   occurrenceSeriesId,
 } from "@/lib/recurrence-service";
-import { categoryOfStatus, defaultStatusKey, type StatusCategory } from "@/lib/status";
+import {
+  categoryOfStatus,
+  defaultStatusKey,
+  initialStatusKey,
+  type StatusCategory,
+} from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
 import {
   emitActivity,
@@ -83,6 +88,15 @@ export type ItemInput = {
   url?: string | null;
   parentId?: string | null;
   properties?: Record<string, unknown> | null;
+  // Next Action (ADR-111/PJ2): a pinned task pointer and/or free text. Edited
+  // by the Next Action widget (PJ6); auto-advances on completion of the pinned
+  // task. nextActionTaskId is an item id (a task) or null.
+  nextActionTaskId?: string | null;
+  nextActionText?: string | null;
+  // Per-record widget composition override (Layer 3, ADR-111/PJ2). Raw jsonb at
+  // this layer; validated/used by the widget canvas (PJ3/PJ4). null = inherit
+  // the type default.
+  composition?: Record<string, unknown> | null;
   // Untriaged flag (PRD §4.2 Inbox): arrival paths set it, triage clears it.
   inbox?: boolean;
   // Mark this item as template content (ADR-093). Set true to mint a template
@@ -139,8 +153,17 @@ export const listColumns = {
 };
 
 // getItem adds the body and the is_template flag (the canvas/banner + the
-// clone/apply path need it; list queries deliberately don't carry it).
-const itemColumns = { ...listColumns, body: items.body, isTemplate: items.isTemplate };
+// clone/apply path need it; list queries deliberately don't carry it). The
+// record-page-only fields (Next Action, the widget composition override) ride
+// here too — read when an item is opened, never in lists (ADR-111/PJ2).
+const itemColumns = {
+  ...listColumns,
+  body: items.body,
+  isTemplate: items.isTemplate,
+  nextActionTaskId: items.nextActionTaskId,
+  nextActionText: items.nextActionText,
+  composition: items.composition,
+};
 
 // Exposed as a query builder (not just results) so verification can assert
 // the generated SQL carries owner_id and no body.
@@ -326,7 +349,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
   // started" status, and store its category alongside so the hot queries / the
   // done-checkbox / recurrence key off the indexed bucket.
   const schema = await statusSchemaForType(input.type);
-  const statusKey = input.status ?? defaultStatusKey(schema, "not_started") ?? "open";
+  const statusKey = input.status ?? initialStatusKey(schema);
   const statusCat = categoryOfStatus(schema, statusKey);
 
   const body = input.body ?? null;
@@ -477,6 +500,11 @@ export async function updateItem(
   if (patch.noteDate !== undefined) set.noteDate = patch.noteDate;
   if (patch.url !== undefined) set.url = patch.url;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;
+  if (patch.nextActionTaskId !== undefined)
+    set.nextActionTaskId = patch.nextActionTaskId;
+  if (patch.nextActionText !== undefined)
+    set.nextActionText = patch.nextActionText;
+  if (patch.composition !== undefined) set.composition = patch.composition;
   if (patch.properties !== undefined) set.properties = patch.properties;
   // Per-key merge (ADR-069): overwrite only these keys, keep the rest. Atomic at
   // the DB level (no read-modify-write race), and the generated search tsvector
