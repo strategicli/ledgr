@@ -15,6 +15,11 @@ import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
 import { MENTION_ROLE } from "@/lib/mentions";
+import {
+  emitActivity,
+  isTrackedSubjectType,
+  type ActivityKind,
+} from "@/lib/activity";
 
 // Generous bound for a single-user dashboard page; paging can come with the
 // view engine if an entity ever outgrows it.
@@ -36,6 +41,7 @@ export function relatedItemsQuery(ownerId: string, itemId: string) {
       ...listColumns,
       role: relations.role,
       matchState: relations.matchState,
+      home: relations.home,
     })
     .from(relations)
     .innerJoin(
@@ -217,7 +223,8 @@ export async function relateItems(
   ownerId: string,
   sourceId: string,
   targetId: string,
-  role = "related"
+  role = "related",
+  opts: { home?: boolean } = {}
 ) {
   if (role === MENTION_ROLE) {
     throw new ItemError(
@@ -230,15 +237,91 @@ export async function relateItems(
   }
   await assertOwned(ownerId, sourceId, { live: true });
   await assertOwned(ownerId, targetId, { live: true });
+  // One home parent per child (ADR-111): mark this the primary residence only
+  // after clearing any prior home edge, so the partial unique index never trips.
+  if (opts.home) await clearHomeEdges(sourceId);
   const rows = await getDb()
     .insert(relations)
-    .values({ sourceId, targetId, role })
+    .values({ sourceId, targetId, role, home: opts.home ?? false })
     .onConflictDoUpdate({
       target: [relations.sourceId, relations.targetId, relations.role],
-      set: { matchState: "confirmed" },
+      set: opts.home
+        ? { matchState: "confirmed", home: true }
+        : { matchState: "confirmed" },
     })
     .returning();
   return rows[0];
+}
+
+// Clear the home flag on every existing edge from this child, so a new home
+// edge can be set without violating the one-home-per-source partial unique.
+async function clearHomeEdges(childId: string) {
+  await getDb()
+    .update(relations)
+    .set({ home: false })
+    .where(and(eq(relations.sourceId, childId), eq(relations.home, true)));
+}
+
+// Containment (ADR-111): make `childId` live in `parentId` as its PRIMARY
+// residence (a child -> parent edge with home=true). This is how a Project
+// "contains" a note/task/milestone/typed record — relationships + the home bit,
+// not a new ownership model ("a note is still a note"). The same record can be
+// surfaced elsewhere through home=false edges without being copied or re-owned.
+// Emits the matching activity line on the parent when the parent is a tracked
+// record (best-effort). `role` defaults to the generic "contains"; the existing
+// task->project edge keeps its own "project" role and passes it here.
+export async function setHome(
+  ownerId: string,
+  childId: string,
+  parentId: string,
+  role = "contains"
+) {
+  if (childId === parentId) {
+    throw new ItemError("bad_request", "an item cannot contain itself");
+  }
+  await assertOwned(ownerId, childId, { live: true });
+  await assertOwned(ownerId, parentId, { live: true });
+  await clearHomeEdges(childId);
+  const rows = await getDb()
+    .insert(relations)
+    .values({ sourceId: childId, targetId: parentId, role, home: true })
+    .onConflictDoUpdate({
+      target: [relations.sourceId, relations.targetId, relations.role],
+      set: { matchState: "confirmed", home: true },
+    })
+    .returning();
+  await emitContainmentActivity(ownerId, childId, parentId).catch(() => {});
+  return rows[0];
+}
+
+// Map a contained child's type to its activity kind on the parent's timeline.
+const CONTAINMENT_KIND: Record<string, ActivityKind> = {
+  task: "task_added",
+  note: "note_added",
+  milestone: "milestone_added",
+};
+
+async function emitContainmentActivity(
+  ownerId: string,
+  childId: string,
+  parentId: string
+) {
+  const rows = await getDb()
+    .select({ id: items.id, type: items.type, title: items.title })
+    .from(items)
+    .where(and(inArray(items.id, [childId, parentId]), eq(items.ownerId, ownerId)));
+  const child = rows.find((r) => r.id === childId);
+  const parent = rows.find((r) => r.id === parentId);
+  if (!child || !parent || !isTrackedSubjectType(parent.type)) return;
+  const kind = CONTAINMENT_KIND[child.type] ?? "record_related";
+  await emitActivity({
+    ownerId,
+    subjectId: parentId,
+    actorId: childId,
+    kind,
+    summary: `Added ${child.type} “${child.title || "untitled"}”`,
+    payload: { childType: child.type },
+  });
 }
 
 // Machine-made edge from the calendar matcher (slice 23). Like relateItems

@@ -54,6 +54,24 @@ export const itemStatus = pgEnum("item_status", ["open", "done", "archived"]);
 // migration 0030. The column keeps its name to avoid a wide rename; surfaced as
 // "Priority" everywhere. See src/lib/priority.ts.
 export const matchState = pgEnum("match_state", ["confirmed", "suggested"]);
+
+// Activity-log event kinds (Project Type, ADR-111). A closed, code-owned
+// vocabulary (unlike items.status, which users define) so the Recent Activity /
+// Digest / Story-weave narrators can switch exhaustively over it. Adding a kind
+// is a small additive migration. See src/lib/activity.ts.
+export const activityKind = pgEnum("activity_kind", [
+  "record_created",
+  "status_changed",
+  "task_added",
+  "task_completed",
+  "note_added",
+  "meeting_held",
+  "milestone_added",
+  "milestone_passed",
+  "record_related",
+  "checkin_reviewed",
+  "overview_woven",
+]);
 export const viewLayout = pgEnum("view_layout", [
   "list",
   "table",
@@ -196,6 +214,13 @@ export const types = pgTable("types", {
   // render is untouched). Shape parsed/defaulted in src/lib/canvas-layout.ts;
   // applies only to the default markdown canvas, not bespoke module canvases.
   canvasLayout: jsonb("canvas_layout"),
+  // Per-type default widget composition (Layer 2, ADR-111/PJ2): the default
+  // widget set + arrangement + behaviors (e.g. Digest) every new record of this
+  // type inherits, when the type's homepage is widget-composed (Project first,
+  // any type via the Build editor in PJ10). null = the generated default. Lives
+  // on the type, never the record; per-record overrides go in items.composition.
+  // Parsed tolerantly in src/lib/composition.ts (PJ3), the canvas_layout pattern.
+  defaultWidgets: jsonb("default_widgets"),
   defaultViewId: uuid("default_view_id").references(() => views.id),
   // Soft-delete (ADR-058): a deleted type stays as a row (its trashed items'
   // FK still points here) but drops out of the registry/pickers. Restored from
@@ -283,7 +308,22 @@ export const items = pgTable(
     exportedAt: timestamp("exported_at", { withTimezone: true }),
     exportPath: text("export_path"),
     parentId: uuid("parent_id").references((): AnyPgColumn => items.id),
+    // Next Action (Project Type, ADR-111/PJ2): a record's single pinned next step.
+    // A pointer to a task (auto-advances on completion) OR free text when there's
+    // no backing task. On the base because the Next Action header reads it hot on
+    // every record page. SET NULL so completing/deleting the pinned task clears it.
+    nextActionTaskId: uuid("next_action_task_id").references(
+      (): AnyPgColumn => items.id,
+      { onDelete: "set null" }
+    ),
+    nextActionText: text("next_action_text"),
     properties: jsonb("properties"),
+    // Per-record widget composition OVERRIDE (Layer 3, ADR-111/PJ2). null =
+    // inherit the type's default_widgets (Layer 2) verbatim — the common case, so
+    // a fresh record stores nothing. Set lazily the first time a widget is
+    // toggled/arranged on THIS record. Disabling a widget hides it here (keeps its
+    // data); the shape is parsed tolerantly in src/lib/composition.ts (PJ3).
+    composition: jsonb("composition"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -335,6 +375,15 @@ export const relations = pgTable(
       .references(() => items.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("related"),
     matchState: matchState("match_state").notNull().default("confirmed"),
+    // Containment residence flag (Project Type, ADR-111): on a containment edge
+    // (child -> parent, e.g. the task->project edge), home=true marks this as the
+    // child's PRIMARY residence; home=false is a referenced/surfaced-elsewhere
+    // edge. Orthogonal to role (what kind of edge) and match_state (trusted vs
+    // suggested). Default false leaves every existing edge (tags, mentions,
+    // typed relation fields) untouched and non-home. "A note is still a note":
+    // containment is purely this edge, no schema fork. A record has at most one
+    // home parent, enforced by the partial unique index below.
+    home: boolean("home").notNull().default(false),
   },
   (t) => [
     // Indexed separately (not composite) so both-direction backlink queries
@@ -346,6 +395,11 @@ export const relations = pgTable(
       t.targetId,
       t.role
     ),
+    // At most one home (primary residence) edge per child item, across all
+    // roles/parents. Partial so only home edges are constrained (ADR-111).
+    uniqueIndex("relations_one_home_per_source_uq")
+      .on(t.sourceId)
+      .where(sql`${t.home}`),
   ]
 );
 
@@ -435,6 +489,53 @@ export const revisions = pgTable(
       .defaultNow(),
   },
   (t) => [index("revisions_item_idx").on(t.itemId)]
+);
+
+// The activity log (Project Type, ADR-111): an append-only, owner-scoped record
+// of what happened on a container record (a project, later a pursuit). Recent
+// Activity, the Digest, and the Overview Story weave are all downstream of this
+// — the narrative is only as good as the log is rich, so payload carries enough
+// context to narrate later without re-joining. The SUBJECT is the record the
+// event narrates (usually the project); the ACTOR is the thing that triggered it
+// (the completed task, the added note) when distinct from the subject.
+export const activityEvents = pgTable(
+  "activity_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    // The record this event is ABOUT. Cascade so a purged record takes its log
+    // with it (the 30-day purge stays complete).
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references((): AnyPgColumn => items.id, { onDelete: "cascade" }),
+    // The item that triggered it (task completed, note added) when distinct from
+    // the subject; null for subject-level events (the project's own status
+    // change). SET NULL so deleting the actor keeps the history line.
+    actorId: uuid("actor_id").references((): AnyPgColumn => items.id, {
+      onDelete: "set null",
+    }),
+    kind: activityKind("kind").notNull(),
+    // Pre-rendered human-readable line ("3 tasks closed", "booklet to printer").
+    summary: text("summary").notNull(),
+    // Rich denormalized context: { fromStatus, toStatus, title, ... }.
+    payload: jsonb("payload"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // The hot read: a record's timeline, newest first (Recent Activity, Digest,
+    // weave all key off (subjectId, occurredAt)).
+    index("activity_events_subject_idx").on(t.subjectId, t.occurredAt),
+    index("activity_events_owner_idx").on(t.ownerId, t.occurredAt),
+    // The staleness clock: latest checkin_reviewed per subject. last_reviewed_at
+    // is DERIVED from this (no column), reset when the user responds to a Digest.
+    index("activity_events_checkin_idx")
+      .on(t.subjectId, t.occurredAt)
+      .where(sql`${t.kind} = 'checkin_reviewed'`),
+  ]
 );
 
 // Per-job persistent state, one row per job key (slice 17): the export

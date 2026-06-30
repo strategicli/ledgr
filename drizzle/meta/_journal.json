@@ -281,6 +281,41 @@
       "when": 1782751384400,
       "tag": "0039_big_monster_badoon",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1782751385400,
+      "tag": "0040_solid_leech",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1782751386400,
+      "tag": "0041_overrated_warpath",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1782751387400,
+      "tag": "0042_project_widget_home",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1782751388400,
+      "tag": "0043_milestone_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1782751389400,
+      "tag": "0044_pursuit_type",
+      "breakpoints": true
     }
   ]
 }

@@ -34,8 +34,18 @@ import {
   ensureFirstOccurrence,
   occurrenceSeriesId,
 } from "@/lib/recurrence-service";
-import { categoryOfStatus, defaultStatusKey, type StatusCategory } from "@/lib/status";
+import {
+  categoryOfStatus,
+  defaultStatusKey,
+  initialStatusKey,
+  type StatusCategory,
+} from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
+import {
+  emitActivity,
+  homeParentOf,
+  isTrackedSubjectType,
+} from "@/lib/activity";
 
 // A new revision is skipped when the latest one is younger than this; the
 // editor autosaves often (slice 5) and one snapshot per burst is enough
@@ -91,6 +101,15 @@ export type ItemInput = {
   url?: string | null;
   parentId?: string | null;
   properties?: Record<string, unknown> | null;
+  // Next Action (ADR-111/PJ2): a pinned task pointer and/or free text. Edited
+  // by the Next Action widget (PJ6); auto-advances on completion of the pinned
+  // task. nextActionTaskId is an item id (a task) or null.
+  nextActionTaskId?: string | null;
+  nextActionText?: string | null;
+  // Per-record widget composition override (Layer 3, ADR-111/PJ2). Raw jsonb at
+  // this layer; validated/used by the widget canvas (PJ3/PJ4). null = inherit
+  // the type default.
+  composition?: Record<string, unknown> | null;
   // Untriaged flag (PRD §4.2 Inbox): arrival paths set it, triage clears it.
   inbox?: boolean;
   // Mark this item as template content (ADR-093). Set true to mint a template
@@ -151,8 +170,17 @@ export const listColumns = {
 };
 
 // getItem adds the body and the is_template flag (the canvas/banner + the
-// clone/apply path need it; list queries deliberately don't carry it).
-const itemColumns = { ...listColumns, body: items.body, isTemplate: items.isTemplate };
+// clone/apply path need it; list queries deliberately don't carry it). The
+// record-page-only fields (Next Action, the widget composition override) ride
+// here too — read when an item is opened, never in lists (ADR-111/PJ2).
+const itemColumns = {
+  ...listColumns,
+  body: items.body,
+  isTemplate: items.isTemplate,
+  nextActionTaskId: items.nextActionTaskId,
+  nextActionText: items.nextActionText,
+  composition: items.composition,
+};
 
 // Exposed as a query builder (not just results) so verification can assert
 // the generated SQL carries owner_id and no body.
@@ -361,7 +389,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
   // started" status, and store its category alongside so the hot queries / the
   // done-checkbox / recurrence key off the indexed bucket.
   const schema = await statusSchemaForType(input.type);
-  const statusKey = input.status ?? defaultStatusKey(schema, "not_started") ?? "open";
+  const statusKey = input.status ?? initialStatusKey(schema);
   const statusCat = categoryOfStatus(schema, statusKey);
 
   const body = input.body ?? null;
@@ -398,6 +426,18 @@ export async function createItem(ownerId: string, input: ItemInput) {
   if (created.body != null) {
     await snapshotRevision(created.id, created.body);
     await syncMentionRelations(ownerId, created.id, created.body);
+  }
+  // Activity log (ADR-111): a tracked record (a project) being born is the first
+  // line of its own timeline. Best-effort — a failed log line never breaks the
+  // create.
+  if (!isTemplate && isTrackedSubjectType(created.type)) {
+    await emitActivity({
+      ownerId,
+      subjectId: created.id,
+      kind: "record_created",
+      summary: `Created ${created.title || "untitled"}`,
+      payload: { type: created.type },
+    }).catch(() => {});
   }
   return created;
 }
@@ -508,6 +548,11 @@ export async function updateItem(
   if (patch.noteDate !== undefined) set.noteDate = patch.noteDate;
   if (patch.url !== undefined) set.url = patch.url;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;
+  if (patch.nextActionTaskId !== undefined)
+    set.nextActionTaskId = patch.nextActionTaskId;
+  if (patch.nextActionText !== undefined)
+    set.nextActionText = patch.nextActionText;
+  if (patch.composition !== undefined) set.composition = patch.composition;
   if (patch.properties !== undefined) set.properties = patch.properties;
   // Per-key merge (ADR-069): overwrite only these keys, keep the rest. Atomic at
   // the DB level (no read-modify-write race), and the generated search tsvector
@@ -567,6 +612,40 @@ export async function updateItem(
     (patch.properties != null && "recurrence" in patch.properties);
   if (touchedRecurrence) {
     await ensureFirstOccurrence(ownerId, id).catch(() => {});
+  }
+  // Activity log (ADR-111). Two independent lines, both best-effort:
+  // (1) a tracked record's OWN status change narrates itself;
+  // (2) a contained item moving into the done category narrates its home parent
+  //     (a task finishing shows on its project's timeline). Inbox items with no
+  //     tracked home parent log nothing — keeps the log a project narrative.
+  const statusChanged =
+    set.status !== undefined && existing[0].status !== patch.status;
+  if (statusChanged && isTrackedSubjectType(updated.type)) {
+    await emitActivity({
+      ownerId,
+      subjectId: updated.id,
+      kind: "status_changed",
+      summary: `Status → ${updated.status}`,
+      payload: { from: existing[0].status, to: updated.status },
+    }).catch(() => {});
+  }
+  if (nextCategory === "done" && existing[0].statusCategory !== "done") {
+    const parent = await homeParentOf(ownerId, updated.id).catch(() => null);
+    if (parent && isTrackedSubjectType(parent.type)) {
+      await emitActivity({
+        ownerId,
+        subjectId: parent.id,
+        actorId: updated.id,
+        kind: "task_completed",
+        summary: `Completed “${updated.title || "untitled"}”`,
+        payload: { childType: updated.type },
+      }).catch(() => {});
+      // Next Action auto-advance (ADR-111/PJ5): if the completed task is the
+      // home parent's pinned Next Action, advance to the next open contained
+      // task (ordered by creation), else clear it. Direct write — not through
+      // updateItem — to avoid re-entrancy and an extra status_changed line.
+      await advanceNextActionIfPinned(ownerId, parent.id, updated.id).catch(() => {});
+    }
   }
   return updated;
 }
@@ -701,6 +780,50 @@ export async function toggleItemDone(ownerId: string, id: string) {
       ? defaultStatusKey(schema, "not_started") ?? "open"
       : defaultStatusKey(schema, "done") ?? "done";
   return updateItem(ownerId, id, { status: next });
+}
+
+// If `taskId` is the pinned Next Action on `parentId`, advance the pin to the
+// next open contained (home) task ordered by creation, else clear it (ADR-111).
+// A direct, owner-scoped write so it can run inside updateItem without recursion.
+async function advanceNextActionIfPinned(
+  ownerId: string,
+  parentId: string,
+  taskId: string
+) {
+  const db = getDb();
+  const parent = await db
+    .select({ next: items.nextActionTaskId })
+    .from(items)
+    .where(and(eq(items.id, parentId), eq(items.ownerId, ownerId)));
+  if (parent.length === 0 || parent[0].next !== taskId) return;
+  const nextRows = await db
+    .select({ id: items.id })
+    .from(items)
+    .innerJoin(
+      relations,
+      and(
+        eq(relations.sourceId, items.id),
+        eq(relations.targetId, parentId),
+        eq(relations.home, true),
+        eq(relations.matchState, "confirmed")
+      )
+    )
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        eq(items.type, "task"),
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false),
+        inArray(items.statusCategory, ["not_started", "in_progress"]),
+        ne(items.id, taskId)
+      )
+    )
+    .orderBy(items.createdAt)
+    .limit(1);
+  await db
+    .update(items)
+    .set({ nextActionTaskId: nextRows[0]?.id ?? null })
+    .where(and(eq(items.id, parentId), eq(items.ownerId, ownerId)));
 }
 
 // Soft-deletes the item and every live descendant in one statement, all with

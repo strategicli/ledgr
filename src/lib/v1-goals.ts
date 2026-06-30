@@ -100,8 +100,8 @@ export const V1_GOALS: GoalSet[] = [
       { label: "Sermons bespoke type (+ upload existing)", status: "todo" },
       {
         label: "Projects bespoke type (hub: tasks + notes/files/meetings)",
-        status: "todo",
-        note: "tracked-project hub; my 5+ dev apps are the first use",
+        status: "in_progress",
+        note: "widget-composed Project + Pursuit built (ADR-111, PJ1–PJ11) on a branch; awaiting integration onto main + in-browser pass",
       },
     ],
   },

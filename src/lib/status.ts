@@ -233,6 +233,22 @@ export function defaultStatusKey(
   return (inCat.find((s) => s.isDefault) ?? inCat[0]).key;
 }
 
+// The status a brand-new item of this type should get (ADR-111/PJ2). Prefer the
+// schema's first explicitly-default NON-terminal status, so a type whose working
+// default is in_progress (a Project's "Active"/"Ongoing") starts there instead
+// of being forced into a not_started bucket; then fall back to the not_started
+// default, then the first non-terminal status, then "open". A type with an
+// explicit not_started default (task/note/…) is unchanged — that status is found
+// first either way.
+export function initialStatusKey(schema: StatusDef[]): string {
+  const nonTerminal = schema.filter(
+    (s) => s.category !== "done" && s.category !== "archived"
+  );
+  const explicit = nonTerminal.find((s) => s.isDefault);
+  if (explicit) return explicit.key;
+  return defaultStatusKey(schema, "not_started") ?? nonTerminal[0]?.key ?? "open";
+}
+
 export const isActiveCategory = (c: StatusCategory) => ACTIVE_CATEGORIES.includes(c);
 export const isDoneCategory = (c: StatusCategory) => c === "done";
 

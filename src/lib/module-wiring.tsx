@@ -13,8 +13,10 @@
 import ChordCanvas from "@/components/canvas/ChordCanvas";
 import LinkCanvas from "@/components/canvas/LinkCanvas";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
+import MindmapCanvas from "@/components/canvas/MindmapCanvas";
 import TaskCanvas from "@/components/canvas/TaskCanvas";
 import PaperCanvas from "@/components/canvas/PaperCanvas";
+import WidgetCanvas from "@/components/canvas/WidgetCanvas";
 import { DEFAULT_CANVAS, type CanvasComponent } from "@/lib/modules";
 // Side-effect import: registers the workflow modules (Songs, …) onto core so a
 // `song` resolves its `chord` canvas. This is the canvas-dispatch path
@@ -27,6 +29,8 @@ const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   chord: ChordCanvas,
   paper: PaperCanvas,
   task: TaskCanvas,
+  mindmap: MindmapCanvas,
+  widgets: WidgetCanvas,
 };
 
 // Resolve a canvas id (from `canvasIdForType`) to its component. Anything
