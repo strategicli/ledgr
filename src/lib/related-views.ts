@@ -68,6 +68,11 @@ export async function resolveRelatedGroup(
   hostId: string,
   typeKey: string,
   lens: Lens,
+  // Drop completed (done-category) items so the group reads as live work — the
+  // related panel's long-standing default. The caller passes true only for the
+  // generic sort lenses; a view lens owns its own status filter, so it's left to
+  // show exactly what it filters (e.g. a deliberate "Completed" view).
+  hideCompleted = false,
   limit = VIEW_LIMIT
 ): Promise<ViewLensData | null> {
   if (lens.kind === "view") {
@@ -87,10 +92,14 @@ export async function resolveRelatedGroup(
       countViewItems(ownerId, scoped.filter),
       groupingFor(typeKey, scoped),
     ]);
+    const items = rows.map(toViewItem);
+    const visible = hideCompleted
+      ? items.filter((i) => i.statusCategory !== "done")
+      : items;
     return {
       view: scoped,
-      items: rows.map(toViewItem),
-      count,
+      items: visible,
+      count: hideCompleted ? visible.length : count,
       groupOrder: grouping.groupOrder,
       propertyLabels: grouping.propertyLabels,
     };
@@ -120,10 +129,14 @@ export async function resolveRelatedGroup(
     countViewItems(ownerId, filter),
     groupingFor(typeKey, view),
   ]);
+  const items = rows.map(toViewItem);
+  const visible = hideCompleted
+    ? items.filter((i) => i.statusCategory !== "done")
+    : items;
   return {
     view,
-    items: rows.map(toViewItem),
-    count,
+    items: visible,
+    count: hideCompleted ? visible.length : count,
     groupOrder: grouping.groupOrder,
     propertyLabels: grouping.propertyLabels,
   };

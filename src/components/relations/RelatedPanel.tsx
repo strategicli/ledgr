@@ -144,10 +144,12 @@ export default async function RelatedPanel({
     typeGroups.map(async (key) => {
       const lenses = lensesForType(settings, key);
       let lens = relatedLensFor(settings, hostType, key);
-      let data = await resolveRelatedGroup(ownerId, itemId, key, lens);
+      // Generic sort lenses hide completed items (the panel reads as live work);
+      // a view lens owns its own status filter, so leave it to show what it filters.
+      let data = await resolveRelatedGroup(ownerId, itemId, key, lens, lens.kind === "sort");
       if (!data) {
         lens = lenses[0];
-        data = await resolveRelatedGroup(ownerId, itemId, key, lens);
+        data = await resolveRelatedGroup(ownerId, itemId, key, lens, lens.kind === "sort");
       }
       return { key, lenses, lensId: lens.id, data, rowActions: rowActionsFor(byType.get(key)!) };
     })
