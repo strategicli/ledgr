@@ -13,6 +13,7 @@
 import ChordCanvas from "@/components/canvas/ChordCanvas";
 import LinkCanvas from "@/components/canvas/LinkCanvas";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
+import MindmapCanvas from "@/components/canvas/MindmapCanvas";
 import TaskCanvas from "@/components/canvas/TaskCanvas";
 import PaperCanvas from "@/components/canvas/PaperCanvas";
 import { DEFAULT_CANVAS, type CanvasComponent } from "@/lib/modules";
@@ -27,6 +28,7 @@ const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   chord: ChordCanvas,
   paper: PaperCanvas,
   task: TaskCanvas,
+  mindmap: MindmapCanvas,
 };
 
 // Resolve a canvas id (from `canvasIdForType`) to its component. Anything
