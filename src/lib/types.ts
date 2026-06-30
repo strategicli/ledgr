@@ -103,6 +103,10 @@ export type TypeDefinition = {
   // default (classic stacked render). Parsed tolerantly — a malformed value reads
   // as null, mirroring how a bad property_schema degrades to [].
   canvasLayout: CanvasLayout | null;
+  // Per-type default widget composition (Layer 2, ADR-111/PJ2). Raw jsonb —
+  // src/lib/composition.ts is the single tolerant parser (resolveComposition),
+  // so it's passed through unparsed here. null = the generated default.
+  defaultWidgets: unknown;
   // Soft-delete stamp (ADR-058); null = live. A deleted type is hidden from the
   // registry/pickers but its row stays so trashed items keep a valid FK.
   deletedAt: Date | null;
@@ -309,6 +313,7 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     capability: row.capability,
     hidden: row.hidden,
     canvasLayout: parseCanvasLayout(row.canvasLayout),
+    defaultWidgets: row.defaultWidgets ?? null,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
   };

@@ -253,6 +253,13 @@
       "when": 1782778274708,
       "tag": "0035_overrated_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1782778275708,
+      "tag": "0036_project_widget_home",
+      "breakpoints": true
     }
   ]
 }

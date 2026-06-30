@@ -162,6 +162,20 @@ export const coreModule: ModuleManifest = {
       canvasId: DEFAULT_CANVAS,
       canonicalFormat: MARKDOWN_FORMAT,
     },
+    {
+      // Widget-composed homepage (Project Type, ADR-111). A type carrying this
+      // capability renders its records through the widget canvas — a set of
+      // widgets bound to the record (PRD §0). Attached to `project` first; any
+      // type can adopt it from Build (PJ10). The body stays markdown (the
+      // Overview widget renders it), so the canonical format is unchanged.
+      id: "widget-home",
+      label: "Widget homepage",
+      description: "Compose this type's page from widgets (tasks, notes, milestones, progress, …) bound to the record.",
+      usage:
+        "Turn a type into a hub: a Project shows its tasks, notes, meetings, milestones, progress and next action on one composable page. Arrange and toggle widgets per record.",
+      canvasId: "widgets",
+      canonicalFormat: MARKDOWN_FORMAT,
+    },
   ],
 };
 

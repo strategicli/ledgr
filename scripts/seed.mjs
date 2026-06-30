@@ -87,14 +87,18 @@ await sql`
 // default where the project type is unused, else fixes the category mapping.
 // Configurable per instance via the type's status editor (ADR-082).
 await sql`
-  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, property_schema)
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, property_schema, capability)
   VALUES (
     'project', 'Project', 'folder', false, true, false, 'select',
     '[{"key":"planning","label":"Planning","category":"not_started","color":"#64748b","isDefault":true},{"key":"active","label":"Active","category":"in_progress","color":"#d97706"},{"key":"on_hold","label":"On Hold","category":"not_started","color":"#6b7280"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
-    '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb
+    '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb,
+    'widget-home'
   )
   ON CONFLICT (key) DO NOTHING
 `;
+// The project type renders through the widget canvas (ADR-111). Idempotent for
+// instances seeded before the capability existed (mirrors migration 0036).
+await sql`UPDATE types SET capability = 'widget-home' WHERE key = 'project' AND capability IS NULL`;
 
 // Per-type status DISPLAY MODE (ADR-106), idempotent + mirrors migration 0032.
 // Status is opt-in: rows left NULL resolve to 'none' (no status affordance) via
