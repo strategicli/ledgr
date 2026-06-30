@@ -20,6 +20,8 @@ import UnscheduledRail from "@/components/planner/UnscheduledRail";
 import { usePlannerTouchDrag } from "@/components/planner/usePlannerTouchDrag";
 import type { ViewItem } from "@/components/views/ViewRenderer";
 import type { DateProperty, PlaceBy } from "@/lib/views";
+import type { OverlayEvent } from "@/lib/calendar/overlay";
+import { formatTime12 } from "@/lib/scheduled-time";
 
 const RAIL = "__none__";
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -33,6 +35,7 @@ export default function PlannerMonth({
   month,
   navHref,
   showUnscheduled = true,
+  calendarEvents,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -40,6 +43,7 @@ export default function PlannerMonth({
   month?: string;
   navHref?: string;
   showUnscheduled?: boolean;
+  calendarEvents?: OverlayEvent[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -99,6 +103,14 @@ export default function PlannerMonth({
     }
     if (!byDay.has(ymd)) byDay.set(ymd, []);
     byDay.get(ymd)!.push(item);
+  }
+
+  // Read-only synced calendar events, bucketed by their (app-tz) day. These are
+  // context to plan around — never draggable, never editable.
+  const eventsByDay = new Map<string, OverlayEvent[]>();
+  for (const ev of calendarEvents ?? []) {
+    if (!eventsByDay.has(ev.ymd)) eventsByDay.set(ev.ymd, []);
+    eventsByDay.get(ev.ymd)!.push(ev);
   }
 
   async function commitDrop(id: string | null, day: string | null) {
@@ -180,6 +192,26 @@ export default function PlannerMonth({
     );
   }
 
+  // A read-only calendar event badge: muted, a cool-toned left bar to read as
+  // "calendar, not task," non-draggable. Drag/drop still works because the
+  // parent day cell owns the handlers and the events bubble up through it.
+  function eventBadge(ev: OverlayEvent) {
+    return (
+      <div
+        key={ev.id}
+        title={`${ev.start ? `${formatTime12(ev.start)} · ` : ""}${ev.title || "(busy)"}${ev.location ? ` · ${ev.location}` : ""}`}
+        className="block cursor-default select-none truncate rounded px-1 py-0.5 text-[11px] text-neutral-400"
+        style={{
+          backgroundColor: "color-mix(in srgb, #38bdf8 12%, rgb(23 23 23))",
+          borderLeft: "2px solid #38bdf8",
+        }}
+      >
+        {ev.start && <span className="text-neutral-500">{formatTime12(ev.start)} </span>}
+        {ev.title || "(busy)"}
+      </div>
+    );
+  }
+
   const dropProps = (day: string) => ({
     "data-day": day,
     onDragOver: (e: React.DragEvent) => {
@@ -225,6 +257,7 @@ export default function PlannerMonth({
           ))}
           {cells.map((cell) => {
             const dayItems = byDay.get(cell.ymd) ?? [];
+            const dayEvents = eventsByDay.get(cell.ymd) ?? [];
             const isToday = cell.ymd === todayYmd;
             const isOver = overDay === cell.ymd;
             return (
@@ -244,6 +277,10 @@ export default function PlannerMonth({
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5">
+                  {dayEvents.slice(0, 2).map((ev) => eventBadge(ev))}
+                  {dayEvents.length > 2 && (
+                    <span className="px-1 text-[11px] text-neutral-600">+{dayEvents.length - 2} event{dayEvents.length - 2 === 1 ? "" : "s"}</span>
+                  )}
                   {dayItems.slice(0, 4).map((item) => chip(item))}
                   {dayItems.length > 4 && (
                     <span className="px-1 text-[11px] text-neutral-600">+{dayItems.length - 4} more</span>

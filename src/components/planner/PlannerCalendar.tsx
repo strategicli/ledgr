@@ -12,6 +12,7 @@ import PlannerTimeGrid from "@/components/planner/PlannerTimeGrid";
 import type { DateProperty, PlaceBy, ViewDisplay, CalendarMode } from "@/lib/views";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ViewItem } from "@/components/views/ViewRenderer";
+import type { OverlayEvent } from "@/lib/calendar/overlay";
 
 export default function PlannerCalendar({
   items,
@@ -20,6 +21,7 @@ export default function PlannerCalendar({
   display,
   month,
   navHref,
+  calendarEvents,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -27,18 +29,25 @@ export default function PlannerCalendar({
   display: ViewDisplay | null;
   month?: string;
   navHref?: string;
+  calendarEvents?: OverlayEvent[];
 }) {
   const [mode, setMode] = useState<CalendarMode>(display?.mode ?? DISPLAY_DEFAULTS.mode);
   // Show/hide tasks with no due/scheduled date (the Unscheduled rail). Off by
   // default — most days you want to see only what's already placed; persisted
   // per browser so the choice sticks.
   const [showUnscheduled, setShowUnscheduled] = useState(false);
+  // Overlay the read-only synced calendar (what's already scheduled) so you can
+  // plan tasks around it. Seeded from the view's display.showCalendar so a view
+  // can default it on; the per-browser toggle then overrides for the session.
+  const [showCalendar, setShowCalendar] = useState(display?.showCalendar ?? false);
   useEffect(() => {
     // Read after mount, not in a lazy initializer: localStorage isn't available
     // during SSR, and reading it in the initializer would cause a hydration
     // mismatch. This is the intended client-only-preference pattern.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowUnscheduled(localStorage.getItem("planner:showUnscheduled") === "1");
+    const cal = localStorage.getItem("planner:showCalendar");
+    if (cal != null) setShowCalendar(cal === "1");
   }, []);
   function toggleUnscheduled(v: boolean) {
     setShowUnscheduled(v);
@@ -48,6 +57,16 @@ export default function PlannerCalendar({
       /* ignore storage failures */
     }
   }
+  function toggleCalendar(v: boolean) {
+    setShowCalendar(v);
+    try {
+      localStorage.setItem("planner:showCalendar", v ? "1" : "0");
+    } catch {
+      /* ignore storage failures */
+    }
+  }
+  // Only hand the grids events when the overlay is on (toggle off = no blocks).
+  const overlay = showCalendar ? calendarEvents : undefined;
 
   const seg = (m: CalendarMode, label: string) => (
     <button
@@ -72,19 +91,35 @@ export default function PlannerCalendar({
         <span className="ml-2 text-[11px] text-neutral-600">
           Drag to plan · places by {placeBy === "due" ? "due date" : "scheduled date"}
         </span>
-        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-400">
-          <input
-            type="checkbox"
-            checked={showUnscheduled}
-            onChange={(e) => toggleUnscheduled(e.target.checked)}
-          />
-          Show unscheduled
-        </label>
+        <div className="ml-auto flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-400">
+            <input
+              type="checkbox"
+              checked={showCalendar}
+              onChange={(e) => toggleCalendar(e.target.checked)}
+            />
+            Show calendar
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-neutral-400">
+            <input
+              type="checkbox"
+              checked={showUnscheduled}
+              onChange={(e) => toggleUnscheduled(e.target.checked)}
+            />
+            Show unscheduled
+          </label>
+        </div>
       </div>
+      {showCalendar && (calendarEvents?.length ?? 0) === 0 && (
+        <p className="mt-1 text-[11px] text-neutral-600">
+          No synced calendar events in this range. Calendar sync reaches about
+          two weeks ahead.
+        </p>
+      )}
       {mode === "month" ? (
-        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} />
+        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} calendarEvents={overlay} />
       ) : (
-        <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} />
+        <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} />
       )}
     </div>
   );

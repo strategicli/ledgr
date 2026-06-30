@@ -1,12 +1,20 @@
 // Calendar feed (ADR-094 E3): read the un-promoted upcoming events for the
 // /events "From your calendar" section, and promote one to a real `event` item
 // on a manual Add (or reuse the existing item if it was already promoted).
-import { and, asc, eq, gte, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "@/db";
 import { calendarEvents, items } from "@/db/schema";
 import { ItemError } from "@/lib/items";
+import { APP_TIMEZONE } from "@/lib/today";
 import { applyEventIntake } from "./intake";
+import type { OverlayEvent } from "./overlay";
 import type { CalendarEvent } from "./types";
+
+// The meeting-import feed only suggests near-term events to add. It reads the
+// same cache the Planner overlay does, but the cache now holds 4 weeks
+// (DEFAULT_WINDOW_DAYS), so bound the feed to 2 weeks here to keep the
+// suggestion list short and near-term, independent of the overlay's horizon.
+const FEED_WINDOW_DAYS = 14;
 
 export type FeedEvent = {
   id: string; // the cache row id (what Add posts)
@@ -38,6 +46,7 @@ export async function listCalendarFeed(
   opts: { now?: Date; limit?: number } = {}
 ): Promise<FeedEvent[]> {
   const now = opts.now ?? new Date();
+  const feedEnd = new Date(now.getTime() + FEED_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const rows = await getDb()
     .select({
       id: calendarEvents.id,
@@ -53,7 +62,8 @@ export async function listCalendarFeed(
         eq(calendarEvents.ownerId, ownerId),
         isNull(calendarEvents.promotedItemId),
         eq(calendarEvents.isCancelled, false),
-        gte(calendarEvents.startAt, now)
+        gte(calendarEvents.startAt, now),
+        lte(calendarEvents.startAt, feedEnd)
       )
     )
     .orderBy(asc(calendarEvents.startAt))
@@ -71,6 +81,70 @@ export async function listCalendarFeed(
       attendeeCount: m.attendees?.length ?? 0,
     };
   });
+}
+
+// Day + wall-clock formatters in the app timezone. Events are real instants;
+// the overlay places them on the calendar day and time the user actually sees.
+const tzDayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }); // YYYY-MM-DD
+const tzTimeFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIMEZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+}); // HH:MM (24h)
+const DEFAULT_EVENT_MINUTES = 60;
+
+// The owner's calendar events overlapping a window, as read-only overlay blocks
+// for the Planner. Unlike listCalendarFeed this returns ALL events in range —
+// promoted or not — because the overlay shows the whole calendar to plan
+// around, not just the un-added feed. Cancelled events are excluded. Day +
+// start are resolved to APP_TIMEZONE here so the client grids needn't do tz
+// math. Owner-scoped + index-backed (calendar_events_feed_idx on owner,start_at).
+export async function listCalendarEventsForRange(
+  ownerId: string,
+  start: Date,
+  end: Date
+): Promise<OverlayEvent[]> {
+  const rows = await getDb()
+    .select({
+      id: calendarEvents.id,
+      title: calendarEvents.title,
+      startAt: calendarEvents.startAt,
+      endAt: calendarEvents.endAt,
+      meta: calendarEvents.meta,
+    })
+    .from(calendarEvents)
+    .where(
+      and(
+        eq(calendarEvents.ownerId, ownerId),
+        eq(calendarEvents.isCancelled, false),
+        gte(calendarEvents.startAt, start),
+        lte(calendarEvents.startAt, end)
+      )
+    )
+    .orderBy(asc(calendarEvents.startAt));
+  const out: OverlayEvent[] = [];
+  for (const r of rows) {
+    if (!r.startAt) continue;
+    const m = (r.meta ?? {}) as Partial<CacheMeta>;
+    const startMs = r.startAt.getTime();
+    const endMs = r.endAt ? r.endAt.getTime() : startMs + DEFAULT_EVENT_MINUTES * 60_000;
+    const durationMinutes = Math.max(1, Math.round((endMs - startMs) / 60_000));
+    const startTime = tzTimeFmt.format(r.startAt);
+    // All-day heuristic: the synced meta doesn't carry Graph's isAllDay flag, so
+    // infer it — starts at local midnight and spans whole days. A rare midnight
+    // timed event lands in the all-day band, which is acceptable.
+    const allDay = startTime === "00:00" && durationMinutes % 1440 === 0;
+    out.push({
+      id: r.id,
+      title: r.title,
+      ymd: tzDayFmt.format(r.startAt),
+      start: allDay ? null : startTime,
+      durationMinutes,
+      location: m.location ?? null,
+    });
+  }
+  return out;
 }
 
 // Reconstruct a CalendarEvent from a cached row — enough for the matcher engine.

@@ -23,6 +23,8 @@ import { resolveStatusSchema, type StatusDef } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { queryViewItems, type ViewDefinition } from "@/lib/views";
+import { listCalendarEventsForRange } from "@/lib/calendar/feed";
+import { overlayWindow } from "@/lib/calendar/overlay";
 
 export const dynamic = "force-dynamic";
 
@@ -233,7 +235,11 @@ export default async function Tasks({
     // alongside ?tab); the in-tab Month toggle shows the current month, and the
     // dedicated /planner destination carries full month navigation. No row
     // selection on a calendar layout (defer-by-hiding, ADR-118).
-    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
+    const win = overlayWindow();
+    const [active, calendarEvents] = await Promise.all([
+      queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" }),
+      listCalendarEventsForRange(owner.id, win.start, win.end),
+    ]);
     const plannerView: ViewDefinition = {
       id: "tasks-planner",
       name: "Planner",
@@ -247,7 +253,7 @@ export default async function Tasks({
       display: { mode: "timegrid", placeBy: "scheduled" },
       createdAt: new Date(),
     };
-    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} />;
+    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} calendarEvents={calendarEvents} />;
   } else {
     // projects: each project + its open tasks
     const projects = await queryViewItems(owner.id, { type: "project" }, { field: "updatedAt", dir: "desc" });

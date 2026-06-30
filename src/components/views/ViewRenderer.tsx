@@ -14,6 +14,7 @@ import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
+import type { OverlayEvent } from "@/lib/calendar/overlay";
 import type { StatusDef } from "@/lib/status";
 
 // Structural shape of a listColumns row, narrowed to what the layouts use.
@@ -700,6 +701,7 @@ export default function ViewRenderer({
   statuses,
   month,
   calendarNavHref,
+  calendarEvents,
   selectable = false,
 }: {
   view: ViewDefinition;
@@ -724,6 +726,10 @@ export default function ViewRenderer({
   // the view page; widgets leave it unset so a calendar widget shows the current
   // month with no nav.
   calendarNavHref?: string;
+  // Read-only synced calendar events for the writable calendar overlay (plan
+  // tasks around what's already scheduled). Passed straight to PlannerCalendar,
+  // which gates them behind its "Show calendar" toggle.
+  calendarEvents?: OverlayEvent[];
   // Render per-row selection checkboxes (the multi-select layer, ADR-118). The
   // caller wraps this renderer in a SelectionProvider + BulkActionBar; here it
   // only toggles the row affordance. Off for dashboard widgets (read-only) and
@@ -775,6 +781,7 @@ export default function ViewRenderer({
             display={view.display}
             month={month}
             navHref={calendarNavHref}
+            calendarEvents={calendarEvents}
           />
         );
       }
