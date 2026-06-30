@@ -6,6 +6,14 @@
    classes, never hardcode light backgrounds. Palette shadows Notion's dark
    mode (Notion-default, CLAUDE.md rule 6). */
 :root {
+  /* Dark is the only theme today. Setting color-scheme globally makes the
+     browser's native controls (scrollbars, date/select pickers, form fields)
+     render dark unconditionally — so they no longer depend on Tailwind's
+     @layer base winning the CSS load-order race, which is what produced the
+     intermittent dark-scrollbar / native-border "unstyled" flashes. Per-input
+     [color-scheme:dark] utilities scattered through the canvas components are now
+     redundant guards. A future light theme flips this on the .light class. */
+  color-scheme: dark;
   --background: #191919;
   --foreground: #d4d4d4;
   /* Highlight accent (v5). Overridden per-owner on <body> from user settings. */

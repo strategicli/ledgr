@@ -1,6 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Keep CSS in import order; do NOT remove this. Next's default (`true`, loose)
+  // merges and reorders CSS chunks to minimize their count, which races our
+  // per-component stylesheets (Tiptap's markdown-editor.css, react-grid-layout's
+  // CSS — both imported inside dynamically-loaded client components) against
+  // globals.css. When a component chunk wins that race, Tailwind's `@layer base`
+  // (preflight + color-scheme) loses the cascade and the page renders with
+  // native light-mode controls and stray borders — the intermittent
+  // "randomly unstyled content" / dark-scrollbar flash that a refresh would
+  // toggle on or off. 'strict' preserves import order so the base layer always
+  // wins. (Paired with an explicit `color-scheme: dark` on :root in globals.css.)
+  experimental: {
+    cssChunking: "strict",
+  },
   async rewrites() {
     return [
       // OAuth discovery (ADR-117). The metadata is origin-dependent (it
