@@ -230,6 +230,12 @@ export type UserSettings = {
   // Per-type floating-TOC overrides (ADR-114). Keyed by type key; an absent key
   // resolves to DEFAULT_TOC (auto-on). Additive, no migration.
   tocByType: Record<string, TocConfig>;
+  // Related-panel lens choice: which of a related type's lenses structures that
+  // type's group on an item's detail page. Keyed "hostType:relatedType" (so the
+  // Tasks group under a Meeting can differ from Tasks under a Person), value is
+  // the chosen lens id. An absent key = the related type's default lens.
+  // Additive, no migration, same posture as listTabs.
+  relatedLensChoices: Record<string, string>;
   // Per-source notification toggles (ADR-129). One on/off switch per
   // notification source; a falsy switch makes recordNotification a no-op for
   // that kind, so the single toggle gates BOTH the persisted row and the push.
@@ -306,6 +312,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   favorites: [],
   listTabs: {},
   tocByType: {},
+  relatedLensChoices: {},
   notificationPrefs: {},
 };
 
@@ -380,6 +387,25 @@ function parseFavorites(raw: unknown): string[] {
   return out;
 }
 
+// Parse the related-panel lens choices map ("hostType:relatedType" → lensId).
+// Tolerant like parseListTabs: drop keys without the host:related shape or with
+// a non-string value, bound the count and the string lengths.
+function parseRelatedLensChoices(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  let count = 0;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (count >= 400) break;
+    const k = key.trim().slice(0, 120);
+    if (!k.includes(":")) continue;
+    if (typeof value === "string" && value.trim()) {
+      out[k] = value.trim().slice(0, 40);
+      count++;
+    }
+  }
+  return out;
+}
+
 export function parseSettings(raw: unknown): UserSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const highlightColor =
@@ -448,6 +474,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const favorites = parseFavorites(r.favorites);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
+  const relatedLensChoices = parseRelatedLensChoices(r.relatedLensChoices);
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
   return {
     highlightColor,
@@ -472,6 +499,7 @@ export function parseSettings(raw: unknown): UserSettings {
     favorites,
     listTabs,
     tocByType,
+    relatedLensChoices,
     notificationPrefs,
   };
 }

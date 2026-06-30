@@ -1,0 +1,130 @@
+// Related-panel render path: structure one type group of an item's related
+// items with the owner's chosen lens, rendered through the same ViewRenderer the
+// list pages and dashboards use. The group is scoped with ViewFilter.relatedTo
+// (the pre-existing "items related to this host, either direction, confirmed
+// edges" predicate) plus the group's type, so a saved lens/view reuses verbatim
+// — no parallel sort/filter/group machinery. Mirrors view-render.ts's
+// orchestration (getView → scope → query + count + grouping) and adds the
+// relation scope; body-free and owner-scoped by construction.
+import type { ViewItem } from "@/components/views/ViewRenderer";
+import { ItemError } from "@/lib/items";
+import { resolveLensSort, type Lens } from "@/lib/list-lenses";
+import { getType } from "@/lib/types";
+import type { ViewLensData } from "@/lib/view-render";
+import {
+  countViewItems,
+  getView,
+  queryViewItems,
+  VIEW_LIMIT,
+  type ViewDefinition,
+  type ViewFilter,
+} from "@/lib/views";
+
+// A related group is always one type and always scoped to the host. Override any
+// type the view pinned (the group's type wins) and always set relatedTo, so a
+// generic lens ("Recent") becomes "this type, related to this item, recent".
+function applyRelationScope(filter: ViewFilter, hostId: string, typeKey: string): ViewFilter {
+  return { ...filter, type: typeKey, relatedTo: hostId };
+}
+
+function toViewItem(i: Awaited<ReturnType<typeof queryViewItems>>[number]): ViewItem {
+  return {
+    id: i.id,
+    type: i.type,
+    title: i.title,
+    status: i.status,
+    statusCategory: i.statusCategory,
+    dueDate: i.dueDate,
+    scheduledDate: i.scheduledDate,
+    urgency: i.urgency,
+    meetingAt: i.meetingAt,
+    url: i.url,
+    properties: i.properties,
+    createdAt: i.createdAt,
+    updatedAt: i.updatedAt,
+  };
+}
+
+// Board column order (for a custom-property grouping) + property labels resolved
+// from the group's type — the same metadata view-render.ts computes.
+async function groupingFor(typeKey: string, view: ViewDefinition) {
+  const type = await getType(typeKey).catch(() => null);
+  let groupOrder: string[] | undefined;
+  const g = view.grouping;
+  if (g && "propertyKey" in g) {
+    groupOrder = type?.propertySchema.find((p) => p.key === g.propertyKey)?.options;
+  }
+  const propertyLabels: Record<string, string> = {};
+  for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
+  return { groupOrder, propertyLabels };
+}
+
+// Resolve one related-type group for rendering with the chosen lens. A view lens
+// reuses the saved view's filter/sort/grouping/layout/columns; a sort lens
+// renders a plain list in the lens's order. Returns null when a view lens points
+// at a deleted view, so the caller falls back to the type's default lens.
+export async function resolveRelatedGroup(
+  ownerId: string,
+  hostId: string,
+  typeKey: string,
+  lens: Lens,
+  limit = VIEW_LIMIT
+): Promise<ViewLensData | null> {
+  if (lens.kind === "view") {
+    let view: ViewDefinition;
+    try {
+      view = await getView(ownerId, lens.viewId);
+    } catch (err) {
+      if (err instanceof ItemError && err.code === "not_found") return null;
+      throw err;
+    }
+    const scoped: ViewDefinition = {
+      ...view,
+      filter: applyRelationScope(view.filter, hostId, typeKey),
+    };
+    const [rows, count, grouping] = await Promise.all([
+      queryViewItems(ownerId, scoped.filter, view.sort, limit),
+      countViewItems(ownerId, scoped.filter),
+      groupingFor(typeKey, scoped),
+    ]);
+    return {
+      view: scoped,
+      items: rows.map(toViewItem),
+      count,
+      groupOrder: grouping.groupOrder,
+      propertyLabels: grouping.propertyLabels,
+    };
+  }
+
+  // Sort lens: a plain list in the lens's order. resolveLensSort returns a
+  // ListSort (the superset queryViewItems accepts); the synthetic view's own
+  // `sort` field is display-only (ViewRenderer sorts nothing), so a harmless
+  // default is fine there.
+  const sort = resolveLensSort(lens, false)!;
+  const filter = applyRelationScope({}, hostId, typeKey);
+  const view: ViewDefinition = {
+    id: `related:${typeKey}:${lens.id}`,
+    name: lens.label,
+    isSystem: true,
+    filter,
+    sort: { field: "updatedAt", dir: "desc" },
+    grouping: null,
+    columns: null,
+    layout: "list",
+    dateProperty: null,
+    display: null,
+    createdAt: new Date(),
+  };
+  const [rows, count, grouping] = await Promise.all([
+    queryViewItems(ownerId, filter, sort, limit),
+    countViewItems(ownerId, filter),
+    groupingFor(typeKey, view),
+  ]);
+  return {
+    view,
+    items: rows.map(toViewItem),
+    count,
+    groupOrder: grouping.groupOrder,
+    propertyLabels: grouping.propertyLabels,
+  };
+}
