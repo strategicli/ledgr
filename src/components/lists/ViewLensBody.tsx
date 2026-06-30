@@ -7,6 +7,12 @@
 // rendered rows carry selection checkboxes and the floating BulkActionBar
 // (ADR-118). The list/table/agenda layouts honor it; board/calendar render no
 // checkboxes, so the bar simply never appears there.
+//
+// `rowActions` is the per-row trailing slot (keyed by item id) — the related
+// panel passes its relation controls (un-relate, @-mention marker) here so the
+// "Linked here" and meeting "Open tasks" groups reuse this same body, getting
+// the multi-select layer for free without a parallel wrapper (ADR-118 + #129).
+import type { ReactNode } from "react";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
@@ -17,9 +23,11 @@ import type { ViewLensData } from "@/lib/view-render";
 export default function ViewLensBody({
   data,
   bulkConfig,
+  rowActions,
 }: {
   data: ViewLensData;
   bulkConfig?: BulkActionConfig;
+  rowActions?: Record<string, ReactNode>;
 }) {
   const renderer = (
     <ViewRenderer
@@ -28,6 +36,7 @@ export default function ViewLensBody({
       groupOrder={data.groupOrder}
       propertyLabels={data.propertyLabels}
       selectable={bulkConfig != null}
+      rowActions={rowActions}
     />
   );
 

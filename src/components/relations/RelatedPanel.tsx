@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
+import { bulkConfigForType } from "@/lib/bulk-config";
 import { lensesForType, relatedLensFor } from "@/lib/list-lenses";
 import { MENTION_ROLE } from "@/lib/mentions";
 import {
@@ -151,7 +152,20 @@ export default async function RelatedPanel({
         lens = lenses[0];
         data = await resolveRelatedGroup(ownerId, itemId, key, lens, lens.kind === "sort");
       }
-      return { key, lenses, lensId: lens.id, data, rowActions: rowActionsFor(byType.get(key)!) };
+      // Multi-select for the group (ADR-118): a related group is always one type,
+      // so it gets that type's full bulk actions (status/date/select + Move +
+      // Delete), not a mixed surface's Move+Delete. A type that fails to resolve
+      // (best-effort load) just renders read-only.
+      const typeDef = await getType(key).catch(() => null);
+      const bulkConfig = typeDef ? bulkConfigForType(typeDef) : undefined;
+      return {
+        key,
+        lenses,
+        lensId: lens.id,
+        data,
+        rowActions: rowActionsFor(byType.get(key)!),
+        bulkConfig,
+      };
     })
   );
   const renderGroups = groups.filter((g) => g.data);
@@ -171,6 +185,7 @@ export default async function RelatedPanel({
           currentLensId={g.lensId}
           data={g.data!}
           rowActions={g.rowActions}
+          bulkConfig={g.bulkConfig}
         />
       ))}
       {suggested.length > 0 && (
