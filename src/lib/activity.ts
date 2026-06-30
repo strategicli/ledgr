@@ -125,6 +125,25 @@ export async function lastReviewedAt(
   return max ? new Date(max) : null;
 }
 
+// The most recent activity of ANY kind on a record (the staleness numerator for
+// the Digest, PJ7). Derived; null = no activity ever.
+export async function lastActivityAt(
+  ownerId: string,
+  subjectId: string
+): Promise<Date | null> {
+  const rows = await getDb()
+    .select({ max: sql<string | null>`max(${activityEvents.occurredAt})` })
+    .from(activityEvents)
+    .where(
+      and(
+        eq(activityEvents.ownerId, ownerId),
+        eq(activityEvents.subjectId, subjectId)
+      )
+    );
+  const max = rows[0]?.max;
+  return max ? new Date(max) : null;
+}
+
 // Record that the user reviewed a record's Digest/check-in: writes a
 // checkin_reviewed event, which resets the derived staleness clock (PRD §7 the
 // review-resets-clock loop). The Digest cron (PJ7) calls this on response; kept
