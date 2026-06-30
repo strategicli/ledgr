@@ -8,6 +8,7 @@
 import { listActivity } from "@/lib/activity";
 import type { Composition, RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
+import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import { listRelatedItems } from "@/lib/relations";
 import { widgetById, type WidgetDefinition } from "@/lib/widgets";
 import { countViewItems, queryViewItems, type ViewFilter } from "@/lib/views";
@@ -45,6 +46,23 @@ export type RecordWidgetData = {
 };
 
 type LoadedRecord = Awaited<ReturnType<typeof getItem>>;
+
+// Recursive completion fraction over a subtask node (PRD §6): a leaf task is
+// 0/1; a parent's fraction is the average of its task-children's fractions. Only
+// task-type children count — a note/meeting filed under a task is context.
+function nodeFraction(node: SubtaskNode): number {
+  const taskKids = node.children.filter((c) => c.type === "task");
+  if (taskKids.length === 0) return node.statusCategory === "done" ? 1 : 0;
+  return taskKids.reduce((a, c) => a + nodeFraction(c), 0) / taskKids.length;
+}
+
+// A top-level contained task's fraction: its own done-state if it has no task
+// subtasks, else the average of those subtasks' fractions.
+function rootFraction(rootCategory: string, children: SubtaskNode[]): number {
+  const taskKids = children.filter((c) => c.type === "task");
+  if (taskKids.length === 0) return rootCategory === "done" ? 1 : 0;
+  return taskKids.reduce((a, c) => a + nodeFraction(c), 0) / taskKids.length;
+}
 
 function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemRow {
   return {
@@ -108,17 +126,36 @@ async function dataForWidget(
     };
   }
   if (def.id === "progress") {
-    // Flat over the contained (home) tasks for PJ4 — hierarchical, subtask-aware
-    // weighting lands in PJ6. Zero tasks → indeterminate (null), never 0%.
-    const tasks = await queryViewItems(
+    // Hierarchical by default (PRD §6): a leaf task is 0/1, a parent's fraction
+    // is the average of its task-children's fractions (recursive), and the bar is
+    // the average of the top-level contained tasks' fractions. `flat` weighting
+    // is plain done/total. Zero tasks → indeterminate (null), never 0%.
+    const weighting = (instance.options?.weighting as string) ?? "hierarchical";
+    const tops = await queryViewItems(
       ownerId,
       { type: "task", relatedTo: record.id, relatedHome: true },
-      { field: "updatedAt", dir: "desc" },
+      { field: "createdAt", dir: "asc" },
       500
     );
-    const total = tasks.length;
-    const done = tasks.filter((t) => t.statusCategory === "done").length;
-    return { ...base, progress: { done, total, fraction: total === 0 ? null : done / total } };
+    const total = tops.length;
+    if (total === 0) return { ...base, progress: { done: 0, total: 0, fraction: null } };
+    const done = tops.filter((t) => t.statusCategory === "done").length;
+    if (weighting === "flat") {
+      return { ...base, progress: { done, total, fraction: done / total } };
+    }
+    // Hierarchical: deep-compute each top-level task's fraction over its subtree.
+    // Capped so a huge forest can't fan out unbounded (falls back to its own
+    // done-state beyond the cap — a rare, large project).
+    const DEEP = 200;
+    const fractions = await Promise.all(
+      tops.map(async (t, i) => {
+        if (i >= DEEP) return t.statusCategory === "done" ? 1 : 0;
+        const sub = await listSubtree(ownerId, t.id).catch(() => null);
+        return rootFraction(t.statusCategory, sub?.children ?? []);
+      })
+    );
+    const fraction = fractions.reduce((a, b) => a + b, 0) / fractions.length;
+    return { ...base, progress: { done, total, fraction } };
   }
   if (def.id === "recentActivity") {
     const events = await listActivity(ownerId, record.id, ACTIVITY_LIMIT);
