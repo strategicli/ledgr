@@ -207,9 +207,23 @@ export async function attachTranscriptToMeeting(
 export async function listRecentMeetingsForPicker(
   ownerId: string,
   limit = 30
-): Promise<{ id: string; title: string; meetingAt: Date | null }[]> {
+): Promise<
+  {
+    id: string;
+    title: string;
+    meetingAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }[]
+> {
   const rows = await getDb()
-    .select({ id: items.id, title: items.title, meetingAt: items.meetingAt })
+    .select({
+      id: items.id,
+      title: items.title,
+      meetingAt: items.meetingAt,
+      createdAt: items.createdAt,
+      updatedAt: items.updatedAt,
+    })
     .from(items)
     .where(
       and(
