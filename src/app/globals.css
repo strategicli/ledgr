@@ -338,3 +338,11 @@ body {
 .canvas-rows > * + * {
   border-top: 1px solid var(--cs-divider);
 }
+
+/* While the markdown editor is focused on mobile, its formatting toolbar floats
+   above the keyboard at the bottom of the screen — the same spot the Work nav
+   pill occupies. Hide the pill so the two never overlap; it returns on blur.
+   The pill is already `sm:hidden`, so this rule only ever fires on mobile. */
+body[data-editing="true"] [data-work-nav-pill] {
+  display: none;
+}

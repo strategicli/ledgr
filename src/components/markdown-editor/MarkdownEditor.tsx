@@ -16,6 +16,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TOOLBAR_ICONS } from "./toolbar-icons";
+import { useKeyboardInset } from "./useKeyboardInset";
 import { useRouter } from "next/navigation";
 import {
   BLOCKNOTE_COLORS,
@@ -136,12 +137,14 @@ function ToolbarButton({
   label,
   icon,
   active,
+  disabled,
   onClick,
   title,
 }: {
   label?: string;
   icon?: ReactNode;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
   title: string;
 }) {
@@ -150,12 +153,15 @@ function ToolbarButton({
       type="button"
       title={title}
       aria-label={title}
+      disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-sm font-medium ${
-        active
-          ? "bg-neutral-700 text-neutral-100"
-          : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+        disabled
+          ? "cursor-default text-neutral-600"
+          : active
+            ? "bg-neutral-700 text-neutral-100"
+            : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
       }`}
     >
       {icon ?? label}
@@ -456,6 +462,33 @@ export default function MarkdownEditor({
   // top-right toggle reveals it. When not collapsible it's always shown.
   const [toolbarOpen, setToolbarOpen] = useState(!collapsibleToolbar);
 
+  // Mobile editing posture (≥640px / `sm` is desktop and unaffected). On a phone
+  // the toolbar becomes a single-row bar that floats on top of the on-screen
+  // keyboard while the editor is focused; `keyboardInset` is how far up from the
+  // bottom edge to sit. While focused we also set body[data-editing] so the Work
+  // nav pill (which lives at the same bottom-of-screen spot) hides — globals.css
+  // owns that one rule, so the two bottom bars never overlap.
+  const [focused, setFocused] = useState(false);
+  const keyboardInset = useKeyboardInset();
+  useEffect(() => {
+    if (!editor) return;
+    const onFocus = () => {
+      setFocused(true);
+      document.body.dataset.editing = "true";
+    };
+    const onBlur = () => {
+      setFocused(false);
+      delete document.body.dataset.editing;
+    };
+    editor.on("focus", onFocus);
+    editor.on("blur", onBlur);
+    return () => {
+      editor.off("focus", onFocus);
+      editor.off("blur", onBlur);
+      delete document.body.dataset.editing;
+    };
+  }, [editor]);
+
   if (!editor || !toolbar) {
     return (
       <div className="px-4 py-3 text-sm text-neutral-400">Loading editor…</div>
@@ -473,6 +506,21 @@ export default function MarkdownEditor({
     if (color) chain.setMark("highlight", { color }).run();
     else chain.unsetMark("highlight").run();
   };
+
+  // List nesting (the mobile Tab-key replacement). Bullet/ordered lists nest
+  // their `listItem`; the GFM checklist nests `taskItem` (configured nested:true
+  // above). Pick the node type from the active list so one pair of buttons
+  // covers all three. Disabled outside a list (see `inList`).
+  const inList =
+    toolbar.isBulletList || toolbar.isOrderedList || toolbar.isTaskList;
+  const indent = () =>
+    toolbar.isTaskList
+      ? editor.chain().focus().sinkListItem("taskItem").run()
+      : editor.chain().focus().sinkListItem("listItem").run();
+  const outdent = () =>
+    toolbar.isTaskList
+      ? editor.chain().focus().liftListItem("taskItem").run()
+      : editor.chain().focus().liftListItem("listItem").run();
 
   // Create the task from the popup draft (ADR-090): flush the body save so the
   // anchor is persisted, POST the promotion, then refresh so the new task shows
@@ -557,7 +605,15 @@ export default function MarkdownEditor({
       {/* The formatting toolbar is hidden on a locked item — nothing here can
           act on a read-only document (item lock toggle). */}
       {editable && (
-      <div className={`flex flex-wrap items-center gap-0.5 px-1 py-1.5 ${toolbarOpen ? "border-b border-neutral-800/70" : ""}`}>
+      <div
+        className={
+          focused
+            ? "fixed inset-x-0 z-50 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur sm:static sm:z-auto sm:border-t-0 sm:bg-transparent sm:backdrop-blur-none"
+            : "hidden sm:block"
+        }
+        style={focused ? { bottom: keyboardInset } : undefined}
+      >
+      <div className={`flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible ${toolbarOpen ? "border-b border-neutral-800/70" : ""}`}>
         {toolbarOpen && (<>{(
           [
             { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
@@ -568,14 +624,16 @@ export default function MarkdownEditor({
             { id: "bulletList", title: "Bullet list", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
             { id: "orderedList", title: "Numbered list", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
             { id: "tasks", title: "Checklist (- [ ])", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
+            { id: "outdent", title: "Outdent (un-nest list item)", icon: TOOLBAR_ICONS.outdent, disabled: !inList, run: outdent },
+            { id: "indent", title: "Indent (nest list item)", icon: TOOLBAR_ICONS.indent, disabled: !inList, run: indent },
             { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
             { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
             { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-          ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; run: () => void }[]
+          ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; run: () => void }[]
         )
           .filter((b) => showTb(b.id))
           .map((b) => (
-            <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} onClick={b.run} />
+            <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
           ))}
 
         {showTb("image") && uploadImage && (
@@ -653,6 +711,7 @@ export default function MarkdownEditor({
             </svg>
           </button>
         )}
+      </div>
       </div>
       )}
 
