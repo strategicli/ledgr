@@ -124,6 +124,16 @@ export function parseItemPayload(
     }
     out.properties = input.properties as Record<string, unknown> | null;
   }
+  // Cross-device edit guard token (ADR-134): the digest of the body the client
+  // last synced with, sent alongside a body write so updateItem can detect that
+  // another device changed the body in the meantime. Patch-only; an opaque short
+  // string, so we only assert it's a string.
+  if (input.expectedBodyDigest !== undefined) {
+    out.expectedBodyDigest = asString(
+      input.expectedBodyDigest,
+      "expectedBodyDigest"
+    );
+  }
   // Per-key merge into items.properties (ADR-069 canvas cards): an object whose
   // keys are merged, not replaced. Patch-only — create uses `properties`.
   if (input.propertyPatch !== undefined) {

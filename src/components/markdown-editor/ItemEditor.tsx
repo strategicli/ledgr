@@ -7,8 +7,15 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
-import { beginSave, endSave, registerSaveRetry } from "@/lib/save-status";
+import { bodyDigest, bodyMarkdown, makeMarkdownBody } from "@/lib/body";
+import {
+  beginSave,
+  endSave,
+  registerForceSave,
+  registerSaveRetry,
+  reportConflict,
+  setKnownVersion,
+} from "@/lib/save-status";
 import BodyEditor from "./BodyEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
 
@@ -96,6 +103,15 @@ export default function ItemEditor({
   // (before the API-side no-op guard in updateItem) bumping the item's edit
   // date. We skip a body change identical to this; a real edit always differs.
   const savedBodyText = useRef(bodyMarkdown(item.body));
+  // The body text we last successfully synced with the server, seeded from the
+  // loaded body. Distinct from savedBodyText (which tracks the latest LOCAL text
+  // for the on-open dedup): this is the baseline the cross-device guard digests,
+  // so it advances only when a save lands, not on every keystroke (ADR-134).
+  const syncedBodyText = useRef(bodyMarkdown(item.body));
+  // True between a 409 conflict and its resolution, so the autosave loop stops
+  // re-arming the debounce (a normal retry would just 409 again); the pending
+  // body is held for "Keep mine" to force through.
+  const conflictPending = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -112,7 +128,9 @@ export default function ItemEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const flush = useCallback(async () => {
+  // force: "Keep mine" — resend without the cross-device guard token, knowingly
+  // overwriting the other device's change (its body is still in revision history).
+  const flush = useCallback(async (opts?: { force?: boolean }) => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
@@ -121,6 +139,22 @@ export default function ItemEditor({
     if (Object.keys(patch).length === 0 || inFlight.current) return;
     pending.current = {};
     inFlight.current = true;
+    // The body text this PATCH carries (if any), to advance the sync baseline
+    // once it lands.
+    const sentBodyText =
+      patch.body !== undefined ? bodyMarkdown(patch.body) : null;
+    // Guard a body write against a concurrent edit on another device (ADR-134):
+    // attach the digest of the body we last synced with, so the server refuses
+    // the write if the stored body moved on. Omitted on a forced resave.
+    const requestBody =
+      !opts?.force && patch.body !== undefined
+        ? {
+            ...patch,
+            expectedBodyDigest: bodyDigest(
+              makeMarkdownBody(syncedBodyText.current)
+            ),
+          }
+        : patch;
     // Report to the app-wide save signal (the floating SaveStatusIndicator);
     // the per-editor "Saved" badge was retired for it (Brandon, 2026-06-17).
     beginSave();
@@ -128,9 +162,26 @@ export default function ItemEditor({
       const res = await fetch(`/api/items/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(requestBody),
       });
+      if (res.status === 409) {
+        // The body changed on another device since we synced. Hold the pending
+        // edit for "Keep mine", surface the conflict banner, and stop — auto-
+        // retrying would just 409 again. inFlight clears in `finally`.
+        pending.current = { ...patch, ...pending.current };
+        conflictPending.current = true;
+        reportConflict();
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
+      // Synced: advance the guard baseline and the focus baseline from the row
+      // the server returned, so our own edits never read as a remote change.
+      const data = (await res.json().catch(() => null)) as {
+        item?: { updatedAt?: string };
+      } | null;
+      if (sentBodyText !== null) syncedBodyText.current = sentBodyText;
+      if (data?.item?.updatedAt) setKnownVersion(data.item.updatedAt);
+      conflictPending.current = false;
       endSave(true);
     } catch {
       // Re-queue what failed under anything newer, retry on the next tick.
@@ -138,7 +189,9 @@ export default function ItemEditor({
       endSave(false);
     } finally {
       inFlight.current = false;
-      if (Object.keys(pending.current).length) schedule();
+      if (Object.keys(pending.current).length && !conflictPending.current) {
+        schedule();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);
@@ -151,6 +204,12 @@ export default function ItemEditor({
   // Wire this editor's flush to the global "Retry" affordance (the save-failed
   // pill), so a click forces an immediate re-save of the pending patch.
   useEffect(() => registerSaveRetry(() => void flush()), [flush]);
+  // And to the conflict banner's "Keep mine", which resends the held body
+  // without the guard token (overwriting the other device's change).
+  useEffect(
+    () => registerForceSave(() => void flush({ force: true })),
+    [flush]
+  );
 
   // Title wraps and grows with content (Brandon, 2026-06-17): keep the textarea's
   // height matched to its content after every edit, so a long title shows in full

@@ -6,6 +6,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { setKnownVersion } from "@/lib/save-status";
 
 const SAVE_DEBOUNCE_MS = 1200;
 
@@ -34,6 +35,14 @@ export function useItemAutosave(itemId: string) {
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // Advance the canvas's refresh-on-focus baseline (ADR-134) to our own
+      // write, so a refocus right after saving doesn't read it as a change made
+      // on another device. (The body-write conflict guard is the markdown
+      // editor's; chord/paper rely on this focus check.)
+      const data = (await res.json().catch(() => null)) as {
+        item?: { updatedAt?: string };
+      } | null;
+      if (data?.item?.updatedAt) setKnownVersion(data.item.updatedAt);
       setSaveState(Object.keys(pending.current).length ? "dirty" : "saved");
     } catch {
       pending.current = { ...patch, ...pending.current };

@@ -25,10 +25,9 @@ export async function requireOwner(): Promise<Owner | NextResponse> {
 // with the correlation id so a user report can be matched to its log lines.
 export async function errorResponse(err: unknown): Promise<NextResponse> {
   if (err instanceof ItemError) {
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.code === "not_found" ? 404 : 400 }
-    );
+    const status =
+      err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : 400;
+    return NextResponse.json({ error: err.message }, { status });
   }
   const correlationId = crypto.randomUUID();
   await captureError("api", err, { correlationId });

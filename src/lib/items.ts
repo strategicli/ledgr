@@ -19,7 +19,7 @@ import {
 import { getDb } from "@/db";
 import { items, relations, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
-import { bodyMarkdown, isItemBody, isLargeBody, MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
+import { bodyDigest, bodyMarkdown, isItemBody, isLargeBody, MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
 // Type-only (erased at runtime): types.ts imports ItemError from here, so a
 // value import of getType would form a circular dependency. getType is loaded
 // dynamically inside moveItemType instead.
@@ -65,7 +65,7 @@ import type { ItemStatus, Urgency } from "@/lib/item-enums";
 // (single, authenticated) user.
 export class ItemError extends Error {
   constructor(
-    public code: "not_found" | "bad_request",
+    public code: "not_found" | "bad_request" | "conflict",
     message: string
   ) {
     super(message);
@@ -105,6 +105,13 @@ export type ItemPatch = Partial<ItemInput> & {
   // where each card owns one property key and must not clobber its siblings.
   // Distinct from `properties`, which replaces the whole object wholesale.
   propertyPatch?: Record<string, unknown>;
+  // Cross-device edit guard (ADR-134): the bodyDigest of the body this client
+  // last synced with. When present alongside a `body` write, updateItem refuses
+  // the write (409 conflict) if the stored body no longer matches — i.e. another
+  // device changed the body since this client loaded it, so this stale full-body
+  // PATCH would silently clobber it. Optional: a caller that omits it keeps the
+  // old last-write-wins behavior (MCP, batch ops, the field-only writers).
+  expectedBodyDigest?: string;
 };
 
 export type ListOptions = {
@@ -243,6 +250,25 @@ export async function getItem(ownerId: string, id: string) {
     .select(itemColumns)
     .from(items)
     .where(and(eq(items.id, id), eq(items.ownerId, ownerId)));
+  if (rows.length === 0) throw new ItemError("not_found", "item not found");
+  return rows[0];
+}
+
+// Just the item's updated_at (ADR-134), for the canvas's refresh-on-focus check:
+// the open editor re-reads this when its tab regains focus and, if it moved past
+// what the client last saw, surfaces a "changed on another device" banner. A
+// deliberately tiny read (one timestamp, no body) so polling it on focus is
+// effectively free; owner-scoped and excludes Trash like every other read.
+export async function getItemVersion(
+  ownerId: string,
+  id: string
+): Promise<{ updatedAt: Date }> {
+  const rows = await getDb()
+    .select({ updatedAt: items.updatedAt })
+    .from(items)
+    .where(
+      and(eq(items.id, id), eq(items.ownerId, ownerId), isNull(items.deletedAt))
+    );
   if (rows.length === 0) throw new ItemError("not_found", "item not found");
   return rows[0];
 }
@@ -485,6 +511,27 @@ export async function updateItem(
         !isItemBody(patch.body) ||
         patch.body.format === prevBody.format)
     );
+
+  // Cross-device edit guard (ADR-134): a real body write that carries an
+  // expectedBodyDigest must match the body it's overwriting. If the stored body
+  // has moved on (another device saved since this client loaded), this is a
+  // stale full-body PATCH that would silently clobber that edit — refuse it so
+  // the client can surface the conflict and let the user choose. Content-based
+  // (the body, not items.updated_at) on purpose: it ignores sibling writes to
+  // status/properties/etc. on the same item, so editing a field on one device
+  // never trips a false body conflict on another. The phantom on-open save is a
+  // no-op (writeBody false) and never reaches here, so opening an item can't
+  // conflict; only a genuine body change does.
+  if (
+    writeBody &&
+    patch.expectedBodyDigest !== undefined &&
+    patch.expectedBodyDigest !== bodyDigest(prevBody)
+  ) {
+    throw new ItemError(
+      "conflict",
+      "this item's body changed on another device since you opened it"
+    );
+  }
 
   const set: Record<string, unknown> = {};
   if (patch.type !== undefined) set.type = patch.type;
