@@ -1,25 +1,17 @@
-import { redirect } from "next/navigation";
+// Shared-capture logic for the PWA share target (slice 16; web clipper mobile
+// half, ADR-100). Lifted verbatim out of the old /capture/share *page* when that
+// route became a POST handler (to also accept shared files, ADR for the
+// transcript-file share path): a shared URL lands as a `link` item with the
+// page's readable content extracted into the body, bare text as the catch-all
+// `unmarked` (capture's default type, ADR-067), both inbox: true — capture never
+// auto-triages (ADR-010). Keeping this in one module means the URL/text behavior
+// is identical whether the share arrived as the old GET or the new POST.
 import { makeMarkdownBody } from "@/lib/body";
 import { fetchAndExtract } from "@/lib/clip/extract";
-import { resolveOwner } from "@/lib/owner";
 import { createItem } from "@/lib/items";
 
-// PWA share target (slice 16; the quick-capture path ADR-013 deferred here).
-// The manifest points Android's share sheet at this page as a GET, so a
-// share is just a navigation: a shared URL lands as a link item, bare text
-// as the catch-all `unmarked` (capture's default type, ADR-067), both
-// inbox: true — capture never
-// auto-triages (ADR-010). Middleware keeps the route signed-in-only; Clerk
-// bounces a signed-out share through /sign-in and back.
-//
-// Web clipper, mobile half (ADR-100): the share sheet hands us only a URL, so
-// for a link we fetch + extract the page's readable content into the body
-// (images stripped). Best-effort — a paywall/non-article page still lands the
-// URL + title, same as before.
-export const dynamic = "force-dynamic";
-
 // Android puts the URL in `url` or (commonly) at the end of `text`.
-function extractUrl(...candidates: (string | undefined)[]): string | null {
+export function extractUrl(...candidates: (string | undefined)[]): string | null {
   for (const c of candidates) {
     const match = c?.match(/https?:\/\/\S+/);
     if (match) {
@@ -70,22 +62,17 @@ async function fetchPageTitle(url: string): Promise<string | null> {
   }
 }
 
-export default async function SharePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-  const owner = await resolveOwner();
-  if (!owner) redirect("/sign-in");
+// Capture a shared URL or bare text into the inbox; returns the new item's id,
+// or null when there was nothing to capture (an empty share). The caller
+// redirects to /items/{id} on a hit.
+export async function captureSharedUrlOrText(
+  ownerId: string,
+  fields: { title?: string; text?: string; url?: string }
+): Promise<string | null> {
+  const title = fields.title?.trim() || undefined;
+  const text = fields.text?.trim() || undefined;
+  const url = extractUrl(fields.url?.trim() || undefined, text);
 
-  const params = await searchParams;
-  const str = (v: string | string[] | undefined) =>
-    (Array.isArray(v) ? v[0] : v)?.trim() || undefined;
-  const title = str(params.title);
-  const text = str(params.text);
-  const url = extractUrl(str(params.url), text);
-
-  let itemId: string;
   if (url) {
     // Pull the readable article (one bounded fetch) so the clip carries content,
     // not just the link. Null on a paywall/non-article page — we degrade to
@@ -100,24 +87,22 @@ export default async function SharePage({
       article?.title ||
       (await fetchPageTitle(url)) ||
       new URL(url).hostname;
-    const item = await createItem(owner.id, {
+    const item = await createItem(ownerId, {
       type: "link",
       title: itemTitle.slice(0, 300),
       url,
       inbox: true,
       body: article ? makeMarkdownBody(article.markdown) : null,
     });
-    itemId = item.id;
-  } else {
-    const itemTitle = [title, text].filter(Boolean).join(" ").trim();
-    if (!itemTitle) redirect("/"); // empty share: nothing to capture
-    const item = await createItem(owner.id, {
-      type: "unmarked",
-      title: itemTitle.slice(0, 300),
-      inbox: true,
-    });
-    itemId = item.id;
+    return item.id;
   }
-  // Land on the captured item: confirms the share took and invites triage.
-  redirect(`/items/${itemId}`);
+
+  const itemTitle = [title, text].filter(Boolean).join(" ").trim();
+  if (!itemTitle) return null; // empty share: nothing to capture
+  const item = await createItem(ownerId, {
+    type: "unmarked",
+    title: itemTitle.slice(0, 300),
+    inbox: true,
+  });
+  return item.id;
 }
