@@ -62,6 +62,26 @@ export function selectLens(lenses: Lens[], lensParam: string | undefined): Lens 
   return lenses.find((l) => l.id === lensParam) ?? lenses[0] ?? defaultLenses()[0];
 }
 
+// The settings.relatedLensChoices key for "this host type's view of that related
+// type" (the Tasks group under a Meeting can differ from Tasks under a Person).
+// Pure + client-safe so the panel picker and the server resolver share it.
+export function relatedLensKey(hostType: string, relatedType: string): string {
+  return `${hostType}:${relatedType}`;
+}
+
+// The lens that structures a related-type group: the owner's stored choice for
+// (hostType:relatedType) if it still exists among that type's lenses, else the
+// related type's default (first) lens.
+export function relatedLensFor(
+  settings: { listTabs?: Record<string, Lens[]>; relatedLensChoices?: Record<string, string> },
+  hostType: string,
+  relatedType: string
+): Lens {
+  const lenses = lensesForType(settings, relatedType);
+  const chosenId = settings.relatedLensChoices?.[relatedLensKey(hostType, relatedType)];
+  return lenses.find((l) => l.id === chosenId) ?? lenses[0];
+}
+
 // Map a SORT lens to the engine's ListSort, flipping direction when reversed.
 // View lenses render via ViewRenderer instead, so they return null here.
 export function resolveLensSort(lens: Lens, reversed: boolean): ListSort | null {

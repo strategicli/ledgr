@@ -63,12 +63,25 @@ function isSort(v: unknown): v is RelatedSort {
   );
 }
 
+// useSyncExternalStore compares snapshots with Object.is and treats a new
+// reference as "the store changed". read() is called from getSnapshot, so it
+// MUST return a stable reference while localStorage is unchanged — otherwise
+// every render looks like a change, React loops, throws "getSnapshot should be
+// cached", and unmounts the panel (and re-throws on the next mount, since the
+// saved value is still there). Cache the parsed map keyed by the raw string;
+// write() changes the string, so the next read re-parses exactly once.
+let cachedRaw: string | null = null;
+let cachedMap: Record<string, RelatedSort> = {};
+
 function read(): Record<string, RelatedSort> {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(KEY);
+    if (raw === cachedRaw) return cachedMap; // unchanged storage → same reference
+    cachedRaw = raw;
     const obj = raw ? JSON.parse(raw) : {};
-    return obj && typeof obj === "object" ? (obj as Record<string, RelatedSort>) : {};
+    cachedMap = obj && typeof obj === "object" ? (obj as Record<string, RelatedSort>) : {};
+    return cachedMap;
   } catch {
     return {};
   }
