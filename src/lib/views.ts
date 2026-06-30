@@ -41,6 +41,15 @@ export type ViewFilter = {
   // relations edges only, either direction. Suggested edges are provisional
   // and stay out of trusted queries (PRD §3.3).
   relatedTo?: string;
+  // Containment refinement of relatedTo (ADR-111/PJ3). relatedHome=true narrows
+  // to items CONTAINED BY relatedTo as their primary residence — a directional
+  // child->parent home edge (source=item, target=relatedTo, home=true) — so a
+  // record-scoped Tasks/Notes widget shows what lives here, not everything
+  // tangentially related. relatedRole scopes to a single edge role (e.g.
+  // "project"/"contains"). Both no-ops without relatedTo; additive (existing
+  // relatedTo behavior is unchanged when neither is set).
+  relatedHome?: boolean;
+  relatedRole?: string;
   // Filter by a type's own select/multi_select property (the filter
   // counterpart to board grouping, slice 35): one predicate per property key.
   // A non-null value matches a scalar select or an element of a multi_select
@@ -169,12 +178,25 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
   }
 
   if (filter.relatedTo) {
-    where.push(sql`exists (
-      select 1 from relations r
-      where r.match_state = 'confirmed'
-        and ((r.source_id = ${items.id} and r.target_id = ${filter.relatedTo})
-          or (r.target_id = ${items.id} and r.source_id = ${filter.relatedTo}))
-    )`);
+    const roleClause = filter.relatedRole
+      ? sql` and r.role = ${filter.relatedRole}`
+      : sql``;
+    if (filter.relatedHome) {
+      // Contained children only: the item is the source of a home edge whose
+      // target is the container (directional child->parent, ADR-111).
+      where.push(sql`exists (
+        select 1 from relations r
+        where r.match_state = 'confirmed' and r.home
+          and r.source_id = ${items.id} and r.target_id = ${filter.relatedTo}${roleClause}
+      )`);
+    } else {
+      where.push(sql`exists (
+        select 1 from relations r
+        where r.match_state = 'confirmed'${roleClause}
+          and ((r.source_id = ${items.id} and r.target_id = ${filter.relatedTo})
+            or (r.target_id = ${items.id} and r.source_id = ${filter.relatedTo}))
+      )`);
+    }
   }
 
   // Custom-property predicates. A set value matches either a scalar select
@@ -402,6 +424,13 @@ export function parseViewFilter(raw: unknown): ViewFilter {
   if (r.relatedTo != null) {
     if (!UUID_RE.test(String(r.relatedTo))) bad("filter.relatedTo must be a UUID");
     out.relatedTo = String(r.relatedTo);
+  }
+  if (r.relatedHome != null) {
+    if (typeof r.relatedHome !== "boolean") bad("filter.relatedHome must be a boolean");
+    out.relatedHome = r.relatedHome;
+  }
+  if (r.relatedRole != null) {
+    out.relatedRole = String(r.relatedRole);
   }
   if (r.propertyFilters != null) {
     if (!Array.isArray(r.propertyFilters)) {

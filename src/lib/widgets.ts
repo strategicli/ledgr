@@ -1,0 +1,251 @@
+// The widget capability registry (Project Type, ADR-111/PJ3). The PRD's §3
+// capability model, Layer 1 (universal availability, derived — no hand-written
+// allow-lists). A pure, client-safe catalog (no DB, no React) mirroring
+// src/lib/modules.ts and the dashboard-widgets.ts ↔ dashboards.ts split, so the
+// gear UI and the server both read one source of truth. Per-Type defaults
+// (Layer 2) and per-record instances (Layer 3) live in src/lib/composition.ts;
+// the rendering fan-out lands in PJ4.
+//
+// The one idea: a widget declares what it NEEDS (`requires`) and which scopes it
+// runs in (`scope`: bound to a record, and/or unscoped against a query). The
+// same widget renders on a Dashboard (query) and on a Type page (record) with no
+// widget-side branching on Type — availability is computed, not curated.
+
+export type WidgetKind = "property" | "collection" | "relation" | "derived";
+export type WidgetScope = "record" | "query";
+
+// A gear-editable per-widget option (PRD §3 "Per-widget options" section).
+export type OptionSchema =
+  | { kind: "select"; label: string; choices: string[]; default: string }
+  | { kind: "boolean"; label: string; default: boolean }
+  | { kind: "number"; label: string; default: number; min?: number; max?: number }
+  | { kind: "type"; label: string; default: null }; // a type-key picker (null = any)
+
+export interface WidgetDefinition {
+  id: string;
+  label: string;
+  kind: WidgetKind;
+  // Property name | collection name | depended-on data source. Availability is
+  // satisfied when every entry is satisfiable for the type (see isSatisfiable).
+  requires: string[];
+  cardinality: "one" | "many";
+  scope: WidgetScope[];
+  options?: Record<string, OptionSchema>;
+  // True for anything with backing data: disabling HIDES (never deletes) it, and
+  // re-enabling restores (Layer 3 rule). Derived/property widgets that own no
+  // data set false.
+  hideOnDisable: boolean;
+  // How a record-scope instance binds to the current record at render (PJ4): the
+  // collection type + edge role it surfaces (home-scoped), or the derived source.
+  // Pure description here; the fan-out consumes it.
+  recordQuery?: { collectionType?: string; role?: string; derived?: string };
+}
+
+// The catalog (PRD §6). Order is the gear's "available to add" order.
+export const WIDGET_CATALOG: WidgetDefinition[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    kind: "property",
+    requires: ["overview_md"],
+    cardinality: "one",
+    scope: ["record", "query"],
+    hideOnDisable: false,
+  },
+  {
+    id: "status",
+    label: "Status",
+    kind: "property",
+    requires: ["status"],
+    cardinality: "one",
+    scope: ["record", "query"],
+    hideOnDisable: false,
+  },
+  {
+    id: "tasks",
+    label: "Tasks",
+    kind: "collection",
+    requires: ["tasks"],
+    cardinality: "many",
+    scope: ["record", "query"],
+    hideOnDisable: true,
+    recordQuery: { collectionType: "task", role: "project" },
+  },
+  {
+    id: "notes",
+    label: "Notes",
+    kind: "collection",
+    requires: ["notes"],
+    cardinality: "many",
+    scope: ["record", "query"],
+    hideOnDisable: true,
+    recordQuery: { collectionType: "note", role: "contains" },
+  },
+  {
+    id: "meetings",
+    label: "Meetings",
+    kind: "collection",
+    requires: ["meetings"],
+    cardinality: "many",
+    scope: ["record", "query"],
+    hideOnDisable: true,
+    recordQuery: { collectionType: "event", role: "contains" },
+  },
+  {
+    id: "milestones",
+    label: "Milestones",
+    kind: "collection",
+    requires: ["milestones"],
+    cardinality: "many",
+    scope: ["record", "query"],
+    hideOnDisable: true,
+    options: {
+      // Per-milestone hard/soft is a milestone-instance property; this is the
+      // widget-level emphasis default (deferred nicety, PRD §6).
+      emphasis: { kind: "select", label: "Emphasis", choices: ["soft", "hard"], default: "soft" },
+    },
+    recordQuery: { collectionType: "milestone", role: "contains" },
+  },
+  {
+    id: "relatedRecords",
+    label: "Related Records",
+    kind: "relation",
+    requires: ["relationships"],
+    cardinality: "many",
+    scope: ["record"],
+    hideOnDisable: true,
+    options: {
+      typeFilter: { kind: "type", label: "Only show type", default: null },
+    },
+    recordQuery: { role: "contains" },
+  },
+  {
+    id: "links",
+    label: "Links / Resources",
+    kind: "collection",
+    requires: ["links"],
+    cardinality: "many",
+    scope: ["record", "query"],
+    hideOnDisable: true,
+    recordQuery: { collectionType: "link", role: "contains" },
+  },
+  {
+    id: "people",
+    label: "People",
+    kind: "relation",
+    requires: ["people"],
+    cardinality: "many",
+    scope: ["record", "query"],
+    hideOnDisable: true,
+    recordQuery: { collectionType: "person", role: "related" },
+  },
+  {
+    id: "mindmap",
+    label: "Mindmap",
+    kind: "collection",
+    requires: ["mindmap"],
+    cardinality: "one",
+    scope: ["record"],
+    hideOnDisable: true,
+    recordQuery: { collectionType: "mindmap", role: "contains" },
+  },
+  {
+    id: "nextAction",
+    label: "Next Action",
+    kind: "derived",
+    requires: ["tasks"],
+    cardinality: "one",
+    scope: ["record", "query"],
+    hideOnDisable: false,
+    recordQuery: { derived: "nextAction" },
+  },
+  {
+    id: "progress",
+    label: "Progress",
+    kind: "derived",
+    requires: ["tasks"],
+    cardinality: "one",
+    scope: ["record", "query"],
+    hideOnDisable: false,
+    options: {
+      weighting: {
+        kind: "select",
+        label: "Weighting",
+        choices: ["hierarchical", "flat"],
+        default: "hierarchical",
+      },
+    },
+    recordQuery: { derived: "progress" },
+  },
+  {
+    id: "recentActivity",
+    label: "Recent Activity",
+    kind: "derived",
+    requires: ["activity_log"],
+    cardinality: "one",
+    scope: ["record", "query"],
+    hideOnDisable: false,
+    recordQuery: { derived: "recentActivity" },
+  },
+  {
+    id: "timeline",
+    label: "Timeline",
+    kind: "derived",
+    requires: ["meetings", "milestones"],
+    cardinality: "one",
+    scope: ["record"],
+    hideOnDisable: false,
+    recordQuery: { derived: "timeline" },
+  },
+];
+
+const BY_ID = new Map(WIDGET_CATALOG.map((w) => [w.id, w]));
+
+export function widgetById(id: string): WidgetDefinition | undefined {
+  return BY_ID.get(id);
+}
+
+// Layer 1 availability (derived). A `requires` entry is satisfiable when:
+//  - it's a universal base property (overview_md, status) — always, since the
+//    shared base carries them (PRD §4); or
+//  - it's a collection/relation/derived source (tasks, notes, meetings,
+//    milestones, links, people, mindmap, relationships, activity_log) — always,
+//    because under the universal containment model any record can contain any
+//    collection, and the activity log + relations are global.
+// So EVERY catalog widget is available on EVERY type, by construction — which is
+// exactly the PRD's "a new Type inherits the whole catalog with zero widget
+// authoring." The predicate is kept explicit (not hardcoded `true`) so a future
+// type-capability gate has one place to live.
+const SATISFIABLE = new Set<string>([
+  "overview_md",
+  "status",
+  "tasks",
+  "notes",
+  "meetings",
+  "milestones",
+  "links",
+  "people",
+  "mindmap",
+  "relationships",
+  "activity_log",
+]);
+
+export function isSatisfiable(requirement: string): boolean {
+  return SATISFIABLE.has(requirement);
+}
+
+export function isWidgetAvailable(def: WidgetDefinition): boolean {
+  return def.requires.every(isSatisfiable);
+}
+
+// The widgets available to add on a record of `type` (Layer 1). Type-agnostic by
+// construction; `type` is accepted for the future capability gate and to keep
+// callers honest about scope.
+export function availableWidgets(_type?: string): WidgetDefinition[] {
+  return WIDGET_CATALOG.filter(isWidgetAvailable);
+}
+
+// Widgets that can run in a given scope (record page vs dashboard query).
+export function widgetsForScope(scope: WidgetScope): WidgetDefinition[] {
+  return WIDGET_CATALOG.filter((w) => w.scope.includes(scope));
+}
