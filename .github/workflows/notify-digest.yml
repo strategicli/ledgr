@@ -1,0 +1,48 @@
+# Project Digest / check-ins push (Project Type, ADR-111/PJ7). Daily: nudges
+# about projects that have gone quiet (staleness) or have a milestone coming up.
+# Runs from GitHub Actions hitting the authenticated endpoint — the same door as
+# the other machine crons. Kept off the Vercel cron list to stay under the Hobby
+# cron limit (vercel.json holds purge/export/relatedness).
+#
+# Paused for now, consistent with the notification center pause (ADR-130): the
+# schedule is commented out and the slice ships push-first; re-enabling is one
+# uncomment once the Digest is integrated with the notifications table.
+#
+# Auth: the LEDGR_CRON_TOKEN repo secret (a cron-scoped Ledgr machine token).
+name: notify-digest
+
+on:
+  # schedule:
+  #   - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger digest notifications
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          HTTP=$(curl -sS -o response.json -w "%{http_code}" -X GET \
+            "$APP_URL/api/machine/notify-digest" \
+            -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+          echo "HTTP $HTTP"; cat response.json; echo
+          [ "$HTTP" = "200" ] || { echo "::error::notify-digest returned $HTTP"; exit 1; }
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"notify-digest\",\"message\":\"digest notification workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true
