@@ -100,6 +100,15 @@ await sql`
 // instances seeded before the capability existed (mirrors migration 0036).
 await sql`UPDATE types SET capability = 'widget-home' WHERE key = 'project' AND capability IS NULL`;
 
+// The milestone type (ADR-111/PJ5): a polymorphic collection item with no
+// done-state; date = due_date, upcoming/passed derived. Hidden, out of quick
+// capture, status_mode none. Mirrors migration 0037.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, property_schema)
+  VALUES ('milestone', 'Milestone', 'flag', true, false, true, 'none', '[]'::jsonb)
+  ON CONFLICT (key) DO NOTHING
+`;
+
 // Per-type status DISPLAY MODE (ADR-106), idempotent + mirrors migration 0032.
 // Status is opt-in: rows left NULL resolve to 'none' (no status affordance) via
 // resolveStatusMode. `task` is the binary done/undone default; any type with a

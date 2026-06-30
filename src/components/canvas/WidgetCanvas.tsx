@@ -14,6 +14,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import WidgetGear from "@/components/canvas/WidgetGear";
+import TasksWidget from "@/components/canvas/widgets/TasksWidget";
+import NotesWidget from "@/components/canvas/widgets/NotesWidget";
+import MilestonesWidget from "@/components/canvas/widgets/MilestonesWidget";
 import type { CanvasProps } from "@/lib/modules";
 import { resolveComposition } from "@/lib/composition";
 import { availableWidgets } from "@/lib/widgets";
@@ -71,8 +74,44 @@ function ItemList({ data }: { data: RecordWidgetData }) {
   );
 }
 
-function WidgetBody({ data, recordId, body }: { data: RecordWidgetData; recordId: string; body: unknown }) {
+function WidgetBody({
+  data,
+  recordId,
+  body,
+  nextActionTaskId,
+}: {
+  data: RecordWidgetData;
+  recordId: string;
+  body: unknown;
+  nextActionTaskId: string | null;
+}) {
   switch (data.def.id) {
+    case "tasks":
+      return (
+        <TasksWidget
+          recordId={recordId}
+          nextActionTaskId={nextActionTaskId}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, statusCategory: i.statusCategory }))}
+        />
+      );
+    case "notes":
+      return (
+        <NotesWidget
+          recordId={recordId}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title }))}
+        />
+      );
+    case "milestones":
+      return (
+        <MilestonesWidget
+          recordId={recordId}
+          items={(data.items ?? []).map((i) => ({
+            id: i.id,
+            title: i.title,
+            dueDate: i.dueDate ? i.dueDate.toISOString() : null,
+          }))}
+        />
+      );
     case "overview":
       return (
         <ItemEditor
@@ -180,7 +219,7 @@ export default async function WidgetCanvas({ item, ownerId }: CanvasProps) {
                 <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
                   {data.def.label}
                 </h3>
-                <WidgetBody data={data} recordId={item.id} body={item.body} />
+                <WidgetBody data={data} recordId={item.id} body={item.body} nextActionTaskId={item.nextActionTaskId ?? null} />
               </section>
             );
           })}

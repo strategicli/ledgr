@@ -11,11 +11,12 @@ import {
   inArray,
   isNull,
   isNotNull,
+  ne,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items, revisions, types } from "@/db/schema";
+import { items, relations, revisions, types } from "@/db/schema";
 import { extractBodyText } from "@/lib/body-text";
 import { bodyMarkdown, isItemBody } from "@/lib/body";
 import { syncMentionRelations } from "@/lib/mentions";
@@ -592,6 +593,11 @@ export async function updateItem(
         summary: `Completed “${updated.title || "untitled"}”`,
         payload: { childType: updated.type },
       }).catch(() => {});
+      // Next Action auto-advance (ADR-111/PJ5): if the completed task is the
+      // home parent's pinned Next Action, advance to the next open contained
+      // task (ordered by creation), else clear it. Direct write — not through
+      // updateItem — to avoid re-entrancy and an extra status_changed line.
+      await advanceNextActionIfPinned(ownerId, parent.id, updated.id).catch(() => {});
     }
   }
   return updated;
@@ -609,6 +615,50 @@ export async function toggleItemDone(ownerId: string, id: string) {
       ? defaultStatusKey(schema, "not_started") ?? "open"
       : defaultStatusKey(schema, "done") ?? "done";
   return updateItem(ownerId, id, { status: next });
+}
+
+// If `taskId` is the pinned Next Action on `parentId`, advance the pin to the
+// next open contained (home) task ordered by creation, else clear it (ADR-111).
+// A direct, owner-scoped write so it can run inside updateItem without recursion.
+async function advanceNextActionIfPinned(
+  ownerId: string,
+  parentId: string,
+  taskId: string
+) {
+  const db = getDb();
+  const parent = await db
+    .select({ next: items.nextActionTaskId })
+    .from(items)
+    .where(and(eq(items.id, parentId), eq(items.ownerId, ownerId)));
+  if (parent.length === 0 || parent[0].next !== taskId) return;
+  const nextRows = await db
+    .select({ id: items.id })
+    .from(items)
+    .innerJoin(
+      relations,
+      and(
+        eq(relations.sourceId, items.id),
+        eq(relations.targetId, parentId),
+        eq(relations.home, true),
+        eq(relations.matchState, "confirmed")
+      )
+    )
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        eq(items.type, "task"),
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false),
+        inArray(items.statusCategory, ["not_started", "in_progress"]),
+        ne(items.id, taskId)
+      )
+    )
+    .orderBy(items.createdAt)
+    .limit(1);
+  await db
+    .update(items)
+    .set({ nextActionTaskId: nextRows[0]?.id ?? null })
+    .where(and(eq(items.id, parentId), eq(items.ownerId, ownerId)));
 }
 
 // Soft-deletes the item and every live descendant in one statement, all with
