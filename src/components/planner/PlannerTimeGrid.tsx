@@ -24,6 +24,7 @@ import { usePlannerTouchDrag } from "@/components/planner/usePlannerTouchDrag";
 import type { ViewItem } from "@/components/views/ViewRenderer";
 import type { DateProperty, PlaceBy, ViewDisplay } from "@/lib/views";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
+import type { OverlayEvent } from "@/lib/calendar/overlay";
 
 const RAIL = "__none__";
 const HOUR_PX = 48;
@@ -44,12 +45,14 @@ export default function PlannerTimeGrid({
   placeBy,
   display,
   showUnscheduled = true,
+  calendarEvents,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
   placeBy: PlaceBy;
   display: ViewDisplay | null;
   showUnscheduled?: boolean;
+  calendarEvents?: OverlayEvent[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -102,6 +105,19 @@ export default function PlannerTimeGrid({
     const map = p.start ? timedByDay : allDayByDay;
     if (!map.has(p.ymd)) map.set(p.ymd, []);
     map.get(p.ymd)!.push(item);
+  }
+
+  // Read-only synced calendar events, split into all-day (the band) and timed
+  // (positioned blocks), bucketed by their (app-tz) day. Context to plan
+  // around — never draggable; timed blocks are pointer-events-none so a task
+  // can still be dropped onto the slot underneath them.
+  const eventAllDayByDay = new Map<string, OverlayEvent[]>();
+  const eventTimedByDay = new Map<string, OverlayEvent[]>();
+  for (const ev of calendarEvents ?? []) {
+    if (!dayset.has(ev.ymd)) continue;
+    const map = ev.start ? eventTimedByDay : eventAllDayByDay;
+    if (!map.has(ev.ymd)) map.set(ev.ymd, []);
+    map.get(ev.ymd)!.push(ev);
   }
 
   // Fit dayCount columns to the viewport; extra days overflow → horizontal scroll.
@@ -358,6 +374,19 @@ export default function PlannerTimeGrid({
                   style={{ width: colWidth, height: ALLDAY_H, ...(overKey === ymd ? { outline: "2px solid var(--accent)", outlineOffset: "-2px" } : {}) }}
                 >
                   <div className="flex flex-col gap-0.5">
+                    {(eventAllDayByDay.get(ymd) ?? []).map((ev) => (
+                      <div
+                        key={ev.id}
+                        title={`${ev.title || "(busy)"}${ev.location ? ` · ${ev.location}` : ""}`}
+                        className="block cursor-default select-none truncate rounded px-1 text-[11px] text-neutral-400"
+                        style={{
+                          backgroundColor: "color-mix(in srgb, #38bdf8 12%, rgb(23 23 23))",
+                          borderLeft: "2px solid #38bdf8",
+                        }}
+                      >
+                        {ev.title || "(busy)"}
+                      </div>
+                    ))}
                     {(allDayByDay.get(ymd) ?? []).map((item) => (
                       <div
                         key={item.id}
@@ -402,6 +431,29 @@ export default function PlannerTimeGrid({
                         className={onHour ? "border-b border-neutral-800/50" : "border-b border-neutral-800/20"}
                         style={{ height: slotPx, ...(overKey === key ? { background: "color-mix(in srgb, var(--accent) 22%, transparent)" } : {}) }}
                       />
+                    );
+                  })}
+                  {(eventTimedByDay.get(ymd) ?? []).map((ev) => {
+                    if (!ev.start) return null;
+                    const top = Math.max(0, blockTopPx(startMinutes({ start: ev.start, durationMinutes: ev.durationMinutes }), 0, slotMinutes, slotPx));
+                    const height = blockHeightPx(ev.durationMinutes, slotMinutes, slotPx);
+                    // pointer-events-none: purely visual context, so a task can
+                    // still be dropped onto the slot underneath an event.
+                    return (
+                      <div
+                        key={ev.id}
+                        title={`${formatTime12(ev.start)} · ${ev.title || "(busy)"}${ev.location ? ` · ${ev.location}` : ""}`}
+                        className="pointer-events-none absolute left-0.5 right-0.5 z-0 overflow-hidden rounded px-1 text-[11px] text-neutral-300"
+                        style={{
+                          top,
+                          height,
+                          backgroundColor: "color-mix(in srgb, #38bdf8 14%, rgb(23 23 23))",
+                          borderLeft: "2px solid #38bdf8",
+                        }}
+                      >
+                        <div className="truncate">{ev.title || "(busy)"}</div>
+                        <div className="truncate text-[10px] text-neutral-500">{formatTime12(ev.start)}</div>
+                      </div>
                     );
                   })}
                   {(timedByDay.get(ymd) ?? []).map((item) => {

@@ -1,38 +1,44 @@
-// Related panel (slice 15, PRD §4.9): every item's detail page shows what
-// links here — both-direction relations, grouped by type. Server component;
-// the query is body-free and owner-scoped (src/lib/relations.ts). The rows are
-// interactive (ADR-055): related tasks check off and edit their due date in
-// place, so this one panel is the actionable "tag as dashboard" surface that
-// used to be the entity-only EmbeddedView. Suggested edges (Phase 2 matchers)
-// render grayed with confirm/reject; mention-only rows carry an @ marker and
-// no remove control, because the body owns those edges.
+// Related panel (slice 15, PRD §4.9): every item's detail page shows what links
+// here — both-direction relations, grouped by type. Server component; the
+// queries are body-free and owner-scoped.
+//
+// Each type group is structured by the owner's chosen LENS and rendered through
+// the standard ViewRenderer (the same renderer the list pages and dashboards
+// use), scoped with the pre-existing ViewFilter.relatedTo. So sorting, filtering,
+// grouping, and the five layouts are the type's own saved lenses/views reused
+// verbatim — no parallel machinery. The lens is switched in place from the group
+// header (RelatedLensPicker) and persists per host-type + related-type.
+//
+// Rows keep their relation controls via ViewRenderer's rowActions slot
+// (un-relate; the @-mention marker). The relatedTo filter matches CONFIRMED
+// edges, so suggested (Phase-2 matcher) edges render in a small separate
+// section with the existing confirm/reject row, untouched by the lens path.
 //
 // Typed relation fields (ADR-067 R4): when this item's type declares relation
-// properties (Author, Attendees), their links surface first under the field
-// label as a section heading — the authoritative set is the outgoing edges
-// whose role is the field key. Those items are then omitted from the plain
-// type grouping below so they aren't listed twice. Everything else groups by
-// type as before, with `unmarked` create-on-miss items under their glyph,
-// sorted last.
+// properties (Author, Attendees), their links render under Properties, so we
+// claim those items here to keep them out of the type grouping below.
+import type { ReactNode } from "react";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
+import { bulkConfigForType } from "@/lib/bulk-config";
+import { lensesForType, relatedLensCandidates, relatedLensFor } from "@/lib/list-lenses";
 import { MENTION_ROLE } from "@/lib/mentions";
 import {
   listRelatedItems,
   outgoingRelationsByRole,
   type RelatedItem,
 } from "@/lib/relations";
+import { resolveRelatedGroup } from "@/lib/related-views";
+import { getSettings } from "@/lib/settings";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
-import InlineLabel from "@/components/build/InlineLabel";
+import CanvasSection from "@/components/canvas/CanvasSection";
 import AddRelation from "./AddRelation";
 import NewRelatedTask from "./NewRelatedTask";
-import { type RelatedRowItem } from "./RelatedRow";
-import RelatedPanelClient, {
-  type RelatedGroup,
-  type RelatedRowDescriptor,
-} from "./RelatedPanelClient";
+import RelatedGroupView from "./RelatedGroupView";
+import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
+import RelationActions from "./RelationActions";
 
 const UNMARKED = "unmarked";
 
@@ -47,13 +53,14 @@ export default async function RelatedPanel({
   itemId: string;
   bare?: boolean;
 }) {
-  const [related, typeRows, hostRows] = await Promise.all([
+  const [related, typeRows, hostRows, settings] = await Promise.all([
     listRelatedItems(ownerId, itemId),
     getDb().select({ key: types.key, label: types.label }).from(types),
     getDb()
       .select({ type: items.type })
       .from(items)
       .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId))),
+    getSettings(ownerId),
   ]);
 
   // The add affordances ride along whether or not anything is linked yet.
@@ -64,38 +71,26 @@ export default async function RelatedPanel({
     </div>
   );
 
+  const emptyState = bare ? (
+    <>{addBar}</>
+  ) : (
+    <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>
+  );
+
   // Nothing linked yet: just the quiet add affordances, no section chrome.
-  if (related.length === 0) {
-    return bare ? (
-      <>{addBar}</>
-    ) : (
-      <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>
-    );
-  }
+  if (related.length === 0) return emptyState;
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
+  const hostType = hostRows[0]?.type ?? "";
 
-  // This item's type → its relation fields (role sections). outgoingRelationsByRole
-  // is the authoritative per-field set (edges FROM this item with role = key),
-  // unlike the direction-blind roles[] on each related row.
-  const hostType = hostRows[0]?.type;
+  // This item's type → its relation fields (role sections). Those items render
+  // under Properties, so claim them here to avoid listing them twice.
   const hostDef = hostType ? await getType(hostType).catch(() => null) : null;
-  const relationFields = (hostDef?.propertySchema ?? []).filter(
-    (p) => p.kind === "relation"
-  );
+  const relationFields = (hostDef?.propertySchema ?? []).filter((p) => p.kind === "relation");
   const byRole = relationFields.length
-    ? await outgoingRelationsByRole(
-        ownerId,
-        itemId,
-        relationFields.map((f) => f.key)
-      )
+    ? await outgoingRelationsByRole(ownerId, itemId, relationFields.map((f) => f.key))
     : new Map<string, { id: string }[]>();
-
   const relatedById = new Map(related.map((r) => [r.id, r]));
-
-  // Typed relation fields (Attending, References) now render under the Properties
-  // panel (the canvas redesign), so claim their items here to keep them from
-  // repeating down in Linked here. An item appears once: as its field above.
   const claimed = new Set<string>();
   for (const f of relationFields) {
     for (const t of byRole.get(f.key) ?? []) {
@@ -103,10 +98,15 @@ export default async function RelatedPanel({
     }
   }
 
-  // Everything not claimed by a field section, grouped by type; unmarked last.
+  // Suggested edges render with the existing confirm/reject row (the relatedTo
+  // view filter is confirmed-only). Everything else groups by type for the lens.
+  const unclaimed = related.filter((r) => !claimed.has(r.id));
+  if (unclaimed.length === 0) return emptyState;
+  const suggested = unclaimed.filter((r) => r.matchState === "suggested");
+  const confirmed = unclaimed.filter((r) => r.matchState !== "suggested");
+
   const byType = new Map<string, RelatedItem[]>();
-  for (const item of related) {
-    if (claimed.has(item.id)) continue;
+  for (const item of confirmed) {
     const group = byType.get(item.type);
     if (group) group.push(item);
     else byType.set(item.type, [item]);
@@ -118,48 +118,117 @@ export default async function RelatedPanel({
     return compareTypeKeys(a, b);
   });
 
-  const buildRow = (item: RelatedItem, removalRole?: string): RelatedRowDescriptor => {
-    const row: RelatedRowItem = {
-      id: item.id,
-      type: item.type,
-      title: item.title,
-      status: item.status,
-      statusCategory: item.statusCategory,
-      dueDate: item.dueDate ? item.dueDate.toISOString() : null,
-      updatedAt: item.updatedAt.toISOString(),
-    };
-    return {
-      item: row,
-      suggested: item.matchState === "suggested",
-      mention: item.roles.includes(MENTION_ROLE),
-      mentionOnly: item.roles.every((r) => r === MENTION_ROLE),
-      removalRole,
-      done: item.statusCategory === "done",
-    };
+  // Per-group relation controls (un-relate + the @-mention marker), keyed by id,
+  // handed to ViewRenderer's rowActions slot. mention-only rows have no remove
+  // control (the body owns that edge).
+  const rowActionsFor = (group: RelatedItem[]): Record<string, ReactNode> => {
+    const out: Record<string, ReactNode> = {};
+    for (const r of group) {
+      const mentionOnly = r.roles.every((role) => role === MENTION_ROLE);
+      out[r.id] = (
+        <span className="flex shrink-0 items-center gap-2">
+          {r.roles.includes(MENTION_ROLE) && (
+            <span title="Linked by an @-mention in the body" className="text-xs text-neutral-600">
+              @
+            </span>
+          )}
+          <RelationActions itemId={itemId} otherId={r.id} suggested={false} removable={!mentionOnly} />
+        </span>
+      );
+    }
+    return out;
   };
 
-  const visibleCount = [...byType.values()].reduce((n, g) => n + g.length, 0);
-  // Everything that links here is already a typed field (shown under Properties);
-  // nothing to list, so just offer the quiet add affordances.
-  if (visibleCount === 0) {
-    return bare ? (
-      <>{addBar}</>
-    ) : (
-      <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>
-    );
-  }
+  // Resolve each group's lens + items in parallel. A chosen view lens that was
+  // deleted resolves to null; fall back to the type's default (first) lens.
+  const groups = await Promise.all(
+    typeGroups.map(async (key) => {
+      // Bespoke lenses (calendar/timeline) are list-page-only; the related panel
+      // offers and defaults to sort/view lenses only.
+      const lenses = relatedLensCandidates(lensesForType(settings, key));
+      let lens = relatedLensFor(settings, hostType, key);
+      // Generic sort lenses hide completed items (the panel reads as live work);
+      // a view lens owns its own status filter, so leave it to show what it filters.
+      let data = await resolveRelatedGroup(ownerId, itemId, key, lens, lens.kind === "sort");
+      if (!data) {
+        lens = lenses[0];
+        data = await resolveRelatedGroup(ownerId, itemId, key, lens, lens.kind === "sort");
+      }
+      // Multi-select for the group (ADR-118): a related group is always one type,
+      // so it gets that type's full bulk actions (status/date/select + Move +
+      // Delete), not a mixed surface's Move+Delete. A type that fails to resolve
+      // (best-effort load) just renders read-only.
+      const typeDef = await getType(key).catch(() => null);
+      const bulkConfig = typeDef ? bulkConfigForType(typeDef) : undefined;
+      return {
+        key,
+        lenses,
+        lensId: lens.id,
+        data,
+        rowActions: rowActionsFor(byType.get(key)!),
+        bulkConfig,
+      };
+    })
+  );
+  const renderGroups = groups.filter((g) => g.data);
 
-  // Inbound links grouped by type (unmarked under its glyph); typed relation
-  // fields are excluded — they live under Properties. The header label is
-  // rendered here (server) and handed to the client shell, which owns the
-  // show/hide-completed toggle and the visible counts.
-  const groups: RelatedGroup[] = typeGroups.map((key) => ({
-    key,
-    header: <InlineLabel typeKey={key} label={labels.get(key) ?? key} />,
-    rows: byType.get(key)!.map((item) => buildRow(item)),
-  }));
+  const totalCount =
+    renderGroups.reduce((n, g) => n + (g.data?.count ?? 0), 0) + suggested.length;
 
+  const body = (
+    <>
+      {renderGroups.map((g) => (
+        <RelatedGroupView
+          key={g.key}
+          hostType={hostType}
+          typeKey={g.key}
+          label={labels.get(g.key) ?? g.key}
+          lenses={g.lenses}
+          currentLensId={g.lensId}
+          data={g.data!}
+          rowActions={g.rowActions}
+          bulkConfig={g.bulkConfig}
+        />
+      ))}
+      {suggested.length > 0 && (
+        <div className="mt-4">
+          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Suggested
+            <span className="ml-2 font-normal text-neutral-600">{suggested.length}</span>
+          </h3>
+          <ul className="mt-1">
+            {suggested.map((r) => {
+              const row: RelatedRowItem = {
+                id: r.id,
+                type: r.type,
+                title: r.title,
+                status: r.status,
+                statusCategory: r.statusCategory,
+                dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+                updatedAt: r.updatedAt.toISOString(),
+              };
+              return (
+                <RelatedRow
+                  key={r.id}
+                  hostId={itemId}
+                  item={row}
+                  suggested
+                  mention={r.roles.includes(MENTION_ROLE)}
+                  mentionOnly={r.roles.every((role) => role === MENTION_ROLE)}
+                />
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      <div className="mt-4">{addBar}</div>
+    </>
+  );
+
+  if (bare) return body;
   return (
-    <RelatedPanelClient hostId={itemId} groups={groups} addBar={addBar} bare={bare} />
+    <CanvasSection icon="affiliate" title="Linked here" count={totalCount}>
+      {body}
+    </CanvasSection>
   );
 }

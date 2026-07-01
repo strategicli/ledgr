@@ -12,6 +12,8 @@ import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema } from "@/lib/status";
 import { getType } from "@/lib/types";
 import { queryViewItems, type ViewDefinition } from "@/lib/views";
+import { listCalendarEventsForRange } from "@/lib/calendar/feed";
+import { overlayWindow } from "@/lib/calendar/overlay";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +42,13 @@ export default async function PlannerPage({
     createdAt: new Date(),
   };
 
-  const items = await queryViewItems(owner.id, view.filter, view.sort);
-  const statuses = resolveStatusSchema((await getType("task")).statusSchema);
+  const win = overlayWindow(month);
+  const [items, calendarEvents, taskType] = await Promise.all([
+    queryViewItems(owner.id, view.filter, view.sort),
+    listCalendarEventsForRange(owner.id, win.start, win.end),
+    getType("task"),
+  ]);
+  const statuses = resolveStatusSchema(taskType.statusSchema);
 
   return (
     <ListPage tab="planner" title="Planner" actions={<NewItemButton type="task" />} wide>
@@ -54,6 +61,7 @@ export default async function PlannerPage({
         statuses={statuses}
         month={month}
         calendarNavHref="/planner"
+        calendarEvents={calendarEvents}
       />
     </ListPage>
   );

@@ -4,6 +4,7 @@
 // five layouts are different presentations of the same row set; none of them
 // re-queries or reaches for a body. Task rows carry the shared check-off
 // control so a view of tasks behaves like the Tasks list.
+import type { ReactNode } from "react";
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
 import PlannerCalendar from "@/components/planner/PlannerCalendar";
@@ -14,6 +15,7 @@ import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
+import type { OverlayEvent } from "@/lib/calendar/overlay";
 import type { StatusDef } from "@/lib/status";
 
 // Structural shape of a listColumns row, narrowed to what the layouts use.
@@ -200,6 +202,7 @@ function ItemRow({
   propertyLabels = {},
   statuses,
   selectable,
+  rowAction,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
@@ -207,6 +210,10 @@ function ItemRow({
   propertyLabels?: Record<string, string>;
   statuses?: StatusDef[];
   selectable?: boolean;
+  // Optional trailing slot for this row (the related panel passes relation
+  // controls — confirm/reject/un-relate + mention/suggested markers). Other
+  // callers leave it undefined, so their rows are unchanged.
+  rowAction?: ReactNode;
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
@@ -260,6 +267,7 @@ function ItemRow({
           </span>
         </>
       )}
+      {rowAction}
     </li>
   );
 }
@@ -273,12 +281,14 @@ function ListLayout({
   propertyLabels,
   statuses,
   selectable,
+  rowActions,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
   statuses?: StatusDef[];
   selectable?: boolean;
+  rowActions?: Record<string, ReactNode>;
 }) {
   return (
     <ul className="mt-4">
@@ -291,6 +301,7 @@ function ListLayout({
           propertyLabels={propertyLabels}
           statuses={statuses}
           selectable={selectable}
+          rowAction={rowActions?.[item.id]}
         />
       ))}
     </ul>
@@ -700,7 +711,9 @@ export default function ViewRenderer({
   statuses,
   month,
   calendarNavHref,
+  calendarEvents,
   selectable = false,
+  rowActions,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -724,11 +737,19 @@ export default function ViewRenderer({
   // the view page; widgets leave it unset so a calendar widget shows the current
   // month with no nav.
   calendarNavHref?: string;
+  // Read-only synced calendar events for the writable calendar overlay (plan
+  // tasks around what's already scheduled). Passed straight to PlannerCalendar,
+  // which gates them behind its "Show calendar" toggle.
+  calendarEvents?: OverlayEvent[];
   // Render per-row selection checkboxes (the multi-select layer, ADR-118). The
   // caller wraps this renderer in a SelectionProvider + BulkActionBar; here it
   // only toggles the row affordance. Off for dashboard widgets (read-only) and
   // the board/calendar layouts (selection there is deferred — defer-by-hiding).
   selectable?: boolean;
+  // Optional per-row trailing slot, keyed by item id (the related panel passes
+  // relation controls). Honored by the list layout; other layouts ignore it for
+  // now (defer-by-hiding). Undefined for every other caller.
+  rowActions?: Record<string, ReactNode>;
 }) {
   if (items.length === 0) {
     return (
@@ -775,6 +796,7 @@ export default function ViewRenderer({
             display={view.display}
             month={month}
             navHref={calendarNavHref}
+            calendarEvents={calendarEvents}
           />
         );
       }
@@ -818,6 +840,7 @@ export default function ViewRenderer({
           propertyLabels={propertyLabels}
           statuses={statuses}
           selectable={selectable}
+          rowActions={rowActions}
         />
       );
   }

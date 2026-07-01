@@ -13,6 +13,7 @@ import {
 import { getTranscription } from "@/lib/transcription/provider";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import AddTranscript from "./AddTranscript";
+import UploadTranscript from "./UploadTranscript";
 import AudioUpload from "./AudioUpload";
 import TranscriptionPoller from "./TranscriptionPoller";
 
@@ -52,8 +53,8 @@ export default async function MeetingTranscripts({
       {transcripts.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">
           {transcriptionEnabled
-            ? "Paste a transcript, or upload audio to transcribe it. Claude turns transcripts awaiting minutes into draft minutes and suggested tasks."
-            : "Paste a transcript to capture what was said. Claude turns transcripts awaiting minutes into draft minutes and suggested tasks."}
+            ? "Paste a transcript, upload a transcript file, or upload audio to transcribe it. Claude turns transcripts awaiting minutes into draft minutes and suggested tasks."
+            : "Paste a transcript or upload a transcript file to capture what was said. Claude turns transcripts awaiting minutes into draft minutes and suggested tasks."}
         </p>
       ) : (
         <ul className="mt-2 flex flex-col gap-1">
@@ -91,6 +92,7 @@ export default async function MeetingTranscripts({
 
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <AddTranscript meetingId={itemId} />
+          <UploadTranscript meetingId={itemId} />
           {transcriptionEnabled && <AudioUpload meetingId={itemId} />}
         </div>
       </CanvasSection>

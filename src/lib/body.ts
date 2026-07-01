@@ -88,6 +88,26 @@ export function isItemBody(body: unknown): body is ItemBody {
   return typeof b.format === "string" && typeof b.text === "string";
 }
 
+// A short, stable digest of a body's markdown, for the cross-device edit guard
+// (ADR-134). The editor sends the digest of the body it last synced with; the
+// server compares it to the body it's about to overwrite, so a body edited on
+// another device since this client loaded it is caught (409 conflict) instead
+// of silently clobbered by a stale full-body PATCH. NOT a security hash: a fast,
+// dependency-free non-crypto digest (djb2-xor, length-tagged so two strings that
+// collide on the hash still differ) is enough to answer "did the text change?",
+// and it stays tiny on the wire next to a multi-KB body (rule 5/8). Pure and
+// deterministic: the same markdown digests identically on the client and server,
+// which is the whole contract. Operates on the markdown text (via bodyMarkdown),
+// so the { format, text } wrapper and a bare string agree.
+export function bodyDigest(body: unknown): string {
+  const text = bodyMarkdown(body);
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) {
+    h = (Math.imul(h, 33) ^ text.charCodeAt(i)) | 0;
+  }
+  return `${text.length.toString(36)}.${(h >>> 0).toString(36)}`;
+}
+
 // The markdown text of a body, or "" for an empty/absent/foreign body. Tolerant
 // by design: a null body, a bare string, or a pre-cutover shape all degrade to
 // a usable string rather than throwing, so every reader (FTS, mentions, print,

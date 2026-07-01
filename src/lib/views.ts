@@ -390,6 +390,7 @@ export type ViewDisplay = {
   workStartHour?: number; // 0–23, default 7
   workEndHour?: number; // 1–24, default 19; always > workStartHour
   showWeekends?: boolean; // default true
+  showCalendar?: boolean; // overlay read-only synced calendar events; default false
 };
 
 // Resolved defaults for a calendar view with no (or partial) display config.
@@ -401,6 +402,7 @@ export const DISPLAY_DEFAULTS: Required<ViewDisplay> = {
   workStartHour: 7,
   workEndHour: 19,
   showWeekends: true,
+  showCalendar: false,
 };
 
 export type ViewDefinition = {
@@ -646,6 +648,7 @@ export function parseDisplay(raw: unknown): ViewDisplay | null {
     delete out.workEndHour;
   }
   if (typeof r.showWeekends === "boolean") out.showWeekends = r.showWeekends;
+  if (typeof r.showCalendar === "boolean") out.showCalendar = r.showCalendar;
   return Object.keys(out).length ? out : null;
 }
 

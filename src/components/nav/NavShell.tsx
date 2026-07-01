@@ -204,6 +204,7 @@ export default function NavShell({
   unreadCount,
   typeOptions,
   buildTypes,
+  aiMemoryEnabled,
   navPosition,
   railSize: railSizeProp,
   navDensity: navDensityProp,
@@ -216,6 +217,8 @@ export default function NavShell({
   typeOptions: { key: string; label: string }[];
   // The owner's types, for the Build sidebar's Types & Properties dropdown.
   buildTypes: { key: string; label: string; icon: string | null }[];
+  // AI Memory on? Gates the Build sidebar's "AI Memory" entry (ADR-137).
+  aiMemoryEnabled: boolean;
   navPosition: NavPosition;
   railSize: RailSize;
   navDensity: NavDensity;
@@ -750,12 +753,19 @@ export default function NavShell({
       {/* PWA app-icon badge: only while the notification center is live (ADR-130). */}
       {NOTIFICATION_CENTER_ENABLED && <AppBadgeSync count={unreadCount} />}
       {inBuild && (
-        <BuildSidebar types={buildTypes} onOpenSearch={() => setSearchOpen(true)} />
+        <BuildSidebar
+          types={buildTypes}
+          aiMemoryEnabled={aiMemoryEnabled}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
       )}
 
-      {/* Mobile: always the floating bottom bar, whatever the desktop position. */}
+      {/* Mobile: always the floating bottom bar, whatever the desktop position.
+          data-work-nav-pill lets the markdown editor hide it while editing
+          (globals.css), so the floating formatting rail and this pill never
+          fight for the same bottom-of-screen spot. */}
       {!inBuild && (
-        <div className="sm:hidden">
+        <div className="sm:hidden" data-work-nav-pill>
           {floatingPill(mobileBarSlots, "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2")}
         </div>
       )}

@@ -68,7 +68,7 @@ export default async function AiAndMcp() {
   const origin = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
   const mcpUrl = `${origin}/api/mcp`;
 
-  const tools = listToolDefs();
+  const tools = await listToolDefs(owner.id);
   const tokenCommand = "node scripts/make-token.mjs claude-mcp mcp";
   const addCommand = `claude mcp add --transport http ledgr ${mcpUrl} --header "Authorization: Bearer <token>"`;
 

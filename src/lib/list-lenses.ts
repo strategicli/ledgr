@@ -17,9 +17,17 @@ export type LensSortSource =
   | { field: LensField }
   | { property: string; numeric?: boolean };
 
+// Bespoke lenses render a custom body instead of a sorted list or a saved view.
+// They carry no sort/source — the list page branches on `kind` to pick the body.
+// Both are event-only defaults (see defaultLenses): "calendar" is the un-promoted
+// upcoming calendar feed with one-click Add; "timeline" is the Upcoming/Past/
+// No-date grouping by meeting time. External-data / grouped renderings like these
+// aren't expressible as sort or view lenses, so they get their own kinds.
 export type Lens =
   | { id: string; kind: "sort"; label: string; source: LensSortSource; dir: "asc" | "desc" }
-  | { id: string; kind: "view"; label: string; viewId: string };
+  | { id: string; kind: "view"; label: string; viewId: string }
+  | { id: string; kind: "calendar"; label: string }
+  | { id: string; kind: "timeline"; label: string };
 
 // Built-in sort fields a lens can use. A subset of the view engine's columns
 // plus "mostLinked" (the confirmed-relation count). Date/scheduled/meeting
@@ -35,16 +43,28 @@ const UUID_RE =
 
 // --- Defaults -------------------------------------------------------------
 
-// The virtual default strip every type gets when it has no stored override.
-// Each is reversible at render time via the active-tab direction toggle, so
-// "A → Z" inverts to "Z → A", "Most linked" to "Least linked", etc.
-export function defaultLenses(): Lens[] {
-  return [
+// The virtual default strip a type gets when it has no stored override. Each
+// sort lens is reversible at render time via the active-tab direction toggle, so
+// "A → Z" inverts to "Z → A", "Most linked" to "Least linked", etc. The event
+// type prepends two bespoke lenses (Calendar feed, then the meeting-time
+// Timeline) ahead of the generic sorts — the calendar-import surface Brandon
+// clicks to add meetings, kept default/leftmost but reorderable and hideable in
+// Build like any tab. Every other type gets just the four generic sorts.
+export function defaultLenses(typeKey?: string): Lens[] {
+  const generic: Lens[] = [
     { id: "recent", kind: "sort", label: "Recent", source: { field: "updatedAt" }, dir: "desc" },
     { id: "newest", kind: "sort", label: "Newest", source: { field: "createdAt" }, dir: "desc" },
     { id: "az", kind: "sort", label: "A → Z", source: { field: "title" }, dir: "asc" },
     { id: "linked", kind: "sort", label: "Most linked", source: { field: "mostLinked" }, dir: "desc" },
   ];
+  if (typeKey === "event") {
+    return [
+      { id: "calendar", kind: "calendar", label: "Calendar" },
+      { id: "timeline", kind: "timeline", label: "Timeline" },
+      ...generic,
+    ];
+  }
+  return generic;
 }
 
 // The lenses for a type: the stored override if present and non-empty, else the
@@ -54,12 +74,42 @@ export function lensesForType(
   typeKey: string
 ): Lens[] {
   const stored = settings.listTabs?.[typeKey];
-  return stored && stored.length ? stored : defaultLenses();
+  return stored && stored.length ? stored : defaultLenses(typeKey);
 }
 
 // Pick the active lens from a `?lens=` param, falling back to the first lens.
 export function selectLens(lenses: Lens[], lensParam: string | undefined): Lens {
   return lenses.find((l) => l.id === lensParam) ?? lenses[0] ?? defaultLenses()[0];
+}
+
+// The settings.relatedLensChoices key for "this host type's view of that related
+// type" (the Tasks group under a Meeting can differ from Tasks under a Person).
+// Pure + client-safe so the panel picker and the server resolver share it.
+export function relatedLensKey(hostType: string, relatedType: string): string {
+  return `${hostType}:${relatedType}`;
+}
+
+// The lenses a related-type group can render: sort and view only. Bespoke
+// lenses (calendar/timeline) are list-page surfaces — a calendar feed or a
+// meeting-time timeline makes no sense inside a host item's related panel — so
+// they're filtered out of both the default choice and the panel's lens picker.
+// Falls back to the generic defaults if a type somehow has no supported lens.
+export function relatedLensCandidates(lenses: Lens[]): Lens[] {
+  const supported = lenses.filter((l) => l.kind === "sort" || l.kind === "view");
+  return supported.length ? supported : defaultLenses();
+}
+
+// The lens that structures a related-type group: the owner's stored choice for
+// (hostType:relatedType) if it still exists among that type's supported lenses,
+// else the related type's default (first supported) lens.
+export function relatedLensFor(
+  settings: { listTabs?: Record<string, Lens[]>; relatedLensChoices?: Record<string, string> },
+  hostType: string,
+  relatedType: string
+): Lens {
+  const lenses = relatedLensCandidates(lensesForType(settings, relatedType));
+  const chosenId = settings.relatedLensChoices?.[relatedLensKey(hostType, relatedType)];
+  return lenses.find((l) => l.id === chosenId) ?? lenses[0];
 }
 
 // Map a SORT lens to the engine's ListSort, flipping direction when reversed.
@@ -106,6 +156,10 @@ function parseLens(raw: unknown): Lens | null {
     if (!viewId) return null;
     return { id, kind: "view", label, viewId };
   }
+
+  // Bespoke bodies (event-only): id + label, no source.
+  if (r.kind === "calendar") return { id, kind: "calendar", label };
+  if (r.kind === "timeline") return { id, kind: "timeline", label };
 
   // Default kind is "sort".
   const dir: "asc" | "desc" = r.dir === "asc" ? "asc" : "desc";

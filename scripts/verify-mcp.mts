@@ -68,21 +68,28 @@ const listRes = await handleMcpMessage({ jsonrpc: "2.0", id: 2, method: "tools/l
 const toolList = (resultOf(listRes).tools ?? []) as { name: string; description: string; inputSchema: { type: string; properties: unknown }; annotations: { readOnlyHint?: boolean } }[];
 const EXPECTED = [
   "search_items", "list_items", "get_item", "create_item", "update_item",
+  "move_item_type", // ADR-132
   "list_types", "relate_items", "unrelate_items", "list_views", "run_view",
   "list_templates", "apply_template",
   // workspace shaping (ADR-102)
   "describe_workspace", "create_type", "update_type", "create_view",
   "update_view", "create_dashboard", "add_widget", "update_nav",
 ];
+// The always-on tool set (AI Memory tools are gated off for the dummy owner —
+// asserted separately below), so tools/list here is exactly EXPECTED.
 check(
-  "tools/list returns all twenty tools",
+  "tools/list returns the always-on tools",
   EXPECTED.every((n) => toolList.some((t) => t.name === n)) && toolList.length === EXPECTED.length
 );
 check("every tool has an object inputSchema", toolList.every((t) => t.inputSchema?.type === "object" && !!t.inputSchema.properties));
 check("every tool has a non-empty description", toolList.every((t) => typeof t.description === "string" && t.description.length > 0));
 check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates", "describe_workspace"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
 check("write tools are not readOnly", ["create_item", "update_item", "relate_items", "unrelate_items", "apply_template", "create_type", "update_type", "create_view", "update_view", "create_dashboard", "add_widget", "update_nav"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
-check("listToolDefs strips the handler", listToolDefs().every((d) => !("handler" in (d as Record<string, unknown>))));
+const bareDefs = await listToolDefs(DUMMY);
+check("listToolDefs strips the handler", bareDefs.every((d) => !("handler" in (d as Record<string, unknown>))));
+// AI Memory (ADR-137) is off for the dummy owner (no settings row → default
+// false), so the memory tools must not appear in the listing.
+check("memory tools hidden when AI Memory off (default)", !bareDefs.some((d) => d.name === "get_memory_stumps" || d.name === "remember"));
 
 const pingRes = await handleMcpMessage({ jsonrpc: "2.0", id: 3, method: "ping" }, DUMMY);
 check("ping returns an empty result", JSON.stringify(resultOf(pingRes)) === "{}");

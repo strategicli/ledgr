@@ -12,7 +12,11 @@ import { calendarEvents, items, jobState } from "@/db/schema";
 import type { CalendarEvent, CalendarSource } from "./types";
 
 export const CALENDAR_JOB_KEY = "calendar_sync";
-export const DEFAULT_WINDOW_DAYS = 14;
+// How far ahead each sync pulls events into the cache. 4 weeks so the Planner's
+// read-only calendar overlay (ADR-133) has a useful long-range planning horizon.
+// The meeting-import feed (listCalendarFeed) bounds itself to 2 weeks separately,
+// so widening this doesn't lengthen that suggestion list.
+export const DEFAULT_WINDOW_DAYS = 28;
 
 export type CalendarRunResult = {
   seen: number;

@@ -21,7 +21,7 @@ import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { makeMarkdownBody } from "@/lib/body";
 import { parseItemPayload } from "@/lib/item-input";
-import { ItemError, createItem } from "@/lib/items";
+import { ItemError, createItem, updateItem } from "@/lib/items";
 import { relateItems } from "@/lib/relations";
 
 export const TRANSCRIPT_TYPE = "transcript";
@@ -139,4 +139,100 @@ export async function createTranscript(
   const created = await createItem(ownerId, input);
   await relateItems(ownerId, meetingId, created.id, TRANSCRIPT_RELATION_ROLE);
   return created;
+}
+
+// Capture a transcript that has no meeting yet (the Android share-target path):
+// a `transcript` item with the shared file's text, inbox: true and NO parent.
+// It's a real, persisted item the moment the file is shared, so the text can't
+// be lost even if the owner backs out of the meeting picker — it just sits in
+// the Inbox like any untriaged capture. attachTranscriptToMeeting then wires it
+// to the chosen meeting (the parent + edge createTranscript would have set).
+export async function createInboxTranscript(
+  ownerId: string,
+  opts: { title?: string; text?: string }
+) {
+  const title = opts.title?.trim() || "Transcript";
+  const input = parseItemPayload(
+    {
+      type: TRANSCRIPT_TYPE,
+      title,
+      body: makeMarkdownBody(opts.text ?? ""),
+      properties: { [MINUTES_PROP]: "none" },
+      inbox: true,
+    },
+    "create"
+  );
+  return createItem(ownerId, input);
+}
+
+// Attach an inbox transcript (createInboxTranscript) to a meeting, completing
+// the same two links createTranscript writes up front: parent_id = the meeting
+// (containment) + the confirmed meeting→transcript edge (association). Clearing
+// inbox triages it out of the capture queue. Validates both ends are the owner's
+// live items and that the parent is an event and the child a transcript, so the
+// share picker can't wire a transcript onto a non-meeting.
+export async function attachTranscriptToMeeting(
+  ownerId: string,
+  transcriptId: string,
+  meetingId: string
+) {
+  const rows = await getDb()
+    .select({ id: items.id, type: items.type })
+    .from(items)
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt),
+        sql`${items.id} in (${transcriptId}, ${meetingId})`
+      )
+    );
+  const meeting = rows.find((r) => r.id === meetingId);
+  const transcript = rows.find((r) => r.id === transcriptId);
+  if (!meeting) throw new ItemError("not_found", "event not found");
+  if (meeting.type !== "event") {
+    throw new ItemError("bad_request", "transcripts attach to an event");
+  }
+  if (!transcript) throw new ItemError("not_found", "transcript not found");
+  if (transcript.type !== TRANSCRIPT_TYPE) {
+    throw new ItemError("bad_request", "not a transcript");
+  }
+
+  await updateItem(ownerId, transcriptId, { parentId: meetingId, inbox: false });
+  await relateItems(ownerId, meetingId, transcriptId, TRANSCRIPT_RELATION_ROLE);
+}
+
+// Recent meetings for the share picker: newest meeting time first (then newest
+// edited for undated events), body-free. The owner taps one to attach a shared
+// transcript to it.
+export async function listRecentMeetingsForPicker(
+  ownerId: string,
+  limit = 30
+): Promise<
+  {
+    id: string;
+    title: string;
+    meetingAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }[]
+> {
+  const rows = await getDb()
+    .select({
+      id: items.id,
+      title: items.title,
+      meetingAt: items.meetingAt,
+      createdAt: items.createdAt,
+      updatedAt: items.updatedAt,
+    })
+    .from(items)
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        eq(items.type, "event"),
+        isNull(items.deletedAt)
+      )
+    )
+    .orderBy(sql`${items.meetingAt} desc nulls last`, sql`${items.updatedAt} desc`)
+    .limit(limit);
+  return rows;
 }

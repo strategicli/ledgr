@@ -16,6 +16,9 @@ import ListLenses from "@/components/lists/ListLenses";
 import ListPage from "@/components/lists/ListPage";
 import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
+import CalendarFeed from "@/components/calendar/CalendarFeed";
+import EventTimeline from "@/components/events/EventTimeline";
+import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
 import NewItemButton from "@/components/home/NewItemButton";
 import ProjectCardGrid from "@/components/projects/ProjectCardGrid";
 import RowAction from "@/components/home/RowAction";
@@ -64,6 +67,7 @@ export default async function TypeList({
   });
 
   const sp = await searchParams;
+  const now = new Date();
   const settings = await getSettings(owner.id);
   const lenses = lensesForType(settings, type);
   const active = selectLens(lenses, typeof sp.lens === "string" ? sp.lens : undefined);
@@ -76,15 +80,41 @@ export default async function TypeList({
 
   // Sort path: the type's select/multi_select properties become list filters,
   // and the active sort lens (reversible) orders a window of rows (Load-more
-  // grows it). The count is the true match total (filters included).
+  // grows it). The count is the true match total (filters included). Bespoke
+  // lenses (calendar/timeline) ignore the sort and render their own body.
   const filterProps = propertyFilterOptions(typeDef.propertySchema);
   const propFilters = propertyFiltersFromParams(sp, typeDef.propertySchema);
   const filter = { type, ...(propFilters.length ? { propertyFilters: propFilters } : {}) };
   const show = parseListWindow(sp.show);
   let items: Awaited<ReturnType<typeof queryViewItems>> = [];
   let count: number;
+  let feed: FeedEvent[] | null = null;
+  // Timeline: one meeting-time-ordered fetch, split into upcoming/past/undated.
+  let timeline: {
+    rows: Awaited<ReturnType<typeof queryViewItems>>;
+    upcoming: Awaited<ReturnType<typeof queryViewItems>>;
+    past: Awaited<ReturnType<typeof queryViewItems>>;
+    undated: Awaited<ReturnType<typeof queryViewItems>>;
+  } | null = null;
   if (viewData) {
     count = viewData.count;
+  } else if (active.kind === "calendar") {
+    [feed, count] = await Promise.all([
+      listCalendarFeed(owner.id, { now }),
+      countViewItems(owner.id, filter),
+    ]);
+  } else if (active.kind === "timeline") {
+    let rows: Awaited<ReturnType<typeof queryViewItems>>;
+    [rows, count] = await Promise.all([
+      queryViewItems(owner.id, filter, { field: "meetingAt", dir: "desc" }, show),
+      countViewItems(owner.id, filter),
+    ]);
+    timeline = {
+      rows,
+      upcoming: rows.filter((m) => m.meetingAt != null && m.meetingAt >= now).reverse(),
+      past: rows.filter((m) => m.meetingAt != null && m.meetingAt < now),
+      undated: rows.filter((m) => m.meetingAt == null),
+    };
   } else {
     [items, count] = await Promise.all([
       queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
@@ -126,6 +156,27 @@ export default async function TypeList({
       />
       {viewData ? (
         <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(typeDef)} />
+      ) : active.kind === "calendar" ? (
+        <CalendarFeed events={feed ?? []} now={now} />
+      ) : timeline ? (
+        <SelectionProvider
+          ids={[...timeline.upcoming, ...timeline.past, ...timeline.undated].map((m) => m.id)}
+        >
+          <SelectModeToggle />
+          <EventTimeline
+            upcoming={timeline.upcoming}
+            past={timeline.past}
+            undated={timeline.undated}
+            now={now}
+          />
+          <LoadMore
+            shown={timeline.rows.length}
+            total={count}
+            basePath={`/list/${type}`}
+            params={sp}
+          />
+          <BulkActionBar {...bulkConfigForType(typeDef)} />
+        </SelectionProvider>
       ) : (
         <>
           {selects.length > 0 && (

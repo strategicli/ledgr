@@ -16,6 +16,8 @@ import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
+import { listCalendarEventsForRange } from "@/lib/calendar/feed";
+import { overlayWindow } from "@/lib/calendar/overlay";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,19 @@ export default async function ViewPage({ params, searchParams }: Context) {
   }
 
   const items = await queryViewItems(owner.id, view.filter, view.sort);
+
+  // The read-only calendar overlay is only meaningful on a writable calendar
+  // (one that places tasks on scheduled/due/plan — the interactive PlannerCalendar
+  // branch). Skip the query for every other layout/date-property.
+  const dp = view.dateProperty;
+  const overlayApplies =
+    view.layout === "calendar" &&
+    (dp == null || dp === "plan" || dp === "scheduledDate" || dp === "dueDate");
+  let calendarEvents;
+  if (overlayApplies) {
+    const win = overlayWindow(month);
+    calendarEvents = await listCalendarEventsForRange(owner.id, win.start, win.end);
+  }
 
   // Load the view's type once: it powers both the board's column order (group
   // by a custom property) and the labels for any custom-property columns.
@@ -145,6 +160,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
             statuses={statuses}
             month={month}
             calendarNavHref={`/views/${view.id}`}
+            calendarEvents={calendarEvents}
             selectable
           />
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />
