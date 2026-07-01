@@ -17,6 +17,10 @@ if (hostname.endsWith(".neon.tech") && !hostname.includes("-pooler")) {
   process.exit(1);
 }
 
+// Announce the target so a prod vs dev run is never ambiguous (host only,
+// never the credential). db:migrate uses .env.local (dev); db:migrate:prod
+// uses .env.production.local (prod).
+console.log(`Applying migrations to ${hostname} ...`);
 const db = drizzle(neon(url));
 await migrate(db, { migrationsFolder: "./drizzle" });
 console.log("Migrations applied.");
