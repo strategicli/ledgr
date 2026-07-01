@@ -13,12 +13,17 @@
 # add an endpoint (Neon console) or restore per runbook §4a.
 #
 # Retention: keeps the newest SNAPSHOT_KEEP snapshots (name prefix
-# "snapshot-"), deletes older ones — the free tier caps branches per project,
-# so an unpruned daily job would eventually wedge branch creation.
+# "snapshot-"), deletes older ones — the free tier caps branches per project
+# at 10, so an unpruned daily job would eventually wedge branch creation.
+# Budget on Brandon's prod (project neon-teal-cushion): main + dev are the two
+# persistent branches, so SNAPSHOT_KEEP=5 leaves headroom (5 + 2 = 7 steady,
+# 6 + 2 = 8 at the create-before-prune peak, well under 10). Raise it only if
+# you drop persistent branches; lower it if you add some.
 #
 # Secrets required (repo Actions secrets, runbook §4a):
 #   NEON_API_KEY     — a Neon API key (console → Account settings → API keys)
-#   NEON_PROJECT_ID  — the project id (console → Project settings → General)
+#   NEON_PROJECT_ID  — the project id, "sweet-cell-36466605" for prod
+#                      (console URL /app/projects/<id>; display name neon-teal-cushion)
 # A missing secret fails the run loudly (same posture as backup.yml).
 #
 # Daily 07:00 UTC: before the workday, and clear of the export (06:30) and
@@ -35,7 +40,7 @@ permissions:
 
 env:
   # How many "snapshot-" branches to retain (this run's new one included).
-  SNAPSHOT_KEEP: "7"
+  SNAPSHOT_KEEP: "5"
 
 jobs:
   snapshot:
