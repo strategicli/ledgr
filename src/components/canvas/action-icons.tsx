@@ -25,6 +25,8 @@ export const ACTION_ICONS = {
     '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="4.5" r="1.8"/><circle cx="5" cy="18" r="1.8"/><circle cx="19" cy="18" r="1.8"/><path d="M12 9.6V6.3M10.4 13.5 6.2 16.6M13.6 13.5l4.2 3.1"/>',
   // Change type — opposing swap arrows.
   swap: '<path d="M4 9h12"/><path d="M13 6l3 3-3 3"/><path d="M20 15H8"/><path d="M11 12l-3 3 3 3"/>',
+  // Make subtask of — an arrow turning down into an indented child row.
+  subtask: '<path d="M6 5v7a3 3 0 0 0 3 3h9"/><path d="M15 12l3 3-3 3"/>',
   // Template pair: a page with a + badge (save) or a ✓ badge (apply).
   templateSave:
     '<rect x="3" y="3" width="11" height="16" rx="2"/><path d="M3 8h11"/><path d="M6 12h5M6 15h3"/><path d="M18.5 14v6M15.5 17h6"/>',

@@ -16,6 +16,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
+import { childRollups } from "@/lib/subtasks";
 import { listCalendarEventsForRange } from "@/lib/calendar/feed";
 import { overlayWindow } from "@/lib/calendar/overlay";
 
@@ -47,6 +48,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
   }
 
   const items = await queryViewItems(owner.id, view.filter, view.sort);
+  const rollups = await childRollups(owner.id, items.map((i) => i.id));
 
   // The read-only calendar overlay is only meaningful on a writable calendar
   // (one that places tasks on scheduled/due/plan — the interactive PlannerCalendar
@@ -162,6 +164,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
             calendarNavHref={`/views/${view.id}`}
             calendarEvents={calendarEvents}
             selectable
+            rollups={rollups}
           />
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />
         </SelectionProvider>

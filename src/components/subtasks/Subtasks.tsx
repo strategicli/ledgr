@@ -8,6 +8,7 @@ import Link from "next/link";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import AddSubtask from "./AddSubtask";
+import AddExistingSubtask from "./AddExistingSubtask";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 import SubtaskSchedule from "./SubtaskSchedule";
 
@@ -104,12 +105,16 @@ export default async function Subtasks({
 }) {
   const { children, progress } = await listSubtree(ownerId, itemId);
 
-  // No children yet: just the quiet capture affordance, no section chrome.
+  // No children yet: a labeled section with both capture affordances, so the
+  // feature is discoverable rather than a lone faint button.
   if (children.length === 0) {
     return (
-      <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
-        <AddSubtask parentId={itemId} />
-      </div>
+      <CanvasSection icon="tasks" title="Subtasks">
+        <div className="flex flex-wrap items-center gap-1">
+          <AddSubtask parentId={itemId} />
+          <AddExistingSubtask parentId={itemId} />
+        </div>
+      </CanvasSection>
     );
   }
 
@@ -124,7 +129,10 @@ export default async function Subtasks({
           <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} />
         ))}
       </ul>
-      <AddSubtask parentId={itemId} />
+      <div className="flex flex-wrap items-center gap-1">
+        <AddSubtask parentId={itemId} />
+        <AddExistingSubtask parentId={itemId} />
+      </div>
     </CanvasSection>
   );
 }

@@ -18,17 +18,25 @@ import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import type { BulkActionConfig } from "@/lib/bulk-config";
+import { childRollups } from "@/lib/subtasks";
 import type { ViewLensData } from "@/lib/view-render";
 
-export default function ViewLensBody({
+export default async function ViewLensBody({
   data,
   bulkConfig,
   rowActions,
+  ownerId,
 }: {
   data: ViewLensData;
   bulkConfig?: BulkActionConfig;
   rowActions?: Record<string, ReactNode>;
+  // When set, the list/agenda rows get subtask "n/m" indicators. The type list
+  // passes it; callers without an owner in scope omit it and rows stay plain.
+  ownerId?: string;
 }) {
+  const rollups = ownerId
+    ? await childRollups(ownerId, data.items.map((i) => i.id))
+    : undefined;
   const renderer = (
     <ViewRenderer
       view={data.view}
@@ -37,6 +45,7 @@ export default function ViewLensBody({
       propertyLabels={data.propertyLabels}
       selectable={bulkConfig != null}
       rowActions={rowActions}
+      rollups={rollups}
     />
   );
 
