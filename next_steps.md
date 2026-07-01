@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-> **⏭️ NEXT (2026-07-01):** In-browser eyeball of the **redesigned Project UI** (built this session, see the summary block directly below) on `integrate-pj`, then commit. Still uncommitted; tsc + eslint + `next build` clean and the affected verify scripts pass on the dev DB.
+> **⏭️ NEXT (2026-07-01) — DEPLOY THE PJ CHUNK:** `integrate-pj` is committed and **merged with `origin/main`** (which had advanced to ADR-137 / PRs→#138: AI Memory, calendar lenses, edit guard, etc.). Migrations linearized past the `0040` collision → `0040_memory_type` then `0041_solid_leech`…`0045_pursuit_type` (whens rewritten so prod won't skip them). tsc + `next build` + eslint clean; verify scripts green on the merged tree. **Remaining, in order (needs prod creds — Tyler):** (1) `npm run db:migrate` against **prod** `DATABASE_URL` (applies the 5 new migrations after `memory_type`) — must precede code going live; (2) push `main` (or PR → merge) → Vercel deploys; (3) verify `/health` + a project page. **Dev-DB gotcha:** `ledgr_dev` already ran the old-numbered branch migrations, so `db:migrate` there will collide — reset dev or fix `__drizzle_migrations` (prod is unaffected, it never had them). Project Type ADR renumbered 133→**138** (origin took 133 for the Planner).
 
 ## ⟢ Session summary — Project UI redesign: card grid + header/cards canvas + weighted-points progress (2026-07-01)
 
