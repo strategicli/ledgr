@@ -11,6 +11,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import NewItemButton from "@/components/home/NewItemButton";
+import AiMemoryGuide from "@/components/memory/AiMemoryGuide";
 import { getMemoryStumps, type MemoryStump } from "@/lib/memory";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
@@ -101,6 +102,15 @@ export default async function AiMemoryPage() {
         ) : (
           <EnabledBody ownerId={owner.id} />
         )}
+
+        <details className="mt-10 rounded-xl border border-neutral-800 p-4 [&_summary]:cursor-pointer">
+          <summary className="text-sm font-semibold text-neutral-200">
+            How AI Memory works &amp; how to use it
+          </summary>
+          <div className="mt-3 border-t border-neutral-800 pt-3">
+            <AiMemoryGuide />
+          </div>
+        </details>
       </div>
     </main>
   );

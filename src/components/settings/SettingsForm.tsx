@@ -26,6 +26,7 @@ import {
 } from "@/lib/settings";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
+import AiMemoryLearnMore from "@/components/settings/AiMemoryLearnMore";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   top: "Top",
@@ -293,7 +294,10 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
       )}
 
       <section>
-        <h2 className="text-sm font-semibold text-neutral-200">AI Memory</h2>
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-200">AI Memory</h2>
+          <AiMemoryLearnMore />
+        </div>
         <p className="mt-0.5 text-sm text-neutral-500">
           Let an AI assistant keep durable memories in Ledgr, read over MCP. When
           on, a “stumps” index of what you’ve chosen to remember loads at the start
