@@ -242,6 +242,12 @@ export type UserSettings = {
   // An absent key defaults to on (see NOTIFICATION_KINDS / notificationEnabled),
   // so a new source is on until the owner turns it off. Additive, no migration.
   notificationPrefs: Record<string, boolean>;
+  // AI Memory subsystem master switch (ADR-137). Off by default: a fresh Ledgr
+  // behaves exactly as before. When on, the memory-specific MCP tools
+  // (get_memory_stumps, remember) and the memory-protocol resource are exposed,
+  // and the Build → AI Memory surface appears. When off, none of those are
+  // listed or callable, so a "vanilla" MCP client never sees the memory concept.
+  aiMemoryEnabled: boolean;
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -314,6 +320,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   tocByType: {},
   relatedLensChoices: {},
   notificationPrefs: {},
+  aiMemoryEnabled: false,
 };
 
 const SETTINGS_UUID_RE =
@@ -476,6 +483,8 @@ export function parseSettings(raw: unknown): UserSettings {
   const tocByType = parseTocByType(r.tocByType);
   const relatedLensChoices = parseRelatedLensChoices(r.relatedLensChoices);
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
+  const aiMemoryEnabled =
+    typeof r.aiMemoryEnabled === "boolean" ? r.aiMemoryEnabled : DEFAULT_SETTINGS.aiMemoryEnabled;
   return {
     highlightColor,
     highlightGradient,
@@ -501,6 +510,7 @@ export function parseSettings(raw: unknown): UserSettings {
     tocByType,
     relatedLensChoices,
     notificationPrefs,
+    aiMemoryEnabled,
   };
 }
 

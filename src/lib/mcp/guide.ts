@@ -32,6 +32,25 @@ export const GUIDE_RESOURCE = {
   mimeType: "text/markdown",
 } as const;
 
+// The AI Memory protocol (ADR-137), a second resource served only when the owner
+// has AI Memory on (server.ts gates resources/list + resources/read on
+// settings.aiMemoryEnabled). It is the "how to recall and when to remember"
+// counterpart to the get_memory_stumps/remember tools — the rising-bar recall
+// rule and the write conventions, written once so any connected AI follows them.
+export const MEMORY_PROTOCOL_URI = "ledgr://guide/memory-protocol";
+
+export const MEMORY_PROTOCOL_RESOURCE = {
+  uri: MEMORY_PROTOCOL_URI,
+  name: "memory-protocol",
+  title: "Working with the owner's memory",
+  description:
+    "How to use the owner's AI memory: call get_memory_stumps at the start of a " +
+    "session, recall by following a memory's links with a bar that rises each " +
+    "hop, and use `remember` to file durable facts well. Read this whenever AI " +
+    "Memory is enabled.",
+  mimeType: "text/markdown",
+} as const;
+
 // The guide body. Written as the orientation a builder would give a teammate:
 // the mental model first, the read-before-write rule, then one section per
 // shapeable surface naming the exact tool + the drill-down read for detail.
@@ -153,12 +172,95 @@ insider shorthand. The owner is one person, but the workspace should read like a
 clean, portable product.
 `;
 
-// resources/read: return the guide's contents for our one URI, else null so the
+// The AI Memory protocol doc (ADR-137). Model-facing, same voice as the guide:
+// the shape, how to recall (the rising-bar graph walk), and when/how to write.
+export const MEMORY_PROTOCOL_GUIDE = `# Working with the owner's memory
+
+The owner keeps durable memories in Ledgr so you — and any AI they connect — act
+like you know them. This is that contract: how to recall what's stored, and when
+and how to store something new. It's deterministic plumbing: you decide what
+matters, Ledgr just holds it.
+
+## The shape
+
+A **memory** is a small item: a one-line *stump* (its title) plus optional detail
+in its body, filed under a \`kind\` and a \`horizon\`, and *linked* to the people,
+projects, and notes it's about. The links are the point — a memory about a person
+is a doorway into everything related to that person.
+
+Two layers:
+- **Stumps (always-on):** call \`get_memory_stumps\` at the start of a session. It
+  returns a compact, body-free index (titles + links, no detail). Cheap to carry.
+  It exists so you *know what exists*, not so you act on all of it.
+- **Bodies + graph (on demand):** when a stump is relevant, \`get_item\` it for the
+  detail, and follow its \`linked\` items into the wider graph.
+
+## Recall: follow the graph, with a rising bar
+
+When something in the conversation matches a stump, pull it. Then decide how far
+to walk:
+
+- Follow a link only when the linked item looks likely to **change what you'd say
+  or do** about the current objective.
+- That bar **rises with each hop** out from the first memory: hop one is cheap,
+  hop two needs a clearer reason, hop three a strong one.
+- **Relevance outranks distance:** a dead-on item two hops away beats an off-topic
+  neighbour one hop away.
+- **Stop at diminishing returns** — when the next item repeats or drifts, not at a
+  fixed count. A rich thread may be worth five pulls; a thin one, none.
+
+Loading a stump is not a reason to use it. If the owner mentions someone about a
+budget, a "they enjoy cycling" stump stays unused. Awareness is cheap; the pull
+is a judgment.
+
+## Remember: when and how
+
+Call \`remember\` whenever you learn something durable worth carrying into a later
+session: a working preference ("always put the logo on Word exports"), a fact
+about a person or a standing relationship, or a project decision that isn't
+obvious from the items themselves.
+
+Do it well:
+- **Title = a self-contained stump.** It loads always-on and often stands alone;
+  make it readable without opening anything.
+- **Body = the detail,** with a *why* and a *how to apply* when it helps.
+- **Set \`kind\` and \`horizon\`.** kind: user (who they are) | feedback (how to work
+  with them) | project (ongoing work) | reference (a pointer). horizon: evergreen
+  (always true) | seasonal (true for a while) | episodic (a moment). Seasonal and
+  episodic age out of the always-on set; evergreen stays.
+- **Link, don't restate.** Pass the item ids the memory is about in \`about\`
+  (search_items to find a person/project id) rather than repeating what Ledgr
+  already holds. The links are what make recall serendipitous.
+- **Pin sparingly.** \`pinned\` forces a stump always-on regardless of horizon —
+  reserve it for the few facts that must never be missed.
+
+## What is *not* a memory
+
+A one-time event ("met for coffee on the 3rd") is usually better as an ordinary
+item (a note or event with the person linked), not a memory. Memories are the
+durable distillations; the item stream is the record. File the event and let the
+relation graph resurface it. Don't remember what's already a well-linked item —
+link to it instead.
+
+## Routing
+
+This Ledgr is the memory store. When the owner asks you to remember something,
+\`remember\` it here — don't fall back to a local notes file or a provider's own
+memory. One store, reachable from every client the owner connects.
+`;
+
+// resources/read: return the contents for a known guide URI, else null so the
 // dispatcher can answer an unknown URI with an error (never throwing it out to
-// the transport).
+// the transport). The memory protocol is additionally gated by the caller
+// (server.ts) on aiMemoryEnabled before this is reached.
 export function readGuideResource(
   uri: string
 ): { uri: string; mimeType: string; text: string } | null {
-  if (uri !== GUIDE_URI) return null;
-  return { uri: GUIDE_URI, mimeType: "text/markdown", text: WORKSPACE_GUIDE };
+  if (uri === GUIDE_URI) {
+    return { uri: GUIDE_URI, mimeType: "text/markdown", text: WORKSPACE_GUIDE };
+  }
+  if (uri === MEMORY_PROTOCOL_URI) {
+    return { uri: MEMORY_PROTOCOL_URI, mimeType: "text/markdown", text: MEMORY_PROTOCOL_GUIDE };
+  }
+  return null;
 }

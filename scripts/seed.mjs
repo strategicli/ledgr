@@ -111,6 +111,22 @@ await sql`
     AND NOT (COALESCE(property_schema, '[]'::jsonb) @> '[{"key":"project"}]'::jsonb)
 `;
 
+// The `memory` type (AI Memory subsystem, ADR-137): the durable, linkable store
+// an AI assistant reads over MCP. Bespoke + user-controllable, on the default
+// canvas; the Related panel is the serendipity graph. kind/horizon/pinned drive
+// the always-on "stump" index. hidden=true keeps it out of every Work surface
+// and the generic MCP list_types (an AI/system concern, not "normal work"), while
+// getType still renders /list/memory + the Build → AI Memory page. Mirrors
+// drizzle/0040_memory_type.sql for fresh databases.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, property_schema)
+  VALUES (
+    'memory', 'Memory', 'sparkles', false, false, true,
+    '[{"key":"kind","label":"Kind","kind":"select","options":["user","feedback","project","reference"]},{"key":"horizon","label":"Horizon","kind":"select","options":["evergreen","seasonal","episodic"]},{"key":"pinned","label":"Pinned","kind":"checkbox"}]'::jsonb
+  )
+  ON CONFLICT (key) DO NOTHING
+`;
+
 await sql`
   INSERT INTO users (email)
   VALUES ('brandoncollins@edgewoodcommunity.org')
