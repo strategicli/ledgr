@@ -12,13 +12,15 @@ import { types } from "@/db/schema";
 // Active tab is identified by a string: a system tab key, a type key, or "all".
 export type ListTabKey = string;
 
-// `person` is a system type but has no bespoke page; it rides the generic
-// /list/<key> route like custom types do (its tab key is the type key, which
-// the generic page sets as the active tab). Each tab carries its typeKey so a
-// hidden type (ADR-059) drops its tab.
+// `person` and `event` are system types with no bespoke page; they ride the
+// generic /list/<key> route like custom types do (their tab key is the type
+// key, which the generic page sets as the active tab — so the key must match the
+// type key, not a plural like "events"). Events unified onto /list/event so the
+// calendar feed + timeline could become lenses. Each tab carries its typeKey so
+// a hidden type (ADR-059) drops its tab.
 const SYSTEM_TABS = [
   { key: "tasks", typeKey: "task", label: "Tasks", href: "/tasks" },
-  { key: "events", typeKey: "event", label: "Events", href: "/events" },
+  { key: "event", typeKey: "event", label: "Events", href: "/list/event" },
   { key: "notes", typeKey: "note", label: "Notes", href: "/notes" },
   { key: "links", typeKey: "link", label: "Links", href: "/links" },
   { key: "person", typeKey: "person", label: "People", href: "/list/person" },

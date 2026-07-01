@@ -209,8 +209,10 @@ export async function resolveRelatedGroup(
   // Sort lens: a plain list in the lens's order. resolveLensSort returns a
   // ListSort (the superset queryViewItems accepts); the synthetic view's own
   // `sort` field is display-only (ViewRenderer sorts nothing), so a harmless
-  // default is fine there.
-  const sort = resolveLensSort(lens, false)!;
+  // default is fine there. A bespoke lens (calendar/timeline) has no sort and
+  // shouldn't reach here — related groups filter them out (relatedLensCandidates)
+  // — but default it defensively rather than assert non-null.
+  const sort = resolveLensSort(lens, false) ?? { field: "updatedAt", dir: "desc" };
   const filter = applyRelationScope({}, hostId, typeKey);
   const view: ViewDefinition = {
     id: `related:${typeKey}:${lens.id}`,

@@ -22,7 +22,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { bulkConfigForType } from "@/lib/bulk-config";
-import { lensesForType, relatedLensFor } from "@/lib/list-lenses";
+import { lensesForType, relatedLensCandidates, relatedLensFor } from "@/lib/list-lenses";
 import { MENTION_ROLE } from "@/lib/mentions";
 import {
   listRelatedItems,
@@ -143,7 +143,9 @@ export default async function RelatedPanel({
   // deleted resolves to null; fall back to the type's default (first) lens.
   const groups = await Promise.all(
     typeGroups.map(async (key) => {
-      const lenses = lensesForType(settings, key);
+      // Bespoke lenses (calendar/timeline) are list-page-only; the related panel
+      // offers and defaults to sort/view lenses only.
+      const lenses = relatedLensCandidates(lensesForType(settings, key));
       let lens = relatedLensFor(settings, hostType, key);
       // Generic sort lenses hide completed items (the panel reads as live work);
       // a view lens owns its own status filter, so leave it to show what it filters.
