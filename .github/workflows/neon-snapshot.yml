@@ -1,0 +1,111 @@
+# Daily Neon branch snapshot (runbook §4a) — a rolling set of instant,
+# copy-on-write restore points for the production DB, on top of the weekly
+# pg_dump (backup.yml) and Neon's thin free-tier PITR.
+#
+# Why a Neon *branch* and not another dump: a branch is a copy-on-write
+# snapshot of the DB at a moment in time. Creating one is instant and cheap,
+# and restoring from it is a target-swap (runbook §4), not a multi-minute
+# pg_restore. This is the safety net that makes a scary migration recoverable
+# in minutes: snapshot first, then migrate.
+#
+# The branch is created WITHOUT a compute endpoint (data only), so idle
+# snapshots cost nothing and don't eat the free-tier compute. To read one you
+# add an endpoint (Neon console) or restore per runbook §4a.
+#
+# Retention: keeps the newest SNAPSHOT_KEEP snapshots (name prefix
+# "snapshot-"), deletes older ones — the free tier caps branches per project,
+# so an unpruned daily job would eventually wedge branch creation.
+#
+# Secrets required (repo Actions secrets, runbook §4a):
+#   NEON_API_KEY     — a Neon API key (console → Account settings → API keys)
+#   NEON_PROJECT_ID  — the project id (console → Project settings → General)
+# A missing secret fails the run loudly (same posture as backup.yml).
+#
+# Daily 07:00 UTC: before the workday, and clear of the export (06:30) and
+# Vercel purge (08:00) crons so a snapshot reflects a settled DB.
+name: neon-snapshot
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # How many "snapshot-" branches to retain (this run's new one included).
+  SNAPSHOT_KEEP: "7"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create today's snapshot branch (data only, no compute)
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
+            echo "::error::NEON_API_KEY / NEON_PROJECT_ID not set — set both as repo Actions secrets (runbook §4a). Neon console → API keys, and Project settings → General for the project id."
+            exit 1
+          fi
+          NAME="snapshot-$(date -u +%Y-%m-%dT%H%MZ)"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          # Omitting "endpoints" creates a branch with no compute; parent
+          # defaults to the project's default (production) branch at HEAD.
+          HTTP=$(curl -sS -o create.json -w "%{http_code}" -X POST \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"branch\":{\"name\":\"$NAME\"}}")
+          echo "HTTP $HTTP"; cat create.json; echo
+          [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ] || { echo "::error::Neon branch create returned $HTTP"; exit 1; }
+          echo "created snapshot branch $NAME"
+
+      - name: Prune old snapshots (keep newest SNAPSHOT_KEEP)
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          curl -fsS \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" \
+            -H "Authorization: Bearer $NEON_API_KEY" > list.json
+          # Sort snapshot-* branches by name (ISO timestamps sort chronologically),
+          # keep the newest $SNAPSHOT_KEEP, print "id name" for the rest to delete.
+          python3 - "$SNAPSHOT_KEEP" <<'PY' > to_delete.txt
+          import json, sys
+          keep = int(sys.argv[1])
+          branches = json.load(open("list.json")).get("branches", [])
+          snaps = sorted(
+              (b for b in branches if b.get("name", "").startswith("snapshot-")),
+              key=lambda b: b["name"], reverse=True,
+          )
+          for b in snaps[keep:]:
+              print(b["id"], b["name"])
+          PY
+          if [ ! -s to_delete.txt ]; then
+            echo "nothing to prune (kept newest $SNAPSHOT_KEEP)"; exit 0
+          fi
+          while read -r ID BRANCH_NAME; do
+            [ -n "$ID" ] || continue
+            echo "deleting old snapshot $BRANCH_NAME ($ID)"
+            HTTP=$(curl -sS -o del.json -w "%{http_code}" -X DELETE \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$ID" \
+              -H "Authorization: Bearer $NEON_API_KEY")
+            # A snapshot that briefly has a child (rare) can 4xx; log and keep
+            # going rather than fail the whole run over one stubborn prune.
+            [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ] || echo "::warning::prune of $BRANCH_NAME returned $HTTP: $(cat del.json)"
+          done < to_delete.txt
+
+      - name: Report failure to Ledgr (when token exists)
+        if: failure()
+        env:
+          LEDGR_ERROR_TOKEN: ${{ secrets.LEDGR_ERROR_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+        run: |
+          [ -n "$LEDGR_ERROR_TOKEN" ] || exit 0
+          curl -fsS -X POST "$APP_URL/api/machine/report-error" \
+            -H "Authorization: Bearer $LEDGR_ERROR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"neon-snapshot\",\"message\":\"daily Neon snapshot workflow failed\",\"detail\":{\"runUrl\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}" || true
