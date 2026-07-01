@@ -204,6 +204,7 @@ export default function NavShell({
   unreadCount,
   typeOptions,
   buildTypes,
+  aiMemoryEnabled,
   navPosition,
   railSize: railSizeProp,
   navDensity: navDensityProp,
@@ -216,6 +217,8 @@ export default function NavShell({
   typeOptions: { key: string; label: string }[];
   // The owner's types, for the Build sidebar's Types & Properties dropdown.
   buildTypes: { key: string; label: string; icon: string | null }[];
+  // AI Memory on? Gates the Build sidebar's "AI Memory" entry (ADR-137).
+  aiMemoryEnabled: boolean;
   navPosition: NavPosition;
   railSize: RailSize;
   navDensity: NavDensity;
@@ -750,7 +753,11 @@ export default function NavShell({
       {/* PWA app-icon badge: only while the notification center is live (ADR-130). */}
       {NOTIFICATION_CENTER_ENABLED && <AppBadgeSync count={unreadCount} />}
       {inBuild && (
-        <BuildSidebar types={buildTypes} onOpenSearch={() => setSearchOpen(true)} />
+        <BuildSidebar
+          types={buildTypes}
+          aiMemoryEnabled={aiMemoryEnabled}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
       )}
 
       {/* Mobile: always the floating bottom bar, whatever the desktop position.

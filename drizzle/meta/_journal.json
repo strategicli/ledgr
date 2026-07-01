@@ -281,6 +281,13 @@
       "when": 1782751384400,
       "tag": "0039_big_monster_badoon",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1782914368611,
+      "tag": "0040_memory_type",
+      "breakpoints": true
     }
   ]
 }

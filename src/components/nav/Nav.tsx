@@ -102,6 +102,7 @@ export default async function Nav() {
       unreadCount={unreadCount}
       typeOptions={typeRows}
       buildTypes={buildTypes.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
+      aiMemoryEnabled={settings.aiMemoryEnabled}
       navPosition={settings.navPosition}
       railSize={settings.railSize}
       navDensity={settings.navDensity}

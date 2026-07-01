@@ -14,7 +14,13 @@ import {
   type JsonRpcResponse,
 } from "@/lib/mcp/protocol";
 import { callTool, listToolDefs } from "@/lib/mcp/tools";
-import { GUIDE_RESOURCE, readGuideResource } from "@/lib/mcp/guide";
+import {
+  GUIDE_RESOURCE,
+  MEMORY_PROTOCOL_RESOURCE,
+  MEMORY_PROTOCOL_URI,
+  readGuideResource,
+} from "@/lib/mcp/guide";
+import { getSettings } from "@/lib/settings";
 
 // Free-form version string for clients to display; tracks the PRD epoch
 // (v0.18, the Markdown epoch), not the package.json build number.
@@ -85,11 +91,17 @@ export async function handleMcpMessage(
     }
 
     case "tools/list":
-      return rpcResult(id, { tools: listToolDefs() });
+      return rpcResult(id, { tools: await listToolDefs(ownerId) });
 
-    case "resources/list":
-      // One stable resource: the workspace-shaping orientation guide (guide.ts).
-      return rpcResult(id, { resources: [GUIDE_RESOURCE] });
+    case "resources/list": {
+      // The stable workspace-shaping guide, plus the AI Memory protocol when the
+      // owner has AI Memory on (ADR-137) — so a vanilla client never sees it.
+      const { aiMemoryEnabled } = await getSettings(ownerId);
+      const resources = aiMemoryEnabled
+        ? [GUIDE_RESOURCE, MEMORY_PROTOCOL_RESOURCE]
+        : [GUIDE_RESOURCE];
+      return rpcResult(id, { resources });
+    }
 
     case "resources/templates/list":
       // No templated resources; answer the optional probe cleanly rather than
@@ -100,6 +112,11 @@ export async function handleMcpMessage(
       const params = (req.params ?? {}) as Record<string, unknown>;
       if (typeof params.uri !== "string") {
         return rpcError(id, JSONRPC.INVALID_PARAMS, "resources/read requires a string 'uri'");
+      }
+      // The memory protocol is gated: when AI Memory is off it's unlisted, and
+      // reading it directly answers unknown-resource just like any other URI.
+      if (params.uri === MEMORY_PROTOCOL_URI && !(await getSettings(ownerId)).aiMemoryEnabled) {
+        return rpcError(id, JSONRPC.INVALID_PARAMS, `unknown resource '${params.uri}'`);
       }
       const contents = readGuideResource(params.uri);
       if (!contents) {

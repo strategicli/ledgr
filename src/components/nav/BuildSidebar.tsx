@@ -67,10 +67,12 @@ function HamburgerIcon() {
 // The sidebar body, shared by the desktop rail and the mobile drawer.
 function SidebarContent({
   types,
+  aiMemoryEnabled,
   onOpenSearch,
   onNavigate,
 }: {
   types: BuildType[];
+  aiMemoryEnabled: boolean;
   onOpenSearch: () => void;
   onNavigate?: () => void;
 }) {
@@ -124,7 +126,9 @@ function SidebarContent({
           <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
             {group.label}
           </p>
-          {group.entries.map((entry) => {
+          {group.entries
+            .filter((entry) => entry.gatedBy !== "aiMemoryEnabled" || aiMemoryEnabled)
+            .map((entry) => {
             const active = entryActive(entry.href);
             // The one expandable entry this phase: Types & Properties, whose
             // dropdown lists the user's actual types for a quick edit-jump.
@@ -213,9 +217,11 @@ function SidebarContent({
 
 export default function BuildSidebar({
   types,
+  aiMemoryEnabled,
   onOpenSearch,
 }: {
   types: BuildType[];
+  aiMemoryEnabled: boolean;
   onOpenSearch: () => void;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -228,7 +234,7 @@ export default function BuildSidebar({
         style={{ width: BUILD_SIDEBAR_W }}
         aria-label="Build navigation"
       >
-        <SidebarContent types={types} onOpenSearch={onOpenSearch} />
+        <SidebarContent types={types} aiMemoryEnabled={aiMemoryEnabled} onOpenSearch={onOpenSearch} />
       </aside>
 
       {/* Mobile: a hamburger that opens the same content as a slide-in drawer.
@@ -252,6 +258,7 @@ export default function BuildSidebar({
           >
             <SidebarContent
               types={types}
+              aiMemoryEnabled={aiMemoryEnabled}
               onOpenSearch={onOpenSearch}
               onNavigate={() => setDrawerOpen(false)}
             />

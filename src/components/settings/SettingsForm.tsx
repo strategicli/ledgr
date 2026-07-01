@@ -26,6 +26,7 @@ import {
 } from "@/lib/settings";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
+import AiMemoryLearnMore from "@/components/settings/AiMemoryLearnMore";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   top: "Top",
@@ -291,6 +292,47 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
         </div>
       </section>
       )}
+
+      <section>
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-200">AI Memory</h2>
+          <AiMemoryLearnMore />
+        </div>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Let an AI assistant keep durable memories in Ledgr, read over MCP. When
+          on, a “stumps” index of what you’ve chosen to remember loads at the start
+          of a session and the assistant can follow the links from a memory to the
+          people, projects, and notes it’s about. Turning this on adds the{" "}
+          <a href="/build/memory" className="text-[var(--accent)] hover:underline">
+            Build → AI&nbsp;Memory
+          </a>{" "}
+          surface and exposes two memory tools to connected AI clients. Off by
+          default: a fresh Ledgr behaves exactly as before, and a plain MCP client
+          never sees the memory tools.
+        </p>
+        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={settings.aiMemoryEnabled}
+            onChange={(e) => void save({ aiMemoryEnabled: e.target.checked }, true)}
+            className="ledgr-check mt-0.5"
+          />
+          <span>
+            Use Ledgr to manage AI memory
+            <span className="block text-xs text-neutral-500">
+              Stores memories as a hidden item type and turns on the{" "}
+              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+                get_memory_stumps
+              </code>{" "}
+              and{" "}
+              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+                remember
+              </code>{" "}
+              MCP tools.
+            </span>
+          </span>
+        </label>
+      </section>
 
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Text size</h2>
