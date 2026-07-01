@@ -10,10 +10,14 @@ export default function InlineAddTask({
   dueYmd,
   host,
   label = "Add task",
+  lockDestination = false,
 }: {
   dueYmd?: string;
   host?: { id: string; label: string; role?: string };
   label?: string;
+  // When the destination is already known (e.g. a project's Tasks card), hide the
+  // destination picker so the task always lands on the host.
+  lockDestination?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   if (open) {
@@ -22,6 +26,7 @@ export default function InlineAddTask({
         <AddTaskCard
           defaultDueYmd={dueYmd}
           host={host}
+          lockDestination={lockDestination}
           onDone={() => setOpen(false)}
           onCancel={() => setOpen(false)}
         />

@@ -32,12 +32,12 @@ async function make(type: string, title: string, extra: Record<string, unknown> 
 }
 const comp = (widgets: { instanceId: string; defId: string; options?: Record<string, unknown> }[]) =>
   ({ version: 1 as const, widgets, behaviors: {} });
-async function progressOf(projectId: string, weighting?: string) {
+async function progressOf(projectId: string) {
   const fresh = await getItem(ownerId, projectId);
   const data = await resolveRecordWidgets(
     ownerId,
     fresh,
-    comp([{ instanceId: "progress", defId: "progress", ...(weighting ? { options: { weighting } } : {}) }])
+    comp([{ instanceId: "progress", defId: "progress" }])
   );
   return data.find((d) => d.def.id === "progress")?.progress;
 }
@@ -48,20 +48,33 @@ console.log("\n# indeterminate at zero tasks");
   check("no tasks → fraction null (not 0%)", (await progressOf(project.id))?.fraction === null);
 }
 
-console.log("\n# hierarchical vs flat");
+console.log("\n# weighted points: subtasks add weight, partial credit by completion");
 {
   const project = await make("project", "PJ6 hierarchy project");
   const top = await make("task", "PJ6 top task");
   await setHome(ownerId, top.id, project.id, "project");
   const sub1 = await make("task", "PJ6 sub 1", { parentId: top.id });
   await make("task", "PJ6 sub 2", { parentId: top.id });
-  await toggleItemDone(ownerId, sub1.id); // 1 of 2 subtasks done
+  await toggleItemDone(ownerId, sub1.id); // 1 of 2 subtasks done → task fraction 0.5
 
-  const hier = await progressOf(project.id); // default hierarchical
-  check("hierarchical: top task fraction = avg(1,0) = 0.5 → bar 0.5", approx(hier?.fraction, 0.5), String(hier?.fraction));
-  const flat = await progressOf(project.id, "flat");
-  check("flat: the top task itself isn't done → 0/1 = 0", approx(flat?.fraction, 0), String(flat?.fraction));
-  check("flat label counts top-level done/total (0/1)", flat?.done === 0 && flat?.total === 1);
+  // one task with 2 subtasks → total = 3 (task) + 2×1 (subtasks) = 5 pts;
+  // half-done → earned = 0.5 × 5 = 2.5 pts.
+  const p = await progressOf(project.id);
+  check("task with 2 subtasks is worth 5 pts", approx(p?.total, 5), String(p?.total));
+  check("half-done task earns 2.5 pts (partial credit)", approx(p?.done, 2.5), String(p?.done));
+  check("fraction = 2.5/5 = 0.5", approx(p?.fraction, 0.5), String(p?.fraction));
+}
+
+console.log("\n# milestones (5 pts, complete when past) and meetings (1 pt) count too");
+{
+  const project = await make("project", "PJ6 dated project");
+  const past = await make("milestone", "PJ6 past milestone", { dueDate: new Date("2000-01-01T00:00:00.000Z") });
+  const future = await make("milestone", "PJ6 future milestone", { dueDate: new Date("2999-01-01T00:00:00.000Z") });
+  await setHome(ownerId, past.id, project.id, "contains");
+  await setHome(ownerId, future.id, project.id, "contains");
+  const p = await progressOf(project.id);
+  check("two milestones = 10 pts total", approx(p?.total, 10), String(p?.total));
+  check("one passed milestone = 5 pts done", approx(p?.done, 5), String(p?.done));
 }
 
 console.log("\n# 100% (suggest, never force)");

@@ -1,12 +1,12 @@
 "use client";
 
-// Milestones widget body (Project Type, ADR-111/PJ5): the record's key dates.
-// A milestone has NO done-state — it arrives whether you act or not (PRD §6), so
-// each row's "upcoming"/"passed" is DERIVED here from its date vs today, never a
-// checkbox. Add files a milestone contained by the record (date = due_date).
-import { useState } from "react";
+// Milestones widget body (Project Type): the record's key dates. A milestone has
+// NO done-state — it arrives whether you act or not (PRD §6), so each row's
+// "upcoming"/"passed" is DERIVED from its date vs today, never a checkbox. Adding
+// is a "+ Milestone" that expands a compact title + date box (InlineContainAdd),
+// Add/Cancel or Enter (Tyler, 2026-07-01).
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import InlineContainAdd from "@/components/canvas/widgets/InlineContainAdd";
 
 type Row = { id: string; title: string; dueDate: string | null };
 
@@ -35,37 +35,16 @@ export default function MilestonesWidget({
   recordId: string;
   items: Row[];
 }) {
-  const router = useRouter();
-  const [label, setLabel] = useState("");
-  const [date, setDate] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function add() {
-    const t = label.trim();
-    if (!t || busy) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/records/${recordId}/contain`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "milestone", title: t, date: date || undefined }),
-      });
-      if (res.ok) {
-        setLabel("");
-        setDate("");
-        router.refresh();
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const sorted = [...items].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
+  // By date, closest on top (ascending); undated last (Tyler, 2026-07-01).
+  const sorted = [...items].sort((a, b) => {
+    if (!a.dueDate) return b.dueDate ? 1 : 0;
+    if (!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  });
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-col gap-1">
-        {sorted.length === 0 && <li className="text-sm text-neutral-500">No milestones yet.</li>}
+      <ul className="flex flex-col gap-1 empty:hidden">
         {sorted.map((m) => {
           const passed = isPassed(m.dueDate);
           return (
@@ -81,28 +60,7 @@ export default function MilestonesWidget({
           );
         })}
       </ul>
-      <div className="flex gap-1">
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void add();
-            }
-          }}
-          placeholder="+ Milestone"
-          disabled={busy}
-          className="min-w-0 flex-1 rounded border border-neutral-800 bg-transparent px-2 py-1 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none"
-        />
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          disabled={busy}
-          className="shrink-0 rounded border border-neutral-800 bg-transparent px-1 py-1 text-xs text-neutral-300 focus:border-neutral-600 focus:outline-none"
-        />
-      </div>
+      <InlineContainAdd recordId={recordId} type="milestone" label="Milestone" />
     </div>
   );
 }

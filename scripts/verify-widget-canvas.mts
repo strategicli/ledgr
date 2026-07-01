@@ -49,17 +49,17 @@ console.log("\n# born with the §8 default widgets");
   const { composition, source } = resolveComposition(fresh.composition, projectType.defaultWidgets, "project");
   check("a fresh project has no stored composition (inherits)", source !== "record");
   const defIds = composition.widgets.map((w) => w.defId);
-  check("default includes the §8 set", ["overview", "status", "tasks", "notes", "meetings", "milestones", "progress", "nextAction"].every((id) => defIds.includes(id)), defIds.join(","));
+  check("default includes the redesigned project set (header + cards)", ["status", "people", "progress", "tasks", "milestones", "notes", "meetings"].every((id) => defIds.includes(id)), defIds.join(","));
   const data = await resolveRecordWidgets(ownerId, fresh, composition);
   check("fan-out returns data for every visible widget", data.length === composition.widgets.filter((w) => !w.hidden).length);
   check("progress is indeterminate with no tasks", data.find((d) => d.def.id === "progress")?.progress?.fraction === null);
 }
 
-console.log("\n# fan-out binds to the record (home-scoped)");
+console.log("\n# fan-out binds to the record (anything associated, any role)");
 {
   const project = await make("project", "PJ4 bind project");
   const homeTask = await make("task", "PJ4 contained task");
-  const otherTask = await make("task", "PJ4 unrelated task");
+  const otherTask = await make("task", "PJ4 related task");
   await setHome(ownerId, homeTask.id, project.id, "project");
   await relateItems(ownerId, otherTask.id, project.id, "related");
 
@@ -67,10 +67,13 @@ console.log("\n# fan-out binds to the record (home-scoped)");
   const { composition } = resolveComposition(fresh.composition, projectType.defaultWidgets, "project");
   const data = await resolveRecordWidgets(ownerId, fresh, composition);
   const tasksWidget = data.find((d) => d.def.id === "tasks");
+  // The box shows ANYTHING of that type associated with the record, however it
+  // was linked (home "project" edge OR a plain "related" edge) — Tyler's rule.
   check("Tasks widget shows the contained task", tasksWidget?.items?.some((i) => i.id === homeTask.id) ?? false);
-  check("Tasks widget excludes the merely-related task", !(tasksWidget?.items?.some((i) => i.id === otherTask.id) ?? true));
+  check("Tasks widget also shows the merely-related task", tasksWidget?.items?.some((i) => i.id === otherTask.id) ?? false);
   const progress = data.find((d) => d.def.id === "progress")?.progress;
-  check("progress counts the one contained task (0/1)", progress?.done === 0 && progress?.total === 1, JSON.stringify(progress));
+  // Weighted points: two not-done leaf tasks = 3 pts each = 6 pts total, 0 done.
+  check("progress counts both associated tasks (0/6 pts)", progress?.done === 0 && progress?.total === 6, JSON.stringify(progress));
 }
 
 console.log("\n# gear: disable hides (data kept), re-enable restores");
@@ -120,8 +123,9 @@ console.log("\n# nextAction + recentActivity read the base/log");
   await updateItem(ownerId, project.id, { nextActionText: "call the printer" });
   const fresh = await getItem(ownerId, project.id);
   const { composition } = resolveComposition(fresh.composition, projectType.defaultWidgets, "project");
-  // recentActivity is off-by-default (PRD §8 secondary zone) — enable it to test
-  // the derived fan-out reads the log.
+  // nextAction and recentActivity are both off the redesigned project default —
+  // add them so the derived fan-out reads the base (nextAction) + the log.
+  composition.widgets.push({ instanceId: "nextAction", defId: "nextAction" });
   composition.widgets.push({ instanceId: "recentActivity", defId: "recentActivity" });
   const data = await resolveRecordWidgets(ownerId, fresh, composition);
   check("nextAction widget surfaces the text", data.find((d) => d.def.id === "nextAction")?.nextAction?.text === "call the printer");

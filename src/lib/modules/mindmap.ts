@@ -18,7 +18,7 @@ export const mindmapModule: ModuleManifest = {
     {
       key: "mindmap",
       label: "Mindmap",
-      icon: "network",
+      icon: "mindmap",
       canonicalFormat: MARKDOWN_FORMAT,
       canvasId: "mindmap",
     },

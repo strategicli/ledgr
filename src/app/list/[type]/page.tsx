@@ -17,6 +17,7 @@ import ListPage from "@/components/lists/ListPage";
 import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
+import ProjectCardGrid from "@/components/projects/ProjectCardGrid";
 import RowAction from "@/components/home/RowAction";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
@@ -28,6 +29,7 @@ import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
+import { listProjectCardData } from "@/lib/project-cards";
 import { resolveViewLens } from "@/lib/view-render";
 import {
   countViewItems,
@@ -90,6 +92,13 @@ export default async function TypeList({
     ]);
   }
 
+  // The Projects list renders as a card grid (Tyler, 2026-07-01) on the default
+  // sort path; a saved view lens still renders via ViewRenderer.
+  const projectCards =
+    type === "project" && !viewData && items.length > 0
+      ? await listProjectCardData(owner.id, items)
+      : [];
+
   const selects: FilterSelect[] = filterProps.map((fp) => ({
     param: `prop_${fp.key}`,
     label: fp.label,
@@ -124,7 +133,12 @@ export default async function TypeList({
               <FilterBar selects={selects} />
             </div>
           )}
-          {items.length > 0 ? (
+          {items.length > 0 && type === "project" ? (
+            <>
+              <ProjectCardGrid cards={projectCards} />
+              <LoadMore shown={items.length} total={count} basePath={`/list/${type}`} params={sp} />
+            </>
+          ) : items.length > 0 ? (
             <SelectionProvider ids={items.map((item) => item.id)}>
               <SelectModeToggle />
               <ul className="mt-4">

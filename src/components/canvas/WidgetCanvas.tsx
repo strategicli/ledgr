@@ -1,27 +1,65 @@
-// The widget-composed canvas (Project Type, ADR-111/PJ4). A record whose type
-// carries the `widget-home` capability (Project, and any type via PJ10) renders
-// here instead of MarkdownCanvas: a title + a set of widgets bound to THIS
-// record, composed from the type default (Layer 2) overlaid by the record's own
-// composition (Layer 3). The same widget catalog runs here (record scope) and on
-// a Dashboard (query scope) — the fan-out (record-widgets.ts) binds relatedTo to
-// the record; nothing here branches on the record's Type.
+// The widget-composed canvas (Project Type, redesigned 2026-07-01). A record
+// whose type carries the `widget-home` capability renders here instead of
+// MarkdownCanvas — that's Project, Pursuit, and every CUSTOM type by default.
 //
-// PJ4 ships the shell + the read/compose surface + the "Customize" gear
-// (enable/disable = hide-not-delete, reset). Editable Tasks/Notes (PJ5), the
-// richer derived lenses (PJ6), and drag-arrange persistence are follow-ups; for
-// now widgets render in their saved/default grid positions.
+// The redesigned project homepage has three zones:
+//   1. Title.
+//   2. A HEADER strip rendered without card chrome or titles: Status as a pill
+//      pinned top-right, and a People row + Progress bar stacked on the left.
+//   3. A uniform GRID of section cards (Tasks, Milestones, Docs, Meetings by
+//      default) — 2-up in the modal, 3-up on the full page — followed by a big
+//      "+ Add section" button (the replacement for the old Customize gear).
+// Each card carries a quiet "×" to remove it (which returns it to the + menu).
+//
+// Widgets still come from the shared catalog bound to THIS record (record-
+// widgets.ts binds relatedTo to the record; nothing here branches on Type). What
+// changed is presentation: a fixed header set vs. cards, uniform card sizing by
+// surface variant, and add/remove editing in place instead of via a gear.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
-import WidgetGear from "@/components/canvas/WidgetGear";
+import AddSectionButton from "@/components/canvas/AddSectionButton";
+import SectionGrid from "@/components/canvas/SectionGrid";
 import TasksWidget from "@/components/canvas/widgets/TasksWidget";
 import NotesWidget from "@/components/canvas/widgets/NotesWidget";
+import LinksWidget from "@/components/canvas/widgets/LinksWidget";
 import MilestonesWidget from "@/components/canvas/widgets/MilestonesWidget";
+import MeetingsWidget from "@/components/canvas/widgets/MeetingsWidget";
+import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
+import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import type { CanvasProps } from "@/lib/modules";
-import { resolveComposition } from "@/lib/composition";
+import { resolveComposition, type Composition } from "@/lib/composition";
+import { progressPct } from "@/lib/project-progress";
+import { resolveStatusSchema } from "@/lib/status";
 import { availableWidgets } from "@/lib/widgets";
 import { resolveRecordWidgets, type RecordWidgetData } from "@/lib/record-widgets";
 import { getType } from "@/lib/types";
+
+// Widgets that render in the header strip (no card, no title); everything else
+// is a section card.
+const HEADER_WIDGETS = new Set(["status", "people", "progress"]);
+
+// Card title overrides — the Notes collection reads as "Docs" on a project
+// (Tyler's wording), without renaming the widget everywhere else.
+const CARD_TITLE: Record<string, string> = { notes: "Docs" };
+
+// The sections a Project offers on the "+ Add section" menu (Tyler, 2026-07-01):
+// the four defaults (so a removed one can return) plus Overview / Recent Activity
+// / Timeline, and the header widgets (so a removed Status/People/Progress can be
+// re-added). Links / Mindmap / Related Records are intentionally left out for now.
+const PROJECT_SECTIONS = new Set([
+  "tasks",
+  "milestones",
+  "notes",
+  "meetings",
+  "links",
+  "overview",
+  "recentActivity",
+  "timeline",
+  "status",
+  "people",
+  "progress",
+]);
 
 const CATEGORY_DOT: Record<string, string> = {
   not_started: "bg-neutral-500",
@@ -74,24 +112,42 @@ function ItemList({ data }: { data: RecordWidgetData }) {
   );
 }
 
-function WidgetBody({
+// The header progress bar (weighted points; no title, per Tyler's spec).
+function HeaderProgress({ data }: { data: RecordWidgetData }) {
+  const p = data.progress;
+  if (!p) return null;
+  const pct = progressPct(p);
+  return (
+    <div className="flex max-w-md flex-col gap-1">
+      <div className="flex items-center justify-between text-xs text-neutral-400">
+        <span>{pct === null ? "Nothing to track yet" : `${pct}% complete`}</span>
+        {pct !== null && <span className="text-neutral-600">{Math.round(p.done)}/{Math.round(p.total)} pts</span>}
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+        <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct ?? 0}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function CardBody({
   data,
   recordId,
+  projectTitle,
   body,
-  nextActionTaskId,
 }: {
   data: RecordWidgetData;
   recordId: string;
+  projectTitle: string;
   body: unknown;
-  nextActionTaskId: string | null;
 }) {
   switch (data.def.id) {
     case "tasks":
       return (
         <TasksWidget
           recordId={recordId}
-          nextActionTaskId={nextActionTaskId}
-          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, statusCategory: i.statusCategory }))}
+          projectTitle={projectTitle}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, statusCategory: i.statusCategory, urgency: i.urgency, recurrence: i.recurrence }))}
         />
       );
     case "notes":
@@ -99,6 +155,13 @@ function WidgetBody({
         <NotesWidget
           recordId={recordId}
           items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title }))}
+        />
+      );
+    case "links":
+      return (
+        <LinksWidget
+          recordId={recordId}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, url: i.url }))}
         />
       );
     case "milestones":
@@ -112,6 +175,17 @@ function WidgetBody({
           }))}
         />
       );
+    case "meetings":
+      return (
+        <MeetingsWidget
+          recordId={recordId}
+          items={(data.items ?? []).map((i) => ({
+            id: i.id,
+            title: i.title,
+            when: (i.meetingAt ?? i.scheduledDate ?? i.dueDate)?.toISOString() ?? null,
+          }))}
+        />
+      );
     case "overview":
       return (
         <ItemEditor
@@ -121,14 +195,9 @@ function WidgetBody({
           compactBody
         />
       );
-    case "status":
-      return (
-        <span className="inline-flex items-center gap-2 text-sm text-neutral-300">
-          <span className={`h-2 w-2 rounded-full ${CATEGORY_DOT[data.status?.category ?? "not_started"]}`} />
-          {data.status?.key ?? "—"}
-        </span>
-      );
     case "nextAction": {
+      // Not on the Project default anymore, but other widget-home types (Pursuit)
+      // still carry it as a card.
       const na = data.nextAction;
       if (na?.taskId) {
         return (
@@ -139,23 +208,6 @@ function WidgetBody({
       }
       if (na?.text) return <p className="text-sm text-neutral-200">{na.text}</p>;
       return <EmptyState>No next action set.</EmptyState>;
-    }
-    case "progress": {
-      const p = data.progress;
-      if (!p || p.fraction === null) return <EmptyState>No tasks yet.</EmptyState>;
-      const pct = Math.round(p.fraction * 100);
-      return (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-xs text-neutral-400">
-            <span>{p.done}/{p.total} done</span>
-            <span>{pct}%</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
-            <div className="h-full rounded-full bg-green-600" style={{ width: `${pct}%` }} />
-          </div>
-          {pct === 100 && <p className="text-xs text-neutral-500">All tasks done — mark this project done?</p>}
-        </div>
-      );
     }
     case "recentActivity": {
       const ev = data.activity ?? [];
@@ -191,57 +243,86 @@ function WidgetBody({
       );
     }
     default:
-      // collection + relation + people widgets
+      // collection + relation widgets (meetings, links, relatedRecords, …)
       return <ItemList data={data} />;
   }
 }
 
-export default async function WidgetCanvas({ item, ownerId }: CanvasProps) {
+// The "+ Add section" menu contents: catalog sections not already present. For a
+// Project we curate the list (PROJECT_SECTIONS); other widget-home types get the
+// whole catalog.
+function addableSections(type: string, comp: Composition): { id: string; label: string }[] {
+  const present = new Set(comp.widgets.map((w) => w.defId));
+  return availableWidgets(type)
+    .filter((w) => (type === "project" ? PROJECT_SECTIONS.has(w.id) : true))
+    .filter((w) => !present.has(w.id))
+    .map((w) => ({ id: w.id, label: CARD_TITLE[w.id] ?? w.label }));
+}
+
+export default async function WidgetCanvas({ item, ownerId, variant }: CanvasProps) {
   const typeDef = await getType(item.type).catch(() => null);
   const { composition } = resolveComposition(item.composition, typeDef?.defaultWidgets, item.type);
   const widgets = await resolveRecordWidgets(ownerId, item, composition);
 
-  // Sort by saved lg position (row then column) so the §8 default reads right;
-  // each card spans its lg width on a 12-col grid (collapses to 1 col on mobile).
-  const ordered = [...widgets].sort((a, b) => {
-    const la = a.instance.layout?.lg;
-    const lb = b.instance.layout?.lg;
-    return (la?.y ?? 0) - (lb?.y ?? 0) || (la?.x ?? 0) - (lb?.x ?? 0);
-  });
+  // Render order = composition array order (header widgets are pulled out by id).
+  const headerWidgets = widgets.filter((d) => HEADER_WIDGETS.has(d.def.id));
+  const cardWidgets = widgets.filter((d) => !HEADER_WIDGETS.has(d.def.id));
 
-  const catalog = availableWidgets(item.type).map((w) => ({ id: w.id, label: w.label }));
+  const statusData = headerWidgets.find((d) => d.def.id === "status");
+  const peopleData = headerWidgets.find((d) => d.def.id === "people");
+  const progressData = headerWidgets.find((d) => d.def.id === "progress");
+
+  const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
+  const statusMode = typeDef?.statusMode ?? "checkbox";
+  const showStatus = Boolean(statusData) && statusMode !== "none" && statuses.length > 0;
+
+  const hasHeader = showStatus || Boolean(peopleData) || Boolean(progressData);
+  const addable = addableSections(item.type, composition);
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-2 pb-24 pt-4 sm:px-6">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="title" />
-        </div>
-        <WidgetGear itemId={item.id} composition={composition} catalog={catalog} />
+    // Same container as the breadcrumb row + the other canvases (max-w-3xl,
+    // widened to ~5xl by .canvas-wide on the full page) so the header/title and
+    // cards line up exactly with the "Trash · Project · ⋯" row above (Tyler).
+    <div className="mx-auto w-full max-w-3xl px-2 pb-24 pt-4 sm:px-8 md:px-12">
+      <div className="mb-3 min-w-0">
+        <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="title" />
       </div>
 
-      {ordered.length === 0 ? (
-        <EmptyState>No widgets enabled. Use Customize to add some.</EmptyState>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-          {ordered.map((data) => {
-            const w = Math.min(Math.max(data.instance.layout?.lg?.w ?? 12, 1), 12);
-            return (
-              <section
-                key={data.instance.instanceId}
-                className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3"
-                style={{ gridColumn: `span ${w} / span ${w}` }}
-                data-md-span={w}
-              >
-                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                  {data.def.label}
-                </h3>
-                <WidgetBody data={data} recordId={item.id} body={item.body} nextActionTaskId={item.nextActionTaskId ?? null} />
-              </section>
-            );
-          })}
+      {hasHeader && (
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+            {peopleData && (
+              <ProjectPeople
+                recordId={item.id}
+                people={(peopleData.items ?? []).map((p) => ({ id: p.id, title: p.title }))}
+              />
+            )}
+            {progressData && <HeaderProgress data={progressData} />}
+          </div>
+          {showStatus && (
+            <div className="shrink-0">
+              <ProjectStatusChip itemId={item.id} statuses={statuses} initial={item.status} />
+            </div>
+          )}
         </div>
       )}
+
+      {cardWidgets.length === 0 ? (
+        <EmptyState>No sections yet. Use “Add section” below to add one.</EmptyState>
+      ) : (
+        <SectionGrid
+          itemId={item.id}
+          composition={composition}
+          variant={variant}
+          items={cardWidgets.map((data) => ({
+            instanceId: data.instance.instanceId,
+            title: CARD_TITLE[data.def.id] ?? data.def.label,
+            body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} />,
+          }))}
+        />
+      )}
+
+      <AddSectionButton itemId={item.id} composition={composition} addable={addable} />
     </div>
   );
 }

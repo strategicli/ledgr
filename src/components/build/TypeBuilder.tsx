@@ -152,6 +152,9 @@ export default function TypeBuilder({
   const isNote = initial?.key === "note";
   const hasItems = itemCount > 0;
   const [deleteItems, setDeleteItems] = useState(false);
+  // A brief "Saved" toast after an edit-save. We stay on the page (no bounce to
+  // the types list) so the builder now needs its own success affordance.
+  const [justSaved, setJustSaved] = useState(false);
 
   // Ref counter for stable React keys on new rows. Seeded past the initial
   // rows' count so a freshly-added row never collides with a seeded one. Only
@@ -271,8 +274,14 @@ export default function TypeBuilder({
       showInQuickCapture,
       propertySchema: schema,
       // The "tabs" toggle wins for the capability slot; otherwise preserve any
-      // real bespoke canvas the type already borrowed (null for a plain type).
-      capability: tabsEnabled ? "tabs" : otherCapability,
+      // real bespoke canvas the type already borrowed. Failing both, a CUSTOM
+      // (non-system) type defaults to the Widget Homepage (2026-07-01): the
+      // widget-composed page is the standard homepage for user types now, not a
+      // pickable bespoke tool. Core/system types are left untouched (null) —
+      // their module canvas wins at resolution regardless.
+      capability: tabsEnabled
+        ? "tabs"
+        : otherCapability ?? (isSystem ? null : "widget-home"),
       ...(editing ? {} : { key: finalKey }),
     };
     try {
@@ -299,10 +308,16 @@ export default function TypeBuilder({
           | { type?: { key?: string } }
           | null;
         router.push(`/build/types/${data?.type?.key ?? finalKey}/edit`);
+        router.refresh();
       } else {
-        router.push("/build/types");
+        // Editing: stay put (Brandon, 2026-07-01 — saving shouldn't dump you
+        // back at the types list). Flash a "Saved" toast and refresh so the page
+        // header/label/icon reflect the change.
+        setBusy(false);
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 2200);
+        router.refresh();
       }
-      router.refresh();
     } catch {
       setError("save failed (offline?)");
       setBusy(false);
@@ -324,8 +339,39 @@ export default function TypeBuilder({
     router.refresh();
   }
 
+  // A custom type with no tabs and no borrowed bespoke canvas renders through the
+  // Widget Homepage (its records become a composable widget page). Surface that
+  // plainly so the choice is legible (Brandon's "scope the UI" rule).
+  const willUseWidgetHome = !isSystem && !tabsEnabled && !otherCapability;
+
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
+      {/* Brief success toast — top-centered, auto-dismisses. Shown after an
+          edit-save now that saving keeps you on the page. */}
+      {justSaved && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed inset-x-0 top-6 z-[70] flex justify-center"
+        >
+          <div className="flex items-center gap-2 rounded-full border border-green-700/60 bg-neutral-900/95 px-4 py-2 text-sm font-medium text-green-300 shadow-xl shadow-black/40 backdrop-blur">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Saved
+          </div>
+        </div>
+      )}
       {attached && attached.id !== "tabs" && (
         <div className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-sm">
           <span className="text-neutral-500">Bespoke tool: </span>
@@ -405,6 +451,16 @@ export default function TypeBuilder({
           </span>
         </label>
       </div>
+
+      {willUseWidgetHome && (
+        <p className="text-xs text-neutral-500">
+          Records of this type open as a{" "}
+          <span className="font-medium text-neutral-300">Widget Homepage</span>:
+          a composable page of widgets (tasks, notes, milestones, progress, …)
+          bound to each record. That&rsquo;s the standard homepage for your own
+          types; enable tabs above to use the plain document canvas instead.
+        </p>
+      )}
 
       <fieldset className="flex flex-col gap-3 rounded-lg border border-neutral-800 p-3">
         <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">

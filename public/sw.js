@@ -16,7 +16,16 @@
 // notification count (data.count), and a message listener lets the page sync
 // the badge after read/archive actions. Both no-op where the Badging API is
 // unsupported.
-const VERSION = "v5";
+// v6: dev self-heal. A worker left registered by a prior local `next build`/
+// `next start` used to keep serving its cache-first `/_next/static` chunks under
+// `next dev` after a recompile; the browser then hit ChunkLoadError and
+// auto-reloaded *through* the worker, which served the same dead chunks — an
+// infinite reload loop that survived server restarts (the cache is client-side)
+// and that PwaRegister's React-side unregister couldn't break, because the page
+// never hydrated far enough to run it. On localhost this worker now precaches
+// nothing, intercepts nothing (pure network passthrough), and unregisters itself
+// on activate, so a leftover registration tears itself down on the next load.
+const VERSION = "v6";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -27,7 +36,20 @@ const PRECACHE = [
   "/icons/badge-96.png",
 ];
 
+// Local dev origins. In dev this worker must never cache or serve build assets
+// (see the v6 note above) — it self-unregisters instead of running the prod
+// caching path, which is what breaks the stale-chunk reload loop.
+const IS_DEV =
+  self.location.hostname === "localhost" ||
+  self.location.hostname === "127.0.0.1" ||
+  self.location.hostname.endsWith(".local");
+
 self.addEventListener("install", (event) => {
+  // Dev: precache nothing; activate tears this worker down.
+  if (IS_DEV) {
+    self.skipWaiting();
+    return;
+  }
   event.waitUntil(
     caches
       .open(SHELL_CACHE)
@@ -37,6 +59,23 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  // Dev: drop every ledgr cache (including any stale shell chunks) and
+  // unregister, then claim so currently-controlled tabs stop routing through
+  // this worker on their next load. This is what breaks the reload loop.
+  if (IS_DEV) {
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) =>
+          Promise.all(
+            keys.filter((k) => k.startsWith("ledgr-")).map((k) => caches.delete(k))
+          )
+        )
+        .then(() => self.registration.unregister())
+        .then(() => self.clients.claim())
+    );
+    return;
+  }
   event.waitUntil(
     caches
       .keys()
@@ -52,6 +91,9 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // Dev: never intercept — pure network passthrough, so no stale cached chunk is
+  // ever served while this worker unregisters itself (the reload-loop fix).
+  if (IS_DEV) return;
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);

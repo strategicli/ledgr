@@ -14,7 +14,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { types, users } = await import("../src/db/schema");
-const { attachableCapabilities, canvasIdForType } = await import("../src/lib/modules");
+const { attachableCapabilities, capabilityById, canvasIdForType } = await import("../src/lib/modules");
 const { availableWidgets, WIDGET_CATALOG } = await import("../src/lib/widgets");
 const { resolveComposition } = await import("../src/lib/composition");
 const { eq } = await import("drizzle-orm");
@@ -28,10 +28,11 @@ function check(name: string, ok: boolean, detail = "") {
 const db = getDb();
 const ownerId = (await db.select({ id: users.id }).from(users))[0].id;
 
-console.log("\n# the widget-home capability is attachable in Build");
+console.log("\n# widget-home is the default homepage for custom types, no longer a pickable tool (2026-07-01)");
 {
   const caps = attachableCapabilities(ownerId).map((c) => c.id);
-  check("Build offers 'widget-home' as an attachable capability", caps.includes("widget-home"), caps.join(","));
+  check("Build no longer offers 'widget-home' as a pickable bespoke tool", !caps.includes("widget-home"), caps.join(","));
+  check("but the widget-home capability still RESOLVES for types that carry it", capabilityById("widget-home", ownerId)?.canvasId === "widgets");
 }
 
 console.log("\n# an arbitrary type adopts the homepage with ZERO widget authoring");

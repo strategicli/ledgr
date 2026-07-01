@@ -28,15 +28,18 @@ export async function POST(request: Request, context: Context) {
     const title = typeof raw.title === "string" ? raw.title : "";
     const text = typeof raw.text === "string" ? raw.text.trim() : "";
     const body = text ? { format: "markdown", text } : undefined;
-    const dueDate =
-      type === "milestone" && typeof raw.date === "string" && raw.date
-        ? new Date(raw.date)
-        : undefined;
+    // A date on the payload maps to the type's natural date column: milestones
+    // land on due_date, meetings (events) on meeting_at.
+    const rawDate = typeof raw.date === "string" && raw.date ? new Date(raw.date) : undefined;
+    const validDate = rawDate && !Number.isNaN(rawDate.getTime()) ? rawDate : undefined;
+    const dueDate = type === "milestone" ? validDate : undefined;
+    const meetingAt = type === "event" ? validDate : undefined;
     const item = await createItem(owner.id, {
       type,
       title,
       ...(body ? { body } : {}),
-      ...(dueDate && !Number.isNaN(dueDate.getTime()) ? { dueDate } : {}),
+      ...(dueDate ? { dueDate } : {}),
+      ...(meetingAt ? { meetingAt } : {}),
     });
     await setHome(owner.id, item.id, id, type === "task" ? "project" : "contains");
     return NextResponse.json({ item }, { status: 201 });

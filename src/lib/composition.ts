@@ -39,24 +39,32 @@ export const DEFAULT_DIGEST: DigestBehavior = {
   upcomingDays: 7,
 };
 
-// --- The default Project composition (PRD §8) -----------------------------
-// Header strip (Status · Next Action · Progress) + center (Overview, Notes,
-// Meetings, Milestones) + a thinner right rail (Tasks). The junk-drawer guard
-// (PRD §8) is in the cells: a w:4 rail and below-the-fold extras, not in
-// component logic. md/sm are derived by the grid (sparse layout) at render.
+// --- The default Project composition (Tyler, 2026-07-01) --------------------
+// The redesigned Project homepage: a header strip the canvas renders without
+// card chrome (Status pinned top-right, People row + Progress bar on the left,
+// none titled), then a uniform grid of section cards in a fixed starting order —
+// Tasks, Milestones, Docs (Notes), Meetings. Overview / Recent Activity /
+// Timeline aren't in the default; they're one tap away on the "+ Add section"
+// button. Card ORDER is the composition array order (the canvas ignores grid
+// x/y now, so no cell coordinates here); adding a section appends to the end.
 function w(defId: string, cell: GridCell, options?: Record<string, unknown>): RecordWidget {
   return { instanceId: defId, defId, layout: { lg: cell }, ...(options ? { options } : {}) };
 }
 
+function seat(defId: string, options?: Record<string, unknown>): RecordWidget {
+  return { instanceId: defId, defId, ...(options ? { options } : {}) };
+}
+
 const PROJECT_DEFAULT_WIDGETS: RecordWidget[] = [
-  w("status", { x: 0, y: 0, w: 3, h: 2 }),
-  w("nextAction", { x: 3, y: 0, w: 5, h: 2 }),
-  w("progress", { x: 8, y: 0, w: 4, h: 2 }),
-  w("overview", { x: 0, y: 2, w: 8, h: 8 }),
-  w("notes", { x: 0, y: 10, w: 8, h: 8 }),
-  w("meetings", { x: 0, y: 18, w: 8, h: 6 }),
-  w("milestones", { x: 0, y: 24, w: 8, h: 5 }),
-  w("tasks", { x: 8, y: 2, w: 4, h: 16 }),
+  // Header (no card chrome, no titles) — see WidgetCanvas HEADER_WIDGETS.
+  seat("status"),
+  seat("people"),
+  seat("progress"),
+  // Section cards, fixed starting order.
+  seat("tasks"),
+  seat("milestones"),
+  seat("notes"),
+  seat("meetings"),
 ];
 
 // A generic homepage for any non-project type that opts in (PJ10): its body +

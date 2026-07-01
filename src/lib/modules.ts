@@ -109,6 +109,13 @@ export type ModuleCapability = {
   usage: string; // how it can be used (the catalog's "for example…")
   canvasId: string;
   canonicalFormat: string;
+  // A hidden capability still *resolves* (a type carrying it gets its canvas/
+  // format) but is NOT offered in the Build "Bespoke tools" catalog — it isn't
+  // something the user picks. Used by `widget-home`, which is now the automatic
+  // default for custom types (set at create, resolved by carrying the id), not a
+  // pickable tool. `allCapabilities` includes hidden ones; `attachableCapabilities`
+  // (the catalog) filters them out.
+  hidden?: boolean;
 };
 
 // A module: a workflow packaged as a unit (Tyler PR #1 §1). Mostly assembled from
@@ -165,9 +172,16 @@ export const coreModule: ModuleManifest = {
     {
       // Widget-composed homepage (Project Type, ADR-111). A type carrying this
       // capability renders its records through the widget canvas — a set of
-      // widgets bound to the record (PRD §0). Attached to `project` first; any
-      // type can adopt it from Build (PJ10). The body stays markdown (the
+      // widgets bound to the record (PRD §0). The body stays markdown (the
       // Overview widget renders it), so the canonical format is unchanged.
+      //
+      // `hidden`: this is no longer a pickable "bespoke tool" — it is the default
+      // homepage for CUSTOM types (TypeBuilder sets it at create; core module
+      // types keep their purpose-built canvas since `typeDefFor` wins first). It
+      // stays a resolvable capability so the types that carry it (custom types,
+      // Project, Pursuit) still route to the widget canvas — it's just dropped
+      // from the Build catalog. (Direction: eventually every type; custom-only for
+      // now — Brandon/Tyler, 2026-07-01.)
       id: "widget-home",
       label: "Widget homepage",
       description: "Compose this type's page from widgets (tasks, notes, milestones, progress, …) bound to the record.",
@@ -175,6 +189,7 @@ export const coreModule: ModuleManifest = {
         "Turn a type into a hub: a Project shows its tasks, notes, meetings, milestones, progress and next action on one composable page. Arrange and toggle widgets per record.",
       canvasId: "widgets",
       canonicalFormat: MARKDOWN_FORMAT,
+      hidden: true,
     },
   ],
 };
@@ -239,10 +254,11 @@ export function typeDefFor(
 
 // --- attachable capabilities (SPIKE — bespoke-tool catalog) ----------------
 
-// Every capability an enabled module offers for attachment — the list the Build
-// catalog renders. Capabilities a disabled module exposes drop out, like its
-// types do.
-export function attachableCapabilities(
+// Every capability an enabled module exposes, hidden ones included — the
+// resolution source (`capabilityById` reads this so a type carrying a hidden
+// capability like `widget-home` still routes to its canvas). Capabilities a
+// disabled module exposes drop out, like its types do.
+export function allCapabilities(
   ownerId?: string
 ): (ModuleCapability & { moduleId: string })[] {
   return enabledModules(ownerId).flatMap((m) =>
@@ -250,15 +266,25 @@ export function attachableCapabilities(
   );
 }
 
+// The capabilities offered for attachment in the Build "Bespoke tools" catalog —
+// `allCapabilities` minus the hidden ones (a hidden capability resolves but isn't
+// something the user picks; see `widget-home`).
+export function attachableCapabilities(
+  ownerId?: string
+): (ModuleCapability & { moduleId: string })[] {
+  return allCapabilities(ownerId).filter((c) => !c.hidden);
+}
+
 // Resolve a capability id to its bundle (+ owning module), or undefined if no
 // enabled module offers it (e.g. the module was disabled after a type attached
 // it — the type then degrades to the default canvas, exactly like a disabled
-// module's own type).
+// module's own type). Reads `allCapabilities` so hidden capabilities still
+// resolve for the types that carry them.
 export function capabilityById(
   id: string,
   ownerId?: string
 ): (ModuleCapability & { moduleId: string }) | undefined {
-  return attachableCapabilities(ownerId).find((c) => c.id === id);
+  return allCapabilities(ownerId).find((c) => c.id === id);
 }
 
 // --- capability-aware behavior resolution ----------------------------------

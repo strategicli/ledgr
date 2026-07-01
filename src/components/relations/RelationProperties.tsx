@@ -58,10 +58,17 @@ export default async function RelationProperties({
             <dt className="w-32 shrink-0 pt-1 text-neutral-500">
               {/* A link glyph marks this as a relational property — a field whose
                   value points at other items — distinct from scalar properties
-                  in the same Properties panel (the canvas redesign). */}
+                  in the same Properties panel (the canvas redesign). The Tags
+                  field gets the tag glyph instead of the chain (Tyler). */}
               <span className="inline-flex items-center gap-1.5">
                 <NavGlyph
-                  icon="links"
+                  icon={
+                    /^tags?$/i.test(prop.key) ||
+                    prop.targetType === "tag" ||
+                    /^tags?$/i.test(prop.label ?? "")
+                      ? "tag"
+                      : "links"
+                  }
                   size={12}
                   className="shrink-0 text-[var(--accent)]"
                 />

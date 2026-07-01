@@ -79,6 +79,7 @@ export default function AddTaskCard({
   defaultDueYmd,
   host,
   autoFocus = true,
+  lockDestination = false,
   onDone,
   onCancel,
 }: {
@@ -88,6 +89,9 @@ export default function AddTaskCard({
   // "related" ("project" for a project host).
   host?: { id: string; label: string; role?: string };
   autoFocus?: boolean;
+  // Destination is fixed to the host (e.g. a project's Tasks card): hide the
+  // destination picker entirely and always file onto the host.
+  lockDestination?: boolean;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -180,7 +184,7 @@ export default function AddTaskCard({
     if (!raw || busy) return;
     const p = parseTaskTitle(raw, localTodayYmd());
     const finalTitle = (p.title || raw).replace(/[#@][\w-]+/g, "").replace(/\s+/g, " ").trim();
-    const destId = projectMatch?.project?.id ?? dest;
+    const destId = lockDestination && host ? host.id : (projectMatch?.project?.id ?? dest);
     const assigneeId = personMatch?.person?.id ?? null;
     const dueDay = effDue || effDefault;
     const sched = effScheduled;
@@ -321,23 +325,27 @@ export default function AddTaskCard({
         <button type="button" className="rounded-md border border-neutral-700 px-2 py-1 text-neutral-400 hover:border-neutral-600" title="More" aria-label="More">{IconDots}</button>
       </div>
 
-      {/* footer: destination + actions */}
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="relative inline-flex items-center text-sm text-neutral-300">
-          <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconHash : IconInbox}</span>
-          <select
-            value={effDest}
-            onChange={(e) => setDest(e.target.value)}
-            disabled={!!projectMatch?.project}
-            aria-label="Destination"
-            className="appearance-none rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
-          >
-            {host && host.role !== "project" && <option value={host.id}>{host.label}</option>}
-            <option value="inbox">Inbox</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.title || "Untitled project"}</option>)}
-          </select>
-          <span className="pointer-events-none absolute right-0 text-neutral-500">{IconChevron}</span>
-        </span>
+      {/* footer: destination + actions. When the destination is locked to the
+          host (a project's Tasks card), the picker is hidden and the actions get
+          the full row. */}
+      <div className={`mt-3 flex items-center gap-2 ${lockDestination ? "justify-end" : "justify-between"}`}>
+        {!lockDestination && (
+          <span className="relative inline-flex items-center text-sm text-neutral-300">
+            <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconHash : IconInbox}</span>
+            <select
+              value={effDest}
+              onChange={(e) => setDest(e.target.value)}
+              disabled={!!projectMatch?.project}
+              aria-label="Destination"
+              className="appearance-none rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
+            >
+              {host && host.role !== "project" && <option value={host.id}>{host.label}</option>}
+              <option value="inbox">Inbox</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.title || "Untitled project"}</option>)}
+            </select>
+            <span className="pointer-events-none absolute right-0 text-neutral-500">{IconChevron}</span>
+          </span>
+        )}
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancel} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700">Cancel</button>
           <button type="button" disabled={!title.trim() || busy} onClick={() => void create()} className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40">

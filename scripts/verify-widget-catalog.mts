@@ -42,7 +42,7 @@ console.log("\n# Layer 2: generated default composition");
 {
   const proj = generatedDefaultComposition("project");
   const ids = proj.widgets.map((w) => w.defId);
-  check("project default has the §8 widgets", ["status", "nextAction", "progress", "overview", "notes", "meetings", "milestones", "tasks"].every((id) => ids.includes(id)), ids.join(","));
+  check("project default has the redesigned widgets (header + cards)", ["status", "people", "progress", "tasks", "milestones", "notes", "meetings"].every((id) => ids.includes(id)), ids.join(","));
   check("project default turns Digest on", proj.behaviors.digest?.enabled === true && proj.behaviors.digest.stalenessDays === 7);
   const generic = generatedDefaultComposition("songsheet");
   check("a generic type default is minimal (overview + status), Digest off", generic.widgets.map((w) => w.defId).sort().join(",") === "overview,status" && !generic.behaviors.digest);

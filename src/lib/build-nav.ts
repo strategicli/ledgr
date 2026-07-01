@@ -61,7 +61,7 @@ export const BUILD_NAV: BuildGroup[] = [
       // Loose Ends (ADR-127 Phase 3): under-connected items + their top
       // suggested links — the relatedness engine inverted across the corpus.
       { label: "Loose Ends", href: "/build/loose-ends", icon: "affiliate" },
-      { label: "Import & Migration", href: "/build/import", icon: "folder" },
+      { label: "Import & Migration", href: "/build/import", icon: "download" },
       // Labelled "AI & MCP", not "Claude": the MCP server is client-agnostic
       // (any MCP-speaking AI can connect), so the surface name stays generic
       // even though Claude is the reference client. Route slug stays /claude.

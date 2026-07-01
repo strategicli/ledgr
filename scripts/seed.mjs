@@ -89,7 +89,7 @@ await sql`
 await sql`
   INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, property_schema, capability)
   VALUES (
-    'project', 'Project', 'folder', false, true, false, 'select',
+    'project', 'Project', 'project', false, true, false, 'select',
     '[{"key":"planning","label":"Planning","category":"not_started","color":"#64748b","isDefault":true},{"key":"active","label":"Active","category":"in_progress","color":"#d97706"},{"key":"on_hold","label":"On Hold","category":"not_started","color":"#6b7280"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
     '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb,
     'widget-home'
@@ -99,6 +99,9 @@ await sql`
 // The project type renders through the widget canvas (ADR-111). Idempotent for
 // instances seeded before the capability existed (mirrors migration 0036).
 await sql`UPDATE types SET capability = 'widget-home' WHERE key = 'project' AND capability IS NULL`;
+// Give the project type its own glyph (2026-07-01). Only replaces the old
+// 'folder' default so a hand-picked icon is never clobbered.
+await sql`UPDATE types SET icon = 'project' WHERE key = 'project' AND icon = 'folder'`;
 
 // The milestone type (ADR-111/PJ5): a polymorphic collection item with no
 // done-state; date = due_date, upcoming/passed derived. Hidden, out of quick

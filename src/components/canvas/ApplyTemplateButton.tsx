@@ -6,7 +6,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type Opt = { id: string; name: string; isDefault: boolean };
 
@@ -17,10 +17,13 @@ export default function ApplyTemplateButton({
   itemId,
   type,
   triggerClassName,
+  leading,
 }: {
   itemId: string;
   type: string;
   triggerClassName?: string;
+  // Optional leading glyph rendered before the label (the actions-menu icon).
+  leading?: ReactNode;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -104,6 +107,7 @@ export default function ApplyTemplateButton({
         }}
         className={triggerClassName}
       >
+        {leading}
         Apply template…
       </button>
       {open && (

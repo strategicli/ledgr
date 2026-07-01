@@ -137,10 +137,15 @@ export function addChild(root: MindNode, id: string): [MindNode, string | null] 
   return [rec(root), created];
 }
 
-// Insert a sibling immediately after the node. The root has no parent, so adding
+// Insert a sibling next to the node — after it by default ("below" in the map),
+// or before it ("above") when pos is "before". The root has no parent, so adding
 // a sibling to the root returns it unchanged (the caller should add a child
 // instead).
-export function addSibling(root: MindNode, id: string): [MindNode, string | null] {
+export function addSibling(
+  root: MindNode,
+  id: string,
+  pos: "before" | "after" = "after"
+): [MindNode, string | null] {
   let created: string | null = null;
   const rec = (n: MindNode): MindNode => {
     const idx = n.children.findIndex((c) => c.id === id);
@@ -148,9 +153,10 @@ export function addSibling(root: MindNode, id: string): [MindNode, string | null
     if (idx !== -1 && created === null) {
       const sib = newNode("");
       created = sib.id;
+      const at = pos === "before" ? idx : idx + 1;
       return {
         ...n,
-        children: [...children.slice(0, idx + 1), sib, ...children.slice(idx + 1)],
+        children: [...children.slice(0, at), sib, ...children.slice(at)],
       };
     }
     return { ...n, children };

@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import SaveAsTemplateButton from "./SaveAsTemplateButton";
 import ApplyTemplateButton from "./ApplyTemplateButton";
 import ChangeTypeDialog from "./ChangeTypeDialog";
+import ActionGlyph from "./action-icons";
 
 const rowClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800";
@@ -139,9 +140,10 @@ export default function ItemActionsMenu({
             disabled={busy}
             className={`${rowClass} disabled:opacity-50`}
           >
-            <span aria-hidden className={fav ? "text-[var(--accent)]" : undefined}>
-              {fav ? "★" : "☆"}
-            </span>
+            <ActionGlyph
+              icon={fav ? "starFilled" : "starOutline"}
+              className={fav ? "text-[var(--accent)]" : undefined}
+            />
             {fav ? "Remove from favorites" : "Add to favorites"}
           </button>
           <button
@@ -151,19 +153,19 @@ export default function ItemActionsMenu({
             disabled={busy}
             className={`${rowClass} disabled:opacity-50`}
           >
-            <span aria-hidden>{locked ? "🔓" : "🔒"}</span>
+            <ActionGlyph icon={locked ? "lockOpen" : "lockClosed"} />
             {locked ? "Unlock item" : "Lock item"}
           </button>
           {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
           <a role="menuitem" href={`/items/${itemId}?arrange=1`} className={rowClass}>
-            <span aria-hidden>▦</span>
+            <ActionGlyph icon="grid" />
             Customize layout
           </a>
           {/* Related Explorer (ADR-127 Phase 2): the always-available entry to
               the score-sorted neighborhood map, reachable even when the Discover
               panel auto-hid. */}
           <a role="menuitem" href={`/items/${itemId}/explore`} className={rowClass}>
-            <span aria-hidden>🕸</span>
+            <ActionGlyph icon="network" />
             Explore related
           </a>
           <button
@@ -175,7 +177,7 @@ export default function ItemActionsMenu({
             }}
             className={rowClass}
           >
-            <span aria-hidden>⇄</span>
+            <ActionGlyph icon="swap" />
             Change type…
           </button>
           <div className="my-1 h-px bg-neutral-800" />
@@ -184,8 +186,14 @@ export default function ItemActionsMenu({
             defaultName={title || "Untitled"}
             align="right"
             triggerClassName={rowClass}
+            leading={<ActionGlyph icon="templateSave" />}
           />
-          <ApplyTemplateButton itemId={itemId} type={type} triggerClassName={rowClass} />
+          <ApplyTemplateButton
+            itemId={itemId}
+            type={type}
+            triggerClassName={rowClass}
+            leading={<ActionGlyph icon="templateApply" />}
+          />
         </div>
       )}
       {/* Rendered outside the {open} block so closing the menu doesn't unmount

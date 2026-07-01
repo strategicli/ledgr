@@ -6,18 +6,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export default function SaveAsTemplateButton({
   itemId,
   defaultName,
   triggerClassName,
   align = "left",
+  leading,
 }: {
   itemId: string;
   defaultName: string;
   triggerClassName?: string;
   align?: "left" | "right";
+  // Optional leading glyph rendered before the label (the actions-menu icon).
+  leading?: ReactNode;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -75,6 +78,7 @@ export default function SaveAsTemplateButton({
         aria-expanded={open}
         className={triggerClassName}
       >
+        {leading}
         Save as template
       </button>
       {open && (

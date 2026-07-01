@@ -39,6 +39,33 @@ const STATUS: Record<string, string> = {
   error: "Save failed, retrying",
 };
 
+// Canvas-chrome glyphs (SVG, never emoji — house rule). A chevron disclosure for
+// collapse/expand (the file-tree standard; the old +/− read as add/delete), plus
+// + and × for the add/delete affordances.
+const ICON = {
+  chevronRight: "M9 6l6 6-6 6",
+  chevronDown: "M6 9l6 6 6-6",
+  plus: "M12 5v14M5 12h14",
+  close: "M6 6l12 12M18 6L6 18",
+};
+
+function Glyph({ d, size = 12 }: { d: string; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      dangerouslySetInnerHTML={{ __html: `<path d="${d}"/>` }}
+    />
+  );
+}
+
 export default function MindmapCanvasClient({ itemId, initialTitle, initialBody }: Props) {
   const [root, setRoot] = useState<MindNode>(() =>
     parseMindmap(bodyMarkdown(initialBody), initialTitle)
@@ -97,6 +124,15 @@ export default function MindmapCanvasClient({ itemId, initialTitle, initialBody 
 
   const onAddChild = (id: string) => {
     const [next, created] = addChild(root, id);
+    commit(next);
+    pendingFocus.current = created;
+  };
+
+  // Add a sibling above ("before") or below ("after") — the up/down hover
+  // affordances. The center node has no siblings, so it's a no-op there.
+  const onAddSibling = (id: string, pos: "before" | "after") => {
+    if (id === root.id) return;
+    const [next, created] = addSibling(root, id, pos);
     commit(next);
     pendingFocus.current = created;
   };
@@ -188,7 +224,7 @@ export default function MindmapCanvasClient({ itemId, initialTitle, initialBody 
           Download .md
         </button>
         <span className="ml-auto text-xs text-neutral-600">
-          Enter: sibling · Tab: indent · Shift+Tab: outdent · Backspace: delete empty
+          Hover a node to add a spoke or sibling · Enter: sibling · Tab: indent · Shift+Tab: outdent · Backspace: delete empty
         </span>
       </div>
 
@@ -205,9 +241,12 @@ export default function MindmapCanvasClient({ itemId, initialTitle, initialBody 
               if (!n.parentId) return null;
               const p = layout.byId.get(n.parentId);
               if (!p) return null;
-              const px = p.x + LAYOUT_PAD + NODE_W;
+              // Left-side children connect parent's LEFT edge → child's RIGHT
+              // edge (mirrored); right-side is the original right→left.
+              const onLeft = n.side === "left";
+              const px = onLeft ? p.x + LAYOUT_PAD : p.x + LAYOUT_PAD + NODE_W;
               const py = p.y + LAYOUT_PAD + NODE_H / 2;
-              const cx = n.x + LAYOUT_PAD;
+              const cx = onLeft ? n.x + LAYOUT_PAD + NODE_W : n.x + LAYOUT_PAD;
               const cy = n.y + LAYOUT_PAD + NODE_H / 2;
               const mid = (cx - px) / 2;
               return (
@@ -224,19 +263,34 @@ export default function MindmapCanvasClient({ itemId, initialTitle, initialBody 
 
           {layout.nodes.map((n) => {
             const isRoot = !n.parentId;
+            const onLeft = n.side === "left";
+            // Outward = away from the root, where this node's children fan out.
+            // Buttons are hidden until the node is hovered/focused and sit FLUSH
+            // against the node edge (no dead gap to cross, so hover never drops
+            // before you reach them).
+            const outward = onLeft ? "right-full" : "left-full";
+            const inward = onLeft ? "left-full" : "right-full";
+            const addBtn =
+              "hidden group-hover:flex group-focus-within:flex absolute z-10 h-5 w-5 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900 text-neutral-400 shadow-md shadow-black/40 hover:border-[var(--accent)] hover:text-neutral-100";
             return (
               <div
                 key={n.id}
                 className="group absolute flex items-center"
-                style={{ left: n.x + LAYOUT_PAD, top: n.y + LAYOUT_PAD, width: NODE_W, height: NODE_H }}
+                style={{
+                  left: n.x + LAYOUT_PAD,
+                  top: n.y + LAYOUT_PAD,
+                  width: NODE_W,
+                  height: NODE_H,
+                  flexDirection: onLeft ? "row-reverse" : "row",
+                }}
               >
                 {n.hasChildren && (
                   <button
                     onClick={() => onCollapse(n.id)}
-                    className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-neutral-700 text-[10px] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
-                    title={n.collapsed ? "Expand" : "Collapse"}
+                    className={`${onLeft ? "ml-1" : "mr-1"} flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200`}
+                    title={n.collapsed ? "Expand branch" : "Collapse branch"}
                   >
-                    {n.collapsed ? "+" : "−"}
+                    <Glyph d={n.collapsed ? ICON.chevronRight : ICON.chevronDown} />
                   </button>
                 )}
                 <input
@@ -248,31 +302,58 @@ export default function MindmapCanvasClient({ itemId, initialTitle, initialBody 
                   onChange={(e) => onText(n.id, e.target.value)}
                   onKeyDown={(e) => onKeyDown(e, n.id, n.text)}
                   placeholder={isRoot ? "Central idea" : "…"}
-                  className={`h-full w-full rounded-md border bg-neutral-900 px-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] ${
+                  className={`h-full min-w-0 flex-1 rounded-md border bg-neutral-900 px-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] ${
                     isRoot
                       ? "border-neutral-600 font-medium"
                       : "border-neutral-800 hover:border-neutral-700"
                   }`}
                 />
-                {/* Hover actions, to the right of the box. */}
-                <div className="pointer-events-none absolute left-full ml-1 hidden items-center gap-1 group-focus-within:flex group-hover:flex">
+                {/* Add a spoke (outward, in this branch's direction). */}
+                <button
+                  onClick={() => onAddChild(n.id)}
+                  className={`${addBtn} top-1/2 -translate-y-1/2 ${outward}`}
+                  title="Add a spoke"
+                >
+                  <Glyph d={ICON.plus} />
+                </button>
+                {/* The root can grow both ways, so it also offers a spoke on the
+                    opposite side. */}
+                {isRoot && (
                   <button
                     onClick={() => onAddChild(n.id)}
-                    className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-[11px] text-neutral-400 hover:border-[var(--accent)] hover:text-neutral-100"
+                    className={`${addBtn} top-1/2 -translate-y-1/2 ${inward}`}
                     title="Add a spoke"
                   >
-                    +
+                    <Glyph d={ICON.plus} />
                   </button>
-                  {!isRoot && (
+                )}
+                {!isRoot && (
+                  <>
+                    {/* Sibling above / below — the up & down directions. */}
+                    <button
+                      onClick={() => onAddSibling(n.id, "before")}
+                      className={`${addBtn} bottom-full left-1/2 -translate-x-1/2`}
+                      title="Add a sibling above"
+                    >
+                      <Glyph d={ICON.plus} />
+                    </button>
+                    <button
+                      onClick={() => onAddSibling(n.id, "after")}
+                      className={`${addBtn} top-full left-1/2 -translate-x-1/2`}
+                      title="Add a sibling below"
+                    >
+                      <Glyph d={ICON.plus} />
+                    </button>
+                    {/* Delete — inward-top corner, away from the add cluster. */}
                     <button
                       onClick={() => onDelete(n.id)}
-                      className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-[11px] text-neutral-500 hover:border-red-700 hover:text-red-400"
+                      className={`hidden group-hover:flex group-focus-within:flex absolute z-10 bottom-full ${inward} h-5 w-5 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900 text-neutral-500 shadow-md shadow-black/40 hover:border-red-700 hover:text-red-400`}
                       title="Delete this spoke and everything under it"
                     >
-                      ×
+                      <Glyph d={ICON.close} />
                     </button>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             );
           })}

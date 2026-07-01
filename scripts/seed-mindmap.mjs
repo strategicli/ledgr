@@ -24,7 +24,7 @@ const sql = neon(url);
 
 await sql`
   INSERT INTO types (key, label, icon, is_system)
-  VALUES ('mindmap', 'Mindmap', 'network', false)
+  VALUES ('mindmap', 'Mindmap', 'mindmap', false)
   ON CONFLICT (key) DO UPDATE SET label = EXCLUDED.label, icon = EXCLUDED.icon
 `;
 

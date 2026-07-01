@@ -33,6 +33,9 @@ export const NAV_ICONS = {
   paper: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M8 12h8M8 15h5M8 18h3"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+  // A document with a checkmarked award badge — the Project type glyph.
+  project:
+    '<path d="M13 22 H6 a2 2 0 0 1 -2 -2 V7 L9 2 H18 a2 2 0 0 1 2 2 V11"/><path d="M9 2 V7 H4"/><path d="M7.5 11 H12"/><path d="M7.5 14 H11"/><circle cx="17" cy="15" r="4.2"/><path d="M15.2 15 l1.3 1.3 l2.4 -2.9"/><path d="M15.4 18.3 V22 l1.6 -1.3 l1.6 1.3 V18.3"/>',
   // Organization
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5l2-3h6a2 2 0 0 1 2 2z"/>',
   tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
@@ -59,6 +62,13 @@ export const NAV_ICONS = {
   heart: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
   trophy:
     '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
+  // Import/download — an arrow dropping down onto a baseline (the "bring data in"
+  // glyph for Build → Import & Migration).
+  download: '<path d="M12 3v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/>',
+  // Mindmap — a central hub node branching out to spoke nodes (the Mindmap type
+  // glyph; distinct from `affiliate`'s peer triangle and the action-menu network).
+  mindmap:
+    '<circle cx="4.5" cy="12" r="2.5"/><circle cx="18.5" cy="5" r="2"/><circle cx="18.5" cy="12" r="2"/><circle cx="18.5" cy="19" r="2"/><path d="M7 11 16.6 5.7M7 12h9.5M7 13 16.6 18.3"/>',
 } as const;
 
 export type NavIconKey = keyof typeof NAV_ICONS;
@@ -71,9 +81,9 @@ export const NAV_ICON_FALLBACK: NavIconKey = "items";
 // here is the order the picker shows; every key in NAV_ICONS appears once.
 export const NAV_ICON_GROUPS: { label: string; keys: NavIconKey[] }[] = [
   { label: "Navigation", keys: ["home", "inbox", "tasks", "search", "dashboard", "views", "navigation", "items", "recent", "starred", "archive"] },
-  { label: "Content", keys: ["notes", "document", "meetings", "links", "people", "person", "song", "sermon", "paper", "book", "bookmark"] },
+  { label: "Content", keys: ["notes", "document", "meetings", "links", "people", "person", "song", "sermon", "paper", "book", "bookmark", "project", "mindmap"] },
   { label: "Organization", keys: ["folder", "tag", "collection", "filter", "layers", "grid", "table", "board", "properties", "affiliate"] },
-  { label: "Tools", keys: ["tools", "bolt", "flag", "bell"] },
+  { label: "Tools", keys: ["tools", "bolt", "flag", "bell", "download"] },
   { label: "Misc", keys: ["changelog", "calendar", "compass", "target", "heart", "trophy"] },
 ];
 

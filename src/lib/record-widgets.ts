@@ -8,6 +8,14 @@
 import { listActivity, listActivityForSubjects } from "@/lib/activity";
 import type { Composition, RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
+import { describeRule, parseRecurrence } from "@/lib/recurrence";
+import {
+  combineProgress,
+  meetingPoints,
+  milestonePoints,
+  taskPoints,
+  type PointProgress,
+} from "@/lib/project-progress";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import { listRelatedItems } from "@/lib/relations";
 import { widgetById, type WidgetDefinition } from "@/lib/widgets";
@@ -26,6 +34,12 @@ export type WidgetItemRow = {
   scheduledDate: Date | null;
   urgency: number | null;
   meetingAt: Date | null;
+  // The item's URL (link type) — so a Links widget row can make the title itself
+  // the outbound link. Null for non-link items.
+  url: string | null;
+  // A human recurrence label (e.g. "Weekly on Mon") when the item repeats, else
+  // null. Surfaced so a task row can show its recurrence inline with the title.
+  recurrence: string | null;
 };
 
 export type RecordWidgetData = {
@@ -66,34 +80,43 @@ function rootFraction(rootCategory: string, children: SubtaskNode[]): number {
   return taskKids.reduce((a, c) => a + nodeFraction(c), 0) / taskKids.length;
 }
 
-type ProgressData = { done: number; total: number; fraction: number | null };
+// A record's OWN weighted-points progress (Tyler, 2026-07-01): tasks (worth more
+// with subtasks, partial credit by subtree completion), milestones (complete
+// once their date has passed), and meetings (complete once in the past), summed
+// into completed-points ÷ total-points (src/lib/project-progress.ts). Extracted
+// so a Pursuit can roll up its projects' progress (PJ9). `done`/`total` are
+// POINTS here, not item counts.
+function todayUtcMs(): number {
+  const d = new Date();
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
 
-// A record's OWN task progress (PRD §6 hierarchical, or flat). Extracted so a
-// Pursuit can roll up its projects' progress (PJ9).
-async function taskProgress(
-  ownerId: string,
-  recordId: string,
-  weighting: string
-): Promise<ProgressData> {
-  const tops = await queryViewItems(
-    ownerId,
-    { type: "task", relatedTo: recordId, relatedHome: true },
-    { field: "createdAt", dir: "asc" },
-    500
-  );
-  const total = tops.length;
-  if (total === 0) return { done: 0, total: 0, fraction: null };
-  const done = tops.filter((t) => t.statusCategory === "done").length;
-  if (weighting === "flat") return { done, total, fraction: done / total };
-  const DEEP = 200;
-  const fractions = await Promise.all(
-    tops.map(async (t, i) => {
-      if (i >= DEEP) return t.statusCategory === "done" ? 1 : 0;
+async function recordPointProgress(ownerId: string, recordId: string): Promise<PointProgress> {
+  const [tasks, milestones, meetings] = await Promise.all([
+    // Count everything associated with the record (any relation), matching what
+    // the Tasks / Milestones / Meetings boxes show (boundFilter).
+    queryViewItems(ownerId, { type: "task", relatedTo: recordId }, { field: "createdAt", dir: "asc" }, 500),
+    queryViewItems(ownerId, { type: "milestone", relatedTo: recordId }, { field: "dueDate", dir: "asc" }, 500),
+    queryViewItems(ownerId, { type: "event", relatedTo: recordId }, { field: "meetingAt", dir: "asc" }, 500),
+  ]);
+  const now = Date.now();
+  const today = todayUtcMs();
+  const DEEP = 200; // beyond this, treat a task as a leaf (no subtree probe) — bound the fan-out.
+  const taskParts = await Promise.all(
+    tasks.map(async (t, i) => {
+      if (i >= DEEP) return taskPoints(t.statusCategory === "done" ? 1 : 0, 0);
       const sub = await listSubtree(ownerId, t.id).catch(() => null);
-      return rootFraction(t.statusCategory, sub?.children ?? []);
+      const kids = sub?.children ?? [];
+      const subtaskCount = kids.filter((c) => c.type === "task").length;
+      return taskPoints(rootFraction(t.statusCategory, kids), subtaskCount);
     })
   );
-  return { done, total, fraction: fractions.reduce((a, b) => a + b, 0) / fractions.length };
+  const msParts = milestones.map((m) => milestonePoints(m.dueDate ? m.dueDate.getTime() < today : false));
+  const mtParts = meetings.map((e) => {
+    const when = e.meetingAt ?? e.scheduledDate ?? e.dueDate;
+    return meetingPoints(when ? when.getTime() < now : false);
+  });
+  return combineProgress([...taskParts, ...msParts, ...mtParts]);
 }
 
 // The tracked container records this record CONTAINS (home edges) — a Pursuit's
@@ -108,6 +131,11 @@ async function containedProjects(ownerId: string, recordId: string) {
   );
 }
 
+function recurrenceLabel(properties: unknown): string | null {
+  const rule = parseRecurrence((properties as Record<string, unknown> | null)?.recurrence);
+  return rule ? describeRule(rule) : null;
+}
+
 function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemRow {
   return {
     id: i.id,
@@ -119,6 +147,8 @@ function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemR
     scheduledDate: i.scheduledDate,
     urgency: i.urgency,
     meetingAt: i.meetingAt,
+    url: i.url ?? null,
+    recurrence: recurrenceLabel(i.properties),
   };
 }
 
@@ -128,11 +158,22 @@ function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemR
 function boundFilter(def: WidgetDefinition, recordId: string): ViewFilter | null {
   const q = def.recordQuery;
   if (!q) return null;
-  const home = q.role !== undefined && q.role !== "related";
   const filter: ViewFilter = { relatedTo: recordId };
-  if (q.collectionType) filter.type = q.collectionType;
+  // A typed collection box (Tasks, Docs, Meetings, Milestones, Links, People)
+  // shows every item of that type ASSOCIATED with this record, however it was
+  // linked — role- and home-agnostic (Tyler, 2026-07-01: "the box should pull
+  // anything of that type that is associated with the project"). A link related
+  // from the Links page, a task assigned via the field/picker, a note contained
+  // via the record — all count. relatedTo matches confirmed edges in either
+  // direction, so this is exactly "of this type AND connected to this record".
+  if (q.collectionType) {
+    filter.type = q.collectionType;
+    return filter;
+  }
+  // The generic contained-records box (relatedRecords / a Pursuit's projects)
+  // keeps home/role scoping — what LIVES here, not just anything related.
   if (q.role) filter.relatedRole = q.role;
-  if (home) filter.relatedHome = true;
+  if (q.role && q.role !== "related") filter.relatedHome = true;
   return filter;
 }
 
@@ -185,13 +226,12 @@ async function dataForWidget(
     return { ...base, nextAction: { text: null, taskId: null, taskTitle: null, done: false } };
   }
   if (def.id === "progress") {
-    const weighting = (instance.options?.weighting as string) ?? "hierarchical";
     // Roll-up (PJ9): a record that contains projects (a Pursuit) shows the
     // average of its projects' fractions — done = # projects fully complete,
-    // total = # projects. Otherwise the record's own task progress (PRD §6).
+    // total = # projects. Otherwise the record's own weighted-points progress.
     const projects = await containedProjects(ownerId, record.id);
     if (projects.length > 0) {
-      const child = await Promise.all(projects.map((p) => taskProgress(ownerId, p.id, weighting)));
+      const child = await Promise.all(projects.map((p) => recordPointProgress(ownerId, p.id)));
       const fracs = child.map((c) => c.fraction).filter((f): f is number => f !== null);
       const done = child.filter((c) => c.fraction === 1).length;
       return {
@@ -199,7 +239,7 @@ async function dataForWidget(
         progress: { done, total: projects.length, fraction: fracs.length ? fracs.reduce((a, b) => a + b, 0) / fracs.length : null },
       };
     }
-    return { ...base, progress: await taskProgress(ownerId, record.id, weighting) };
+    return { ...base, progress: await recordPointProgress(ownerId, record.id) };
   }
   if (def.id === "recentActivity") {
     // Roll-up (PJ9): a Pursuit's timeline is the union of its own + its projects'
@@ -235,6 +275,8 @@ async function dataForWidget(
         scheduledDate: r.scheduledDate,
         urgency: r.urgency,
         meetingAt: r.meetingAt,
+        url: (r as { url?: string | null }).url ?? null,
+        recurrence: null,
       })),
       count: home.length,
     };
