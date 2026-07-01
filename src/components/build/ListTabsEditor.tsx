@@ -41,8 +41,18 @@ function describe(lens: Lens, views: ViewDefinition[] | null): string {
     const v = views?.find((x) => x.id === lens.viewId);
     return v ? `Saved view · ${v.layout}` : "Saved view";
   }
+  if (lens.kind === "calendar") return "Upcoming calendar events to add";
+  if (lens.kind === "timeline") return "Upcoming / past by meeting time";
   if ("property" in lens.source) return `Sort by ${lens.source.property}`;
   return FIELD_DESC[lens.source.field];
+}
+
+// The small kind badge on each tab row: label + tint.
+function kindBadge(lens: Lens): { label: string; accent: boolean } {
+  if (lens.kind === "view") return { label: "Widget", accent: true };
+  if (lens.kind === "calendar") return { label: "Calendar", accent: true };
+  if (lens.kind === "timeline") return { label: "Timeline", accent: true };
+  return { label: "Sort", accent: false };
 }
 
 export default function ListTabsEditor({
@@ -119,6 +129,10 @@ export default function ListTabsEditor({
     } else if (kind === "view") {
       const v = views?.find((x) => x.id === val);
       if (v) lens = { id: genId(), kind: "view", label: v.name, viewId: v.id };
+    } else if (kind === "calendar") {
+      lens = { id: genId(), kind: "calendar", label: "Calendar" };
+    } else if (kind === "timeline") {
+      lens = { id: genId(), kind: "timeline", label: "Timeline" };
     }
     if (lens) {
       setLenses((ls) => [...ls, lens as Lens]);
@@ -159,7 +173,7 @@ export default function ListTabsEditor({
 
   function reset() {
     void persist({ lenses: null }, () => {
-      const defs = defaultLenses();
+      const defs = defaultLenses(typeKey);
       setLenses(defs);
       setBaseline(JSON.stringify(defs));
     });
@@ -218,12 +232,12 @@ export default function ListTabsEditor({
             />
             <span
               className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
-                lens.kind === "view"
+                kindBadge(lens).accent
                   ? "bg-[var(--accent)]/15 text-[var(--accent)]"
                   : "bg-neutral-800 text-neutral-400"
               }`}
             >
-              {lens.kind === "view" ? "Widget" : "Sort"}
+              {kindBadge(lens).label}
             </span>
             <span className="min-w-0 flex-1 truncate text-xs text-neutral-500">
               {describe(lens, views)}
@@ -253,6 +267,12 @@ export default function ListTabsEditor({
           className={input}
         >
           <option value="">Add a tab…</option>
+          {typeKey === "event" && (
+            <optgroup label="Event views">
+              <option value="calendar:calendar">Calendar (events to add)</option>
+              <option value="timeline:timeline">Timeline (upcoming / past)</option>
+            </optgroup>
+          )}
           <optgroup label="Sort by field">
             {FIELD_PRESETS.map((f) => (
               <option key={f.field} value={`field:${f.field}`}>
