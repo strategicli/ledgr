@@ -11,11 +11,13 @@ import AddContainedItemButton from "@/components/canvas/widgets/AddContainedItem
 
 type Row = { id: string; title: string; url: string | null };
 
-// The app's canonical link glyph (NAV_ICONS `links`) so it matches everywhere.
+// External-link glyph (box + outbound arrow) — reads as "opens the link out"
+// (Tyler, 2026-07-01), better than the chain for outbound resources.
 const LinkIcon = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
   </svg>
 );
 
