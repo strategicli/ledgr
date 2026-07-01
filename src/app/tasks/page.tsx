@@ -16,6 +16,9 @@ import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
+import { childRollups } from "@/lib/subtasks";
+import type { Progress } from "@/lib/subtasks";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
@@ -51,14 +54,16 @@ function effDate(t: ListedItem): Date | null {
   return t.scheduledDate ?? t.dueDate ?? null;
 }
 
-function TaskRow({ task, dueToday, statuses }: { task: ListedItem; dueToday: Date; statuses: StatusDef[] }) {
+const TASK_ROW_CLASS = "group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
+
+function TaskRow({ task, dueToday, statuses, rollup }: { task: ListedItem; dueToday: Date; statuses: StatusDef[]; rollup?: Progress }) {
   const done = task.statusCategory === "done";
   const sdef = statuses.find((s) => s.key === task.status);
   const date = effDate(task);
   const overdue = !done && date != null && date < dueToday;
   const pri = task.urgency != null ? (task.urgency as Priority) : null;
-  return (
-    <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+  const inner = (
+    <>
       <SelectCheckbox id={task.id} />
       <SubtaskCheckbox id={task.id} done={done} />
       <Link
@@ -82,15 +87,25 @@ function TaskRow({ task, dueToday, statuses }: { task: ListedItem; dueToday: Dat
         {date ? dayFmt.format(date) : ""}
       </span>
       <RowAction id={task.id} action="trash" />
-    </li>
+    </>
   );
+  // A task with task-children gets the expandable pill; everything else stays a
+  // plain flat row (the indicator is purely additive — defer by hiding).
+  if (rollup && rollup.total > 0) {
+    return (
+      <SubtaskExpandableRow id={task.id} done={rollup.done} total={rollup.total} liClassName={TASK_ROW_CLASS}>
+        {inner}
+      </SubtaskExpandableRow>
+    );
+  }
+  return <li className={TASK_ROW_CLASS}>{inner}</li>;
 }
 
-function TaskList({ tasks, dueToday, statuses }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[] }) {
+function TaskList({ tasks, dueToday, statuses, rollups }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[]; rollups?: Map<string, Progress> }) {
   return (
     <ul className="mt-1">
       {tasks.map((t) => (
-        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} />
+        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} />
       ))}
     </ul>
   );
@@ -147,6 +162,7 @@ export default async function Tasks({
     }
     const ordered = [...groups.entries()].sort((a, b) => a[0] - b[0]);
     selectableIds = ordered.flatMap(([, items]) => items.map((t) => t.id));
+    const rollups = await childRollups(owner.id, selectableIds);
     body =
       today.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
@@ -159,7 +175,7 @@ export default async function Tasks({
                 <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
                   {k === 6 ? "No priority" : `Priority ${k}`}
                 </h3>
-                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} />
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} />
               </div>
             );
           })}
@@ -168,11 +184,12 @@ export default async function Tasks({
   } else if (tab === "inbox") {
     const inbox = await queryViewItems(owner.id, { type: "task", inbox: true, statusCategory: "active" }, { field: "createdAt", dir: "desc" });
     selectableIds = inbox.map((t) => t.id);
+    const rollups = await childRollups(owner.id, selectableIds);
     body =
       inbox.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
       ) : (
-        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} />
+        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} />
       );
   } else if (tab === "upcoming") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
@@ -188,6 +205,7 @@ export default async function Tasks({
     }
     const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
     selectableIds = days.flatMap((d) => (byDay.get(dayKey(d)) ?? []).map((t) => t.id));
+    const rollups = await childRollups(owner.id, selectableIds);
     body = (
       <div className="mt-4">
         {/* week nav + day-jump chips */}
@@ -221,7 +239,7 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} />}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} />}
                 <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
@@ -265,6 +283,7 @@ export default async function Tasks({
       }))
     );
     selectableIds = cards.flatMap(({ tasks }) => tasks.map((t) => t.id));
+    const rollups = await childRollups(owner.id, selectableIds);
     body =
       cards.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">No projects yet. Create one to gather its tasks, notes, and events.</p>
@@ -286,7 +305,7 @@ export default async function Tasks({
                   )}
                 </div>
                 {tasks.length > 0 ? (
-                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} />
+                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} />
                 ) : (
                   <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
                 )}

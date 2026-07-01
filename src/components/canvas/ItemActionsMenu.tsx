@@ -15,6 +15,7 @@ import SaveAsTemplateButton from "./SaveAsTemplateButton";
 import ApplyTemplateButton from "./ApplyTemplateButton";
 import ChangeTypeDialog from "./ChangeTypeDialog";
 import ActionGlyph from "./action-icons";
+import MoveUnderMenu from "@/components/items/MoveUnderMenu";
 
 const rowClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800";
@@ -35,6 +36,7 @@ export default function ItemActionsMenu({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [changeTypeOpen, setChangeTypeOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Optimistic star state so the menu reflects the toggle instantly; the server
   // is the source of truth and a refresh re-syncs it.
@@ -42,16 +44,21 @@ export default function ItemActionsMenu({
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !moveOpen) return;
     function onDocClick(e: MouseEvent) {
-      // Sub-popovers (Save as template) and the Apply modal render inside this
-      // wrapper, so clicks in them keep the menu open; an outside click closes.
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      // Sub-popovers (Save as template, Make subtask of…) and the Apply modal
+      // render inside this wrapper, so clicks in them keep it open; an outside
+      // click closes both the menu and the move popover.
+      if (!wrapRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setMoveOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault(); // close the menu, not the parent modal underneath
         setOpen(false);
+        setMoveOpen(false);
       }
     }
     document.addEventListener("mousedown", onDocClick);
@@ -60,7 +67,7 @@ export default function ItemActionsMenu({
       document.removeEventListener("mousedown", onDocClick);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, moveOpen]);
 
   // Re-adopt the server value if a refresh changes it (adjust-during-render).
   const [prevFav, setPrevFav] = useState(favorited);
@@ -110,6 +117,27 @@ export default function ItemActionsMenu({
       router.refresh();
     } catch {
       // keep the menu open; the toggle can be retried
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Reparent this item under a picked target (or send it to the top level),
+  // via the same cycle-guarded PATCH parentId the bulk Move… uses.
+  async function makeSubtaskOf(parentId: string | null) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentId }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setMoveOpen(false);
+      router.refresh();
+    } catch {
+      // keep the popover open so a rejected move (e.g. a cycle) can be retried
     } finally {
       setBusy(false);
     }
@@ -180,6 +208,18 @@ export default function ItemActionsMenu({
             <ActionGlyph icon="swap" />
             Change type…
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setMoveOpen(true);
+              setOpen(false);
+            }}
+            className={rowClass}
+          >
+            <ActionGlyph icon="subtask" />
+            Make subtask of…
+          </button>
           <div className="my-1 h-px bg-neutral-800" />
           <SaveAsTemplateButton
             itemId={itemId}
@@ -195,6 +235,18 @@ export default function ItemActionsMenu({
             leading={<ActionGlyph icon="templateApply" />}
           />
         </div>
+      )}
+      {/* The reparent popover, anchored under the kebab. Rendered outside the
+          {open} block so choosing "Make subtask of…" (which closes the menu)
+          keeps the picker mounted. */}
+      {moveOpen && (
+        <MoveUnderMenu
+          busy={busy}
+          onPick={(parentId) => void makeSubtaskOf(parentId)}
+          className="absolute right-0 top-full z-50 mt-1 w-72 max-w-[90vw] rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-xl shadow-black/50"
+          placeholder="Search a task or project…"
+          topLevelLabel="Move to top level"
+        />
       )}
       {/* Rendered outside the {open} block so closing the menu doesn't unmount
           the dialog mid-move. */}

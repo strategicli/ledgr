@@ -86,7 +86,7 @@ export default async function Notes({
         editHref="/build/types/note/edit"
       />
       {viewData ? (
-        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(await getType("note"))} />
+        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(await getType("note"))} ownerId={owner.id} />
       ) : notes.length > 0 ? (
         <SelectionProvider ids={notes.map((note) => note.id)}>
           <SelectModeToggle />

@@ -18,6 +18,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import MoveUnderMenu from "@/components/items/MoveUnderMenu";
 import { bulkDelete, bulkPatch, type BulkResult } from "@/components/selection/bulk-actions";
 import { useSelection } from "@/components/selection/SelectionProvider";
 import type { BulkActionConfig } from "@/lib/bulk-config";
@@ -30,8 +31,6 @@ type SetField =
   | { kind: "select"; key: string; label: string; options: string[] }
   | { kind: "multi_select"; key: string; label: string; options: string[] }
   | { kind: "date"; key: "dueDate" | "scheduledDate"; label: string };
-
-type Hit = { id: string; type: string; title: string };
 
 export default function BulkActionBar(config: BulkActionConfig) {
   const router = useRouter();
@@ -150,9 +149,9 @@ export default function BulkActionBar(config: BulkActionConfig) {
             Move…
           </button>
           {menu === "move" && (
-            <MoveMenu
+            <MoveUnderMenu
               busy={busy}
-              onMove={(parentId) => run(() => bulkPatch(ids(), { parentId }))}
+              onPick={(parentId) => run(() => bulkPatch(ids(), { parentId }))}
             />
           )}
         </div>
@@ -314,84 +313,4 @@ function SetMenu({
 
 function fieldKey(f: SetField): string {
   return f.kind === "status" ? "status" : f.key;
-}
-
-// The Move… popover: typeahead over the owner's items (same q= search as
-// AddRelation), plus a "Move to top level" escape. Picking applies parentId to
-// the whole selection.
-function MoveMenu({
-  busy,
-  onMove,
-}: {
-  busy: boolean;
-  onMove: (parentId: string | null) => void;
-}) {
-  const [q, setQ] = useState("");
-  const [hits, setHits] = useState<Hit[]>([]);
-  const trimmed = q.trim();
-
-  // Empty queries clear hits in the onChange handler, not here, so the effect
-  // only ever talks to the network (react-hooks/set-state-in-effect).
-  useEffect(() => {
-    if (!trimmed) return;
-    const ctrl = new AbortController();
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/items?q=${encodeURIComponent(trimmed)}&limit=8`, {
-          signal: ctrl.signal,
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as { items: Hit[] };
-        setHits(data.items);
-      } catch {
-        // aborted/offline; next keystroke retries
-      }
-    }, 200);
-    return () => {
-      ctrl.abort();
-      clearTimeout(t);
-    };
-  }, [trimmed]);
-
-  return (
-    <div
-      role="menu"
-      className="absolute bottom-full left-0 mb-2 w-72 max-w-[90vw] rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-xl shadow-black/50"
-    >
-      <input
-        autoFocus
-        value={q}
-        onChange={(e) => {
-          setQ(e.target.value);
-          if (!e.target.value.trim()) setHits([]);
-        }}
-        disabled={busy}
-        placeholder="Search items to move under…"
-        className="w-full rounded border border-neutral-700 bg-transparent px-2 py-1 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none disabled:opacity-50"
-      />
-      <ul className="mt-1 max-h-56 overflow-y-auto">
-        {hits.map((hit) => (
-          <li key={hit.id}>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onMove(hit.id)}
-              className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
-            >
-              <span className="min-w-0 flex-1 truncate">{hit.title || "Untitled"}</span>
-              <span className="shrink-0 text-xs text-neutral-500">{hit.type}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => onMove(null)}
-        className="mt-1 block w-full rounded px-2 py-1 text-left text-sm text-neutral-400 hover:bg-neutral-800 disabled:opacity-50"
-      >
-        Move to top level
-      </button>
-    </div>
-  );
 }

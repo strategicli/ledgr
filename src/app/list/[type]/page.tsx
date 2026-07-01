@@ -26,6 +26,8 @@ import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
+import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
+import { childRollups } from "@/lib/subtasks";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
@@ -129,6 +131,11 @@ export default async function TypeList({
       ? await listProjectCardData(owner.id, items)
       : [];
 
+  // Subtask "n/m" rollups for the in-view rows (empty for the non-list lenses,
+  // which leave `items` empty). One extra owner-scoped, body-free query.
+  const rollups = await childRollups(owner.id, items.map((i) => i.id));
+  const listRowClass = "group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60";
+
   const selects: FilterSelect[] = filterProps.map((fp) => ({
     param: `prop_${fp.key}`,
     label: fp.label,
@@ -155,7 +162,7 @@ export default async function TypeList({
         editHref={`/build/types/${type}/edit`}
       />
       {viewData ? (
-        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(typeDef)} />
+        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(typeDef)} ownerId={owner.id} />
       ) : active.kind === "calendar" ? (
         <CalendarFeed events={feed ?? []} now={now} />
       ) : timeline ? (
@@ -193,26 +200,41 @@ export default async function TypeList({
             <SelectionProvider ids={items.map((item) => item.id)}>
               <SelectModeToggle />
               <ul className="mt-4">
-                {items.map((item) => (
-                  <li
-                    key={item.id}
-                    className="group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60"
-                  >
-                    <SelectCheckbox id={item.id} />
-                    <Link
-                      href={`/items/${item.id}`}
-                      className={`min-w-0 flex-1 truncate text-sm ${
-                        item.title ? "text-neutral-200" : "text-neutral-500"
-                      }`}
+                {items.map((item) => {
+                  const rollup = rollups.get(item.id);
+                  const inner = (
+                    <>
+                      <SelectCheckbox id={item.id} />
+                      <Link
+                        href={`/items/${item.id}`}
+                        className={`min-w-0 flex-1 truncate text-sm ${
+                          item.title ? "text-neutral-200" : "text-neutral-500"
+                        }`}
+                      >
+                        {item.title || "Untitled"}
+                      </Link>
+                      <span className="shrink-0 text-xs text-neutral-600">
+                        {dateFmt.format(new Date(item.updatedAt))}
+                      </span>
+                      <RowAction id={item.id} action="trash" />
+                    </>
+                  );
+                  return rollup && rollup.total > 0 ? (
+                    <SubtaskExpandableRow
+                      key={item.id}
+                      id={item.id}
+                      done={rollup.done}
+                      total={rollup.total}
+                      liClassName={listRowClass}
                     >
-                      {item.title || "Untitled"}
-                    </Link>
-                    <span className="shrink-0 text-xs text-neutral-600">
-                      {dateFmt.format(new Date(item.updatedAt))}
-                    </span>
-                    <RowAction id={item.id} action="trash" />
-                  </li>
-                ))}
+                      {inner}
+                    </SubtaskExpandableRow>
+                  ) : (
+                    <li key={item.id} className={listRowClass}>
+                      {inner}
+                    </li>
+                  );
+                })}
               </ul>
               <LoadMore shown={items.length} total={count} basePath={`/list/${type}`} params={sp} />
               <BulkActionBar {...bulkConfigForType(typeDef)} />

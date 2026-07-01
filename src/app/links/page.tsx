@@ -86,7 +86,7 @@ export default async function Links({
         editHref="/build/types/link/edit"
       />
       {viewData ? (
-        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(await getType("link"))} />
+        <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(await getType("link"))} ownerId={owner.id} />
       ) : links.length > 0 ? (
         <SelectionProvider ids={links.map((link) => link.id)}>
           <SelectModeToggle />

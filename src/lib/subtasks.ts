@@ -7,7 +7,7 @@
 // dependent on id — no depth counter — so a pre-existing parent cycle
 // re-produces identical rows and the dedup terminates the recursion. The
 // write-time guard in items.ts means such data can only exist by corruption.
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { ItemError, type ItemStatus, type Urgency } from "@/lib/items";
@@ -135,6 +135,41 @@ export async function listSubtree(
   }
   for (const node of nodes.values()) node.progress = progressOf(node.children);
   return { children: top, progress: progressOf(top) };
+}
+
+// Direct task-children counts for a set of parents, in one grouped query — the
+// data behind a list row's "n/m" subtask indicator. Mirrors progressOf (and the
+// Subtasks section rollup): only task-type children count, so a note or meeting
+// filed under a parent is context, not a checklist entry. Owner-scoped, live
+// only, body-free, and keyed by items_parent_idx, so it's a single cheap query
+// per list render. Callers pass only the ids currently on screen. Parents with
+// no task children are simply absent from the map (no pill renders).
+export async function childRollups(
+  ownerId: string,
+  parentIds: string[]
+): Promise<Map<string, Progress>> {
+  if (parentIds.length === 0) return new Map();
+  const rows = await getDb()
+    .select({
+      parentId: items.parentId,
+      total: sql<number>`count(*)::int`,
+      done: sql<number>`count(*) filter (where ${items.statusCategory} = 'done')::int`,
+    })
+    .from(items)
+    .where(
+      and(
+        inArray(items.parentId, parentIds),
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt),
+        eq(items.type, "task")
+      )
+    )
+    .groupBy(items.parentId);
+  const map = new Map<string, Progress>();
+  for (const r of rows) {
+    if (r.parentId) map.set(r.parentId, { done: r.done, total: r.total });
+  }
+  return map;
 }
 
 export type Ancestor = {

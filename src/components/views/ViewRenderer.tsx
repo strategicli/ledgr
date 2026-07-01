@@ -11,6 +11,8 @@ import PlannerCalendar from "@/components/planner/PlannerCalendar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectTableCell";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
+import type { Progress } from "@/lib/subtasks";
 import { APP_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
@@ -195,6 +197,8 @@ function columnText(item: ViewItem, col: ViewColumn): string {
   }
 }
 
+const ITEM_ROW_CLASS = "group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
+
 function ItemRow({
   item,
   prop,
@@ -203,6 +207,7 @@ function ItemRow({
   statuses,
   selectable,
   rowAction,
+  rollup,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
@@ -214,11 +219,14 @@ function ItemRow({
   // controls — confirm/reject/un-relate + mention/suggested markers). Other
   // callers leave it undefined, so their rows are unchanged.
   rowAction?: ReactNode;
+  // Subtask rollup for this row; when present with task children, the row grows
+  // the expandable "n/m" pill. Undefined → a plain row (defer by hiding).
+  rollup?: Progress;
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
-  return (
-    <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+  const inner = (
+    <>
       {selectable && <SelectCheckbox id={item.id} />}
       {isTask ? (
         <SubtaskCheckbox id={item.id} done={done} />
@@ -268,8 +276,16 @@ function ItemRow({
         </>
       )}
       {rowAction}
-    </li>
+    </>
   );
+  if (isTask && rollup && rollup.total > 0) {
+    return (
+      <SubtaskExpandableRow id={item.id} done={rollup.done} total={rollup.total} liClassName={ITEM_ROW_CLASS}>
+        {inner}
+      </SubtaskExpandableRow>
+    );
+  }
+  return <li className={ITEM_ROW_CLASS}>{inner}</li>;
 }
 
 // --- layouts --------------------------------------------------------------
@@ -282,6 +298,7 @@ function ListLayout({
   statuses,
   selectable,
   rowActions,
+  rollups,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -289,6 +306,7 @@ function ListLayout({
   statuses?: StatusDef[];
   selectable?: boolean;
   rowActions?: Record<string, ReactNode>;
+  rollups?: Map<string, Progress>;
 }) {
   return (
     <ul className="mt-4">
@@ -302,6 +320,7 @@ function ListLayout({
           statuses={statuses}
           selectable={selectable}
           rowAction={rowActions?.[item.id]}
+          rollup={rollups?.get(item.id)}
         />
       ))}
     </ul>
@@ -490,12 +509,14 @@ function AgendaLayout({
   propertyLabels,
   statuses,
   selectable,
+  rollups,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
   statuses?: StatusDef[];
   selectable?: boolean;
+  rollups?: Map<string, Progress>;
 }) {
   const prop = view.dateProperty;
   const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
@@ -530,6 +551,7 @@ function AgendaLayout({
                 propertyLabels={propertyLabels}
                 statuses={statuses}
                 selectable={selectable}
+                rollup={rollups?.get(item.id)}
               />
             ))}
           </ul>
@@ -550,6 +572,7 @@ function AgendaLayout({
                 propertyLabels={propertyLabels}
                 statuses={statuses}
                 selectable={selectable}
+                rollup={rollups?.get(item.id)}
               />
             ))}
           </ul>
@@ -714,6 +737,7 @@ export default function ViewRenderer({
   calendarEvents,
   selectable = false,
   rowActions,
+  rollups,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -750,6 +774,11 @@ export default function ViewRenderer({
   // relation controls). Honored by the list layout; other layouts ignore it for
   // now (defer-by-hiding). Undefined for every other caller.
   rowActions?: Record<string, ReactNode>;
+  // Subtask "n/m" rollups keyed by item id, so list/agenda rows can grow the
+  // expandable indicator. The list-surface callers compute it (childRollups);
+  // dashboards, the board/table/calendar layouts, and the related panel leave
+  // it undefined, so those rows are unchanged (defer by hiding).
+  rollups?: Map<string, Progress>;
 }) {
   if (items.length === 0) {
     return (
@@ -817,6 +846,7 @@ export default function ViewRenderer({
               propertyLabels={propertyLabels}
               statuses={statuses}
               selectable={selectable}
+              rollups={rollups}
             />
           </div>
         </>
@@ -830,6 +860,7 @@ export default function ViewRenderer({
           propertyLabels={propertyLabels}
           statuses={statuses}
           selectable={selectable}
+          rollups={rollups}
         />
       );
     default:
@@ -841,6 +872,7 @@ export default function ViewRenderer({
           statuses={statuses}
           selectable={selectable}
           rowActions={rowActions}
+          rollups={rollups}
         />
       );
   }
