@@ -4,7 +4,8 @@
 // it a date, or drag back to the rail to clear it. Desktop uses native HTML5
 // drag; touch uses the long-press path in usePlannerTouchDrag. Each drop is
 // optimistic (local override) → PATCH /api/items/[id] → router.refresh, and
-// reverts on failure.
+// reverts on failure. A drop announces an Undo toast; a chip carries a
+// complete-in-place check; double-clicking a day's empty area captures a task.
 //
 // Chips are <div>s (not <Link>s) so the browser's native anchor-drag doesn't
 // fight our drag (that caused a "click twice" feel); click navigates. The grid
@@ -17,16 +18,43 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDaysYmd } from "@/lib/recurrence";
 import UnscheduledRail from "@/components/planner/UnscheduledRail";
+import CompleteButton from "@/components/planner/CompleteButton";
+import QuickCreateInput from "@/components/planner/QuickCreateInput";
 import { usePlannerTouchDrag } from "@/components/planner/usePlannerTouchDrag";
+import { usePlannerComplete } from "@/components/planner/usePlannerComplete";
+import { usePlannerCreate } from "@/components/planner/usePlannerCreate";
 import type { ViewItem } from "@/components/views/ViewRenderer";
 import type { DateProperty, PlaceBy } from "@/lib/views";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
-import { formatTime12 } from "@/lib/scheduled-time";
+import type { StatusDef } from "@/lib/status";
+import { urgencyRank } from "@/lib/planner-rail";
+import { formatTime12, parseScheduledTime } from "@/lib/scheduled-time";
 
 const RAIL = "__none__";
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymdToIso = (ymd: string) => `${ymd}T00:00:00.000Z`;
 const utcKey = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" });
+
+type Notify = (text: string, undo?: () => void) => void;
+
+// Minutes-since-midnight of a task's floating start, or null if untimed.
+function startMin(item: ViewItem): number | null {
+  const st = parseScheduledTime(item.properties);
+  if (!st) return null;
+  const [h, m] = st.start.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Day-cell order: timed tasks first (by start), then untimed by priority, then
+// title — so a day reads top-to-bottom like a schedule.
+function compareDay(a: ViewItem, b: ViewItem): number {
+  const sa = startMin(a);
+  const sb = startMin(b);
+  if (sa != null && sb != null) return sa - sb || (a.title || "").localeCompare(b.title || "");
+  if (sa != null) return -1;
+  if (sb != null) return 1;
+  return urgencyRank(a.urgency) - urgencyRank(b.urgency) || (a.title || "").localeCompare(b.title || "");
+}
 
 export default function PlannerMonth({
   items,
@@ -36,6 +64,9 @@ export default function PlannerMonth({
   navHref,
   showUnscheduled = true,
   calendarEvents,
+  statuses,
+  notify,
+  onOpenDay,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -44,12 +75,18 @@ export default function PlannerMonth({
   navHref?: string;
   showUnscheduled?: boolean;
   calendarEvents?: OverlayEvent[];
+  statuses?: StatusDef[];
+  notify: Notify;
+  onOpenDay?: (ymd: string) => void;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [override, setOverride] = useState<Record<string, string | null>>({});
   const [dragId, setDragId] = useState<string | null>(null);
   const [overDay, setOverDay] = useState<string | null>(null);
+  const [creatingDay, setCreatingDay] = useState<string | null>(null);
+  const { effectiveDone, toggle } = usePlannerComplete(statuses, notify);
+  const { create, busy: creating } = usePlannerCreate(notify);
 
   const field: "scheduledDate" | "dueDate" =
     prop === "dueDate" ? "dueDate" : prop === "scheduledDate" ? "scheduledDate" : placeBy === "due" ? "dueDate" : "scheduledDate";
@@ -104,6 +141,7 @@ export default function PlannerMonth({
     if (!byDay.has(ymd)) byDay.set(ymd, []);
     byDay.get(ymd)!.push(item);
   }
+  for (const list of byDay.values()) list.sort(compareDay);
 
   // Read-only synced calendar events, bucketed by their (app-tz) day. These are
   // context to plan around — never draggable, never editable.
@@ -113,14 +151,16 @@ export default function PlannerMonth({
     eventsByDay.get(ev.ymd)!.push(ev);
   }
 
-  async function commitDrop(id: string | null, day: string | null) {
+  // Commit a drop. `announce` off for the undo re-drop so undo doesn't re-toast.
+  async function commitDrop(id: string | null, day: string | null, announce = true) {
     setDragId(null);
     setOverDay(null);
     if (!id || day === null) return;
     const item = byId.get(id);
     if (!item) return;
+    const prev = effectiveYmd(item); // ymd or null (was unscheduled)
     const target = day === RAIL ? null : day;
-    if (target === effectiveYmd(item)) return;
+    if (target === prev) return;
     setOverride((o) => ({ ...o, [id]: target }));
     try {
       const res = await fetch(`/api/items/${id}`, {
@@ -130,6 +170,14 @@ export default function PlannerMonth({
       });
       if (!res.ok) throw new Error(String(res.status));
       router.refresh();
+      if (announce) {
+        const where = target
+          ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(ymdToIso(target)))
+          : "Unscheduled";
+        notify(`Moved “${item.title || "Untitled"}” → ${where}`, () =>
+          commitDrop(id, prev === null ? RAIL : prev, false),
+        );
+      }
     } catch {
       setOverride((o) => {
         const next = { ...o };
@@ -158,8 +206,9 @@ export default function PlannerMonth({
   // time-grid already renders chips inline). Calling chip(item) keeps the DOM
   // node stable across the optimistic re-render.
   function chip(item: ViewItem) {
-    const done = item.statusCategory === "done";
+    const done = effectiveDone(item);
     const lifted = dragId === item.id;
+    const st = parseScheduledTime(item.properties);
     return (
       <div
         key={item.id}
@@ -181,13 +230,15 @@ export default function PlannerMonth({
         onKeyDown={(e) => {
           if (e.key === "Enter") router.push(`/items/${item.id}`);
         }}
-        className={`block cursor-grab touch-none select-none truncate rounded px-1 py-0.5 text-[11px] active:cursor-grabbing ${done ? "text-neutral-500 line-through" : "text-neutral-300"} ${lifted ? "opacity-40" : ""}`}
+        className={`group flex cursor-grab touch-none select-none items-center gap-1 rounded px-1 py-0.5 text-[11px] active:cursor-grabbing ${done ? "text-neutral-500 line-through" : "text-neutral-300"} ${lifted ? "opacity-40" : ""}`}
         style={{
           backgroundColor: "rgb(38 38 38)",
           borderLeft: item.urgency != null && item.urgency <= 2 ? "2px solid var(--accent)" : "2px solid transparent",
         }}
       >
-        {item.title || "Untitled"}
+        <CompleteButton done={done} onToggle={() => toggle(item)} />
+        {st && <span className="shrink-0 text-neutral-500">{formatTime12(st.start)}</span>}
+        <span className="min-w-0 truncate">{item.title || "Untitled"}</span>
       </div>
     );
   }
@@ -259,19 +310,33 @@ export default function PlannerMonth({
             const dayItems = byDay.get(cell.ymd) ?? [];
             const dayEvents = eventsByDay.get(cell.ymd) ?? [];
             const isToday = cell.ymd === todayYmd;
+            const isPast = cell.ymd < todayYmd;
             const isOver = overDay === cell.ymd;
             return (
               <div
                 key={cell.ymd}
                 {...dropProps(cell.ymd)}
-                className={`min-h-24 p-1 ${cell.inMonth ? "bg-neutral-900" : "bg-neutral-950"}`}
+                onDoubleClick={(e) => {
+                  // Only the empty area creates — not a double-click on a chip.
+                  if ((e.target as HTMLElement).closest("[data-card-id]")) return;
+                  setCreatingDay(cell.ymd);
+                }}
+                className={`min-h-24 p-1 ${cell.inMonth ? (isPast ? "bg-neutral-950/60" : "bg-neutral-900") : "bg-neutral-950"}`}
                 style={isOver ? { outline: "2px solid var(--accent)", outlineOffset: "-2px" } : undefined}
               >
-                <div className={`mb-1 text-right text-[11px] ${isToday ? "font-bold text-neutral-100" : cell.inMonth ? "text-neutral-600" : "text-neutral-700"}`}>
+                <div className={`mb-1 flex items-center justify-end text-[11px] ${isToday ? "font-bold text-neutral-100" : cell.inMonth ? (isPast ? "text-neutral-700" : "text-neutral-600") : "text-neutral-700"}`}>
                   {isToday ? (
                     <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1" style={{ backgroundColor: "var(--accent)", color: "var(--accent-fg, #fff)" }}>
                       {cell.day}
                     </span>
+                  ) : onOpenDay ? (
+                    <button
+                      onClick={() => onOpenDay(cell.ymd)}
+                      className="rounded px-1 hover:bg-neutral-800 hover:text-neutral-300"
+                      title="Open this day"
+                    >
+                      {cell.day}
+                    </button>
                   ) : (
                     cell.day
                   )}
@@ -283,7 +348,27 @@ export default function PlannerMonth({
                   )}
                   {dayItems.slice(0, 4).map((item) => chip(item))}
                   {dayItems.length > 4 && (
-                    <span className="px-1 text-[11px] text-neutral-600">+{dayItems.length - 4} more</span>
+                    onOpenDay ? (
+                      <button
+                        onClick={() => onOpenDay(cell.ymd)}
+                        className="px-1 text-left text-[11px] text-neutral-500 hover:text-neutral-300"
+                      >
+                        +{dayItems.length - 4} more
+                      </button>
+                    ) : (
+                      <span className="px-1 text-[11px] text-neutral-600">+{dayItems.length - 4} more</span>
+                    )
+                  )}
+                  {creatingDay === cell.ymd && (
+                    <QuickCreateInput
+                      busy={creating}
+                      placeholder="New task…"
+                      onSubmit={async (title) => {
+                        const ok = await create({ ymd: cell.ymd, start: null, durationMinutes: 60 }, title);
+                        if (ok) setCreatingDay(null);
+                      }}
+                      onCancel={() => setCreatingDay(null)}
+                    />
                   )}
                 </div>
               </div>

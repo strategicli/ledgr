@@ -826,6 +826,7 @@ export default function ViewRenderer({
             month={month}
             navHref={calendarNavHref}
             calendarEvents={calendarEvents}
+            statuses={statuses}
           />
         );
       }
