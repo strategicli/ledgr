@@ -188,13 +188,29 @@ Pasting a transcript onto a meeting needs no setup (v1a). To also **upload audio
 ---
 
 ## 1h. Running Ledgr locally (the dev loop)
-The whole app runs on your own machine — Next.js + the codebase on disk, the DB on Neon (or local Postgres) via `DATABASE_URL`. This is the everyday build loop (watch Claude's edits live without waiting on a Vercel deploy) and is also the seed of the "the app and the data are user-owned, this can't be taken" posture (`explorations/local-first-split.md`). Vercel auto-deploys `main`; running locally just means you see changes before they ship.
+The whole app runs on your own machine — Next.js + the codebase on disk, the DB on Neon (or local Postgres) via `DATABASE_URL`. This is the everyday build loop (watch Claude's edits live without waiting on a Vercel deploy) and is also the seed of the "the app and the data are user-owned, this can't be taken" posture (`explorations/local-first-split.md`). Running locally just means you see changes before they ship (see §1j for how they ship).
 
 1. **First time:** clone the repo, `npm install`, copy `.env.example` → `.env.local` and fill it (at minimum `DATABASE_URL`; `DEV_USER_EMAIL` lets you sign in without Microsoft/Clerk locally — §1, ADR-006). If your machine has no local login yet, the dev-auth stand-in creates one from `DEV_USER_EMAIL`.
 2. **Run it:** `npm run dev` (default `http://localhost:3000`; if 3000 is taken by another app it serves on `3001`, etc.).
 3. **After every `git pull`:** `npm run db:migrate` — migrations are committed but each machine applies them to its own DB separately (this is the §7 `templates`/`relation does not exist` failure mode; same discipline as §1a).
 4. **Offline / mobile caching (design note, "Netflix model"):** the PWA's offline reach is meant to be **user-selectable per type** (pick which types are cached for offline — e.g. always cache sermons before Sunday), with desktop caching everything. This sharpens the Sunday-proof story (rule #2); it's a caching-strategy direction, not yet a built setting.
 5. **Storage watch:** Markdown is tiny (thousands of notes ≈ ~1GB), so the only meaningful storage cost is **images** (presentation images ~2MB each, scanned PDFs) — keep those on R2/CDN, not inline, and watch the per-user quota.
+
+---
+
+## 1j. Deploying to production (the release flow)
+
+**`main` is the shared integration line and deploys nobody — merging to `main` is safe.** Brandon and Tyler run separate single-tenant instances, so each has their **own Vercel production branch** (`prod-brandon` / `prod-tyler`), a pure pointer to `main` that is what Vercel actually deploys. A PR merged to `main` just lands code on the integration branch; there is no production build triggered and nothing to "verify READY" from the merge itself. (Never commit directly to a `prod-*` branch — it's a pointer, not a work branch.)
+
+**Deploy with `npm run release:prod`** (`scripts/release-prod.mjs`), which does the whole thing in order and aborts before prod on any red gate:
+
+1. **preflight** — clean working tree + `git fetch`.
+2. **ff-merge** — fast-forward the deploy branch (`prod-brandon` by default; Tyler sets `RELEASE_TARGET_BRANCH=prod-tyler`) to `origin/main`.
+3. **dev + gates** — migrate the **dev** Neon branch first (canary), then `lint`, `build`, and the core `verify-*` scripts against dev; **abort on the first failure** so a red gate can't reach prod.
+4. **migrate prod** — `npm run db:migrate:prod` (prod creds come only from `.env.production.local`, gitignored — never `.env.local`).
+5. **push** — push the deploy branch → Vercel builds and deploys.
+
+Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `prod-*` push, `target: production`; the build lags the push ~60–90s) or the public `/health` endpoint. Migrating dev-before-prod means every migration is exercised by the verifies before it touches production. Posture is **be deliberate with production** (§0, ADR-119): additive/reversible changes, lean on the safety net. A deploy-model ADR is still to be written.
 
 ---
 
