@@ -12,6 +12,7 @@ import { resolveOwner } from "@/lib/owner";
 import { resolveMentions } from "@/lib/mentions";
 import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
+import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 
 export const dynamic = "force-dynamic";
 
@@ -34,19 +35,24 @@ export async function GET(
   }
   if (item.deletedAt) return new NextResponse("Not found", { status: 404 });
 
+  // Resolve live {{item.*}} tokens (LT1) against the item's current state first,
+  // so the printed/pinned copy carries real titles/dates and any mention links a
+  // token emits are collected below and rendered type-aware.
+  const resolved = await resolveItemBodyTokens(owner.id, item);
+
   // Type-aware @-mention icons unless ?icons=0 (the owner's "icons off" choice
   // for a cleaner PDF/offline copy; SaveOffline pins this exact URL).
   const showIcons = new URL(_req.url).searchParams.get("icons") !== "0";
   const mentions = showIcons
     ? await resolveMentions(
         owner.id,
-        collectMentionIdsFromMarkdown(bodyMarkdown(item.body))
+        collectMentionIdsFromMarkdown(bodyMarkdown(resolved.body))
       )
     : undefined;
 
   // The same self-contained shell the share route serves (slice 31), so a
   // pinned offline copy and a public link render identically.
-  const html = renderPrintDocument(item.title, item.body, { mentions });
+  const html = renderPrintDocument(resolved.title, resolved.body, { mentions });
 
   return new NextResponse(html, {
     headers: {

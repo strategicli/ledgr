@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { bodyMarkdown } from "@/lib/body";
 import { getItem, ItemError } from "@/lib/items";
+import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { renderMsmDocx } from "@/lib/papers/msm-docx";
 import type { PaperMeta } from "@/lib/papers/types";
 
@@ -43,9 +44,18 @@ export async function GET(
       );
     }
 
+    // Resolve live {{item.*}} tokens against the paper's current state (LT3) so
+    // the .docx carries the real title/due date/etc from the body — the whole
+    // point of "put the due date in the doc once, from the property."
+    const resolved = await resolveItemBodyTokens(owner.id, {
+      id: item.id,
+      title: item.title,
+      body: item.body,
+    });
+
     const props = (item.properties as PaperMeta | null) ?? {};
     const meta: PaperMeta & { title?: string } = {
-      title: item.title,
+      title: resolved.title,
       school: props.school,
       paper_type: props.paper_type,
       course: props.course,
@@ -54,8 +64,8 @@ export async function GET(
       paper_date: props.paper_date,
     };
 
-    const { buffer } = await renderMsmDocx(bodyMarkdown(item.body), meta);
-    const filename = `${slugify(item.title || "paper")}.docx`;
+    const { buffer } = await renderMsmDocx(bodyMarkdown(resolved.body), meta);
+    const filename = `${slugify(resolved.title || "paper")}.docx`;
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,

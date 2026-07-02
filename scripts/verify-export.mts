@@ -213,6 +213,23 @@ try {
     check("R2 creds available to test 404-skip (no creds: section skipped)", true);
   }
 
+  // --- LT3: live tokens are baked into the exported .md -------------------
+  // An exported .md is a derived output, so {{item.*}} tokens resolve to the
+  // item's current values (the DB keeps the tokens); unknown tokens pass through.
+  const tokNote = await mkItem({
+    type: "note",
+    title: "Token export note",
+    body: makeMarkdownBody("Heading is {{item.title}} — unknown {{item.bogus}} stays."),
+  });
+  await runExport(ownerId, target);
+  const tokPath = `note/${year}/token-export-note-${id8(tokNote.id)}.md`;
+  check("token item exported", onDisk(tokPath));
+  const tokMd = await readFile(join(exportDir, ...tokPath.split("/")), "utf8");
+  check(
+    "exported .md bakes {{item.title}}, leaves unknown tokens",
+    tokMd.includes("Heading is Token export note — unknown {{item.bogus}} stays.")
+  );
+
   // --- job state + /health source ----------------------------------------
   const state = await getExportState();
   check("job_state records a clean run",

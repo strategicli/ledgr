@@ -34,6 +34,8 @@ import {
   TextColor,
 } from "./extensions";
 import { createMentionSuggestion } from "./mention-suggestion";
+import { ItemTokenDecoration } from "./token-decoration";
+import { ItemTokenSuggestion } from "./token-suggestion";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -251,6 +253,10 @@ export default function MarkdownEditor({
         HTMLAttributes: { class: "ledgr-mention" },
         suggestion: createMentionSuggestion(itemId),
       }),
+      // Live item tokens (LT2, ADR-139): highlight recognized {{item.*}} tokens
+      // and offer a `{{` insert menu. Tokens stay plain text — decoration only.
+      ItemTokenDecoration,
+      ItemTokenSuggestion,
     ],
     content: initialMarkdown,
     contentType: "markdown",

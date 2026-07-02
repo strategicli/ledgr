@@ -11,6 +11,7 @@ import { resolveShareToken } from "@/lib/share";
 import { resolveMentions } from "@/lib/mentions";
 import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
+import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { captureError, createLogger } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,15 @@ export async function GET(
   }
   if (!shared) return new NextResponse(NOT_FOUND, { status: 404 });
 
+  // Resolve live {{item.*}} tokens (LT1) against the shared item's current
+  // state, so a public link always shows the up-to-date title/date and any
+  // mention links a token emits are collected below.
+  const resolved = await resolveItemBodyTokens(shared.ownerId, {
+    id: shared.itemId,
+    title: shared.title,
+    body: shared.body,
+  });
+
   // Type-aware @-mention icons unless this link was created with them off
   // (showIcons defaults on). The flag rides the token, so the recipient renders
   // exactly what the owner chose. Resolved owner-scoped against the link's owner.
@@ -39,11 +49,11 @@ export async function GET(
   const mentions = showIcons
     ? await resolveMentions(
         shared.ownerId,
-        collectMentionIdsFromMarkdown(bodyMarkdown(shared.body))
+        collectMentionIdsFromMarkdown(bodyMarkdown(resolved.body))
       )
     : undefined;
 
-  const html = renderPrintDocument(shared.title, shared.body, {
+  const html = renderPrintDocument(resolved.title, resolved.body, {
     footerHtml: "Shared from Ledgr · read-only",
     mentions,
   });

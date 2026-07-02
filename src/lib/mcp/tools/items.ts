@@ -7,6 +7,7 @@ import { asUuid, parseItemPayload } from "@/lib/api";
 import { BODY_WINDOW_CHARS, bodyMarkdown, isLargeBody, windowBody } from "@/lib/body";
 import { ITEM_STATUSES, ItemError, URGENCIES, getItem } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
+import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
 import {
@@ -141,6 +142,13 @@ export const itemTools: McpTool[] = [
           minimum: 1,
           maximum: BODY_WINDOW_CHARS,
         },
+        resolveTokens: {
+          type: "boolean",
+          description:
+            "When true, resolve live {{item.*}} tokens in the title + body against " +
+            "the item's current state (its dates, properties, related items) — the " +
+            "same values a print/export shows. Default false returns the raw tokens.",
+        },
       },
       required: ["id"],
       additionalProperties: false,
@@ -151,6 +159,16 @@ export const itemTools: McpTool[] = [
       const bodyOffset = optInt(args, "bodyOffset");
       const bodyLimit = optInt(args, "bodyLimit");
       const item = await getItem(ownerId, id);
+      // LT3: optionally resolve live tokens so a client sees the rendered values.
+      if (args.resolveTokens === true) {
+        const resolved = await resolveItemBodyTokens(ownerId, {
+          id: item.id,
+          title: item.title,
+          body: item.body,
+        });
+        item.title = resolved.title;
+        item.body = resolved.body;
+      }
       const related = await listRelatedItems(ownerId, id);
       const relatedView = related.map((r) => ({
         id: r.id,

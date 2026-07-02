@@ -16,7 +16,15 @@
 
 import { useEffect, useState } from "react";
 
-export default function MarkdownPreview({ text }: { text: string }) {
+export default function MarkdownPreview({
+  text,
+  itemId,
+}: {
+  text: string;
+  // The open item's id, so Preview resolves its live {{item.*}} tokens (LT1).
+  // Omitted (e.g. a template prototype preview) → tokens render raw.
+  itemId?: string;
+}) {
   const [rendered, setRendered] = useState<{ for: string; html: string } | null>(
     null
   );
@@ -28,7 +36,7 @@ export default function MarkdownPreview({ text }: { text: string }) {
     fetch("/api/render-markdown", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, itemId }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => {
@@ -40,7 +48,7 @@ export default function MarkdownPreview({ text }: { text: string }) {
     return () => {
       cancelled = true;
     };
-  }, [text]);
+  }, [text, itemId]);
 
   if (!text.trim()) {
     return <div className="ledgr-prose ledgr-preview" />;
