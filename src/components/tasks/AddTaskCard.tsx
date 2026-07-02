@@ -7,11 +7,18 @@
 // capture modal — same component.
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseTaskTitle } from "@/lib/nl-date";
 import { priorityStyle, type Priority } from "@/lib/priority";
 import { enqueueCapture } from "@/lib/outbox";
+import {
+  consumeMentionText,
+  detectMentionToken,
+  useMentionTypeahead,
+  type MentionHit,
+} from "@/components/capture/useMentionTypeahead";
+import { LinkedChips, MentionPopup, useTypeGlyphs, type LinkedItem } from "@/components/capture/mention-ui";
 
 function localTodayYmd(): string {
   const d = new Date();
@@ -108,11 +115,24 @@ export default function AddTaskCard({
   const [urgency, setUrgency] = useState<Priority | null>(null);
   const [dest, setDest] = useState<string>(host?.id ?? "inbox");
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
-  const [people, setPeople] = useState<ProjectOpt[]>([]);
   const [qaHidden, setQaHidden] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pickDate, setPickDate] = useState(false);
   const showAction = (id: string) => !qaHidden.has(id);
+
+  // "@"-mention linking (unified with the universal capture card): typing "@"
+  // links this task to any existing item as a `related` edge (create-on-miss
+  // included). `#project` below stays the destination shortcut; that's a
+  // different concept, not an association. (The old "@name = assignee" shortcut
+  // was retired here — a dedicated assignee picker can hang off the Assignee
+  // chip later.)
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const { glyph, typeLabel } = useTypeGlyphs();
+  const [caret, setCaret] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [creatingLink, setCreatingLink] = useState(false);
+  const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
+  const [linked, setLinked] = useState<LinkedItem[]>([]);
 
   useEffect(() => {
     loadQuickAddHidden().then((ids) => setQaHidden(new Set(ids)));
@@ -120,11 +140,18 @@ export default function AddTaskCard({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setProjects(Array.isArray(d?.items) ? d.items : []))
       .catch(() => {});
-    fetch("/api/items?type=person&limit=50")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPeople(Array.isArray(d?.items) ? d.items : []))
-      .catch(() => {});
   }, []);
+
+  const mention = useMemo(() => detectMentionToken(title, caret), [title, caret]);
+  const { hits, typeFilter, query: mQuery } = useMentionTypeahead(mention);
+  const alreadyLinked = (id: string) => linked.some((l) => l.id === id);
+  const visibleHits = hits.filter((h) => !alreadyLinked(h.id));
+  const showCreate =
+    mQuery !== "" && !hits.some((h) => h.title.trim().toLowerCase() === mQuery.toLowerCase());
+  const mRowCount = visibleHits.length + (showCreate ? 1 : 0);
+  const mDismissed = mention != null && dismissedQuery === mention.rawQuery;
+  const mOpen = mention != null && !mDismissed && mRowCount > 0;
+  const mSel = Math.min(selected, Math.max(0, mRowCount - 1));
 
   const preview = useMemo(() => (title.trim() ? parseTaskTitle(title, localTodayYmd()) : null), [title]);
   // #project-name → attach to a matching project (create-on-miss is a follow-up).
@@ -135,21 +162,14 @@ export default function AddTaskCard({
     const project = projects.find((pr) => (pr.title || "").toLowerCase().includes(q)) ?? null;
     return { token: m[0], project };
   }, [title, projects]);
-  // @person-name → assign to a matching person (create-on-miss is a follow-up).
-  const personMatch = useMemo(() => {
-    const m = title.match(/@([\w-]+)/);
-    if (!m) return null;
-    const q = m[1].replace(/-/g, " ").toLowerCase();
-    const person = people.find((pr) => (pr.title || "").toLowerCase().includes(q)) ?? null;
-    return { token: m[0], person };
-  }, [title, people]);
+  // @-mention tokens aren't highlighted in the mirror: they're consumed into
+  // chips the instant you pick, so no persistent "@word" lingers in the text.
   const segments = useMemo(
     () => buildSegments(title, [
       ...(preview?.detections ?? []),
       ...(projectMatch ? [{ source: projectMatch.token }] : []),
-      ...(personMatch ? [{ source: personMatch.token }] : []),
     ]),
-    [title, preview, projectMatch, personMatch]
+    [title, preview, projectMatch]
   );
 
   // Effective dates: an explicit pick wins, then what was parsed from the title,
@@ -183,9 +203,10 @@ export default function AddTaskCard({
     const raw = title.trim();
     if (!raw || busy) return;
     const p = parseTaskTitle(raw, localTodayYmd());
-    const finalTitle = (p.title || raw).replace(/[#@][\w-]+/g, "").replace(/\s+/g, " ").trim();
+    // Strip only the "#project" token: "@" mentions are already consumed into
+    // chips, and a literal unmatched "@" the user never picked stays as text.
+    const finalTitle = (p.title || raw).replace(/#[\w-]+/g, "").replace(/\s+/g, " ").trim();
     const destId = lockDestination && host ? host.id : (projectMatch?.project?.id ?? dest);
-    const assigneeId = personMatch?.person?.id ?? null;
     const dueDay = effDue || effDefault;
     const sched = effScheduled;
     const urg = urgency ?? p.urgency ?? null;
@@ -207,7 +228,7 @@ export default function AddTaskCard({
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
-      if (destId !== "inbox" || assigneeId) {
+      if (destId !== "inbox" || linked.length > 0) {
         const { item } = (await res.json()) as { item: { id: string } };
         const rel = (targetId: string, role: string) =>
           fetch(`/api/items/${item.id}/relations`, {
@@ -216,7 +237,8 @@ export default function AddTaskCard({
             body: JSON.stringify({ targetId, role }),
           }).catch(() => {});
         if (destId !== "inbox") await rel(destId, destId === host?.id ? host.role ?? "related" : "project");
-        if (assigneeId) await rel(assigneeId, "assignee");
+        // "@"-linked items → plain `related` edges (the universal related list).
+        await Promise.all(linked.map((l) => rel(l.id, "related")));
       }
       router.refresh();
       onDone();
@@ -225,6 +247,56 @@ export default function AddTaskCard({
       window.dispatchEvent(new Event("ledgr:outbox"));
       onDone();
     }
+  }
+
+  // --- "@"-mention helpers (parity with MentionTitleField) ---
+  function syncCaret() {
+    const el = titleRef.current;
+    if (el) setCaret(el.selectionStart ?? 0);
+  }
+  function linkItem(item: MentionHit | LinkedItem) {
+    if (!mention) return;
+    if (!alreadyLinked(item.id)) setLinked([...linked, { id: item.id, title: item.title, type: item.type }]);
+    const { text, caret: nextCaret } = consumeMentionText(title, mention.start, caret);
+    setTitle(text);
+    setDismissedQuery(null);
+    setSelected(0);
+    requestAnimationFrame(() => {
+      const el = titleRef.current;
+      if (el) { el.focus(); el.setSelectionRange(nextCaret, nextCaret); setCaret(nextCaret); }
+    });
+  }
+  async function createAndLink() {
+    if (creatingLink || !mQuery) return;
+    setCreatingLink(true);
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: typeFilter?.key ?? "unmarked", title: mQuery, inbox: true }),
+      });
+      if (!res.ok) return;
+      const { item } = (await res.json()) as { item: { id: string; title?: string; type?: string | null } };
+      linkItem({ id: item.id, title: item.title || mQuery, type: item.type ?? typeFilter?.key ?? null });
+    } catch {
+      // offline / transient: leave the "@query" text so it isn't lost
+    } finally {
+      setCreatingLink(false);
+    }
+  }
+  function pickSelected() {
+    if (mSel < visibleHits.length) linkItem(visibleHits[mSel]);
+    else if (showCreate) void createAndLink();
+  }
+  function onTitleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mOpen) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSelected((mSel + 1) % mRowCount); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setSelected((mSel - 1 + mRowCount) % mRowCount); return; }
+      if (e.key === "Enter") { e.preventDefault(); pickSelected(); return; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDismissedQuery(mention?.rawQuery ?? null); return; }
+    }
+    if (e.key === "Enter") { e.preventDefault(); void create(); }
+    if (e.key === "Escape") onCancel();
   }
 
   const chip = "flex items-center gap-1.5 rounded-md border border-neutral-700 px-2 py-1 text-sm text-neutral-300 hover:border-neutral-600";
@@ -252,16 +324,37 @@ export default function AddTaskCard({
                 )}
           </div>
           <textarea
+            ref={titleRef}
             autoFocus={autoFocus}
             rows={1}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            // Enter submits (no newlines in a title); Shift+Enter is ignored too.
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void create(); } if (e.key === "Escape") onCancel(); }}
+            onChange={(e) => { setTitle(e.target.value); setCaret(e.target.selectionStart ?? 0); setSelected(0); setDismissedQuery(null); }}
+            // Enter submits (no newlines in a title) unless the "@" picker is open
+            // (then Enter picks); Escape closes the picker first, else cancels.
+            onKeyDown={onTitleKeyDown}
+            onKeyUp={syncCaret}
+            onClick={syncCaret}
+            onSelect={syncCaret}
+            onBlur={() => setDismissedQuery(mention?.rawQuery ?? null)}
             placeholder="Task name"
             aria-label="Task name"
             className="absolute inset-0 h-full w-full resize-none overflow-hidden whitespace-pre-wrap break-words border-0 bg-transparent p-0 text-base font-medium leading-6 text-neutral-100 outline-none placeholder:text-neutral-500"
           />
+          {mOpen && (
+            <MentionPopup
+              hits={visibleHits}
+              selected={mSel}
+              showCreate={showCreate}
+              creating={creatingLink}
+              query={mQuery}
+              typeFilter={typeFilter}
+              onHover={setSelected}
+              onPick={linkItem}
+              onCreate={() => void createAndLink()}
+              glyph={glyph}
+              typeLabel={typeLabel}
+            />
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1 text-neutral-500">
           <button type="button" title="Toggle description" aria-label="Toggle description" onClick={() => setShowDesc((v) => !v)} className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-300">{IconDescription}</button>
@@ -278,6 +371,9 @@ export default function AddTaskCard({
           className="mt-1 w-full bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
         />
       )}
+
+      {/* "@"-linked items → become `related` relations on save */}
+      <LinkedChips linked={linked} onRemove={(id) => setLinked(linked.filter((l) => l.id !== id))} glyph={glyph} />
 
       {/* SVG chip row — detected date/recurrence/priority/project fill these in */}
       <div className="mt-2 flex flex-wrap items-center gap-2 border-b border-neutral-800 pb-3">
@@ -317,9 +413,12 @@ export default function AddTaskCard({
             <span className={`pointer-events-none absolute right-1.5 ${pStyle ? pStyle.text : "text-neutral-500"}`}>{IconFlag}</span>
           </span>
         )}
+        {/* Assignee is kept as a placeholder chip (defer-by-hiding): assign-by-@
+            was retired when "@" became a generic link, and a dedicated picker
+            can hang off this chip later. Config-hideable via Quick Add. */}
         {showAction("assignee") && (
-          <span className={`${chip} ${personMatch?.person ? "text-[var(--accent)]" : ""}`} title={personMatch?.person ? `Assigned to ${personMatch.person.title}` : "Type @name to assign"}>
-            {IconUser} {personMatch?.person?.title ?? "Assignee"}
+          <span className={chip} title="Assignee (dedicated picker coming soon)">
+            {IconUser} Assignee
           </span>
         )}
         <button type="button" className="rounded-md border border-neutral-700 px-2 py-1 text-neutral-400 hover:border-neutral-600" title="More" aria-label="More">{IconDots}</button>
