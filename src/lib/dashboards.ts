@@ -48,7 +48,7 @@ import {
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
 import { ItemError } from "@/lib/items";
-import { isNavIcon } from "@/lib/nav-icons";
+import { isIconRef } from "@/lib/nav-icons";
 import { parseSort, UUID_RE, VIEW_LIMIT } from "@/lib/views";
 
 // Re-export the contract so existing importers (API routes, verify script) can
@@ -225,7 +225,7 @@ function parseWidgetSettings(kind: WidgetKind, raw: unknown): WidgetSettings {
   return {
     action,
     label: str(r.label, 60),
-    icon: isNavIcon(r.icon) ? (r.icon as string) : null,
+    icon: isIconRef(r.icon) ? r.icon : null,
     targetType: str(r.targetType, 60) || null,
     templateId: r.templateId != null && UUID_RE.test(String(r.templateId)) ? String(r.templateId) : null,
     href: str(r.href, 500) || null,

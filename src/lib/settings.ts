@@ -6,7 +6,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
-import { isNavIcon, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
+import { isIconRef, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 import { parseListTabs, type Lens } from "@/lib/list-lenses";
 import { parseTocByType, type TocConfig } from "@/lib/toc";
 
@@ -339,7 +339,7 @@ function parseNavDestination(raw: unknown): NavDestination | null {
   const kind = (NAV_DEST_KINDS as readonly string[]).includes(r.kind as string)
     ? (r.kind as NavDestKind)
     : "builtin";
-  const icon = isNavIcon(r.icon) ? r.icon : NAV_ICON_FALLBACK;
+  const icon = isIconRef(r.icon) ? r.icon : NAV_ICON_FALLBACK;
   const dest: NavDestination = { kind, href, label, icon };
   if (r.badge === "inbox" || r.badge === "notifications") dest.badge = r.badge;
   return dest;
@@ -354,7 +354,7 @@ function parseNavSlot(raw: unknown): NavSlotConfig | null {
   if (r.type === "tools") {
     const label = typeof r.label === "string" ? r.label.trim().slice(0, 40) : "";
     if (!label) return null;
-    const icon = isNavIcon(r.icon) ? r.icon : "tools";
+    const icon = isIconRef(r.icon) ? r.icon : "tools";
     const children = (Array.isArray(r.children) ? r.children : [])
       .map(parseNavDestination)
       .filter((c): c is NavDestination => c !== null)

@@ -7,7 +7,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { listColumns } from "@/lib/items";
-import { isNavIcon, NAV_ICON_FALLBACK, type NavIconKey } from "@/lib/nav-icons";
+import { isIconRef, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { listTypes } from "@/lib/types";
 
@@ -17,7 +17,7 @@ export type FavoriteRow = {
   id: string;
   title: string;
   type: string;
-  icon: NavIconKey;
+  icon: string;
 };
 
 // --- Pure list ops (no DB), so the membership/order math is obvious and the
@@ -85,7 +85,7 @@ export async function getFavoriteItems(ownerId: string): Promise<FavoriteRow[]> 
       id: r.id,
       title: r.title,
       type: r.type,
-      icon: isNavIcon(icon) ? icon : NAV_ICON_FALLBACK,
+      icon: isIconRef(icon) ? icon : NAV_ICON_FALLBACK,
     });
   }
 

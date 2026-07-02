@@ -8,7 +8,7 @@
 // dead-links. `badgeEligible` marks the one destination (Inbox) that can show a
 // count badge for now.
 import { BUILD_ENTRIES } from "@/lib/build-nav";
-import { isNavIcon } from "@/lib/nav-icons";
+import { isIconRef } from "@/lib/nav-icons";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import type { NavBadge, NavDestKind } from "@/lib/settings";
 
@@ -93,7 +93,7 @@ export function buildDestOptions(
       kind: "type" as const,
       href: `/list/${t.key}`,
       label: t.label,
-      icon: isNavIcon(t.icon) ? t.icon : "items",
+      icon: isIconRef(t.icon) ? t.icon : "items",
       badgeEligible: false,
     })),
   ];

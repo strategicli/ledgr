@@ -8,18 +8,9 @@
 // it can be finished.
 import Link from "next/link";
 import AddContainedItemButton from "@/components/canvas/widgets/AddContainedItemButton";
+import NavGlyph from "@/components/nav/NavGlyph";
 
 type Row = { id: string; title: string; url: string | null };
-
-// External-link glyph (box + outbound arrow) — reads as "opens the link out"
-// (Tyler, 2026-07-01), better than the chain for outbound resources.
-const LinkIcon = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    <path d="M15 3h6v6" />
-    <path d="M10 14 21 3" />
-  </svg>
-);
 
 export default function LinksWidget({
   recordId,
@@ -33,7 +24,7 @@ export default function LinksWidget({
       <ul className="flex flex-col gap-1 empty:hidden">
         {items.map((l) => (
           <li key={l.id} className="flex items-center gap-2 text-sm">
-            <span className="shrink-0 text-neutral-500">{LinkIcon}</span>
+            <NavGlyph icon="external-link" size={15} className="shrink-0 text-neutral-500" />
             {l.url ? (
               <a
                 href={l.url}

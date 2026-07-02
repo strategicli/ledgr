@@ -7,6 +7,8 @@
 // Both the real nav (NavShell) and the Build-surface preview/picker read this,
 // so an unknown or hand-edited icon key always renders *something* (falls back
 // to the generic list glyph) rather than a blank or a crash.
+import { AI_ICONS } from "@/lib/ai-icons";
+
 export const NAV_ICONS = {
   // Navigation
   home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>',
@@ -26,6 +28,9 @@ export const NAV_ICONS = {
   document: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M8 13h8M8 17h5"/>',
   meetings: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   links: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  // Box + outbound arrow — "opens the link out"; the outbound-resource glyph the
+  // Links widget uses (Tyler, 2026-07-01), distinct from the `links` chain.
+  "external-link": '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>',
   people: '<circle cx="9" cy="7" r="4"/><path d="M2 21c0-4 3.1-7 7-7h4c3.9 0 7 3 7 7"/><circle cx="17" cy="9" r="3"/><path d="M20 21c0-2.7-1.5-5-4-6"/>',
   person: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>',
   song: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
@@ -69,6 +74,45 @@ export const NAV_ICONS = {
   // glyph; distinct from `affiliate`'s peer triangle and the action-menu network).
   mindmap:
     '<circle cx="4.5" cy="12" r="2.5"/><circle cx="18.5" cy="5" r="2"/><circle cx="18.5" cy="12" r="2"/><circle cx="18.5" cy="19" r="2"/><path d="M7 11 16.6 5.7M7 12h9.5M7 13 16.6 18.3"/>',
+  // Education set (Tyler, 2026-07-01) — recreated in the house style from a
+  // reference sheet: ID card, certificate, assignment, geometry, globe,
+  // textbook, backpack.
+  "id-card":
+    '<rect x="3" y="4" width="18" height="13" rx="2"/><circle cx="8" cy="9.5" r="2"/><path d="M5 15c0-1.9 1.3-3.2 3-3.2s3 1.3 3 3.2"/><path d="M14 9.5h4M14 13h4"/><path d="M6 20.5h12"/>',
+  certificate:
+    '<rect x="3" y="3" width="18" height="11" rx="1.5"/><path d="M12 7.5h6M12 10.5h6"/><circle cx="8" cy="8.5" r="2.6"/><path d="M6.1 10.6 5.6 20l2.4-1.6 2.4 1.6-.5-9.4"/>',
+  assignment:
+    '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 11h5M8 14h3"/><path d="M18.7 12.3 12.2 18.8l-2.4.6.6-2.4 6.5-6.5a1.3 1.3 0 0 1 1.8 1.8z"/>',
+  geometry:
+    '<path d="M9 5v14h11z"/><path d="M11.2 19v-2.2H9"/><path d="M4.5 6v3.5M4.5 14.5V18"/><path d="M3 7.5 4.5 6 6 7.5M3 16.5 4.5 18 6 16.5"/><path d="M3.4 10.8 5.6 13.2M5.6 10.8 3.4 13.2"/>',
+  globe:
+    '<circle cx="12" cy="9" r="5.5"/><ellipse cx="12" cy="9" rx="2.4" ry="5.5"/><path d="M6.5 9h11"/><path d="M12 14.5V18"/><path d="M8.5 20.5c0-1.3 1.6-2 3.5-2s3.5.7 3.5 2z"/>',
+  textbook:
+    '<rect x="4" y="3" width="16" height="13" rx="1.5"/><path d="M8 3v13"/><path d="M5.5 16v2.5A1.5 1.5 0 0 0 7 20h10a1.5 1.5 0 0 0 1.5-1.5V16"/>',
+  backpack:
+    '<path d="M9.5 5.5a2.5 2.5 0 0 1 5 0"/><rect x="5" y="5.5" width="14" height="15.5" rx="4.5"/><path d="M8 21v-5.5a4 4 0 0 1 8 0V21"/><path d="M9.5 14.5h5"/><path d="M5 11c-1.4.3-2 1.2-2 2.6s.6 2.3 2 2.6M19 11c1.4.3 2 1.2 2 2.6s-.6 2.3-2 2.6"/>',
+  // Line-art set (Tyler, 2026-07-01) — recreated in the house style from
+  // reference images: edit-doc, document-check, folder-open, image, flag-goal,
+  // hierarchy, roadmap (a journey with a checkpoint — good for milestones),
+  // badge-check, graduation-cap.
+  "edit-doc":
+    '<path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7"/><path d="M8 9h6M8 12h4M8 15h3"/><path d="M19 11.5 12.5 18l-2.5.6.6-2.5 6.5-6.5a1.3 1.3 0 0 1 1.9 1.9z"/>',
+  "document-check":
+    '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><circle cx="12" cy="12.5" r="3.2"/><path d="M10.7 12.6l1 1 1.7-2"/>',
+  "folder-open":
+    '<path d="M4 20a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v2"/><path d="M2 20l3-8h18l-3 8z"/>',
+  image:
+    '<rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.7"/><path d="M4.5 18l4-5 3 3.5 3.5-4.5 4.5 6"/>',
+  "flag-goal":
+    '<path d="M6 21V4"/><path d="M6 5h11l-2.5 3.5L17 12H6"/>',
+  hierarchy:
+    '<rect x="9" y="3" width="6" height="4" rx="1"/><rect x="3" y="17" width="6" height="4" rx="1"/><rect x="15" y="17" width="6" height="4" rx="1"/><path d="M12 7v6.5"/><path d="M6 17v-3.5h12v3.5"/>',
+  roadmap:
+    '<circle cx="6" cy="5.5" r="2.3"/><path d="M4.8 5.5l.9.9 1.5-1.8"/><path d="M8.3 5.5H14a3.5 3.5 0 0 1 0 7h-4a3.5 3.5 0 0 0 0 7h4.2"/><path d="M12.5 17.5 14.5 19.5 12.5 21.5"/>',
+  "badge-check":
+    '<circle cx="12" cy="9.5" r="6"/><path d="M9.3 9.5l2 2 3.4-4"/><path d="M8.5 14.8 7 21l5-2.6 5 2.6-1.5-6.2"/>',
+  "graduation-cap":
+    '<path d="M2 9 12 5l10 4-10 4z"/><path d="M6 11.4V16c0 1.4 2.7 2.8 6 2.8s6-1.4 6-2.8v-4.6"/><path d="M22 9v5.5"/><path d="M22 15.5a1 1 0 0 0-1 1v1.5"/>',
 } as const;
 
 export type NavIconKey = keyof typeof NAV_ICONS;
@@ -81,15 +125,42 @@ export const NAV_ICON_FALLBACK: NavIconKey = "items";
 // here is the order the picker shows; every key in NAV_ICONS appears once.
 export const NAV_ICON_GROUPS: { label: string; keys: NavIconKey[] }[] = [
   { label: "Navigation", keys: ["home", "inbox", "tasks", "search", "dashboard", "views", "navigation", "items", "recent", "starred", "archive"] },
-  { label: "Content", keys: ["notes", "document", "meetings", "links", "people", "person", "song", "sermon", "paper", "book", "bookmark", "project", "mindmap"] },
-  { label: "Organization", keys: ["folder", "tag", "collection", "filter", "layers", "grid", "table", "board", "properties", "affiliate"] },
-  { label: "Tools", keys: ["tools", "bolt", "flag", "bell", "download"] },
+  { label: "Content", keys: ["notes", "document", "edit-doc", "document-check", "meetings", "links", "external-link", "image", "people", "person", "song", "sermon", "paper", "book", "bookmark", "project", "mindmap"] },
+  { label: "Organization", keys: ["folder", "folder-open", "tag", "collection", "filter", "layers", "grid", "table", "board", "hierarchy", "properties", "affiliate"] },
+  { label: "Education", keys: ["id-card", "certificate", "assignment", "geometry", "globe", "textbook", "backpack", "graduation-cap"] },
+  { label: "Tools", keys: ["tools", "bolt", "flag", "flag-goal", "roadmap", "badge-check", "bell", "download"] },
   { label: "Misc", keys: ["changelog", "calendar", "compass", "target", "heart", "trophy"] },
 ];
 
 // Whether a string is a known icon key.
 export function isNavIcon(key: unknown): key is NavIconKey {
   return typeof key === "string" && key in NAV_ICONS;
+}
+
+// --- The licensed AI-agent set: a SEPARATE filled family (src/lib/ai-icons.ts).
+// Selected/stored as "ai:<name>" so its keyspace never collides with the stroke
+// glyphs above and the renderer knows to fill (not stroke) at the 64px viewBox.
+export const AI_ICON_PREFIX = "ai:";
+
+export function isAiIconRef(key: unknown): key is string {
+  return (
+    typeof key === "string" &&
+    key.startsWith(AI_ICON_PREFIX) &&
+    Object.prototype.hasOwnProperty.call(AI_ICONS, key.slice(AI_ICON_PREFIX.length))
+  );
+}
+
+// The filled path markup for an "ai:<name>" ref, or null if unknown.
+export function aiIconPaths(ref: string): string | null {
+  const name = ref.slice(AI_ICON_PREFIX.length);
+  return Object.prototype.hasOwnProperty.call(AI_ICONS, name) ? AI_ICONS[name] : null;
+}
+
+// Any valid STORED icon reference — a stroke-glyph key OR an "ai:" filled ref.
+// Sanitizers use this (instead of isNavIcon alone) so an AI-set selection isn't
+// reset to the fallback when a type/nav-slot/dashboard icon is read back.
+export function isIconRef(key: unknown): key is string {
+  return isNavIcon(key) || isAiIconRef(key);
 }
 
 // The path-set for a key, falling back to the generic list glyph for anything

@@ -8,7 +8,6 @@
 import { useEffect, useRef, useState } from "react";
 import NavGlyph from "@/components/nav/NavGlyph";
 import NavIconPicker from "@/components/build/NavIconPicker";
-import type { NavIconKey } from "@/lib/nav-icons";
 import {
   findDestOption,
   type DestGroup,
@@ -40,7 +39,7 @@ function IconControl({
   onChange,
 }: {
   value: string;
-  onChange: (key: NavIconKey) => void;
+  onChange: (key: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
