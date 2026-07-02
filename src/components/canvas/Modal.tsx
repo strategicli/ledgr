@@ -8,6 +8,7 @@ import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
+import ActionGlyph from "@/components/canvas/action-icons";
 import TypeCue from "@/components/canvas/TypeCue";
 
 export default function Modal({
@@ -89,9 +90,9 @@ export default function Modal({
                 title="Move to Trash?"
                 description="This item moves to Trash and can be recovered for 30 days."
                 confirmLabel="Trash"
-                trigger="Trash"
+                trigger={<ActionGlyph icon="trash" />}
                 triggerLabel="Move to Trash"
-                triggerClassName="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
+                triggerClassName="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
                 align="left"
                 onConfirm={async () => {
                   const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });

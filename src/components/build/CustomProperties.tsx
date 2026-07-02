@@ -16,7 +16,68 @@ import InlineLabel from "./InlineLabel";
 const inputClass =
   "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Box-like kinds whose empty control reads as visual noise (the row of blank
+// inputs on a sparse Person). When empty they collapse into a "+ label" add-chip
+// cluster. The others always render as rows: checkbox IS its control, select
+// shows a compact "—", and multi_select must show its options to be usable.
+const RECEDE_KINDS = new Set(["text", "url", "number", "date"]);
+
+// A value worth showing as a filled row (and offering an explicit clear for).
+// Checkbox has no "empty" state — the toggle is the control — so it's excluded.
+function isFilled(v: unknown, kind: string): boolean {
+  return (
+    kind !== "checkbox" &&
+    v != null &&
+    v !== "" &&
+    !(Array.isArray(v) && v.length === 0)
+  );
+}
+
+// A clickable target derived from a filled scalar value, so a Person's email /
+// phone / website property isn't a dead text box. A `url` field links out; a
+// `text` field keyed or shaped like an email opens a mailto, one keyed like a
+// phone opens a tel. Returns null when nothing sensible applies (most fields),
+// so only the fields that earn an affordance get one. No schema change: this is
+// a display heuristic over the existing kinds, not a new property kind.
+function openTarget(
+  prop: PropertyDef,
+  value: unknown
+): { href: string; title: string; external: boolean } | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (!v) return null;
+  if (prop.kind === "url") {
+    const href = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
+    return { href, title: "Open link", external: true };
+  }
+  if (prop.kind === "text") {
+    const key = prop.key.toLowerCase();
+    if ((/e-?mail/.test(key) || EMAIL_RE.test(v)) && EMAIL_RE.test(v)) {
+      return { href: `mailto:${v}`, title: "Send email", external: false };
+    }
+    if (/phone|mobile|\btel\b|cell/.test(key) && /\d/.test(v)) {
+      return { href: `tel:${v.replace(/[^\d+]/g, "")}`, title: "Call", external: false };
+    }
+  }
+  return null;
+}
+
 type Values = Record<string, unknown>;
+
+// A `text` field keyed like an email or phone renders as a single-line typed
+// input (right on-screen keyboard on mobile, format hint) instead of the default
+// wrapping textarea. Returns null for ordinary text, which keeps the textarea.
+function textInputType(
+  prop: PropertyDef
+): { type: "email" | "tel"; inputMode: "email" | "tel" } | null {
+  if (prop.kind !== "text") return null;
+  const key = prop.key.toLowerCase();
+  if (/e-?mail/.test(key)) return { type: "email", inputMode: "email" };
+  if (/phone|mobile|\btel\b|cell/.test(key)) return { type: "tel", inputMode: "tel" };
+  return null;
+}
 
 // An uncontrolled textarea whose height tracks its content, for the wrapping
 // `text` property (Brandon, 2026-06-17). Uncontrolled (defaultValue) so a parent
@@ -65,6 +126,26 @@ export default function CustomProperties({
   // clearing state alone wouldn't empty the visible box — remounting reads the
   // now-null state as a fresh empty defaultValue. Controlled kinds ignore it.
   const [rev, setRev] = useState<Record<string, number>>({});
+  // Keys the user has explicitly opened for editing on an otherwise-empty,
+  // box-like field. Empty text/url/number/date fields recede to a quiet "+ Add"
+  // so a sparse item reads as intentional, not unfinished (Brandon, 2026-06-21:
+  // scope by hiding); clicking "+ Add" reveals the control focused, and blurring
+  // it still empty recedes it again.
+  const [editing, setEditing] = useState<Set<string>>(new Set());
+  // Keys with a PATCH in flight, for a per-field "saving" dim (the global
+  // indicator is small and easy to miss inside a modal).
+  const [saving, setSaving] = useState<Set<string>>(new Set());
+
+  const openField = (key: string) =>
+    setEditing((s) => new Set(s).add(key));
+  const recedeIfEmpty = (key: string, nv: unknown) => {
+    if (nv == null || nv === "")
+      setEditing((s) => {
+        const n = new Set(s);
+        n.delete(key);
+        return n;
+      });
+  };
 
   // Update the changed key and PATCH it as a per-key merge (propertyPatch),
   // not a wholesale properties replace — so an instance rendering only a subset
@@ -73,8 +154,14 @@ export default function CustomProperties({
   async function save(patch: Values) {
     const before = values;
     const next = { ...values, ...patch };
+    const keys = Object.keys(patch);
     setValues(next);
     setError(false);
+    setSaving((s) => {
+      const n = new Set(s);
+      keys.forEach((k) => n.add(k));
+      return n;
+    });
     beginSave();
     try {
       const res = await fetch(`/api/items/${itemId}`, {
@@ -88,37 +175,71 @@ export default function CustomProperties({
       setValues(before);
       setError(true);
       endSave(false);
+    } finally {
+      setSaving((s) => {
+        const n = new Set(s);
+        keys.forEach((k) => n.delete(k));
+        return n;
+      });
     }
   }
 
-  function control(prop: PropertyDef) {
+  function control(prop: PropertyDef, autoFocus = false) {
     const v = values[prop.key];
     switch (prop.kind) {
-      case "text":
-        // A wrapping, auto-growing field (Brandon, 2026-06-17) so long text shows
-        // in full instead of scrolling in a single line. Commits on blur.
+      case "text": {
+        const typed = textInputType(prop);
+        // Email/phone-keyed text is a single-line typed input; everything else is
+        // a wrapping, auto-growing field (Brandon, 2026-06-17) so long text shows
+        // in full instead of scrolling in a single line. Both commit on blur.
+        if (typed) {
+          return (
+            <input
+              key={`${prop.key}:${rev[prop.key] ?? 0}`}
+              type={typed.type}
+              inputMode={typed.inputMode}
+              autoFocus={autoFocus}
+              className={`${inputClass} w-56`}
+              defaultValue={typeof v === "string" ? v : ""}
+              onBlur={(e) => {
+                const nv = e.target.value.trim() || null;
+                if (nv !== (v ?? null)) void save({ [prop.key]: nv });
+                recedeIfEmpty(prop.key, nv);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+          );
+        }
         return (
           <AutoGrowTextarea
             key={`${prop.key}:${rev[prop.key] ?? 0}`}
+            autoFocus={autoFocus}
             className={`${inputClass} w-56 resize-none overflow-hidden leading-snug`}
             defaultValue={typeof v === "string" ? v : ""}
             onBlur={(e) => {
               const nv = e.target.value.trim() || null;
               if (nv !== (v ?? null)) void save({ [prop.key]: nv });
+              recedeIfEmpty(prop.key, nv);
             }}
           />
         );
+      }
       case "url":
         return (
           <input
             key={`${prop.key}:${rev[prop.key] ?? 0}`}
             type="url"
+            inputMode="url"
+            autoFocus={autoFocus}
             className={`${inputClass} w-56`}
             placeholder="https://"
             defaultValue={typeof v === "string" ? v : ""}
             onBlur={(e) => {
               const nv = e.target.value.trim() || null;
               if (nv !== (v ?? null)) void save({ [prop.key]: nv });
+              recedeIfEmpty(prop.key, nv);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
@@ -130,6 +251,7 @@ export default function CustomProperties({
           <input
             key={`${prop.key}:${rev[prop.key] ?? 0}`}
             type="number"
+            autoFocus={autoFocus}
             className={`${inputClass} w-32`}
             defaultValue={typeof v === "number" ? String(v) : ""}
             onBlur={(e) => {
@@ -139,6 +261,7 @@ export default function CustomProperties({
               if (nv !== (typeof v === "number" ? v : null)) {
                 void save({ [prop.key]: nv });
               }
+              recedeIfEmpty(prop.key, raw);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
@@ -149,9 +272,11 @@ export default function CustomProperties({
         return (
           <input
             type="date"
+            autoFocus={autoFocus}
             className={inputClass}
             value={typeof v === "string" ? v.slice(0, 10) : ""}
             onChange={(e) => void save({ [prop.key]: e.target.value || null })}
+            onBlur={(e) => recedeIfEmpty(prop.key, e.target.value)}
           />
         );
       case "checkbox":
@@ -204,12 +329,83 @@ export default function CustomProperties({
     }
   }
 
+  // One filled-or-open property, rendered as a labelled row: the control, then
+  // (when filled) the open-out affordance and the × clear.
+  function renderRow(prop: PropertyDef, filled: boolean, isEditing: boolean) {
+    const isSaving = saving.has(prop.key);
+    return (
+      <div key={prop.key} className="group flex items-center gap-3 text-sm">
+        <dt className="w-32 shrink-0 text-neutral-500">
+          <InlineLabel typeKey={typeKey} propertyKey={prop.key} label={prop.label} />
+        </dt>
+        <dd className="flex min-w-0 items-center gap-1">
+          <span className={isSaving ? "opacity-50 transition-opacity" : undefined}>
+            {control(prop, isEditing && !filled)}
+          </span>
+          {filled && (() => {
+            const target = openTarget(prop, values[prop.key]);
+            if (!target) return null;
+            return (
+              <a
+                href={target.href}
+                target={target.external ? "_blank" : undefined}
+                rel={target.external ? "noreferrer" : undefined}
+                title={target.title}
+                aria-label={target.title}
+                className="shrink-0 rounded px-0.5 text-neutral-500 hover:text-[var(--accent)]"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M14 5h5v5M19 5l-8 8M11 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" />
+                </svg>
+              </a>
+            );
+          })()}
+          {filled && (
+            <button
+              type="button"
+              onClick={() => {
+                void save({ [prop.key]: null });
+                setRev((r) => ({ ...r, [prop.key]: (r[prop.key] ?? 0) + 1 }));
+              }}
+              aria-label={`Clear ${prop.label}`}
+              title="Clear"
+              className="shrink-0 rounded px-0.5 text-xs text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 max-sm:opacity-100"
+            >
+              ✕
+            </button>
+          )}
+        </dd>
+      </div>
+    );
+  }
+
   // Relation kinds (ADR-067) don't live in items.properties — their value is a
   // set of relations edges with role = the field key, rendered by the typed
   // relation input (RelationProperties), not here. Skip them so this scalar
   // panel doesn't draw an empty control for them.
   const scalarSchema = schema.filter((p) => p.kind !== "relation");
   if (scalarSchema.length === 0) return null;
+
+  // Split the schema into filled/open fields (labelled rows) and empty box-like
+  // fields (a wrapped cluster of "+ label" add-chips). Opening a chip moves that
+  // field up into the rows; blurring it still-empty sends it back to a chip.
+  const rowProps = scalarSchema.filter(
+    (p) =>
+      isFilled(values[p.key], p.kind) ||
+      !RECEDE_KINDS.has(p.kind) ||
+      editing.has(p.key)
+  );
+  const chipProps = scalarSchema.filter((p) => !rowProps.includes(p));
 
   return (
     <section className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12"}>
@@ -218,50 +414,33 @@ export default function CustomProperties({
           Properties
         </h2>
       )}
-      <dl className={`flex flex-col gap-2 ${locked ? "opacity-60" : ""}`}>
-        {/* A disabled fieldset locks every property control at once (a locked
-            item); `contents` keeps the definition-list layout flat. */}
-        <fieldset disabled={locked} className="contents">
-        {scalarSchema.map((prop) => {
-          const v = values[prop.key];
-          // A value worth offering an explicit clear for. Checkbox has no
-          // "empty" state (the toggle is the control), so it's excluded.
-          const filled =
-            prop.kind !== "checkbox" &&
-            v != null &&
-            v !== "" &&
-            !(Array.isArray(v) && v.length === 0);
-          return (
-            <div key={prop.key} className="group flex items-center gap-3 text-sm">
-              <dt className="w-32 shrink-0 text-neutral-500">
-                <InlineLabel
-                  typeKey={typeKey}
-                  propertyKey={prop.key}
-                  label={prop.label}
-                />
-              </dt>
-              <dd className="flex min-w-0 items-center gap-1">
-                {control(prop)}
-                {filled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void save({ [prop.key]: null });
-                      setRev((r) => ({ ...r, [prop.key]: (r[prop.key] ?? 0) + 1 }));
-                    }}
-                    aria-label={`Clear ${prop.label}`}
-                    title="Clear"
-                    className="shrink-0 rounded px-0.5 text-xs text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 max-sm:opacity-100"
-                  >
-                    ✕
-                  </button>
-                )}
-              </dd>
+      {/* A disabled fieldset locks every control (and add-chip) at once on a
+          locked item; `contents` keeps the flex/dl layout below it flat. */}
+      <fieldset disabled={locked} className="contents">
+        <div className={`flex flex-col gap-2 ${locked ? "opacity-60" : ""}`}>
+          {rowProps.length > 0 && (
+            <dl className="flex flex-col gap-2">
+              {rowProps.map((prop) =>
+                renderRow(prop, isFilled(values[prop.key], prop.kind), editing.has(prop.key))
+              )}
+            </dl>
+          )}
+          {chipProps.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {chipProps.map((prop) => (
+                <button
+                  key={prop.key}
+                  type="button"
+                  onClick={() => openField(prop.key)}
+                  className="inline-flex items-center gap-1 rounded border border-neutral-800 px-2 py-0.5 text-xs text-neutral-500 hover:border-neutral-600 hover:text-neutral-300"
+                >
+                  <span aria-hidden>+</span> {prop.label}
+                </button>
+              ))}
             </div>
-          );
-        })}
-        </fieldset>
-      </dl>
+          )}
+        </div>
+      </fieldset>
       {error && (
         <p className="mt-2 text-xs text-red-400">Save failed, change reverted</p>
       )}

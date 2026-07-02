@@ -17,6 +17,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useKeyboardInset } from "./useKeyboardInset";
+import { useIsDesktop } from "./useIsDesktop";
 import { useRouter } from "next/navigation";
 import {
   BLOCKNOTE_COLORS,
@@ -461,6 +462,12 @@ export default function MarkdownEditor({
   // The formatting bar is hidden by default when collapsible (task canvas); a
   // top-right toggle reveals it. When not collapsible it's always shown.
   const [toolbarOpen, setToolbarOpen] = useState(!collapsibleToolbar);
+  // Collapse is a DESKTOP affordance only. On mobile the toolbar floats over the
+  // keyboard and must always show its buttons — collapsing it there leaves an
+  // empty bar with just a toggle (the mobile regression this guards against). So
+  // below `sm`, buttons always render and the toggle is hidden.
+  const isDesktop = useIsDesktop();
+  const showToolbarButtons = toolbarOpen || !isDesktop;
 
   // Mobile editing posture (≥640px / `sm` is desktop and unaffected). On a phone
   // the toolbar becomes a single-row bar that floats on top of the on-screen
@@ -613,8 +620,8 @@ export default function MarkdownEditor({
         }
         style={focused ? { bottom: keyboardInset } : undefined}
       >
-      <div className={`flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible ${toolbarOpen ? "border-b border-neutral-800/70" : ""}`}>
-        {toolbarOpen && (<>{(
+      <div className={`flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible ${showToolbarButtons ? "border-b border-neutral-800/70" : ""}`}>
+        {showToolbarButtons && (<>{(
           [
             { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
             { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
@@ -697,7 +704,7 @@ export default function MarkdownEditor({
             Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
           </span>
         )}</>)}
-        {collapsibleToolbar && (
+        {collapsibleToolbar && isDesktop && (
           <button
             type="button"
             onClick={() => setToolbarOpen((v) => !v)}

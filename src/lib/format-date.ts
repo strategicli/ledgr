@@ -23,3 +23,16 @@ export function formatDayLabel(
   const yr = opts?.year ? `, ${y}` : "";
   return `${wd}${MONTHS[m - 1]} ${d}${yr}`;
 }
+
+// True when `value`'s calendar day is strictly before `today`. Both are read as
+// their date part only (ISO instant or YYYY-MM-DD); ISO 8601 date strings sort
+// lexically the same as chronologically, so a plain string compare is correct
+// and timezone-free — matching how scheduled/due are stored (UTC midnight) and
+// how `today` is the app-timezone YMD. A date equal to today is NOT overdue.
+export function isOverdueYmd(
+  value: string | null | undefined,
+  today: string | null | undefined
+): boolean {
+  if (!value || !today) return false;
+  return value.slice(0, 10) < today.slice(0, 10);
+}

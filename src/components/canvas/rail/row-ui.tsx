@@ -25,10 +25,13 @@ export function Chevron() {
 export function RowFace({
   label,
   empty = false,
+  overdue = false,
   children,
 }: {
   label: string;
   empty?: boolean;
+  // A past-due scheduled/due date on an open task — the value shows red.
+  overdue?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -36,7 +39,7 @@ export function RowFace({
       <span className="shrink-0 text-neutral-400">{label}</span>
       <span
         className={`flex min-w-0 items-center justify-end gap-1.5 ${
-          empty ? "text-neutral-600" : "text-neutral-200"
+          overdue ? "text-red-400" : empty ? "text-neutral-600" : "text-neutral-200"
         }`}
       >
         <span className="min-w-0 truncate">{children}</span>

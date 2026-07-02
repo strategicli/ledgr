@@ -10,7 +10,7 @@ import Popover from "@/components/ui/Popover";
 import DayField from "./DayField";
 import { RowFace } from "./row-ui";
 import { RAIL_TRIGGER } from "./styles";
-import { formatDayLabel } from "@/lib/format-date";
+import { formatDayLabel, isOverdueYmd } from "@/lib/format-date";
 
 function ymdToIso(ymd: string): string {
   return `${ymd}T00:00:00.000Z`;
@@ -20,10 +20,13 @@ export default function DueRow({
   itemId,
   initial,
   today,
+  done = false,
 }: {
   itemId: string;
   initial: string | null; // ISO instant or null
   today: string;
+  // A completed task isn't "overdue" however old its due date — suppress the cue.
+  done?: boolean;
 }) {
   const router = useRouter();
   const [iso, setIso] = useState(initial);
@@ -54,6 +57,7 @@ export default function DueRow({
   }
 
   const label = formatDayLabel(iso);
+  const overdue = !done && isOverdueYmd(iso, today);
   return (
     <Popover
       ariaLabel="Due date"
@@ -61,7 +65,7 @@ export default function DueRow({
       width={288}
       triggerClassName={RAIL_TRIGGER}
       trigger={
-        <RowFace label="Due" empty={!iso}>
+        <RowFace label="Due" empty={!iso} overdue={overdue}>
           {label ?? "Add date"}
         </RowFace>
       }

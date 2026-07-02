@@ -11,8 +11,8 @@ import PaperCanvasClient from "@/components/paper-editor/PaperCanvasClient";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import RelationProperties from "@/components/relations/RelationProperties";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import SaveOffline from "@/components/canvas/SaveOffline";
-import ShareLink from "@/components/canvas/ShareLink";
+import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
+import { bodyMarkdown } from "@/lib/body";
 import { getType } from "@/lib/types";
 import type { CanvasProps } from "@/lib/modules";
 
@@ -51,8 +51,7 @@ export default async function PaperCanvas({ item, ownerId }: CanvasProps) {
         </CanvasSection>
       )}
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
-      <SaveOffline itemId={item.id} />
-      <ShareLink itemId={item.id} />
+      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
     </>
   );
 }

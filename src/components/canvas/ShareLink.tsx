@@ -12,7 +12,16 @@ function shareUrl(token: string): string {
   return `${window.location.origin}/share/${token}`;
 }
 
-export default function ShareLink({ itemId }: { itemId: string }) {
+export default function ShareLink({
+  itemId,
+  bare = false,
+}: {
+  itemId: string;
+  // Drop the standalone canvas wrapper (width + padding) when nested inside a
+  // parent section that already provides alignment — e.g. the shared footer's
+  // "Export & sharing" details. Default keeps the widget-card usage unchanged.
+  bare?: boolean;
+}) {
   const [active, setActive] = useState<TokenRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -78,7 +87,7 @@ export default function ShareLink({ itemId }: { itemId: string }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
+    <div className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12"}>
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void create()}

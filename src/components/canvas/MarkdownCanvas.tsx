@@ -23,6 +23,7 @@ import CustomProperties from "@/components/build/CustomProperties";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
+import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import { bodyMarkdown } from "@/lib/body";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingNotes from "@/components/meetings/MeetingNotes";
@@ -288,6 +289,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         promotedRefs={promotedRefs}
         tabsEnabled={tabsEnabled}
         locked={locked}
+        collapsibleToolbar
       />
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}
@@ -360,13 +362,11 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           auto-hides when nothing clears the floor; Link graduates a row up into
           the panel above. */}
       <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
-      {/* Save Offline (PRD §4.7): export now, verified offline pin, print/PDF. */}
-      <SaveOffline itemId={item.id} />
-      {/* Public share link (PRD §4.12): read-only, print-friendly, PDF. */}
-      <ShareLink itemId={item.id} />
-      {/* Version history (Track changes): list snapshots, diff any two, restore
-          (the general item-view undo). Lazy — fetches only when expanded. */}
-      <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />
+      {/* Export & sharing (Save Offline PRD §4.7 + Share link §4.12) folded into
+          one collapsed section, with Version History (Track changes) beside it.
+          Shared with every canvas via ItemUtilitiesFooter. The arrange grid above
+          still places these three as individual cards, so it doesn't use this. */}
+      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
       <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 pb-12 sm:px-8 md:px-12">
         <details className="canvas-section">
         <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--cs-label)] hover:text-neutral-300">
