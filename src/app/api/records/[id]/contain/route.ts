@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { createItem } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import { setHome } from "@/lib/relations";
 
 export const dynamic = "force-dynamic";

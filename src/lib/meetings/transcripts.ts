@@ -21,7 +21,8 @@ import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { makeMarkdownBody } from "@/lib/body";
 import { parseItemPayload } from "@/lib/item-input";
-import { ItemError, createItem, updateItem } from "@/lib/items";
+import { ItemError } from "@/lib/items";
+import { createItem, updateItem } from "@/lib/item-mutations";
 import { relateItems } from "@/lib/relations";
 
 export const TRANSCRIPT_TYPE = "transcript";

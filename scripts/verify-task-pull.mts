@@ -21,7 +21,7 @@ const {
 } = await import("../src/lib/events/task-pull");
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { relateItems } = await import("../src/lib/relations");
 const { resolveEventTaskPull } = await import("../src/lib/events/task-pull-service");
 const { eq, inArray } = await import("drizzle-orm");

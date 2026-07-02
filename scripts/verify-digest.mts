@@ -13,7 +13,8 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, users, activityEvents } = await import("../src/db/schema");
-const { createItem, getItem } = await import("../src/lib/items");
+const { getItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { setHome } = await import("../src/lib/relations");
 const { digestStatus, composeDigest, daysUntil } = await import("../src/lib/digest/compose");
 const { runDigestNotify } = await import("../src/lib/digest/notify");

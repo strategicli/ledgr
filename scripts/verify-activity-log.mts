@@ -14,7 +14,11 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, users, activityEvents } = await import("../src/db/schema");
-const { createItem, updateItem, toggleItemDone } = await import("../src/lib/items");
+const {
+  createItem,
+  updateItem,
+  toggleItemDone,
+} = await import("../src/lib/item-mutations");
 const { setHome } = await import("../src/lib/relations");
 const { listActivity, lastReviewedAt, reviewCheckin } = await import("../src/lib/activity");
 const { eq, inArray } = await import("drizzle-orm");

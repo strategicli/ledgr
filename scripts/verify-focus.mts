@@ -32,7 +32,7 @@ check("soft cap is 3", FOCUS_SOFT_CAP === 3);
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { getTodayData } = await import("../src/lib/today");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 

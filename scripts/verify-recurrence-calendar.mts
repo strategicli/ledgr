@@ -87,7 +87,11 @@ console.log("\n# Pure: addSkippedInstance + instanceState");
 // SERVICE half (live Neon)
 const { getDb } = await import("../src/db");
 const { items, relations, users } = await import("../src/db/schema");
-const { createItem, updateItem, getItem } = await import("../src/lib/items");
+const { getItem } = await import("../src/lib/items");
+const {
+  createItem,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { toggleOccurrenceCompletion, carveOccurrence, OCCURRENCE_ROLE } = await import(
   "../src/lib/recurrence-service"
 );

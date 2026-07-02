@@ -18,8 +18,15 @@ const { getDb } = await import("../src/db");
 const { attachments, items, relations, users } = await import(
   "../src/db/schema"
 );
-const { ItemError, createItem, listItemsQuery, restoreRevision, updateItem } =
-  await import("../src/lib/items");
+const {
+  ItemError,
+  listItemsQuery,
+} = await import("../src/lib/items");
+const {
+  createItem,
+  restoreRevision,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { MENTION_ROLE } = await import("../src/lib/mentions");
 const { and, eq, inArray } = await import("drizzle-orm");
 

@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { errorResponse, parseItemPayload, requireOwner } from "@/lib/api";
 import {
   ITEM_STATUSES,
-  createItem,
   listItems,
   type ItemStatus,
   type ListOptions,
 } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import { resolveMentions } from "@/lib/mentions";
 
 export const dynamic = "force-dynamic";

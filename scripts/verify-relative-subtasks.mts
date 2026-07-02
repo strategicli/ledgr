@@ -44,7 +44,11 @@ eq("describe -1", describeOffset(-1), "−1d");
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem, updateItem, getItem } = await import("../src/lib/items");
+const { getItem } = await import("../src/lib/items");
+const {
+  createItem,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { cloneItemSubtree } = await import("../src/lib/clone");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 

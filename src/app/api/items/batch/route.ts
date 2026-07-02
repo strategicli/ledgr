@@ -5,7 +5,8 @@ import {
   parseItemPayload,
   requireOwner,
 } from "@/lib/api";
-import { ItemError, softDeleteItem, updateItem } from "@/lib/items";
+import { ItemError } from "@/lib/items";
+import { softDeleteItem, updateItem } from "@/lib/item-mutations";
 import { captureError } from "@/lib/log";
 
 // Bulk item operations for the multi-select layer (ADR-118). The in-app

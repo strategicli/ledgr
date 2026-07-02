@@ -6,11 +6,8 @@
 // and a validation lib isn't worth a dependency, rule 5): one place that turns
 // request JSON into a well-formed ItemInput/ItemPatch.
 import { isItemBody } from "@/lib/body";
-import {
-  ItemError,
-  type ItemInput,
-  type ItemPatch,
-} from "@/lib/items";
+import { ItemError } from "@/lib/items";
+import { type ItemInput, type ItemPatch } from "@/lib/item-mutations";
 import { toPriority } from "@/lib/priority";
 
 const UUID_RE =

@@ -10,7 +10,11 @@ const { getDb } = await import("../src/db");
 const { users } = await import("../src/db/schema");
 const { getType } = await import("../src/lib/types");
 const { resolveStatusSchema } = await import("../src/lib/status");
-const { createItem, getItem, softDeleteItem } = await import("../src/lib/items");
+const { getItem } = await import("../src/lib/items");
+const {
+  createItem,
+  softDeleteItem,
+} = await import("../src/lib/item-mutations");
 const { relateItems } = await import("../src/lib/relations");
 const { queryViewItems } = await import("../src/lib/views");
 

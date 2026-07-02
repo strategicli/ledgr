@@ -61,7 +61,7 @@ eq("bad ISO day → null", parseNaturalDate("2026-02-30", T), null);
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { rollOverdueScheduled, countOverdueScheduled } = await import("../src/lib/scheduling");
 const { todayBounds } = await import("../src/lib/today");
 const { eq: dEq, inArray } = await import("drizzle-orm");

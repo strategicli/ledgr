@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { captureError, createLogger } from "@/lib/log";
-import { purgeExpiredTrash } from "@/lib/items";
+import { purgeExpiredTrash } from "@/lib/item-mutations";
 import { purgeExpiredAudio } from "@/lib/attachments";
 import { purgeArchivedNotifications } from "@/lib/notifications";
 

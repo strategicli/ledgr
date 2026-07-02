@@ -23,7 +23,7 @@ const { handleMcpMessage } = await import("../src/lib/mcp/server");
 const { listToolDefs, callTool } = await import("../src/lib/mcp/tools");
 const { createView, parseViewInput } = await import("../src/lib/views");
 const { createTemplate } = await import("../src/lib/templates");
-const { updateItem } = await import("../src/lib/items");
+const { updateItem } = await import("../src/lib/item-mutations");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

@@ -17,17 +17,19 @@ const { getDb } = await import("../src/db");
 const { items, revisions, users } = await import("../src/db/schema");
 const {
   ItemError,
-  createItem,
   getItem,
   listItems,
   listItemsQuery,
   listRevisions,
+} = await import("../src/lib/items");
+const {
+  createItem,
   purgeExpiredTrash,
   restoreItem,
   restoreRevision,
   softDeleteItem,
   updateItem,
-} = await import("../src/lib/items");
+} = await import("../src/lib/item-mutations");
 const { makeMarkdownBody } = await import("../src/lib/body");
 const { eq, inArray, sql } = await import("drizzle-orm");
 

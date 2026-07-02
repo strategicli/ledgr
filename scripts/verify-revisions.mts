@@ -96,7 +96,15 @@ console.log("\n# Pure: large-input coarse fallback");
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, revisions, users } = await import("../src/db/schema");
-const { createItem, getItem, getRevision, listRevisions, restoreRevision } = await import("../src/lib/items");
+const {
+  getItem,
+  getRevision,
+  listRevisions,
+} = await import("../src/lib/items");
+const {
+  createItem,
+  restoreRevision,
+} = await import("../src/lib/item-mutations");
 const { makeMarkdownBody, bodyMarkdown } = await import("../src/lib/body");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 

@@ -10,7 +10,7 @@ import { neon } from "@neondatabase/serverless";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../src/db";
 import { items } from "../src/db/schema";
-import { createItem } from "../src/lib/items";
+import { createItem } from "../src/lib/item-mutations";
 import { CHORDPRO_FORMAT } from "../src/lib/chordpro/types";
 import type { QuoteEntry } from "../src/lib/papers/types";
 

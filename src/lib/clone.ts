@@ -16,12 +16,8 @@ import { items, relations } from "@/db/schema";
 import { MENTION_ROLE } from "@/lib/mentions";
 import { dateToYmdUtc, ymdToUtcDate } from "@/lib/recurrence";
 import { applyOffset, relativeOffsetOf } from "@/lib/relative-subtask";
-import {
-  createItem,
-  getItem,
-  ItemError,
-  type ItemStatus,
-} from "@/lib/items";
+import { getItem, ItemError, type ItemStatus } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 
 // Property keys that are occurrence-specific machinery and must never ride a
 // clone (a fresh occurrence is not recurring itself, carries no completion log,

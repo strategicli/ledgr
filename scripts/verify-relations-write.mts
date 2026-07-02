@@ -15,9 +15,12 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, relations, users } = await import("../src/db/schema");
-const { ItemError, createItem, softDeleteItem, updateItem } = await import(
-  "../src/lib/items"
-);
+const { ItemError } = await import("../src/lib/items");
+const {
+  createItem,
+  softDeleteItem,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { confirmRelations, listRelatedItems, relateItems, unrelateItems } =
   await import("../src/lib/relations");
 const { makeMarkdownBody } = await import("../src/lib/body");

@@ -116,7 +116,7 @@ console.log("\n# Pure: ICS builder — timed blocks");
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { listIcsTasks } = await import("../src/lib/ics-data");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 

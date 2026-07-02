@@ -25,7 +25,8 @@ const { validateMatchConfig, parseMatchConfig } = await import(
 const { listEventRules, matchEventToTemplate } = await import(
   "../src/lib/calendar/event-rules"
 );
-const { ItemError, softDeleteItem } = await import("../src/lib/items");
+const { ItemError } = await import("../src/lib/items");
+const { softDeleteItem } = await import("../src/lib/item-mutations");
 const { eq, inArray } = await import("drizzle-orm");
 
 type CalendarEvent = import("../src/lib/calendar/types").CalendarEvent;

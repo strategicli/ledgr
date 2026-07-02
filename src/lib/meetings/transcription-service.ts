@@ -13,7 +13,8 @@ import { getDb } from "@/db";
 import { attachments, items } from "@/db/schema";
 import { markAudioForPurge } from "@/lib/attachments";
 import { makeMarkdownBody } from "@/lib/body";
-import { ItemError, getItem, updateItem } from "@/lib/items";
+import { ItemError, getItem } from "@/lib/items";
+import { updateItem } from "@/lib/item-mutations";
 import { getStorage } from "@/lib/storage";
 import {
   getTranscription,

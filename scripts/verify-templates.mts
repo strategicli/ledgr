@@ -37,8 +37,17 @@ const { cloneItemSubtree } = await import("../src/lib/clone");
 const { bodyMarkdown } = await import("../src/lib/body");
 const { dateToYmdUtc } = await import("../src/lib/recurrence");
 const { createType, deleteType, countLiveItemsOfType } = await import("../src/lib/types");
-const { ItemError, createItem, getItem, listItems, itemCountsByType, updateItem, softDeleteItem } =
-  await import("../src/lib/items");
+const {
+  ItemError,
+  getItem,
+  listItems,
+  itemCountsByType,
+} = await import("../src/lib/items");
+const {
+  createItem,
+  updateItem,
+  softDeleteItem,
+} = await import("../src/lib/item-mutations");
 const { searchItems } = await import("../src/lib/search");
 const { queryViewItems } = await import("../src/lib/views");
 const { getTodayData } = await import("../src/lib/today");

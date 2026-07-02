@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { restoreItem } from "@/lib/items";
+import { restoreItem } from "@/lib/item-mutations";
 
 export const dynamic = "force-dynamic";
 

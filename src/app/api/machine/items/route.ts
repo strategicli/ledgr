@@ -4,12 +4,11 @@ import { verifyMachineToken } from "@/lib/auth/machine";
 import {
   ITEM_STATUSES,
   ItemError,
-  createItem,
   listItems,
-  updateItem,
   type ItemStatus,
   type ListOptions,
 } from "@/lib/items";
+import { createItem, updateItem } from "@/lib/item-mutations";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { captureError, createLogger } from "@/lib/log";
 

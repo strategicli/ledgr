@@ -35,7 +35,15 @@ console.log("\n# Pure: bodyDigest");
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem, getItem, getItemVersion, updateItem, ItemError } = await import("../src/lib/items");
+const {
+  getItem,
+  getItemVersion,
+  ItemError,
+} = await import("../src/lib/items");
+const {
+  createItem,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 
 async function throwsConflict(name: string, fn: () => Promise<unknown>) {
