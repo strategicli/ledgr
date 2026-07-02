@@ -107,7 +107,7 @@ export default function BodyEditor({
 
   let child: React.ReactNode;
   if (mode === "preview") {
-    child = <MarkdownPreview key="preview" text={mountText} />;
+    child = <MarkdownPreview key="preview" text={mountText} itemId={itemId} />;
   } else if (mode === "source") {
     child = (
       <RawMarkdownEditor

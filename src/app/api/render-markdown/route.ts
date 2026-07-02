@@ -3,11 +3,14 @@
 // (markdown-render.ts), so a client component can't render markdown itself. It
 // posts the body's current text and gets back the same HTML the print/share
 // document uses. Owner-scoped (the owner rendering their own content, the same
-// trust basis as Save Offline); it touches no row, so it neither reads nor
-// mutates an item, it only transforms the text it is handed.
+// trust basis as Save Offline); with an `itemId` it also resolves that item's
+// live {{item.*}} tokens (LT1) so Preview shows real titles/dates, but it still
+// mutates no row.
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import { markdownToHtml } from "@/lib/markdown-render";
+import { hasItemTokens, resolveItemTokens } from "@/lib/item-tokens";
+import { buildItemTokenContext } from "@/lib/item-tokens-service";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +23,7 @@ export async function POST(request: Request) {
   if (owner instanceof NextResponse) return owner;
 
   try {
-    const { text } = await request.json();
+    const { text, itemId } = await request.json();
     if (typeof text !== "string") {
       return NextResponse.json(
         { error: "text must be a string" },
@@ -30,7 +33,15 @@ export async function POST(request: Request) {
     if (text.length > MAX_RENDER_CHARS) {
       return NextResponse.json({ error: "text too large" }, { status: 413 });
     }
-    return NextResponse.json({ html: markdownToHtml(text) });
+    // Resolve live tokens against the item's current state when the caller names
+    // it (Preview passes the open item's id). No id, or an id that isn't the
+    // owner's item, renders the raw text as before.
+    let toRender = text;
+    if (typeof itemId === "string" && itemId && hasItemTokens(text)) {
+      const ctx = await buildItemTokenContext(owner.id, itemId);
+      if (ctx) toRender = resolveItemTokens(text, ctx);
+    }
+    return NextResponse.json({ html: markdownToHtml(toRender) });
   } catch (err) {
     if (err instanceof SyntaxError) {
       return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
