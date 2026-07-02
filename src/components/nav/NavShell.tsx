@@ -22,12 +22,14 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type TouchEvent as ReactTouchEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import BuildSidebar from "@/components/nav/BuildSidebar";
 import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
 import {
@@ -492,7 +494,12 @@ export default function NavShell({
   // A popover opened from the scrolling mobile bar can't use absolute positioning
   // (the scroll strip clips it), so we anchor it `fixed` above the measured
   // trigger, centered and clamped to the viewport. `width` is the popover's px
-  // width so the clamp keeps it fully on screen.
+  // width so the clamp keeps it fully on screen. These are viewport coordinates,
+  // which is ONLY correct because the popover is portaled to <body> (mountFixed):
+  // the mobile pill has both `-translate-x-1/2` (transform) and `backdrop-blur`
+  // (backdrop-filter), and each makes a `fixed` descendant resolve against the
+  // pill's box, not the viewport — so an in-tree fixed popover lands in the wrong
+  // place. The portal escapes that containing block (and the scroll clip too).
   const fixedPopoverStyle = (width: number): CSSProperties => {
     if (!popRect) return {};
     const centerX = popRect.left + popRect.width / 2;
@@ -508,6 +515,15 @@ export default function NavShell({
       transform: "translateX(-50%)",
     };
   };
+
+  // Portal a fixed popover to <body> so it escapes the pill's transform/blur
+  // containing block and the scroll strip's overflow clip. Wrapped in
+  // `data-nav-tools` so the outside-click closer still treats clicks inside it as
+  // "inside" (the portal moves it out of the trigger's DOM subtree).
+  const mountFixed = (node: ReactNode) =>
+    typeof document === "undefined"
+      ? null
+      : createPortal(<div data-nav-tools>{node}</div>, document.body);
 
   // The popover a tools group opens; `posClass` anchors it relative to the slot.
   // On the scrolling mobile bar (`fixed`), it's anchored to the measured trigger
@@ -580,7 +596,10 @@ export default function NavShell({
           >
             {inner}
           </button>
-          {open && toolsPopover(slot, id, toolsPos, fixedPopover)}
+          {open &&
+            (fixedPopover
+              ? mountFixed(toolsPopover(slot, id, "", true))
+              : toolsPopover(slot, id, toolsPos, false))}
         </div>
       );
     }
@@ -607,13 +626,21 @@ export default function NavShell({
           >
             {inner}
           </button>
-          {open && (
-            <FavoritesFlyout
-              posClass={fixedPopover ? "" : toolsPos}
-              fixedStyle={fixedPopover ? fixedPopoverStyle(256) : undefined}
-              onNavigate={() => setOpenTools(null)}
-            />
-          )}
+          {open &&
+            (fixedPopover
+              ? mountFixed(
+                  <FavoritesFlyout
+                    posClass=""
+                    fixedStyle={fixedPopoverStyle(256)}
+                    onNavigate={() => setOpenTools(null)}
+                  />
+                )
+              : (
+                <FavoritesFlyout
+                  posClass={toolsPos}
+                  onNavigate={() => setOpenTools(null)}
+                />
+              ))}
         </div>
       );
     }
