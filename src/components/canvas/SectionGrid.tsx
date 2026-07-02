@@ -12,12 +12,16 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import RemoveSection from "@/components/canvas/RemoveSection";
+import SectionCountGear from "@/components/canvas/SectionCountGear";
 import type { Composition, RecordWidget } from "@/lib/composition";
 
 // Widgets rendered in the header strip (not cards) — kept out of the reorder.
 const HEADER_WIDGETS = new Set(["status", "people", "progress"]);
 
-export type SectionItem = { instanceId: string; title: string; body: ReactNode };
+// `countLimit` present → this card previews a collection and gets the hover
+// "show N" gear (its current per-card limit). Undefined → no gear (Overview,
+// derived single-value cards).
+export type SectionItem = { instanceId: string; title: string; body: ReactNode; countLimit?: number };
 
 export default function SectionGrid({
   itemId,
@@ -130,6 +134,15 @@ export default function SectionGrid({
               <h3 className="min-w-0 flex-1 truncate text-xs font-medium uppercase tracking-wide text-neutral-500">
                 {it.title}
               </h3>
+              {it.countLimit !== undefined && (
+                <SectionCountGear
+                  itemId={itemId}
+                  composition={composition}
+                  instanceId={id}
+                  current={it.countLimit}
+                  label={it.title}
+                />
+              )}
               <RemoveSection itemId={itemId} composition={composition} instanceId={id} label={it.title} />
             </div>
             {it.body}

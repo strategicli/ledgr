@@ -294,6 +294,29 @@ export async function setHome(
   return rows[0];
 }
 
+// The record a child primarily LIVES in — its home-edge parent (id + type), or
+// null. Used to bubble a note jotted on a meeting up to the meeting's containing
+// project, so it also surfaces in that project's Docs box (Tyler, 2026-07-01).
+export async function homeParentRecord(
+  ownerId: string,
+  childId: string
+): Promise<{ id: string; type: string } | null> {
+  const rows = await getDb()
+    .select({ id: items.id, type: items.type })
+    .from(relations)
+    .innerJoin(items, eq(items.id, relations.targetId))
+    .where(
+      and(
+        eq(relations.sourceId, childId),
+        eq(relations.home, true),
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 // Map a contained child's type to its activity kind on the parent's timeline.
 const CONTAINMENT_KIND: Record<string, ActivityKind> = {
   task: "task_added",

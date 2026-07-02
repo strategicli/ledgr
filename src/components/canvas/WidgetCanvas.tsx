@@ -25,10 +25,11 @@ import NotesWidget from "@/components/canvas/widgets/NotesWidget";
 import LinksWidget from "@/components/canvas/widgets/LinksWidget";
 import MilestonesWidget from "@/components/canvas/widgets/MilestonesWidget";
 import MeetingsWidget from "@/components/canvas/widgets/MeetingsWidget";
+import MindmapWidget from "@/components/canvas/widgets/MindmapWidget";
 import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
 import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import type { CanvasProps } from "@/lib/modules";
-import { resolveComposition, type Composition } from "@/lib/composition";
+import { resolveComposition, widgetLimit, type Composition } from "@/lib/composition";
 import { progressPct } from "@/lib/project-progress";
 import { resolveStatusSchema } from "@/lib/status";
 import { availableWidgets } from "@/lib/widgets";
@@ -45,14 +46,15 @@ const CARD_TITLE: Record<string, string> = { notes: "Docs" };
 
 // The sections a Project offers on the "+ Add section" menu (Tyler, 2026-07-01):
 // the four defaults (so a removed one can return) plus Overview / Recent Activity
-// / Timeline, and the header widgets (so a removed Status/People/Progress can be
-// re-added). Links / Mindmap / Related Records are intentionally left out for now.
+// / Timeline / Mindmap, and the header widgets (so a removed Status/People/
+// Progress can be re-added). Mindmap is opt-in (added as a block, not a default).
 const PROJECT_SECTIONS = new Set([
   "tasks",
   "milestones",
   "notes",
   "meetings",
   "links",
+  "mindmap",
   "overview",
   "recentActivity",
   "timeline",
@@ -91,7 +93,8 @@ function EmptyState({ children }: { children: ReactNode }) {
 function ItemList({ data }: { data: RecordWidgetData }) {
   const items = data.items ?? [];
   if (items.length === 0) return <EmptyState>Nothing here yet.</EmptyState>;
-  const more = (data.count ?? items.length) - items.length;
+  // Overflow ("+N more") is handled by the shared CardBody footer as a link into
+  // the full collection page, so the list itself just renders its preview rows.
   return (
     <ul className="flex flex-col gap-1">
       {items.map((it) => {
@@ -107,7 +110,6 @@ function ItemList({ data }: { data: RecordWidgetData }) {
           </li>
         );
       })}
-      {more > 0 && <li className="text-xs text-neutral-500">+{more} more</li>}
     </ul>
   );
 }
@@ -118,10 +120,9 @@ function HeaderProgress({ data }: { data: RecordWidgetData }) {
   if (!p) return null;
   const pct = progressPct(p);
   return (
-    <div className="flex max-w-md flex-col gap-1">
+    <div className="flex max-w-2xl flex-col gap-1">
       <div className="flex items-center justify-between text-xs text-neutral-400">
         <span>{pct === null ? "Nothing to track yet" : `${pct}% complete`}</span>
-        {pct !== null && <span className="text-neutral-600">{Math.round(p.done)}/{Math.round(p.total)} pts</span>}
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
         <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct ?? 0}%` }} />
@@ -130,7 +131,45 @@ function HeaderProgress({ data }: { data: RecordWidgetData }) {
   );
 }
 
-function CardBody({
+// A card widget that surfaces its own collection page (Tasks/Docs/Meetings/
+// Milestones/Links, and Related Records) — the ones the drill-down + count gear
+// apply to. People renders in the header, not a card, so it's excluded; so is
+// Mindmap (cardinality "one" — a launcher, no "show N"/drill-down).
+function isBucketWidget(data: RecordWidgetData): boolean {
+  return (
+    (Boolean(data.def.recordQuery?.collectionType) && data.def.cardinality === "many") ||
+    data.def.id === "relatedRecords"
+  );
+}
+
+// The card footer for a collection preview: when there are more items than the
+// card shows, link into the full collection page (Tyler, 2026-07-01).
+function CardOverflowLink({ recordId, defId, shown, total }: { recordId: string; defId: string; shown: number; total: number }) {
+  return (
+    <Link
+      href={`/items/${recordId}/collection/${defId}`}
+      className="mt-2 inline-block text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+    >
+      Showing {shown} of {total} →
+    </Link>
+  );
+}
+
+function CardBody(props: { data: RecordWidgetData; recordId: string; projectTitle: string; body: unknown }) {
+  const { data, recordId } = props;
+  const shown = data.items?.length ?? 0;
+  const total = data.count ?? shown;
+  return (
+    <>
+      <WidgetInner {...props} />
+      {isBucketWidget(data) && total > shown && (
+        <CardOverflowLink recordId={recordId} defId={data.def.id} shown={shown} total={total} />
+      )}
+    </>
+  );
+}
+
+function WidgetInner({
   data,
   recordId,
   projectTitle,
@@ -184,6 +223,13 @@ function CardBody({
             title: i.title,
             when: (i.meetingAt ?? i.scheduledDate ?? i.dueDate)?.toISOString() ?? null,
           }))}
+        />
+      );
+    case "mindmap":
+      return (
+        <MindmapWidget
+          recordId={recordId}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title }))}
         />
       );
     case "overview":
@@ -289,19 +335,25 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
       </div>
 
       {hasHeader && (
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-            {peopleData && (
-              <ProjectPeople
-                recordId={item.id}
-                people={(peopleData.items ?? []).map((p) => ({ id: p.id, title: p.title }))}
-              />
-            )}
-            {progressData && <HeaderProgress data={progressData} />}
-          </div>
-          {showStatus && (
-            <div className="shrink-0">
-              <ProjectStatusChip itemId={item.id} statuses={statuses} initial={item.status} />
+        // Progress on top spanning the header (Tyler, 2026-07-01), then People on
+        // the left and the Status pill on the right beneath it.
+        <div className="mb-5 flex flex-col gap-3">
+          {progressData && <HeaderProgress data={progressData} />}
+          {(peopleData || showStatus) && (
+            <div className="flex items-start gap-4">
+              <div className="min-w-0 flex-1">
+                {peopleData && (
+                  <ProjectPeople
+                    recordId={item.id}
+                    people={(peopleData.items ?? []).map((p) => ({ id: p.id, title: p.title }))}
+                  />
+                )}
+              </div>
+              {showStatus && (
+                <div className="shrink-0">
+                  <ProjectStatusChip itemId={item.id} statuses={statuses} initial={item.status} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -318,6 +370,9 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
             instanceId: data.instance.instanceId,
             title: CARD_TITLE[data.def.id] ?? data.def.label,
             body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} />,
+            // Collection/related cards get the hover "show N" gear (default 5);
+            // Overview / Status / derived single-value cards don't.
+            countLimit: isBucketWidget(data) ? widgetLimit(data.instance) : undefined,
           }))}
         />
       )}

@@ -212,3 +212,16 @@ export function addableWidgets(comp: Composition, available: { id: string }[]): 
 export function isWidgetEnabled(comp: Composition, defId: string): boolean {
   return comp.widgets.some((iw) => iw.defId === defId && !iw.hidden);
 }
+
+// The per-card preview cap for a collection/related widget (Tyler, 2026-07-01):
+// how many rows the card shows before offering a "Showing N of M →" link into
+// the full collection page. Stored per instance (the card's hover gear writes
+// options.limit); default 5, clamped [1, 50]. Pure + client-safe so the fan-out,
+// the canvas, and the gear all read one rule.
+export const WIDGET_LIMIT_DEFAULT = 5;
+export const WIDGET_LIMIT_MAX = 50;
+export function widgetLimit(instance: RecordWidget): number {
+  const n = Number(instance.options?.limit);
+  if (!Number.isFinite(n)) return WIDGET_LIMIT_DEFAULT;
+  return Math.min(Math.max(Math.round(n), 1), WIDGET_LIMIT_MAX);
+}

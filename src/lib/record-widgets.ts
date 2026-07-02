@@ -6,7 +6,7 @@
 // + the log. Server-only (queries the DB); the canvas renders what this returns,
 // with no widget-side branching on the record's Type.
 import { listActivity, listActivityForSubjects } from "@/lib/activity";
-import type { Composition, RecordWidget } from "@/lib/composition";
+import { widgetLimit, type Composition, type RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
 import { describeRule, parseRecurrence } from "@/lib/recurrence";
 import {
@@ -152,10 +152,30 @@ function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemR
   };
 }
 
+// Done tasks always sink to the bottom (Tyler, 2026-07-01); within each
+// completion group, by effective date (scheduled ?? due) ascending, undated
+// last. Exported so the card preview AND the full collection page order tasks
+// the same way. Generic over anything carrying the three fields.
+export function sortTasksDoneLast<T extends { statusCategory: string; scheduledDate: Date | null; dueDate: Date | null }>(
+  rows: T[]
+): T[] {
+  const when = (r: T) => {
+    const d = r.scheduledDate ?? r.dueDate;
+    return d ? d.getTime() : Number.POSITIVE_INFINITY;
+  };
+  return [...rows].sort((a, b) => {
+    const ad = a.statusCategory === "done" ? 1 : 0;
+    const bd = b.statusCategory === "done" ? 1 : 0;
+    if (ad !== bd) return ad - bd; // open (0) before done (1)
+    return when(a) - when(b);
+  });
+}
+
 // The bound filter for a collection/relation widget: items related to this
 // record. Contained collections (role "project"/"contains") are home-scoped
-// (what LIVES here); people/related are direction-blind associations.
-function boundFilter(def: WidgetDefinition, recordId: string): ViewFilter | null {
+// (what LIVES here); people/related are direction-blind associations. Exported
+// so the collection drill-down page resolves the same query the card previews.
+export function boundFilter(def: WidgetDefinition, recordId: string): ViewFilter | null {
   const q = def.recordQuery;
   if (!q) return null;
   const filter: ViewFilter = { relatedTo: recordId };
@@ -263,23 +283,22 @@ async function dataForWidget(
     const home = related
       .filter((r) => (r as { home?: boolean }).home)
       .filter((r) => (typeFilter ? r.type === typeFilter : true));
-    return {
-      ...base,
-      items: home.map((r) => ({
-        id: r.id,
-        type: r.type,
-        title: r.title,
-        status: r.status,
-        statusCategory: r.statusCategory,
-        dueDate: r.dueDate,
-        scheduledDate: r.scheduledDate,
-        urgency: r.urgency,
-        meetingAt: r.meetingAt,
-        url: (r as { url?: string | null }).url ?? null,
-        recurrence: null,
-      })),
-      count: home.length,
-    };
+    const mapped = home.map((r) => ({
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      status: r.status,
+      statusCategory: r.statusCategory,
+      dueDate: r.dueDate,
+      scheduledDate: r.scheduledDate,
+      urgency: r.urgency,
+      meetingAt: r.meetingAt,
+      url: (r as { url?: string | null }).url ?? null,
+      recurrence: null,
+    }));
+    // Preview cap (Tyler, 2026-07-01): show `limit`, keep the true count for the
+    // "Showing N of M →" drill-down.
+    return { ...base, items: mapped.slice(0, widgetLimit(instance)), count: mapped.length };
   }
 
   if (def.id === "timeline") {
@@ -298,14 +317,22 @@ async function dataForWidget(
     return { ...base, timeline: entries };
   }
 
-  // Collection + people widgets: a bound query.
+  // Collection + people widgets: a bound query. The card shows only a PREVIEW —
+  // `limit` rows (the hover gear's options.limit, default 5) — while `count` is
+  // the true total, so the card can offer "Showing 5 of 20 →" into the full
+  // collection page. People is the header chip row (no card, no gear), so it's
+  // never capped. We fetch a headroom window and slice, so the task done-sink
+  // sort can run over more than just the previewed rows.
   const filter = boundFilter(def, record.id);
   if (filter) {
+    const limit = def.id === "people" ? COLLECTION_LIMIT : widgetLimit(instance);
     const [rows, count] = await Promise.all([
       queryViewItems(ownerId, filter, { field: "updatedAt", dir: "desc" }, COLLECTION_LIMIT),
       countViewItems(ownerId, filter),
     ]);
-    return { ...base, items: rows.map(row), count };
+    let mapped = rows.map(row);
+    if (def.recordQuery?.collectionType === "task") mapped = sortTasksDoneLast(mapped);
+    return { ...base, items: mapped.slice(0, limit), count };
   }
 
   // timeline + any unmapped derived: leave for PJ6/PJ11; render an empty state.

@@ -25,6 +25,7 @@ import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 import { bodyMarkdown } from "@/lib/body";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
+import MeetingNotes from "@/components/meetings/MeetingNotes";
 import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
 import { promotedBlockRefs } from "@/lib/meetings/promote";
 import { getItem } from "@/lib/items";
@@ -201,6 +202,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
         );
       if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} bare />;
+      if (id === "meetingNotes") return <MeetingNotes ownerId={ownerId} itemId={item.id} bare />;
       if (id === "meetingTranscripts")
         return <MeetingTranscripts ownerId={ownerId} itemId={item.id} bare />;
       if (id.startsWith("prop:")) {
@@ -313,6 +315,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Meeting prep (PRD §5.1): the people, their open tasks, recent
           meetings, and action-item -> task promotion. */}
       {item.type === "event" && <MeetingPrep ownerId={ownerId} itemId={item.id} />}
+      {/* Notes (Tyler, 2026-07-01): jot notes on the meeting; each is a `note`
+          filed under the meeting AND its project, so it also shows in Docs. */}
+      {item.type === "event" && <MeetingNotes ownerId={ownerId} itemId={item.id} />}
       {/* Transcripts (meeting recording v1a, ADR-087): paste/list a meeting's
           transcripts (each its own item), the pivot for Claude-over-MCP minutes. */}
       {item.type === "event" && <MeetingTranscripts ownerId={ownerId} itemId={item.id} />}
