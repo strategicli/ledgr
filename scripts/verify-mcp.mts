@@ -166,6 +166,17 @@ try {
   check("get_item returns the markdown body verbatim", got.body === "Discuss the Zentaur **budget**.");
   check("get_item lists the related person as confirmed", (got.related as Json[]).some((r) => r.id === entity.id && r.matchState === "confirmed"));
 
+  // LT3: get_item resolveTokens resolves live {{item.*}} tokens in title + body.
+  const tokItem = await callJson(ownerId, "create_item", {
+    type: "task",
+    title: "Token check",
+    bodyMarkdown: "Title is {{item.title}}; raw {{item.bogus}} stays.",
+  });
+  const rawGot = await callJson(ownerId, "get_item", { id: tokItem.id as string });
+  check("get_item leaves tokens raw by default", rawGot.body === "Title is {{item.title}}; raw {{item.bogus}} stays.");
+  const resGot = await callJson(ownerId, "get_item", { id: tokItem.id as string, resolveTokens: true });
+  check("get_item resolveTokens resolves item.title", resGot.body === "Title is Token check; raw {{item.bogus}} stays.");
+
   const search = await callJson(ownerId, "search_items", { query: "Zentaur" });
   check("search_items finds the items (FTS over title+body)", (search.count as number) >= 2 && itemsOf(search).some((i) => i.id === task.id));
   const searchEntity = await callJson(ownerId, "search_items", { query: "Zentaur", type: "person" });

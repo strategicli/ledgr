@@ -9,6 +9,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments, items, jobState } from "@/db/schema";
 import { bodyMarkdown } from "@/lib/body";
+import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { normalizeListIndent } from "@/lib/markdown-render";
 import { getStorage } from "@/lib/storage";
 import { APP_TIMEZONE } from "@/lib/today";
@@ -238,7 +239,17 @@ export async function runExport(
     try {
       const inArchive = item.deletedAt !== null || item.statusCategory === "archived";
       const year = yearInZone(item.createdAt);
-      const name = `${slugify(item.title)}-${item.id.slice(0, 8)}.md`;
+      // Resolve live {{item.*}} tokens against the item's current state (LT3):
+      // an exported .md is a derived output, so it bakes the resolved values (the
+      // DB keeps the tokens — ADR-037). Only items that actually contain tokens
+      // pay for the context build (resolveItemBodyTokens short-circuits).
+      const resolved = await resolveItemBodyTokens(ownerId, {
+        id: item.id,
+        title: item.title,
+        body: item.body,
+      });
+      const exportItem = { ...item, title: resolved.title, body: resolved.body };
+      const name = `${slugify(exportItem.title)}-${item.id.slice(0, 8)}.md`;
       const desired = `${inArchive ? "_archive/" : ""}${item.type}/${year}/${name}`;
 
       const [people, atts] = [
@@ -256,7 +267,7 @@ export async function runExport(
       // matching the in-app editor and print/share render. Legacy import content
       // nested at 2 spaces would otherwise flatten. (Same pass markdown-render
       // applies; see its rationale.)
-      const content = `${buildFrontmatter(item, people, atts.paths)}\n\n${normalizeListIndent(bodyMarkdown(item.body))}\n`;
+      const content = `${buildFrontmatter(exportItem, people, atts.paths)}\n\n${normalizeListIndent(bodyMarkdown(exportItem.body))}\n`;
       await target.putFile(desired, content);
       // A rename, retype, or live<->archive move leaves a stale file at the
       // old path; the put above already wrote the replacement.
