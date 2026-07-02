@@ -579,7 +579,7 @@ export default function NavSlotEditor({
               disabled={children.length >= MAX_TOOLS_CHILDREN}
               className="self-start rounded border border-neutral-800 px-2.5 py-1 text-sm text-neutral-300 hover:border-neutral-700 hover:bg-neutral-800/60 disabled:opacity-40"
             >
-              + Add destination{children.length >= MAX_TOOLS_CHILDREN ? " (max 8)" : ""}
+              + Add destination{children.length >= MAX_TOOLS_CHILDREN ? ` (max ${MAX_TOOLS_CHILDREN})` : ""}
             </button>
           </div>
         </div>

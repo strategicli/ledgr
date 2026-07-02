@@ -44,9 +44,14 @@ function GrabHandle() {
 
 export default function FavoritesFlyout({
   posClass,
+  fixedStyle,
   onNavigate,
 }: {
   posClass: string;
+  // When set (scrolling mobile bar), the flyout is positioned `fixed` from these
+  // inline coords instead of `absolute` via posClass, so it escapes the nav's
+  // horizontal-scroll strip rather than being clipped by it.
+  fixedStyle?: React.CSSProperties;
   onNavigate: () => void;
 }) {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -135,7 +140,8 @@ export default function FavoritesFlyout({
   return (
     <div
       role="menu"
-      className={`absolute z-50 max-h-[calc(100vh-2rem)] w-64 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${posClass}`}
+      style={fixedStyle}
+      className={`${fixedStyle ? "fixed" : "absolute"} z-50 max-h-[calc(100vh-2rem)] w-64 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${fixedStyle ? "" : posClass}`}
     >
       <p className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
         Favorites

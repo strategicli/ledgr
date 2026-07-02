@@ -346,3 +346,23 @@ body {
 body[data-editing="true"] [data-work-nav-pill] {
   display: none;
 }
+
+/* The phone bottom-bar nav scrolls its slot strip horizontally when the owner
+   configures more slots than fit (NavShell floatingPill, scrollable). Hide the
+   scrollbar so the pill stays clean; the strip still scrolls by swipe/wheel. */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
+/* The nav scroll strip snaps slots into place so swiping settles cleanly instead
+   of stopping mid-icon. `proximity` (not `mandatory`) is gentle: it won't fight a
+   small deliberate scroll or the programmatic auto-center of the active slot. */
+.nav-scroll-strip {
+  scroll-snap-type: x proximity;
+}
+.nav-scroll-strip > * {
+  scroll-snap-align: start;
+}
