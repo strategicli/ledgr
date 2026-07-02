@@ -234,6 +234,29 @@ Do it well:
 - **Pin sparingly.** \`pinned\` forces a stump always-on regardless of horizon —
   reserve it for the few facts that must never be missed.
 
+## Maintain the store: revise, don't pile up
+
+A memory store is only useful while it stays clean. Before you \`remember\`
+something, check the stumps you already loaded: if one covers the same ground,
+**update it instead of filing a near-duplicate**. Updating is ordinary item
+work — the memory is a normal item.
+
+- **Update over duplicate.** Found an existing memory on this topic? \`update_item\`
+  its title/body rather than creating a second one that says almost the same
+  thing. Two stumps on one subject is worse than one good stump.
+- **Enrich links as you learn.** When a memory turns out to be about a person or
+  project it isn't yet linked to, add the link (\`relate_items\`) rather than
+  restating the connection in prose.
+- **Keep a confirmed seasonal memory alive.** If a seasonal/episodic memory is
+  still true when it comes up, \`update_item\` it (even a no-op touch) so it stays
+  in the always-on set; let one that's genuinely gone quiet age out on its own.
+- **Correct what's wrong; flag what's stale.** If a memory is now inaccurate,
+  fix it in place. If a memory should be **removed** entirely, say so to the
+  owner and let them delete it — don't silently drop durable facts.
+- **Prefer few, dense memories.** One well-linked stump that captures a standing
+  relationship beats five thin ones. When you notice overlap, merge into the
+  strongest memory and update the rest away.
+
 ## What is *not* a memory
 
 A one-time event ("met for coffee on the 3rd") is usually better as an ordinary

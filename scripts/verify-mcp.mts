@@ -19,7 +19,9 @@ const { getDb } = await import("../src/db");
 const { items, users, views: viewsTable, templates: templatesTable, types: typesTable, dashboards: dashboardsTable } = await import("../src/db/schema");
 const { eq } = await import("drizzle-orm");
 const protocol = await import("../src/lib/mcp/protocol");
-const { handleMcpMessage } = await import("../src/lib/mcp/server");
+const { handleMcpMessage, buildInstructions, INSTRUCTIONS } = await import("../src/lib/mcp/server");
+const { updateSettings } = await import("../src/lib/settings");
+const { getMemoryStumps } = await import("../src/lib/memory");
 const { listToolDefs, callTool } = await import("../src/lib/mcp/tools");
 const { createView, parseViewInput } = await import("../src/lib/views");
 const { createTemplate } = await import("../src/lib/templates");
@@ -63,6 +65,11 @@ check("initialize advertises tools capability", !!(initResult.capabilities as { 
 check("initialize advertises resources capability", !!(initResult.capabilities as { resources?: unknown })?.resources);
 check("initialize serverInfo.name = ledgr", (initResult.serverInfo as { name?: string })?.name === "ledgr");
 check("initialize includes instructions", typeof initResult.instructions === "string" && (initResult.instructions as string).length > 0);
+// AI Memory off (DUMMY has no settings row → default false): the instructions
+// must be byte-identical to the base — a vanilla client never learns the memory
+// concept from the connect-time instructions (ADR-137).
+check("instructions omit the memory addendum when AI Memory off", initResult.instructions === INSTRUCTIONS);
+check("instructions omit the memory addendum when AI Memory off (no marker)", !(initResult.instructions as string).includes("AI MEMORY is on"));
 
 const listRes = await handleMcpMessage({ jsonrpc: "2.0", id: 2, method: "tools/list" }, DUMMY);
 const toolList = (resultOf(listRes).tools ?? []) as { name: string; description: string; inputSchema: { type: string; properties: unknown }; annotations: { readOnlyHint?: boolean } }[];
@@ -367,6 +374,60 @@ try {
   await expectErr("owner2 cannot get_item owner1's item", owner2Id, "get_item", { id: task.id as string });
   const owner2List = await callJson(owner2Id, "list_items", { type: "task" });
   check("owner2's list excludes owner1's task", !itemsOf(owner2List).some((i) => i.id === task.id));
+
+  // --- AI Memory (ADR-137 + AI Memory improvements) -----------------------
+  // Gated off by default: the memory tools are absent and the connect-time
+  // instructions carry no memory addendum.
+  const memToolsOff = await listToolDefs(ownerId);
+  check("memory tools absent before enabling", !memToolsOff.some((d) => d.name === "get_memory_stumps" || d.name === "remember"));
+  const instrOff = await buildInstructions(ownerId);
+  check("instructions omit memory addendum before enabling", instrOff === INSTRUCTIONS);
+  await expectErr("remember rejected before enabling", ownerId, "remember", { title: "should not be stored" });
+
+  // Turn AI Memory on for this throwaway owner and re-check the surface.
+  await updateSettings(ownerId, { aiMemoryEnabled: true });
+  const memToolsOn = await listToolDefs(ownerId);
+  check("memory tools appear once enabled", memToolsOn.some((d) => d.name === "get_memory_stumps") && memToolsOn.some((d) => d.name === "remember"));
+  const instrOn = await buildInstructions(ownerId);
+  check("instructions gain the memory addendum once enabled", instrOn.startsWith(INSTRUCTIONS) && instrOn.includes("AI MEMORY is on") && instrOn.includes("get_memory_stumps"));
+
+  // remember: partial-link hardening — a bad `about` id fails the whole call
+  // and creates NO memory (the fix: validate ids before the create).
+  const beforeBad = await getMemoryStumps(ownerId, { includeAll: true });
+  await expectErr("remember with a bad about id errors", ownerId, "remember", {
+    title: `Should not persist ${stamp}`,
+    about: [DUMMY], // a well-formed UUID that isn't an owned item
+  });
+  const afterBad = await getMemoryStumps(ownerId, { includeAll: true });
+  check("failed remember created no memory (no partial write)", afterBad.length === beforeBad.length);
+
+  // remember: the happy path links the memory to a real item.
+  const goodMem = await callJson(ownerId, "remember", {
+    title: `Roger reports up ${stamp}`,
+    bodyMarkdown: "Test memory.",
+    kind: "reference",
+    horizon: "evergreen",
+    about: [entity.id as string],
+  });
+  check("remember returns a linked memory", (goodMem.about as string[])?.includes(entity.id as string));
+  const stumpsDefault = await getMemoryStumps(ownerId);
+  const remembered = stumpsDefault.find((s) => s.id === goodMem.id);
+  check("get_memory_stumps returns the evergreen memory always-on", !!remembered);
+  check("the stump carries its linked neighbour", !!remembered?.linked.some((l) => l.id === entity.id));
+
+  // Per-horizon aging: seasonal (45d window) vs episodic (10d window). Backdate
+  // updatedAt past the episodic window but inside the seasonal one, then assert
+  // the episodic memory drops out of the default set while the seasonal stays.
+  const elevenDaysAgo = new Date(Date.now() - 11 * 86_400_000);
+  const seasonalMem = await callJson(ownerId, "remember", { title: `Seasonal ${stamp}`, horizon: "seasonal" });
+  const episodicMem = await callJson(ownerId, "remember", { title: `Episodic ${stamp}`, horizon: "episodic" });
+  await db.update(items).set({ updatedAt: elevenDaysAgo }).where(eq(items.id, seasonalMem.id as string));
+  await db.update(items).set({ updatedAt: elevenDaysAgo }).where(eq(items.id, episodicMem.id as string));
+  const agedDefault = await getMemoryStumps(ownerId);
+  check("seasonal memory still always-on at 11 days", agedDefault.some((s) => s.id === seasonalMem.id));
+  check("episodic memory ages out of always-on by 11 days", !agedDefault.some((s) => s.id === episodicMem.id));
+  const agedAll = await getMemoryStumps(ownerId, { includeAll: true });
+  check("aged-out episodic memory still visible via includeAll", agedAll.some((s) => s.id === episodicMem.id));
 } finally {
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(items).where(eq(items.ownerId, owner2Id));
