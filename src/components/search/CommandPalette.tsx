@@ -22,6 +22,7 @@ import {
   rankCommands,
   staticCommandEntries,
 } from "@/lib/command-index";
+import { parseTypeToken } from "@/components/search/type-token";
 
 type ItemHit = { id: string; title: string; type: string };
 type IndexData = {
@@ -59,18 +60,31 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
     return () => ctrl.abort();
   }, []);
 
+  // A leading "/type" token narrows to one type: "/task budget" searches only
+  // tasks; "/person" alone lists recent people. Resolved against the registry
+  // the palette already loaded (data.types), so no extra fetch.
+  const parsed = useMemo(
+    () => parseTypeToken(q, data?.types ?? []),
+    [q, data]
+  );
+
   // Item content search (FTS API), debounced; only while the query is non-empty.
-  // Stale hits stay in state when the query is cleared but are ignored at render
-  // (itemResults gates on the query), so the effect never sets state directly.
+  // With a "/type" token the search is type-scoped (or a plain type listing when
+  // there's no text yet). Stale hits stay in state when the query is cleared but
+  // are ignored at render (itemResults gates on the query), so the effect never
+  // sets state directly.
   useEffect(() => {
     if (!q.trim()) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/search?q=${encodeURIComponent(q.trim())}&limit=8`,
-          { signal: ctrl.signal }
-        );
+        const url =
+          parsed && parsed.rest
+            ? `/api/search?q=${encodeURIComponent(parsed.rest)}&type=${encodeURIComponent(parsed.type.key)}&limit=8`
+            : parsed
+              ? `/api/items?type=${encodeURIComponent(parsed.type.key)}&limit=8`
+              : `/api/search?q=${encodeURIComponent(q.trim())}&limit=8`;
+        const res = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) return;
         const json = (await res.json()) as { items: ItemHit[] };
         setItems(json.items ?? []);
@@ -82,7 +96,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
       ctrl.abort();
       clearTimeout(t);
     };
-  }, [q]);
+  }, [q, parsed]);
 
   const staticEntries = useMemo(() => staticCommandEntries(), []);
   const dynamicEntries = useMemo(
@@ -118,6 +132,9 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
     const cap = q.trim() ? QUERY_GROUP_CAP : EMPTY_GROUP_CAP;
     return groupOrder(mode)
       .map((group) => {
+        // A "/type" token is an item-scoped query — the pages/views/sections
+        // groups don't apply, so drop them and show only matching items.
+        if (parsed && group !== "Items") return { group, results: [] };
         const all =
           group === "Items"
             ? itemResults
@@ -125,7 +142,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
         return { group, results: all.slice(0, cap) };
       })
       .filter((g) => g.results.length > 0);
-  }, [mode, q, ranked, itemResults]);
+  }, [mode, q, ranked, itemResults, parsed]);
 
   // Flatten for keyboard nav. The active index resets to 0 on each keystroke
   // (in the input's onChange) and is clamped at read time, so a list that
@@ -184,6 +201,13 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
           aria-label="Command palette query"
           className="w-full bg-neutral-950 px-4 py-3 text-sm text-neutral-200 outline-none placeholder:text-neutral-600"
         />
+
+        {parsed && (
+          <div className="flex items-center gap-1.5 border-b border-neutral-800 bg-neutral-950 px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            {parsed.type.label}
+            {parsed.rest ? "" : " · type to filter"}
+          </div>
+        )}
 
         {grouped.length > 0 && (
           <div className="max-h-[60vh] overflow-y-auto py-1">

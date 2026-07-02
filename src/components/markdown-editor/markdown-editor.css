@@ -324,6 +324,25 @@
   font-size: 0.85rem;
 }
 
+/* Active "/type" filter header ("/person …"): shows which type the picker is
+   narrowed to. */
+.ledgr-mention-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem 0.35rem;
+  margin-bottom: 0.15rem;
+  border-bottom: 1px solid #2a2a2a;
+  color: #a3a3a3;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ledgr-mention-filter .mention-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
 /* Create-on-miss row (ADR-067): set off from the matches with a top divider
    and a muted "create" affordance. */
 .ledgr-mention-create {

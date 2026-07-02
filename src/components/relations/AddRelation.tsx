@@ -8,7 +8,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  loadTypes,
+  parseTypeToken,
+  type TypeMeta,
+} from "@/components/search/type-token";
 
 type Hit = { id: string; type: string; title: string };
 
@@ -19,25 +24,36 @@ export default function AddRelation({ itemId }: { itemId: string }) {
   const [hits, setHits] = useState<Hit[]>([]);
   const [active, setActive] = useState(0);
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+  const [types, setTypes] = useState<TypeMeta[]>([]);
 
-  const trimmed = q.trim();
+  // Load the registry once the box opens so "/type" tokens resolve.
+  useEffect(() => {
+    if (open && types.length === 0) void loadTypes().then(setTypes);
+  }, [open, types.length]);
+
+  // A leading "/type" token ("/person jane") narrows to one type; the rest is
+  // the title query, and "/person" alone browses recent people.
+  const parsed = useMemo(() => parseTypeToken(q, types), [q, types]);
+  const effective = (parsed ? parsed.rest : q).trim();
+  const typeKey = parsed?.type.key ?? "";
+
   // Offer create-on-miss whenever the name doesn't exactly match a hit.
   const showCreate =
-    trimmed !== "" &&
-    !hits.some((h) => h.title.trim().toLowerCase() === trimmed.toLowerCase());
+    effective !== "" &&
+    !hits.some((h) => h.title.trim().toLowerCase() === effective.toLowerCase());
   const rowCount = hits.length + (showCreate ? 1 : 0);
 
   // Empty queries clear hits in the onChange handler, not here, so the
   // effect only ever talks to the network (react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (!open || !trimmed) return;
+    if (!open || (!effective && !typeKey)) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/items?q=${encodeURIComponent(trimmed)}&limit=8`,
-          { signal: ctrl.signal }
-        );
+        const params = new URLSearchParams({ limit: "8" });
+        if (effective) params.set("q", effective);
+        if (typeKey) params.set("type", typeKey);
+        const res = await fetch(`/api/items?${params}`, { signal: ctrl.signal });
         if (!res.ok) return;
         const data = (await res.json()) as { items: Hit[] };
         setHits(data.items.filter((h) => h.id !== itemId));
@@ -50,7 +66,7 @@ export default function AddRelation({ itemId }: { itemId: string }) {
       ctrl.abort();
       clearTimeout(t);
     };
-  }, [trimmed, open, itemId]);
+  }, [effective, typeKey, open, itemId]);
 
   async function relateTo(targetId: string) {
     const res = await fetch(`/api/items/${itemId}/relations`, {
@@ -75,16 +91,21 @@ export default function AddRelation({ itemId }: { itemId: string }) {
     }
   }
 
-  // Create-on-miss: an `unmarked` item (the type is unknown here, so it goes to
-  // the Inbox for triage — ADR-067), then relate it like any other.
+  // Create-on-miss: the token's type when one is active ("/person Jane" creates
+  // a person), else `unmarked` for later triage (ADR-067). Then relate it like
+  // any other.
   async function createAndRelate() {
-    if (state === "busy" || !trimmed) return;
+    if (state === "busy" || !effective) return;
     setState("busy");
     try {
       const res = await fetch(`/api/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "unmarked", title: trimmed, inbox: true }),
+        body: JSON.stringify({
+          type: typeKey || "unmarked",
+          title: effective,
+          inbox: true,
+        }),
       });
       if (!res.ok) throw new Error(String(res.status));
       const { item } = (await res.json()) as { item: { id: string } };
@@ -144,8 +165,13 @@ export default function AddRelation({ itemId }: { itemId: string }) {
       {state === "error" && (
         <span className="text-xs text-red-400">Failed, Enter to retry</span>
       )}
-      {(hits.length > 0 || showCreate) && (
+      {(hits.length > 0 || showCreate || parsed) && (
         <ul className="absolute left-2 top-full z-10 mt-1 w-full max-w-sm overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50">
+          {parsed && (
+            <li className="flex items-center gap-1.5 border-b border-neutral-800 px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+              {parsed.type.label}
+            </li>
+          )}
           {hits.map((hit, i) => (
             <li key={hit.id}>
               <button
@@ -181,9 +207,11 @@ export default function AddRelation({ itemId }: { itemId: string }) {
                   active === hits.length ? "bg-neutral-800" : ""
                 }`}
               >
-                <span className="text-neutral-400">Create</span>
+                <span className="text-neutral-400">
+                  {parsed ? `Create ${parsed.type.label}` : "Create"}
+                </span>
                 <span className="min-w-0 flex-1 truncate text-neutral-100">
-                  “{trimmed}”
+                  “{effective}”
                 </span>
                 <span className="shrink-0 text-xs text-neutral-500">to Inbox</span>
               </button>

@@ -5,7 +5,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { parseTypeToken } from "@/components/search/type-token";
 
 type Option = { value: string; label: string };
 
@@ -66,17 +67,27 @@ export default function SearchClient({
   const [fetched, setFetched] = useState<ResultRow[] | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
 
+  // A leading "/type" token in the box narrows to one type ("/note budget");
+  // it overrides the Type dropdown and the remaining text is the query. Resolved
+  // against the same registry that fills the dropdown.
+  const parsed = useMemo(
+    () => parseTypeToken(q, types.map((t) => ({ key: t.value, label: t.label, icon: null }))),
+    [q, types]
+  );
+  const apiQ = (parsed ? parsed.rest : q).trim();
+  const apiType = parsed ? parsed.type.key : type;
+
   // State changes happen only inside the debounced callback (the React
   // compiler rejects synchronous setState in an effect body); the blank-
   // query case is derived at render time below instead of stored.
   useEffect(() => {
-    if (!q.trim()) return;
+    if (!apiQ) return;
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       setStatus("loading");
       try {
-        const params = new URLSearchParams({ q });
-        if (type) params.set("type", type);
+        const params = new URLSearchParams({ q: apiQ });
+        if (apiType) params.set("type", apiType);
         if (person) params.set("person", person);
         if (from) params.set("from", from);
         if (to) params.set("to", to);
@@ -95,10 +106,12 @@ export default function SearchClient({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [q, type, person, from, to]);
+  }, [apiQ, apiType, person, from, to]);
 
-  const active = q.trim().length > 0;
+  const active = apiQ.length > 0;
   const results = active ? fetched : null;
+  // "/type" with nothing typed yet: the box has a token but no query text.
+  const awaitingText = parsed !== null && parsed.rest.trim() === "";
 
   return (
     <div>
@@ -116,9 +129,11 @@ export default function SearchClient({
         <label className="flex items-center gap-1.5 text-xs text-neutral-500">
           Type
           <select
-            value={type}
+            value={apiType}
             onChange={(e) => setType(e.target.value)}
-            className={selectClass}
+            disabled={parsed !== null}
+            title={parsed ? "Filtered by the /type in the search box" : undefined}
+            className={`${selectClass} disabled:opacity-60`}
           >
             <option value="">any</option>
             {types.map((t) => (
@@ -164,6 +179,11 @@ export default function SearchClient({
       </div>
 
       <div className="mt-6">
+        {awaitingText && (
+          <p className="px-2 text-sm text-neutral-600">
+            Keep typing to search {parsed?.type.label}.
+          </p>
+        )}
         {active && status === "error" && (
           <p className="px-2 text-sm text-red-400">
             Search failed; keep typing to retry.

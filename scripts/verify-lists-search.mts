@@ -25,7 +25,11 @@ const { listPersonOptions, queryViewItems, viewItemsQuery } = await import(
   "../src/lib/views"
 );
 const { searchItems, searchItemsQuery } = await import("../src/lib/search");
-const { inArray, sql } = await import("drizzle-orm");
+const { listItems } = await import("../src/lib/items");
+const { parseTypeToken } = await import(
+  "../src/components/search/type-token"
+);
+const { eq, inArray, sql } = await import("drizzle-orm");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -255,6 +259,63 @@ try {
   await softDeleteItem(ownerId, note.id);
   const afterTrash = await searchItems(ownerId, "xylophone");
   check("trashed items drop out of search", !afterTrash.some((r) => r.id === note.id));
+
+  // 7. Picker ranking (listItems q=): match quality beats recency, so a short,
+  // rarely-edited title isn't buried under long ones that merely contain it.
+  const rankPerson = await createItem(ownerId, { type: "person", title: "Rank Casey" });
+  const rankNoteLong = await createItem(ownerId, { type: "note", title: "Rank Casey article about doctrine" });
+  const rankNoteMid = await createItem(ownerId, { type: "note", title: "Rank Casey meeting follow-up" });
+  created.push(rankPerson.id, rankNoteLong.id, rankNoteMid.id);
+  // Force the person to be the OLDEST of the three, so recency-only ordering
+  // would rank it last — the ranking must override that.
+  await db
+    .update(items)
+    .set({ updatedAt: new Date(Date.now() - 90 * dayMs) })
+    .where(eq(items.id, rankPerson.id));
+
+  const exact = await listItems(ownerId, { q: "Rank Casey" });
+  const exactIds = exact.map((r) => r.id);
+  check(
+    "exact title match ranks first despite being oldest",
+    exactIds.indexOf(rankPerson.id) === 0 &&
+      exactIds.indexOf(rankPerson.id) < exactIds.indexOf(rankNoteLong.id) &&
+      exactIds.indexOf(rankPerson.id) < exactIds.indexOf(rankNoteMid.id),
+    exactIds
+      .filter((id) => created.includes(id))
+      .map((id) => exact.find((r) => r.id === id)?.title)
+      .join(" | ")
+  );
+
+  // No exact match ("rank case" is a prefix of all three): the closest/shortest
+  // title (the person) still wins via trigram similarity.
+  const partial = await listItems(ownerId, { q: "rank case" });
+  const partialIds = partial.map((r) => r.id);
+  check(
+    "closest (shortest) title wins on similarity when no exact match",
+    partialIds.indexOf(rankPerson.id) <
+      partialIds.indexOf(rankNoteLong.id),
+    partialIds
+      .filter((id) => created.includes(id))
+      .map((id) => partial.find((r) => r.id === id)?.title)
+      .join(" | ")
+  );
+
+  // 8. "/type" token parser (pure; synthetic registry to pin ambiguity).
+  const tokTypes = [
+    { key: "person", label: "Person", icon: null },
+    { key: "passage", label: "Passage", icon: null },
+    { key: "task", label: "Task", icon: null },
+  ];
+  const pPerson = parseTypeToken("/person bob", tokTypes);
+  check("token: exact key + rest", pPerson?.type.key === "person" && pPerson?.rest === "bob");
+  check("token: label match", parseTypeToken("/Task write agenda", tokTypes)?.type.key === "task");
+  check("token: unique prefix resolves", parseTypeToken("/per bob", tokTypes)?.type.key === "person");
+  check("token: unique prefix (passage)", parseTypeToken("/pa psalm", tokTypes)?.type.key === "passage");
+  check("token: no rest browses the type", parseTypeToken("/task", tokTypes)?.rest === "");
+  check("token: ambiguous prefix -> null", parseTypeToken("/p bob", tokTypes) === null);
+  check("token: unknown -> null", parseTypeToken("/xyz bob", tokTypes) === null);
+  check("token: no leading slash -> null", parseTypeToken("person bob", tokTypes) === null);
+  check("token: bare slash -> null", parseTypeToken("/ bob", tokTypes) === null);
 } finally {
   if (created.length > 0) {
     await db.delete(items).where(inArray(items.id, created));

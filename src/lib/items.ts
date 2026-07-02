@@ -123,16 +123,37 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
         : eq(items.statusCategory, opts.statusCategory)
     );
   }
+  // Escape ILIKE wildcards once: reused by the substring filter and the
+  // prefix-match ordering term below.
+  const escapedQ = opts.q?.replace(/[\\%_]/g, "\\$&");
   if (opts.q) {
-    where.push(ilike(items.title, `%${opts.q.replace(/[\\%_]/g, "\\$&")}%`));
+    where.push(ilike(items.title, `%${escapedQ}%`));
   }
+
+  // Recency alone (updated_at desc) structurally buries short, rarely-edited
+  // titles (a person "First Last") under long, often-edited ones that merely
+  // contain the words. When there's a query, rank by match quality first:
+  // exact title, then prefix, then pg_trgm full-string similarity (which
+  // penalizes the extra trigrams in a longer title, so the closer/shorter
+  // title wins), with recency only as the final tiebreak. word_similarity
+  // would score ~1.0 for any title *containing* the words, so it can't make
+  // this distinction — full-string similarity() is deliberate.
+  const orderBy: SQL[] = [];
+  if (opts.q) {
+    orderBy.push(
+      sql`(lower(${items.title}) = lower(${opts.q})) desc`,
+      sql`(${items.title} ilike ${`${escapedQ}%`}) desc`,
+      sql`similarity(lower(${items.title}), lower(${opts.q})) desc`
+    );
+  }
+  orderBy.push(opts.trash ? desc(items.deletedAt) : desc(items.updatedAt));
 
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
   return getDb()
     .select(listColumns)
     .from(items)
     .where(and(...where))
-    .orderBy(opts.trash ? desc(items.deletedAt) : desc(items.updatedAt))
+    .orderBy(...orderBy)
     .limit(limit)
     .offset(Math.max(opts.offset ?? 0, 0));
 }

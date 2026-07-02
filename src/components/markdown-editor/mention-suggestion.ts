@@ -15,27 +15,16 @@
 import type { MentionOptions } from "@tiptap/extension-mention";
 import type { SuggestionProps } from "@tiptap/suggestion";
 import { mentionGlyphSvg } from "@/lib/mention-glyph";
+import {
+  loadTypes,
+  parseTypeToken,
+  type TypeMeta,
+} from "@/components/search/type-token";
 
 // `type` is the target's type key; it rides onto the inserted mention node's
 // attrs so the chip is glyphed instantly (the default Mention command copies the
 // item's fields onto the node). label/id are the existing contract.
 type Item = { id: string; label: string; type: string | null };
-
-// The type registry (key → icon + label), fetched once and shared across every
-// editor on the page, so each suggestion row can show the right type glyph and a
-// readable type name without a per-keystroke lookup.
-type TypeMeta = { icon: string | null; label: string };
-let typeMetaPromise: Promise<Map<string, TypeMeta>> | null = null;
-function loadTypeMeta(): Promise<Map<string, TypeMeta>> {
-  typeMetaPromise ??= fetch("/api/types")
-    .then((r) => (r.ok ? r.json() : { types: [] }))
-    .then(
-      (d: { types?: { key: string; icon: string | null; label: string }[] }) =>
-        new Map((d.types ?? []).map((t) => [t.key, { icon: t.icon, label: t.label }]))
-    )
-    .catch(() => new Map<string, TypeMeta>());
-  return typeMetaPromise;
-}
 
 function escapeHtml(text: string): string {
   return text
@@ -44,9 +33,16 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// A leading "/type" token (e.g. "@/person bob") narrows the picker to one type;
+// the token is resolved against the registry and the rest of the text becomes
+// the title query. With no rest ("@/person"), it browses recent items of that
+// type. An unknown/ambiguous token falls through to a literal search.
 async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
+  const parsed = parseTypeToken(query, await loadTypes());
+  const effective = parsed ? parsed.rest : query;
   const params = new URLSearchParams({ limit: "10" });
-  if (query) params.set("q", query);
+  if (effective) params.set("q", effective);
+  if (parsed) params.set("type", parsed.type.key);
   const res = await fetch(`/api/items?${params}`);
   if (!res.ok) return [];
   const data = (await res.json()) as {
@@ -57,20 +53,20 @@ async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
     .map((it) => ({ id: it.id, label: it.title || "Untitled", type: it.type ?? null }));
 }
 
-// Create an `unmarked` item (the type is unknown from a free-text @) flagged
-// for the Inbox, returning it as a mention Item.
-async function createUnmarked(title: string): Promise<Item | null> {
+// Create-on-miss item: the token's type when one is active (so "@/person Jane"
+// creates a person), else `unmarked`. Flagged for the Inbox either way.
+async function createItem(title: string, type: string): Promise<Item | null> {
   try {
     const res = await fetch(`/api/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "unmarked", title, inbox: true }),
+      body: JSON.stringify({ type, title, inbox: true }),
     });
     if (!res.ok) return null;
     const { item } = (await res.json()) as {
       item: { id: string; title: string; type?: string | null };
     };
-    return { id: item.id, label: item.title || title, type: item.type ?? "unmarked" };
+    return { id: item.id, label: item.title || title, type: item.type ?? type };
   } catch {
     return null;
   }
@@ -97,12 +93,21 @@ export function createMentionSuggestion(
       let creating = false;
       let cmd: SuggestionProps<Item>["command"] | null = null;
       let onDocPointer: ((e: MouseEvent) => void) | null = null;
-      // Type registry for the row icons/labels; loaded once, repaints when ready.
-      let typeMeta = new Map<string, TypeMeta>();
+      // Type registry for the row icons/labels and the "/type" token; loaded
+      // once, repaints when ready.
+      let types: TypeMeta[] = [];
+
+      // The active "/type" filter (or null), and the query with the token
+      // stripped — what the create-on-miss row and the API actually use.
+      const token = () => parseTypeToken(query, types);
+      const effectiveQuery = () => {
+        const t = token();
+        return (t ? t.rest : query).trim();
+      };
 
       // The leading type glyph + trailing type label for one result row.
       const rowInner = (it: Item) => {
-        const meta = it.type ? typeMeta.get(it.type) : undefined;
+        const meta = it.type ? types.find((t) => t.key === it.type) : undefined;
         const glyph = mentionGlyphSvg(
           { type: it.type, icon: meta?.icon ?? null, statusCategory: null },
           16
@@ -115,12 +120,12 @@ export function createMentionSuggestion(
         )}</span>${typeLabel}`;
       };
 
-      // Whether to show the create-on-miss row: a non-empty query with no
-      // exact (case-insensitive) title match among the hits.
+      // Whether to show the create-on-miss row: a non-empty (post-token) query
+      // with no exact (case-insensitive) title match among the hits.
       const showCreate = () =>
-        query.trim() !== "" &&
+        effectiveQuery() !== "" &&
         !items.some(
-          (it) => it.label.trim().toLowerCase() === query.trim().toLowerCase()
+          (it) => it.label.trim().toLowerCase() === effectiveQuery().toLowerCase()
         );
       const rowCount = () => items.length + (showCreate() ? 1 : 0);
 
@@ -142,10 +147,11 @@ export function createMentionSuggestion(
       // Create the unmarked item, then insert the mention to it. Guarded
       // against double-submit; cmd is captured at call time.
       const runCreate = async () => {
-        if (creating || !query.trim()) return;
+        const title = effectiveQuery();
+        if (creating || !title) return;
         creating = true;
         const insert = cmd;
-        const made = await createUnmarked(query.trim());
+        const made = await createItem(title, token()?.type.key ?? "unmarked");
         creating = false;
         if (made && insert) insert(made);
         else if (!made) paint(); // surface that nothing happened; let them retry
@@ -154,6 +160,17 @@ export function createMentionSuggestion(
       const paint = () => {
         if (!popup) return;
         popup.innerHTML = "";
+        // Active "/type" filter: a small header chip so the narrowing is legible.
+        const active = token();
+        if (active) {
+          const chip = document.createElement("div");
+          chip.className = "ledgr-mention-filter";
+          chip.innerHTML = `${mentionGlyphSvg(
+            { type: active.type.key, icon: active.type.icon, statusCategory: null },
+            14
+          )}<span>${escapeHtml(active.type.label)}</span>`;
+          popup.appendChild(chip);
+        }
         if (items.length === 0 && !showCreate()) {
           const empty = document.createElement("div");
           empty.className = "ledgr-mention-empty";
@@ -180,9 +197,11 @@ export function createMentionSuggestion(
           row.className =
             "ledgr-mention-item ledgr-mention-create" +
             (i === selected ? " is-selected" : "");
+          const kind = token()?.type.label;
+          const verb = kind ? `Create ${kind}` : "Create";
           row.textContent = creating
-            ? `Creating “${query.trim()}”…`
-            : `Create “${query.trim()}”`;
+            ? `Creating “${effectiveQuery()}”…`
+            : `${verb} “${effectiveQuery()}”`;
           row.addEventListener("mousedown", (e) => {
             e.preventDefault();
             void runCreate();
@@ -235,10 +254,11 @@ export function createMentionSuggestion(
           mount();
           paint();
           place(props.clientRect?.() ?? null);
-          // Fill the type glyphs/labels once the registry arrives, then repaint.
-          if (typeMeta.size === 0) {
-            void loadTypeMeta().then((m) => {
-              typeMeta = m;
+          // Fill the type glyphs/labels (and enable "/type" parsing) once the
+          // registry arrives, then repaint.
+          if (types.length === 0) {
+            void loadTypes().then((t) => {
+              types = t;
               paint();
             });
           }
