@@ -19,9 +19,7 @@ import StatusRow from "@/components/canvas/rail/StatusRow";
 import { RAIL_ROW, RAIL_STATIC } from "@/components/canvas/rail/styles";
 import FocusStar from "@/components/today/FocusStar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import SaveOffline from "@/components/canvas/SaveOffline";
-import ShareLink from "@/components/canvas/ShareLink";
-import HistoryPanel from "@/components/canvas/HistoryPanel";
+import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import { getType } from "@/lib/types";
 import { getItem } from "@/lib/items";
 import { resolveStatusSchema } from "@/lib/status";
@@ -126,10 +124,11 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               recurrence={recurrenceRule}
               scheduledTime={scheduledTime}
               reminderMinutes={reminderMinutes}
+              done={statusDone}
             />
           </div>
           <div className={RAIL_ROW}>
-            <DueRow itemId={item.id} initial={item.dueDate?.toISOString() ?? null} today={today} />
+            <DueRow itemId={item.id} initial={item.dueDate?.toISOString() ?? null} today={today} done={statusDone} />
           </div>
           <div className={RAIL_ROW}>
             <PriorityRow itemId={item.id} initial={item.urgency} />
@@ -161,9 +160,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
       </div>
 
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
-      <SaveOffline itemId={item.id} />
-      <ShareLink itemId={item.id} />
-      <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />
+      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
     </div>
   );
 }

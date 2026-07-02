@@ -94,6 +94,18 @@ function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
   return (usesUtc(prop) ? utcKey : tzKey).format(date);
 }
 
+// A deadline date on an open task reads as overdue once its calendar day is past
+// (matching the item canvas rail). Only the deadline props (plan/due/scheduled)
+// can be late — created/updated/meeting dates never do — and a done task never
+// does. Today is the app-timezone day, the same reference the calendar's "today"
+// highlight uses.
+function isDeadlineOverdue(date: Date | null, key: ColumnField | ViewDefinition["dateProperty"]): boolean {
+  if (!date) return false;
+  const prop = key as ViewDefinition["dateProperty"];
+  if (!usesUtc(prop)) return false;
+  return dayKey(date, prop) < tzKey.format(new Date());
+}
+
 // A status chip showing the type's label + color (S2). The resting "not started"
 // status renders no chip (matches the old "hide open"); everything else shows.
 function StatusChip({ status, statuses }: { status: string; statuses?: StatusDef[] }) {
@@ -225,6 +237,7 @@ function ItemRow({
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
+  const rowOverdue = isTask && !done && isDeadlineOverdue(dateOf(item, prop), prop);
   const inner = (
     <>
       {selectable && <SelectCheckbox id={item.id} />}
@@ -256,10 +269,15 @@ function ItemRow({
           }
           const text = columnText(item, col);
           if (!text) return null;
+          const colOverdue =
+            isTask &&
+            !done &&
+            col.source === "field" &&
+            isDeadlineOverdue(dateOf(item, col.key as ViewDefinition["dateProperty"]), col.key);
           return (
             <span
               key={`${col.source}:${col.key}`}
-              className="shrink-0 text-xs text-neutral-500"
+              className={`shrink-0 text-xs ${colOverdue ? "text-red-400" : "text-neutral-500"}`}
               title={columnLabel(col, propertyLabels)}
             >
               {text}
@@ -270,7 +288,7 @@ function ItemRow({
         <>
           <StatusChip status={item.status} statuses={statuses} />
           <UrgencyChip urgency={item.urgency} />
-          <span className="shrink-0 text-xs text-neutral-600">
+          <span className={`shrink-0 text-xs ${rowOverdue ? "text-red-400" : "text-neutral-600"}`}>
             {rowDate(item, prop)}
           </span>
         </>

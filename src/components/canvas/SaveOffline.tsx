@@ -115,7 +115,16 @@ function Row({ state }: { state: LegState }) {
   );
 }
 
-export default function SaveOffline({ itemId }: { itemId: string }) {
+export default function SaveOffline({
+  itemId,
+  bare = false,
+}: {
+  itemId: string;
+  // Drop the standalone canvas wrapper (width + padding) when nested inside a
+  // parent section that already provides alignment — e.g. the shared footer's
+  // "Export & sharing" details. Default keeps the widget-card usage unchanged.
+  bare?: boolean;
+}) {
   const [exportState, setExportState] = useState<LegState>({ phase: "idle" });
   const [pinState, setPinState] = useState<LegState>({ phase: "idle" });
   const [alreadyPinned, setAlreadyPinned] = useState(false);
@@ -161,7 +170,7 @@ export default function SaveOffline({ itemId }: { itemId: string }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
+    <div className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12"}>
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void run()}

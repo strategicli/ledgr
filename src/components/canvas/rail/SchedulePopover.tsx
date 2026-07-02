@@ -19,7 +19,7 @@ import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
 import ReminderControl from "@/components/canvas/ReminderControl";
-import { formatDayLabel } from "@/lib/format-date";
+import { formatDayLabel, isOverdueYmd } from "@/lib/format-date";
 import {
   DEFAULT_DURATION_MINUTES,
   formatTime12,
@@ -45,6 +45,7 @@ export default function SchedulePopover({
   recurrence,
   scheduledTime,
   reminderMinutes,
+  done = false,
 }: {
   itemId: string;
   today: string;
@@ -53,6 +54,8 @@ export default function SchedulePopover({
   recurrence: RecurrenceRule | null;
   scheduledTime: ScheduledTime | null;
   reminderMinutes: number | null;
+  // A completed task isn't "overdue" however old its scheduled date — suppress it.
+  done?: boolean;
 }) {
   const router = useRouter();
   const [iso, setIso] = useState(scheduled);
@@ -105,6 +108,7 @@ export default function SchedulePopover({
   if (day) summary.push(day);
   if (scheduledTime) summary.push(formatTime12(scheduledTime.start));
   const empty = !day && !repeat;
+  const overdue = !done && isOverdueYmd(iso, today);
 
   return (
     <Popover
@@ -113,7 +117,7 @@ export default function SchedulePopover({
       width={344}
       triggerClassName={RAIL_TRIGGER}
       trigger={
-        <RowFace label="Schedule" empty={empty}>
+        <RowFace label="Schedule" empty={empty} overdue={overdue}>
           {empty ? (
             "Add date"
           ) : (
