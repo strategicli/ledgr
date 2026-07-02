@@ -11,10 +11,23 @@ import { useEffect, useRef, useState } from "react";
 // Reads the live DOM (no script injection, so page CSP can't block it),
 // extraction + image-stripping happen server-side. {TOKEN}/{ORIGIN} are filled
 // in below. Kept terse: a bookmarklet is one URL.
+//
+// The actual save happens through a popup on Ledgr's own origin
+// (/capture/relay), not a fetch() from inside the host page: some sites (e.g.
+// YouTube) ship a CSP `connect-src` that silently blocks a cross-origin
+// fetch() from their page, which otherwise surfaces as a bare "Failed to
+// fetch" with no workaround available from inside that page. Opening a
+// popup and handing the captured data over via postMessage sidesteps that
+// entirely, since the POST is then made from Ledgr's own page.
 function buildBookmarklet(origin: string, token: string): string {
-  const src = `(function(){var t=${JSON.stringify(token)};fetch(${JSON.stringify(
-    origin + "/api/machine/capture"
-  )},{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+t},body:JSON.stringify({url:location.href,title:document.title,html:document.documentElement.outerHTML})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d}})}).then(function(x){alert(x.ok?("Saved to Ledgr"+(x.d.extracted?" (with content)":" (link only)")):("Ledgr: "+(x.d.error||"failed")))}).catch(function(e){alert("Ledgr: "+e)})})();`;
+  const relay = origin + "/capture/relay";
+  const src = `(function(){var d={token:${JSON.stringify(
+    token
+  )},url:location.href,title:document.title,html:document.documentElement.outerHTML};var w=window.open(${JSON.stringify(
+    relay
+  )},"ledgr-clip","width=380,height=200");if(!w){alert("Ledgr: please allow pop-ups for this site, then try again");return}function onMsg(e){if(e.source!==w||e.data!=="ledgr-relay-ready")return;window.removeEventListener("message",onMsg);w.postMessage(d,${JSON.stringify(
+    origin
+  )})}window.addEventListener("message",onMsg)})();`;
   return "javascript:" + encodeURIComponent(src);
 }
 
@@ -77,10 +90,12 @@ export default function ClipperSetup({ origin }: { origin: string }) {
       <p className="text-xs leading-relaxed text-neutral-500">
         On desktop: drag the button to your bookmarks bar, then click it on any
         page to save it (with its readable content, images stripped) to your
-        Inbox. On mobile, share a link to the installed Ledgr app instead — the
-        share sheet route captures content the same way. The token sits in the
-        bookmark, so treat the bookmark as a secret; revoke it by removing the
-        entry from{" "}
+        Inbox. It briefly opens a small Ledgr popup to do the save (works
+        around sites that block cross-site requests, e.g. YouTube) — allow
+        pop-ups for it if your browser asks. On mobile, share a link to the
+        installed Ledgr app instead — the share sheet route captures content
+        the same way. The token sits in the bookmark, so treat the bookmark as
+        a secret; revoke it by removing the entry from{" "}
         <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
           LEDGR_API_TOKENS
         </code>
