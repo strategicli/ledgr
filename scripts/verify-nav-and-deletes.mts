@@ -132,8 +132,7 @@ check("mobile slots are not hard-capped at the recommended count (6 kept)", mobi
 check("explicit null mobileNavSlots stays null", parseSettings({ mobileNavSlots: null }).mobileNavSlots === null);
 
 // --- 1. Pure: nav-slot destination options ---------------------------------
-const { buildDestOptions, findDestOption, BUILTIN_DESTS, BUILD_TOOL_DESTS } =
-  await import("../src/lib/nav-slot-options");
+const { buildDestOptions, findDestOption } = await import("../src/lib/nav-slot-options");
 const opts = buildDestOptions(
   [{ id: "v1", name: "My View" }],
   [
@@ -141,10 +140,16 @@ const opts = buildDestOptions(
     { key: "weird", label: "Weird", icon: "no_such_icon" },
   ]
 );
-// builtins + the Build-tools category (ADR-063) + 1 view + 2 types.
+// builtins + the Build-tools category (ADR-063) + 1 view + 2 types. Baseline
+// comes from calling buildDestOptions with no views/types, not from summing
+// BUILTIN_DESTS.length + BUILD_TOOL_DESTS.length directly — the function
+// conditionally filters BUILTIN_DESTS (e.g. /notifications drops out while
+// ADR-130's NOTIFICATION_CENTER_ENABLED is false), so a hardcoded sum drifts
+// out of sync with the real filtered count whenever that condition changes.
+const baselineOpts = buildDestOptions([], []);
 check(
   "buildDestOptions includes builtins + build tools + 1 view + 2 types",
-  opts.length === BUILTIN_DESTS.length + BUILD_TOOL_DESTS.length + 3
+  opts.length === baselineOpts.length + 3
 );
 check("a view option maps to /views/<id>", !!findDestOption(opts, "/views/v1"));
 check("a type option maps to /list/<key>", findDestOption(opts, "/list/song")?.icon === "song");
