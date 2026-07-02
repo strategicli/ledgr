@@ -59,6 +59,31 @@ export const INSTRUCTIONS = [
   "modify their items.",
 ].join("\n");
 
+// Appended to INSTRUCTIONS only when the owner has AI Memory on (ADR-137). The
+// connect-time instructions are the one place every client reliably surfaces to
+// the model, so this is what actually gets the memory system used: tool
+// descriptions are only read once a tool is already under consideration, and
+// most clients never fetch resources unprompted. Kept short — it points at the
+// protocol resource for the full contract rather than restating it. When AI
+// Memory is off, INSTRUCTIONS is emitted byte-for-byte unchanged.
+const MEMORY_INSTRUCTIONS = [
+  "",
+  "AI MEMORY is on. The owner keeps durable memories about themselves, their",
+  "people, and their work in Ledgr. Call get_memory_stumps at the START of the",
+  "session to load the compact index of what's stored, then get_item a stump (and",
+  "follow its links) when it's relevant. When you learn something durable worth",
+  "carrying into a later session, file it with remember. Read the",
+  "memory-protocol resource (ledgr://guide/memory-protocol) for how to recall and",
+  "when to remember.",
+].join("\n");
+
+// The instructions the client sees at initialize, owner-aware: the stable base,
+// plus the memory addendum when the owner has AI Memory enabled.
+export async function buildInstructions(ownerId: string): Promise<string> {
+  const { aiMemoryEnabled } = await getSettings(ownerId);
+  return aiMemoryEnabled ? `${INSTRUCTIONS}\n${MEMORY_INSTRUCTIONS}` : INSTRUCTIONS;
+}
+
 export async function handleMcpMessage(
   message: unknown,
   ownerId: string
@@ -86,7 +111,7 @@ export async function handleMcpMessage(
           resources: { listChanged: false },
         },
         serverInfo: SERVER_INFO,
-        instructions: INSTRUCTIONS,
+        instructions: await buildInstructions(ownerId),
       });
     }
 

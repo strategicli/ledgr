@@ -206,6 +206,25 @@ async function assertOwned(
   }
 }
 
+// Assert every id is a live item owned by ownerId, in one query. Used to
+// pre-validate a batch of target ids BEFORE a multi-write operation (e.g.
+// remember()'s `about` links), so one bad/hallucinated id fails the whole call
+// up front rather than leaving a partially-linked write behind. Throws on the
+// first missing or trashed id.
+export async function assertOwnedItems(ownerId: string, ids: string[]) {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return;
+  const rows = await getDb()
+    .select({ id: items.id, deletedAt: items.deletedAt })
+    .from(items)
+    .where(and(inArray(items.id, unique), eq(items.ownerId, ownerId)));
+  const found = new Map(rows.map((r) => [r.id, r.deletedAt]));
+  for (const id of unique) {
+    if (!found.has(id)) throw new ItemError("not_found", `item not found: ${id}`);
+    if (found.get(id) !== null) throw new ItemError("bad_request", `item is in Trash: ${id}`);
+  }
+}
+
 // The backlinks panel is direction-blind (a row is "linked", not "linked
 // from"), so the un-relate and confirm gestures match edges both ways.
 function pairFilter(itemId: string, otherId: string): SQL {

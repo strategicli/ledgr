@@ -22,10 +22,16 @@ export const MEMORY_HORIZONS = ["evergreen", "seasonal", "episodic"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 export type MemoryHorizon = (typeof MEMORY_HORIZONS)[number];
 
-// How long a seasonal/episodic memory rides in the always-on set after its last
-// touch. Evergreen and pinned ignore this; anything older drops out of the
-// pushed stumps but stays fully discoverable via includeAll / search_items.
-const ALWAYS_ON_WINDOW_DAYS = 45;
+// How long a non-evergreen memory rides in the always-on set after its last
+// touch, by horizon. Seasonal is "true for a while"; episodic is "a moment", so
+// it ages out much faster. Evergreen and pinned ignore these entirely; anything
+// past its window drops out of the pushed stumps but stays fully discoverable
+// via includeAll / search_items.
+const ALWAYS_ON_WINDOW_DAYS: Record<MemoryHorizon, number> = {
+  evergreen: Infinity, // never ages out (handled explicitly below; here for completeness)
+  seasonal: 45,
+  episodic: 10,
+};
 
 export type MemoryStump = {
   id: string;
@@ -73,13 +79,15 @@ export async function getMemoryStumps(
     { field: "updatedAt", dir: "desc" },
     limit
   );
-  const cutoff = Date.now() - ALWAYS_ON_WINDOW_DAYS * 86_400_000;
+  const now = Date.now();
   const chosen = rows.filter((r) => {
     if (opts.includeAll) return true;
     const { horizon, pinned } = memoryFacets(r.properties);
     if (pinned) return true;
-    // evergreen — or an unset horizon — is always-on; seasonal/episodic ages out.
+    // evergreen — or an unset horizon — is always-on; seasonal/episodic age out
+    // on their own horizon-specific window.
     if (horizon === "evergreen" || horizon == null) return true;
+    const cutoff = now - ALWAYS_ON_WINDOW_DAYS[horizon] * 86_400_000;
     return new Date(r.updatedAt).getTime() >= cutoff;
   });
   const linkedMap = await relatedSummaryFor(

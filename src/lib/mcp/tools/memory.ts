@@ -12,7 +12,7 @@ import {
   MEMORY_TYPE,
   getMemoryStumps,
 } from "@/lib/memory";
-import { relateItems } from "@/lib/relations";
+import { assertOwnedItems, relateItems } from "@/lib/relations";
 import { optEnum, optInt, optUuidArray, reqString } from "./args";
 import { rowView } from "./serializers";
 import type { McpTool } from "./wire";
@@ -146,8 +146,12 @@ export const memoryTools: McpTool[] = [
       }
       if (Object.keys(properties).length) raw.properties = properties;
       const input = parseItemPayload(raw, "create");
-      const created = await createItem(ownerId, input);
       const about = optUuidArray(args, "about");
+      // Validate every `about` id up front, so a single bad/hallucinated id
+      // fails the whole call rather than creating the memory and then leaving it
+      // partially (or un-) linked when relateItems throws mid-loop.
+      await assertOwnedItems(ownerId, about);
+      const created = await createItem(ownerId, input);
       for (const targetId of about) {
         await relateItems(ownerId, created.id, targetId);
       }
