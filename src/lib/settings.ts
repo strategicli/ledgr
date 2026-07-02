@@ -131,12 +131,15 @@ export type RailAnchor = (typeof RAIL_ANCHORS)[number];
 // tight surfaces: the desktop floating pill and the phone bottom bar. A left/
 // right rail or the top bar have far more room, so the editor surfaces these as
 // advice (dims the overflow in the preview, shows a hint) and lets the user
-// exceed them rather than blocking. A single generous hard ceiling still bounds
-// the stored array so a hand-edited blob can't produce an unbounded nav.
+// exceed them rather than blocking. The phone bottom bar now scrolls
+// horizontally (NavShell floatingPill), so exceeding the recommendation there
+// is a soft "you'll need to swipe" rather than an overflow-off-screen problem.
+// A single generous hard ceiling still bounds the stored array so a hand-edited
+// blob can't produce an unbounded nav.
 export const RECOMMENDED_NAV_SLOTS = 5;
-export const RECOMMENDED_MOBILE_NAV_SLOTS = 4;
-export const NAV_SLOTS_HARD_CAP = 20;
-export const MAX_TOOLS_CHILDREN = 8;
+export const RECOMMENDED_MOBILE_NAV_SLOTS = 5;
+export const NAV_SLOTS_HARD_CAP = 30;
+export const MAX_TOOLS_CHILDREN = 20;
 
 // --- Favorites -------------------------------------------------------------
 // A small, owner-curated list of items for instant access (the star toggle on
