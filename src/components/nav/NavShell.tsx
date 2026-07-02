@@ -19,16 +19,26 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import BuildSidebar from "@/components/nav/BuildSidebar";
 import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
+import {
+  Chevron,
+  Icon,
+  IconWithCount,
+  InlineBadge,
+  KebabIcon,
+  Logo,
+  PlusIcon,
+  WrenchIcon,
+} from "@/components/nav/NavGlyphs";
+import { useHoverPopover } from "@/components/nav/useHoverPopover";
 import AppBadgeSync from "@/components/pwa/AppBadgeSync";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import { isBuildPath } from "@/lib/build-nav";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
-import { navIconPaths } from "@/lib/nav-icons";
 import { FAVORITES_HREF, type NavDensity, type NavPosition, type RailAnchor, type RailSize } from "@/lib/settings";
 
 // A single nav destination, resolved for render (icon key + any badge count).
@@ -64,124 +74,6 @@ const isSearchHref = (href: string) => href === "/search";
 
 // A destination at /favorites opens the favorites flyout rather than navigating.
 const isFavoritesHref = (href: string) => href === FAVORITES_HREF;
-
-// Icon glyphs come from the shared NAV_ICONS library (key -> SVG paths); an
-// unknown key falls back to a generic list glyph. Hand-rolled 20px strokes, no
-// icon-library dependency (Principle 5).
-function Icon({ icon }: { icon: string }) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      dangerouslySetInnerHTML={{ __html: navIconPaths(icon) }}
-    />
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 8.5v7M8.5 12h7" />
-    </svg>
-  );
-}
-
-function WrenchIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.5 6.5a3.5 3.5 0 0 0-4.6 4.2l-5.1 5.1a1.5 1.5 0 0 0 2.1 2.1l5.1-5.1a3.5 3.5 0 0 0 4.2-4.6l-2 2-1.7-1.7 2-2Z" />
-    </svg>
-  );
-}
-
-// The Ledgr wordmark; --font-logo is set on <html> by the layout. The full
-// mark ends its "r" in the accent color; the compact mark (thin rail, where the
-// wordmark won't fit) is a single accented "L".
-function Logo({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
-  return (
-    <Link
-      href="/"
-      aria-label="Ledgr home"
-      className={`shrink-0 px-1 font-bold tracking-tight text-neutral-100 ${
-        compact ? "text-base" : "text-lg"
-      } ${className}`}
-      style={{ fontFamily: "var(--font-logo), var(--font-geist-sans)" }}
-    >
-      {compact ? <span className="text-[var(--accent)]">L</span> : <>Ledg<span className="text-[var(--accent)]">r</span></>}
-    </Link>
-  );
-}
-
-// Vertical dots for top/bottom, horizontal for the side rail (v6).
-function KebabIcon({ horizontal }: { horizontal: boolean }) {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      {horizontal ? (
-        <>
-          <circle cx="5" cy="12" r="1.6" />
-          <circle cx="12" cy="12" r="1.6" />
-          <circle cx="19" cy="12" r="1.6" />
-        </>
-      ) : (
-        <>
-          <circle cx="12" cy="5" r="1.6" />
-          <circle cx="12" cy="12" r="1.6" />
-          <circle cx="12" cy="19" r="1.6" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-function Chevron({ dir, size = 16 }: { dir: "left" | "right"; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {dir === "left" ? <path d="m14 6-6 6 6 6" /> : <path d="m10 6 6 6-6 6" />}
-    </svg>
-  );
-}
-
-// The count bubble sits directly on top of the icon, overlapping its upper-right
-// (Brandon's preference — the number reads as "in the box," not floating above
-// it), so the icon must be wrapped in a relative element. Used for every slot in
-// every layout.
-function CountBubble({ count }: { count: number | null }) {
-  if (count == null || count <= 0) return null;
-  return (
-    <span
-      className="absolute right-0 top-0 rounded-full px-1 py-px text-[9px] font-medium leading-none text-white"
-      style={{ background: "var(--accent-gradient, var(--accent))" }}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
-
-// The icon with its count bubble overlaid on the corner.
-function IconWithCount({ icon, count }: { icon: string; count: number | null }) {
-  return (
-    <span className="relative inline-flex">
-      <Icon icon={icon} />
-      <CountBubble count={count} />
-    </span>
-  );
-}
-
-function InlineBadge({ count }: { count: number | null }) {
-  if (count == null || count <= 0) return null;
-  return (
-    <span className="ml-auto rounded-full bg-[var(--accent)] px-1.5 py-px text-[10px] font-medium leading-tight text-white">
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
 
 const POSITIONS: { value: NavPosition; label: string }[] = [
   { value: "top", label: "Top" },
@@ -229,40 +121,18 @@ export default function NavShell({
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [openTools, setOpenTools] = useState<string | null>(null);
+  // Tools-group + Favorites popovers: hover-intent open (hover-capable
+  // pointers) or click-toggle (touch), with outside-click dismiss.
+  const {
+    openId: openTools,
+    setOpenId: setOpenTools,
+    hoverOpen,
+    hoverClose,
+    toggle: toggleTools,
+  } = useHoverPopover("[data-nav-tools]");
   const [railSize, setRailSize] = useState<RailSize>(railSizeProp);
   const [density, setDensity] = useState<NavDensity>(navDensityProp);
   const [anchor, setAnchor] = useState<RailAnchor>(railAnchorProp);
-
-  // Parent slots (tools groups + Favorites) open their popover on hover, not only
-  // on click. A short close delay bridges the gap between the trigger and the
-  // detached popover, so dragging the pointer across to it doesn't dismiss the
-  // menu. Hover is gated to hover-capable pointers, so a tap on the mobile pill
-  // keeps its click-to-toggle behavior (no open-then-close flicker on touch).
-  const hoverCapable = useRef(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    hoverCapable.current = window.matchMedia?.("(hover: hover)").matches ?? false;
-    return () => {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
-    };
-  }, []);
-  const cancelClose = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-  const hoverOpen = (id: string) => {
-    if (!hoverCapable.current) return;
-    cancelClose();
-    setOpenTools(id);
-  };
-  const hoverClose = () => {
-    if (!hoverCapable.current) return;
-    cancelClose();
-    closeTimer.current = setTimeout(() => setOpenTools(null), 150);
-  };
 
   const isRail = navPosition === "left" || navPosition === "right";
   // Build mode is `/build*` only. `/views` is now the Work-side consumer surface
@@ -349,16 +219,6 @@ export default function NavShell({
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
-
-  // Same outside-click close for an open tools-group popover.
-  useEffect(() => {
-    if (!openTools) return;
-    function onClick(e: MouseEvent) {
-      if (!(e.target as Element).closest?.("[data-nav-tools]")) setOpenTools(null);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [openTools]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const slotActive = (slot: ShellSlot): boolean =>
@@ -530,11 +390,7 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={() =>
-              hoverCapable.current
-                ? setOpenTools(id)
-                : setOpenTools((o) => (o === id ? null : id))
-            }
+            onClick={() => toggleTools(id)}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -561,11 +417,7 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={() =>
-              hoverCapable.current
-                ? setOpenTools(id)
-                : setOpenTools((o) => (o === id ? null : id))
-            }
+            onClick={() => toggleTools(id)}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
