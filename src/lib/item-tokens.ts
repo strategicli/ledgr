@@ -271,6 +271,35 @@ export function hasItemTokens(text: string | null | undefined): boolean {
   return false;
 }
 
+// Whether an inner token expression names a recognized live token (item./parent.
+// scalar, date, prop, or list). Shared by the scan helpers and the LT2 editor.
+export function isLiveTokenExpr(inner: string): boolean {
+  const lower = splitExpr(inner).base.toLowerCase();
+  return (
+    lower === "item.children" ||
+    lower.startsWith("item.related.") ||
+    lower.startsWith("item.") ||
+    lower.startsWith("parent.")
+  );
+}
+
+// Character ranges of every recognized live token in `text` (LT2 editor
+// decoration highlighting). Escaped tokens are skipped. `expr` is the inner
+// token text (trimmed); [start,end) spans the whole `{{…}}`.
+export function findItemTokenRanges(
+  text: string
+): { start: number; end: number; expr: string }[] {
+  const out: { start: number; end: number; expr: string }[] = [];
+  if (!text) return out;
+  for (const m of text.matchAll(TOKEN_RE)) {
+    if (m[1]) continue; // escaped: m[1] is the backslash, m.index points at it
+    if (!isLiveTokenExpr(m[2])) continue;
+    const start = m.index ?? 0; // no escape here, so the match starts at "{{"
+    out.push({ start, end: start + m[0].length, expr: m[2].trim() });
+  }
+  return out;
+}
+
 // Distinct live-token inner expressions in `text`, first-seen order (drives LT2
 // insert UI / validation). Escaped tokens are skipped.
 export function scanItemTokens(text: string | null | undefined): string[] {

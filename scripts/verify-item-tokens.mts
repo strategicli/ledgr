@@ -27,7 +27,12 @@ const {
   resolveItemTokens,
   hasItemTokens,
   scanItemTokens,
+  findItemTokenRanges,
+  isLiveTokenExpr,
 } = await import("../src/lib/item-tokens");
+const { filterTokenOptions, TOKEN_CATALOG } = await import(
+  "../src/lib/editor/item-token-catalog"
+);
 type ItemTokenContext = import("../src/lib/item-tokens").ItemTokenContext;
 
 const ID1 = "11111111-1111-1111-1111-111111111111";
@@ -146,6 +151,43 @@ eq(
   "scanItemTokens distinct, first-seen",
   scanItemTokens("{{item.title}} {{item.due:long}} {{item.title}} {{today}}"),
   ["item.title", "item.due:long"]
+);
+
+// --- LT2: editor helpers ---
+truthy("isLiveTokenExpr item.due", isLiveTokenExpr("item.due:long"));
+truthy("isLiveTokenExpr parent.title", isLiveTokenExpr("parent.title"));
+truthy("isLiveTokenExpr children", isLiveTokenExpr("item.children:ul"));
+truthy("isLiveTokenExpr false for today", !isLiveTokenExpr("today"));
+truthy("isLiveTokenExpr false for ask", !isLiveTokenExpr("ask:Name"));
+
+eq(
+  "findItemTokenRanges spans + expr",
+  findItemTokenRanges("Due {{item.due:long}} for {{item.title}}"),
+  [
+    { start: 4, end: 21, expr: "item.due:long" },
+    { start: 26, end: 40, expr: "item.title" },
+  ]
+);
+// verify the reported span exactly covers the token text
+{
+  const s = "x {{item.title}} y";
+  const [r0] = findItemTokenRanges(s);
+  eq("range slices to the token", s.slice(r0.start, r0.end), "{{item.title}}");
+}
+eq("findItemTokenRanges skips escaped", findItemTokenRanges("\\{{item.title}}"), []);
+eq("findItemTokenRanges skips apply-time", findItemTokenRanges("{{today}}"), []);
+
+truthy("catalog non-empty", TOKEN_CATALOG.length > 8);
+eq(
+  "filter by 'due' matches due tokens (label or token)",
+  filterTokenOptions("due").every((o) => /due/i.test(o.token) || /due/i.test(o.label)),
+  true
+);
+truthy("filter 'title' hits item.title", filterTokenOptions("title").some((o) => o.token === "item.title"));
+eq("empty filter returns all", filterTokenOptions("").length, TOKEN_CATALOG.length);
+truthy(
+  "every catalog token is a recognized live token",
+  TOKEN_CATALOG.every((o) => isLiveTokenExpr(o.token) || o.token === "item.props.")
 );
 
 // ===========================================================================
