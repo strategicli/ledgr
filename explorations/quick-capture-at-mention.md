@@ -1,6 +1,6 @@
 # Exploration: @mention association in quick capture
 
-**Status:** parked (Brandon, 2026-06-13; **reaffirmed as wanted in the 6.14 meeting**). Explicitly post-v1.0. Not intent, not a decision. The 6.14 framing extended the wish to the body canvas too: "be able to just type `@` and then whatever in the midst of the canvas" to relate items mid-document without going to a specific field — the same resolution logic, applied inline anywhere.
+**Status:** ✅ RESOLVED — built 2026-07-02 (ADR-140). `@` in the quick-capture title now opens a live cross-type picker; picking an item consumes the `@query` into a "Linked" chip and creates a `related` relation on save. The separate person-only "Relate to…" box is gone, and the task-add card (`AddTaskCard`) was unified onto the same `@` flow (its old `@assignee` shortcut retired; `#project` kept). The 6.14 wish to type `@` mid-body-canvas is separately covered by the editor mention flow (`mention-suggestion.ts`). Doc kept for the record. (History: parked Brandon 2026-06-13, reaffirmed in the 6.14 meeting, explicitly post-v1.0 at the time — the 6.14 framing extended the wish to the body canvas: "just type `@` and then whatever in the midst of the canvas.")
 
 ## The idea
 
