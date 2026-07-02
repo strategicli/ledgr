@@ -14,7 +14,11 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, users, activityEvents } = await import("../src/db/schema");
-const { createItem, updateItem, getItem } = await import("../src/lib/items");
+const { getItem } = await import("../src/lib/items");
+const {
+  createItem,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { setHome, relateItems } = await import("../src/lib/relations");
 const { getType } = await import("../src/lib/types");
 const { canvasIdForType } = await import("../src/lib/modules");

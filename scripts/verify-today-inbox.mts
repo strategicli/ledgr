@@ -14,8 +14,15 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { countInbox, createItem, listItems, softDeleteItem, updateItem } =
-  await import("../src/lib/items");
+const {
+  countInbox,
+  listItems,
+} = await import("../src/lib/items");
+const {
+  createItem,
+  softDeleteItem,
+  updateItem,
+} = await import("../src/lib/item-mutations");
 const { getTodayData, todayBounds, zonedMidnightUtc } = await import(
   "../src/lib/today"
 );

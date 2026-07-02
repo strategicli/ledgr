@@ -18,7 +18,8 @@ const { getDb } = await import("../src/db");
 const { items, types, users } = await import("../src/db/schema");
 const { createType, getType, renameTypeLabel, renamePropertyLabel } =
   await import("../src/lib/types");
-const { createItem, ItemError } = await import("../src/lib/items");
+const { ItemError } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { relateItems, outgoingRelationsByRole } = await import("../src/lib/relations");
 const { eq, inArray } = await import("drizzle-orm");
 

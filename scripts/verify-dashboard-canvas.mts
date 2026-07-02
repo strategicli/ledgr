@@ -16,7 +16,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { dashboards, items, relations, views, users } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { createView, parseViewInput } = await import("../src/lib/views");
 const {
   parseWidget,

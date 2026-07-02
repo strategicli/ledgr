@@ -13,7 +13,8 @@
 // narrative, the user accepts) — NOT an in-app LLM call, so no new dependency.
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { emitActivity, lastWovenAt } from "@/lib/activity";
-import { getItem, updateItem } from "@/lib/items";
+import { getItem } from "@/lib/items";
+import { updateItem } from "@/lib/item-mutations";
 import { listActivity } from "@/lib/activity";
 
 const STORY_HEADING = "## Story";

@@ -16,7 +16,7 @@ const { getDb } = await import("../src/db");
 const { items, users, relations } = await import("../src/db/schema");
 const { eq, inArray } = await import("drizzle-orm");
 const { handleMcpMessage } = await import("../src/lib/mcp/server");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { updateSettings } = await import("../src/lib/settings");
 const { getMemoryStumps } = await import("../src/lib/memory");
 

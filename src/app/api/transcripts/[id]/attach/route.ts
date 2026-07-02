@@ -5,7 +5,8 @@
 // to the meeting, where the transcript now shows in the Transcripts panel.
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { ItemError, createItem } from "@/lib/items";
+import { ItemError } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import { attachTranscriptToMeeting } from "@/lib/meetings/transcripts";
 
 export const dynamic = "force-dynamic";

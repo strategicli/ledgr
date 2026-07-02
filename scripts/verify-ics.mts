@@ -87,7 +87,7 @@ console.log("\n# Pure: ICS builder");
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { updateSettings } = await import("../src/lib/settings");
 const { resolveIcsOwner, listIcsTasks } = await import("../src/lib/ics-data");
 const { eq: dEq, inArray } = await import("drizzle-orm");

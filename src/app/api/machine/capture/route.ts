@@ -3,7 +3,7 @@ import { errorResponse } from "@/lib/api";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { makeMarkdownBody } from "@/lib/body";
 import { extractArticle, fetchAndExtract } from "@/lib/clip/extract";
-import { createItem } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 
 // Web clipper capture (ADR-100, explorations/web-clipper.md). The bookmarklet

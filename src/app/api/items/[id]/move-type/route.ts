@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { ItemError, moveItemType } from "@/lib/items";
+import { ItemError } from "@/lib/items";
+import { moveItemType } from "@/lib/item-mutations";
 
 export const dynamic = "force-dynamic";
 

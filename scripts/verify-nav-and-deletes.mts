@@ -199,7 +199,11 @@ check(
 // --- 2. Live Neon: type soft-delete + restore (ADR-058) --------------------
 const { getDb } = await import("../src/db");
 const { items, relations, types, users } = await import("../src/db/schema");
-const { createItem, ItemError, restoreItem } = await import("../src/lib/items");
+const { ItemError } = await import("../src/lib/items");
+const {
+  createItem,
+  restoreItem,
+} = await import("../src/lib/item-mutations");
 const {
   createType,
   getType,

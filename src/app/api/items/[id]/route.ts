@@ -5,7 +5,8 @@ import {
   parseItemPayload,
   requireOwner,
 } from "@/lib/api";
-import { getItem, softDeleteItem, updateItem } from "@/lib/items";
+import { getItem } from "@/lib/items";
+import { softDeleteItem, updateItem } from "@/lib/item-mutations";
 
 export const dynamic = "force-dynamic";
 

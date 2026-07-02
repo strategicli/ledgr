@@ -5,15 +5,8 @@
 // MCP writes validate exactly like /api/items writes.
 import { asUuid, parseItemPayload } from "@/lib/api";
 import { BODY_WINDOW_CHARS, bodyMarkdown, isLargeBody, windowBody } from "@/lib/body";
-import {
-  ITEM_STATUSES,
-  ItemError,
-  URGENCIES,
-  createItem,
-  getItem,
-  moveItemType,
-  updateItem,
-} from "@/lib/items";
+import { ITEM_STATUSES, ItemError, URGENCIES, getItem } from "@/lib/items";
+import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
 import {

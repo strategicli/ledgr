@@ -12,7 +12,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
 import { makeMarkdownBody } from "@/lib/body";
-import { createItem } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import { emailToMarkdown, emailFooterMarkdown } from "./html";
 import type { MailSource, NormalizedMessage } from "./types";
 

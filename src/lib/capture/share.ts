@@ -8,7 +8,7 @@
 // is identical whether the share arrived as the old GET or the new POST.
 import { makeMarkdownBody } from "@/lib/body";
 import { fetchAndExtract } from "@/lib/clip/extract";
-import { createItem } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 
 // Android puts the URL in `url` or (commonly) at the end of `text`.
 export function extractUrl(...candidates: (string | undefined)[]): string | null {

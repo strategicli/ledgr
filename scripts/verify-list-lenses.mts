@@ -78,7 +78,7 @@ check("text not numeric", opts.find((o) => o.key === "code")?.numeric === false)
 // ---------------------------------------------------------------------------
 const { getDb } = await import("../src/db");
 const { items, users, relations, views } = await import("../src/db/schema");
-const { createItem } = await import("../src/lib/items");
+const { createItem } = await import("../src/lib/item-mutations");
 const { queryViewItems, viewItemsQuery, createView, parseViewInput } = await import("../src/lib/views");
 const { resolveViewLens, applyTypeScope } = await import("../src/lib/view-render");
 const { getSettings, updateSettings } = await import("../src/lib/settings");

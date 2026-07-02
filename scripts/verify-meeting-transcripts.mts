@@ -25,7 +25,8 @@ const {
 } = await import("../src/lib/meetings/transcripts");
 const { listRelatedItems } = await import("../src/lib/relations");
 const { queryViewItems } = await import("../src/lib/views");
-const { updateItem, ItemError } = await import("../src/lib/items");
+const { ItemError } = await import("../src/lib/items");
+const { updateItem } = await import("../src/lib/item-mutations");
 const { eq, and } = await import("drizzle-orm");
 
 let failures = 0;

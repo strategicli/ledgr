@@ -12,14 +12,13 @@ import { getDb } from "@/db";
 import { items, relations, templates, types } from "@/db/schema";
 import { isItemBody, type ItemBody } from "@/lib/body";
 import { cloneItemSubtree } from "@/lib/clone";
+import { getItem, ItemError } from "@/lib/items";
 import {
   createItem,
-  getItem,
-  ItemError,
   softDeleteItem,
   updateItem,
   type ItemPatch,
-} from "@/lib/items";
+} from "@/lib/item-mutations";
 import { MENTION_ROLE } from "@/lib/mentions";
 import { dateToYmdUtc, ymdToUtcDate } from "@/lib/recurrence";
 import { relateItems } from "@/lib/relations";

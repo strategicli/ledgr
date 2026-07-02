@@ -4,7 +4,8 @@
 // below and its use in index.ts's listToolDefs/callTool.
 import { parseItemPayload } from "@/lib/api";
 import { makeMarkdownBody } from "@/lib/body";
-import { ItemError, createItem } from "@/lib/items";
+import { ItemError } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import {
   MEMORY_HORIZONS,
   MEMORY_KINDS,

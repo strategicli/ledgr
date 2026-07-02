@@ -16,7 +16,7 @@ const { getDb } = await import("../src/db");
 const { items, views, users } = await import("../src/db/schema");
 const { parseDisplay, parseViewInput, createView, getView, DISPLAY_DEFAULTS } =
   await import("../src/lib/views");
-const { updateItem } = await import("../src/lib/items");
+const { updateItem } = await import("../src/lib/item-mutations");
 const { cellAtPoint } = await import("../src/lib/board-touch-drag");
 const { slotCount, slotStartHhmm, blockTopPx, blockHeightPx, durationFromResizePx } =
   await import("../src/lib/planner-grid");

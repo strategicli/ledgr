@@ -7,7 +7,8 @@
 // to the exact line and the line can show a "→ task" badge. Owner-scoped throughout.
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { createItem, getItem, ItemError } from "@/lib/items";
+import { getItem, ItemError } from "@/lib/items";
+import { createItem } from "@/lib/item-mutations";
 import { makeMarkdownBody } from "@/lib/body";
 import { relateItems } from "@/lib/relations";
 import { getMeetingPeople } from "./prep";
