@@ -6,10 +6,11 @@ import type { StorageProvider } from "./types";
 
 export type { PresignedUpload, StorageProvider } from "./types";
 
-let cached: StorageProvider | null = null;
-
+// No caching: constructing an R2Provider is a local, no-I/O AwsClient signer
+// setup, not worth memoizing, and env can legitimately change mid-process
+// (dev restarts, tests injecting fake credentials) — a cached instance would
+// silently keep using stale config.
 export function getStorage(): StorageProvider | null {
-  if (cached) return cached;
   const {
     R2_ACCESS_KEY_ID: accessKeyId,
     R2_SECRET_ACCESS_KEY: secretAccessKey,
@@ -17,17 +18,14 @@ export function getStorage(): StorageProvider | null {
     R2_ENDPOINT: endpoint,
     R2_PUBLIC_BASE_URL: publicBaseUrl,
   } = process.env;
-  // A miss isn't cached: config may arrive later (env set between dev
-  // restarts, tests injecting fake credentials).
   if (!accessKeyId || !secretAccessKey || !bucket || !endpoint || !publicBaseUrl) {
     return null;
   }
-  cached = new R2Provider({
+  return new R2Provider({
     accessKeyId,
     secretAccessKey,
     bucket,
     endpoint,
     publicBaseUrl,
   });
-  return cached;
 }

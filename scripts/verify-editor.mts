@@ -137,6 +137,14 @@ check(
 
 const att = await import("../src/lib/attachments");
 
+// This check asserts the unconfigured-storage path, regardless of whether
+// the local .env.local (loaded above) already carries real R2 credentials
+// for everyday dev use — so clear them for just this one assertion. (The
+// fake config set right below overwrites all five for the rest of the suite.)
+for (const k of ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_ENDPOINT", "R2_PUBLIC_BASE_URL"]) {
+  delete process.env[k];
+}
+
 await expectError("attach: storage unconfigured → bad_request", "bad_request", () =>
   att.createAttachment(owner.id, {
     itemId: target.id,

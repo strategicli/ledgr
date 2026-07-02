@@ -29,6 +29,7 @@ const { generateVapidKeys, signVapidJwt, audienceFor, b64urlEncode, b64urlDecode
 const { encryptPush } = await import("../src/lib/push/encrypt");
 const store = await import("../src/lib/push/store");
 const { sendToOwner, runAgendaNotify, runPrepNotify, AGENDA_JOB_KEY, PREP_JOB_KEY } = await import("../src/lib/push/notify");
+const { NOTIFICATION_CENTER_ENABLED } = await import("../src/lib/notifications-enabled");
 type PushSender = import("../src/lib/push/types").PushSender;
 type PushMessage = import("../src/lib/push/types").PushMessage;
 type PushSubscriptionRecord = import("../src/lib/push/types").PushSubscriptionRecord;
@@ -157,13 +158,21 @@ try {
   await mk({ type: "event", title: "Standup", meetingAt: new Date(Date.now() + 45 * 60_000) });
   const agendaSender = new StubSender();
   const agenda1 = await runAgendaNotify(ownerId, agendaSender);
-  check("agenda send is not skipped on first run", agenda1.skipped === false);
-  check("agenda message titled 'Today's agenda' sent to the live sub", agendaSender.calls.length === 1 && agendaSender.calls[0].message.title === "Today's agenda", agendaSender.calls[0]?.message.body);
-  check("agenda click target is Today", agendaSender.calls[0]?.message.url === "/");
+  if (NOTIFICATION_CENTER_ENABLED) {
+    check("agenda send is not skipped on first run", agenda1.skipped === false);
+    check("agenda message titled 'Today's agenda' sent to the live sub", agendaSender.calls.length === 1 && agendaSender.calls[0].message.title === "Today's agenda", agendaSender.calls[0]?.message.body);
+    check("agenda click target is Today", agendaSender.calls[0]?.message.url === "/");
 
-  const agendaSender2 = new StubSender();
-  const agenda2 = await runAgendaNotify(ownerId, agendaSender2);
-  check("agenda is skipped on a second same-day run (day guard)", agenda2.skipped === true && agendaSender2.calls.length === 0);
+    const agendaSender2 = new StubSender();
+    const agenda2 = await runAgendaNotify(ownerId, agendaSender2);
+    check("agenda is skipped on a second same-day run (day guard)", agenda2.skipped === true && agendaSender2.calls.length === 0);
+  } else {
+    // Notification center paused (ADR-130): the guard at the top of
+    // runAgendaNotify short-circuits before any send. Assert the paused
+    // contract instead — flip NOTIFICATION_CENTER_ENABLED back on to
+    // re-exercise the send path above.
+    check("agenda is a no-op while the notification center is paused (ADR-130)", agenda1.skipped === true && agendaSender.calls.length === 0);
+  }
 
   // --- 6. meeting-prep-ready ----------------------------------------------
   const person = await mk({ type: "person", title: "Roger" });
@@ -181,18 +190,27 @@ try {
 
   const prepSender = new StubSender();
   const prep1 = await runPrepNotify(ownerId, prepSender);
-  check("prep notifies exactly the in-window meeting with an entity", prep1.notified === 1, `notified=${prep1.notified}`);
-  check("prep notification names the meeting", prepSender.calls.some((c) => c.message.title.includes("Roger 1:1")), prepSender.calls.map((c) => c.message.title).join(" | "));
-  check("prep click target is the meeting", prepSender.calls[0]?.message.url === `/items/${soon}`);
+  if (NOTIFICATION_CENTER_ENABLED) {
+    check("prep notifies exactly the in-window meeting with an entity", prep1.notified === 1, `notified=${prep1.notified}`);
+    check("prep notification names the meeting", prepSender.calls.some((c) => c.message.title.includes("Roger 1:1")), prepSender.calls.map((c) => c.message.title).join(" | "));
+    check("prep click target is the meeting", prepSender.calls[0]?.message.url === `/items/${soon}`);
 
-  // The notified meeting is flagged; a second run does nothing.
-  const flagged = await db.select({ properties: items.properties }).from(items).where(eq(items.id, soon));
-  const flag = (flagged[0].properties as { notify?: { prepNotifiedAt?: string } } | null)?.notify?.prepNotifiedAt;
-  check("notified meeting carries properties.notify.prepNotifiedAt", typeof flag === "string");
+    // The notified meeting is flagged; a second run does nothing.
+    const flagged = await db.select({ properties: items.properties }).from(items).where(eq(items.id, soon));
+    const flag = (flagged[0].properties as { notify?: { prepNotifiedAt?: string } } | null)?.notify?.prepNotifiedAt;
+    check("notified meeting carries properties.notify.prepNotifiedAt", typeof flag === "string");
 
-  const prepSender2 = new StubSender();
-  const prep2 = await runPrepNotify(ownerId, prepSender2);
-  check("prep does not re-notify an already-flagged meeting", prep2.notified === 0 && prepSender2.calls.length === 0);
+    const prepSender2 = new StubSender();
+    const prep2 = await runPrepNotify(ownerId, prepSender2);
+    check("prep does not re-notify an already-flagged meeting", prep2.notified === 0 && prepSender2.calls.length === 0);
+  } else {
+    // Notification center paused (ADR-130): the guard at the top of
+    // runPrepNotify short-circuits before the window query runs, so no
+    // meeting is ever flagged. Assert the paused contract instead — flip
+    // NOTIFICATION_CENTER_ENABLED back on to re-exercise the window/dedup
+    // logic above.
+    check("prep is a no-op while the notification center is paused (ADR-130)", prep1.notified === 0 && prepSender.calls.length === 0);
+  }
 
   // --- 7. owner scoping ----------------------------------------------------
   const [otherUser] = await db.insert(users).values({ email: `verify-push-other-${Date.now()}@example.invalid` }).returning({ id: users.id });
