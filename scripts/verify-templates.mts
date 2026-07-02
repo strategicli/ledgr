@@ -267,6 +267,29 @@ try {
   check("the prototype keeps its tokens (only the clone is resolved)", (await getItem(owner.id, vtmpl.prototypeItemId)).title === "Review for {{nextSunday:short}}");
   check("an unanswered {{ask}} resolves to empty", bodyMarkdown((await getItem(owner.id, (await createItemFromTemplate(owner.id, vtmpl.id, { now: new Date("2026-06-20T12:00:00Z") })).id)).body).includes("Topic: \n"));
 
+  // --- TPL6a: tokens in custom property VALUES resolve on apply ---
+  const ptmpl = await createTemplate(owner.id, { type: typeKey, name: "Prop-var template" });
+  await updateItem(owner.id, ptmpl.prototypeItemId, {
+    properties: { due: "{{today+14d:iso}}", topic: "{{ask:Topic}}", tags: ["{{ask:Topic}}", "fixed"], keep: "plain" },
+  });
+  check("templateAskLabels also scans property values", JSON.stringify(await templateAskLabels(owner.id, ptmpl.id)) === JSON.stringify(["Topic"]));
+  const pApplied = await getItem(owner.id, (await createItemFromTemplate(owner.id, ptmpl.id, {
+    now: new Date("2026-06-20T12:00:00Z"),
+    answers: { Topic: "Prayer" },
+  })).id);
+  const pProps = (pApplied.properties ?? {}) as Record<string, unknown>;
+  check("apply resolves a date token in a property value", pProps.due === "2026-07-04");
+  check("apply resolves {{ask}} in a property value", pProps.topic === "Prayer");
+  check("apply resolves tokens inside an array property", JSON.stringify(pProps.tags) === JSON.stringify(["Prayer", "fixed"]));
+  check("apply leaves a plain property value", pProps.keep === "plain");
+  check("the prototype keeps its property tokens", ((await getItem(owner.id, ptmpl.prototypeItemId)).properties as Record<string, unknown>).due === "{{today+14d:iso}}");
+  // apply-to-existing (fill): a property the target lacks is added, tokens resolved.
+  const pTarget = await createItem(owner.id, { type: typeKey, title: "Has topic", properties: { topic: "Existing" } });
+  await applyTemplateToExisting(owner.id, ptmpl.id, pTarget.id, { mode: "fill", now: new Date("2026-06-20T12:00:00Z"), answers: { Topic: "Prayer" } });
+  const pTargetFull = (await getItem(owner.id, pTarget.id)).properties as Record<string, unknown>;
+  check("apply-to-existing fill resolves tokens in an added property", pTargetFull.due === "2026-07-04");
+  check("apply-to-existing fill keeps the target's existing property", pTargetFull.topic === "Existing");
+
   // --- TPL3b: structured due/scheduled date rules ---
   const dtmpl = await createTemplate(owner.id, { type: typeKey, name: "Dated template" });
   check("a new template starts with no apply rules", JSON.stringify(dtmpl.applyConfig) === "{}");

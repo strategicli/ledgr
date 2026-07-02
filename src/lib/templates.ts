@@ -27,6 +27,8 @@ import {
   parseApplyConfig,
   resolveDateRule,
   resolveVars,
+  resolveVarsInProps,
+  resolveVarsInValue,
   scanAskLabels,
   type ApplyConfig,
 } from "@/lib/template-vars";
@@ -357,19 +359,24 @@ function ymdOf(now: Date): string {
 async function subtreeNodes(
   ownerId: string,
   rootId: string
-): Promise<{ id: string; title: string; body: unknown }[]> {
+): Promise<{ id: string; title: string; body: unknown; properties: unknown }[]> {
   const res = await getDb().execute(sql`
     with recursive sub as (
-      select id, title, body from items
+      select id, title, body, properties from items
         where id = ${rootId} and owner_id = ${ownerId} and deleted_at is null
       union all
-      select i.id, i.title, i.body from items i
+      select i.id, i.title, i.body, i.properties from items i
         join sub s on i.parent_id = s.id
         where i.owner_id = ${ownerId} and i.deleted_at is null
     )
-    select id, title, body from sub
+    select id, title, body, properties from sub
   `);
-  return res.rows as { id: string; title: string; body: unknown }[];
+  return res.rows as {
+    id: string;
+    title: string;
+    body: unknown;
+    properties: unknown;
+  }[];
 }
 
 // Resolve {{tokens}} across a freshly-cloned subtree's titles + bodies (ADR-093,
@@ -394,14 +401,21 @@ async function resolveTemplateVars(
   const resolvedTitle = opts.title ?? (root ? resolveVars(root.title ?? "", base) : "");
   const ctx = { ...base, title: resolvedTitle };
   for (const n of nodes) {
-    const patch: { title?: string; body?: ItemBody } = {};
+    const patch: { title?: string; body?: ItemBody; properties?: Record<string, unknown> } = {};
     const newTitle = resolveVars(n.title ?? "", ctx);
     if (newTitle !== (n.title ?? "")) patch.title = newTitle;
     if (isItemBody(n.body) && n.body.text) {
       const newText = resolveVars(n.body.text, ctx);
       if (newText !== n.body.text) patch.body = { format: n.body.format, text: newText };
     }
-    if (patch.title !== undefined || patch.body !== undefined) {
+    // TPL6a: resolve tokens in custom property values too (a date/text property
+    // preset to {{today+14d}} or {{ask:Due}} fills on apply, like title/body).
+    const props = asRecord(n.properties);
+    if (props) {
+      const { changed, next } = resolveVarsInProps(props, ctx);
+      if (changed) patch.properties = next;
+    }
+    if (patch.title !== undefined || patch.body !== undefined || patch.properties !== undefined) {
       await updateItem(ownerId, n.id, patch);
     }
   }
@@ -419,8 +433,21 @@ export async function templateAskLabels(
   for (const n of nodes) {
     texts.push(n.title ?? null);
     if (isItemBody(n.body)) texts.push(n.body.text);
+    // TPL6a: an {{ask:}} inside a custom property value is a prompt too.
+    const props = asRecord(n.properties);
+    if (props) collectStrings(props, texts);
   }
   return scanAskLabels(texts);
+}
+
+// Push every string value inside a properties object (incl. inside arrays) onto
+// `out`, for scanning property tokens.
+function collectStrings(props: Record<string, unknown>, out: (string | null)[]): void {
+  const walk = (v: unknown) => {
+    if (typeof v === "string") out.push(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+  };
+  for (const v of Object.values(props)) walk(v);
 }
 
 // Set the cloned ROOT's dated fields from the template's apply rules (TPL3b).
@@ -528,7 +555,8 @@ export async function applyTemplateToExisting(
   if (protoProps) {
     const propPatch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(protoProps)) {
-      if (over || !(k in targetProps)) propPatch[k] = v;
+      // TPL6a: resolve tokens in the value being merged in (e.g. {{ask:Due}}).
+      if (over || !(k in targetProps)) propPatch[k] = resolveVarsInValue(v, ctx);
     }
     if (Object.keys(propPatch).length) patch.propertyPatch = propPatch;
   }

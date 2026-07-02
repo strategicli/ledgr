@@ -151,6 +151,44 @@ export function resolveVars(text: string, ctx: VarContext): string {
   });
 }
 
+// Resolve template tokens inside a property value (TPL6a). Custom property
+// values are cloned verbatim from the prototype, so a text/date property can
+// hold {{today}}, {{today+7d}}, or {{ask:Label}} and have it filled on apply —
+// e.g. a "Paper due" date property preset to {{ask:Due:  }} or {{today+14d}}.
+// Only string values (and strings inside arrays, e.g. multi_select) are
+// resolved; numbers/booleans/nested objects pass through untouched. Returns the
+// same reference when nothing changed, so a caller can skip the write.
+export function resolveVarsInValue(value: unknown, ctx: VarContext): unknown {
+  if (typeof value === "string") return resolveVars(value, ctx);
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((v) => {
+      const r = resolveVarsInValue(v, ctx);
+      if (r !== v) changed = true;
+      return r;
+    });
+    return changed ? next : value;
+  }
+  return value;
+}
+
+// Resolve tokens across every value of a properties object (TPL6a). Returns
+// { changed, next }; `next` is the same reference when nothing changed.
+export function resolveVarsInProps(
+  props: Record<string, unknown> | null | undefined,
+  ctx: VarContext
+): { changed: boolean; next: Record<string, unknown> } {
+  if (!props) return { changed: false, next: {} };
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    const r = resolveVarsInValue(v, ctx);
+    if (r !== v) changed = true;
+    next[k] = r;
+  }
+  return { changed, next: changed ? next : props };
+}
+
 // The distinct {{ask:Label}} labels across a set of texts (titles + bodies),
 // in first-seen order — drives the apply-time prompt form. Duplicate labels
 // collapse to one prompt (the answer fills every occurrence).

@@ -2,6 +2,8 @@
 // the resolver is pure (the caller passes today/now). Run: npx tsx scripts/verify-template-vars.mts
 import {
   resolveVars,
+  resolveVarsInValue,
+  resolveVarsInProps,
   scanAskLabels,
   hasVars,
   resolveDateRule,
@@ -115,6 +117,35 @@ eq(
 );
 eq("parseApplyConfig drops invalid", parseApplyConfig({ scheduledDate: { mode: "bad" } }), {});
 eq("parseApplyConfig non-object → {}", parseApplyConfig(null), {});
+
+// --- TPL6a: property-value token resolution ---
+eq("resolveVarsInValue string", resolveVarsInValue("{{today}}", ctx), "Jun 20, 2026");
+eq("resolveVarsInValue ask", resolveVarsInValue("{{ask:Topic}}", ctx), "Prayer");
+eq("resolveVarsInValue offset date", resolveVarsInValue("{{today+14d:iso}}", ctx), "2026-07-04");
+eq("resolveVarsInValue number passes through", resolveVarsInValue(42, ctx), 42);
+eq("resolveVarsInValue boolean passes through", resolveVarsInValue(true, ctx), true);
+eq(
+  "resolveVarsInValue array of strings (multi_select)",
+  resolveVarsInValue(["{{ask:Topic}}", "fixed", "{{today:iso}}"], ctx),
+  ["Prayer", "fixed", "2026-06-20"]
+);
+{
+  const same = ["a", "b"];
+  truthy("resolveVarsInValue array unchanged → same ref", resolveVarsInValue(same, ctx) === same);
+}
+{
+  const { changed, next } = resolveVarsInProps({ due: "{{today+7d:iso}}", note: "plain", n: 3 }, ctx);
+  truthy("resolveVarsInProps changed flag", changed === true);
+  eq("resolveVarsInProps resolves date prop", next.due, "2026-06-27");
+  eq("resolveVarsInProps leaves plain", next.note, "plain");
+  eq("resolveVarsInProps leaves number", next.n, 3);
+}
+{
+  const props = { a: "plain", n: 1 };
+  const res = resolveVarsInProps(props, ctx);
+  truthy("resolveVarsInProps no tokens → same ref + not changed", res.next === props && res.changed === false);
+}
+eq("resolveVarsInProps null → {}", resolveVarsInProps(null, ctx), { changed: false, next: {} });
 
 console.log(`\n${fail ? "FAIL" : "ALL PASS"} (${pass} passed, ${fail} failed)`);
 process.exit(fail ? 1 : 0);
