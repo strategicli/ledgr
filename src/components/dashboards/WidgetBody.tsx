@@ -44,7 +44,7 @@ function ItemRow({ item, assoc, related }: { item: ViewItem; assoc?: Assoc; rela
   const isTask = item.type === "task";
   const extra = related && related.length > 1 ? related.length - 1 : 0;
   return (
-    <li className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-neutral-800/60">
+    <li className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-surface-2">
       {isTask && (
         <span className="cancel-drag shrink-0">
           <SubtaskCheckbox id={item.id} done={done} />
@@ -53,7 +53,7 @@ function ItemRow({ item, assoc, related }: { item: ViewItem; assoc?: Assoc; rela
       <Link
         href={`/items/${item.id}`}
         className={`cancel-drag min-w-0 flex-1 truncate text-sm ${
-          item.title ? "text-neutral-300" : "text-neutral-500"
+          item.title ? "text-ink-muted" : "text-ink-subtle"
         } ${done ? "line-through opacity-60" : ""}`}
       >
         {item.title || "Untitled"}
@@ -61,14 +61,14 @@ function ItemRow({ item, assoc, related }: { item: ViewItem; assoc?: Assoc; rela
       {assoc && (
         <Link
           href={`/items/${assoc.id}`}
-          className="cancel-drag shrink-0 max-w-[40%] truncate rounded-full bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200"
+          className="cancel-drag shrink-0 max-w-[40%] truncate rounded-full bg-surface-2 px-1.5 py-0.5 text-xs text-ink-muted hover:text-ink"
           title={`Related to ${assoc.title || "Untitled"}${extra ? ` +${extra} more` : ""}`}
         >
           {assoc.title || "Untitled"}
           {extra ? ` +${extra}` : ""}
         </Link>
       )}
-      <span className="shrink-0 text-xs text-neutral-600">
+      <span className="shrink-0 text-xs text-ink-subtle">
         {item.dueDate ? dueFmt.format(item.dueDate) : ""}
       </span>
     </li>
@@ -90,8 +90,10 @@ export default function WidgetBody({
     const s = widget.settings as StatWidgetSettings;
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 p-3">
-        <span className="text-4xl font-bold tabular-nums text-neutral-100">{data.count}</span>
-        <span className="truncate text-xs text-neutral-500">{s.label || data.view?.name || ""}</span>
+        {/* Compact on a phone (text-3xl), full on desktop — the audit found a
+            stat card ~200px tall for one number. */}
+        <span className="text-3xl font-bold tabular-nums text-ink sm:text-4xl">{data.count}</span>
+        <span className="truncate text-xs text-ink-subtle">{s.label || data.view?.name || ""}</span>
       </div>
     );
   }

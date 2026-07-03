@@ -9,7 +9,7 @@ import ListPage from "@/components/lists/ListPage";
 import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
-import RowAction from "@/components/home/RowAction";
+import RowMenu from "@/components/lists/RowMenu";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -76,6 +76,7 @@ export default async function Links({
       title="Links"
       subtitle={`${count} link${count === 1 ? "" : "s"}`}
       actions={<NewItemButton type="link" />}
+      width="list"
     >
       <ListLenses
         lenses={lenses}
@@ -92,15 +93,18 @@ export default async function Links({
           <SelectModeToggle />
           <ul className="mt-4">
             {links.map((link) => (
-              <li
+              <RowMenu
                 key={link.id}
-                className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
+                id={link.id}
+                label={link.title || "Untitled"}
+                className="group flex items-center gap-2.5 rounded px-2 py-1.5 hover:bg-surface-2"
               >
                 <SelectCheckbox id={link.id} />
                 <Link
                   href={`/items/${link.id}`}
-                  className={`min-w-0 flex-1 truncate text-sm ${
-                    link.title ? "text-neutral-200" : "text-neutral-500"
+                  data-peek-row
+                  className={`ui-row min-w-0 flex-1 truncate ${
+                    link.title ? "text-ink" : "text-ink-subtle"
                   }`}
                 >
                   {link.title || "Untitled"}
@@ -110,24 +114,23 @@ export default async function Links({
                     href={link.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="max-w-40 shrink-0 truncate rounded bg-neutral-800 px-1.5 text-xs text-[var(--accent)] hover:brightness-110"
+                    className="max-w-40 shrink-0 truncate rounded bg-surface-2 px-1.5 text-xs text-[var(--accent)] hover:brightness-110"
                     title={link.url}
                   >
                     {hostOf(link.url)} ↗
                   </a>
                 )}
-                <span className="shrink-0 text-xs text-neutral-600">
+                <span className="ui-meta shrink-0 tabular-nums">
                   {dateFmt.format(link.updatedAt)}
                 </span>
-                <RowAction id={link.id} action="trash" />
-              </li>
+              </RowMenu>
             ))}
           </ul>
           <LoadMore shown={links.length} total={count} basePath="/links" params={sp} />
           <BulkActionBar {...bulkConfigForType(await getType("link"))} />
         </SelectionProvider>
       ) : (
-        <p className="mt-6 px-2 text-sm text-neutral-600">No links yet.</p>
+        <p className="ui-row mt-6 px-2 text-ink-subtle">No links yet.</p>
       )}
     </ListPage>
   );

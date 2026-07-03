@@ -32,12 +32,14 @@ function toLocalInput(iso: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
+// Styled from the S1 token layer (ui-refresh S3): quieter borders (--line) on a
+// panel surface, brighter on focus/hover — the calm chip strip under the title.
 const selectClass =
-  "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600";
+  "rounded-md border border-line bg-surface-1 px-2 py-0.5 text-sm text-ink outline-none focus:border-line-strong";
 const inputClass = `${selectClass} [color-scheme:dark]`;
 // Reschedule shortcut chips on the scheduled field (T2).
 const chipClass =
-  "rounded border border-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-200";
+  "rounded-full border border-line px-2 py-0.5 text-xs text-ink-muted hover:border-line-strong hover:text-ink";
 
 // ISO instant (UTC midnight) for a calendar day, matching how scheduled/due are
 // stored and sliced elsewhere.
@@ -274,12 +276,10 @@ export default function FieldStrip({
         {fields.map((name) => (
           <div
             key={name}
-            className="border-t border-neutral-800/60 py-3 first:border-t-0 first:pt-0"
+            className="border-t border-line py-3 first:border-t-0 first:pt-0"
           >
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              {labels[name]}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-sm text-neutral-200">
+            <div className="ui-section-label mb-1.5">{labels[name]}</div>
+            <div className="flex flex-wrap items-center gap-1.5 text-sm text-ink">
               {field(name)}
             </div>
           </div>
@@ -293,7 +293,7 @@ export default function FieldStrip({
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 px-2 pb-3 sm:px-8 md:px-12 ${
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 px-2 pb-2 sm:px-8 md:px-12 ${
         locked ? "opacity-60" : ""
       }`}
     >
@@ -303,7 +303,7 @@ export default function FieldStrip({
         {fields.map((name) => (
           <label
             key={name}
-            className="flex items-center gap-1.5 text-xs text-neutral-500"
+            className="flex items-center gap-1.5 text-xs text-ink-subtle"
           >
             {labels[name]}
             {field(name)}

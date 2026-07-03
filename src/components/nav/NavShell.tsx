@@ -46,6 +46,7 @@ import { useHoverPopover } from "@/components/nav/useHoverPopover";
 import AppBadgeSync from "@/components/pwa/AppBadgeSync";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
+import Launcher, { type LauncherTile } from "@/components/nav/Launcher";
 import { isBuildPath } from "@/lib/build-nav";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
@@ -142,6 +143,7 @@ export default function NavShell({
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [launcherOpen, setLauncherOpen] = useState(false);
   // Tools-group + Favorites popovers: hover-intent open (hover-capable
   // pointers) or click-toggle (touch), with outside-click dismiss.
   const {
@@ -425,6 +427,21 @@ export default function NavShell({
     slot,
     id: i === 0 ? "home" : `m${i}`,
   }));
+
+  // The pull-up launcher (S6) holds EVERY destination — the owner's full nav set
+  // (a tools group expands to its children) plus the built-in extras — so the
+  // fixed mobile bar can carry only the daily few and nothing is out of reach.
+  const launcherTiles: LauncherTile[] = [
+    ...[HOME_SLOT, ...slots].flatMap((s) =>
+      s.kind === "tools"
+        ? s.children.map((c) => ({ label: c.label, href: c.href, icon: c.icon, count: c.count }))
+        : [{ label: s.label, href: s.href, icon: s.icon, count: s.count }]
+    ),
+    { label: "Search", href: "/search", icon: "search" },
+    { label: "Build", href: "/build", icon: "tools" },
+    { label: "Settings", href: "/settings", icon: "bolt" },
+    { label: "Trash", href: "/trash", icon: "archive" },
+  ];
 
   const itemColors = (active: boolean) =>
     active
@@ -776,6 +793,19 @@ export default function NavShell({
   // `overflow-x-auto` strip would clip.
   const pillTrailingControls = (
     <>
+      {/* Search slot (ui-refresh S2): a permanent, visible entry to the ⌘K
+          palette — the audit found search had zero affordance and was
+          unreachable on a phone. Rides the trailing controls so it renders in
+          whatever position the owner docked the nav. */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        title="Search (⌘K)"
+        aria-label="Search"
+        className="flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+      >
+        <Icon icon="search" />
+        Search
+      </button>
       <button
         onClick={() => setCaptureOpen(true)}
         title="Quick capture (q)"
@@ -824,6 +854,17 @@ export default function NavShell({
     >
       {scrollable ? (
         <>
+          {/* Grip → the pull-up launcher grid of every destination (S6). */}
+          <button
+            type="button"
+            onClick={() => setLauncherOpen(true)}
+            aria-label="All destinations"
+            title="All destinations"
+            className="flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+          >
+            <Icon icon="grid" />
+            All
+          </button>
           <div
             ref={scrollStripRef}
             onTouchStart={onStripTouchStart}
@@ -907,6 +948,14 @@ export default function NavShell({
               renderSlot(slot, id, topSlot, true, "top-full mt-2 left-0")
             )}
             <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
+              <button
+                onClick={() => setSearchOpen(true)}
+                title="Search (⌘K)"
+                aria-label="Search"
+                className="flex items-center rounded-lg p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+              >
+                <Icon icon="search" />
+              </button>
               <button
                 onClick={() => setCaptureOpen(true)}
                 title="Quick capture (q)"
@@ -1007,8 +1056,19 @@ export default function NavShell({
 
           {density === "spread" && <div className="flex-1" />}
 
-          {/* New + More. */}
+          {/* Search + New + More. */}
           <div className="flex flex-col gap-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              title="Search (⌘K)"
+              aria-label="Search"
+              className={`flex items-center text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 ${
+                railSize === "fat" ? "gap-3 rounded-lg px-3 py-2 text-sm" : "justify-center rounded-lg p-2.5"
+              }`}
+            >
+              <Icon icon="search" />
+              {railSize === "fat" && "Search"}
+            </button>
             <button
               onClick={() => setCaptureOpen(true)}
               title="Quick capture (q)"
@@ -1056,6 +1116,13 @@ export default function NavShell({
         <CaptureModal typeOptions={typeOptions} onClose={() => setCaptureOpen(false)} />
       )}
       {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} />}
+      {/* Pull-up launcher (S6): every destination, one tap up. Mobile-only. */}
+      <Launcher
+        open={launcherOpen}
+        onClose={() => setLauncherOpen(false)}
+        tiles={launcherTiles}
+        onSearch={() => setSearchOpen(true)}
+      />
     </nav>
   );
 }

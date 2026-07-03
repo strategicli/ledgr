@@ -21,7 +21,8 @@ import EventTimeline from "@/components/events/EventTimeline";
 import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
 import NewItemButton from "@/components/home/NewItemButton";
 import ProjectCardGrid from "@/components/projects/ProjectCardGrid";
-import RowAction from "@/components/home/RowAction";
+import RowMenu from "@/components/lists/RowMenu";
+import SwipeRow from "@/components/lists/SwipeRow";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -31,6 +32,8 @@ import { childRollups } from "@/lib/subtasks";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
+import { relatedSummaryFor } from "@/lib/relations";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
@@ -131,10 +134,22 @@ export default async function TypeList({
       ? await listProjectCardData(owner.id, items)
       : [];
 
-  // Subtask "n/m" rollups for the in-view rows (empty for the non-list lenses,
-  // which leave `items` empty). One extra owner-scoped, body-free query.
-  const rollups = await childRollups(owner.id, items.map((i) => i.id));
-  const listRowClass = "group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60";
+  // Subtask "n/m" rollups + a linked-item summary for the in-view rows (empty
+  // for the non-list lenses, which leave `items` empty). Two extra owner-scoped,
+  // body-free queries. The linked summary powers the richer row (ui-refresh S2):
+  // now that the list uses the full width, each row shows who it's linked to and
+  // when it was touched instead of a lone title on a mostly-empty line. Skipped
+  // for the Projects card grid (it renders its own richer cards).
+  const rowIds = type === "project" ? [] : items.map((i) => i.id);
+  const [rollups, linked] = await Promise.all([
+    childRollups(owner.id, items.map((i) => i.id)),
+    rowIds.length
+      ? relatedSummaryFor(owner.id, rowIds)
+      : Promise.resolve(new Map<string, { id: string; title: string; type: string }[]>()),
+  ]);
+  const listRowClass = "group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-surface-2";
+  // App-timezone today for the row menu's Focus + Schedule quick-dates (S4).
+  const today = appTodayYmd();
 
   const selects: FilterSelect[] = filterProps.map((fp) => ({
     param: `prop_${fp.key}`,
@@ -152,6 +167,7 @@ export default async function TypeList({
       title={typeDef.label}
       subtitle={`${count} item${count === 1 ? "" : "s"}`}
       actions={<NewItemButton type={type} />}
+      width="list"
     >
       <ListLenses
         lenses={lenses}
@@ -202,23 +218,45 @@ export default async function TypeList({
               <ul className="mt-4">
                 {items.map((item) => {
                   const rollup = rollups.get(item.id);
+                  const rel = linked.get(item.id) ?? [];
+                  const extra = rel.length > 1 ? rel.length - 1 : 0;
+                  const isTask = item.type === "task";
+                  const menuOpts = {
+                    id: item.id,
+                    canComplete: isTask,
+                    done: item.statusCategory === "done",
+                    today,
+                    label: item.title || "Untitled",
+                  };
                   const inner = (
                     <>
                       <SelectCheckbox id={item.id} />
                       <Link
                         href={`/items/${item.id}`}
-                        className={`min-w-0 flex-1 truncate text-sm ${
-                          item.title ? "text-neutral-200" : "text-neutral-500"
+                        data-peek-row
+                        className={`ui-row min-w-0 flex-1 truncate ${
+                          item.title ? "text-ink" : "text-ink-subtle"
                         }`}
                       >
                         {item.title || "Untitled"}
                       </Link>
-                      <span className="shrink-0 text-xs text-neutral-600">
+                      {rel[0] && (
+                        <Link
+                          href={`/items/${rel[0].id}`}
+                          className="hidden shrink-0 max-w-[28%] truncate rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted hover:text-ink sm:inline"
+                          title={`Linked to ${rel[0].title || "Untitled"}${extra ? ` +${extra} more` : ""}`}
+                        >
+                          {rel[0].title || "Untitled"}
+                          {extra ? ` +${extra}` : ""}
+                        </Link>
+                      )}
+                      <span className="ui-meta shrink-0 tabular-nums">
                         {dateFmt.format(new Date(item.updatedAt))}
                       </span>
-                      <RowAction id={item.id} action="trash" />
                     </>
                   );
+                  // Trash + Complete/Focus/Schedule now live in the shared row
+                  // menu (right-click / long-press), not an always-visible button.
                   return rollup && rollup.total > 0 ? (
                     <SubtaskExpandableRow
                       key={item.id}
@@ -226,13 +264,20 @@ export default async function TypeList({
                       done={rollup.done}
                       total={rollup.total}
                       liClassName={listRowClass}
+                      menuOptions={menuOpts}
                     >
                       {inner}
                     </SubtaskExpandableRow>
-                  ) : (
-                    <li key={item.id} className={listRowClass}>
+                  ) : isTask ? (
+                    // Task rows get swipe (right = complete, left = schedule) on
+                    // top of the shared menu; other types get the menu only.
+                    <SwipeRow key={item.id} className={listRowClass} {...menuOpts}>
                       {inner}
-                    </li>
+                    </SwipeRow>
+                  ) : (
+                    <RowMenu key={item.id} className={listRowClass} {...menuOpts}>
+                      {inner}
+                    </RowMenu>
                   );
                 })}
               </ul>
@@ -240,7 +285,7 @@ export default async function TypeList({
               <BulkActionBar {...bulkConfigForType(typeDef)} />
             </SelectionProvider>
           ) : (
-            <p className="mt-6 px-2 text-sm text-neutral-600">
+            <p className="ui-row mt-6 px-2 text-ink-subtle">
               {propFilters.length
                 ? "No items match these filters."
                 : `No ${typeDef.label.toLowerCase()} items yet.`}

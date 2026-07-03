@@ -61,10 +61,10 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+      className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
         active
-          ? "bg-neutral-700 text-neutral-100"
-          : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          ? "bg-surface-2 text-ink"
+          : "text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
       }`}
       aria-pressed={active}
     >

@@ -141,7 +141,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const taskExtrasNode = (
     <section className="mx-auto w-full max-w-3xl px-2 pb-1 pt-1 sm:px-8 md:px-12">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <span className="flex items-center gap-1.5 text-xs text-neutral-500">
+        <span className="flex items-center gap-1.5 text-xs text-ink-subtle">
           <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
           Focus today
         </span>
@@ -164,8 +164,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       <dl className="flex flex-col gap-1 px-2">
         {footerFields.map(({ label, value }) => (
           <div key={label} className="flex gap-3 text-sm">
-            <dt className="w-20 shrink-0 text-neutral-600">{label}</dt>
-            <dd className="min-w-0 break-words text-neutral-400">{value}</dd>
+            <dt className="w-20 shrink-0 text-ink-subtle">{label}</dt>
+            <dd className="min-w-0 break-words text-ink-muted">{value}</dd>
           </div>
         ))}
       </dl>
@@ -294,9 +294,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}
       {sourceLink && (
-        <div className="mx-auto w-full max-w-3xl px-2 pt-1 text-xs text-neutral-500 sm:px-8 md:px-12">
+        <div className="mx-auto w-full max-w-3xl px-2 pt-1 text-xs text-ink-subtle sm:px-8 md:px-12">
           ↳ from{" "}
-          <Link href={sourceLink.href} className="text-neutral-400 hover:text-neutral-200 hover:underline">
+          <Link href={sourceLink.href} className="text-ink-muted hover:text-ink hover:underline">
             {sourceLink.title}
           </Link>
         </div>
@@ -369,14 +369,14 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
       <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 pb-12 sm:px-8 md:px-12">
         <details className="canvas-section">
-        <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--cs-label)] hover:text-neutral-300">
+        <summary className="ui-section-label cursor-pointer hover:text-ink">
           Fields
         </summary>
         <dl className="mt-2 flex flex-col gap-1 px-2">
           {footerFields.map(({ label, value }) => (
             <div key={label} className="flex gap-3 text-sm">
-              <dt className="w-20 shrink-0 text-neutral-600">{label}</dt>
-              <dd className="min-w-0 break-words text-neutral-400">{value}</dd>
+              <dt className="w-20 shrink-0 text-ink-subtle">{label}</dt>
+              <dd className="min-w-0 break-words text-ink-muted">{value}</dd>
             </div>
           ))}
         </dl>

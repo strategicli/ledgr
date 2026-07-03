@@ -19,6 +19,7 @@ import {
   type WidgetData,
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
+import { badgeCount } from "@/lib/format-count";
 import { ACCENT_CLASS, BG_CLASS } from "./appearance-styles";
 import { usePopoverPosition } from "./floating-menu";
 import { titleHref, widgetTitle } from "./widget-title";
@@ -159,7 +160,7 @@ export default function WidgetFrame({
   return (
     <div className={`flex h-full flex-col overflow-hidden rounded-lg ${wrapperBorder} ${wrapperBg} ${accent}`}>
       <header
-        className={`flex items-center gap-2 px-3 py-2 ${ap.showBorder ? "border-b border-neutral-800" : ""}`}
+        className={`flex items-center gap-2 px-3 py-2 ${ap.showBorder ? "border-b border-line" : ""}`}
       >
         {editMode && draggable && DRAG_HANDLE}
         {chevron}
@@ -167,19 +168,19 @@ export default function WidgetFrame({
           (href ? (
             <Link
               href={href}
-              className="cancel-drag min-w-0 flex-1 truncate text-sm font-medium text-neutral-200 hover:text-neutral-100"
+              className="cancel-drag min-w-0 flex-1 truncate text-sm font-medium text-ink hover:text-neutral-100"
             >
               {title}
             </Link>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-200">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
               {title}
             </span>
           ))}
         {!showTitle && <span className="min-w-0 flex-1" />}
         {showCount && (
-          <span className="shrink-0 rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">
-            {data.count}
+          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted">
+            {badgeCount(data.count)}
           </span>
         )}
         {editMode && (

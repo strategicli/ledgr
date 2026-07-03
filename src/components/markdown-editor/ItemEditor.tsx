@@ -315,12 +315,14 @@ export default function ItemEditor({
   if (slot === "title") return titleInput;
   if (slot === "body") return bodyEditor;
 
-  // Classic stacked editor (the default canvas, unchanged).
+  // Classic stacked editor (the default canvas). Tighter top rhythm (ui-refresh
+  // S3): the title sits closer to the chrome and the field strip sits closer to
+  // the body, removing the dead vertical band the audit flagged.
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="px-2 pt-6 pb-2 sm:px-8 sm:pt-8 md:px-12">{titleInput}</div>
+      <div className="px-2 pt-4 pb-1 sm:px-8 sm:pt-5 md:px-12">{titleInput}</div>
       {fields}
-      <div className="px-2 pt-2 sm:px-8 md:px-12">{bodyEditor}</div>
+      <div className="px-2 pt-1 sm:px-8 md:px-12">{bodyEditor}</div>
     </div>
   );
 }
