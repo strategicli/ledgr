@@ -12,7 +12,7 @@
 // (hard navigation) so the same URL re-renders as the full page form.
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
@@ -29,14 +29,21 @@ const PEEK_MIN_CONTENT = 1280;
 // paddingLeft/Right ARE the docked rail widths. A right rail (paddingRight > 0)
 // means the trailing edge is taken, so we fall back to the center modal there
 // (and under any future right/split config) exactly as the brief specifies.
-function computePeek(): boolean {
-  if (typeof window === "undefined") return false;
+// Below this viewport width the item view is a bottom sheet (ui-refresh S6),
+// matching the sm breakpoint the nav uses to switch to the floating bar.
+const SHEET_MAX = 640;
+
+type Mode = "sheet" | "peek" | "center";
+
+function computeMode(): Mode {
+  if (typeof window === "undefined") return "center";
+  if (window.innerWidth < SHEET_MAX) return "sheet";
   const cs = getComputedStyle(document.body);
   const pl = parseFloat(cs.paddingLeft) || 0;
   const pr = parseFloat(cs.paddingRight) || 0;
   const content = window.innerWidth - pl - pr;
   const rightRail = pr > 8; // a real right-docked rail, not sub-pixel noise
-  return content >= PEEK_MIN_CONTENT && !rightRail;
+  return content >= PEEK_MIN_CONTENT && !rightRail ? "peek" : "center";
 }
 
 function isTyping(t: EventTarget | null): boolean {
@@ -82,13 +89,19 @@ export default function Modal({
 }) {
   const router = useRouter();
   const close = useCallback(() => router.back(), [router]);
-  // Peek vs center, decided from the layout on mount and kept current on resize.
-  // Client-only guard makes the SSR pass (never hit in practice — the @modal
-  // slot only fills on a client navigation) fall to center.
-  const [peek, setPeek] = useState(computePeek);
+  // sheet (mobile) / peek (wide desktop) / center — decided from the layout on
+  // mount and kept current on resize. Client-only guard makes the SSR pass
+  // (never hit in practice — the @modal slot only fills on a client nav) fall
+  // to center.
+  const [mode, setMode] = useState<Mode>(computeMode);
+  const peek = mode === "peek";
+  // Drag-to-dismiss offset for the bottom sheet (px the sheet is pulled down).
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<number | null>(null);
 
   useEffect(() => {
-    const onResize = () => setPeek(computePeek());
+    const onResize = () => setMode(computeMode());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -165,10 +178,10 @@ export default function Modal({
     return () => router.refresh();
   }, [router]);
 
-  // The shared panel: header (Trash · type cue · actions · Expand · Close) + the
-  // scrolling canvas body. Identical in both shapes.
-  const panel = (
-    <>
+  // The shared header (Trash · type cue · actions · Expand · Close) and the
+  // scrolling canvas body, kept separate so the sheet can make ONLY the header
+  // its drag-to-dismiss zone (the body must scroll + text-select freely).
+  const header = (
       <div className="flex shrink-0 items-center justify-between gap-1 px-3 pt-2">
         <div className="flex items-center gap-1">
           {/* A template prototype's destructive/templatize actions live in its
@@ -225,9 +238,55 @@ export default function Modal({
           </button>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-12">{children}</div>
+  );
+  const body = <div className="min-h-0 flex-1 overflow-y-auto pb-12">{children}</div>;
+  const panel = (
+    <>
+      {header}
+      {body}
     </>
   );
+
+  if (mode === "sheet") {
+    // Bottom sheet (mobile). Drag the grabber/header down to dismiss; the body
+    // scrolls and text-selects normally because the drag hit zone is the sheet
+    // chrome only (the grabber + header row), never the editor.
+    const onDragStart = (e: React.TouchEvent) => {
+      dragStart.current = e.touches[0].clientY;
+      setDragging(true);
+    };
+    const onDragMove = (e: React.TouchEvent) => {
+      if (dragStart.current == null) return;
+      const dy = e.touches[0].clientY - dragStart.current;
+      if (dy > 0) setDragY(dy);
+    };
+    const onDragEnd = () => {
+      if (dragY > 120) close();
+      else setDragY(0);
+      dragStart.current = null;
+      setDragging(false);
+    };
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+        <div
+          role="dialog"
+          aria-label={title || "Item"}
+          className="fixed inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl border-t border-line-strong bg-[var(--background)] shadow-2xl shadow-black/50"
+          style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
+        >
+          {/* Grabber + header are the drag-to-dismiss hit zone; the body is NOT,
+              so editor scroll + text selection are unaffected. */}
+          <div onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
+            <div className="flex justify-center pt-2 pb-1">
+              <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden />
+            </div>
+            {header}
+          </div>
+          {body}
+        </div>
+      </div>
+    );
+  }
 
   if (peek) {
     // Docked to the trailing edge of the content region: top/bottom clear a
