@@ -179,6 +179,21 @@ In-app recording stays deferred. **Live audio→transcript eyeball gated on a co
 
 ---
 
+## Unified UI/UX refresh (decided 2026-07-03, full brief `explorations/ui-refresh.md`)
+
+Full-pass refresh across item view, lists/lenses, dashboards, and nav; non-core/solo (token layer + mobile interaction standard get an ADR + a CLAUDE.md convention when they land). UI-only — no schema, no new tables, no route changes. Seven slices:
+
+- [ ] S1 — semantic token layer + neutral-ramp variables (light-mode-ready; mechanism only, theme deferred) + type scale / 8px rhythm / quieter borders / badge caps
+- [ ] S2 — full-width desktop lists + per-lens default columns (reuses ADR-049) + nav search slot + richer rows
+- [ ] S2b — desktop peek panel (spike-first): `ItemCanvas` `peek` variant docked to the content region, modal fallback when nav config leaves too little width
+- [ ] S3 — item-canvas rhythm: chip field strip under title, empty sections collapse, Rich/Source + arrange into ⋯ menu
+- [ ] S4 — shared long-press/right-click `RowMenu`; retire the always-visible per-row Trash button; relative dates
+- [ ] S5 — `SwipeRow` (right = complete, left = schedule; no dependency) wired into list + tasks + views list layout
+- [ ] S6 — mobile shell: fixed icon-only bottom bar + pull-up launcher grid, bottom-sheet item view, capture sheet, swipeable tab strips
+- [ ] S7 — dashboard + home polish: compact mobile stat cards, Recently-Touched cleanup, widget chrome on tokens
+
+---
+
 ## Phase 4: Packageable local / self-hosted build (exploratory)
 
 - [ ] Gated on a genuine alternative-deployment motivation (not resilience, already covered by export + Pulpit Ready)
