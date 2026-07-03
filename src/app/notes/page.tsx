@@ -15,6 +15,7 @@ import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
+import { relatedSummaryFor } from "@/lib/relations";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { APP_TIMEZONE } from "@/lib/today";
@@ -70,12 +71,18 @@ export default async function Notes({
     ]);
   }
 
+  // Linked-item summary for the richer full-width rows (ui-refresh S2).
+  const linked = notes.length
+    ? await relatedSummaryFor(owner.id, notes.map((n) => n.id))
+    : new Map<string, { id: string; title: string; type: string }[]>();
+
   return (
     <ListPage
       tab="notes"
       title="Notes"
       subtitle={`${count} note${count === 1 ? "" : "s"}`}
       actions={<NewItemButton type="note" />}
+      width="list"
     >
       <ListLenses
         lenses={lenses}
@@ -91,35 +98,49 @@ export default async function Notes({
         <SelectionProvider ids={notes.map((note) => note.id)}>
           <SelectModeToggle />
           <ul className="mt-4">
-            {notes.map((note) => (
-              <li
-                key={note.id}
-                className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
-              >
-                <SelectCheckbox id={note.id} />
-                <Link
-                  href={`/items/${note.id}`}
-                  className={`min-w-0 flex-1 truncate text-sm ${
-                    note.title ? "text-neutral-200" : "text-neutral-500"
-                  }`}
+            {notes.map((note) => {
+              const rel = linked.get(note.id) ?? [];
+              const extra = rel.length > 1 ? rel.length - 1 : 0;
+              return (
+                <li
+                  key={note.id}
+                  className="group flex items-center gap-2.5 rounded px-2 py-1.5 hover:bg-surface-2"
                 >
-                  {note.title || "Untitled"}
-                </Link>
-                <span
-                  className="shrink-0 text-xs text-neutral-600"
-                  title={note.noteDate ? "Date taken" : "Last edited"}
-                >
-                  {note.noteDate ? dayFmt.format(note.noteDate) : dateFmt.format(note.updatedAt)}
-                </span>
-                <RowAction id={note.id} action="trash" />
-              </li>
-            ))}
+                  <SelectCheckbox id={note.id} />
+                  <Link
+                    href={`/items/${note.id}`}
+                    className={`ui-row min-w-0 flex-1 truncate ${
+                      note.title ? "text-ink" : "text-ink-subtle"
+                    }`}
+                  >
+                    {note.title || "Untitled"}
+                  </Link>
+                  {rel[0] && (
+                    <Link
+                      href={`/items/${rel[0].id}`}
+                      className="hidden shrink-0 max-w-[28%] truncate rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted hover:text-ink sm:inline"
+                      title={`Linked to ${rel[0].title || "Untitled"}${extra ? ` +${extra} more` : ""}`}
+                    >
+                      {rel[0].title || "Untitled"}
+                      {extra ? ` +${extra}` : ""}
+                    </Link>
+                  )}
+                  <span
+                    className="ui-meta shrink-0 tabular-nums"
+                    title={note.noteDate ? "Date taken" : "Last edited"}
+                  >
+                    {note.noteDate ? dayFmt.format(note.noteDate) : dateFmt.format(note.updatedAt)}
+                  </span>
+                  <RowAction id={note.id} action="trash" />
+                </li>
+              );
+            })}
           </ul>
           <LoadMore shown={notes.length} total={count} basePath="/notes" params={sp} />
           <BulkActionBar {...bulkConfigForType(await getType("note"))} />
         </SelectionProvider>
       ) : (
-        <p className="mt-6 px-2 text-sm text-neutral-600">No notes yet.</p>
+        <p className="ui-row mt-6 px-2 text-ink-subtle">No notes yet.</p>
       )}
     </ListPage>
   );

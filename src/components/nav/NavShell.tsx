@@ -776,6 +776,19 @@ export default function NavShell({
   // `overflow-x-auto` strip would clip.
   const pillTrailingControls = (
     <>
+      {/* Search slot (ui-refresh S2): a permanent, visible entry to the ⌘K
+          palette — the audit found search had zero affordance and was
+          unreachable on a phone. Rides the trailing controls so it renders in
+          whatever position the owner docked the nav. */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        title="Search (⌘K)"
+        aria-label="Search"
+        className="flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+      >
+        <Icon icon="search" />
+        Search
+      </button>
       <button
         onClick={() => setCaptureOpen(true)}
         title="Quick capture (q)"
@@ -908,6 +921,14 @@ export default function NavShell({
             )}
             <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
               <button
+                onClick={() => setSearchOpen(true)}
+                title="Search (⌘K)"
+                aria-label="Search"
+                className="flex items-center rounded-lg p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+              >
+                <Icon icon="search" />
+              </button>
+              <button
                 onClick={() => setCaptureOpen(true)}
                 title="Quick capture (q)"
                 className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--accent)] hover:bg-neutral-800/60"
@@ -1007,8 +1028,19 @@ export default function NavShell({
 
           {density === "spread" && <div className="flex-1" />}
 
-          {/* New + More. */}
+          {/* Search + New + More. */}
           <div className="flex flex-col gap-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              title="Search (⌘K)"
+              aria-label="Search"
+              className={`flex items-center text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 ${
+                railSize === "fat" ? "gap-3 rounded-lg px-3 py-2 text-sm" : "justify-center rounded-lg p-2.5"
+              }`}
+            >
+              <Icon icon="search" />
+              {railSize === "fat" && "Search"}
+            </button>
             <button
               onClick={() => setCaptureOpen(true)}
               title="Quick capture (q)"
