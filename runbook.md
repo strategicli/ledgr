@@ -314,6 +314,16 @@ Back-end (cheap compute/storage/traffic):
 
 ---
 
+## 6a. Fragile areas (regressed more than once, check before merging)
+These have each broken again after being fixed, so treat them as the usual suspects behind "this used to work." When a change could plausibly touch one, re-check it before you merge.
+- **Styling / CSS load ("randomly unstyled content").** Sections sometimes rendered unstyled after a reload (plus a dark-scrollbar flash), and the heavy/light/unified style setting has failed to persist. The unstyled-flash was root-caused to non-deterministic CSS chunk ordering and fixed via strict `cssChunking` + a global `color-scheme` (PR #131, 2026-06-30); if it recurs, start there. After any change to global styles, the style setting, or the style-load path, hard-reload a few times and confirm styles hold and the setting saves.
+- **Quick-add item-type coverage.** Quick-add is meant to create any item type and has silently regressed to tasks-only. After touching quick-add or the create flow, add one of each non-task type through it.
+- **Lens interactions.** Lens work has broken unrelated surfaces (it once killed the upcoming-meetings calendar click-to-add), and lenses don't apply cleanly to meetings or to the tasks-of-a-meeting. After changing lenses, click through the calendar add and the meeting/task views before merging.
+- **Mobile markdown editor.** Indent and the toolbar have gone off-screen on mobile, fixed before and regressed since. Test any editor or toolbar change at mobile width, not just desktop.
+- **Favorites popup.** Has broken mid-change before; after touching nav or favorites, confirm it still opens.
+
+---
+
 ## 7. Common fixes *(stub: append real incidents and resolutions as they happen)*
 Format each entry: symptom → cause → fix → prevention. Building this log over time is what keeps maintenance incidents under an hour.
 

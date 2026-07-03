@@ -80,4 +80,4 @@ Ledgr is now built by two people sharing one codebase and schema, each deploying
 
 ## When you finish a slice
 
-Update `next_steps.md` (move the slice to done, name the next one), check the box in `roadmap.md`, and if you made a real architectural choice, log it in `decisions.md`.
+Update `next_steps.md` (move the slice to done, name the next one), check the box in `roadmap.md`, and if you made a real architectural choice, log it in `decisions.md`. Before you merge, re-check the fragile areas in `runbook.md` §6a (styling/CSS load, quick-add type coverage, lenses, the mobile editor, the favorites popup); each has regressed more than once, so a change near one earns a quick look before it ships.
