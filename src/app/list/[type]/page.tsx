@@ -22,6 +22,7 @@ import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
 import NewItemButton from "@/components/home/NewItemButton";
 import ProjectCardGrid from "@/components/projects/ProjectCardGrid";
 import RowMenu from "@/components/lists/RowMenu";
+import SwipeRow from "@/components/lists/SwipeRow";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -267,6 +268,12 @@ export default async function TypeList({
                     >
                       {inner}
                     </SubtaskExpandableRow>
+                  ) : isTask ? (
+                    // Task rows get swipe (right = complete, left = schedule) on
+                    // top of the shared menu; other types get the menu only.
+                    <SwipeRow key={item.id} className={listRowClass} {...menuOpts}>
+                      {inner}
+                    </SwipeRow>
                   ) : (
                     <RowMenu key={item.id} className={listRowClass} {...menuOpts}>
                       {inner}

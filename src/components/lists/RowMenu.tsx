@@ -51,12 +51,12 @@ export function useRowMenu(opts: RowMenuOptions) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const start = useRef<Pos | null>(null);
 
-  const open = useCallback((x: number, y: number) => {
+  const open = useCallback((x: number, y: number, o?: { schedule?: boolean }) => {
     // Clamp so the ~190px menu stays on screen near a right/bottom edge.
     const mx = Math.min(x, window.innerWidth - 200);
     const my = Math.min(y, window.innerHeight - 240);
     setPos({ x: Math.max(8, mx), y: Math.max(8, my) });
-    setScheduleOpen(false);
+    setScheduleOpen(Boolean(o?.schedule));
   }, []);
 
   const close = useCallback(() => {
@@ -254,7 +254,9 @@ export function useRowMenu(opts: RowMenuOptions) {
     </div>
   ) : null;
 
-  return { handlers, menu, longPressed };
+  // `open`/`complete` are exposed so SwipeRow (S5) can drive the same menu from a
+  // long-press and fire the same completion from a right-swipe.
+  return { handlers, menu, longPressed, open, complete };
 }
 
 // Thin <li> wrapper for the common plain-row case: attaches the handlers and
