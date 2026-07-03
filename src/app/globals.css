@@ -30,6 +30,110 @@
      nav chrome (nav-layout.ts is in rem), the prose canvas — scales together
      from this one knob. 1 = unchanged. */
   --ui-scale: 1;
+
+  /* ===================================================================
+     S1 · The token layer (ui-refresh, ADR-141)
+     -------------------------------------------------------------------
+     TWO tiers, both light-mode-ready. Colors live here as variables so a
+     future `.light` class flips them in ONE place instead of touching the
+     ~2,790 hardcoded neutral usages across the app.
+
+     TIER 1 — the neutral RAMP as variables. Tailwind v4 lets us redefine
+     `--color-neutral-*` (see @theme inline below) to point at these
+     `--n-*` vars, so every existing `bg-neutral-800` / `text-neutral-400`
+     / `border-neutral-700` already reads through a runtime variable. The
+     DARK values below are Tailwind v4's own neutral oklch values verbatim,
+     so this is a PURE INDIRECTION with zero visual change in dark mode;
+     `.light` overrides them (inverted ramp) to flip the whole app at once.
+
+     TIER 2 — a SEMANTIC layer refreshed components style from directly:
+       bg-surface-{0,1,2,3}  border-line / border-line-strong
+       text-ink / text-ink-muted / text-ink-subtle / text-ink-faint
+     New/refreshed code uses these; untouched code keeps its neutral classes
+     (which now also flip via tier 1). Borders are one tone QUIETER than the
+     old border-neutral-800 (--line), hover/selection one tone BRIGHTER
+     (--surface-2) — the swap that removes the "wireframe of gray boxes" feel.
+
+     neutral-N → semantic mapping (the refactor guide for later slices):
+       page background            neutral-950/900   → bg-surface-0
+       panel / card               neutral-900/800   → bg-surface-1
+       raised / hover / selected  neutral-800/700   → bg-surface-2
+       popover / menu             neutral-800       → bg-surface-3
+       hairline divider/border    neutral-800       → border-line
+       visible border             neutral-700/600   → border-line-strong
+       primary text               neutral-100/200   → text-ink
+       secondary text             neutral-300/400   → text-ink-muted
+       meta / labels              neutral-500       → text-ink-subtle
+       faint / disabled           neutral-600       → text-ink-faint
+     =================================================================== */
+
+  /* Tier 1: dark neutral ramp = Tailwind v4 defaults (verbatim, zero-change). */
+  --n-50: oklch(0.985 0 0);
+  --n-100: oklch(0.97 0 0);
+  --n-200: oklch(0.922 0 0);
+  --n-300: oklch(0.87 0 0);
+  --n-400: oklch(0.708 0 0);
+  --n-500: oklch(0.556 0 0);
+  --n-600: oklch(0.439 0 0);
+  --n-700: oklch(0.371 0 0);
+  --n-800: oklch(0.269 0 0);
+  --n-900: oklch(0.205 0 0);
+  --n-950: oklch(0.145 0 0);
+
+  /* Tier 2: semantic dark values. These are NEW names, adopted opt-in by
+     refreshed components, so their exact values are a deliberate refinement
+     (quieter lines, one card radius) and don't shift any existing surface. */
+  --surface-0: #191919; /* page (matches --background) */
+  --surface-1: #1e1e1e; /* panel / card (matches --cs-card) */
+  --surface-2: #262626; /* raised / hover / selection */
+  --surface-3: #2f2f2f; /* popover / menu */
+  --line: #2a2a2a; /* quiet hairline — one tone quieter than old border-neutral-800 */
+  --line-strong: #383838; /* a visible border */
+  --ink: #e8e8e8; /* primary text */
+  --ink-muted: #a0a0a0; /* secondary text / section labels (~60% ink) */
+  --ink-subtle: #6f6f6f; /* meta, timestamps */
+  --ink-faint: #4d4d4d; /* faint / disabled */
+
+  /* One unified card radius (10px) so panels, rows, and menus agree. */
+  --radius-card-px: 0.625rem;
+}
+
+/* Light-mode PROOF (S1 mechanism only — the theme itself is a later slice).
+   Flipping this ramp + semantic set is the entire cost of light mode later,
+   because tier 1 routes every neutral utility through these vars. Reachable
+   today only via the dev proof screen at /dev/theme (gated off in prod). */
+.light {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #1f1f1f;
+  /* Inverted neutral ramp: 50 becomes darkest ink, 950 becomes lightest bg. */
+  --n-50: oklch(0.205 0 0);
+  --n-100: oklch(0.269 0 0);
+  --n-200: oklch(0.371 0 0);
+  --n-300: oklch(0.439 0 0);
+  --n-400: oklch(0.556 0 0);
+  --n-500: oklch(0.62 0 0);
+  --n-600: oklch(0.708 0 0);
+  --n-700: oklch(0.87 0 0);
+  --n-800: oklch(0.922 0 0);
+  --n-900: oklch(0.97 0 0);
+  --n-950: oklch(0.985 0 0);
+  --surface-0: #ffffff;
+  --surface-1: #f7f7f6;
+  --surface-2: #efeeec;
+  --surface-3: #ffffff;
+  --line: #e6e4e1;
+  --line-strong: #d2cfca;
+  --ink: #1f1f1f;
+  --ink-muted: #5a5a5a;
+  --ink-subtle: #8a8a8a;
+  --ink-faint: #b5b5b5;
+  /* Canvas-section skin vars (defined further down) flip too. */
+  --cs-card: #f7f7f6;
+  --cs-border: #e6e4e1;
+  --cs-divider: #ececea;
+  --cs-label: #6a6a6a;
+  --cs-count: #7a7a7a;
 }
 
 /* Apply the interface-density scale at the root. font-size: 100% resolves to the
@@ -48,6 +152,37 @@ html {
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Tier 1 — route every neutral utility through the runtime ramp vars so a
+     single `.light` flip re-themes the whole app. `inline` makes utilities emit
+     `var(--n-800)` directly (not a second indirection), so overriding --n-* on
+     .light is all it takes. Dark values are Tailwind's own, so nothing shifts. */
+  --color-neutral-50: var(--n-50);
+  --color-neutral-100: var(--n-100);
+  --color-neutral-200: var(--n-200);
+  --color-neutral-300: var(--n-300);
+  --color-neutral-400: var(--n-400);
+  --color-neutral-500: var(--n-500);
+  --color-neutral-600: var(--n-600);
+  --color-neutral-700: var(--n-700);
+  --color-neutral-800: var(--n-800);
+  --color-neutral-900: var(--n-900);
+  --color-neutral-950: var(--n-950);
+
+  /* Tier 2 — the semantic layer refreshed components style from. */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-faint: var(--ink-faint);
+
+  /* One unified card radius: `rounded-card`. */
+  --radius-card: var(--radius-card-px);
 }
 
 body {
@@ -365,4 +500,33 @@ body[data-editing="true"] [data-work-nav-pill] {
 }
 .nav-scroll-strip > * {
   scroll-snap-align: start;
+}
+
+/* --- S1 · Type scale (ui-refresh) -----------------------------------------
+   A disciplined, reusable scale so refreshed surfaces stop mixing ad-hoc sizes.
+   Opt-in classes (ui-* namespaced to avoid colliding with utilities); paired
+   with the 8px spacing grid (use Tailwind's 2/3/4/6/8/10/12 steps, i.e. multiples
+   of 0.25rem that land on 8px — avoid the old mixed mt-5/mt-7/mt-9). */
+.ui-title {
+  font-size: 1.5rem; /* 24 */
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  color: var(--ink);
+}
+.ui-section-label {
+  font-size: 0.8125rem; /* 13 */
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.ui-row {
+  font-size: 0.875rem; /* 14 */
+  line-height: 1.35;
+  color: var(--ink);
+}
+.ui-meta {
+  font-size: 0.75rem; /* 12 */
+  color: var(--ink-subtle);
 }

@@ -183,7 +183,7 @@ In-app recording stays deferred. **Live audio→transcript eyeball gated on a co
 
 Full-pass refresh across item view, lists/lenses, dashboards, and nav; non-core/solo (token layer + mobile interaction standard get an ADR + a CLAUDE.md convention when they land). UI-only — no schema, no new tables, no route changes. Seven slices:
 
-- [ ] S1 — semantic token layer + neutral-ramp variables (light-mode-ready; mechanism only, theme deferred) + type scale / 8px rhythm / quieter borders / badge caps
+- [x] S1 — semantic token layer + neutral-ramp variables (light-mode-ready; mechanism only, theme deferred) + type scale / 8px rhythm / quieter borders / badge caps. **DONE 2026-07-03, ADR-141.** Two-tier tokens in `globals.css` (tier 1: `--color-neutral-*` → `--n-*` runtime vars, dark = Tailwind verbatim = zero change; tier 2: `bg-surface-*`/`border-line`/`text-ink-*`/`rounded-card`), `ui-*` type scale, `badgeCount()` (`src/lib/format-count.ts`), `.light` flip + dev proof at `/dev/theme`. tsc/eslint clean; dark pixel-identical + light proof + unstyled-flash check green in dev-auth.
 - [ ] S2 — full-width desktop lists + per-lens default columns (reuses ADR-049) + nav search slot + richer rows
 - [ ] S2b — desktop peek panel (spike-first): `ItemCanvas` `peek` variant docked to the content region, modal fallback when nav config leaves too little width
 - [ ] S3 — item-canvas rhythm: chip field strip under title, empty sections collapse, Rich/Source + arrange into ⋯ menu
