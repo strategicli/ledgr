@@ -7,6 +7,7 @@
 // CLAUDE.md standard). Existing filter params (prop_*) are preserved across tab
 // switches.
 import Link from "next/link";
+import TabStrip from "@/components/nav/TabStrip";
 import type { Lens } from "@/lib/list-lenses";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -48,7 +49,7 @@ export default function ListLenses({
 }) {
   return (
     <div className="mt-4 flex items-center gap-1 border-b border-neutral-800">
-      <div className="flex flex-1 gap-1 overflow-x-auto">
+      <TabStrip className="flex-1">
         {lenses.map((lens) => {
           if (lens.id !== activeId) {
             return (
@@ -64,6 +65,7 @@ export default function ListLenses({
           return (
             <span
               key={lens.id}
+              data-tab-active=""
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-t border-b-2 border-[var(--accent)] px-3 py-1.5 text-sm font-medium text-neutral-100"
             >
               {lens.label}
@@ -80,7 +82,7 @@ export default function ListLenses({
             </span>
           );
         })}
-      </div>
+      </TabStrip>
       <div className="group relative shrink-0">
         <Link
           href={editHref}

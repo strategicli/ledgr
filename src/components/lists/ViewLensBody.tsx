@@ -18,6 +18,7 @@ import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import type { BulkActionConfig } from "@/lib/bulk-config";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { childRollups } from "@/lib/subtasks";
 import type { ViewLensData } from "@/lib/view-render";
 
@@ -37,6 +38,10 @@ export default async function ViewLensBody({
   const rollups = ownerId
     ? await childRollups(ownerId, data.items.map((i) => i.id))
     : undefined;
+  // Make rows interactive (swipe + row menu, ADR-142) on a real type-list lens,
+  // but not when the related panel is driving this body (it passes rowActions —
+  // its own relation controls are the row's interaction there; defer by hiding).
+  const today = rowActions ? undefined : appTodayYmd();
   const renderer = (
     <ViewRenderer
       view={data.view}
@@ -46,6 +51,7 @@ export default async function ViewLensBody({
       selectable={bulkConfig != null}
       rowActions={rowActions}
       rollups={rollups}
+      today={today}
     />
   );
 

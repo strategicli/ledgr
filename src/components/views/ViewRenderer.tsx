@@ -8,6 +8,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
 import PlannerCalendar from "@/components/planner/PlannerCalendar";
+import RowMenu from "@/components/lists/RowMenu";
+import SwipeRow from "@/components/lists/SwipeRow";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectTableCell";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
@@ -220,6 +222,7 @@ function ItemRow({
   selectable,
   rowAction,
   rollup,
+  today,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
@@ -234,6 +237,11 @@ function ItemRow({
   // Subtask rollup for this row; when present with task children, the row grows
   // the expandable "n/m" pill. Undefined → a plain row (defer by hiding).
   rollup?: Progress;
+  // App-timezone today (YYYY-MM-DD). When set, the row is interactive (ADR-142):
+  // task rows swipe (right=complete, left=schedule) and every row gets the
+  // shared right-click/long-press menu. Read-only callers (dashboards, the
+  // related panel) leave it undefined, so their rows stay plain (defer by hiding).
+  today?: string;
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
@@ -296,11 +304,36 @@ function ItemRow({
       {rowAction}
     </>
   );
+  const menuOpts = today
+    ? { id: item.id, canComplete: isTask, done, today, label: item.title || "Untitled" }
+    : undefined;
+  // A task with task-children keeps the expandable "n/m" pill (which carries the
+  // menu when the surface is interactive).
   if (isTask && rollup && rollup.total > 0) {
     return (
-      <SubtaskExpandableRow id={item.id} done={rollup.done} total={rollup.total} liClassName={ITEM_ROW_CLASS}>
+      <SubtaskExpandableRow
+        id={item.id}
+        done={rollup.done}
+        total={rollup.total}
+        liClassName={ITEM_ROW_CLASS}
+        menuOptions={menuOpts}
+      >
         {inner}
       </SubtaskExpandableRow>
+    );
+  }
+  // Interactive surfaces: task rows swipe (right=complete, left=schedule) on top
+  // of the shared menu; other types get the menu only. Read-only callers pass no
+  // `today`, so their rows stay a plain <li> (defer by hiding).
+  if (menuOpts) {
+    return isTask ? (
+      <SwipeRow className={ITEM_ROW_CLASS} {...menuOpts}>
+        {inner}
+      </SwipeRow>
+    ) : (
+      <RowMenu className={ITEM_ROW_CLASS} {...menuOpts}>
+        {inner}
+      </RowMenu>
     );
   }
   return <li className={ITEM_ROW_CLASS}>{inner}</li>;
@@ -317,6 +350,7 @@ function ListLayout({
   selectable,
   rowActions,
   rollups,
+  today,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -325,6 +359,7 @@ function ListLayout({
   selectable?: boolean;
   rowActions?: Record<string, ReactNode>;
   rollups?: Map<string, Progress>;
+  today?: string;
 }) {
   return (
     <ul className="mt-4">
@@ -339,6 +374,7 @@ function ListLayout({
           selectable={selectable}
           rowAction={rowActions?.[item.id]}
           rollup={rollups?.get(item.id)}
+          today={today}
         />
       ))}
     </ul>
@@ -528,6 +564,7 @@ function AgendaLayout({
   statuses,
   selectable,
   rollups,
+  today,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -535,6 +572,7 @@ function AgendaLayout({
   statuses?: StatusDef[];
   selectable?: boolean;
   rollups?: Map<string, Progress>;
+  today?: string;
 }) {
   const prop = view.dateProperty;
   const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
@@ -570,6 +608,7 @@ function AgendaLayout({
                 statuses={statuses}
                 selectable={selectable}
                 rollup={rollups?.get(item.id)}
+                today={today}
               />
             ))}
           </ul>
@@ -591,6 +630,7 @@ function AgendaLayout({
                 statuses={statuses}
                 selectable={selectable}
                 rollup={rollups?.get(item.id)}
+                today={today}
               />
             ))}
           </ul>
@@ -756,6 +796,7 @@ export default function ViewRenderer({
   selectable = false,
   rowActions,
   rollups,
+  today,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -797,6 +838,12 @@ export default function ViewRenderer({
   // dashboards, the board/table/calendar layouts, and the related panel leave
   // it undefined, so those rows are unchanged (defer by hiding).
   rollups?: Map<string, Progress>;
+  // App-timezone today (YYYY-MM-DD). When set, the list + agenda rows become
+  // interactive (ADR-142): task rows swipe (right=complete, left=schedule) and
+  // every row gets the shared right-click/long-press menu. List-surface callers
+  // (the view page, view-lens body) pass it; dashboards leave it undefined so a
+  // widget's rows stay read-only (defer by hiding).
+  today?: string;
 }) {
   if (items.length === 0) {
     return (
@@ -866,6 +913,7 @@ export default function ViewRenderer({
               statuses={statuses}
               selectable={selectable}
               rollups={rollups}
+              today={today}
             />
           </div>
         </>
@@ -880,6 +928,7 @@ export default function ViewRenderer({
           statuses={statuses}
           selectable={selectable}
           rollups={rollups}
+          today={today}
         />
       );
     default:
@@ -892,6 +941,7 @@ export default function ViewRenderer({
           selectable={selectable}
           rowActions={rowActions}
           rollups={rollups}
+          today={today}
         />
       );
   }
