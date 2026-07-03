@@ -28,6 +28,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Git worktrees live under .claude/worktrees/ and hold full repo copies.
+    // Without this, `npm run lint` (bare `eslint .`) descends into every active
+    // worktree and lints its scripts/ copies too, so a release's lint gate fails
+    // on files that aren't even in this tree. Each worktree still lints its own
+    // code when eslint runs from inside it (paths are relative). Ignore the whole
+    // .claude/ dir — nothing there is project source.
+    ".claude/**",
   ]),
 ]);
 
