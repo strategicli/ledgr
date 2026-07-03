@@ -221,6 +221,7 @@ export default async function TypeList({
                       <SelectCheckbox id={item.id} />
                       <Link
                         href={`/items/${item.id}`}
+                        data-peek-row
                         className={`ui-row min-w-0 flex-1 truncate ${
                           item.title ? "text-ink" : "text-ink-subtle"
                         }`}

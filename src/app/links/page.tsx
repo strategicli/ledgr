@@ -100,6 +100,7 @@ export default async function Links({
                 <SelectCheckbox id={link.id} />
                 <Link
                   href={`/items/${link.id}`}
+                  data-peek-row
                   className={`ui-row min-w-0 flex-1 truncate ${
                     link.title ? "text-ink" : "text-ink-subtle"
                   }`}
