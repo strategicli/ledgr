@@ -21,7 +21,7 @@ import EventTimeline from "@/components/events/EventTimeline";
 import { listCalendarFeed, type FeedEvent } from "@/lib/calendar/feed";
 import NewItemButton from "@/components/home/NewItemButton";
 import ProjectCardGrid from "@/components/projects/ProjectCardGrid";
-import RowAction from "@/components/home/RowAction";
+import RowMenu from "@/components/lists/RowMenu";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -32,6 +32,7 @@ import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { relatedSummaryFor } from "@/lib/relations";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
@@ -146,6 +147,8 @@ export default async function TypeList({
       : Promise.resolve(new Map<string, { id: string; title: string; type: string }[]>()),
   ]);
   const listRowClass = "group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-surface-2";
+  // App-timezone today for the row menu's Focus + Schedule quick-dates (S4).
+  const today = appTodayYmd();
 
   const selects: FilterSelect[] = filterProps.map((fp) => ({
     param: `prop_${fp.key}`,
@@ -216,6 +219,14 @@ export default async function TypeList({
                   const rollup = rollups.get(item.id);
                   const rel = linked.get(item.id) ?? [];
                   const extra = rel.length > 1 ? rel.length - 1 : 0;
+                  const isTask = item.type === "task";
+                  const menuOpts = {
+                    id: item.id,
+                    canComplete: isTask,
+                    done: item.statusCategory === "done",
+                    today,
+                    label: item.title || "Untitled",
+                  };
                   const inner = (
                     <>
                       <SelectCheckbox id={item.id} />
@@ -241,9 +252,10 @@ export default async function TypeList({
                       <span className="ui-meta shrink-0 tabular-nums">
                         {dateFmt.format(new Date(item.updatedAt))}
                       </span>
-                      <RowAction id={item.id} action="trash" />
                     </>
                   );
+                  // Trash + Complete/Focus/Schedule now live in the shared row
+                  // menu (right-click / long-press), not an always-visible button.
                   return rollup && rollup.total > 0 ? (
                     <SubtaskExpandableRow
                       key={item.id}
@@ -251,13 +263,14 @@ export default async function TypeList({
                       done={rollup.done}
                       total={rollup.total}
                       liClassName={listRowClass}
+                      menuOptions={menuOpts}
                     >
                       {inner}
                     </SubtaskExpandableRow>
                   ) : (
-                    <li key={item.id} className={listRowClass}>
+                    <RowMenu key={item.id} className={listRowClass} {...menuOpts}>
                       {inner}
-                    </li>
+                    </RowMenu>
                   );
                 })}
               </ul>

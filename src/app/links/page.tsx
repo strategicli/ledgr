@@ -9,7 +9,7 @@ import ListPage from "@/components/lists/ListPage";
 import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
-import RowAction from "@/components/home/RowAction";
+import RowMenu from "@/components/lists/RowMenu";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -93,8 +93,10 @@ export default async function Links({
           <SelectModeToggle />
           <ul className="mt-4">
             {links.map((link) => (
-              <li
+              <RowMenu
                 key={link.id}
+                id={link.id}
+                label={link.title || "Untitled"}
                 className="group flex items-center gap-2.5 rounded px-2 py-1.5 hover:bg-surface-2"
               >
                 <SelectCheckbox id={link.id} />
@@ -121,8 +123,7 @@ export default async function Links({
                 <span className="ui-meta shrink-0 tabular-nums">
                   {dateFmt.format(link.updatedAt)}
                 </span>
-                <RowAction id={link.id} action="trash" />
-              </li>
+              </RowMenu>
             ))}
           </ul>
           <LoadMore shown={links.length} total={count} basePath="/links" params={sp} />

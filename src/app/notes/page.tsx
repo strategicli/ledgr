@@ -8,7 +8,7 @@ import ListPage from "@/components/lists/ListPage";
 import LoadMore from "@/components/lists/LoadMore";
 import ViewLensBody from "@/components/lists/ViewLensBody";
 import NewItemButton from "@/components/home/NewItemButton";
-import RowAction from "@/components/home/RowAction";
+import RowMenu from "@/components/lists/RowMenu";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -102,8 +102,10 @@ export default async function Notes({
               const rel = linked.get(note.id) ?? [];
               const extra = rel.length > 1 ? rel.length - 1 : 0;
               return (
-                <li
+                <RowMenu
                   key={note.id}
+                  id={note.id}
+                  label={note.title || "Untitled"}
                   className="group flex items-center gap-2.5 rounded px-2 py-1.5 hover:bg-surface-2"
                 >
                   <SelectCheckbox id={note.id} />
@@ -132,8 +134,7 @@ export default async function Notes({
                   >
                     {note.noteDate ? dayFmt.format(note.noteDate) : dateFmt.format(note.updatedAt)}
                   </span>
-                  <RowAction id={note.id} action="trash" />
-                </li>
+                </RowMenu>
               );
             })}
           </ul>

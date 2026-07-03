@@ -14,6 +14,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import SubtaskCheckbox from "./SubtaskCheckbox";
+import { useRowMenu, type RowMenuOptions } from "@/components/lists/RowMenu";
 
 // The subtree endpoint serializes dates to strings, so this mirrors SubtaskNode
 // with string dates rather than reusing it (which types them as Date).
@@ -102,6 +103,7 @@ export default function SubtaskExpandableRow({
   total,
   liClassName,
   children,
+  menuOptions,
 }: {
   id: string;
   done: number;
@@ -110,10 +112,17 @@ export default function SubtaskExpandableRow({
   // row is visually identical to its neighbors.
   liClassName: string;
   children: ReactNode;
+  // Wires the shared row context menu (S4) onto this row too, so a task with
+  // subtasks gets the same long-press/right-click actions as a plain row.
+  menuOptions?: RowMenuOptions;
 }) {
   const [open, setOpen] = useState(false);
   const [nodes, setNodes] = useState<TreeNode[] | null>(null);
   const [loading, setLoading] = useState(false);
+  // Always call the hook (rules-of-hooks); only wire it when the host asked for
+  // a menu. The fallback id keeps the hook valid when menuOptions is absent.
+  const rowMenu = useRowMenu(menuOptions ?? { id });
+  const menu = menuOptions ? rowMenu : null;
 
   async function toggle() {
     const next = !open;
@@ -136,7 +145,7 @@ export default function SubtaskExpandableRow({
 
   return (
     <>
-      <li className={liClassName}>
+      <li className={liClassName} {...(menu ? menu.handlers : {})}>
         {children}
         <button
           type="button"
@@ -148,6 +157,7 @@ export default function SubtaskExpandableRow({
           <Chevron open={open} />
           {done}/{total}
         </button>
+        {menu?.menu}
       </li>
       {open && (
         <li>
