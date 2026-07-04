@@ -239,7 +239,7 @@ export default function Modal({
         </div>
       </div>
   );
-  const body = <div className="min-h-0 flex-1 overflow-y-auto pb-12">{children}</div>;
+  const body = <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">{children}</div>;
   const panel = (
     <>
       {header}
@@ -285,8 +285,11 @@ export default function Modal({
           }}
         >
           {/* Grabber + header are the drag-to-dismiss hit zone; the body is NOT,
-              so editor scroll + text selection are unaffected. */}
-          <div onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
+              so editor scroll + text selection are unaffected. touch-none keeps
+              the browser from treating the downward drag as a page scroll /
+              pull-to-refresh (React's touchmove is passive, so preventDefault
+              alone can't) — the drag is fully JS-owned here. */}
+          <div className="touch-none" onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
             <div className="flex justify-center pt-2 pb-1">
               <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden />
             </div>

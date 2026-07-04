@@ -761,12 +761,12 @@ export default function NavShell({
     { fill = false, mobile = false }: { fill?: boolean; mobile?: boolean } = {}
   ) => (
     <div
-      className={`fixed z-40 flex items-center rounded-2xl border border-neutral-800 bg-neutral-900/95 shadow-xl shadow-black/40 backdrop-blur ${
+      className={`fixed z-40 flex rounded-2xl border border-neutral-800 bg-neutral-900/95 shadow-xl shadow-black/40 backdrop-blur ${
         fill
-          ? "w-[40rem] max-w-[calc(100vw-2rem)] justify-between gap-1 p-2 [&_svg]:h-6 [&_svg]:w-6"
+          ? "items-center w-[40rem] max-w-[calc(100vw-2rem)] justify-between gap-1 p-2 [&_svg]:h-6 [&_svg]:w-6"
           : mobile
-            ? "max-w-[calc(100vw-1rem)] gap-1 p-1.5"
-            : "gap-1 p-1.5"
+            ? "flex-col max-w-[calc(100vw-1rem)] gap-0.5 px-1.5 pb-1.5 pt-0.5"
+            : "items-center gap-1 p-1.5"
       } ${extraClass}`}
       {...(mobile
         ? {
@@ -780,25 +780,38 @@ export default function NavShell({
     >
       {mobile ? (
         <>
-          {/* Grip → the pull-up Launcher of every destination (tap); a swipe-up
-              anywhere on the bar opens it too (S6a). */}
+          {/* Grab handle: the visible affordance for the pull-up gesture. Tap it
+              (or swipe up anywhere on the bar) to open the Launcher of every
+              destination (S6a). Sits at the top edge like a sheet grabber so the
+              bar reads as draggable. */}
           <button
             type="button"
             onClick={() => setLauncherOpen(true)}
-            aria-label="All destinations"
-            title="All destinations (swipe up)"
-            className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+            aria-label="All destinations (pull up)"
+            title="All destinations (pull up)"
+            className="flex justify-center py-1"
           >
-            <Icon icon="grid" />
+            <span className="h-1 w-8 rounded-full bg-neutral-600" aria-hidden />
           </button>
-          <div className="flex min-w-0 items-center gap-1">
-            {barSlots.map(({ slot, id }) =>
-              // Label only under the active slot; the rest are icon-only (Q7). The
-              // last arg = mobileBar: tools/favorites popovers portal above the bar.
-              renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
-            )}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setLauncherOpen(true)}
+              aria-label="All destinations"
+              title="All destinations (pull up)"
+              className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+            >
+              <Icon icon="grid" />
+            </button>
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+              {barSlots.map(({ slot, id }) =>
+                // Label only under the active slot; the rest are icon-only (Q7). The
+                // last arg = mobileBar: tools/favorites popovers portal above the bar.
+                renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">{mobileTrailingControls}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-1">{mobileTrailingControls}</div>
         </>
       ) : (
         <>
@@ -836,7 +849,7 @@ export default function NavShell({
               (RECOMMENDED_MOBILE_NAV_SLOTS cap); the rest live in the Launcher. */}
           {floatingPill(
             mobileBarSlots.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS),
-            "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2",
+            "bottom-[calc(0.25rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2",
             { mobile: true }
           )}
         </div>

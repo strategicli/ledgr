@@ -103,7 +103,11 @@ export default function SwipeRow({
 
   return (
     <li
-      className="relative overflow-hidden"
+      // touch-action: pan-y lets the browser keep vertical scrolling but hands
+      // horizontal gestures to us — without it, React's passive touchmove means
+      // our preventDefault is ignored and the browser scroll-fights the swipe,
+      // so the row never slides (the "no feedback / not smooth" report).
+      className="relative touch-pan-y overflow-hidden"
       onContextMenu={handlers.onContextMenu}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}

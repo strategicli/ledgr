@@ -77,7 +77,7 @@ export default function Launcher({
         ref={sheet}
         role="dialog"
         aria-label="All destinations"
-        className="fixed inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-line-strong bg-[var(--background)] pb-8 shadow-2xl shadow-black/50"
+        className="fixed inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-line-strong bg-[var(--background)] pb-8 shadow-2xl shadow-black/50"
         style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
         onTouchStart={onStart}
         onTouchMove={onMove}
