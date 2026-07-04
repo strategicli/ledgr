@@ -24,7 +24,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type TouchEvent as ReactTouchEvent,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -50,7 +49,14 @@ import Launcher, { type LauncherTile } from "@/components/nav/Launcher";
 import { isBuildPath } from "@/lib/build-nav";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
-import { FAVORITES_HREF, type NavDensity, type NavPosition, type RailAnchor, type RailSize } from "@/lib/settings";
+import {
+  FAVORITES_HREF,
+  RECOMMENDED_MOBILE_NAV_SLOTS,
+  type NavDensity,
+  type NavPosition,
+  type RailAnchor,
+  type RailSize,
+} from "@/lib/settings";
 
 // A single nav destination, resolved for render (icon key + any badge count).
 export type ShellDest = {
@@ -85,17 +91,6 @@ const isSearchHref = (href: string) => href === "/search";
 
 // A destination at /favorites opens the favorites flyout rather than navigating.
 const isFavoritesHref = (href: string) => href === FAVORITES_HREF;
-
-// The mobile bar's scroll strip fades its content at any edge that still hides
-// slots past it, hinting there's more to swipe to. A mask (not an overlay) so it
-// works over the pill's translucent, blurred background without a color match.
-const scrollFadeStyle = (edges: { left: boolean; right: boolean }): CSSProperties => {
-  const l = edges.left ? 20 : 0;
-  const r = edges.right ? 20 : 0;
-  if (!l && !r) return {};
-  const g = `linear-gradient(to right, transparent 0, #000 ${l}px, #000 calc(100% - ${r}px), transparent 100%)`;
-  return { WebkitMaskImage: g, maskImage: g };
-};
 
 const POSITIONS: { value: NavPosition; label: string }[] = [
   { value: "top", label: "Top" },
@@ -153,132 +148,42 @@ export default function NavShell({
     hoverClose,
     toggle: toggleTools,
   } = useHoverPopover("[data-nav-tools]");
-  // When a tools/favorites popover opens from the scrolling mobile bar, the slot
-  // lives inside an `overflow-x-auto` strip that would clip an upward-opening
-  // absolute popover. We anchor those popovers with `position: fixed` instead,
-  // measured from the trigger on open (viewport coords), so they escape the
-  // scroll box. Desktop layouts keep the plain absolute positioning.
-  const [popRect, setPopRect] = useState<DOMRect | null>(null);
-
-  // --- Mobile bar scroll behavior ------------------------------------------
-  // The phone bottom bar scrolls its slot strip horizontally (floatingPill,
-  // scrollable). This block powers the polish on that strip: edge-fade masks
-  // that appear only when there's more to swipe to, auto-centering the active
-  // slot when you land on its page, and a long-press to jump to the nav editor.
-  const scrollStripRef = useRef<HTMLDivElement | null>(null);
-  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
-
-  // Which edges still hide content past them (drives the fade masks).
-  const syncScrollEdges = useCallback(() => {
-    const el = scrollStripRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    setScrollEdges({
-      left: el.scrollLeft > 1,
-      right: el.scrollLeft < maxScroll - 1,
-    });
-  }, []);
-
-  // Center the active slot so "where am I" is always in view even when it's
-  // scrolled off. rect-based math (offsetParent is unreliable in the fixed pill).
-  // While `pendingCenter` is set (just navigated) this is retried on every layout
-  // change until the strip actually overflows — on a fresh load it isn't laid out
-  // yet when the navigation effect first fires, so a single measure no-ops.
-  const pendingCenter = useRef(false);
-  const centerActiveSlot = useCallback(() => {
-    const el = scrollStripRef.current;
-    if (!el) return;
-    const active = el.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!active) {
-      pendingCenter.current = false;
-      return;
-    }
-    if (el.scrollWidth - el.clientWidth <= 0) return; // not overflowing yet; retry
-    const sRect = el.getBoundingClientRect();
-    const aRect = active.getBoundingClientRect();
-    const delta = aRect.left - sRect.left - (el.clientWidth - aRect.width) / 2;
-    // Instant, not smooth: scroll-snap cancels a programmatic smooth scroll
-    // mid-flight (it re-snaps to the origin), and instant placement is the right
-    // feel for auto-positioning anyway — like a tab bar settling on the current tab.
-    if (Math.abs(delta) > 1) el.scrollBy({ left: delta, behavior: "auto" });
-    pendingCenter.current = false;
-  }, []);
-
-  // Keep the fade masks accurate as the strip scrolls, the viewport resizes, or
-  // the configured slots change; a resize is also when a just-navigated center
-  // finally lands (the strip has settled and now overflows).
-  useEffect(() => {
-    const el = scrollStripRef.current;
-    if (!el) return;
-    syncScrollEdges();
-    el.addEventListener("scroll", syncScrollEdges, { passive: true });
-    const ro = new ResizeObserver(() => {
-      syncScrollEdges();
-      if (pendingCenter.current) centerActiveSlot();
-    });
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", syncScrollEdges);
-      ro.disconnect();
-    };
-  }, [syncScrollEdges, centerActiveSlot, mobileSlots]);
-
-  // Re-center on navigation. The strip is display:none on desktop, so the query
-  // finds nothing there and this is a mobile-only effect in practice. We poll a
-  // few frames because a ResizeObserver won't help here — the strip's own box
-  // stays a fixed width while its children overflow, so it never re-fires — and
-  // on a fresh load the strip isn't overflowing yet when we first measure.
-  useEffect(() => {
-    pendingCenter.current = true;
-    let timer: ReturnType<typeof setTimeout>;
-    let tries = 0;
-    // setTimeout (not requestAnimationFrame): rAF is paused while the page is
-    // hidden, so a background/prerendered tab would never center. Retry until the
-    // strip has laid out and overflowed, then centerActiveSlot clears `pending`.
-    const attempt = () => {
-      centerActiveSlot();
-      if (pendingCenter.current && tries++ < 25) timer = setTimeout(attempt, 40);
-    };
-    attempt();
-    return () => clearTimeout(timer);
-  }, [pathname, mobileSlots, centerActiveSlot]);
-
-  // Long-press the strip to jump to the nav editor. A ~500ms hold that doesn't
-  // turn into a scroll fires it; the ensuing click is suppressed so it doesn't
-  // also follow the pressed slot's link. A labeled equivalent ("Edit navigation")
-  // lives in the More menu so the gesture is discoverable, not hidden.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressStart = useRef<{ x: number; y: number } | null>(null);
-  const suppressStripClick = useRef(false);
-  const cancelLongPress = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }, []);
-  const onStripTouchStart = (e: ReactTouchEvent) => {
+  // --- Mobile bar swipe-up → launcher --------------------------------------
+  // The phone bottom bar is a FIXED icon-only bar (ui-refresh Q7): it never
+  // scrolls, showing the owner's daily few destinations; everything else lives in
+  // the pull-up Launcher. Beyond tapping the grip, a deliberate swipe-up anywhere
+  // on the bar opens the Launcher (S6a). The claim mirrors SwipeRow's discipline
+  // (mostly-vertical, upward, past a threshold) so a tap on a slot still fires
+  // and a horizontal drift never triggers it; the ensuing click is swallowed so a
+  // swipe that started on a slot doesn't also follow its link.
+  const barSwipeStart = useRef<{ x: number; y: number } | null>(null);
+  const barSwipeClaimed = useRef(false);
+  const onBarTouchStart = (e: ReactTouchEvent) => {
     const t = e.touches[0];
-    longPressStart.current = { x: t.clientX, y: t.clientY };
-    cancelLongPress();
-    longPressTimer.current = setTimeout(() => {
-      suppressStripClick.current = true;
+    barSwipeStart.current = { x: t.clientX, y: t.clientY };
+    barSwipeClaimed.current = false;
+  };
+  const onBarTouchMove = (e: ReactTouchEvent) => {
+    const s = barSwipeStart.current;
+    if (!s || barSwipeClaimed.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    // Upward, mostly-vertical, past the threshold → open the launcher.
+    if (dy < -28 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      barSwipeClaimed.current = true;
       navigator.vibrate?.(8);
-      router.push("/build/navigation");
-    }, 500);
-  };
-  const onStripTouchMove = (e: ReactTouchEvent) => {
-    const s = longPressStart.current;
-    if (!s) return;
-    const t = e.touches[0];
-    if (Math.abs(t.clientX - s.x) > 10 || Math.abs(t.clientY - s.y) > 10) {
-      cancelLongPress();
+      setLauncherOpen(true);
     }
   };
-  const onStripClickCapture = (e: ReactMouseEvent) => {
-    if (suppressStripClick.current) {
+  const onBarTouchEnd = () => {
+    barSwipeStart.current = null;
+  };
+  const onBarClickCapture = (e: ReactMouseEvent) => {
+    if (barSwipeClaimed.current) {
       e.preventDefault();
       e.stopPropagation();
-      suppressStripClick.current = false;
+      barSwipeClaimed.current = false;
     }
   };
 
@@ -439,7 +344,9 @@ export default function NavShell({
     ),
     { label: "Search", href: "/search", icon: "search" },
     { label: "Build", href: "/build", icon: "tools" },
+    { label: "Edit nav", href: "/build/navigation", icon: "navigation" },
     { label: "Settings", href: "/settings", icon: "bolt" },
+    { label: "Changelog", href: "/changelog", icon: "book" },
     { label: "Trash", href: "/trash", icon: "archive" },
   ];
 
@@ -456,6 +363,14 @@ export default function NavShell({
   // Per-layout class builders.
   const pillSlot = (active: boolean) =>
     `relative flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] ${
+      active ? "bg-neutral-800 text-neutral-100" : "text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+    }`;
+  // Compact, non-shrinking variant for the mobile FIXED bar (Q7): tighter padding
+  // (px-2) so ~5 icon-only slots + grip + Search + New fit without scrolling, and
+  // `shrink-0` so a tap target never squeezes when the row is full. The active
+  // slot's label is width-capped so a long name can't blow out the row.
+  const pillSlotMobile = (active: boolean) =>
+    `relative flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] [&_span]:max-w-[3.75rem] [&_span]:truncate ${
       active ? "bg-neutral-800 text-neutral-100" : "text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
     }`;
   const topSlot = (active: boolean) =>
@@ -508,54 +423,41 @@ export default function NavShell({
     );
   }
 
-  // A popover opened from the scrolling mobile bar can't use absolute positioning
-  // (the scroll strip clips it), so we anchor it `fixed` above the measured
-  // trigger, centered and clamped to the viewport. `width` is the popover's px
-  // width so the clamp keeps it fully on screen. These are viewport coordinates,
-  // which is ONLY correct because the popover is portaled to <body> (mountFixed):
-  // the mobile pill has both `-translate-x-1/2` (transform) and `backdrop-blur`
-  // (backdrop-filter), and each makes a `fixed` descendant resolve against the
-  // pill's box, not the viewport — so an in-tree fixed popover lands in the wrong
-  // place. The portal escapes that containing block (and the scroll clip too).
-  const fixedPopoverStyle = (width: number): CSSProperties => {
-    if (!popRect) return {};
-    const centerX = popRect.left + popRect.width / 2;
-    const half = width / 2;
-    const left = Math.min(
-      Math.max(centerX, half + 8),
-      window.innerWidth - half - 8
-    );
-    return {
-      position: "fixed",
-      left,
-      bottom: window.innerHeight - popRect.top + 8,
-      transform: "translateX(-50%)",
-    };
+  // A popover opened from the mobile fixed bar is centered above the bar, pinned
+  // to the viewport. It must be portaled to <body>: the pill has `backdrop-blur`
+  // (and a centering transform), and each makes a `position: fixed` descendant
+  // resolve against the pill's box, not the viewport — so an in-tree fixed
+  // popover lands wrong. The portal escapes that. This replaces the old
+  // per-trigger rect-measurement (popRect + fixedPopoverStyle): a static
+  // viewport-centered anchor is enough now the scroll strip is gone (Q7), and it
+  // can't overflow a screen edge the way a slot-centered `absolute` popover would.
+  const MOBILE_POPOVER_STYLE: CSSProperties = {
+    position: "fixed",
+    left: "50%",
+    transform: "translateX(-50%)",
+    bottom: "calc(4.75rem + env(safe-area-inset-bottom))",
   };
-
-  // Portal a fixed popover to <body> so it escapes the pill's transform/blur
-  // containing block and the scroll strip's overflow clip. Wrapped in
-  // `data-nav-tools` so the outside-click closer still treats clicks inside it as
-  // "inside" (the portal moves it out of the trigger's DOM subtree).
-  const mountFixed = (node: ReactNode) =>
+  // Wrapped in `data-nav-tools` so the outside-click closer still counts clicks
+  // inside it as "inside" (the portal moves it out of the trigger's subtree).
+  const mountMobilePopover = (node: ReactNode) =>
     typeof document === "undefined"
       ? null
       : createPortal(<div data-nav-tools>{node}</div>, document.body);
 
-  // The popover a tools group opens; `posClass` anchors it relative to the slot.
-  // On the scrolling mobile bar (`fixed`), it's anchored to the measured trigger
-  // instead so it escapes the horizontal-scroll strip.
+  // The popover a tools group opens. Desktop layouts anchor it `absolute` to the
+  // slot's `relative` wrapper via `posClass`; the mobile bar (`mobileBar`) anchors
+  // it `fixed`, centered above the bar (portaled by the caller).
   function toolsPopover(
     slot: Extract<ShellSlot, { kind: "tools" }>,
     id: string,
     posClass: string,
-    fixed = false
+    mobileBar = false
   ) {
     return (
       <div
         role="menu"
-        style={fixed ? fixedPopoverStyle(208) : undefined}
-        className={`${fixed ? "fixed" : "absolute"} z-50 max-h-[calc(100vh-1rem)] w-52 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${fixed ? "" : posClass}`}
+        style={mobileBar ? MOBILE_POPOVER_STYLE : undefined}
+        className={`${mobileBar ? "fixed max-w-[calc(100vw-1rem)]" : "absolute"} z-50 max-h-[calc(100vh-1rem)] w-52 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${mobileBar ? "" : posClass}`}
       >
         <p className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
           {slot.label}
@@ -575,17 +477,12 @@ export default function NavShell({
     classNameFor: (active: boolean) => string,
     showLabel: boolean,
     toolsPos: string,
-    // On the scrolling mobile bar, tools/favorites popovers anchor `fixed` to
-    // the measured trigger so they escape the horizontal-scroll strip's clip.
-    fixedPopover = false
+    // On the mobile fixed bar, tools/favorites popovers portal to <body> and
+    // center above the bar so they escape the pill's blur/transform and can't
+    // overflow a screen edge.
+    mobileBar = false
   ) {
     const className = classNameFor(slotActive(slot));
-    // Capture the trigger's viewport rect on open so a fixed popover can anchor
-    // to it. Harmless on the desktop paths (fixedPopover is false there).
-    const openPopover = (id: string, e: { currentTarget: HTMLElement }) => {
-      if (fixedPopover) setPopRect(e.currentTarget.getBoundingClientRect());
-      toggleTools(id);
-    };
     const inner = (
       <>
         <IconWithCount icon={slot.icon} count={slot.count} />
@@ -604,7 +501,7 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={(e) => openPopover(id, e)}
+            onClick={() => toggleTools(id)}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -614,9 +511,9 @@ export default function NavShell({
             {inner}
           </button>
           {open &&
-            (fixedPopover
-              ? mountFixed(toolsPopover(slot, id, "", true))
-              : toolsPopover(slot, id, toolsPos, false))}
+            (mobileBar
+              ? mountMobilePopover(toolsPopover(slot, id, "", true))
+              : toolsPopover(slot, id, toolsPos))}
         </div>
       );
     }
@@ -634,7 +531,7 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={(e) => openPopover(id, e)}
+            onClick={() => toggleTools(id)}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -644,19 +541,16 @@ export default function NavShell({
             {inner}
           </button>
           {open &&
-            (fixedPopover
-              ? mountFixed(
+            (mobileBar
+              ? mountMobilePopover(
                   <FavoritesFlyout
                     posClass=""
-                    fixedStyle={fixedPopoverStyle(256)}
+                    fixedStyle={MOBILE_POPOVER_STYLE}
                     onNavigate={() => setOpenTools(null)}
                   />
                 )
               : (
-                <FavoritesFlyout
-                  posClass={toolsPos}
-                  onNavigate={() => setOpenTools(null)}
-                />
+                <FavoritesFlyout posClass={toolsPos} onNavigate={() => setOpenTools(null)} />
               ))}
         </div>
       );
@@ -788,9 +682,9 @@ export default function NavShell({
     </div>
   );
 
-  // The + New / More controls that trail every pill. On the scrolling mobile bar
-  // these stay pinned outside the scroll strip — both open menus upward, which an
-  // `overflow-x-auto` strip would clip.
+  // The Search / + New / More controls that trail the DESKTOP bottom pill (the
+  // full-label variant). The mobile fixed bar uses its own tighter trailing set
+  // below (Search + New, icon-only; More retired into the Launcher — Q7).
   const pillTrailingControls = (
     <>
       {/* Search slot (ui-refresh S2): a permanent, visible entry to the ⌘K
@@ -830,56 +724,81 @@ export default function NavShell({
     </>
   );
 
-  // The floating pill (mobile on every position; desktop when navPosition is
-  // bottom). `fill` widens the desktop bottom bar to the ~40rem canvas width and
-  // spreads its items across, so it reads with the same presence as the others.
-  // `scrollable` (the mobile bar) caps the pill at the viewport width and scrolls
-  // the slot strip horizontally when the owner configures more slots than fit, so
-  // the bar never runs off screen; + New / More stay pinned to the right. Tools
-  // popovers open upward (the pill sits at the bottom edge); on the scrolling bar
-  // they anchor `fixed` so the scroll strip can't clip them.
+  // The mobile fixed bar's trailing controls (Q7): Search + New, icon-only to
+  // save width. More is gone from the mobile bar — its contents live in the
+  // Launcher (Build/Settings/Trash/Edit-nav/Changelog tiles) and User Settings.
+  const mobileTrailingControls = (
+    <>
+      <button
+        onClick={() => setSearchOpen(true)}
+        title="Search (⌘K)"
+        aria-label="Search"
+        className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+      >
+        <Icon icon="search" />
+      </button>
+      <button
+        onClick={() => setCaptureOpen(true)}
+        title="Quick capture (q)"
+        aria-label="Quick capture"
+        className="flex shrink-0 items-center rounded-xl p-2 text-[var(--accent)] hover:bg-neutral-800/60"
+      >
+        <PlusIcon />
+      </button>
+    </>
+  );
+
+  // The floating pill. `fill` = the desktop bottom bar (widened to the ~40rem
+  // canvas width, full labels). `mobile` = the phone bottom bar (Q7): a FIXED,
+  // icon-only, non-scrolling bar — a grip to the Launcher, the owner's daily few
+  // slots (label only under the active one), then Search + New. It never scrolls
+  // (the long tail lives in the Launcher, one tap on the grip or a swipe-up away),
+  // so a destination's position is stable and muscle memory forms. A mobile-bar
+  // tools/favorites popover portals above the bar (mobileBar in renderSlot).
   const floatingPill = (
     barSlots: { slot: ShellSlot; id: string }[],
     extraClass: string,
-    { fill = false, scrollable = false }: { fill?: boolean; scrollable?: boolean } = {}
+    { fill = false, mobile = false }: { fill?: boolean; mobile?: boolean } = {}
   ) => (
     <div
       className={`fixed z-40 flex items-center rounded-2xl border border-neutral-800 bg-neutral-900/95 shadow-xl shadow-black/40 backdrop-blur ${
         fill
           ? "w-[40rem] max-w-[calc(100vw-2rem)] justify-between gap-1 p-2 [&_svg]:h-6 [&_svg]:w-6"
-          : scrollable
+          : mobile
             ? "max-w-[calc(100vw-1rem)] gap-1 p-1.5"
             : "gap-1 p-1.5"
       } ${extraClass}`}
+      {...(mobile
+        ? {
+            onTouchStart: onBarTouchStart,
+            onTouchMove: onBarTouchMove,
+            onTouchEnd: onBarTouchEnd,
+            onTouchCancel: onBarTouchEnd,
+            onClickCapture: onBarClickCapture,
+          }
+        : {})}
     >
-      {scrollable ? (
+      {mobile ? (
         <>
-          {/* Grip → the pull-up launcher grid of every destination (S6). */}
+          {/* Grip → the pull-up Launcher of every destination (tap); a swipe-up
+              anywhere on the bar opens it too (S6a). */}
           <button
             type="button"
             onClick={() => setLauncherOpen(true)}
             aria-label="All destinations"
-            title="All destinations"
-            className="flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+            title="All destinations (swipe up)"
+            className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
           >
             <Icon icon="grid" />
-            All
           </button>
-          <div
-            ref={scrollStripRef}
-            onTouchStart={onStripTouchStart}
-            onTouchMove={onStripTouchMove}
-            onTouchEnd={cancelLongPress}
-            onTouchCancel={cancelLongPress}
-            onClickCapture={onStripClickCapture}
-            style={scrollFadeStyle(scrollEdges)}
-            className="no-scrollbar nav-scroll-strip flex min-w-0 items-center gap-1 overflow-x-auto"
-          >
+          <div className="flex min-w-0 items-center gap-1">
             {barSlots.map(({ slot, id }) =>
-              renderSlot(slot, id, pillSlot, true, "", true)
+              // Label only under the active slot; the rest are icon-only (Q7). The
+              // last arg = mobileBar: tools/favorites popovers portal above the bar.
+              renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-1">{pillTrailingControls}</div>
+          <div className="flex shrink-0 items-center gap-1">{mobileTrailingControls}</div>
         </>
       ) : (
         <>
@@ -913,7 +832,13 @@ export default function NavShell({
           fight for the same bottom-of-screen spot. */}
       {!inBuild && (
         <div className="sm:hidden" data-work-nav-pill>
-          {floatingPill(mobileBarSlots, "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2", { scrollable: true })}
+          {/* Fixed icon-only bar: Home + the owner's first few mobile slots
+              (RECOMMENDED_MOBILE_NAV_SLOTS cap); the rest live in the Launcher. */}
+          {floatingPill(
+            mobileBarSlots.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS),
+            "bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2",
+            { mobile: true }
+          )}
         </div>
       )}
 

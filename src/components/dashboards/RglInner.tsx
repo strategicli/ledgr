@@ -31,11 +31,14 @@ const ROW_HEIGHT = 40;
 type Kind = WidgetData["widget"]["kind"];
 
 // Default cell height (in rows) by kind: a heading is one short row; a count a
-// few; an embed/list taller; a container the tallest.
+// couple; an embed/list taller; a container the tallest. Stat defaults to 2 rows
+// (ui-refresh S7a) — the audit found a one-number card opening ~200px tall — but
+// stays fully resizable (minH:2, isResizable), so this only sets the default a
+// fresh/un-resized stat opens at; a manually-resized one keeps its stored size.
 function defaultH(kind: Kind) {
   if (kind === "text") return 1;
   if (kind === "action") return 2;
-  if (kind === "stat") return 3;
+  if (kind === "stat") return 2;
   if (kind === "embed") return 6;
   if (kind === "image") return 5;
   if (kind === "container") return 10;

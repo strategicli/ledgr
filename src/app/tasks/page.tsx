@@ -10,7 +10,8 @@ import ListPage from "@/components/lists/ListPage";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import NewItemButton from "@/components/home/NewItemButton";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
-import RowAction from "@/components/home/RowAction";
+import SwipeRow from "@/components/lists/SwipeRow";
+import TabStrip from "@/components/nav/TabStrip";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
@@ -22,6 +23,7 @@ import type { Progress } from "@/lib/subtasks";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { resolveStatusSchema, type StatusDef } from "@/lib/status";
 import { todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
@@ -56,7 +58,7 @@ function effDate(t: ListedItem): Date | null {
 
 const TASK_ROW_CLASS = "group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
 
-function TaskRow({ task, dueToday, statuses, rollup }: { task: ListedItem; dueToday: Date; statuses: StatusDef[]; rollup?: Progress }) {
+function TaskRow({ task, dueToday, statuses, rollup, today }: { task: ListedItem; dueToday: Date; statuses: StatusDef[]; rollup?: Progress; today: string }) {
   const done = task.statusCategory === "done";
   const sdef = statuses.find((s) => s.key === task.status);
   const date = effDate(task);
@@ -86,26 +88,39 @@ function TaskRow({ task, dueToday, statuses, rollup }: { task: ListedItem; dueTo
       <span className={`shrink-0 text-xs ${overdue ? "text-red-400" : "text-neutral-600"}`}>
         {date ? dayFmt.format(date) : ""}
       </span>
-      <RowAction id={task.id} action="trash" />
     </>
   );
-  // A task with task-children gets the expandable pill; everything else stays a
-  // plain flat row (the indicator is purely additive — defer by hiding).
+  // Trash + Complete/Focus/Schedule live in the shared row menu (right-click /
+  // long-press), not an always-visible button; task rows also swipe (right =
+  // complete, left = schedule). ADR-142, mirroring /list/[type].
+  const menuOpts = {
+    id: task.id,
+    canComplete: true,
+    done,
+    today,
+    label: task.title || "Untitled",
+  };
+  // A task with task-children gets the expandable pill (which carries the menu);
+  // everything else stays a plain flat row with swipe + menu.
   if (rollup && rollup.total > 0) {
     return (
-      <SubtaskExpandableRow id={task.id} done={rollup.done} total={rollup.total} liClassName={TASK_ROW_CLASS}>
+      <SubtaskExpandableRow id={task.id} done={rollup.done} total={rollup.total} liClassName={TASK_ROW_CLASS} menuOptions={menuOpts}>
         {inner}
       </SubtaskExpandableRow>
     );
   }
-  return <li className={TASK_ROW_CLASS}>{inner}</li>;
+  return (
+    <SwipeRow className={TASK_ROW_CLASS} {...menuOpts}>
+      {inner}
+    </SwipeRow>
+  );
 }
 
-function TaskList({ tasks, dueToday, statuses, rollups }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[]; rollups?: Map<string, Progress> }) {
+function TaskList({ tasks, dueToday, statuses, rollups, today }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[]; rollups?: Map<string, Progress>; today: string }) {
   return (
     <ul className="mt-1">
       {tasks.map((t) => (
-        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} />
+        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} today={today} />
       ))}
     </ul>
   );
@@ -125,21 +140,30 @@ export default async function Tasks({
   const taskType = await getType("task");
   const statuses = resolveStatusSchema(taskType.statusSchema);
   const { dueToday } = todayBounds();
+  // App-timezone today (YYYY-MM-DD) for the row menu's Focus + Schedule quick
+  // dates (ADR-142). Named `todayYmd` to avoid the "today" tab's local `today`
+  // (a filtered task array) shadowing it.
+  const todayYmd = appTodayYmd();
 
   const tabStrip = (
-    <div className="mt-4 flex gap-1 border-b border-neutral-800">
+    <TabStrip
+      className="mt-4 border-b border-neutral-800"
+      navHrefs={TABS.map((t) => `/tasks?tab=${t.key}`)}
+      activeIndex={TABS.findIndex((t) => t.key === tab)}
+    >
       {TABS.map((t) => (
         <Link
           key={t.key}
           href={`/tasks?tab=${t.key}`}
-          className={`rounded-t px-3 py-1.5 text-sm ${
+          data-tab-active={tab === t.key ? "" : undefined}
+          className={`whitespace-nowrap rounded-t px-3 py-1.5 text-sm ${
             tab === t.key ? "border-b-2 border-[var(--accent)] text-neutral-100" : "text-neutral-400 hover:text-neutral-200"
           }`}
         >
           {t.label}
         </Link>
       ))}
-    </div>
+    </TabStrip>
   );
 
   let body: React.ReactNode = null;
@@ -175,7 +199,7 @@ export default async function Tasks({
                 <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
                   {k === 6 ? "No priority" : `Priority ${k}`}
                 </h3>
-                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} />
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
               </div>
             );
           })}
@@ -189,7 +213,7 @@ export default async function Tasks({
       inbox.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
       ) : (
-        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} />
+        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
       );
   } else if (tab === "upcoming") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
@@ -239,7 +263,7 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} />}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />}
                 <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
@@ -305,7 +329,7 @@ export default async function Tasks({
                   )}
                 </div>
                 {tasks.length > 0 ? (
-                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} />
+                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
                 ) : (
                   <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
                 )}

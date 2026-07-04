@@ -35,16 +35,29 @@ export default function Launcher({
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const startY = useRef<number | null>(null);
-  if (!open) return null;
+  const sheet = useRef<HTMLDivElement | null>(null);
 
   const onStart = (e: React.TouchEvent) => {
+    // Swipe-down-to-dismiss from ANYWHERE on the sheet, but only arm it when the
+    // tile list is scrolled to the top — otherwise a downward drag is the user
+    // scrolling the list back up, not dismissing (the scrollTop===0 guard so the
+    // two gestures never fight). Mirrors the item-view sheet's discipline.
+    if ((sheet.current?.scrollTop ?? 0) > 0) {
+      startY.current = null;
+      return;
+    }
     startY.current = e.touches[0].clientY;
     setDragging(true);
   };
   const onMove = (e: React.TouchEvent) => {
     if (startY.current == null) return;
     const dy = e.touches[0].clientY - startY.current;
-    if (dy > 0) setDragY(dy);
+    // Downward only: translate the sheet and swallow the scroll so the list
+    // doesn't rubber-band while we're pulling down to dismiss.
+    if (dy > 0) {
+      setDragY(dy);
+      e.preventDefault();
+    }
   };
   const onEnd = () => {
     if (dragY > 100) onClose();
@@ -53,18 +66,25 @@ export default function Launcher({
     setDragging(false);
   };
 
+  if (!open) return null;
+
   return (
     <div
       className="fixed inset-0 z-[55] bg-black/60 sm:hidden"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
+        ref={sheet}
         role="dialog"
         aria-label="All destinations"
         className="fixed inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-line-strong bg-[var(--background)] pb-8 shadow-2xl shadow-black/50"
         style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
+        onTouchStart={onStart}
+        onTouchMove={onMove}
+        onTouchEnd={onEnd}
+        onTouchCancel={onEnd}
       >
-        <div onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onTouchCancel={onEnd}>
+        <div>
           <div className="flex justify-center pt-2 pb-1">
             <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden />
           </div>

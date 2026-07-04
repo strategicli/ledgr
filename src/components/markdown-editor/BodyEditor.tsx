@@ -51,16 +51,25 @@ export type BodyEditorProps = {
 function ModeButton({
   active,
   onClick,
+  title,
+  label,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  // When set (the icon-only Rich/Source toggle), gives the button a tooltip +
+  // accessible name; the large-body banner leaves them off (its text labels are
+  // self-describing).
+  title?: string;
+  label?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
+      aria-label={label}
       className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
         active
           ? "bg-surface-2 text-ink"
@@ -72,6 +81,24 @@ function ModeButton({
     </button>
   );
 }
+
+// The Rich/Source toggle icons (ui-refresh Q8): rendered-lines = the WYSIWYG
+// editor, code-brackets = the raw markdown source. Kept inline in BodyEditor (no
+// state lift into the ⋯ menu) so the toggle stays available in every canvas
+// variant — page, peek, and the mobile bottom sheet — where the ⋯ menu is not.
+const RICH_ICON = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+    <line x1="4" y1="6" x2="20" y2="6" />
+    <line x1="4" y1="12" x2="20" y2="12" />
+    <line x1="4" y1="18" x2="14" y2="18" />
+  </svg>
+);
+const SOURCE_ICON = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <polyline points="8 7 3 12 8 17" />
+    <polyline points="16 7 21 12 16 17" />
+  </svg>
+);
 
 export default function BodyEditor({
   itemId,
@@ -171,13 +198,23 @@ export default function BodyEditor({
           </div>
         </div>
       ) : (
-        // Normal note: a quiet Rich/Source toggle, available on any note.
+        // Normal note: a quiet icon-only Rich/Source toggle, available on any note.
         <div className="mb-1 flex items-center justify-end gap-1">
-          <ModeButton active={mode === "rich"} onClick={() => switchMode("rich")}>
-            Rich
+          <ModeButton
+            active={mode === "rich"}
+            onClick={() => switchMode("rich")}
+            title="Rich text"
+            label="Rich text editor"
+          >
+            {RICH_ICON}
           </ModeButton>
-          <ModeButton active={mode === "source"} onClick={() => switchMode("source")}>
-            Source
+          <ModeButton
+            active={mode === "source"}
+            onClick={() => switchMode("source")}
+            title="Markdown source"
+            label="Markdown source"
+          >
+            {SOURCE_ICON}
           </ModeButton>
         </div>
       )}

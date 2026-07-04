@@ -13,6 +13,7 @@ import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
@@ -165,6 +166,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
             calendarEvents={calendarEvents}
             selectable
             rollups={rollups}
+            today={appTodayYmd()}
           />
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />
         </SelectionProvider>

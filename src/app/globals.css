@@ -492,16 +492,6 @@ body[data-editing="true"] [data-work-nav-pill] {
   display: none; /* WebKit */
 }
 
-/* The nav scroll strip snaps slots into place so swiping settles cleanly instead
-   of stopping mid-icon. `proximity` (not `mandatory`) is gentle: it won't fight a
-   small deliberate scroll or the programmatic auto-center of the active slot. */
-.nav-scroll-strip {
-  scroll-snap-type: x proximity;
-}
-.nav-scroll-strip > * {
-  scroll-snap-align: start;
-}
-
 /* --- S1 · Type scale (ui-refresh) -----------------------------------------
    A disciplined, reusable scale so refreshed surfaces stop mixing ad-hoc sizes.
    Opt-in classes (ui-* namespaced to avoid colliding with utilities); paired

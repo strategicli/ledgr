@@ -272,7 +272,17 @@ export default function Modal({
           role="dialog"
           aria-label={title || "Item"}
           className="fixed inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-2xl border-t border-line-strong bg-[var(--background)] shadow-2xl shadow-black/50"
-          style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
+          // Only take on a transform while actually dragging. A resting
+          // `translateY(0px)` is still a transform, which makes this sheet the
+          // containing block for any `position: fixed` descendant — that traps
+          // the editor's mobile formatting toolbar (fixed, pinned above the
+          // keyboard) inside the sheet so it can't anchor to the viewport. At
+          // rest we drop the transform entirely; the drag/close path is
+          // unaffected (you're never typing while dismissing the sheet).
+          style={{
+            transform: dragY ? `translateY(${dragY}px)` : undefined,
+            transition: dragging ? "none" : "transform 0.2s ease",
+          }}
         >
           {/* Grabber + header are the drag-to-dismiss hit zone; the body is NOT,
               so editor scroll + text selection are unaffected. */}
