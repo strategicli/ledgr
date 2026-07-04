@@ -8,7 +8,7 @@
 // dependency (Principle 5).
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/nav/NavGlyphs";
 import { badgeCount } from "@/lib/format-count";
@@ -65,6 +65,19 @@ export default function Launcher({
     startY.current = null;
     setDragging(false);
   };
+
+  // Lock the page scroll behind the drawer while it's open, so a drag on the
+  // drawer can't scroll the page underneath. Locks <html> (not body) so the
+  // drawer's own inner scroll still works.
+  useEffect(() => {
+    if (!open) return;
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, [open]);
 
   if (!open) return null;
 

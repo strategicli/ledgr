@@ -765,7 +765,7 @@ export default function NavShell({
         fill
           ? "items-center w-[40rem] max-w-[calc(100vw-2rem)] justify-between gap-1 p-2 [&_svg]:h-6 [&_svg]:w-6"
           : mobile
-            ? "flex-col max-w-[calc(100vw-1rem)] gap-0.5 px-1.5 pb-1.5 pt-0.5"
+            ? "touch-none flex-col max-w-[calc(100vw-1rem)] gap-0.5 px-1.5 pb-1.5 pt-0.5"
             : "items-center gap-1 p-1.5"
       } ${extraClass}`}
       {...(mobile

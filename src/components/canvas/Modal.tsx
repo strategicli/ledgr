@@ -106,6 +106,21 @@ export default function Modal({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Lock the page scroll behind a full overlay (sheet or center modal), so a
+  // drag on/near the sheet can't scroll the list underneath — the "main page
+  // scrolls while I'm aiming at the drawer" report. Peek is non-modal (the list
+  // stays live and walkable), so it deliberately does NOT lock. Locking the
+  // <html> element (not body) leaves the sheet's own inner scroll container free.
+  useEffect(() => {
+    if (peek) return;
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, [peek]);
+
   // Walk the list rows with ↑/↓ while the peek is open. Both the list (in the
   // page's <main>) and this panel (in the @modal slot) share one document, so we
   // read the list's ordered /items links straight from the DOM and router.replace
