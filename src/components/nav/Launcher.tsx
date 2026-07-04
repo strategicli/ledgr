@@ -83,15 +83,15 @@ export default function Launcher({
 
   return (
     <div
-      className="fixed inset-0 z-[55] bg-black/60 sm:hidden"
+      className="backdrop-enter fixed inset-0 z-[55] bg-black/60 sm:hidden"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
         ref={sheet}
         role="dialog"
         aria-label="All destinations"
-        className="fixed inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-line-strong bg-[var(--background)] pb-8 shadow-2xl shadow-black/50"
-        style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
+        className="sheet-enter fixed inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-line-strong bg-[var(--background)] pb-8 shadow-2xl shadow-black/50"
+        style={{ transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.25s ease" }}
         onTouchStart={onStart}
         onTouchMove={onMove}
         onTouchEnd={onEnd}
