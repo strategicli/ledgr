@@ -492,33 +492,6 @@ body[data-editing="true"] [data-work-nav-pill] {
   display: none; /* WebKit */
 }
 
-/* Bottom-sheet enter animation (ui-refresh S6b follow-up): the pull-up Launcher
-   (and any future bottom sheet) slides up from the bottom edge with a backdrop
-   fade instead of popping into place — the "drawer pull isn't smooth" fix. Only
-   the enter is animated; the close/drag path uses the element's own transform. */
-@keyframes ledgr-sheet-up {
-  from {
-    transform: translateY(100%);
-  }
-}
-@keyframes ledgr-fade-in {
-  from {
-    opacity: 0;
-  }
-}
-.sheet-enter {
-  animation: ledgr-sheet-up 0.25s ease;
-}
-.backdrop-enter {
-  animation: ledgr-fade-in 0.2s ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .sheet-enter,
-  .backdrop-enter {
-    animation: none;
-  }
-}
-
 /* --- S1 · Type scale (ui-refresh) -----------------------------------------
    A disciplined, reusable scale so refreshed surfaces stop mixing ad-hoc sizes.
    Opt-in classes (ui-* namespaced to avoid colliding with utilities); paired
