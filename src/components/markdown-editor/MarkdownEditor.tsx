@@ -210,6 +210,18 @@ export default function MarkdownEditor({
     onRequestSaveRef.current = onRequestSave;
   });
 
+  // The last markdown this editor emitted upward, seeded (in onCreate) with the
+  // editor's OWN canonical serialization of the loaded body. Tiptap re-emits the
+  // body once on mount (a programmatic transaction), and its serialization is
+  // rarely byte-identical to the stored markdown — a Notion import uses `*`/`1)`
+  // bullets, extra blank lines, etc., which round-trip to `-`/`1.` and single
+  // blanks. Comparing that mount re-emit against the *stored* string (as the
+  // autosave dedup does) misses, so merely opening an item PATCHed a normalized
+  // body and bumped its edit date + burned a revision — the "viewing an item
+  // marks it edited" bug. Comparing against the canonical baseline instead makes
+  // the mount re-emit a true no-op; only a real user edit differs and saves.
+  const lastEmitted = useRef<string | null>(null);
+
   const editor = useEditor({
     immediatelyRender: false,
     editable,
@@ -295,7 +307,33 @@ export default function MarkdownEditor({
         return true;
       },
     },
-    onUpdate: ({ editor }) => onChangeRef.current(editor.getMarkdown()),
+    // Backstop for the common ordering: seed the baseline with the canonical
+    // serialization at creation. Under immediatelyRender:false the mount re-emit
+    // can fire onUpdate *before* onCreate, so the null-guard below is what
+    // actually catches it — this just keeps the baseline correct when onCreate
+    // does win the race.
+    onCreate: ({ editor }) => {
+      if (lastEmitted.current === null) lastEmitted.current = editor.getMarkdown();
+    },
+    onUpdate: ({ editor }) => {
+      const md = editor.getMarkdown();
+      // First emission after mount establishes the baseline WITHOUT saving. Tiptap
+      // re-serializes the loaded body once on mount (a programmatic transaction),
+      // and that serialization is rarely byte-identical to the stored markdown — a
+      // Notion import's `*`/`1)` bullets and double blanks round-trip to `-`/`1.`
+      // and single blanks. Treating that first emit (or any emit equal to the
+      // baseline) as a save is the "viewing an item marks it edited" bug: it
+      // PATCHed a normalized body and bumped the edit date + burned a revision.
+      // The user can't have edited before the editor mounted, so the first emit is
+      // always this programmatic one — adopt it, don't persist it. A real edit
+      // differs from the baseline and saves normally.
+      if (lastEmitted.current === null || md === lastEmitted.current) {
+        lastEmitted.current = md;
+        return;
+      }
+      lastEmitted.current = md;
+      onChangeRef.current(md);
+    },
   });
 
   // Keep the toolbar's active states in sync with the cursor. useEditor alone
