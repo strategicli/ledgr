@@ -52,6 +52,7 @@ export default function Launcher({
   tiles,
   onSearch,
   barRow,
+  onDragClaim,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -60,6 +61,10 @@ export default function Launcher({
   onSearch: () => void;
   // The bar slots row, rendered by NavShell: the drawer's always-visible first row.
   barRow: ReactNode;
+  // Fires the moment a real drag is claimed (not a tap), so NavShell can close
+  // any open bar popover: a swipe fires no click, so the outside-click closer
+  // that normally dismisses it never runs.
+  onDragClaim?: () => void;
 }) {
   const panel = useRef<HTMLDivElement | null>(null);
   const backdrop = useRef<HTMLDivElement | null>(null);
@@ -170,6 +175,7 @@ export default function Launcher({
       }
       if (dy < 0 && d.startTy <= 0) return;
       d.claimed = true;
+      onDragClaim?.();
       navigator.vibrate?.(8);
     }
     // Follow the finger 1:1, clamped to the panel's travel range.
