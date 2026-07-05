@@ -36,6 +36,10 @@ export const TOKEN_CATALOG: TokenOption[] = [
   { token: "item.related.person", label: "Related people", hint: "People linked to this item", group: "Related" },
   { token: "item.related.task", label: "Related tasks", hint: "Tasks linked to this item", group: "Related" },
   { token: "item.children", label: "Child items", hint: "Subtasks / children (add :ul for a list)", group: "Related" },
+  // Meeting aliases (ADR-144): shorthands for the event People card's roles.
+  { token: "attendees", label: "Attendees", hint: "Who's marked here (add :ul for a list)", group: "Related" },
+  { token: "absentees", label: "Absentees", hint: "Who's marked OUT", group: "Related" },
+  { token: "group", label: "Meeting group", hint: "The group this meeting is for", group: "Related" },
 
   // Parent
   { token: "parent.title", label: "Parent title", hint: "The parent item's title", group: "Parent" },

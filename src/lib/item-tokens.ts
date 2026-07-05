@@ -70,7 +70,21 @@ const TOKEN_RE = /(\\?)\{\{\s*([^}]+?)\s*\}\}/g;
 // only place a list token expands to real block-level markdown. Anywhere else it
 // falls back to a comma-joined inline list (a bulleted list can't sit mid-line).
 const BLOCK_LIST_LINE_RE =
-  /^(\s*)(\\?)\{\{\s*(?:item\.children|item\.related\.[a-z0-9_]+|parent\.children)\s*:\s*(ul|ol)\s*\}\}\s*$/i;
+  /^(\s*)(\\?)\{\{\s*(?:item\.children|item\.related\.[a-z0-9_]+|parent\.children|attendees|absentees|groups?)\s*:\s*(ul|ol)\s*\}\}\s*$/i;
+
+// Meeting-friendly aliases (ADR-144 Phase 3): plain-language shorthands for the
+// attendance relation roles the event People card writes, so a meeting-note
+// template can say {{attendees}} instead of {{item.related.attending}}. Resolved
+// LIVE like any related token — always the current roster, never a stale
+// snapshot (notes are usually templated before attendance is marked, and the
+// People card is the source of truth). Normalized once in splitExpr, so every
+// recognition + resolution path picks them up. Keys are lowercased bases.
+const TOKEN_ALIASES: Record<string, string> = {
+  attendees: "item.related.attending",
+  absentees: "item.related.absent",
+  group: "item.related.group",
+  groups: "item.related.group",
+};
 
 const MONTH_FULL = [
   "January", "February", "March", "April", "May", "June",
@@ -113,13 +127,18 @@ function applyOffset(ymd: string, offset: string): string | null {
   return null;
 }
 
-// Split "expr±Nd:fmt" into { base, offset, fmt }. base keeps its dots.
+// Split "expr±Nd:fmt" into { base, offset, fmt }. base keeps its dots, and a
+// meeting alias (attendees/absentees/group) is normalized to its canonical
+// related base here, so every downstream path (refsFor, recognition) is alias-
+// aware for free.
 function splitExpr(inner: string): { base: string; offset: string; fmt: string } {
   const colon = inner.indexOf(":");
   const head = (colon >= 0 ? inner.slice(0, colon) : inner).trim();
   const fmt = colon >= 0 ? inner.slice(colon + 1).trim() : "";
   const m = head.match(/^(.*?)([+-]\d+[dwmy])?$/);
-  return { base: (m?.[1] ?? head).trim(), offset: m?.[2] ?? "", fmt };
+  const rawBase = (m?.[1] ?? head).trim();
+  const base = TOKEN_ALIASES[rawBase.toLowerCase()] ?? rawBase;
+  return { base, offset: m?.[2] ?? "", fmt };
 }
 
 // A date-valued field → the formatted string (with optional offset), or "" when

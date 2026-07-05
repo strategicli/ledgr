@@ -11,6 +11,11 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
+import {
+  ATTENDING_ROLE,
+  EVENT_GROUP_ROLE,
+  getEventPeople,
+} from "@/lib/events/people";
 import { getItem, ItemError } from "@/lib/items";
 import { getMeetingPeople } from "@/lib/meetings/prep";
 import { relateItems } from "@/lib/relations";
@@ -86,16 +91,27 @@ export async function pinEventAsTemplate(
     ? validateMatchConfig({ condition: opts.condition, autoApply: true }).condition
     : await derivePinCondition(ownerId, eventItemId);
 
-  const people = await getMeetingPeople(ownerId, eventItemId); // confirmed only
+  const people = await getMeetingPeople(ownerId, eventItemId); // confirmed attendees only
+  // The meeting's group(s) pin too (ADR-144): the prototype carries the
+  // event→group edge, so every future matched event is "For" the group and its
+  // roster seeds the expected-attendee ghosts.
+  const { groups } = await getEventPeople(ownerId, eventItemId);
 
   async function addPeople(prototypeId: string): Promise<number> {
     let added = 0;
     for (const p of people) {
       try {
-        await relateItems(ownerId, prototypeId, p.id);
+        await relateItems(ownerId, prototypeId, p.id, ATTENDING_ROLE);
         added++;
       } catch (err) {
         if (!(err instanceof ItemError)) throw err; // tolerate a vanished person
+      }
+    }
+    for (const g of groups) {
+      try {
+        await relateItems(ownerId, prototypeId, g.id, EVENT_GROUP_ROLE);
+      } catch (err) {
+        if (!(err instanceof ItemError)) throw err; // tolerate a vanished group
       }
     }
     return added;

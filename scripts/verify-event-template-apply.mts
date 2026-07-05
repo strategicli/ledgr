@@ -71,7 +71,8 @@ try {
   await updateItem(owner.id, tmpl.prototypeItemId, {
     body: { format: "markdown", text: "## Agenda\n\n- Pastoral check-in\n- Prayer" },
   });
-  await relateItems(owner.id, tmpl.prototypeItemId, pat.id);
+  // Prototypes pre-relate attendees with role 'attending' (ADR-144, pin.ts).
+  await relateItems(owner.id, tmpl.prototypeItemId, pat.id, "attending");
   await createItem(owner.id, { type: "event", title: "Recurring sub", parentId: tmpl.prototypeItemId });
   await updateTemplate(owner.id, tmpl.id, { matchConfig: { condition: { kind: "attendeeEmail", email: "pat@x.com" }, autoApply: true } });
 
@@ -95,7 +96,7 @@ try {
   const dom = await createItem(owner.id, { type: "person", title: "Dana Dormant", properties: { email: "dana@x.com" } });
   const domTmpl = await createTemplate(owner.id, { type: "event", name: `Dana dormant ${stamp}` });
   await updateItem(owner.id, domTmpl.prototypeItemId, { body: { format: "markdown", text: "## Dormant agenda" } });
-  await relateItems(owner.id, domTmpl.prototypeItemId, dom.id);
+  await relateItems(owner.id, domTmpl.prototypeItemId, dom.id, "attending");
   await updateTemplate(owner.id, domTmpl.id, { matchConfig: { condition: { kind: "attendeeEmail", email: "dana@x.com" }, autoApply: false } });
   const eventD = await createItem(owner.id, { type: "event", title: "Dana sync" });
   const rD = await applyEventIntake(owner.id, eventD.id, ev({ title: "Dana sync", attendees: [{ name: "Dana", email: "dana@x.com" }] }));
@@ -104,7 +105,7 @@ try {
   const dFull = await getItem(owner.id, eventD.id);
   check("dormant rule: the template body is NOT applied", !((dFull.body as { text?: string } | null)?.text ?? "").includes("Dormant agenda"));
   const prepD = await getMeetingPrep(owner.id, eventD.id);
-  check("dormant rule: the person is live-suggested on the canvas instead", prepD.suggestedPeople.some((p) => p.id === dom.id));
+  check("dormant rule: the person is live-suggested on the canvas instead", prepD.ghosts.some((p) => p.id === dom.id));
 } finally {
   await db.delete(items).where(eq(items.ownerId, owner.id));
   await db.delete(templates).where(eq(templates.ownerId, owner.id));

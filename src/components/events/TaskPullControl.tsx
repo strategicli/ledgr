@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EVENT_PEOPLE_SEED, type TaskPull } from "@/lib/events/task-pull";
+import {
+  EVENT_MEMBERS_PREFIX,
+  EVENT_PEOPLE_SEED,
+  type TaskPull,
+} from "@/lib/events/task-pull";
 
 type SeedLabel = { id: string; title: string; type: string };
 
@@ -106,14 +110,19 @@ export default function TaskPullControl({
     void save(seedIds, next);
   }
 
+  // "@members:<gid>" chips read as the roster ("Anyone in Pastors"); the seed
+  // labels map is keyed by the bare group id (taskPullSeedLabels strips the
+  // prefix), so look the group up by its stripped id.
   const chipLabel = (id: string) =>
     id === EVENT_PEOPLE_SEED
       ? `People on this event${peopleCount ? ` (${peopleCount})` : ""}`
-      : labels[id]?.title || "Untitled";
+      : id.startsWith(EVENT_MEMBERS_PREFIX)
+        ? `Anyone in ${(labels[id.slice(EVENT_MEMBERS_PREFIX.length)] ?? labels[id])?.title || "…"}`
+        : labels[id]?.title || "Untitled";
 
   return (
     <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-2 text-xs text-neutral-500">
-      <span>Show open tasks related to</span>
+      <span>Related to</span>
       <button
         type="button"
         onClick={toggleMatch}
@@ -178,6 +187,23 @@ export default function TaskPullControl({
                   >
                     {h.title || "Untitled"} <span className="text-neutral-600">· {h.type}</span>
                   </button>
+                  {/* A group seeds two ways (ADR-144): the group item itself,
+                      or its roster — "anyone in" adds the @members sentinel. */}
+                  {h.type === "group" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addSeed({
+                          id: `${EVENT_MEMBERS_PREFIX}${h.id}`,
+                          title: h.title,
+                          type: h.type,
+                        })
+                      }
+                      className="block w-full truncate rounded px-2 py-1 pl-5 text-left text-neutral-400 hover:bg-neutral-800"
+                    >
+                      ↳ anyone in {h.title || "Untitled"}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

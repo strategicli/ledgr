@@ -97,6 +97,14 @@ export default async function RelatedPanel({
       if (relatedById.has(t.id)) claimed.add(t.id);
     }
   }
+  // On an event, the People card (ADR-144) owns EVERY person and group —
+  // attending, absent, ghosts, groups, and the "Also mentioned" line — so none
+  // of them repeat down here. This is what retires the old three-list split.
+  if (hostType === "event") {
+    for (const r of related) {
+      if (r.type === "person" || r.type === "group") claimed.add(r.id);
+    }
+  }
 
   // Suggested edges render with the existing confirm/reject row (the relatedTo
   // view filter is confirmed-only). Everything else groups by type for the lens.

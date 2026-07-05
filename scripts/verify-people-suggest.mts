@@ -125,14 +125,14 @@ try {
   const rB = await applyEventIntake(owner.id, eventB.id, ev({ title: "Roger / Brandon 1:1", attendees: [{ name: "Roger", email: "roger@x.com" }] }));
   check("intake writes no edge for a non-template event", rB.tier === "none" && (await edgeState(eventB.id, roger.id)) === null);
   const prepB = await getMeetingPrep(owner.id, eventB.id);
-  check("getMeetingPrep live-suggests Roger for the event", prepB.suggestedPeople.some((p) => p.id === roger.id));
-  check("the owner is not live-suggested", !prepB.suggestedPeople.some((p) => p.id === ownerPerson.id));
-  check("no one is confirmed yet", prepB.people.length === 0);
+  check("getMeetingPrep live-suggests Roger for the event", prepB.ghosts.some((p) => p.id === roger.id));
+  check("the owner is not live-suggested", !prepB.ghosts.some((p) => p.id === ownerPerson.id));
+  check("no one is confirmed yet", prepB.attending.length === 0);
   // adding (a confirmed relate) moves Roger into people + out of suggestions
-  await relateItems(owner.id, eventB.id, roger.id);
+  await relateItems(owner.id, eventB.id, roger.id, "attending");
   const prepB2 = await getMeetingPrep(owner.id, eventB.id);
-  check("after add, Roger is a confirmed meeting person", prepB2.people.some((p) => p.id === roger.id));
-  check("after add, Roger drops out of live suggestions", !prepB2.suggestedPeople.some((p) => p.id === roger.id));
+  check("after add, Roger is a confirmed meeting person", prepB2.attending.some((p) => p.id === roger.id));
+  check("after add, Roger drops out of live suggestions", !prepB2.ghosts.some((p) => p.id === roger.id));
 
   // --- Tier A: a pinned (autoApply) template is applied (empty here → no people) ---
   const tmpl = await createTemplate(owner.id, { type: "event", name: `Pat 1:1 ${stamp}` });
