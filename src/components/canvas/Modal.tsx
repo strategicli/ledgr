@@ -275,7 +275,7 @@ export default function Modal({
     // anywhere, or from the body when it's scrolled to the top. Mid-scroll body
     // drags scroll normally (scrollTop guard), so the editor still scrolls and
     // text-selects freely.
-    const onDragStart = (fromBody: boolean) => (e: React.TouchEvent) => {
+    const onDragStart = (e: React.TouchEvent, fromBody: boolean) => {
       dragStart.current = e.touches[0].clientY;
       dragFromBody.current = fromBody;
       // Header drag always dismisses (it's chrome); a body drag only when the
@@ -324,7 +324,7 @@ export default function Modal({
               browser from treating the downward drag as a page scroll / pull-to-
               refresh (React's touchmove is passive, so preventDefault alone can't)
               — the drag is fully JS-owned here. */}
-          <div className="touch-none" onTouchStart={onDragStart(false)} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
+          <div className="touch-none" onTouchStart={(e) => onDragStart(e, false)} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
             <div className="flex justify-center pt-2 pb-1">
               <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden />
             </div>
@@ -338,7 +338,7 @@ export default function Modal({
           <div
             ref={bodyRef}
             className={bodyClass}
-            onTouchStart={onDragStart(true)}
+            onTouchStart={(e) => onDragStart(e, true)}
             onTouchMove={onDragMove}
             onTouchEnd={onDragEnd}
             onTouchCancel={onDragEnd}
