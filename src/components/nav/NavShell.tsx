@@ -465,7 +465,12 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={() => toggleTools(id)}
+            onClick={() => {
+              // On the bar row, first collapse the drawer so the popover opens
+              // against the docked bar (its fixed anchor assumes the bottom edge).
+              if (mobileBar) setLauncherOpen(false);
+              toggleTools(id);
+            }}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -495,7 +500,12 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={() => toggleTools(id)}
+            onClick={() => {
+              // Collapse the drawer first so the flyout opens against the
+              // docked bar (its fixed anchor assumes the bottom edge).
+              if (mobileBar) setLauncherOpen(false);
+              toggleTools(id);
+            }}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -524,7 +534,10 @@ export default function NavShell({
       return (
         <button
           key={id}
-          onClick={() => setSearchOpen(true)}
+          onClick={() => {
+            if (mobileBar) setLauncherOpen(false);
+            setSearchOpen(true);
+          }}
           aria-label={slot.label}
           title={`${slot.label} (⌘K)`}
           className={className}
@@ -537,6 +550,9 @@ export default function NavShell({
       <Link
         key={id}
         href={slot.href}
+        // A bar-row tap dismisses the open drawer as it navigates (parity with
+        // the drawer's own tiles); on desktop mobileBar is false, so this is inert.
+        onClick={mobileBar ? () => setLauncherOpen(false) : undefined}
         aria-label={slot.label}
         aria-current={isActive(slot.href) ? "page" : undefined}
         className={className}
@@ -694,7 +710,10 @@ export default function NavShell({
   const mobileTrailingControls = (
     <>
       <button
-        onClick={() => setSearchOpen(true)}
+        onClick={() => {
+          setLauncherOpen(false);
+          setSearchOpen(true);
+        }}
         title="Search (⌘K)"
         aria-label="Search"
         className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
@@ -702,7 +721,10 @@ export default function NavShell({
         <Icon icon="search" />
       </button>
       <button
-        onClick={() => setCaptureOpen(true)}
+        onClick={() => {
+          setLauncherOpen(false);
+          setCaptureOpen(true);
+        }}
         title="Quick capture (q)"
         aria-label="Quick capture"
         className="flex shrink-0 items-center rounded-xl p-2 text-[var(--accent)] hover:bg-neutral-800/60"
@@ -790,6 +812,7 @@ export default function NavShell({
             tiles={launcherTiles}
             onSearch={() => setSearchOpen(true)}
             barRow={mobileBarRow}
+            onDragClaim={() => setOpenTools(null)}
           />
         </div>
       )}
