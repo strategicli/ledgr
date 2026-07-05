@@ -99,6 +99,13 @@ export default function Modal({
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<number | null>(null);
+  // The sheet's scroll container, so a body drag can tell whether the content is
+  // at its top before it decides to dismiss vs. scroll.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // Whether the in-progress drag is allowed to dismiss: true for a header drag
+  // (chrome), and for a body drag only while the content is at the top.
+  const canDismiss = useRef(false);
+  const dragFromBody = useRef(false);
 
   useEffect(() => {
     const onResize = () => setMode(computeMode());
@@ -254,7 +261,8 @@ export default function Modal({
         </div>
       </div>
   );
-  const body = <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">{children}</div>;
+  const bodyClass = "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12";
+  const body = <div className={bodyClass}>{children}</div>;
   const panel = (
     <>
       {header}
@@ -263,22 +271,35 @@ export default function Modal({
   );
 
   if (mode === "sheet") {
-    // Bottom sheet (mobile). Drag the grabber/header down to dismiss; the body
-    // scrolls and text-selects normally because the drag hit zone is the sheet
-    // chrome only (the grabber + header row), never the editor.
-    const onDragStart = (e: React.TouchEvent) => {
+    // Bottom sheet (mobile). Drag down to dismiss: from the grabber/header
+    // anywhere, or from the body when it's scrolled to the top. Mid-scroll body
+    // drags scroll normally (scrollTop guard), so the editor still scrolls and
+    // text-selects freely.
+    const onDragStart = (fromBody: boolean) => (e: React.TouchEvent) => {
       dragStart.current = e.touches[0].clientY;
+      dragFromBody.current = fromBody;
+      // Header drag always dismisses (it's chrome); a body drag only when the
+      // content is already at its top — otherwise it's a scroll. Mirrors
+      // Launcher.tsx's scrollTop guard, no gesture fight.
+      canDismiss.current = !fromBody || (bodyRef.current?.scrollTop ?? 0) <= 0;
       setDragging(true);
     };
     const onDragMove = (e: React.TouchEvent) => {
-      if (dragStart.current == null) return;
+      if (dragStart.current == null || !canDismiss.current) return;
+      // If a body drag scrolled away from the top mid-gesture, hand it back to
+      // the scroller instead of dismissing.
+      if (dragFromBody.current && (bodyRef.current?.scrollTop ?? 0) > 0) return;
       const dy = e.touches[0].clientY - dragStart.current;
+      // Downward only: the sheet follows the finger toward the bottom of the
+      // screen; an upward drag from the top just scrolls the content.
       if (dy > 0) setDragY(dy);
     };
     const onDragEnd = () => {
       if (dragY > 120) close();
       else setDragY(0);
       dragStart.current = null;
+      canDismiss.current = false;
+      dragFromBody.current = false;
       setDragging(false);
     };
     return (
@@ -299,18 +320,31 @@ export default function Modal({
             transition: dragging ? "none" : "transform 0.2s ease",
           }}
         >
-          {/* Grabber + header are the drag-to-dismiss hit zone; the body is NOT,
-              so editor scroll + text selection are unaffected. touch-none keeps
-              the browser from treating the downward drag as a page scroll /
-              pull-to-refresh (React's touchmove is passive, so preventDefault
-              alone can't) — the drag is fully JS-owned here. */}
-          <div className="touch-none" onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
+          {/* Grabber + header: always a drag-to-dismiss zone. touch-none keeps the
+              browser from treating the downward drag as a page scroll / pull-to-
+              refresh (React's touchmove is passive, so preventDefault alone can't)
+              — the drag is fully JS-owned here. */}
+          <div className="touch-none" onTouchStart={onDragStart(false)} onTouchMove={onDragMove} onTouchEnd={onDragEnd} onTouchCancel={onDragEnd}>
             <div className="flex justify-center pt-2 pb-1">
               <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden />
             </div>
             {header}
           </div>
-          {body}
+          {/* Body: scrolls and text-selects freely. When it's already at the top,
+              a downward drag here also slides the sheet closed (scrollTop guard in
+              onDragStart/onDragMove), so the whole sheet — not just the grabber —
+              can be flicked away; mid-scroll drags still scroll. Not touch-none:
+              it must keep its native scroll. */}
+          <div
+            ref={bodyRef}
+            className={bodyClass}
+            onTouchStart={onDragStart(true)}
+            onTouchMove={onDragMove}
+            onTouchEnd={onDragEnd}
+            onTouchCancel={onDragEnd}
+          >
+            {children}
+          </div>
         </div>
       </div>
     );
