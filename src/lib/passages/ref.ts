@@ -185,13 +185,16 @@ export function passageUri(startRef: number, endRef: number): string {
     : `${PASSAGE_URI_PREFIX}${startRef}-${endRef}`;
 }
 
-// Parse a `ledgr://passage/<start>[-<end>]` href back to an interval, or null if
-// it isn't a passage URI. The way IN from a parsed markdown link, mirroring
-// mentionItemId in editor/mention-markdown.ts.
-export function parsePassageUri(href: string | null | undefined): PassageRef | null {
-  if (typeof href !== "string" || !href.startsWith(PASSAGE_URI_PREFIX)) return null;
-  const body = href.slice(PASSAGE_URI_PREFIX.length).trim();
-  const m = /^(\d+)(?:-(\d+))?$/.exec(body);
+// The URL slug for the passage page: the same `<start>[-<end>]` grammar as the
+// URI, minus the scheme. `/passage/45008005` or `/passage/45008005-45008009`.
+export function passageSlug(startRef: number, endRef: number): string {
+  return endRef === startRef ? `${startRef}` : `${startRef}-${endRef}`;
+}
+
+// Parse a bare `<start>[-<end>]` slug (the passage page's [ref] segment) to an
+// interval, or null. The shared core of parsePassageUri.
+export function parsePassageSlug(slug: string): PassageRef | null {
+  const m = /^(\d+)(?:-(\d+))?$/.exec(slug.trim());
   if (!m) return null;
   const startRef = Number(m[1]);
   const endRef = m[2] !== undefined ? Number(m[2]) : startRef;
@@ -199,6 +202,14 @@ export function parsePassageUri(href: string | null | undefined): PassageRef | n
     return null;
   }
   return { startRef, endRef };
+}
+
+// Parse a `ledgr://passage/<start>[-<end>]` href back to an interval, or null if
+// it isn't a passage URI. The way IN from a parsed markdown link, mirroring
+// mentionItemId in editor/mention-markdown.ts.
+export function parsePassageUri(href: string | null | undefined): PassageRef | null {
+  if (typeof href !== "string" || !href.startsWith(PASSAGE_URI_PREFIX)) return null;
+  return parsePassageSlug(href.slice(PASSAGE_URI_PREFIX.length));
 }
 
 function escapeLabel(text: string): string {
