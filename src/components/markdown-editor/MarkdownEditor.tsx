@@ -61,6 +61,7 @@ import {
   type PromotedRefs,
 } from "./block-anchor-extension";
 import { extractPromotable } from "@/lib/editor/block-anchor";
+import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import PromoteLinePopup, { type PromoteDraft } from "./PromoteLinePopup";
 import "./markdown-editor.css";
 
@@ -499,6 +500,31 @@ export default function MarkdownEditor({
     dom.addEventListener(OPEN_ITEM_EVENT, handler);
     return () => dom.removeEventListener(OPEN_ITEM_EVENT, handler);
   }, [editor, router]);
+
+  // Right-click a mention chip → the Send-to-Desk menu (S3b, ADR-146), with this
+  // item as "current" so "Open beside" puts the host left and the mention right.
+  // Desktop-only; otherwise the native context menu is left alone.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const handler = (e: MouseEvent) => {
+      if (!deskSendAvailable()) return;
+      const chip = (e.target as Element).closest?.(
+        ".ledgr-mention[data-item-id]"
+      ) as HTMLElement | null;
+      const linkedId = chip?.dataset.itemId;
+      if (!linkedId) return;
+      e.preventDefault();
+      openDeskSendMenu({
+        itemId: linkedId,
+        currentItemId: itemId,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    };
+    dom.addEventListener("contextmenu", handler);
+    return () => dom.removeEventListener("contextmenu", handler);
+  }, [editor, itemId]);
 
   // Deep link to a line (ADR-090): a #^id hash scrolls the editor to that line
   // and flashes it — on first mount (arriving from a copied link / a task's

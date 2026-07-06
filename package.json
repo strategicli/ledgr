@@ -38,6 +38,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-grid-layout": "^1.5.3",
+    "react-resizable-panels": "^2.1.9",
     "turndown": "^7.2.4"
   },
   "devDependencies": {
