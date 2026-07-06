@@ -23,6 +23,7 @@ import {
   allTabs,
   closeLeaf,
   closeTab,
+  dashboardTab,
   findLeaf,
   focusLeaf,
   freshLayout,
@@ -127,17 +128,21 @@ export default function DeskClient({
         setLayout((l) => addTab(l, leafId, itemTab(itemId))),
       openView: (leafId, viewId) =>
         setLayout((l) => addTab(l, leafId, viewTab(viewId))),
+      openDashboard: (leafId, dashboardId) =>
+        setLayout((l) => addTab(l, leafId, dashboardTab(dashboardId))),
       splitActive: (leafId, dir) =>
         setLayout((l) => {
           const leaf = findLeaf(l.root, leafId);
           const active = leaf?.tabs.find((t) => t.id === leaf.activeTab) ?? null;
           // Duplicate the active tab into the new panel (a fresh tab id pointing
-          // at the same item/view); an empty panel splits into another empty one.
-          const dup = active
-            ? active.kind === "item"
+          // at the same target); an empty panel splits into another empty one.
+          const dup = !active
+            ? []
+            : active.kind === "item"
               ? [itemTab(active.itemId)]
-              : [viewTab(active.viewId)]
-            : [];
+              : active.kind === "view"
+                ? [viewTab(active.viewId)]
+                : [dashboardTab(active.dashboardId)];
           return splitLeaf(l, leafId, dir, dup, false).layout;
         }),
       closeTab: (leafId, tabId) => setLayout((l) => closeTab(l, leafId, tabId)),
@@ -313,20 +318,21 @@ function DeskMobileList({ layout }: { layout: DeskLayout }) {
         The Desk is desktop-only. Your open items:
       </p>
       <ul className="flex flex-col gap-1">
-        {tabs.map((t) =>
-          t.kind === "item" ? (
-            <MobileItemRow key={t.id} itemId={t.itemId} />
-          ) : (
+        {tabs.map((t) => {
+          if (t.kind === "item") return <MobileItemRow key={t.id} itemId={t.itemId} />;
+          const href = t.kind === "view" ? `/views/${t.viewId}` : `/dashboards/${t.dashboardId}`;
+          const label = t.kind === "view" ? "View" : "Dashboard";
+          return (
             <li key={t.id}>
               <Link
-                href={`/views/${t.viewId}`}
+                href={href}
                 className="block rounded-card border border-line bg-surface-1 px-3 py-2 text-sm text-ink hover:bg-surface-2"
               >
-                View
+                {label}
               </Link>
             </li>
-          )
-        )}
+          );
+        })}
       </ul>
     </div>
   );

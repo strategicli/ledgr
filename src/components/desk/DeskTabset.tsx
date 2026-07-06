@@ -10,6 +10,7 @@ import Link from "next/link";
 import type { DeskLeaf, DeskTab } from "@/lib/desk/layout";
 import { useDesk } from "./DeskContext";
 import { useDoc } from "./desk-doc-store";
+import DeskDashboardPanel from "./DeskDashboardPanel";
 import DeskItemPanel from "./DeskItemPanel";
 import DeskMoveOverlay from "./DeskMoveOverlay";
 import DeskOpenPicker from "./DeskOpenPicker";
@@ -67,6 +68,10 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
               actions.openView(leaf.id, viewId);
               setManualPick(false);
             }}
+            onPickDashboard={(dashboardId) => {
+              actions.openDashboard(leaf.id, dashboardId);
+              setManualPick(false);
+            }}
             onCancel={!empty ? () => setManualPick(false) : undefined}
           />
         )}
@@ -79,6 +84,9 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
             viewId={active.viewId}
             onOpenItem={(itemId) => actions.openItem(leaf.id, itemId)}
           />
+        )}
+        {!picking && active?.kind === "dashboard" && (
+          <DeskDashboardPanel key={active.dashboardId} dashboardId={active.dashboardId} />
         )}
         {!picking && !active && (
           <div className="flex h-full items-center justify-center text-sm text-ink-subtle">
@@ -234,6 +242,7 @@ function TabButton({
 function useTabLabel(tab: DeskTab): string {
   const doc = useDoc(tab.kind === "item" ? tab.itemId : "");
   if (tab.kind === "view") return "View";
+  if (tab.kind === "dashboard") return "Dashboard";
   return doc?.liveTitle?.trim() || (doc?.status === "loading" ? "Loading…" : "Untitled");
 }
 
@@ -264,7 +273,9 @@ function PanelMenu({ leafId, active }: { leafId: string; active: DeskTab | null 
       ? `/items/${active.itemId}`
       : active?.kind === "view"
         ? `/views/${active.viewId}`
-        : null;
+        : active?.kind === "dashboard"
+          ? `/dashboards/${active.dashboardId}`
+          : null;
 
   const itemClass =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2";

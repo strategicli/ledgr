@@ -27,7 +27,8 @@ export const clampFrac = (f: number): number =>
 
 export type DeskTab =
   | { id: string; kind: "item"; itemId: string }
-  | { id: string; kind: "view"; viewId: string };
+  | { id: string; kind: "view"; viewId: string }
+  | { id: string; kind: "dashboard"; dashboardId: string };
 
 export type DeskLeaf = {
   id: string;
@@ -81,6 +82,9 @@ export function itemTab(itemId: string): DeskTab {
 }
 export function viewTab(viewId: string): DeskTab {
   return { id: newId("tab"), kind: "view", viewId };
+}
+export function dashboardTab(dashboardId: string): DeskTab {
+  return { id: newId("tab"), kind: "dashboard", dashboardId };
 }
 
 export function emptyLeaf(): DeskLeaf {
@@ -143,6 +147,8 @@ export function allTabs(layout: DeskLayout): DeskTab[] {
 function sameTarget(a: DeskTab, b: DeskTab): boolean {
   if (a.kind === "item" && b.kind === "item") return a.itemId === b.itemId;
   if (a.kind === "view" && b.kind === "view") return a.viewId === b.viewId;
+  if (a.kind === "dashboard" && b.kind === "dashboard")
+    return a.dashboardId === b.dashboardId;
   return false;
 }
 
@@ -342,6 +348,8 @@ function sanitizeTab(raw: unknown): DeskTab | null {
     return { id, kind: "item", itemId: r.itemId };
   if (r.kind === "view" && typeof r.viewId === "string" && r.viewId)
     return { id, kind: "view", viewId: r.viewId };
+  if (r.kind === "dashboard" && typeof r.dashboardId === "string" && r.dashboardId)
+    return { id, kind: "dashboard", dashboardId: r.dashboardId };
   return null;
 }
 

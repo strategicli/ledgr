@@ -8,12 +8,13 @@
 import { useEffect, useRef, useState } from "react";
 
 type Hit = { id: string; title: string | null; type: string };
-type ViewOption = { id: string; name: string };
+type NamedOption = { id: string; name: string };
 
 export default function DeskOpenPicker({
   hasTabs,
   onPick,
   onPickView,
+  onPickDashboard,
   onCancel,
 }: {
   // Whether the host panel already has tabs (affects the empty-state copy) and
@@ -21,20 +22,22 @@ export default function DeskOpenPicker({
   hasTabs: boolean;
   onPick: (itemId: string) => void;
   onPickView: (viewId: string) => void;
+  onPickDashboard: (dashboardId: string) => void;
   onCancel?: () => void;
 }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
-  const [views, setViews] = useState<ViewOption[]>([]);
+  const [views, setViews] = useState<NamedOption[]>([]);
+  const [dashboards, setDashboards] = useState<NamedOption[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // The owner's saved views, fetched once, so a view can be opened as a panel
-  // (S4). Filtered client-side by the same query box.
+  // The owner's saved views + dashboards, fetched once, so either can be opened
+  // as a panel (S4/S5). Filtered client-side by the same query box.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/views")
@@ -42,6 +45,16 @@ export default function DeskOpenPicker({
       .then((d) => {
         if (!cancelled && Array.isArray(d.views)) {
           setViews(d.views.map((v: { id: string; name: string }) => ({ id: v.id, name: v.name })));
+        }
+      })
+      .catch(() => {});
+    fetch("/api/dashboards")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => {
+        if (!cancelled && Array.isArray(d.dashboards)) {
+          setDashboards(
+            d.dashboards.map((v: { id: string; name: string }) => ({ id: v.id, name: v.name }))
+          );
         }
       })
       .catch(() => {});
@@ -92,6 +105,9 @@ export default function DeskOpenPicker({
   const matchingViews = (
     query ? views.filter((v) => v.name.toLowerCase().includes(query)) : views
   ).slice(0, 8);
+  const matchingDashboards = (
+    query ? dashboards.filter((d) => d.name.toLowerCase().includes(query)) : dashboards
+  ).slice(0, 8);
 
   return (
     <div className="flex h-full flex-col bg-surface-0 p-4">
@@ -135,8 +151,26 @@ export default function DeskOpenPicker({
                   <span className="ui-meta shrink-0 text-ink-faint">view</span>
                 </button>
               ))}
-              <p className="ui-meta px-1 pt-2 text-ink-faint">Items</p>
             </>
+          )}
+          {matchingDashboards.length > 0 && (
+            <>
+              <p className="ui-meta px-1 pt-1 text-ink-faint">Dashboards</p>
+              {matchingDashboards.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => onPickDashboard(d.id)}
+                  className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface-1 px-3 py-2 text-left text-sm text-ink hover:bg-surface-2"
+                >
+                  <span className="truncate">{d.name}</span>
+                  <span className="ui-meta shrink-0 text-ink-faint">dashboard</span>
+                </button>
+              ))}
+            </>
+          )}
+          {(matchingViews.length > 0 || matchingDashboards.length > 0) && hits.length > 0 && (
+            <p className="ui-meta px-1 pt-2 text-ink-faint">Items</p>
           )}
           {loading && <p className="px-1 py-2 text-sm text-ink-subtle">Searching…</p>}
           {!loading && q.trim() && hits.length === 0 && (
