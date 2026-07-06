@@ -30,7 +30,9 @@ export type DeskTab =
   // (ADR-147 D5) — per-panel view state, so two panels of the same item can show
   // different sections side by side. Optional + parse-with-default; clamped to
   // the live body's sections at render (snaps to the first if out of range).
-  | { id: string; kind: "item"; itemId: string; section?: number }
+  // showDetails? opts this tab into the properties/relations/"Linked here" panel
+  // below the body (ADR-147 D6); off (undefined) by default.
+  | { id: string; kind: "item"; itemId: string; section?: number; showDetails?: boolean }
   // View/dashboard tabs carry a denormalized `title?` captured at open time (the
   // picker/host already has the name) so the tab strip shows the real name
   // instead of the literal word "View"/"Dashboard" (ADR-147 D2). Optional +
@@ -231,6 +233,26 @@ export function setTabSection(
   return { ...layout, root, focusedLeaf: leafId };
 }
 
+// Toggle an item tab's "Show details" panel (ADR-147 D6). Per-tab view state,
+// like setTabSection; a no-op for a non-item / missing tab.
+export function setTabShowDetails(
+  layout: DeskLayout,
+  leafId: string,
+  tabId: string,
+  show: boolean
+): DeskLayout {
+  const leaf = findLeaf(layout.root, leafId);
+  if (!leaf || !leaf.tabs.some((t) => t.id === tabId && t.kind === "item"))
+    return layout;
+  const root = replaceLeaf(layout.root, leafId, (l) => ({
+    ...l,
+    tabs: l.tabs.map((t) =>
+      t.id === tabId && t.kind === "item" ? { ...t, showDetails: show } : t
+    ),
+  }));
+  return { ...layout, root, focusedLeaf: leafId };
+}
+
 export function setFrac(
   layout: DeskLayout,
   splitId: string,
@@ -414,12 +436,14 @@ function sanitizeTab(raw: unknown): DeskTab | null {
     typeof r.section === "number" && Number.isInteger(r.section) && r.section >= 0
       ? r.section
       : undefined;
+  const showDetails = r.showDetails === true ? true : undefined;
   if (r.kind === "item" && typeof r.itemId === "string" && r.itemId)
     return {
       id,
       kind: "item",
       itemId: r.itemId,
       ...(section !== undefined ? { section } : {}),
+      ...(showDetails ? { showDetails } : {}),
     };
   if (r.kind === "view" && typeof r.viewId === "string" && r.viewId)
     return { id, kind: "view", viewId: r.viewId, ...(title ? { title } : {}) };

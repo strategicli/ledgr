@@ -83,6 +83,7 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
             itemId={active.itemId}
             writer={isFocused}
             section={active.section ?? 0}
+            showDetails={active.showDetails ?? false}
           />
         )}
         {!picking && active?.kind === "view" && (
@@ -409,6 +410,21 @@ function TabContextMenu({
       >
         ↗ Open in full page
       </Link>
+      {/* Per-tab "Show details" (ADR-147 D6): properties/relations/Linked here
+          below the body, off by default. Item tabs only. */}
+      {tab.kind === "item" && (
+        <button
+          type="button"
+          role="menuitem"
+          className={itemClass}
+          onClick={() => {
+            actions.setDetails(leafId, tab.id, !tab.showDetails);
+            onClose();
+          }}
+        >
+          {tab.showDetails ? "▤ Hide details" : "▦ Show details"}
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"

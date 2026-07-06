@@ -25,6 +25,9 @@ export type DeskActions = {
   // Set the active canvas-section for an item tab (ADR-147 D5): per-panel, so two
   // panels of one item show different sections side by side.
   setSection: (leafId: string, tabId: string, section: number) => void;
+  // Toggle an item tab's "Show details" panel (ADR-147 D6): per-tab, off by
+  // default; editable only in the focused panel.
+  setDetails: (leafId: string, tabId: string, show: boolean) => void;
   // Move a tab to a drop target (S2 zone move); center docks, an edge splits.
   moveTab: (fromLeafId: string, tabId: string, target: DropTarget) => void;
   // Record a divider drag back into the tree (a split's first-child fraction).
