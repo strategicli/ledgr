@@ -22,11 +22,19 @@ export type DeskActions = {
   moveTab: (fromLeafId: string, tabId: string, target: DropTarget) => void;
   // Record a divider drag back into the tree (a split's first-child fraction).
   setFrac: (splitId: string, frac: number) => void;
+  // Arm/cancel the zone-move overlay (S2): while armed, every panel shows drop
+  // zones; clicking one calls moveTab and disarms. Esc cancels.
+  armMove: (fromLeafId: string, tabId: string) => void;
+  cancelMove: () => void;
 };
+
+export type MoveArmed = { fromLeafId: string; tabId: string };
 
 export type DeskContextValue = {
   layout: DeskLayout;
   focusedLeaf: string;
+  // Set while a tab is armed for a zone move (the DeskMoveOverlay is showing).
+  moveArmed: MoveArmed | null;
   actions: DeskActions;
 };
 

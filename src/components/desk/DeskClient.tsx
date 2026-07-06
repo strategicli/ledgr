@@ -4,6 +4,11 @@
 // DeskLayout, persists it per-device (localStorage), gates the surface at 640px
 // (below it a plain list of open tabs), and exposes the mutation actions.
 //
+// It also owns the two "never lose a layout" mechanisms (S2): the Recent
+// auto-snapshot ring (per device) and named workspaces (synced via
+// users.settings). Loading anything that replaces the live layout snapshots the
+// outgoing one to Recent first.
+//
 // The layout is client state, never in the URL (hard-to-reverse decision #4):
 // existing routes keep their deep-linkable URLs; the Desk arrangement lives in
 // app state like VS Code / Obsidian / Logos.
@@ -12,6 +17,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useIsDesktop } from "@/components/markdown-editor/useIsDesktop";
+import { showToast } from "@/components/ui/ActionToast";
 import {
   addTab,
   allTabs,
@@ -28,9 +34,17 @@ import {
   viewTab,
   type DeskLayout,
 } from "@/lib/desk/layout";
-import { loadLiveLayout, saveLiveLayout } from "@/lib/desk/persist";
-import { DeskProvider, type DeskActions } from "./DeskContext";
+import {
+  loadLiveLayout,
+  loadRecent,
+  saveLiveLayout,
+  snapshotToRecent,
+  type RecentSnapshot,
+} from "@/lib/desk/persist";
+import type { DeskWorkspace } from "@/lib/settings";
+import { DeskProvider, type DeskActions, type MoveArmed } from "./DeskContext";
 import DeskShell from "./DeskShell";
+import DeskWorkspacesMenu from "./DeskWorkspacesMenu";
 import { useDoc } from "./desk-doc-store";
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -48,7 +62,17 @@ function useMounted(): boolean {
   );
 }
 
-export default function DeskClient() {
+function newWorkspaceId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `ws_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export default function DeskClient({
+  initialWorkspaces,
+}: {
+  initialWorkspaces: DeskWorkspace[];
+}) {
   const isDesktop = useIsDesktop();
   const mounted = useMounted();
   // Lazily loaded from the per-device store; `window` is absent during SSR, so
@@ -57,6 +81,12 @@ export default function DeskClient() {
   const [layout, setLayout] = useState<DeskLayout>(() =>
     typeof window === "undefined" ? freshLayout() : loadLiveLayout() ?? freshLayout()
   );
+  const [moveArmed, setMoveArmed] = useState<MoveArmed | null>(null);
+  const [workspaces, setWorkspaces] = useState<DeskWorkspace[]>(initialWorkspaces);
+  const [recent, setRecent] = useState<RecentSnapshot[]>(() =>
+    typeof window === "undefined" ? [] : loadRecent()
+  );
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
 
   // Debounced per-device autosave of the live layout.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,6 +98,16 @@ export default function DeskClient() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [layout, mounted]);
+
+  // Esc cancels an armed move.
+  useEffect(() => {
+    if (!moveArmed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoveArmed(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [moveArmed]);
 
   const actions = useMemo<DeskActions>(
     () => ({
@@ -90,11 +130,95 @@ export default function DeskClient() {
         }),
       closeTab: (leafId, tabId) => setLayout((l) => closeTab(l, leafId, tabId)),
       closePanel: (leafId) => setLayout((l) => closeLeaf(l, leafId)),
-      moveTab: (fromLeafId, tabId, target) =>
-        setLayout((l) => moveTab(l, fromLeafId, tabId, target)),
+      moveTab: (fromLeafId, tabId, target) => {
+        setLayout((l) => moveTab(l, fromLeafId, tabId, target));
+        setMoveArmed(null);
+      },
       setFrac: (splitId, frac) => setLayout((l) => setFrac(l, splitId, frac)),
+      armMove: (fromLeafId, tabId) => setMoveArmed({ fromLeafId, tabId }),
+      cancelMove: () => setMoveArmed(null),
     }),
     []
+  );
+
+  // --- Workspace + Recent handlers (passed to the top-bar menu) ---
+  // Persist the workspace list to the synced settings jsonb (parse-with-defaults
+  // in updateSettings; no migration). Optimistic: local state updates first.
+  const persistWorkspaces = (next: DeskWorkspace[]) => {
+    setWorkspaces(next);
+    fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deskWorkspaces: next }),
+    }).catch(() => showToast("Couldn’t save workspaces"));
+  };
+
+  const saveNewWorkspace = (name: string) => {
+    const ws: DeskWorkspace = { id: newWorkspaceId(), name, savedAt: Date.now(), layout };
+    persistWorkspaces([...workspaces, ws]);
+    setActiveWorkspaceId(ws.id);
+    showToast(`Saved workspace “${name}”`);
+  };
+
+  const updateWorkspace = (id: string) => {
+    persistWorkspaces(
+      workspaces.map((w) => (w.id === id ? { ...w, layout, savedAt: Date.now() } : w))
+    );
+    showToast("Workspace updated");
+  };
+
+  const renameWorkspace = (id: string, name: string) =>
+    persistWorkspaces(workspaces.map((w) => (w.id === id ? { ...w, name } : w)));
+
+  const deleteWorkspace = (id: string) => {
+    persistWorkspaces(workspaces.filter((w) => w.id !== id));
+    if (activeWorkspaceId === id) setActiveWorkspaceId(null);
+  };
+
+  // Loading anything that replaces the live layout snapshots the outgoing one to
+  // Recent first — the "never lose a layout" guarantee.
+  const replaceLayout = (next: DeskLayout) => {
+    setRecent(snapshotToRecent(layout));
+    setLayout(next);
+  };
+
+  const loadWorkspace = (id: string) => {
+    const ws = workspaces.find((w) => w.id === id);
+    if (!ws) return;
+    replaceLayout(ws.layout);
+    setActiveWorkspaceId(id);
+  };
+
+  const restoreRecent = (id: string) => {
+    const snap = recent.find((s) => s.id === id);
+    if (!snap) return;
+    replaceLayout(snap.layout);
+    setActiveWorkspaceId(null);
+  };
+
+  const promoteRecent = (id: string, name: string) => {
+    const snap = recent.find((s) => s.id === id);
+    if (!snap) return;
+    persistWorkspaces([
+      ...workspaces,
+      { id: newWorkspaceId(), name, savedAt: Date.now(), layout: snap.layout },
+    ]);
+    showToast(`Saved workspace “${name}”`);
+  };
+
+  const workspacesMenu = (
+    <DeskWorkspacesMenu
+      workspaces={workspaces}
+      recent={recent}
+      activeWorkspaceId={activeWorkspaceId}
+      onSaveNew={saveNewWorkspace}
+      onUpdate={updateWorkspace}
+      onLoadWorkspace={loadWorkspace}
+      onRenameWorkspace={renameWorkspace}
+      onDeleteWorkspace={deleteWorkspace}
+      onLoadRecent={restoreRecent}
+      onPromoteRecent={promoteRecent}
+    />
   );
 
   // Pre-mount: render the chrome only, so SSR and the first client paint agree.
@@ -119,9 +243,26 @@ export default function DeskClient() {
   }
 
   return (
-    <DeskProvider value={{ layout, focusedLeaf: layout.focusedLeaf, actions }}>
+    <DeskProvider
+      value={{ layout, focusedLeaf: layout.focusedLeaf, moveArmed, actions }}
+    >
       <div className="flex h-[100dvh] flex-col bg-surface-0">
-        <DeskTopBar />
+        <DeskTopBar right={workspacesMenu} />
+        {moveArmed && (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-accent/40 bg-accent/10 px-4 py-1.5 text-xs text-ink">
+            <span>
+              Click a panel zone to move the tab — center adds it as a tab, an
+              edge splits that panel.
+            </span>
+            <button
+              type="button"
+              onClick={() => actions.cancelMove()}
+              className="shrink-0 rounded border border-line px-2 py-0.5 text-ink-muted hover:bg-surface-2 hover:text-ink"
+            >
+              Cancel (Esc)
+            </button>
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           <DeskShell />
         </div>
@@ -130,17 +271,14 @@ export default function DeskClient() {
   );
 }
 
-// The top bar. For S1 it's just the surface name; the workspaces pill (named +
-// Recent) lands on the right in S2.
-function DeskTopBar() {
+// The top bar: the surface name and (on desktop) the workspaces pill.
+function DeskTopBar({ right }: { right?: React.ReactNode }) {
   return (
     <header className="flex h-11 shrink-0 items-center justify-between border-b border-line bg-surface-1 px-4">
       <div className="flex items-center gap-2">
         <span className="ui-section-label text-ink-muted">Desk</span>
       </div>
-      <div className="flex items-center gap-2">
-        {/* Workspaces menu (named + Recent) mounts here in S2. */}
-      </div>
+      <div className="flex items-center gap-2">{right}</div>
     </header>
   );
 }

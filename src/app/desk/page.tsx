@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import DeskClient from "@/components/desk/DeskClient";
 import { resolveOwner } from "@/lib/owner";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -14,5 +15,8 @@ export const metadata: Metadata = { title: "Desk" };
 export default async function DeskPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
-  return <DeskClient />;
+  // Named workspaces are synced (settings jsonb); the live layout + Recent ring
+  // are per-device and load client-side from localStorage.
+  const settings = await getSettings(owner.id);
+  return <DeskClient initialWorkspaces={settings.deskWorkspaces} />;
 }

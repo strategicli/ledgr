@@ -9,6 +9,7 @@ import { users } from "@/db/schema";
 import { isIconRef, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 import { parseListTabs, type Lens } from "@/lib/list-lenses";
 import { parseTocByType, type TocConfig } from "@/lib/toc";
+import { sanitizeLayout, type DeskLayout } from "@/lib/desk/layout";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
 // straight into the `--accent` CSS variable.
@@ -151,6 +152,19 @@ export const MAX_TOOLS_CHILDREN = 20;
 export const FAVORITES_HREF = "/favorites";
 export const FAVORITES_HARD_CAP = 100;
 
+// --- Desk workspaces (ADR-146) --------------------------------------------
+// Named, saved Desk layouts. Synced (in this jsonb, no migration) so they
+// follow the owner across devices, unlike the live layout + Recent ring which
+// are per-device in localStorage. A DeskLayout is validated by sanitizeLayout on
+// read, same tolerant posture as navSlots: a malformed entry is dropped.
+export const DESK_WORKSPACES_CAP = 50;
+export type DeskWorkspace = {
+  id: string;
+  name: string;
+  savedAt: number; // epoch ms
+  layout: DeskLayout;
+};
+
 // A destination points at one route. `builtin` is a hardcoded app page, `view`
 // a saved view (/views/[id]), `type` a type's list (/list/[key]). The kind is
 // metadata for the editor; the nav only needs href/label/icon to render.
@@ -259,6 +273,9 @@ export type UserSettings = {
   // the toolbar button and the "/toggle" slash command. On by default. When off
   // those creation affordances hide; existing toggles in a body still render.
   toggleBlocksEnabled: boolean;
+  // Named, saved Desk layouts (ADR-146), synced across devices. The live layout
+  // and the Recent auto-snapshot ring stay per-device in localStorage.
+  deskWorkspaces: DeskWorkspace[];
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -334,6 +351,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   aiMemoryEnabled: false,
   collapsibleHeadingsEnabled: true,
   toggleBlocksEnabled: true,
+  deskWorkspaces: [],
 };
 
 const SETTINGS_UUID_RE =
@@ -426,6 +444,26 @@ function parseRelatedLensChoices(raw: unknown): Record<string, string> {
   return out;
 }
 
+// Parse saved Desk workspaces: drop entries missing an id/name or with an
+// unreadable layout (sanitizeLayout returns null on an unknown version), bound
+// the count and the name length. Anything not an array yields the empty list.
+function parseDeskWorkspaces(raw: unknown): DeskWorkspace[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DeskWorkspace[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    const id = typeof o.id === "string" && o.id ? o.id : null;
+    const name = typeof o.name === "string" ? o.name.trim().slice(0, 80) : "";
+    const layout = sanitizeLayout(o.layout);
+    if (!id || !name || !layout) continue;
+    const savedAt = typeof o.savedAt === "number" && Number.isFinite(o.savedAt) ? o.savedAt : Date.now();
+    out.push({ id, name, savedAt, layout });
+    if (out.length >= DESK_WORKSPACES_CAP) break;
+  }
+  return out;
+}
+
 export function parseSettings(raw: unknown): UserSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const highlightColor =
@@ -506,6 +544,7 @@ export function parseSettings(raw: unknown): UserSettings {
     typeof r.toggleBlocksEnabled === "boolean"
       ? r.toggleBlocksEnabled
       : DEFAULT_SETTINGS.toggleBlocksEnabled;
+  const deskWorkspaces = parseDeskWorkspaces(r.deskWorkspaces);
   return {
     highlightColor,
     highlightGradient,
@@ -534,6 +573,7 @@ export function parseSettings(raw: unknown): UserSettings {
     aiMemoryEnabled,
     collapsibleHeadingsEnabled,
     toggleBlocksEnabled,
+    deskWorkspaces,
   };
 }
 

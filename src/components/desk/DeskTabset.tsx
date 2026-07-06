@@ -11,10 +11,11 @@ import type { DeskLeaf, DeskTab } from "@/lib/desk/layout";
 import { useDesk } from "./DeskContext";
 import { useDoc } from "./desk-doc-store";
 import DeskItemPanel from "./DeskItemPanel";
+import DeskMoveOverlay from "./DeskMoveOverlay";
 import DeskOpenPicker from "./DeskOpenPicker";
 
 export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
-  const { focusedLeaf, actions } = useDesk();
+  const { focusedLeaf, moveArmed, actions } = useDesk();
   const isFocused = focusedLeaf === leaf.id;
   // Manual "open another item" toggle. An empty panel always shows the picker
   // (derived below), so no effect is needed to sync it to the tab count.
@@ -57,6 +58,20 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
             </button>
           )}
         </div>
+        {active?.kind === "item" && (
+          <span
+            title={
+              isFocused
+                ? "This panel holds the pen — edits here save"
+                : "Read-only preview; click to edit here"
+            }
+            className={`flex shrink-0 items-center px-2 text-[10px] font-semibold uppercase tracking-wide ${
+              isFocused ? "text-emerald-400" : "text-ink-faint"
+            }`}
+          >
+            {isFocused ? "Editing" : "Viewing"}
+          </span>
+        )}
         <PanelMenu leafId={leaf.id} active={active} />
       </div>
 
@@ -83,6 +98,16 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
           <div className="flex h-full items-center justify-center text-sm text-ink-subtle">
             Empty panel
           </div>
+        )}
+        {moveArmed && (
+          <DeskMoveOverlay
+            onZone={(zone) =>
+              actions.moveTab(moveArmed.fromLeafId, moveArmed.tabId, {
+                leafId: leaf.id,
+                zone,
+              })
+            }
+          />
         )}
       </div>
     </div>
@@ -210,6 +235,19 @@ function PanelMenu({ leafId, active }: { leafId: string; active: DeskTab | null 
           >
             ⤓ Split down
           </button>
+          {active && (
+            <button
+              type="button"
+              role="menuitem"
+              className={itemClass}
+              onClick={() => {
+                actions.armMove(leafId, active.id);
+                setOpen(false);
+              }}
+            >
+              ⤢ Move tab…
+            </button>
+          )}
           {fullPageHref && (
             <Link
               role="menuitem"
