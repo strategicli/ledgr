@@ -443,6 +443,52 @@ export const itemRelatedness = pgTable(
   ]
 );
 
+// Passage reference edges (ADR-143). A purpose-built linking substrate for the
+// Bible canon, kept OUT of both `items` (a passage is fixed, shared reference
+// data, NOT the owner's authored content — so the owner-scope invariant stays
+// unbroken and `items` keeps meaning exactly "the owner's content") and
+// `relations` (which is strictly item↔item; a passage target is a canon integer,
+// not an item id). One row = one item referencing one passage interval
+// [start_ref, end_ref] (ADR-143 pt 4); start==end is a single verse, and a range
+// is stored as ONE row — never fanned out to per-verse edges — so a range stays
+// a first-class object (the reversible-direction argument in the ADR). Owner
+// scope rides the FK to items (as `relations` does), plus a deleted_at filter on
+// the read path. B-tree indexes on the interval endpoints answer the two hot
+// queries at library size ("what touches verse V": start<=V AND end>=V; "what
+// overlaps [a,b]": start<=b AND end>=a); a GiST int-range index is the scale-up
+// if true interval search is ever needed.
+export const passageRefs = pgTable(
+  "passage_refs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceItemId: uuid("source_item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    startRef: integer("start_ref").notNull(),
+    endRef: integer("end_ref").notNull(),
+    // Its OWN edge role, distinct from the mention role — so the later ADR-060
+    // auto-tagger's suggested edges (Tyler review pt 2a) can coexist here without
+    // the on-save body sync (syncPassageRefs) ever deleting a tagger-written row.
+    // Default "passage" = a body-authored @/ref link.
+    role: text("role").notNull().default("passage"),
+  },
+  (t) => [
+    // The source item's passages: the Related-panel read + the on-save diff.
+    index("passage_refs_source_idx").on(t.sourceItemId),
+    // The passage-page overlap query probes both endpoints.
+    index("passage_refs_start_idx").on(t.startRef),
+    index("passage_refs_end_idx").on(t.endRef),
+    // One row per (item, interval, role): the on-save upsert key, so re-saving a
+    // body that still contains the same link never duplicates the edge.
+    uniqueIndex("passage_refs_source_interval_role_uq").on(
+      t.sourceItemId,
+      t.startRef,
+      t.endRef,
+      t.role
+    ),
+  ]
+);
+
 // Metadata only; bytes live in R2 behind the storage-provider interface.
 export const attachments = pgTable(
   "attachments",

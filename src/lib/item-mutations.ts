@@ -36,6 +36,7 @@ import { extractBodyText } from "@/lib/body-text";
 import type { PropertyDef } from "@/lib/types";
 import { getItem, itemColumns, ItemError, type ItemStatus, type Urgency } from "@/lib/items";
 import { syncMentionRelations } from "@/lib/mentions";
+import { syncPassageRefs } from "@/lib/passages/refs";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
 import {
@@ -270,6 +271,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
   if (created.body != null) {
     await snapshotRevision(created.id, created.body);
     await syncMentionRelations(ownerId, created.id, created.body);
+    await syncPassageRefs(ownerId, created.id, created.body);
   }
   // Activity log (ADR-111): a tracked record (a project) being born is the first
   // line of its own timeline. Best-effort — a failed log line never breaks the
@@ -453,6 +455,8 @@ export async function updateItem(
     if (updated.body != null) await snapshotRevision(id, updated.body);
     // Runs on null bodies too: clearing a body clears its mention edges.
     await syncMentionRelations(ownerId, id, updated.body);
+    // Same contract for passage @/refs — the passage_refs sibling of mentions.
+    await syncPassageRefs(ownerId, id, updated.body);
   }
   // A scheduled-date change re-derives any relative subtasks (S5, ADR-085):
   // each carries an offset from this parent's scheduled day, so moving the
@@ -770,8 +774,9 @@ export async function restoreRevision(
     .set({ body, bodyText: extractBodyText(body) })
     .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
-  // The restored body's mentions are the live ones now.
+  // The restored body's mentions + passage refs are the live ones now.
   await syncMentionRelations(ownerId, itemId, body);
+  await syncPassageRefs(ownerId, itemId, body);
   return rows[0];
 }
 
