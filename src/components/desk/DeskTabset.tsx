@@ -28,10 +28,12 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
 
   return (
     <div
-      // First mousedown anywhere in the panel focuses it (moves the pen here),
-      // before the editor handles the click.
-      onMouseDownCapture={() => {
-        if (!isFocused) actions.focus(leaf.id);
+      // First LEFT mousedown anywhere in the panel focuses it (moves the pen
+      // here), before the editor handles the click. Guarded to the primary
+      // button so a right-click (opening a tab's context menu, ADR-147 D3)
+      // doesn't steal the pen from the focused panel.
+      onMouseDownCapture={(e) => {
+        if (e.button === 0 && !isFocused) actions.focus(leaf.id);
       }}
       className={`flex h-full min-h-0 min-w-0 flex-col bg-surface-0 ${
         isFocused ? "ring-1 ring-inset ring-accent/50" : ""
@@ -53,7 +55,7 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
             {isFocused ? "Editing" : "Viewing"}
           </span>
         )}
-        <PanelMenu leafId={leaf.id} active={active} />
+        <PanelMenu leafId={leaf.id} />
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -177,6 +179,7 @@ function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
           {leaf.tabs.map((tab) => (
             <TabButton
               key={tab.id}
+              leafId={leaf.id}
               tab={tab}
               active={tab.id === leaf.activeTab}
               onSelect={() => actions.activate(leaf.id, tab.id)}
@@ -211,24 +214,42 @@ function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
   );
 }
 
-// One tab: its title (from the doc store for items) + a hover × to close.
+// The full-page route a tab's target opens at (its own canvas / view / dashboard
+// page). Shared by the tab context menu and the panel menu's "Open in full page".
+function fullPageHref(tab: DeskTab): string {
+  if (tab.kind === "item") return `/items/${tab.itemId}`;
+  if (tab.kind === "view") return `/views/${tab.viewId}`;
+  return `/dashboards/${tab.dashboardId}`;
+}
+
+// One tab: its title (from the doc store for items) + a hover × to close. A
+// right-click opens the tab's own scoped menu (ADR-147 D3) targeting THIS tab —
+// so its actions (full page / move / close) reach an unfocused tab without first
+// activating it or moving the pen to this panel.
 function TabButton({
+  leafId,
   tab,
   active,
   onSelect,
   onClose,
 }: {
+  leafId: string;
   tab: DeskTab;
   active: boolean;
   onSelect: () => void;
   onClose: () => void;
 }) {
   const label = useTabLabel(tab);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   return (
     <div
       className={`group flex max-w-[14rem] shrink-0 items-center gap-1 border-r border-line px-3 text-sm ${
         active ? "bg-surface-0 text-ink" : "text-ink-muted hover:bg-surface-2"
       }`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuPos({ x: e.clientX, y: e.clientY });
+      }}
     >
       <button
         type="button"
@@ -250,6 +271,98 @@ function TabButton({
       >
         ×
       </button>
+      {menuPos && (
+        <TabContextMenu
+          leafId={leafId}
+          tab={tab}
+          pos={menuPos}
+          onClose={() => setMenuPos(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// The tab-scoped menu (ADR-147 D3): Open in full page / Move tab… / Close tab,
+// targeting a specific tab id in a specific leaf. Opened at the cursor from a
+// tab's right-click; panel-scoped actions (Split, Close panel) live in the ⋯
+// menu instead. Same fixed-popover posture as the row/send menus (outside click,
+// Esc, or scroll closes it).
+function TabContextMenu({
+  leafId,
+  tab,
+  pos,
+  onClose,
+}: {
+  leafId: string;
+  tab: DeskTab;
+  pos: { x: number; y: number };
+  onClose: () => void;
+}) {
+  const { actions } = useDesk();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [onClose]);
+
+  // Clamp near a right/bottom edge (the menu is ~11rem wide, ~6rem tall).
+  const x = Math.max(8, Math.min(pos.x, window.innerWidth - 190));
+  const y = Math.max(8, Math.min(pos.y, window.innerHeight - 120));
+  const itemClass =
+    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2";
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      className="fixed z-[80] min-w-[11rem] rounded-card border border-line-strong bg-surface-3 p-1 shadow-2xl shadow-black/50"
+      style={{ left: x, top: y }}
+    >
+      <Link
+        role="menuitem"
+        href={fullPageHref(tab)}
+        className={itemClass}
+        onClick={onClose}
+      >
+        ↗ Open in full page
+      </Link>
+      <button
+        type="button"
+        role="menuitem"
+        className={itemClass}
+        onClick={() => {
+          actions.armMove(leafId, tab.id);
+          onClose();
+        }}
+      >
+        ⤢ Move tab…
+      </button>
+      <div className="my-1 border-t border-line" />
+      <button
+        type="button"
+        role="menuitem"
+        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink"
+        onClick={() => {
+          actions.closeTab(leafId, tab.id);
+          onClose();
+        }}
+      >
+        ✕ Close tab
+      </button>
     </div>
   );
 }
@@ -263,8 +376,10 @@ function useTabLabel(tab: DeskTab): string {
   return doc?.liveTitle?.trim() || (doc?.status === "loading" ? "Loading…" : "Untitled");
 }
 
-// The ⋯ panel menu: split, open another item, open in full page, close panel.
-function PanelMenu({ leafId, active }: { leafId: string; active: DeskTab | null }) {
+// The ⋯ panel menu: panel-scoped actions only (ADR-147 D3) — split the panel,
+// close the panel. Tab-scoped actions (open in full page / move / close a tab)
+// moved to each tab's right-click menu (TabContextMenu).
+function PanelMenu({ leafId }: { leafId: string }) {
   const { actions } = useDesk();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -284,15 +399,6 @@ function PanelMenu({ leafId, active }: { leafId: string; active: DeskTab | null 
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
-  const fullPageHref =
-    active?.kind === "item"
-      ? `/items/${active.itemId}`
-      : active?.kind === "view"
-        ? `/views/${active.viewId}`
-        : active?.kind === "dashboard"
-          ? `/dashboards/${active.dashboardId}`
-          : null;
 
   const itemClass =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2";
@@ -337,29 +443,6 @@ function PanelMenu({ leafId, active }: { leafId: string; active: DeskTab | null 
           >
             ⤓ Split down
           </button>
-          {active && (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemClass}
-              onClick={() => {
-                actions.armMove(leafId, active.id);
-                setOpen(false);
-              }}
-            >
-              ⤢ Move tab…
-            </button>
-          )}
-          {fullPageHref && (
-            <Link
-              role="menuitem"
-              href={fullPageHref}
-              className={itemClass}
-              onClick={() => setOpen(false)}
-            >
-              ↗ Open in full page
-            </Link>
-          )}
           <div className="my-1 border-t border-line" />
           <button
             type="button"
