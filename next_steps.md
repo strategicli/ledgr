@@ -4,6 +4,19 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **⏭️ NEXT (2026-07-01) — DEPLOY THE PJ CHUNK:** `integrate-pj` is committed and **merged with `origin/main`** (which had advanced to ADR-137 / PRs→#138: AI Memory, calendar lenses, edit guard, etc.). Migrations linearized past the `0040` collision → `0040_memory_type` then `0041_solid_leech`…`0045_pursuit_type` (whens rewritten so prod won't skip them). tsc + `next build` + eslint clean; verify scripts green on the merged tree. **Remaining, in order (needs prod creds — Tyler):** (1) `npm run db:migrate` against **prod** `DATABASE_URL` (applies the 5 new migrations after `memory_type`) — must precede code going live; (2) push `main` (or PR → merge) → Vercel deploys; (3) verify `/health` + a project page. **Dev-DB gotcha:** `ledgr_dev` already ran the old-numbered branch migrations, so `db:migrate` there will collide — reset dev or fix `__drizzle_migrations` (prod is unaffected, it never had them). Project Type ADR renumbered 133→**138** (origin took 133 for the Planner).
 
+## ⟢ Session summary — The Desk: multi-panel workspace BUILT (2026-07-06, ADR-146, NON-core)
+
+**From the approved design (`plans/desk-multi-panel-workspace.html`).** A desktop-only workspace at `/desk` where items, saved views, and read-only dashboards open in resizable, tabbed panels; the arrangement persists per-device and survives closing the app. All of S1–S5 shipped on branch `desk-workspace`, one commit per slice; `npm run lint` + `npm run build` clean on each; verified on the dev-auth preview against production data. Non-core/solo (ADR-146; 🟢 COLLAB heads-up posted).
+
+- **S1** — the versioned layout tree (`src/lib/desk/layout.ts`, fractions not pixels, behind the `DeskShell` seam) + `react-resizable-panels@^2.1.9` (classic API pinned; we don't use its autoSaveId); the one-writer-per-item doc store (focused panel = the reused `ItemEditor`, others = live `MarkdownPreview`; save path untouched, only an additive `onLiveChange` tap); persistence (`desk:layout` + the `desk:recent` ring); `/desk` route + 640px mobile fallback + destination-picker entry.
+- **S2** — zone move (center docks / edge splits, Esc cancels), Editing/Viewing focus pills, named workspaces (`users.settings.deskWorkspaces`, no migration) + the Recent snapshot-on-replace ring.
+- **S3 + S3b** — Send-to-Desk ("Open in Desk" / "Open beside") from the ADR-142 RowMenu and from inline @mentions/item-links in the editor + preview, one shared `DeskSendMenu`, desktop-gated.
+- **S4** — `GET /api/views/[id]/items` (body-free) + `DeskViewPanel` (compact rows, click opens the item as a tab); the open picker lists views.
+- **S5** — read-only dashboards in panels: resolver extracted to `src/lib/dashboard-resolve.ts` (shared with `DashboardView`) + `GET /api/dashboards/[id]/resolved`; `DeskDashboardPanel` renders the RGL grid static (`editMode=false`) with dates revived and "Edit ↗" → the full page; the picker lists dashboards.
+- **Post-S5 tweak** — tab-overflow scroll arrows; fixed Send-to-Desk being a no-op when fired from inside the Desk (same-route `router.push` ignored → now a `DESK_LAYOUT_CHANGED` event the mounted client adopts).
+
+**Remaining (Brandon):** review the branch, then merge/deploy when satisfied (nothing merged yet). **Deferred by design (defer-by-hiding):** the drag-and-drop move gesture (click-to-place ships first, shares the `DropTarget` vocabulary), bespoke canvases (chord/paper) in panels, two-caret co-editing, layout-in-URL.
+
 ## ⟢ Session summary — Collapsible toggle block + collapsible headings BUILT (2026-07-05, ADR-145, CORE)
 
 **From Brandon's "I want a toggle/expandable element in the editor, and collapsible H1/H2/H3."** Tyler agreed to the canonical-body-format extension before merge (ADR-145). Shipped:
