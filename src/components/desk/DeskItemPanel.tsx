@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import MarkdownPreview from "@/components/markdown-editor/MarkdownPreview";
-import { publishLive, seedForEditor, useDoc } from "./desk-doc-store";
+import { publishLive, seedForEditor, useDoc, useTabsEnabled } from "./desk-doc-store";
 
 // Debounce feeding live text to the preview so a fast typist in the focused
 // panel doesn't fire a render fetch per keystroke into every twin.
@@ -23,6 +23,9 @@ export default function DeskItemPanel({
   writer: boolean;
 }) {
   const doc = useDoc(itemId);
+  // Canvas-tabs enablement (ADR-147 D4): drives whether the writer edits the body
+  // as tabs. Hook is called unconditionally, before the early returns below.
+  const tabsEnabled = useTabsEnabled(doc?.type);
 
   if (!doc || doc.status === "loading") return <PanelMessage>Loading…</PanelMessage>;
   if (doc.status === "error")
@@ -38,6 +41,7 @@ export default function DeskItemPanel({
           // toggling writer↔preview already remounts (different subtree).
           key={itemId}
           item={seed}
+          tabsEnabled={tabsEnabled}
           onLiveChange={(next) => publishLive(itemId, next)}
         />
       </div>

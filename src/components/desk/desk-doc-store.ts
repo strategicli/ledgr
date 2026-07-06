@@ -23,6 +23,7 @@ export type DocState = {
   status: "loading" | "ready" | "error";
   id: string;
   title: string; // last title loaded/synced
+  type: string; // the item's type key (ADR-147 D4: drives canvas-tabs enablement)
   body: unknown; // last body loaded ({ format, text }); preserves non-md formats
   // Live text the focused editor has published (reflects unsaved edits). Seeded
   // from the loaded item so a twin has something to show before the first edit.
@@ -56,6 +57,7 @@ export function ensureDoc(id: string): void {
     status: "loading",
     id,
     title: "",
+    type: "",
     body: null,
     liveTitle: "",
     liveMarkdown: "",
@@ -66,11 +68,13 @@ export function ensureDoc(id: string): void {
     .then((data) => {
       const item = data?.item ?? {};
       const title = typeof item.title === "string" ? item.title : "";
+      const type = typeof item.type === "string" ? item.type : "";
       const md = bodyMarkdown(item.body);
       set(id, {
         status: "ready",
         id,
         title,
+        type,
         body: item.body ?? null,
         liveTitle: title,
         liveMarkdown: md,
@@ -83,6 +87,7 @@ export function ensureDoc(id: string): void {
         status: "error",
         id,
         title: prev?.title ?? "",
+        type: prev?.type ?? "",
         body: prev?.body ?? null,
         liveTitle: prev?.liveTitle ?? "",
         liveMarkdown: prev?.liveMarkdown ?? "",
@@ -143,5 +148,46 @@ export function useDoc(id: string): DocState | undefined {
     subscribe,
     () => docs.get(id),
     () => undefined
+  );
+}
+
+// --- Canvas-tabs enablement (ADR-147 D4) -----------------------------------
+// Mirror MarkdownCanvas's rule (`item.type === "note" || typeDef.capability ===
+// "tabs"`) on the client so a panel's writer renders TabbedBody. `note` is
+// auto-on and known from the doc alone; any other type opts in via the `tabs`
+// capability, which we learn from the type registry (fetched once, cached).
+const tabsCapableTypes = new Set<string>();
+let tabsTypesLoaded = false;
+let tabsTypesInFlight = false;
+
+function ensureTabsTypes(): void {
+  if (typeof window === "undefined" || tabsTypesLoaded || tabsTypesInFlight) return;
+  tabsTypesInFlight = true;
+  fetch("/api/types")
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    .then((d) => {
+      for (const t of Array.isArray(d?.types) ? d.types : []) {
+        if (t?.capability === "tabs" && typeof t.key === "string") {
+          tabsCapableTypes.add(t.key);
+        }
+      }
+      tabsTypesLoaded = true;
+      emit(); // re-read: a tabs-capability type flips on once the registry lands
+    })
+    .catch(() => {})
+    .finally(() => {
+      tabsTypesInFlight = false;
+    });
+}
+
+// True when an item of this type edits its body as canvas tabs. `note` resolves
+// synchronously; a custom tabs-capability type resolves once the registry loads
+// (a brief false → true flip on first ever open, then cached for the session).
+export function useTabsEnabled(type: string | undefined): boolean {
+  ensureTabsTypes();
+  return useSyncExternalStore(
+    subscribe,
+    () => (type === "note" ? true : type ? tabsCapableTypes.has(type) : false),
+    () => false
   );
 }
