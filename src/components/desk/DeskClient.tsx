@@ -126,10 +126,10 @@ export default function DeskClient({
       activate: (leafId, tabId) => setLayout((l) => setActiveTab(l, leafId, tabId)),
       openItem: (leafId, itemId) =>
         setLayout((l) => addTab(l, leafId, itemTab(itemId))),
-      openView: (leafId, viewId) =>
-        setLayout((l) => addTab(l, leafId, viewTab(viewId))),
-      openDashboard: (leafId, dashboardId) =>
-        setLayout((l) => addTab(l, leafId, dashboardTab(dashboardId))),
+      openView: (leafId, viewId, title) =>
+        setLayout((l) => addTab(l, leafId, viewTab(viewId, title))),
+      openDashboard: (leafId, dashboardId, title) =>
+        setLayout((l) => addTab(l, leafId, dashboardTab(dashboardId, title))),
       splitActive: (leafId, dir) =>
         setLayout((l) => {
           const leaf = findLeaf(l.root, leafId);
@@ -141,8 +141,8 @@ export default function DeskClient({
             : active.kind === "item"
               ? [itemTab(active.itemId)]
               : active.kind === "view"
-                ? [viewTab(active.viewId)]
-                : [dashboardTab(active.dashboardId)];
+                ? [viewTab(active.viewId, active.title)]
+                : [dashboardTab(active.dashboardId, active.title)];
           return splitLeaf(l, leafId, dir, dup, false).layout;
         }),
       closeTab: (leafId, tabId) => setLayout((l) => closeTab(l, leafId, tabId)),
@@ -321,7 +321,7 @@ function DeskMobileList({ layout }: { layout: DeskLayout }) {
         {tabs.map((t) => {
           if (t.kind === "item") return <MobileItemRow key={t.id} itemId={t.itemId} />;
           const href = t.kind === "view" ? `/views/${t.viewId}` : `/dashboards/${t.dashboardId}`;
-          const label = t.kind === "view" ? "View" : "Dashboard";
+          const label = t.title?.trim() || (t.kind === "view" ? "View" : "Dashboard");
           return (
             <li key={t.id}>
               <Link

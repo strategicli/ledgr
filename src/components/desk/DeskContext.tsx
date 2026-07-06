@@ -13,8 +13,10 @@ export type DeskActions = {
   focus: (leafId: string) => void;
   activate: (leafId: string, tabId: string) => void;
   openItem: (leafId: string, itemId: string) => void;
-  openView: (leafId: string, viewId: string) => void;
-  openDashboard: (leafId: string, dashboardId: string) => void;
+  // title is the view/dashboard's name, denormalized onto the tab at open time
+  // (ADR-147 D2) so the strip shows the real name, not the literal kind word.
+  openView: (leafId: string, viewId: string, title?: string) => void;
+  openDashboard: (leafId: string, dashboardId: string, title?: string) => void;
   // Split a panel, duplicating its active tab into the new panel (the ⋯ menu's
   // "Split right/down"). An empty panel splits into another empty panel.
   splitActive: (leafId: string, dir: "row" | "col") => void;

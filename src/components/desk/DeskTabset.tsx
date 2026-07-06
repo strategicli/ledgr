@@ -64,12 +64,12 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
               actions.openItem(leaf.id, itemId);
               setManualPick(false);
             }}
-            onPickView={(viewId) => {
-              actions.openView(leaf.id, viewId);
+            onPickView={(viewId, title) => {
+              actions.openView(leaf.id, viewId, title);
               setManualPick(false);
             }}
-            onPickDashboard={(dashboardId) => {
-              actions.openDashboard(leaf.id, dashboardId);
+            onPickDashboard={(dashboardId, title) => {
+              actions.openDashboard(leaf.id, dashboardId, title);
               setManualPick(false);
             }}
             onCancel={!empty ? () => setManualPick(false) : undefined}
@@ -115,12 +115,20 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
 function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
   const { actions } = useDesk();
   const scrollerRef = useRef<HTMLDivElement>(null);
+  // The inner tab row grows with content; the scroller (viewport) does not. Item
+  // titles arrive async from the doc store AFTER first paint, widening the row's
+  // scrollWidth without ever resizing the scroller's box — so a ResizeObserver on
+  // the scroller alone never fires and the overflow arrows stay hidden (ADR-147
+  // D2a). Observe the ROW too (catches late labels), and recompute once after
+  // paint (catches an already-overflowing strip on mount).
+  const rowRef = useRef<HTMLDivElement>(null);
   const [arrows, setArrows] = useState({ left: false, right: false });
 
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el) return;
-    // setState only from the async scroll / ResizeObserver callbacks (never
+    const row = rowRef.current;
+    if (!el || !row) return;
+    // setState only from the async scroll / ResizeObserver / rAF callbacks (never
     // synchronously in the effect body), per the no-setState-in-effect rule.
     const update = () => {
       setArrows({
@@ -130,10 +138,13 @@ function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
     };
     el.addEventListener("scroll", update, { passive: true });
     const ro = new ResizeObserver(update);
-    ro.observe(el);
+    ro.observe(el); // panel/window resize shrinks the viewport
+    ro.observe(row); // late-arriving labels grow the row
+    const raf = requestAnimationFrame(update); // recompute after the first paint
     return () => {
       el.removeEventListener("scroll", update);
       ro.disconnect();
+      cancelAnimationFrame(raf);
     };
   }, [leaf.tabs.length]);
 
@@ -160,26 +171,30 @@ function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
         ref={scrollerRef}
         className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
-        {leaf.tabs.map((tab) => (
-          <TabButton
-            key={tab.id}
-            tab={tab}
-            active={tab.id === leaf.activeTab}
-            onSelect={() => actions.activate(leaf.id, tab.id)}
-            onClose={() => actions.closeTab(leaf.id, tab.id)}
-          />
-        ))}
-        {leaf.tabs.length > 0 && (
-          <button
-            type="button"
-            title="Open another item in this panel"
-            aria-label="Open another item in this panel"
-            onClick={onAdd}
-            className="shrink-0 px-2 text-ink-subtle hover:bg-surface-2 hover:text-ink"
-          >
-            +
-          </button>
-        )}
+        {/* Inner row sizes to content (shrink-0) so its width tracks the tabs;
+            observing it is what catches async label growth (see effect above). */}
+        <div ref={rowRef} className="flex shrink-0 items-stretch">
+          {leaf.tabs.map((tab) => (
+            <TabButton
+              key={tab.id}
+              tab={tab}
+              active={tab.id === leaf.activeTab}
+              onSelect={() => actions.activate(leaf.id, tab.id)}
+              onClose={() => actions.closeTab(leaf.id, tab.id)}
+            />
+          ))}
+          {leaf.tabs.length > 0 && (
+            <button
+              type="button"
+              title="Open another item in this panel"
+              aria-label="Open another item in this panel"
+              onClick={onAdd}
+              className="shrink-0 px-2 text-ink-subtle hover:bg-surface-2 hover:text-ink"
+            >
+              +
+            </button>
+          )}
+        </div>
       </div>
       {arrows.right && (
         <button

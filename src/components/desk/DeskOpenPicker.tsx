@@ -21,8 +21,9 @@ export default function DeskOpenPicker({
   // whether a cancel affordance is offered.
   hasTabs: boolean;
   onPick: (itemId: string) => void;
-  onPickView: (viewId: string) => void;
-  onPickDashboard: (dashboardId: string) => void;
+  // The picked view/dashboard's name rides along so the tab shows it (ADR-147 D2).
+  onPickView: (viewId: string, title: string) => void;
+  onPickDashboard: (dashboardId: string, title: string) => void;
   onCancel?: () => void;
 }) {
   const [q, setQ] = useState("");
@@ -144,7 +145,7 @@ export default function DeskOpenPicker({
                 <button
                   key={v.id}
                   type="button"
-                  onClick={() => onPickView(v.id)}
+                  onClick={() => onPickView(v.id, v.name)}
                   className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface-1 px-3 py-2 text-left text-sm text-ink hover:bg-surface-2"
                 >
                   <span className="truncate">{v.name}</span>
@@ -160,7 +161,7 @@ export default function DeskOpenPicker({
                 <button
                   key={d.id}
                   type="button"
-                  onClick={() => onPickDashboard(d.id)}
+                  onClick={() => onPickDashboard(d.id, d.name)}
                   className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface-1 px-3 py-2 text-left text-sm text-ink hover:bg-surface-2"
                 >
                   <span className="truncate">{d.name}</span>
