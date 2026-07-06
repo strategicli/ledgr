@@ -13,6 +13,7 @@ import { useDoc } from "./desk-doc-store";
 import DeskItemPanel from "./DeskItemPanel";
 import DeskMoveOverlay from "./DeskMoveOverlay";
 import DeskOpenPicker from "./DeskOpenPicker";
+import DeskViewPanel from "./DeskViewPanel";
 
 export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
   const { focusedLeaf, moveArmed, actions } = useDesk();
@@ -83,6 +84,10 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
               actions.openItem(leaf.id, itemId);
               setManualPick(false);
             }}
+            onPickView={(viewId) => {
+              actions.openView(leaf.id, viewId);
+              setManualPick(false);
+            }}
             onCancel={!empty ? () => setManualPick(false) : undefined}
           />
         )}
@@ -90,9 +95,11 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
           <DeskItemPanel itemId={active.itemId} writer={isFocused} />
         )}
         {!picking && active?.kind === "view" && (
-          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-ink-subtle">
-            View panels arrive in a later step.
-          </div>
+          <DeskViewPanel
+            key={active.viewId}
+            viewId={active.viewId}
+            onOpenItem={(itemId) => actions.openItem(leaf.id, itemId)}
+          />
         )}
         {!picking && !active && (
           <div className="flex h-full items-center justify-center text-sm text-ink-subtle">

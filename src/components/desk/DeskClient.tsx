@@ -115,6 +115,8 @@ export default function DeskClient({
       activate: (leafId, tabId) => setLayout((l) => setActiveTab(l, leafId, tabId)),
       openItem: (leafId, itemId) =>
         setLayout((l) => addTab(l, leafId, itemTab(itemId))),
+      openView: (leafId, viewId) =>
+        setLayout((l) => addTab(l, leafId, viewTab(viewId))),
       splitActive: (leafId, dir) =>
         setLayout((l) => {
           const leaf = findLeaf(l.root, leafId);

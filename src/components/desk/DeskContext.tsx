@@ -13,6 +13,7 @@ export type DeskActions = {
   focus: (leafId: string) => void;
   activate: (leafId: string, tabId: string) => void;
   openItem: (leafId: string, itemId: string) => void;
+  openView: (leafId: string, viewId: string) => void;
   // Split a panel, duplicating its active tab into the new panel (the ⋯ menu's
   // "Split right/down"). An empty panel splits into another empty panel.
   splitActive: (leafId: string, dir: "row" | "col") => void;
