@@ -15,11 +15,23 @@ import {
 } from "./layout";
 import { loadLiveLayout, saveLiveLayout, snapshotToRecent } from "./persist";
 
+// Fired after a send mutates desk:layout, so a DeskClient already mounted on
+// /desk (the common case: you right-click a mention in a Desk preview twin)
+// adopts the new layout instead of ignoring a same-route router.push.
+export const DESK_LAYOUT_CHANGED_EVENT = "ledgr:desk-layout-changed";
+
+function notifyLayoutChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(DESK_LAYOUT_CHANGED_EVENT));
+  }
+}
+
 // "Open in Desk": add the item as a tab in the focused panel of the current
 // live layout (or a fresh desk). The rest of the desk is left intact.
 export function sendOpenInDesk(itemId: string): void {
   const layout = loadLiveLayout() ?? freshLayout();
   saveLiveLayout(addTab(layout, layout.focusedLeaf, itemTab(itemId)));
+  notifyLayoutChanged();
 }
 
 // The desk's current focused-panel item, if any — the left panel for an
@@ -41,6 +53,7 @@ export function sendOpenBeside(itemId: string, currentItemId?: string): void {
     ? [itemTab(currentItemId)]
     : currentFocusedItemTabs(layout);
   saveLiveLayout(twoPanelLayout(leftTabs, [itemTab(itemId)]));
+  notifyLayoutChanged();
 }
 
 // --- Inline context-menu event (S3b) --------------------------------------

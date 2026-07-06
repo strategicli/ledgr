@@ -37,28 +37,7 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
       }`}
     >
       <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-1">
-        <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
-          {leaf.tabs.map((tab) => (
-            <TabButton
-              key={tab.id}
-              tab={tab}
-              active={tab.id === leaf.activeTab}
-              onSelect={() => actions.activate(leaf.id, tab.id)}
-              onClose={() => actions.closeTab(leaf.id, tab.id)}
-            />
-          ))}
-          {leaf.tabs.length > 0 && (
-            <button
-              type="button"
-              title="Open another item in this panel"
-              aria-label="Open another item in this panel"
-              onClick={() => setManualPick((p) => !p)}
-              className="shrink-0 px-2 text-ink-subtle hover:bg-surface-2 hover:text-ink"
-            >
-              +
-            </button>
-          )}
-        </div>
+        <LeafTabs leaf={leaf} onAdd={() => setManualPick((p) => !p)} />
         {active?.kind === "item" && (
           <span
             title={
@@ -117,6 +96,94 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// The scrollable tab strip. When the tabs overflow, chevron buttons appear on
+// the overflowing side(s) so a mouse user can scroll without a trackpad swipe
+// (the native scrollbar is hidden; wheel/trackpad still work). The "+" (open
+// another item) rides at the end of the scroller.
+function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
+  const { actions } = useDesk();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [arrows, setArrows] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    // setState only from the async scroll / ResizeObserver callbacks (never
+    // synchronously in the effect body), per the no-setState-in-effect rule.
+    const update = () => {
+      setArrows({
+        left: el.scrollLeft > 1,
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
+    };
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [leaf.tabs.length]);
+
+  const scrollBy = (dx: number) =>
+    scrollerRef.current?.scrollBy({ left: dx, behavior: "smooth" });
+
+  const arrowClass =
+    "flex shrink-0 items-center border-r border-line px-1 text-ink-subtle hover:bg-surface-2 hover:text-ink";
+
+  return (
+    <div className="flex min-w-0 flex-1 items-stretch">
+      {arrows.left && (
+        <button
+          type="button"
+          title="Scroll tabs left"
+          aria-label="Scroll tabs left"
+          onClick={() => scrollBy(-160)}
+          className={arrowClass}
+        >
+          ‹
+        </button>
+      )}
+      <div
+        ref={scrollerRef}
+        className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {leaf.tabs.map((tab) => (
+          <TabButton
+            key={tab.id}
+            tab={tab}
+            active={tab.id === leaf.activeTab}
+            onSelect={() => actions.activate(leaf.id, tab.id)}
+            onClose={() => actions.closeTab(leaf.id, tab.id)}
+          />
+        ))}
+        {leaf.tabs.length > 0 && (
+          <button
+            type="button"
+            title="Open another item in this panel"
+            aria-label="Open another item in this panel"
+            onClick={onAdd}
+            className="shrink-0 px-2 text-ink-subtle hover:bg-surface-2 hover:text-ink"
+          >
+            +
+          </button>
+        )}
+      </div>
+      {arrows.right && (
+        <button
+          type="button"
+          title="Scroll tabs right"
+          aria-label="Scroll tabs right"
+          onClick={() => scrollBy(160)}
+          className={arrowClass}
+        >
+          ›
+        </button>
+      )}
     </div>
   );
 }

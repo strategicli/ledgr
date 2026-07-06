@@ -41,6 +41,7 @@ import {
   snapshotToRecent,
   type RecentSnapshot,
 } from "@/lib/desk/persist";
+import { DESK_LAYOUT_CHANGED_EVENT } from "@/lib/desk/send";
 import type { DeskWorkspace } from "@/lib/settings";
 import { DeskProvider, type DeskActions, type MoveArmed } from "./DeskContext";
 import DeskShell from "./DeskShell";
@@ -98,6 +99,15 @@ export default function DeskClient({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [layout, mounted]);
+
+  // A Send-to-Desk action (from a row or an inline link) can fire while we're
+  // already on /desk — router.push("/desk") is then a no-op, so adopt the layout
+  // it just wrote to localStorage. (Off-desk, the fresh mount reads it on load.)
+  useEffect(() => {
+    const onChanged = () => setLayout(loadLiveLayout() ?? freshLayout());
+    window.addEventListener(DESK_LAYOUT_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DESK_LAYOUT_CHANGED_EVENT, onChanged);
+  }, []);
 
   // Esc cancels an armed move.
   useEffect(() => {
