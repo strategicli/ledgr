@@ -109,6 +109,91 @@ export function lineWithBlockId(markdown: string, id: string): number {
   return -1;
 }
 
+// Locate a body line by a text snippet (for callers that reason about content,
+// not line numbers — e.g. an MCP agent). Compares against the line's content
+// with its ^anchor and any leading list/checkbox marker removed, so a snippet
+// copied straight from a "- [ ] Send the email" line matches on "Send the
+// email". Fenced code regions are skipped (they can't be linked anyway, and a
+// stray code line shouldn't create false ambiguity). Returns the 0-based index
+// of the sole match, or an { ambiguous } / { notFound } signal so the caller
+// can fall back to a line number. A snippet that equals exactly one line's
+// content wins even when it's a substring of others, so "Send the email"
+// resolves cleanly past a longer paraphrase elsewhere.
+export function findLineByText(
+  markdown: string,
+  snippet: string
+): { index: number } | { notFound: true } | { ambiguous: number[] } {
+  const needle = stripListMarker(snippet).trim();
+  if (needle === "") return { notFound: true };
+  const lines = markdown.split("\n");
+  const contains: number[] = [];
+  const exact: number[] = [];
+  let inFence = false;
+  let fenceChar = "";
+  for (let i = 0; i < lines.length; i++) {
+    const fence = FENCE.exec(lines[i]);
+    if (fence) {
+      const char = fence[1][0];
+      if (!inFence) {
+        inFence = true;
+        fenceChar = char;
+      } else if (char === fenceChar) {
+        inFence = false;
+        fenceChar = "";
+      }
+      continue;
+    }
+    if (inFence) continue;
+    const text = stripListMarker(stripAnchorFromLine(lines[i])).trim();
+    if (text === "") continue;
+    if (text === needle) exact.push(i);
+    if (text.includes(needle)) contains.push(i);
+  }
+  if (exact.length === 1) return { index: exact[0] };
+  if (contains.length === 1) return { index: contains[0] };
+  if (contains.length === 0) return { notFound: true };
+  return { ambiguous: contains };
+}
+
+// Ensure the line at 0-based `index` carries a block anchor, returning its id
+// (reused if already present, freshly minted otherwise), the possibly-updated
+// markdown, and whether a new anchor was appended. Refuses a blank line or a
+// line in a fenced code block — a marker there can't be stripped cleanly from
+// the human render (mirrors stripBlockAnchors' fence tracking). Pure and
+// server-safe, so the MCP link-to-line tool reuses it.
+export function ensureAnchorOnLine(
+  markdown: string,
+  index: number
+): { id: string; markdown: string; created: boolean } | { error: string } {
+  const lines = markdown.split("\n");
+  if (index < 0 || index >= lines.length) {
+    return { error: `line ${index + 1} is out of range (the body has ${lines.length} lines)` };
+  }
+  let inFence = false;
+  let fenceChar = "";
+  for (let i = 0; i < index; i++) {
+    const fence = FENCE.exec(lines[i]);
+    if (!fence) continue;
+    const char = fence[1][0];
+    if (!inFence) {
+      inFence = true;
+      fenceChar = char;
+    } else if (char === fenceChar) {
+      inFence = false;
+      fenceChar = "";
+    }
+  }
+  const line = lines[index];
+  if (inFence) return { error: "that line is inside a fenced code block" };
+  if (FENCE.test(line)) return { error: "that line is a code-fence delimiter" };
+  if (line.trim() === "") return { error: "that line is blank" };
+  const existing = blockIdOf(line);
+  if (existing) return { id: existing, markdown, created: false };
+  const id = uniqueBlockId(markdown);
+  lines[index] = `${line} ^${id}`;
+  return { id, markdown: lines.join("\n"), created: true };
+}
+
 // Leading-whitespace width of a line (tab = 4), for nesting comparisons.
 function indentWidth(line: string): number {
   const m = /^[ \t]*/.exec(line);

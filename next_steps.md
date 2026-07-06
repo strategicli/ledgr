@@ -4,6 +4,16 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **⏭️ NEXT (2026-07-01) — DEPLOY THE PJ CHUNK:** `integrate-pj` is committed and **merged with `origin/main`** (which had advanced to ADR-137 / PRs→#138: AI Memory, calendar lenses, edit guard, etc.). Migrations linearized past the `0040` collision → `0040_memory_type` then `0041_solid_leech`…`0045_pursuit_type` (whens rewritten so prod won't skip them). tsc + `next build` + eslint clean; verify scripts green on the merged tree. **Remaining, in order (needs prod creds — Tyler):** (1) `npm run db:migrate` against **prod** `DATABASE_URL` (applies the 5 new migrations after `memory_type`) — must precede code going live; (2) push `main` (or PR → merge) → Vercel deploys; (3) verify `/health` + a project page. **Dev-DB gotcha:** `ledgr_dev` already ran the old-numbered branch migrations, so `db:migrate` there will collide — reset dev or fix `__drizzle_migrations` (prod is unaffected, it never had them). Project Type ADR renumbered 133→**138** (origin took 133 for the Planner).
 
+## ⟢ Session summary — `link_to_line` MCP tool SHIPPED (2026-07-06, ADR-148, CORE — Tyler agreed)
+
+**From Brandon's "make line-linking MCP-workable so an agent can drop direct links into chats/docs."** The in-app "copy link to this line" (ADR-090 `^id` block anchors → `/items/{id}#^{id}`) was client-only; this exposes it to MCP.
+
+- **New MCP tool `link_to_line(id, {line | lineText | blockRef})`** in `src/lib/mcp/tools/items.ts` → returns `{ url, blockRef, line, lineText, created }`. Resolves the line by an existing anchor id (pure read), a 1-based line number, or a text snippet (marker-normalized + fence-skipping match, errors on ambiguity/no-match). Reuses an existing anchor (idempotent) or mints a `uniqueBlockId`, appends ` ^id`, and saves via the owner-scoped `updateItem` (revision snapshot). Refuses blank / fenced-code / out-of-range lines. Base URL from `NEXT_PUBLIC_APP_URL`.
+- **Two pure server-safe helpers** added to `src/lib/editor/block-anchor.ts`: `findLineByText` + `ensureAnchorOnLine` (mirror the existing fence-aware stripping). **No AI-provenance marker** — anchor stays neutral (Brandon's call; ADR-148 rationale).
+- **Verified:** extended `scripts/verify-block-anchor.mts` (green — reuse/mint, refusals, marker-normalized + fence-skip matching, ambiguity/not-found); `tsc --noEmit` + `eslint` clean on changed files.
+
+**Remaining:** Tyler agreed (CORE sign-off done) → merged to `main` + deploying to Brandon's prod (no migration — additive, reuses the existing anchor format). Then a live MCP round-trip (mint → reuse → follow the URL to confirm scroll-and-flash) once deployed.
+
 ## ⟢ Session summary — Desk refinements, round two BUILT (2026-07-06, ADR-147, NON-core, branch `desk-refinements-r2`)
 
 **All six slices D1–D6 shipped, one commit each; `npm run lint` (0 errors) + `npm run build` clean on every slice; each verified on the dev-auth preview against production data.** Additive only — no schema / `{format,text}` / MCP change; the new layout-tree fields (`title?` on view/dashboard tabs, `section?` + `showDetails?` on item tabs) are optional + parse-with-default in `sanitizeLayout`; one new read-only endpoint (`GET /api/items/[id]/details`).
