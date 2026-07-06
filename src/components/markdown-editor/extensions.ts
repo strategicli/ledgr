@@ -7,7 +7,7 @@
 // (ADR-037), so every renderMarkdown here is part of the canonical contract.
 "use client";
 
-import { Mark, mergeAttributes, type JSONContent } from "@tiptap/core";
+import { Mark, Node, mergeAttributes, type JSONContent } from "@tiptap/core";
 import Mention from "@tiptap/extension-mention";
 import Image from "@tiptap/extension-image";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
@@ -28,6 +28,12 @@ import {
   imageToMarkdown,
   type ImageToken,
 } from "@/lib/editor/image-markdown";
+import {
+  formatPassageRef,
+  parsePassageSlug,
+  passageSlug,
+  passageToMarkdown,
+} from "@/lib/passages/ref";
 import { tableToGfm } from "@/lib/editor/table-markdown";
 import { createMentionNodeView } from "./mention-node-view";
 
@@ -221,6 +227,125 @@ export const LedgrMention = Mention.extend({
     });
   },
 });
+
+// The passage node (ADR-143). A static inline atom — the passage sibling of
+// LedgrMention, but with NO NodeView: a passage is fixed reference data (no live
+// status, no checkbox), so a static chip is right. The markdown contract mirrors
+// the mention exactly:
+//  - out: renderMarkdown → [Label](ledgr://passage/<start>[-<end>])
+//  - in:  a custom inline tokenizer reclaims that exact link BEFORE the Link mark
+//         can claim it, so the round-trip holds (same as the mention tokenizer).
+// The href points at the virtual passage page (/passage/<slug>); the ledgr://
+// URI lives only in the markdown so syncPassageRefs can find the edge.
+export const LedgrPassage = Node.create({
+  name: "passage",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+
+  addAttributes() {
+    return {
+      startRef: { default: null },
+      endRef: { default: null },
+      // The human display label ("Romans 8:5–9"); regenerated from the refs when
+      // absent so a hand-authored link with no label still chips correctly.
+      label: { default: null, rendered: false },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "a[data-passage-start]",
+        getAttrs: (el) => {
+          const node = el as HTMLElement;
+          const start = Number(node.getAttribute("data-passage-start"));
+          if (!Number.isSafeInteger(start)) return false;
+          const endAttr = node.getAttribute("data-passage-end");
+          const end = endAttr != null && endAttr !== "" ? Number(endAttr) : start;
+          return { startRef: start, endRef: end, label: node.textContent || null };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ node }) {
+    const { start, end, label } = passageAttrs(node);
+    return [
+      "a",
+      mergeAttributes({
+        class: "ledgr-passage",
+        href: `/passage/${passageSlug(start, end)}`,
+        "data-passage-start": String(start),
+        "data-passage-end": String(end),
+      }),
+      label,
+    ];
+  },
+
+  renderText({ node }) {
+    return passageAttrs(node).label;
+  },
+
+  renderMarkdown(node) {
+    // Cast like LedgrImage/LedgrMention: @tiptap/markdown's augmented hook types
+    // the node loosely, but it always carries attrs at runtime.
+    const { start, end, label } = passageAttrs(node as { attrs?: Record<string, unknown> });
+    return passageToMarkdown(start, end, label);
+  },
+
+  // Reclaim [Label](ledgr://passage/<slug>) at the inline level, before Link.
+  // Passage labels carry no "@" sentinel, so start() locates the href marker and
+  // backs up to the opening "[" (labels are canon refs, never contain "]").
+  markdownTokenizer: {
+    name: "passage",
+    level: "inline",
+    start: (src: string) => {
+      const i = src.indexOf("](ledgr://passage/");
+      if (i < 0) return src.length;
+      const open = src.lastIndexOf("[", i);
+      return open < 0 ? src.length : open;
+    },
+    tokenize: (src: string) => {
+      const m = /^\[((?:\\.|[^\]\\])*)\]\(ledgr:\/\/passage\/(\d+(?:-\d+)?)\)/.exec(src);
+      if (!m) return undefined;
+      const ref = parsePassageSlug(m[2]);
+      if (!ref) return undefined;
+      const label = m[1].replace(/\\([\\[\]])/g, "$1");
+      return {
+        type: "passage",
+        raw: m[0],
+        passageStart: ref.startRef,
+        passageEnd: ref.endRef,
+        passageLabel: label,
+      };
+    },
+  },
+
+  parseMarkdown(token, helpers) {
+    return helpers.createNode("passage", {
+      startRef: token.passageStart,
+      endRef: token.passageEnd,
+      label: token.passageLabel,
+    });
+  },
+});
+
+// Coerce a passage node's attrs to numbers + a display label, deriving the label
+// from the refs when it's missing. Shared by every render hook above.
+function passageAttrs(node: { attrs?: Record<string, unknown> }): {
+  start: number;
+  end: number;
+  label: string;
+} {
+  const a = node.attrs ?? {};
+  const start = Number(a.startRef);
+  const end = a.endRef != null ? Number(a.endRef) : start;
+  const label =
+    typeof a.label === "string" && a.label ? a.label : formatPassageRef(start, end);
+  return { start, end, label };
+}
 
 // Inline image node. inline:true is required, not cosmetic: marked emits a
 // `![]()` as an inline token inside a paragraph, and @tiptap/markdown dispatches

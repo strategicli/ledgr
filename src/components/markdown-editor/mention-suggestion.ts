@@ -20,11 +20,49 @@ import {
   parseTypeToken,
   type TypeMeta,
 } from "@/components/search/type-token";
+import { formatPassageRef, parsePassageRef } from "@/lib/passages/ref";
 
 // `type` is the target's type key; it rides onto the inserted mention node's
 // attrs so the chip is glyphed instantly (the default Mention command copies the
-// item's fields onto the node). label/id are the existing contract.
-type Item = { id: string; label: string; type: string | null };
+// item's fields onto the node). label/id are the existing contract. A passage
+// candidate (ADR-143) rides the same list tagged with PASSAGE_TYPE + its resolved
+// interval, so the selection handler inserts a passage node instead of a mention.
+const PASSAGE_TYPE = "__passage__";
+type Item = {
+  id: string;
+  label: string;
+  type: string | null;
+  startRef?: number;
+  endRef?: number;
+};
+
+// The "/ref" scope inside the "@" picker (ADR-143, Tyler pt 4 — net-new scope
+// parsing; "/passage", "/verse", "/scripture" alias it). Returns the query after
+// the scope token when active, else null. create-on-miss is deliberately OFF for
+// this scope — you can't create a verse.
+const PASSAGE_SCOPE_RE = /^\/(ref|passage|verse|scripture)(?:\s+([\s\S]*))?$/i;
+function passageScope(query: string): string | null {
+  const m = PASSAGE_SCOPE_RE.exec(query.trim());
+  return m ? (m[2] ?? "").trim() : null;
+}
+
+// Resolve the scope's query text to at most one passage candidate (the resolver
+// is deterministic — one reference in, one canonical interval out). An empty or
+// unparseable query yields no rows, so the picker shows its "type a reference"
+// hint rather than a bogus match.
+function passageCandidates(rest: string): Item[] {
+  const ref = rest ? parsePassageRef(rest) : null;
+  if (!ref) return [];
+  return [
+    {
+      id: `${ref.startRef}-${ref.endRef}`,
+      label: formatPassageRef(ref.startRef, ref.endRef),
+      type: PASSAGE_TYPE,
+      startRef: ref.startRef,
+      endRef: ref.endRef,
+    },
+  ];
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -38,6 +76,10 @@ function escapeHtml(text: string): string {
 // the title query. With no rest ("@/person"), it browses recent items of that
 // type. An unknown/ambiguous token falls through to a literal search.
 async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
+  // Passage scope short-circuits the item search: resolve the reference locally
+  // (no server round-trip, no item lookup).
+  const scope = passageScope(query);
+  if (scope !== null) return passageCandidates(scope);
   const parsed = parseTypeToken(query, await loadTypes());
   const effective = parsed ? parsed.rest : query;
   const params = new URLSearchParams({ limit: "10" });
@@ -92,6 +134,11 @@ export function createMentionSuggestion(
       let selected = 0;
       let creating = false;
       let cmd: SuggestionProps<Item>["command"] | null = null;
+      // The editor + replace range, captured each update, so a passage pick can
+      // insert a passage node directly (the mention `command` only inserts a
+      // mention node).
+      let editor: SuggestionProps<Item>["editor"] | null = null;
+      let range: SuggestionProps<Item>["range"] | null = null;
       let onDocPointer: ((e: MouseEvent) => void) | null = null;
       // Type registry for the row icons/labels and the "/type" token; loaded
       // once, repaints when ready.
@@ -107,6 +154,13 @@ export function createMentionSuggestion(
 
       // The leading type glyph + trailing type label for one result row.
       const rowInner = (it: Item) => {
+        // Passage candidate: canonical label + a "Passage" tag (no type glyph —
+        // it isn't an item type). Reuses the existing row label/type CSS.
+        if (it.type === PASSAGE_TYPE) {
+          return `<span class="ledgr-mention-item-label">${escapeHtml(
+            it.label
+          )}</span><span class="ledgr-mention-item-type">Passage</span>`;
+        }
         const meta = it.type ? types.find((t) => t.key === it.type) : undefined;
         const glyph = mentionGlyphSvg(
           { type: it.type, icon: meta?.icon ?? null, statusCategory: null },
@@ -121,13 +175,35 @@ export function createMentionSuggestion(
       };
 
       // Whether to show the create-on-miss row: a non-empty (post-token) query
-      // with no exact (case-insensitive) title match among the hits.
+      // with no exact (case-insensitive) title match among the hits. Never in the
+      // passage scope (ADR-143 / Tyler pt 4 — you can't create a verse).
       const showCreate = () =>
+        passageScope(query) === null &&
         effectiveQuery() !== "" &&
         !items.some(
           (it) => it.label.trim().toLowerCase() === effectiveQuery().toLowerCase()
         );
       const rowCount = () => items.length + (showCreate() ? 1 : 0);
+
+      // Insert the chosen row. A passage candidate inserts a passage node at the
+      // captured range (the mention `command` only makes mention nodes); anything
+      // else goes through the mention command unchanged.
+      const select = (it: Item) => {
+        if (it.type === PASSAGE_TYPE && editor && range && it.startRef != null) {
+          const end = it.endRef ?? it.startRef;
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(range, [
+              { type: "passage", attrs: { startRef: it.startRef, endRef: end, label: it.label } },
+              { type: "text", text: " " },
+            ])
+            .run();
+          close();
+          return;
+        }
+        cmd?.(it);
+      };
 
       // One place to tear the popup down so every exit path (onExit, Escape,
       // click-away) also unregisters the document listener — otherwise a stray
@@ -160,9 +236,16 @@ export function createMentionSuggestion(
       const paint = () => {
         if (!popup) return;
         popup.innerHTML = "";
-        // Active "/type" filter: a small header chip so the narrowing is legible.
+        // Active scope chip so the narrowing is legible: a "/type" filter, or the
+        // passage "/ref" scope.
+        const inPassage = passageScope(query) !== null;
         const active = token();
-        if (active) {
+        if (inPassage) {
+          const chip = document.createElement("div");
+          chip.className = "ledgr-mention-filter";
+          chip.innerHTML = `<span>Passage</span>`;
+          popup.appendChild(chip);
+        } else if (active) {
           const chip = document.createElement("div");
           chip.className = "ledgr-mention-filter";
           chip.innerHTML = `${mentionGlyphSvg(
@@ -174,7 +257,7 @@ export function createMentionSuggestion(
         if (items.length === 0 && !showCreate()) {
           const empty = document.createElement("div");
           empty.className = "ledgr-mention-empty";
-          empty.textContent = "No matches";
+          empty.textContent = inPassage ? "Type a reference, e.g. Rom 8:5" : "No matches";
           popup.appendChild(empty);
           return;
         }
@@ -186,7 +269,7 @@ export function createMentionSuggestion(
           row.innerHTML = rowInner(it);
           row.addEventListener("mousedown", (e) => {
             e.preventDefault();
-            cmd?.(it);
+            select(it);
           });
           popup!.appendChild(row);
         });
@@ -250,6 +333,8 @@ export function createMentionSuggestion(
           selected = 0;
           creating = false;
           cmd = props.command;
+          editor = props.editor;
+          range = props.range;
           if (isLiteralAt(query)) return; // "@ …" — leave the @ as plain text
           mount();
           paint();
@@ -268,6 +353,8 @@ export function createMentionSuggestion(
           query = props.query;
           selected = 0;
           cmd = props.command;
+          editor = props.editor;
+          range = props.range;
           // A space right after "@" means it isn't a mention — dismiss. (A space
           // later in the query doesn't begin with one, so multi-word titles are
           // unaffected.)
@@ -296,7 +383,7 @@ export function createMentionSuggestion(
           if (event.key === "Enter") {
             if (selected < items.length) {
               const it = items[selected];
-              if (it) cmd?.(it);
+              if (it) select(it);
             } else if (showCreate()) {
               void runCreate();
             }

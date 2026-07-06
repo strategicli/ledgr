@@ -138,6 +138,23 @@ console.log("\n# Interval helpers");
   check("no overlap when disjoint", !overlaps(rom8_5_9, { startRef: 45_008_010, endRef: 45_008_012 }));
 }
 
+console.log("\n# Editor tokenizer round-trip (mirrors the regex in extensions.ts)");
+{
+  // The exact inline tokenizer the LedgrPassage node uses to reclaim its links
+  // on parse. Kept in sync with src/components/markdown-editor/extensions.ts.
+  const TOKENIZER = /^\[((?:\\.|[^\]\\])*)\]\(ledgr:\/\/passage\/(\d+(?:-\d+)?)\)/;
+  const md = passageToMarkdown(45_008_005, 45_008_009);
+  const m = TOKENIZER.exec(md);
+  check("tokenizer matches passageToMarkdown output", !!m);
+  check("tokenizer captures the label", m?.[1] === "Romans 8:5–9");
+  const slug = m?.[2] ?? "";
+  const back = parsePassageUri(`ledgr://passage/${slug}`);
+  check("tokenizer slug parses back to the interval", !!back && back.startRef === 45_008_005 && back.endRef === 45_008_009);
+  // A single-verse link (no dash) also tokenizes.
+  const single = passageToMarkdown(43_003_016, 43_003_016);
+  check("single-verse link tokenizes", TOKENIZER.test(single));
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);
 if (bookByNum(45)?.name !== "Romans") { console.log("FAIL  bookByNum sanity"); failures += 1; }
 process.exit(failures === 0 ? 0 : 1);

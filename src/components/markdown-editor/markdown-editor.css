@@ -263,6 +263,21 @@
   cursor: default;
 }
 
+/* Passage chip (ADR-143): the scripture-reference sibling of a mention. A warm
+   tone distinguishes a passage from a blue item mention at a glance. Static (no
+   NodeView) — links to the virtual passage page. */
+.ledgr-passage {
+  display: inline-flex;
+  align-items: center;
+  color: #d8a657;
+  background: rgba(216, 166, 87, 0.14);
+  border-radius: 0.25rem;
+  padding: 0 0.3em;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+
 /* Mention suggestion popup */
 .ledgr-mention-popup {
   position: absolute;
