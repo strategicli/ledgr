@@ -31,6 +31,7 @@ import {
   moveTab,
   setActiveTab,
   setFrac,
+  setTabSection,
   splitLeaf,
   viewTab,
   type DeskLayout,
@@ -147,6 +148,8 @@ export default function DeskClient({
         }),
       closeTab: (leafId, tabId) => setLayout((l) => closeTab(l, leafId, tabId)),
       closePanel: (leafId) => setLayout((l) => closeLeaf(l, leafId)),
+      setSection: (leafId, tabId, section) =>
+        setLayout((l) => setTabSection(l, leafId, tabId, section)),
       moveTab: (fromLeafId, tabId, target) => {
         setLayout((l) => moveTab(l, fromLeafId, tabId, target));
         setMoveArmed(null);

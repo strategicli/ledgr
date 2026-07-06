@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import MarkdownPreview from "@/components/markdown-editor/MarkdownPreview";
+import { sectionAt } from "@/lib/editor/canvas-tabs";
 import { publishLive, seedForEditor, useDoc, useTabsEnabled } from "./desk-doc-store";
 
 // Debounce feeding live text to the preview so a fast typist in the focused
@@ -18,9 +19,13 @@ const PREVIEW_DEBOUNCE_MS = 300;
 export default function DeskItemPanel({
   itemId,
   writer,
+  section,
 }: {
   itemId: string;
   writer: boolean;
+  // The active canvas-section for this tab in this panel (ADR-147 D5). The writer
+  // controls TabbedBody with it; a twin renders just that section, read-only.
+  section: number;
 }) {
   const doc = useDoc(itemId);
   // Canvas-tabs enablement (ADR-147 D4): drives whether the writer edits the body
@@ -42,29 +47,46 @@ export default function DeskItemPanel({
           key={itemId}
           item={seed}
           tabsEnabled={tabsEnabled}
+          // Only tabbed types get a controlled section; other types edit the flat
+          // body (controlledSection is ignored when TabbedBody isn't mounted).
+          controlledSection={tabsEnabled ? section : undefined}
           onLiveChange={(next) => publishLive(itemId, next)}
         />
       </div>
     );
   }
 
-  return <ItemPreview itemId={itemId} title={doc.liveTitle} markdown={doc.liveMarkdown} />;
+  return (
+    <ItemPreview
+      itemId={itemId}
+      title={doc.liveTitle}
+      markdown={doc.liveMarkdown}
+      section={section}
+    />
+  );
 }
 
 function ItemPreview({
   itemId,
   title,
   markdown,
+  section,
 }: {
   itemId: string;
   title: string;
   markdown: string;
+  section: number;
 }) {
   const [debounced, setDebounced] = useState(markdown);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(markdown), PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [markdown]);
+
+  // A tabbed body shows just the active section (ADR-147 D5); an untabbed body
+  // renders whole. sectionAt clamps the index and returns null when untabbed.
+  const sec = sectionAt(debounced, section);
+  const text = sec ? sec.body : debounced;
 
   return (
     <div className="h-full overflow-auto">
@@ -73,7 +95,7 @@ function ItemPreview({
           {title.trim() || "Untitled"}
         </h1>
         <div className="pt-2">
-          <MarkdownPreview text={debounced} itemId={itemId} />
+          <MarkdownPreview text={text} itemId={itemId} />
         </div>
       </div>
     </div>

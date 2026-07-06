@@ -51,6 +51,20 @@ export function parseTabs(text: string | null | undefined): CanvasTab[] | null {
   return tabs.map((t) => ({ title: t.title, body: t.body.join("\n").trim() }));
 }
 
+// One section of a tabbed body by index, or null when the body isn't tabbed
+// (ADR-147 D5: a Desk twin renders just the active section, read-only). The
+// index is clamped into range so a stale/persisted section snaps to the first
+// rather than showing nothing — the strip re-derives from the live body anyway.
+export function sectionAt(
+  text: string | null | undefined,
+  index: number
+): CanvasTab | null {
+  const tabs = parseTabs(text);
+  if (!tabs || tabs.length === 0) return null;
+  const i = Math.min(Math.max(index, 0), tabs.length - 1);
+  return tabs[i];
+}
+
 // Serialize tabs back to one body: a marker line + content per tab.
 export function serializeTabs(tabs: CanvasTab[]): string {
   return tabs

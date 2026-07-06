@@ -26,7 +26,11 @@ export const clampFrac = (f: number): number =>
 // --- The tree -------------------------------------------------------------
 
 export type DeskTab =
-  | { id: string; kind: "item"; itemId: string }
+  // section? is the active canvas-section index for THIS tab in THIS panel
+  // (ADR-147 D5) — per-panel view state, so two panels of the same item can show
+  // different sections side by side. Optional + parse-with-default; clamped to
+  // the live body's sections at render (snaps to the first if out of range).
+  | { id: string; kind: "item"; itemId: string; section?: number }
   // View/dashboard tabs carry a denormalized `title?` captured at open time (the
   // picker/host already has the name) so the tab strip shows the real name
   // instead of the literal word "View"/"Dashboard" (ADR-147 D2). Optional +
@@ -203,6 +207,27 @@ export function setActiveTab(
   const leaf = findLeaf(layout.root, leafId);
   if (!leaf || !leaf.tabs.some((t) => t.id === tabId)) return layout;
   const root = replaceLeaf(layout.root, leafId, (l) => ({ ...l, activeTab: tabId }));
+  return { ...layout, root, focusedLeaf: leafId };
+}
+
+// Set the active canvas-section index for one item tab (ADR-147 D5). Per-panel
+// view state; focuses the leaf like activating a tab does (a section switch is a
+// navigation within that panel). A no-op for a non-item / missing tab.
+export function setTabSection(
+  layout: DeskLayout,
+  leafId: string,
+  tabId: string,
+  section: number
+): DeskLayout {
+  const leaf = findLeaf(layout.root, leafId);
+  if (!leaf || !leaf.tabs.some((t) => t.id === tabId && t.kind === "item"))
+    return layout;
+  const root = replaceLeaf(layout.root, leafId, (l) => ({
+    ...l,
+    tabs: l.tabs.map((t) =>
+      t.id === tabId && t.kind === "item" ? { ...t, section } : t
+    ),
+  }));
   return { ...layout, root, focusedLeaf: leafId };
 }
 
@@ -384,8 +409,18 @@ function sanitizeTab(raw: unknown): DeskTab | null {
   // A denormalized title is optional (older blobs won't have it): keep it only
   // when it's a real string, else drop it and fall back to the kind word.
   const title = typeof r.title === "string" && r.title ? r.title : undefined;
+  // A persisted section index: keep only a finite non-negative integer.
+  const section =
+    typeof r.section === "number" && Number.isInteger(r.section) && r.section >= 0
+      ? r.section
+      : undefined;
   if (r.kind === "item" && typeof r.itemId === "string" && r.itemId)
-    return { id, kind: "item", itemId: r.itemId };
+    return {
+      id,
+      kind: "item",
+      itemId: r.itemId,
+      ...(section !== undefined ? { section } : {}),
+    };
   if (r.kind === "view" && typeof r.viewId === "string" && r.viewId)
     return { id, kind: "view", viewId: r.viewId, ...(title ? { title } : {}) };
   if (r.kind === "dashboard" && typeof r.dashboardId === "string" && r.dashboardId)

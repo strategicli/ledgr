@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { DeskLeaf, DeskTab } from "@/lib/desk/layout";
+import { parseTabs } from "@/lib/editor/canvas-tabs";
 import { useDesk } from "./DeskContext";
 import { useDoc } from "./desk-doc-store";
 import DeskDashboardPanel from "./DeskDashboardPanel";
@@ -78,7 +79,11 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
           />
         )}
         {!picking && active?.kind === "item" && (
-          <DeskItemPanel itemId={active.itemId} writer={isFocused} />
+          <DeskItemPanel
+            itemId={active.itemId}
+            writer={isFocused}
+            section={active.section ?? 0}
+          />
         )}
         {!picking && active?.kind === "view" && (
           <DeskViewPanel
@@ -176,16 +181,25 @@ function LeafTabs({ leaf, onAdd }: { leaf: DeskLeaf; onAdd: () => void }) {
         {/* Inner row sizes to content (shrink-0) so its width tracks the tabs;
             observing it is what catches async label growth (see effect above). */}
         <div ref={rowRef} className="flex shrink-0 items-stretch">
-          {leaf.tabs.map((tab) => (
-            <TabButton
-              key={tab.id}
-              leafId={leaf.id}
-              tab={tab}
-              active={tab.id === leaf.activeTab}
-              onSelect={() => actions.activate(leaf.id, tab.id)}
-              onClose={() => actions.closeTab(leaf.id, tab.id)}
-            />
-          ))}
+          {leaf.tabs.map((tab) => {
+            const isActive = tab.id === leaf.activeTab;
+            return (
+              <div key={tab.id} className="flex shrink-0 items-stretch">
+                <TabButton
+                  leafId={leaf.id}
+                  tab={tab}
+                  active={isActive}
+                  onSelect={() => actions.activate(leaf.id, tab.id)}
+                  onClose={() => actions.closeTab(leaf.id, tab.id)}
+                />
+                {/* Merged sub-tab strip (ADR-147 D5): only the ACTIVE item tab
+                    reveals its section chips, right after it, as one unit. */}
+                {isActive && tab.kind === "item" && (
+                  <SectionChips leafId={leaf.id} tab={tab} />
+                )}
+              </div>
+            );
+          })}
           {leaf.tabs.length > 0 && (
             <button
               type="button"
@@ -279,6 +293,61 @@ function TabButton({
           onClose={() => setMenuPos(null)}
         />
       )}
+    </div>
+  );
+}
+
+// The merged sub-tab strip (ADR-147 D5): the active item's canvas sections as
+// small chips, a zero-gap unit right after the item tab so they read as one
+// control. Sections are parsed from the LIVE body, so they track the writer's
+// edits; picking one sets THIS panel's section (per-panel view state), which the
+// content area renders (writer = controlled TabbedBody, twin = sliced preview).
+// Navigation only — add/rename/delete/reorder stay on the full-page canvas.
+function SectionChips({
+  leafId,
+  tab,
+}: {
+  leafId: string;
+  tab: Extract<DeskTab, { kind: "item" }>;
+}) {
+  const { actions } = useDesk();
+  const doc = useDoc(tab.itemId);
+  const sections = parseTabs(doc?.liveMarkdown);
+  if (!sections || sections.length === 0) return null;
+  const active = Math.min(Math.max(tab.section ?? 0, 0), sections.length - 1);
+
+  return (
+    // A recessed segmented control, vertically centered so it sits SHORTER than
+    // the full-height item tab (a clear "this is a sub-control" cue), with its
+    // own inset tray fill distinct from the tab strip. Still a single zero-gap
+    // unit (ADR-147 D5) — the tray is the unit; the active section is a raised
+    // pill inside it.
+    <div
+      role="tablist"
+      aria-label="Sections"
+      className="mx-1.5 flex shrink-0 items-center self-center rounded-md bg-surface-2 p-0.5"
+    >
+      {sections.map((s, i) => {
+        const label = s.title.trim() || `Section ${i + 1}`;
+        const isActive = i === active;
+        return (
+          <button
+            key={i}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            title={`Section: ${label}`}
+            onClick={() => actions.setSection(leafId, tab.id, i)}
+            className={`max-w-[9rem] shrink-0 truncate rounded px-2 py-0.5 text-[11px] leading-none transition-colors ${
+              isActive
+                ? "bg-surface-0 font-medium text-ink shadow-sm"
+                : "text-ink-subtle hover:text-ink"
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }
