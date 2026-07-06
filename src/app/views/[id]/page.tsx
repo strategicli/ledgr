@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ViewRenderer from "@/components/views/ViewRenderer";
+import { DeskHostProvider } from "@/components/desk/DeskHostContext";
 import DuplicateViewButton from "@/components/views/DuplicateViewButton";
 import NewItemButton from "@/components/home/NewItemButton";
 import BulkActionBar from "@/components/selection/BulkActionBar";
@@ -154,20 +155,24 @@ export default async function ViewPage({ params, searchParams }: Context) {
           {view.layout !== "board" && view.layout !== "calendar" && (
             <SelectModeToggle />
           )}
-          <ViewRenderer
-            view={view}
-            items={items}
-            groupOrder={groupOrder}
-            propertyLabels={propertyLabels}
-            boardDraggable={boardDraggable}
-            statuses={statuses}
-            month={month}
-            calendarNavHref={`/views/${view.id}`}
-            calendarEvents={calendarEvents}
-            selectable
-            rollups={rollups}
-            today={appTodayYmd()}
-          />
+          <DeskHostProvider
+            host={{ kind: "view", viewId: view.id, title: view.name }}
+          >
+            <ViewRenderer
+              view={view}
+              items={items}
+              groupOrder={groupOrder}
+              propertyLabels={propertyLabels}
+              boardDraggable={boardDraggable}
+              statuses={statuses}
+              month={month}
+              calendarNavHref={`/views/${view.id}`}
+              calendarEvents={calendarEvents}
+              selectable
+              rollups={rollups}
+              today={appTodayYmd()}
+            />
+          </DeskHostProvider>
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />
         </SelectionProvider>
       </div>

@@ -7,13 +7,47 @@
 
 import {
   addTab,
+  appendColumn,
+  dashboardTab,
+  firstLeaf,
   freshLayout,
-  findLeaf,
   itemTab,
   twoPanelLayout,
+  viewTab,
+  type DeskLayout,
   type DeskTab,
 } from "./layout";
 import { loadLiveLayout, saveLiveLayout, snapshotToRecent } from "./persist";
+
+// The surface an "Open beside" is anchored to (ADR-147 D1): the list/view/
+// dashboard whose row you invoked it from (or, for an inline reference, the item
+// you're reading). Threaded down from the host page via DeskHostContext, or
+// passed explicitly for the inline-mention path. `null` = no anchor available (a
+// bare type-list sort with no reusable view id), which degrades to opening the
+// item alone.
+export type DeskHost =
+  | { kind: "view"; viewId: string; title?: string }
+  | { kind: "dashboard"; dashboardId: string; title?: string }
+  | { kind: "item"; itemId: string; title?: string };
+
+// The DeskTab that anchors a host's left column.
+function hostTab(host: DeskHost): DeskTab {
+  if (host.kind === "view") return viewTab(host.viewId, host.title);
+  if (host.kind === "dashboard") return dashboardTab(host.dashboardId, host.title);
+  return itemTab(host.itemId);
+}
+
+// Whether the live layout's leftmost panel already leads with this host — the
+// signal that a repeat "Open beside this <host>" should APPEND a column rather
+// than rebuild the layout from scratch (ADR-147 D1).
+function anchoredOn(layout: DeskLayout, host: DeskHost): boolean {
+  const lead = firstLeaf(layout.root).tabs[0];
+  if (!lead) return false;
+  if (host.kind === "view") return lead.kind === "view" && lead.viewId === host.viewId;
+  if (host.kind === "dashboard")
+    return lead.kind === "dashboard" && lead.dashboardId === host.dashboardId;
+  return lead.kind === "item" && lead.itemId === host.itemId;
+}
 
 // Fired after a send mutates desk:layout, so a DeskClient already mounted on
 // /desk (the common case: you right-click a mention in a Desk preview twin)
@@ -26,7 +60,7 @@ function notifyLayoutChanged(): void {
   }
 }
 
-// "Open in Desk": add the item as a tab in the focused panel of the current
+// "Send to Desk": add the item as a tab in the focused panel of the current
 // live layout (or a fresh desk). The rest of the desk is left intact.
 export function sendOpenInDesk(itemId: string): void {
   const layout = loadLiveLayout() ?? freshLayout();
@@ -34,25 +68,27 @@ export function sendOpenInDesk(itemId: string): void {
   notifyLayoutChanged();
 }
 
-// The desk's current focused-panel item, if any — the left panel for an
-// "Open beside" invoked without an explicit host item (e.g. from a list row).
-function currentFocusedItemTabs(layout: ReturnType<typeof freshLayout>): DeskTab[] {
-  const leaf = findLeaf(layout.root, layout.focusedLeaf);
-  const active = leaf?.tabs.find((t) => t.id === leaf.activeTab);
-  return active && active.kind === "item" ? [itemTab(active.itemId)] : [];
-}
-
-// "Open beside": replace the live layout with a two-panel layout — the current
-// item on the left, the target on the right — snapshotting the OUTGOING layout
-// to Recent first (never lose it). `currentItemId` (the host you're reading, for
-// an inline link) wins; otherwise the desk's current focused item is used.
-export function sendOpenBeside(itemId: string, currentItemId?: string): void {
+// "Open beside this <host>" (ADR-147 D1): put the host surface you invoked from
+// (a saved view, a dashboard, or the item you're reading) as the LEFT column and
+// the clicked item to its right. First invocation seeds `[host | target]`,
+// snapshotting the outgoing layout to Recent first (never lost). A REPEAT from
+// the same host — the leftmost panel already leads with it — instead APPENDS a
+// new rightmost column, growing `[host | A | B]` without disturbing what's there
+// (no snapshot: we're extending, not replacing). With no host (a bare type list
+// with no reusable view id), it degrades to opening the item alone.
+export function sendOpenBeside(itemId: string, host: DeskHost | null): void {
   const layout = loadLiveLayout() ?? freshLayout();
-  snapshotToRecent(layout);
-  const leftTabs = currentItemId
-    ? [itemTab(currentItemId)]
-    : currentFocusedItemTabs(layout);
-  saveLiveLayout(twoPanelLayout(leftTabs, [itemTab(itemId)]));
+  if (!host) {
+    saveLiveLayout(addTab(layout, layout.focusedLeaf, itemTab(itemId)));
+    notifyLayoutChanged();
+    return;
+  }
+  if (anchoredOn(layout, host)) {
+    saveLiveLayout(appendColumn(layout, [itemTab(itemId)]).layout);
+  } else {
+    snapshotToRecent(layout);
+    saveLiveLayout(twoPanelLayout([hostTab(host)], [itemTab(itemId)]));
+  }
   notifyLayoutChanged();
 }
 

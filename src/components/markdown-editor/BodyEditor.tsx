@@ -46,6 +46,9 @@ export type BodyEditorProps = {
   // The type uses canvas tabs (notes, opt-in types). Honored only in rich mode
   // and only for normal-size bodies; a large body is edited as one flat document.
   tabsEnabled?: boolean;
+  // Desk panels (ADR-147 D5): the active canvas-section is controlled by the
+  // panel chrome and TabbedBody's own strip is hidden. Forwarded to TabbedBody.
+  controlledSection?: number;
 };
 
 function ModeButton({
@@ -112,6 +115,7 @@ export default function BodyEditor({
   compact = false,
   editable = true,
   tabsEnabled = false,
+  controlledSection,
 }: BodyEditorProps) {
   const large = isLargeBody(initialMarkdown);
   // Latest emitted markdown (every mode reports through handleChange).
@@ -156,6 +160,7 @@ export default function BodyEditor({
         promotedRefs={promotedRefs}
         onRequestSave={onRequestSave}
         editable={editable}
+        controlledSection={controlledSection}
       />
     );
   } else {

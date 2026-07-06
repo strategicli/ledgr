@@ -13,13 +13,21 @@ export type DeskActions = {
   focus: (leafId: string) => void;
   activate: (leafId: string, tabId: string) => void;
   openItem: (leafId: string, itemId: string) => void;
-  openView: (leafId: string, viewId: string) => void;
-  openDashboard: (leafId: string, dashboardId: string) => void;
+  // title is the view/dashboard's name, denormalized onto the tab at open time
+  // (ADR-147 D2) so the strip shows the real name, not the literal kind word.
+  openView: (leafId: string, viewId: string, title?: string) => void;
+  openDashboard: (leafId: string, dashboardId: string, title?: string) => void;
   // Split a panel, duplicating its active tab into the new panel (the ⋯ menu's
   // "Split right/down"). An empty panel splits into another empty panel.
   splitActive: (leafId: string, dir: "row" | "col") => void;
   closeTab: (leafId: string, tabId: string) => void;
   closePanel: (leafId: string) => void;
+  // Set the active canvas-section for an item tab (ADR-147 D5): per-panel, so two
+  // panels of one item show different sections side by side.
+  setSection: (leafId: string, tabId: string, section: number) => void;
+  // Toggle an item tab's "Show details" panel (ADR-147 D6): per-tab, off by
+  // default; editable only in the focused panel.
+  setDetails: (leafId: string, tabId: string, show: boolean) => void;
   // Move a tab to a drop target (S2 zone move); center docks, an edge splits.
   moveTab: (fromLeafId: string, tabId: string, target: DropTarget) => void;
   // Record a divider drag back into the tree (a split's first-child fraction).

@@ -26,9 +26,19 @@ export const clampFrac = (f: number): number =>
 // --- The tree -------------------------------------------------------------
 
 export type DeskTab =
-  | { id: string; kind: "item"; itemId: string }
-  | { id: string; kind: "view"; viewId: string }
-  | { id: string; kind: "dashboard"; dashboardId: string };
+  // section? is the active canvas-section index for THIS tab in THIS panel
+  // (ADR-147 D5) — per-panel view state, so two panels of the same item can show
+  // different sections side by side. Optional + parse-with-default; clamped to
+  // the live body's sections at render (snaps to the first if out of range).
+  // showDetails? opts this tab into the properties/relations/"Linked here" panel
+  // below the body (ADR-147 D6); off (undefined) by default.
+  | { id: string; kind: "item"; itemId: string; section?: number; showDetails?: boolean }
+  // View/dashboard tabs carry a denormalized `title?` captured at open time (the
+  // picker/host already has the name) so the tab strip shows the real name
+  // instead of the literal word "View"/"Dashboard" (ADR-147 D2). Optional +
+  // parse-with-default: a legacy tab without it falls back to the kind word.
+  | { id: string; kind: "view"; viewId: string; title?: string }
+  | { id: string; kind: "dashboard"; dashboardId: string; title?: string };
 
 export type DeskLeaf = {
   id: string;
@@ -80,11 +90,16 @@ export function newId(prefix = "n"): string {
 export function itemTab(itemId: string): DeskTab {
   return { id: newId("tab"), kind: "item", itemId };
 }
-export function viewTab(viewId: string): DeskTab {
-  return { id: newId("tab"), kind: "view", viewId };
+export function viewTab(viewId: string, title?: string): DeskTab {
+  return { id: newId("tab"), kind: "view", viewId, ...(title ? { title } : {}) };
 }
-export function dashboardTab(dashboardId: string): DeskTab {
-  return { id: newId("tab"), kind: "dashboard", dashboardId };
+export function dashboardTab(dashboardId: string, title?: string): DeskTab {
+  return {
+    id: newId("tab"),
+    kind: "dashboard",
+    dashboardId,
+    ...(title ? { title } : {}),
+  };
 }
 
 export function emptyLeaf(): DeskLeaf {
@@ -197,6 +212,47 @@ export function setActiveTab(
   return { ...layout, root, focusedLeaf: leafId };
 }
 
+// Set the active canvas-section index for one item tab (ADR-147 D5). Per-panel
+// view state; focuses the leaf like activating a tab does (a section switch is a
+// navigation within that panel). A no-op for a non-item / missing tab.
+export function setTabSection(
+  layout: DeskLayout,
+  leafId: string,
+  tabId: string,
+  section: number
+): DeskLayout {
+  const leaf = findLeaf(layout.root, leafId);
+  if (!leaf || !leaf.tabs.some((t) => t.id === tabId && t.kind === "item"))
+    return layout;
+  const root = replaceLeaf(layout.root, leafId, (l) => ({
+    ...l,
+    tabs: l.tabs.map((t) =>
+      t.id === tabId && t.kind === "item" ? { ...t, section } : t
+    ),
+  }));
+  return { ...layout, root, focusedLeaf: leafId };
+}
+
+// Toggle an item tab's "Show details" panel (ADR-147 D6). Per-tab view state,
+// like setTabSection; a no-op for a non-item / missing tab.
+export function setTabShowDetails(
+  layout: DeskLayout,
+  leafId: string,
+  tabId: string,
+  show: boolean
+): DeskLayout {
+  const leaf = findLeaf(layout.root, leafId);
+  if (!leaf || !leaf.tabs.some((t) => t.id === tabId && t.kind === "item"))
+    return layout;
+  const root = replaceLeaf(layout.root, leafId, (l) => ({
+    ...l,
+    tabs: l.tabs.map((t) =>
+      t.id === tabId && t.kind === "item" ? { ...t, showDetails: show } : t
+    ),
+  }));
+  return { ...layout, root, focusedLeaf: leafId };
+}
+
 export function setFrac(
   layout: DeskLayout,
   splitId: string,
@@ -259,6 +315,34 @@ export function splitLeaf(
   return {
     layout: { ...layout, root, focusedLeaf: newLeaf.id },
     newLeafId: newLeaf.id,
+  };
+}
+
+// Append a new rightmost column holding `newTabs` (ADR-147 D1: "Open beside …"
+// on repeat from the same host grows the row `[host | A | B]` rather than
+// rebuilding). The whole existing tree becomes the first child of a new top-row
+// split; the new leaf is the second child and gets focus. Its width share is
+// sized so the addition looks like "one more equal column": with N leaves
+// already open, the outgoing block keeps N/(N+1) of the width and the new column
+// takes ~1/(N+1) (clamped). Returns the new leaf id so a caller can act on it.
+export function appendColumn(
+  layout: DeskLayout,
+  newTabs: DeskTab[]
+): { layout: DeskLayout; newLeafId: string } {
+  const leaf = leafWith(newTabs);
+  const n = allLeaves(layout.root).length;
+  const frac = clampFrac(n / (n + 1));
+  const root: DeskSplit = {
+    id: newId("split"),
+    kind: "split",
+    dir: "row",
+    frac,
+    a: layout.root,
+    b: leaf,
+  };
+  return {
+    layout: { ...layout, root, focusedLeaf: leaf.id },
+    newLeafId: leaf.id,
   };
 }
 
@@ -344,12 +428,32 @@ function sanitizeTab(raw: unknown): DeskTab | null {
   const r = raw as Record<string, unknown>;
   const id = typeof r.id === "string" && r.id ? r.id : null;
   if (!id) return null;
+  // A denormalized title is optional (older blobs won't have it): keep it only
+  // when it's a real string, else drop it and fall back to the kind word.
+  const title = typeof r.title === "string" && r.title ? r.title : undefined;
+  // A persisted section index: keep only a finite non-negative integer.
+  const section =
+    typeof r.section === "number" && Number.isInteger(r.section) && r.section >= 0
+      ? r.section
+      : undefined;
+  const showDetails = r.showDetails === true ? true : undefined;
   if (r.kind === "item" && typeof r.itemId === "string" && r.itemId)
-    return { id, kind: "item", itemId: r.itemId };
+    return {
+      id,
+      kind: "item",
+      itemId: r.itemId,
+      ...(section !== undefined ? { section } : {}),
+      ...(showDetails ? { showDetails } : {}),
+    };
   if (r.kind === "view" && typeof r.viewId === "string" && r.viewId)
-    return { id, kind: "view", viewId: r.viewId };
+    return { id, kind: "view", viewId: r.viewId, ...(title ? { title } : {}) };
   if (r.kind === "dashboard" && typeof r.dashboardId === "string" && r.dashboardId)
-    return { id, kind: "dashboard", dashboardId: r.dashboardId };
+    return {
+      id,
+      kind: "dashboard",
+      dashboardId: r.dashboardId,
+      ...(title ? { title } : {}),
+    };
   return null;
 }
 

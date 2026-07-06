@@ -66,6 +66,10 @@ export type ItemEditorProps = {
   // Canvas tabs (ADR-094): when true, the body is editable as named tabs (a
   // strip + "+ Add tab"); tabs are sections of the same markdown body.
   tabsEnabled?: boolean;
+  // Desk panels (ADR-147 D5): the active canvas-section, controlled by the
+  // panel's merged sub-tab chips. When set, TabbedBody hides its own strip and
+  // shows just this section. Unused by the normal item canvas.
+  controlledSection?: number;
   // Body-editor presentation (the task canvas opts in): hide the formatting bar
   // behind a top-right toggle, and start one line tall + grow. Forwarded to the
   // MarkdownEditor; default off keeps the roomy always-on editor.
@@ -100,6 +104,7 @@ export default function ItemEditor({
   locked = false,
   done = false,
   onLiveChange,
+  controlledSection,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -316,6 +321,7 @@ export default function ItemEditor({
       onRequestSave={flush}
       editable={!locked}
       tabsEnabled={tabsEnabled}
+      controlledSection={controlledSection}
     />
   );
 
