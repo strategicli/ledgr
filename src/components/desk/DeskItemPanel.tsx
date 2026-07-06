@@ -1,0 +1,85 @@
+// An item shown in a Desk panel (ADR-146). The `writer` panel (the focused one)
+// mounts the real, untouched ItemEditor — the one and only editor for that item.
+// Every other panel renders a live, read-only MarkdownPreview fed by the doc
+// store, so a twin of the same item updates as you type. When focus moves, the
+// editor unmounts (flushing any pending save via its own keepalive path) and
+// this drops to preview without losing unsaved text, because the store holds it.
+"use client";
+
+import { useEffect, useState } from "react";
+import ItemEditor from "@/components/markdown-editor/ItemEditor";
+import MarkdownPreview from "@/components/markdown-editor/MarkdownPreview";
+import { publishLive, seedForEditor, useDoc } from "./desk-doc-store";
+
+// Debounce feeding live text to the preview so a fast typist in the focused
+// panel doesn't fire a render fetch per keystroke into every twin.
+const PREVIEW_DEBOUNCE_MS = 300;
+
+export default function DeskItemPanel({
+  itemId,
+  writer,
+}: {
+  itemId: string;
+  writer: boolean;
+}) {
+  const doc = useDoc(itemId);
+
+  if (!doc || doc.status === "loading") return <PanelMessage>Loading…</PanelMessage>;
+  if (doc.status === "error")
+    return <PanelMessage>Couldn’t load this item.</PanelMessage>;
+
+  if (writer) {
+    const seed = seedForEditor(itemId);
+    if (!seed) return <PanelMessage>Loading…</PanelMessage>;
+    return (
+      <div className="h-full overflow-auto">
+        <ItemEditor
+          // Keyed by item so switching the panel's active item remounts fresh;
+          // toggling writer↔preview already remounts (different subtree).
+          key={itemId}
+          item={seed}
+          onLiveChange={(next) => publishLive(itemId, next)}
+        />
+      </div>
+    );
+  }
+
+  return <ItemPreview itemId={itemId} title={doc.liveTitle} markdown={doc.liveMarkdown} />;
+}
+
+function ItemPreview({
+  itemId,
+  title,
+  markdown,
+}: {
+  itemId: string;
+  title: string;
+  markdown: string;
+}) {
+  const [debounced, setDebounced] = useState(markdown);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(markdown), PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [markdown]);
+
+  return (
+    <div className="h-full overflow-auto">
+      <div className="mx-auto w-full max-w-3xl px-2 pt-4 sm:px-8 md:px-12">
+        <h1 className="text-3xl font-bold leading-tight text-ink">
+          {title.trim() || "Untitled"}
+        </h1>
+        <div className="pt-2">
+          <MarkdownPreview text={debounced} itemId={itemId} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PanelMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-ink-subtle">
+      {children}
+    </div>
+  );
+}

@@ -80,6 +80,12 @@ export type ItemEditorProps = {
   // (TaskTitle); the decoration must sit on the textarea itself, since
   // text-decoration doesn't cross a textarea's boundary from a parent.
   done?: boolean;
+  // Additive live-text tap (ADR-146, the Desk). When set, every title/body edit
+  // is mirrored out on the same keystroke it's queued for save — so the Desk's
+  // read-only twins update live and a re-focused editor re-seeds without losing
+  // unsaved text. Does NOT touch the save path (debounce/PATCH/revisions); it's
+  // a read-only observation, unused by the normal item canvas.
+  onLiveChange?: (next: { title?: string; markdown?: string }) => void;
 };
 
 export default function ItemEditor({
@@ -93,6 +99,7 @@ export default function ItemEditor({
   compactBody = false,
   locked = false,
   done = false,
+  onLiveChange,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
   const pending = useRef<{ title?: string; body?: unknown }>({});
@@ -270,6 +277,7 @@ export default function ItemEditor({
       onChange={(e) => {
         setTitle(e.target.value);
         pending.current.title = e.target.value;
+        onLiveChange?.({ title: e.target.value });
         schedule();
       }}
       // A title is one logical line that wraps; Enter commits (blurs) rather than
@@ -286,6 +294,7 @@ export default function ItemEditor({
     if (markdown === savedBodyText.current) return;
     savedBodyText.current = markdown;
     pending.current.body = makeMarkdownBody(markdown);
+    onLiveChange?.({ markdown });
     schedule();
   };
   // Body rendering (mode + size gate) lives in BodyEditor (ADR-125): rich Tiptap

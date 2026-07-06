@@ -36,6 +36,10 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/notifications", label: "Notifications", icon: "bell", badgeEligible: true, badge: "notifications" },
   { group: "Built-in", kind: "builtin", href: "/tasks", label: "Tasks", icon: "tasks", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/planner", label: "Planner", icon: "calendar", badgeEligible: false },
+  // The Desk (ADR-146): a desktop-only multi-panel workspace. Offered in the
+  // destination picker so the owner can add it to their own Work nav (ADR-063
+  // opt-in posture); it's not a default slot.
+  { group: "Built-in", kind: "builtin", href: "/desk", label: "Desk", icon: "grid", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/favorites", label: "Favorites", icon: "starred", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/search", label: "Search", icon: "search", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/dashboards", label: "Dashboards", icon: "dashboard", badgeEligible: false },
