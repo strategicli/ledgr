@@ -27,8 +27,12 @@ export const clampFrac = (f: number): number =>
 
 export type DeskTab =
   | { id: string; kind: "item"; itemId: string }
-  | { id: string; kind: "view"; viewId: string }
-  | { id: string; kind: "dashboard"; dashboardId: string };
+  // View/dashboard tabs carry a denormalized `title?` captured at open time (the
+  // picker/host already has the name) so the tab strip shows the real name
+  // instead of the literal word "View"/"Dashboard" (ADR-147 D2). Optional +
+  // parse-with-default: a legacy tab without it falls back to the kind word.
+  | { id: string; kind: "view"; viewId: string; title?: string }
+  | { id: string; kind: "dashboard"; dashboardId: string; title?: string };
 
 export type DeskLeaf = {
   id: string;
@@ -80,11 +84,16 @@ export function newId(prefix = "n"): string {
 export function itemTab(itemId: string): DeskTab {
   return { id: newId("tab"), kind: "item", itemId };
 }
-export function viewTab(viewId: string): DeskTab {
-  return { id: newId("tab"), kind: "view", viewId };
+export function viewTab(viewId: string, title?: string): DeskTab {
+  return { id: newId("tab"), kind: "view", viewId, ...(title ? { title } : {}) };
 }
-export function dashboardTab(dashboardId: string): DeskTab {
-  return { id: newId("tab"), kind: "dashboard", dashboardId };
+export function dashboardTab(dashboardId: string, title?: string): DeskTab {
+  return {
+    id: newId("tab"),
+    kind: "dashboard",
+    dashboardId,
+    ...(title ? { title } : {}),
+  };
 }
 
 export function emptyLeaf(): DeskLeaf {
@@ -262,6 +271,34 @@ export function splitLeaf(
   };
 }
 
+// Append a new rightmost column holding `newTabs` (ADR-147 D1: "Open beside …"
+// on repeat from the same host grows the row `[host | A | B]` rather than
+// rebuilding). The whole existing tree becomes the first child of a new top-row
+// split; the new leaf is the second child and gets focus. Its width share is
+// sized so the addition looks like "one more equal column": with N leaves
+// already open, the outgoing block keeps N/(N+1) of the width and the new column
+// takes ~1/(N+1) (clamped). Returns the new leaf id so a caller can act on it.
+export function appendColumn(
+  layout: DeskLayout,
+  newTabs: DeskTab[]
+): { layout: DeskLayout; newLeafId: string } {
+  const leaf = leafWith(newTabs);
+  const n = allLeaves(layout.root).length;
+  const frac = clampFrac(n / (n + 1));
+  const root: DeskSplit = {
+    id: newId("split"),
+    kind: "split",
+    dir: "row",
+    frac,
+    a: layout.root,
+    b: leaf,
+  };
+  return {
+    layout: { ...layout, root, focusedLeaf: leaf.id },
+    newLeafId: leaf.id,
+  };
+}
+
 // Close a whole panel (and any tabs it holds), collapsing its parent split.
 // Closing the last remaining panel yields a fresh empty desk rather than an
 // empty tree. Focus falls back to the first surviving leaf.
@@ -344,12 +381,20 @@ function sanitizeTab(raw: unknown): DeskTab | null {
   const r = raw as Record<string, unknown>;
   const id = typeof r.id === "string" && r.id ? r.id : null;
   if (!id) return null;
+  // A denormalized title is optional (older blobs won't have it): keep it only
+  // when it's a real string, else drop it and fall back to the kind word.
+  const title = typeof r.title === "string" && r.title ? r.title : undefined;
   if (r.kind === "item" && typeof r.itemId === "string" && r.itemId)
     return { id, kind: "item", itemId: r.itemId };
   if (r.kind === "view" && typeof r.viewId === "string" && r.viewId)
-    return { id, kind: "view", viewId: r.viewId };
+    return { id, kind: "view", viewId: r.viewId, ...(title ? { title } : {}) };
   if (r.kind === "dashboard" && typeof r.dashboardId === "string" && r.dashboardId)
-    return { id, kind: "dashboard", dashboardId: r.dashboardId };
+    return {
+      id,
+      kind: "dashboard",
+      dashboardId: r.dashboardId,
+      ...(title ? { title } : {}),
+    };
   return null;
 }
 

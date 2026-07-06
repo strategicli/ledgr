@@ -13,6 +13,7 @@
 // "Linked here" and meeting "Open tasks" groups reuse this same body, getting
 // the multi-select layer for free without a parallel wrapper (ADR-118 + #129).
 import type { ReactNode } from "react";
+import { DeskHostProvider } from "@/components/desk/DeskHostContext";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
@@ -42,17 +43,26 @@ export default async function ViewLensBody({
   // but not when the related panel is driving this body (it passes rowActions —
   // its own relation controls are the row's interaction there; defer by hiding).
   const today = rowActions ? undefined : appTodayYmd();
+  // Anchor "Open beside" to this saved view — but only on an interactive lens
+  // (`today` set). When the related panel drives this body (rowActions), the
+  // rows carry no send menu, and the view isn't the reading context, so no host.
   const renderer = (
-    <ViewRenderer
-      view={data.view}
-      items={data.items}
-      groupOrder={data.groupOrder}
-      propertyLabels={data.propertyLabels}
-      selectable={bulkConfig != null}
-      rowActions={rowActions}
-      rollups={rollups}
-      today={today}
-    />
+    <DeskHostProvider
+      host={
+        today ? { kind: "view", viewId: data.view.id, title: data.view.name } : null
+      }
+    >
+      <ViewRenderer
+        view={data.view}
+        items={data.items}
+        groupOrder={data.groupOrder}
+        propertyLabels={data.propertyLabels}
+        selectable={bulkConfig != null}
+        rowActions={rowActions}
+        rollups={rollups}
+        today={today}
+      />
+    </DeskHostProvider>
   );
 
   if (!bulkConfig) {

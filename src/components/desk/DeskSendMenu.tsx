@@ -20,8 +20,10 @@ import {
   openDeskSendMenu,
   sendOpenBeside,
   sendOpenInDesk,
+  type DeskHost,
   type DeskSendDetail,
 } from "@/lib/desk/send";
+import { useDeskHost } from "./DeskHostContext";
 
 // The Desk is desktop-only: available on a fine pointer at ≥640px. Pointer type
 // effectively never changes at runtime, so a lazy read is enough.
@@ -38,18 +40,36 @@ function useDeskAvailable(): boolean {
 const itemClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2";
 
+// The "Open beside" label names the surface it anchors to, so it's clear WHAT
+// the item will open beside (ADR-147 D1). Falls back to the bare verb when there
+// is no reusable host (opens the item alone).
+function besideLabel(host: DeskHost | null): string {
+  if (host?.kind === "view") return "▥ Open beside this view";
+  if (host?.kind === "dashboard") return "▥ Open beside this dashboard";
+  if (host?.kind === "item") return "▥ Open beside this item";
+  return "▥ Open beside";
+}
+
 export function DeskSendItems({
   itemId,
   currentItemId,
   onDone,
 }: {
   itemId: string;
+  // The inline-reference path (a mention/link inside an item you're reading)
+  // passes the item you're reading explicitly; it wins over any page host.
   currentItemId?: string;
   onDone?: () => void;
 }) {
   const router = useRouter();
   const available = useDeskAvailable();
+  const pageHost = useDeskHost();
   if (!available) return null;
+
+  // Explicit reading-context item wins; otherwise the page's host surface.
+  const host: DeskHost | null = currentItemId
+    ? { kind: "item", itemId: currentItemId }
+    : pageHost;
 
   const openInDesk = () => {
     sendOpenInDesk(itemId);
@@ -57,7 +77,7 @@ export function DeskSendItems({
     router.push("/desk");
   };
   const openBeside = () => {
-    sendOpenBeside(itemId, currentItemId);
+    sendOpenBeside(itemId, host);
     onDone?.();
     router.push("/desk");
   };
@@ -65,10 +85,10 @@ export function DeskSendItems({
   return (
     <>
       <button type="button" role="menuitem" className={itemClass} onClick={openInDesk}>
-        ▤ Open in Desk
+        ▤ Send to Desk
       </button>
       <button type="button" role="menuitem" className={itemClass} onClick={openBeside}>
-        ▥ Open beside
+        {besideLabel(host)}
       </button>
     </>
   );

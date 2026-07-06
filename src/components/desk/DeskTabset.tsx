@@ -241,8 +241,10 @@ function TabButton({
 
 function useTabLabel(tab: DeskTab): string {
   const doc = useDoc(tab.kind === "item" ? tab.itemId : "");
-  if (tab.kind === "view") return "View";
-  if (tab.kind === "dashboard") return "Dashboard";
+  // View/dashboard tabs show their denormalized name (ADR-147 D2), falling back
+  // to the kind word for a legacy tab opened before the title was captured.
+  if (tab.kind === "view") return tab.title?.trim() || "View";
+  if (tab.kind === "dashboard") return tab.title?.trim() || "Dashboard";
   return doc?.liveTitle?.trim() || (doc?.status === "loading" ? "Loading…" : "Untitled");
 }
 
