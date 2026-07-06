@@ -68,7 +68,7 @@ export function overlaps(a: PassageRef, b: PassageRef): boolean {
 //   Rom 8:5-9:2      -> ch 8 v 5 .. ch 9 v 2
 //   Rom 8-9          -> chs 8..9 (whole chapters)
 const REF_RE =
-  /^\s*(.+?)\s+(\d+)(?::(\d+))?(?:\s*[-–—]\s*(?:(\d+)\s*:\s*)?(\d+))?\s*$/;
+  /^\s*(.+?)\s+(\d+)(?:[:.](\d+))?(?:\s*[-–—]\s*(?:(\d+)\s*[:.]\s*)?(\d+))?\s*$/;
 
 // Parse a human reference to a validated [start,end] interval, or null. Every
 // number is validated against the pinned canon (canon.ts), so "Rom 8:99" or
@@ -90,6 +90,20 @@ export function parsePassageRef(input: string): PassageRef | null {
   const [, bookToken, chStr, vStr, endChStr, endValStr] = m;
   const book = findBook(bookToken);
   if (!book) return null;
+
+  // Single-chapter books (Obadiah, Philemon, 2/3 John, Jude): a bare number is a
+  // VERSE in the sole chapter, not a chapter — "3 John 14" = 1:14, "Jude 3-4" =
+  // 1:3–4. A whole-book ref is the no-number form ("Jude"), handled above.
+  if (vStr === undefined && chapterCount(book) === 1) {
+    const startVerse = Number(chStr);
+    if (!validVerse(book, 1, startVerse)) return null;
+    const startRef = encodeRef(book.num, 1, startVerse);
+    if (endValStr === undefined) return { startRef, endRef: startRef };
+    const endVerse = Number(endValStr);
+    if (!validVerse(book, 1, endVerse)) return null;
+    const endRef = encodeRef(book.num, 1, endVerse);
+    return endRef >= startRef ? { startRef, endRef } : null;
+  }
 
   const startChapter = Number(chStr);
   if (!validChapter(book, startChapter)) return null;
@@ -156,6 +170,13 @@ export function formatPassageRef(startRef: number, endRef: number): string {
   const book = bookByNum(s.book);
   if (!book) return `${startRef}${endRef !== startRef ? `-${endRef}` : ""}`;
   const name = book.name;
+
+  // Single-chapter books read verse-only ("Jude 3", "Jude 3–4"), or just the
+  // name when the whole (one-chapter) book is covered.
+  if (chapterCount(book) === 1) {
+    if (s.verse === 1 && e.verse === verseCount(book, 1)) return name;
+    return startRef === endRef ? `${name} ${s.verse}` : `${name} ${s.verse}–${e.verse}`;
+  }
 
   if (startRef === endRef) return `${name} ${s.chapter}:${s.verse}`;
 

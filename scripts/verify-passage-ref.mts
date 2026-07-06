@@ -75,6 +75,12 @@ console.log("\n# parsePassageRef");
   check('"Rom 8-9" (whole chapter range)', eq("Rom 8-9", 45_008_001, 45_009_033));
   check('"Romans" (whole book)', eq("Romans", 45_001_001, 45_016_027));
   check('"1 John 4:8"', eq("1 John 4:8", 62_004_008, 62_004_008));
+  // Single-chapter books: a bare number is a VERSE in chapter 1, not a chapter.
+  check('"3 John 14" (single-chapter → 1:14)', eq("3 John 14", 64_001_014, 64_001_014));
+  check('"Jude 3" (single-chapter → 1:3)', eq("Jude 3", 65_001_003, 65_001_003));
+  check('"Jude 3-4" (single-chapter range → 1:3–4)', eq("Jude 3-4", 65_001_003, 65_001_004));
+  check('"Obadiah 21" (single-chapter → 1:21)', eq("Obadiah 21", 31_001_021, 31_001_021));
+  check('"Philemon" (whole single-chapter book)', eq("Philemon", 57_001_001, 57_001_025));
 }
 
 console.log("\n# Validation & versification pin");
@@ -122,6 +128,9 @@ console.log("\n# formatPassageRef + markdown round-trip");
   check("whole single chapter", formatPassageRef(45_008_001, 45_008_039) === "Romans 8");
   check("whole chapter range", formatPassageRef(45_008_001, 45_009_033) === "Romans 8–9");
   check("whole book", formatPassageRef(45_001_001, 45_016_027) === "Romans");
+  check("single-chapter book verse (no chapter shown)", formatPassageRef(65_001_003, 65_001_003) === "Jude 3");
+  check("single-chapter book range", formatPassageRef(65_001_003, 65_001_004) === "Jude 3–4");
+  check("single-chapter whole book", formatPassageRef(57_001_001, 57_001_025) === "Philemon");
   // The markdown a picker inserts parses back to the same interval via its URI.
   const md = passageToMarkdown(45_008_005, 45_008_009);
   const uriMatch = /\((ledgr:\/\/passage\/[^)]+)\)/.exec(md);
