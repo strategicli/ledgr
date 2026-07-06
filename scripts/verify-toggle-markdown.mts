@@ -76,5 +76,102 @@ console.log("Part B — MarkdownManager parse → serialize");
   );
 }
 
+console.log("Part C — Enter/Backspace commands (headless ProseMirror state)");
+{
+  const { getSchema } = await import("@tiptap/core");
+  const StarterKit = (await import("@tiptap/starter-kit")).default;
+  const { EditorState, TextSelection } = await import("@tiptap/pm/state");
+  const { Toggle, ToggleSummary, ToggleContent, toggleEnterToBody, toggleBackspaceUnwrap } =
+    await import("../src/components/markdown-editor/toggle-extension");
+
+  const schema = getSchema([StarterKit, Toggle, ToggleSummary, ToggleContent] as never);
+  const makeDoc = () =>
+    schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "before" }] },
+        {
+          type: "toggle",
+          attrs: { open: true },
+          content: [
+            { type: "toggleSummary", content: [{ type: "text", text: "Title" }] },
+            {
+              type: "toggleContent",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "body one" }] },
+                { type: "paragraph", content: [{ type: "text", text: "body two" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  const summaryPosOf = (doc: import("@tiptap/pm/model").Node) => {
+    let p = -1;
+    doc.descendants((n, pos) => {
+      if (p < 0 && n.type.name === "toggleSummary") p = pos;
+      return p < 0;
+    });
+    return p;
+  };
+
+  // Enter from inside the summary → caret at the start of the body's first block.
+  {
+    const doc = makeDoc();
+    const sPos = summaryPosOf(doc);
+    let state = EditorState.create({ schema, doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(doc, sPos + 3))); // mid-"Title"
+    const tr = toggleEnterToBody(state);
+    truthy("Enter in summary returns a transaction", !!tr);
+    if (tr) {
+      state = state.apply(tr);
+      const $f = state.selection.$from;
+      truthy("Enter caret is in the body's first block", $f.parent.textContent === "body one", $f.parent.textContent);
+      truthy("Enter caret at block start", $f.parentOffset === 0);
+      let inContent = false;
+      for (let d = $f.depth; d > 0; d--) if ($f.node(d).type.name === "toggleContent") inContent = true;
+      truthy("Enter caret is inside toggleContent", inContent);
+    }
+  }
+
+  // Enter elsewhere (the "before" paragraph) is a no-op → null (normal Enter runs).
+  {
+    const doc = makeDoc();
+    let state = EditorState.create({ schema, doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(doc, 3)));
+    truthy("Enter outside a summary returns null", toggleEnterToBody(state) === null);
+  }
+
+  // Backspace at summary start → unwrap: toggle gone, summary+body become paragraphs.
+  {
+    const doc = makeDoc();
+    const sPos = summaryPosOf(doc);
+    let state = EditorState.create({ schema, doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(doc, sPos + 1))); // offset 0 of summary
+    const tr = toggleBackspaceUnwrap(state);
+    truthy("Backspace at summary start returns a transaction", !!tr);
+    if (tr) {
+      state = state.apply(tr);
+      let hasToggle = false;
+      const paras: string[] = [];
+      state.doc.forEach((n) => {
+        if (n.type.name === "toggle") hasToggle = true;
+        if (n.type.name === "paragraph") paras.push(n.textContent);
+      });
+      truthy("Backspace removed the toggle node", !hasToggle);
+      truthy("Backspace kept summary + body as paragraphs", JSON.stringify(paras) === JSON.stringify(["before", "Title", "body one", "body two"]), JSON.stringify(paras));
+    }
+  }
+
+  // Backspace mid-summary (offset > 0) is a no-op → null (normal Backspace runs).
+  {
+    const doc = makeDoc();
+    const sPos = summaryPosOf(doc);
+    let state = EditorState.create({ schema, doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(doc, sPos + 3)));
+    truthy("Backspace mid-summary returns null", toggleBackspaceUnwrap(state) === null);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

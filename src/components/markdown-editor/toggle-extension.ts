@@ -18,10 +18,83 @@
 
 import { Node, mergeAttributes, type Editor } from "@tiptap/core";
 import {
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from "@tiptap/pm/state";
+import { type ResolvedPos } from "@tiptap/pm/model";
+import {
   matchToggleBlock,
   nextToggleStart,
   toggleToMarkdown,
 } from "@/lib/editor/toggle-markdown";
+
+// The depth at which `$from` sits inside a toggleSummary, or null. Used by the
+// Enter/Backspace handlers to know when the caret is on a toggle's heading line.
+function summaryDepth($from: ResolvedPos): number | null {
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === "toggleSummary") return d;
+  }
+  return null;
+}
+
+// Enter on the summary (heading) line: move the caret DOWN into the body's first
+// block instead of trying to split the single-line summary (the schema can't
+// split it, which produced a stray node). Returns null when the caret isn't on
+// a toggle summary, so normal Enter applies elsewhere. Pure → node-testable.
+export function toggleEnterToBody(state: EditorState): Transaction | null {
+  const sel = state.selection;
+  // Only a collapsed caret; a range/node selection falls through to defaults.
+  // (Checking `empty` rather than `instanceof TextSelection` avoids the
+  // cross-module-copy instanceof trap and is enough here.)
+  if (!sel.empty) return null;
+  const d = summaryDepth(sel.$from);
+  if (d == null) return null;
+  const toggleDepth = d - 1;
+  const togglePos = sel.$from.before(toggleDepth);
+  const summaryNode = sel.$from.node(toggleDepth).child(0);
+  // Nearest text position at the start of the body (toggleContent's first
+  // block) — robust to the first block being a list rather than a paragraph.
+  const contentBefore = togglePos + 1 + summaryNode.nodeSize;
+  const $pos = state.doc.resolve(
+    Math.min(contentBefore + 1, state.doc.content.size)
+  );
+  return state.tr.setSelection(TextSelection.near($pos, 1)).scrollIntoView();
+}
+
+// Backspace at the very start of the summary: UNWRAP the toggle (summary becomes
+// a paragraph, body blocks follow) so a toggle can be removed while editing —
+// otherwise `isolating` traps the caret and there's no way out. Returns null
+// unless the caret is at offset 0 of a toggle summary. Pure → node-testable.
+export function toggleBackspaceUnwrap(state: EditorState): Transaction | null {
+  const sel = state.selection;
+  // Only a collapsed caret; a range/node selection falls through to defaults.
+  // (Checking `empty` rather than `instanceof TextSelection` avoids the
+  // cross-module-copy instanceof trap and is enough here.)
+  if (!sel.empty) return null;
+  if (sel.$from.parentOffset !== 0) return null; // only at the summary start
+  const d = summaryDepth(sel.$from);
+  if (d == null) return null;
+  const toggleDepth = d - 1;
+  const togglePos = sel.$from.before(toggleDepth);
+  const toggleNode = sel.$from.node(toggleDepth);
+  const summaryNode = toggleNode.child(0);
+  const contentNode = toggleNode.child(1);
+  const paragraph = state.schema.nodes.paragraph.create(
+    null,
+    summaryNode.content
+  );
+  // Prepend via the body Fragment's own method (no cross-module Fragment import,
+  // which also dodges the multi-copy "Fragment.from" identity trap).
+  const replacement = contentNode.content.addToStart(paragraph);
+  const tr = state.tr.replaceWith(
+    togglePos,
+    togglePos + toggleNode.nodeSize,
+    replacement
+  );
+  tr.setSelection(TextSelection.create(tr.doc, togglePos + 1));
+  return tr.scrollIntoView();
+}
 
 // The always-visible heading line. inline* (so it can be empty on insert), and
 // it renders as a real <summary> so getHTML()/clipboard produce valid markup.
@@ -109,7 +182,12 @@ export const Toggle = Node.create({
       chevron.className = "ledgr-toggle-chevron";
       chevron.contentEditable = "false";
       chevron.setAttribute("aria-label", "Expand or collapse");
-      chevron.textContent = "▸";
+      // The glyph is a nested span so CSS rotates the glyph in place — the button
+      // itself is an enlarged (touch-friendly) hit area that must not rotate.
+      const glyph = document.createElement("span");
+      glyph.className = "ledgr-toggle-chevron-glyph";
+      glyph.textContent = "▸";
+      chevron.appendChild(glyph);
       chevron.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -151,6 +229,19 @@ export const Toggle = Node.create({
         stopEvent: (e) => chevron.contains(e.target as HTMLElement),
       };
     };
+  },
+
+  // Keyboard behavior on the summary (heading) line — the commands are pure
+  // (state → Transaction | null) so they're node-testable without a DOM; the
+  // shortcuts just dispatch them.
+  addKeyboardShortcuts() {
+    const run = (fn: (state: EditorState) => Transaction | null) => () => {
+      const tr = fn(this.editor.state);
+      if (!tr) return false;
+      this.editor.view.dispatch(tr);
+      return true;
+    };
+    return { Enter: run(toggleEnterToBody), Backspace: run(toggleBackspaceUnwrap) };
   },
 
   // out → the canonical <details> shape. renderChildren walks each child node's

@@ -427,7 +427,8 @@
    the show/hide; the chevron rotates to point down when open. */
 .ledgr-toggle {
   display: grid;
-  grid-template-columns: 1.1rem 1fr;
+  /* em so the gutter tracks the current text size */
+  grid-template-columns: 1.5em 1fr;
   align-items: start;
   margin: 0.4rem 0;
   border-left: 2px solid #333;
@@ -435,30 +436,59 @@
 }
 .ledgr-toggle-chevron {
   grid-column: 1;
-  margin-top: 0.15rem;
-  width: 1rem;
-  height: 1.3rem;
-  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.2em 0 0;
+  width: 1.5em;
+  min-height: 1.6em;
   border: none;
   background: transparent;
   color: #9ca3af;
   cursor: pointer;
-  line-height: 1.3rem;
-  transition: transform 0.12s ease;
+  font-size: inherit;
+  line-height: 1;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.ledgr-toggle[data-open="true"] > .ledgr-toggle-chevron {
+/* Rotate the GLYPH, not the (enlarged) hit-area button, so the target stays put. */
+.ledgr-toggle-chevron-glyph {
+  display: inline-block;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+.ledgr-toggle[data-open="true"] .ledgr-toggle-chevron-glyph {
   transform: rotate(90deg);
 }
 .ledgr-toggle-chevron:hover {
   color: #e5e5e5;
+}
+/* Touch devices have no hover and fat fingers: give the chevron a ~44px target
+   that scales with text size, and keep the glyph pinned to the first line. */
+@media (pointer: coarse) {
+  .ledgr-toggle {
+    grid-template-columns: 2.4em 1fr;
+  }
+  .ledgr-toggle-chevron {
+    width: 2.4em;
+    min-height: 2.4em;
+  }
 }
 .ledgr-toggle-body {
   grid-column: 2;
   min-width: 0;
 }
 .ledgr-toggle-summary {
+  /* block (not the summary default list-item) removes the browser's native
+     disclosure triangle — otherwise it shows alongside our own chevron. */
+  display: block;
   font-weight: 600;
+}
+.ledgr-toggle-summary::-webkit-details-marker {
+  display: none;
+}
+.ledgr-toggle-summary::marker {
+  content: "";
 }
 .ledgr-toggle-summary:empty::before {
   content: "Toggle";
@@ -501,6 +531,15 @@
 .ledgr-fold-toggle.is-collapsed {
   opacity: 0.7;
   transform: rotate(0deg);
+}
+/* Touch has no hover, so the fold arrow would be invisible (and un-collapsible)
+   on a phone. Keep it faintly visible and give it a wider target there. */
+@media (pointer: coarse) {
+  .ledgr-fold-toggle {
+    opacity: 0.45;
+    width: 1.6em;
+    margin-left: -1.6em;
+  }
 }
 .ledgr-fold-hidden {
   display: none;
