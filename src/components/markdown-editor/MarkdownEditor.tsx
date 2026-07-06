@@ -36,6 +36,17 @@ import {
 import { createMentionSuggestion } from "./mention-suggestion";
 import { ItemTokenDecoration } from "./token-decoration";
 import { ItemTokenSuggestion } from "./token-suggestion";
+import {
+  Toggle,
+  ToggleSummary,
+  ToggleContent,
+  insertToggle,
+} from "./toggle-extension";
+import {
+  CollapsibleHeadings,
+  setHeadingsCollapsible,
+} from "./collapsible-headings";
+import { SlashCommands, setSlashToggleEnabled } from "./slash-suggestion";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -120,20 +131,31 @@ async function insertUploadedImages(
   }
 }
 
-// Configurable toolbar (app-wide): the ids a user hid live in
-// settings.editorToolbarHidden. Fetched once per page load (memoized) so every
-// editor instance shares the single request.
-let hiddenToolbarPromise: Promise<string[]> | null = null;
-function loadHiddenToolbar(): Promise<string[]> {
-  hiddenToolbarPromise ??= fetch("/api/settings")
+// Editor settings the canvas needs (app-wide): the hidden-toolbar ids plus the
+// two feature switches. Fetched once per page load (memoized) so every editor
+// instance shares the single request.
+type EditorSettings = {
+  hidden: string[];
+  collapsibleHeadings: boolean;
+  toggleBlocks: boolean;
+};
+let editorSettingsPromise: Promise<EditorSettings> | null = null;
+function loadEditorSettings(): Promise<EditorSettings> {
+  editorSettingsPromise ??= fetch("/api/settings")
     .then((r) => (r.ok ? r.json() : null))
-    .then((d) =>
-      Array.isArray(d?.settings?.editorToolbarHidden)
-        ? (d.settings.editorToolbarHidden as string[])
-        : []
-    )
-    .catch(() => []);
-  return hiddenToolbarPromise;
+    .then((d) => {
+      const s = d?.settings ?? {};
+      return {
+        hidden: Array.isArray(s.editorToolbarHidden)
+          ? (s.editorToolbarHidden as string[])
+          : [],
+        // Default on when the field is absent (matches DEFAULT_SETTINGS).
+        collapsibleHeadings: s.collapsibleHeadingsEnabled !== false,
+        toggleBlocks: s.toggleBlocksEnabled !== false,
+      };
+    })
+    .catch(() => ({ hidden: [], collapsibleHeadings: true, toggleBlocks: true }));
+  return editorSettingsPromise;
 }
 
 function ToolbarButton({
@@ -236,11 +258,11 @@ export default function MarkdownEditor({
       // legacy 2-space content (markdown-render.ts), so this is the source-side
       // half of keeping the editor and every render in agreement.
       Markdown.configure({ indentation: { style: "space", size: 4 } }),
-      // Empty-state hint: a quiet "Start writing…" while the body is empty, the
-      // first impression of every new note. First-party (@tiptap/extensions),
-      // styled via the is-editor-empty class in markdown-editor.css. No "/" hint
-      // since there's no slash menu yet (ADR-037 defers the Notion feel).
-      Placeholder.configure({ placeholder: "Start writing…" }),
+      // Empty-state hint: a quiet prompt while the body is empty, the first
+      // impression of every new note. First-party (@tiptap/extensions), styled
+      // via the is-editor-empty class in markdown-editor.css. The "/" hint points
+      // at the slash-command menu (SlashCommands, below).
+      Placeholder.configure({ placeholder: "Start writing, or press / for commands…" }),
       // GFM task lists (- [ ] / - [x]): @tiptap/markdown round-trips them, so no
       // bespoke serializer is needed (unlike the color marks). nested lets a
       // checklist item hold a sub-checklist.
@@ -269,6 +291,18 @@ export default function MarkdownEditor({
       // and offer a `{{` insert menu. Tokens stay plain text — decoration only.
       ItemTokenDecoration,
       ItemTokenSuggestion,
+      // Collapsible "toggle" block (<details>). The three nodes are always
+      // registered so existing bodies with toggles parse; the toolbar button and
+      // "/toggle" command (the creation paths) are gated by toggleBlocksEnabled.
+      Toggle,
+      ToggleSummary,
+      ToggleContent,
+      // Collapsible headings (view-only fold). Enabled/disabled at runtime from
+      // the user's collapsibleHeadingsEnabled setting (dispatched below).
+      CollapsibleHeadings,
+      // The "/" slash-command menu (headings + toggle). Toggle entry gated by
+      // toggleBlocksEnabled (setSlashToggleEnabled below).
+      SlashCommands,
     ],
     content: initialMarkdown,
     contentType: "markdown",
@@ -355,6 +389,7 @@ export default function MarkdownEditor({
       isTaskList: editor?.isActive("taskList") ?? false,
       isBlockquote: editor?.isActive("blockquote") ?? false,
       isCodeBlock: editor?.isActive("codeBlock") ?? false,
+      isToggle: editor?.isActive("toggle") ?? false,
       isLink: editor?.isActive("link") ?? false,
       textColor: (editor?.getAttributes("textColor").color as string) || "",
       highlight: (editor?.getAttributes("highlight").color as string) || "",
@@ -370,7 +405,7 @@ export default function MarkdownEditor({
   useEffect(() => {
     return () => {
       document
-        .querySelectorAll(".ledgr-mention-popup")
+        .querySelectorAll(".ledgr-mention-popup, .ledgr-slash-popup")
         .forEach((n) => n.remove());
     };
   }, []);
@@ -499,9 +534,19 @@ export default function MarkdownEditor({
   }, [initialMarkdown, editor]);
 
   const [hiddenTb, setHiddenTb] = useState<Set<string>>(new Set());
+  // Toggle-block creation gate (toolbar button + slash command). Default on;
+  // the fetched setting narrows it. Held in state so the toolbar re-renders.
+  const [toggleBlocksOn, setToggleBlocksOn] = useState(true);
   useEffect(() => {
-    loadHiddenToolbar().then((ids) => setHiddenTb(new Set(ids)));
-  }, []);
+    loadEditorSettings().then((s) => {
+      setHiddenTb(new Set(s.hidden));
+      setToggleBlocksOn(s.toggleBlocks);
+      // Gate the "/toggle" slash entry (module-level flag) and switch heading
+      // folding on/off in the plugin, now that the setting has resolved.
+      setSlashToggleEnabled(s.toggleBlocks);
+      if (editor) setHeadingsCollapsible(editor, s.collapsibleHeadings);
+    });
+  }, [editor]);
   const showTb = (id: string) => !hiddenTb.has(id);
   // The formatting bar is hidden by default when collapsible (task canvas); a
   // top-right toggle reveals it. When not collapsible it's always shown.
@@ -680,9 +725,12 @@ export default function MarkdownEditor({
             { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
             { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
             { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+            { id: "toggle", title: "Toggle (collapsible block)", icon: TOOLBAR_ICONS.toggle, active: toolbar.isToggle, run: () => insertToggle(editor) },
           ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; run: () => void }[]
         )
-          .filter((b) => showTb(b.id))
+          // Hide the toggle button when the feature is off; every button also
+          // honors the user's per-button toolbar visibility (editorToolbarHidden).
+          .filter((b) => showTb(b.id) && (b.id !== "toggle" || toggleBlocksOn))
           .map((b) => (
             <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
           ))}

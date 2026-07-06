@@ -251,6 +251,14 @@ export type UserSettings = {
   // and the Build → AI Memory surface appears. When off, none of those are
   // listed or callable, so a "vanilla" MCP client never sees the memory concept.
   aiMemoryEnabled: boolean;
+  // Editor: show a fold chevron on H1/H2/H3 to collapse the section beneath a
+  // heading (view-only, never written to the body). On by default. When off the
+  // markdown editor renders headings plainly.
+  collapsibleHeadingsEnabled: boolean;
+  // Editor: offer the collapsible "toggle" block (a <details> disclosure) via
+  // the toolbar button and the "/toggle" slash command. On by default. When off
+  // those creation affordances hide; existing toggles in a body still render.
+  toggleBlocksEnabled: boolean;
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -324,6 +332,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   relatedLensChoices: {},
   notificationPrefs: {},
   aiMemoryEnabled: false,
+  collapsibleHeadingsEnabled: true,
+  toggleBlocksEnabled: true,
 };
 
 const SETTINGS_UUID_RE =
@@ -488,6 +498,14 @@ export function parseSettings(raw: unknown): UserSettings {
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
   const aiMemoryEnabled =
     typeof r.aiMemoryEnabled === "boolean" ? r.aiMemoryEnabled : DEFAULT_SETTINGS.aiMemoryEnabled;
+  const collapsibleHeadingsEnabled =
+    typeof r.collapsibleHeadingsEnabled === "boolean"
+      ? r.collapsibleHeadingsEnabled
+      : DEFAULT_SETTINGS.collapsibleHeadingsEnabled;
+  const toggleBlocksEnabled =
+    typeof r.toggleBlocksEnabled === "boolean"
+      ? r.toggleBlocksEnabled
+      : DEFAULT_SETTINGS.toggleBlocksEnabled;
   return {
     highlightColor,
     highlightGradient,
@@ -514,6 +532,8 @@ export function parseSettings(raw: unknown): UserSettings {
     relatedLensChoices,
     notificationPrefs,
     aiMemoryEnabled,
+    collapsibleHeadingsEnabled,
+    toggleBlocksEnabled,
   };
 }
 

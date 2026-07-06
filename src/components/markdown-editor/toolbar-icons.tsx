@@ -45,6 +45,8 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   // has no Tab key, so these are the only way to nest a list there.
   outdent: <Svg><line x1="21" y1="6" x2="9" y2="6" /><line x1="21" y1="12" x2="13" y2="12" /><line x1="21" y1="18" x2="9" y2="18" /><path d="M7 9l-3 3 3 3" /></Svg>,
   indent: <Svg><line x1="21" y1="6" x2="9" y2="6" /><line x1="21" y1="12" x2="13" y2="12" /><line x1="21" y1="18" x2="9" y2="18" /><path d="M4 9l3 3-3 3" /></Svg>,
+  // toggle: a disclosure triangle beside lines — inserts a collapsible block.
+  toggle: <Svg><path d="M8 5l4 4-4 4" /><line x1="14" y1="7" x2="20" y2="7" /><line x1="14" y1="12" x2="20" y2="12" /><line x1="8" y1="19" x2="20" y2="19" /></Svg>,
 };
 
 // The toolbar items in display order (id → label), for the configurable-toolbar
@@ -63,6 +65,7 @@ export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
   { id: "quote", label: "Quote" },
   { id: "code", label: "Code" },
   { id: "table", label: "Table" },
+  { id: "toggle", label: "Toggle block" },
   { id: "image", label: "Image" },
   { id: "weblink", label: "Insert link" },
   { id: "link", label: "Copy line link" },

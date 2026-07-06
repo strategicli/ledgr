@@ -34,19 +34,24 @@
   pointer-events: none;
 }
 
+/* position:relative anchors the collapsible-headings fold chevron (an absolutely
+   positioned widget) beside each heading's text. */
 .ledgr-prose h1 {
+  position: relative;
   font-size: 1.6rem;
   font-weight: 700;
   margin: 0.8rem 0 0.4rem;
 }
 
 .ledgr-prose h2 {
+  position: relative;
   font-size: 1.3rem;
   font-weight: 700;
   margin: 0.7rem 0 0.35rem;
 }
 
 .ledgr-prose h3 {
+  position: relative;
   font-size: 1.1rem;
   font-weight: 600;
   margin: 0.6rem 0 0.3rem;
@@ -414,6 +419,135 @@
   border-radius: 0;
   margin-top: 0.15rem;
   padding-top: 0.4rem;
+}
+
+/* Collapsible "toggle" block (<details>). The NodeView is a div (not a native
+   <details>, which would hide content from ProseMirror), with a chevron in a
+   left gutter and the summary + content stacked in the body. data-open drives
+   the show/hide; the chevron rotates to point down when open. */
+.ledgr-toggle {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr;
+  align-items: start;
+  margin: 0.4rem 0;
+  border-left: 2px solid #333;
+  padding-left: 0.15rem;
+}
+.ledgr-toggle-chevron {
+  grid-column: 1;
+  margin-top: 0.15rem;
+  width: 1rem;
+  height: 1.3rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  line-height: 1.3rem;
+  transition: transform 0.12s ease;
+  user-select: none;
+}
+.ledgr-toggle[data-open="true"] > .ledgr-toggle-chevron {
+  transform: rotate(90deg);
+}
+.ledgr-toggle-chevron:hover {
+  color: #e5e5e5;
+}
+.ledgr-toggle-body {
+  grid-column: 2;
+  min-width: 0;
+}
+.ledgr-toggle-summary {
+  font-weight: 600;
+}
+.ledgr-toggle-summary:empty::before {
+  content: "Toggle";
+  color: #525252;
+}
+/* Collapsed: the content is present in the doc but not painted. */
+.ledgr-toggle[data-open="false"] .ledgr-toggle-content {
+  display: none;
+}
+.ledgr-toggle-content > :first-child {
+  margin-top: 0;
+}
+
+/* Collapsible headings (view-only fold). The chevron is a widget inside the
+   heading; it sits in the left margin, is quiet until the heading is hovered,
+   and stays visible while the section is collapsed (so hidden content is
+   discoverable). The fold hides whole following blocks via display:none — they
+   stay in the document (copy/selection still see them; the plugin auto-expands
+   before a selection can enter them). */
+.ledgr-fold-toggle {
+  position: absolute;
+  margin-left: -1.15rem;
+  width: 1rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  user-select: none;
+  transform: rotate(90deg);
+}
+.ledgr-prose h1:hover .ledgr-fold-toggle,
+.ledgr-prose h2:hover .ledgr-fold-toggle,
+.ledgr-prose h3:hover .ledgr-fold-toggle,
+.ledgr-fold-toggle:focus-visible {
+  opacity: 0.6;
+}
+.ledgr-fold-toggle.is-collapsed {
+  opacity: 0.7;
+  transform: rotate(0deg);
+}
+.ledgr-fold-hidden {
+  display: none;
+}
+
+/* The "/" slash-command menu — mirrors the mention/token popups. */
+.ledgr-slash-popup {
+  position: absolute;
+  z-index: 50;
+  min-width: 14rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: #171717;
+  border: 1px solid #333;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 0.25rem;
+}
+.ledgr-slash-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.375rem;
+  color: #e5e5e5;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.ledgr-slash-item-label {
+  font-size: 0.875rem;
+}
+.ledgr-slash-item-hint {
+  font-size: 0.72rem;
+  color: #737373;
+}
+.ledgr-slash-item.is-selected,
+.ledgr-slash-item:hover {
+  background: #2a2a2a;
+}
+.ledgr-slash-empty {
+  padding: 0.5rem;
+  color: #737373;
+  font-size: 0.85rem;
 }
 
 /* Block anchors (ADR-090). The trailing "^id" marker stays in the body (it's the
