@@ -18,18 +18,12 @@ import { bulkConfigForType } from "@/lib/bulk-config";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
-import { APP_TIMEZONE } from "@/lib/today";
+import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { resolveViewLens } from "@/lib/view-render";
 import { countViewItems, parseListWindow, queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
-
-const dateFmt = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  timeZone: APP_TIMEZONE,
-});
 
 function hostOf(url: string): string {
   try {
@@ -49,6 +43,12 @@ export default async function Links({
 
   const sp = await searchParams;
   const settings = await getSettings(owner.id);
+  // updatedAt is a real instant, so render it in the owner's timezone.
+  const dateFmt = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: settings.timezone ?? DEFAULT_TIMEZONE,
+  });
   const lenses = lensesForType(settings, "link");
   const active = selectLens(lenses, typeof sp.lens === "string" ? sp.lens : undefined);
   const reversed = sp.rev === "1";

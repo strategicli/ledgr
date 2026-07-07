@@ -12,34 +12,32 @@ import { FOCUS_SOFT_CAP, focusOrder, isFocusedOn } from "@/lib/focus";
 import { listItems } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
-import { APP_TIMEZONE, getTodayData } from "@/lib/today";
+import { getAppTimezone, getTodayData } from "@/lib/today";
 
 export const dynamic = "force-dynamic";
 
 type ListedItem = Awaited<ReturnType<typeof listItems>>[number];
 
-const headingFmt = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  timeZone: APP_TIMEZONE,
-});
-const timeFmt = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit",
-  timeZone: APP_TIMEZONE,
-});
-// Due dates are calendar days stored as UTC midnight; format in UTC so the
-// shown day can't shift with the timezone.
+// The instant formatters render in the owner's timezone, so they're built from
+// the resolved zone per request (memoized by zone). Due dates are calendar days
+// stored as UTC midnight, so dueFmt stays UTC — its shown day must not shift.
+const tzFmtCache = new Map<string, { heading: Intl.DateTimeFormat; time: Intl.DateTimeFormat; recent: Intl.DateTimeFormat }>();
+function tzFormatters(tz: string) {
+  let f = tzFmtCache.get(tz);
+  if (!f) {
+    f = {
+      heading: new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: tz }),
+      time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz }),
+      recent: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: tz }),
+    };
+    tzFmtCache.set(tz, f);
+  }
+  return f;
+}
 const dueFmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   timeZone: "UTC",
-});
-const recentFmt = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  timeZone: APP_TIMEZONE,
 });
 
 function Section({
@@ -157,6 +155,7 @@ export async function TodayHome() {
 
   const { bounds, meetings, dueTasks, recent, focusTasks, todayYmd, typeLabels } =
     await getTodayData(owner.id);
+  const fmt = tzFormatters(await getAppTimezone(owner.id));
   // Today's Focus (T3): the vital few, ordered by the focus marker's order.
   const focus = [...focusTasks].sort(
     (a, b) => focusOrder(a.properties) - focusOrder(b.properties)
@@ -188,7 +187,7 @@ export async function TodayHome() {
           Today
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
-          {headingFmt.format(new Date())}
+          {fmt.heading.format(new Date())}
         </p>
 
         <div className="mt-6">
@@ -223,7 +222,7 @@ export async function TodayHome() {
                   className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
                 >
                   <span className="w-16 shrink-0 text-xs tabular-nums text-neutral-500">
-                    {m.meetingAt ? timeFmt.format(m.meetingAt) : ""}
+                    {m.meetingAt ? fmt.time.format(m.meetingAt) : ""}
                   </span>
                   <Link
                     href={`/items/${m.id}`}
@@ -276,7 +275,7 @@ export async function TodayHome() {
                     {item.title || "Untitled"}
                   </Link>
                   <span className="shrink-0 text-xs text-neutral-600">
-                    {recentFmt.format(item.updatedAt)}
+                    {fmt.recent.format(item.updatedAt)}
                   </span>
                 </li>
               ))}

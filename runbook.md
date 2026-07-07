@@ -45,7 +45,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `ASSEMBLYAI_API_KEY` | Enables audio→transcription on meetings (meeting recording v1b, ADR-088/089). Without it, transcripts are paste-only and the audio-upload control is hidden; `/health` `checks.transcription` is `none`. With it set, `none`→`assemblyai` and audio upload appears (§1i) | AssemblyAI dashboard, optional |
 | `TRANSCRIPTION_ADAPTER` | Selects the transcription adapter (default `assemblyai`); set to `none` to disable even with a key | fixed value, optional |
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
-| `LEDGR_TIMEZONE` | IANA timezone that defines "today" (Today view, day-scoped queries); defaults to `America/New_York` when unset. The server runs in UTC, never assume its clock | env flag |
+| `LEDGR_TIMEZONE` | **Fallback** IANA timezone. The owner's zone is now a per-user setting (User Settings → Timezone; `users.settings.timezone`), resolved by `getAppTimezone()`. This env var is only the fallback before an owner is known or when none is chosen; defaults to `America/New_York`. The server runs in UTC, never assume its clock | env flag |
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
 | `DEV_USER_EMAIL` | dev-only auth stand-in (ADR-006): with Clerk keys **unset** and `NODE_ENV=development`, this email resolves as the signed-in user (local UI work without a Microsoft sign-in). Ignored in production builds; never set on Vercel | local only |
 

@@ -14,6 +14,7 @@ import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
@@ -51,6 +52,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
 
   const items = await queryViewItems(owner.id, view.filter, view.sort);
   const rollups = await childRollups(owner.id, items.map((i) => i.id));
+  const tz = await getAppTimezone(owner.id);
 
   // The read-only calendar overlay is only meaningful on a writable calendar
   // (one that places tasks on scheduled/due/plan — the interactive PlannerCalendar
@@ -170,7 +172,8 @@ export default async function ViewPage({ params, searchParams }: Context) {
               calendarEvents={calendarEvents}
               selectable
               rollups={rollups}
-              today={appTodayYmd()}
+              today={appTodayYmd(new Date(), tz)}
+              tz={tz}
             />
           </DeskHostProvider>
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />

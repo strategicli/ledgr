@@ -8,9 +8,11 @@ import NavProgress from "@/components/nav/NavProgress";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import OutboxSync from "@/components/pwa/OutboxSync";
 import { AppAuthProvider } from "@/lib/auth/provider";
+import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
 import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX, UI_SCALE } from "@/lib/settings";
+import { DEFAULT_TIMEZONE, primeAppTimezone } from "@/lib/today";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -83,6 +85,9 @@ export default async function RootLayout({
   // Item-canvas section style (the canvas redesign) — emitted as a body attribute
   // the CanvasSection CSS reads, so the whole panel weight flips from one setting.
   let sectionStyle = DEFAULT_SETTINGS.sectionStyle;
+  // Resolved owner timezone: seeds the sync cache (appTimezoneSync) for the whole
+  // request and is provided to client components via TimezoneProvider.
+  let tz = DEFAULT_TIMEZONE;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -95,10 +100,12 @@ export default async function RootLayout({
       uiScale = UI_SCALE[s.uiDensity];
       mobileUiScale = UI_SCALE[s.mobileUiDensity ?? s.uiDensity];
       sectionStyle = s.sectionStyle;
+      tz = s.timezone ?? DEFAULT_TIMEZONE;
     }
   } catch {
     /* defaults */
   }
+  primeAppTimezone(tz);
   // Per-surface interface density. Must set --ui-scale on :root (custom
   // properties inherit down, not up, and the html font-size rule in globals.css
   // reads it); a media query can't live in an inline style, so it goes in a
@@ -119,9 +126,11 @@ export default async function RootLayout({
         >
           <style dangerouslySetInnerHTML={{ __html: uiScaleCss }} />
           <NavProgress />
-          {children}
-          <Nav />
-          {modal}
+          <TimezoneProvider tz={tz}>
+            {children}
+            <Nav />
+            {modal}
+          </TimezoneProvider>
           <ActionToast />
           {/* One global toast for row/swipe actions (S4/S5); lives outside the
               list subtree so it survives the refresh that removes the acted row. */}

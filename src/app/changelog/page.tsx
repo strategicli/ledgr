@@ -8,23 +8,36 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getChangelog, getGithubConfig, GithubError, type ChangelogEntry } from "@/lib/github/client";
-import { APP_TIMEZONE } from "@/lib/today";
+import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { getSettings, effectiveDisplayName } from "@/lib/settings";
 import CollabNotes from "@/components/changelog/CollabNotes";
 import V1Progress from "@/components/changelog/V1Progress";
 
 export const dynamic = "force-dynamic";
 
-const dayKeyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" });
-const dayLabelFmt = new Intl.DateTimeFormat("en-US", { timeZone: APP_TIMEZONE, weekday: "long", month: "short", day: "numeric" });
-const timeFmt = new Intl.DateTimeFormat("en-US", { timeZone: APP_TIMEZONE, hour: "numeric", minute: "2-digit" });
+// Commit dates are real instants, so they render in the owner's timezone. Built
+// per-zone (memoized) and threaded from the page render (resolved from settings).
+type DayFmts = { dayKey: Intl.DateTimeFormat; dayLabel: Intl.DateTimeFormat; time: Intl.DateTimeFormat };
+const fmtCache = new Map<string, DayFmts>();
+function dayFmts(tz: string): DayFmts {
+  let f = fmtCache.get(tz);
+  if (!f) {
+    f = {
+      dayKey: new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }),
+      dayLabel: new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", month: "short", day: "numeric" }),
+      time: new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }),
+    };
+    fmtCache.set(tz, f);
+  }
+  return f;
+}
 
-function groupByDay(entries: ChangelogEntry[]): { key: string; label: string; entries: ChangelogEntry[] }[] {
+function groupByDay(entries: ChangelogEntry[], fmts: DayFmts): { key: string; label: string; entries: ChangelogEntry[] }[] {
   const groups: { key: string; label: string; entries: ChangelogEntry[] }[] = [];
   for (const entry of entries) {
     const d = entry.date ? new Date(entry.date) : null;
-    const key = d ? dayKeyFmt.format(d) : "unknown";
-    const label = d ? dayLabelFmt.format(d) : "Unknown date";
+    const key = d ? fmts.dayKey.format(d) : "unknown";
+    const label = d ? fmts.dayLabel.format(d) : "Unknown date";
     const last = groups[groups.length - 1];
     if (last && last.key === key) last.entries.push(entry);
     else groups.push({ key, label, entries: [entry] });
@@ -39,7 +52,7 @@ function StatBadge({ value, kind }: { value: number; kind: "files" | "add" | "de
   return <span className={`tabular-nums ${color}`}>{text}</span>;
 }
 
-function CommitRow({ entry }: { entry: ChangelogEntry }) {
+function CommitRow({ entry, timeFmt }: { entry: ChangelogEntry; timeFmt: Intl.DateTimeFormat }) {
   return (
     <li className="flex gap-3 py-3">
       {entry.avatarUrl ? (
@@ -96,7 +109,9 @@ export default async function ChangelogPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const authorName = effectiveDisplayName(await getSettings(owner.id), owner.email);
+  const settings = await getSettings(owner.id);
+  const authorName = effectiveDisplayName(settings, owner.email);
+  const fmts = dayFmts(settings.timezone ?? DEFAULT_TIMEZONE);
   const configured = getGithubConfig() !== null;
   let entries: ChangelogEntry[] = [];
   let loadError: string | null = null;
@@ -107,7 +122,7 @@ export default async function ChangelogPage() {
       loadError = err instanceof GithubError ? err.message : "Could not load commit history.";
     }
   }
-  const groups = groupByDay(entries);
+  const groups = groupByDay(entries, fmts);
 
   return (
     <main className="min-h-screen">
@@ -145,7 +160,7 @@ export default async function ChangelogPage() {
                     </h2>
                     <ul className="divide-y divide-neutral-800/60">
                       {group.entries.map((entry) => (
-                        <CommitRow key={entry.sha} entry={entry} />
+                        <CommitRow key={entry.sha} entry={entry} timeFmt={fmts.time} />
                       ))}
                     </ul>
                   </div>

@@ -9,6 +9,7 @@ import ListPage from "@/components/lists/ListPage";
 import NewItemButton from "@/components/home/NewItemButton";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import { resolveOwner } from "@/lib/owner";
+import { getAppTimezone } from "@/lib/today";
 import { resolveStatusSchema } from "@/lib/status";
 import { getType } from "@/lib/types";
 import { queryViewItems, type ViewDefinition } from "@/lib/views";
@@ -49,6 +50,7 @@ export default async function PlannerPage({
     getType("task"),
   ]);
   const statuses = resolveStatusSchema(taskType.statusSchema);
+  const tz = await getAppTimezone(owner.id);
 
   return (
     <ListPage tab="planner" title="Planner" actions={<NewItemButton type="task" />} wide>
@@ -62,6 +64,7 @@ export default async function PlannerPage({
         month={month}
         calendarNavHref="/planner"
         calendarEvents={calendarEvents}
+        tz={tz}
       />
     </ListPage>
   );

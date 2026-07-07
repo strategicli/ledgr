@@ -5,7 +5,7 @@ import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "@/db";
 import { calendarEvents, items } from "@/db/schema";
 import { ItemError } from "@/lib/items";
-import { APP_TIMEZONE } from "@/lib/today";
+import { getAppTimezone } from "@/lib/today";
 import { applyEventIntake } from "./intake";
 import type { OverlayEvent } from "./overlay";
 import type { CalendarEvent } from "./types";
@@ -83,22 +83,28 @@ export async function listCalendarFeed(
   });
 }
 
-// Day + wall-clock formatters in the app timezone. Events are real instants;
+// Day + wall-clock formatters in the owner's timezone. Events are real instants;
 // the overlay places them on the calendar day and time the user actually sees.
-const tzDayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }); // YYYY-MM-DD
-const tzTimeFmt = new Intl.DateTimeFormat("en-GB", {
-  timeZone: APP_TIMEZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-}); // HH:MM (24h)
+// Built per-zone (memoized) so this resolves the owner's setting per call.
+const fmtCache = new Map<string, { day: Intl.DateTimeFormat; time: Intl.DateTimeFormat }>();
+function tzFmts(tz: string) {
+  let f = fmtCache.get(tz);
+  if (!f) {
+    f = {
+      day: new Intl.DateTimeFormat("en-CA", { timeZone: tz }), // YYYY-MM-DD
+      time: new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), // HH:MM (24h)
+    };
+    fmtCache.set(tz, f);
+  }
+  return f;
+}
 const DEFAULT_EVENT_MINUTES = 60;
 
 // The owner's calendar events overlapping a window, as read-only overlay blocks
 // for the Planner. Unlike listCalendarFeed this returns ALL events in range —
 // promoted or not — because the overlay shows the whole calendar to plan
 // around, not just the un-added feed. Cancelled events are excluded. Day +
-// start are resolved to APP_TIMEZONE here so the client grids needn't do tz
+// start are resolved to the owner's timezone here so the client grids needn't do tz
 // math. Owner-scoped + index-backed (calendar_events_feed_idx on owner,start_at).
 export async function listCalendarEventsForRange(
   ownerId: string,
@@ -123,6 +129,7 @@ export async function listCalendarEventsForRange(
       )
     )
     .orderBy(asc(calendarEvents.startAt));
+  const fmts = tzFmts(await getAppTimezone(ownerId));
   const out: OverlayEvent[] = [];
   for (const r of rows) {
     if (!r.startAt) continue;
@@ -130,7 +137,7 @@ export async function listCalendarEventsForRange(
     const startMs = r.startAt.getTime();
     const endMs = r.endAt ? r.endAt.getTime() : startMs + DEFAULT_EVENT_MINUTES * 60_000;
     const durationMinutes = Math.max(1, Math.round((endMs - startMs) / 60_000));
-    const startTime = tzTimeFmt.format(r.startAt);
+    const startTime = fmts.time.format(r.startAt);
     // All-day heuristic: the synced meta doesn't carry Graph's isAllDay flag, so
     // infer it — starts at local midnight and spans whole days. A rare midnight
     // timed event lands in the all-day band, which is acceptable.
@@ -138,7 +145,7 @@ export async function listCalendarEventsForRange(
     out.push({
       id: r.id,
       title: r.title,
-      ymd: tzDayFmt.format(r.startAt),
+      ymd: fmts.day.format(r.startAt),
       start: allDay ? null : startTime,
       durationMinutes,
       location: m.location ?? null,

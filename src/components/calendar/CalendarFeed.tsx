@@ -10,9 +10,11 @@ import AddEventButton from "@/components/calendar/AddEventButton";
 export default function CalendarFeed({
   events,
   now,
+  tz,
 }: {
   events: FeedEvent[];
   now: Date;
+  tz: string;
 }) {
   if (events.length === 0) {
     return (
@@ -34,7 +36,7 @@ export default function CalendarFeed({
             className="flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
           >
             <span className="w-40 shrink-0 text-xs tabular-nums text-neutral-500">
-              {e.startAt ? formatWhen(e.startAt, now) : ""}
+              {e.startAt ? formatWhen(e.startAt, now, tz) : ""}
             </span>
             <span
               className={`min-w-0 flex-1 truncate text-sm ${

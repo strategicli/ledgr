@@ -15,7 +15,7 @@ import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectT
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import type { Progress } from "@/lib/subtasks";
-import { APP_TIMEZONE } from "@/lib/today";
+import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
@@ -42,22 +42,11 @@ export type ViewItem = {
 };
 
 // Due dates are UTC-midnight calendar days (ADR-008); format in UTC. The
-// timestamp columns are real instants; format in the app's timezone.
+// timestamp columns are real instants; format in the owner's timezone.
 const utcDay = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   timeZone: "UTC",
-});
-const tzDay = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  timeZone: APP_TIMEZONE,
-});
-const tzDayLong = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  timeZone: APP_TIMEZONE,
 });
 const utcDayLong = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
@@ -67,7 +56,33 @@ const utcDayLong = new Intl.DateTimeFormat("en-US", {
 });
 // en-CA renders YYYY-MM-DD, a sortable day key.
 const utcKey = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" });
-const tzKey = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE });
+
+// The timezone-aware formatters are keyed by zone and built lazily (this
+// component, unlike the pure UTC formatters above, must render in the owner's
+// chosen zone). The zone is threaded in as `tz` — the ViewRenderer `tz` prop
+// flows down to the layouts and helpers — so nothing reassigns module state
+// during render.
+const tzFmtCache = new Map<
+  string,
+  { day: Intl.DateTimeFormat; dayLong: Intl.DateTimeFormat; key: Intl.DateTimeFormat }
+>();
+function tzFmts(tz: string) {
+  let f = tzFmtCache.get(tz);
+  if (!f) {
+    f = {
+      day: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: tz }),
+      dayLong: new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        timeZone: tz,
+      }),
+      key: new Intl.DateTimeFormat("en-CA", { timeZone: tz }),
+    };
+    tzFmtCache.set(tz, f);
+  }
+  return f;
+}
 
 function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | null {
   switch (prop) {
@@ -92,8 +107,8 @@ function dateOf(item: ViewItem, prop: ViewDefinition["dateProperty"]): Date | nu
 const usesUtc = (prop: ViewDefinition["dateProperty"]) =>
   prop === "plan" || prop === "dueDate" || prop === "scheduledDate";
 
-function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
-  return (usesUtc(prop) ? utcKey : tzKey).format(date);
+function dayKey(date: Date, prop: ViewDefinition["dateProperty"], tz: string): string {
+  return (usesUtc(prop) ? utcKey : tzFmts(tz).key).format(date);
 }
 
 // A deadline date on an open task reads as overdue once its calendar day is past
@@ -101,11 +116,11 @@ function dayKey(date: Date, prop: ViewDefinition["dateProperty"]): string {
 // can be late — created/updated/meeting dates never do — and a done task never
 // does. Today is the app-timezone day, the same reference the calendar's "today"
 // highlight uses.
-function isDeadlineOverdue(date: Date | null, key: ColumnField | ViewDefinition["dateProperty"]): boolean {
+function isDeadlineOverdue(date: Date | null, key: ColumnField | ViewDefinition["dateProperty"], tz: string): boolean {
   if (!date) return false;
   const prop = key as ViewDefinition["dateProperty"];
   if (!usesUtc(prop)) return false;
-  return dayKey(date, prop) < tzKey.format(new Date());
+  return dayKey(date, prop, tz) < tzFmts(tz).key.format(new Date());
 }
 
 // A status chip showing the type's label + color (S2). The resting "not started"
@@ -138,10 +153,10 @@ function UrgencyChip({ urgency }: { urgency: number | null }) {
 }
 
 // A row's headline date, picked for the layout's date property.
-function rowDate(item: ViewItem, prop: ViewDefinition["dateProperty"]) {
+function rowDate(item: ViewItem, prop: ViewDefinition["dateProperty"], tz: string) {
   const d = dateOf(item, prop);
   if (!d) return "";
-  return (usesUtc(prop) ? utcDay : tzDay).format(d);
+  return (usesUtc(prop) ? utcDay : tzFmts(tz).day).format(d);
 }
 
 // --- configurable columns (Brandon feedback, 2026-06-14) ------------------
@@ -177,7 +192,7 @@ function formatPropValue(v: unknown): string {
 
 // The display text for a column on a row. Dates format in the same calendars
 // as everywhere else (due is a UTC calendar day; the rest are real instants).
-function columnText(item: ViewItem, col: ViewColumn): string {
+function columnText(item: ViewItem, col: ViewColumn, tz: string): string {
   if (col.source === "property") {
     const props =
       item.properties && typeof item.properties === "object"
@@ -203,11 +218,11 @@ function columnText(item: ViewItem, col: ViewColumn): string {
     case "scheduledDate":
       return item.scheduledDate ? utcDay.format(item.scheduledDate) : "";
     case "meetingAt":
-      return item.meetingAt ? tzDay.format(item.meetingAt) : "";
+      return item.meetingAt ? tzFmts(tz).day.format(item.meetingAt) : "";
     case "createdAt":
-      return tzDay.format(item.createdAt);
+      return tzFmts(tz).day.format(item.createdAt);
     case "updatedAt":
-      return tzDay.format(item.updatedAt);
+      return tzFmts(tz).day.format(item.updatedAt);
   }
 }
 
@@ -223,6 +238,7 @@ function ItemRow({
   rowAction,
   rollup,
   today,
+  tz,
 }: {
   item: ViewItem;
   prop: ViewDefinition["dateProperty"];
@@ -230,6 +246,7 @@ function ItemRow({
   propertyLabels?: Record<string, string>;
   statuses?: StatusDef[];
   selectable?: boolean;
+  tz: string;
   // Optional trailing slot for this row (the related panel passes relation
   // controls — confirm/reject/un-relate + mention/suggested markers). Other
   // callers leave it undefined, so their rows are unchanged.
@@ -245,7 +262,7 @@ function ItemRow({
 }) {
   const isTask = item.type === "task";
   const done = item.statusCategory === "done";
-  const rowOverdue = isTask && !done && isDeadlineOverdue(dateOf(item, prop), prop);
+  const rowOverdue = isTask && !done && isDeadlineOverdue(dateOf(item, prop), prop, tz);
   const inner = (
     <>
       {selectable && <SelectCheckbox id={item.id} />}
@@ -275,13 +292,13 @@ function ItemRow({
           if (col.source === "field" && col.key === "urgency") {
             return <UrgencyChip key="urgency" urgency={item.urgency} />;
           }
-          const text = columnText(item, col);
+          const text = columnText(item, col, tz);
           if (!text) return null;
           const colOverdue =
             isTask &&
             !done &&
             col.source === "field" &&
-            isDeadlineOverdue(dateOf(item, col.key as ViewDefinition["dateProperty"]), col.key);
+            isDeadlineOverdue(dateOf(item, col.key as ViewDefinition["dateProperty"]), col.key, tz);
           return (
             <span
               key={`${col.source}:${col.key}`}
@@ -297,7 +314,7 @@ function ItemRow({
           <StatusChip status={item.status} statuses={statuses} />
           <UrgencyChip urgency={item.urgency} />
           <span className={`shrink-0 text-xs ${rowOverdue ? "text-red-400" : "text-neutral-600"}`}>
-            {rowDate(item, prop)}
+            {rowDate(item, prop, tz)}
           </span>
         </>
       )}
@@ -351,6 +368,7 @@ function ListLayout({
   rowActions,
   rollups,
   today,
+  tz,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -360,6 +378,7 @@ function ListLayout({
   rowActions?: Record<string, ReactNode>;
   rollups?: Map<string, Progress>;
   today?: string;
+  tz: string;
 }) {
   return (
     <ul className="mt-4">
@@ -375,6 +394,7 @@ function ListLayout({
           rowAction={rowActions?.[item.id]}
           rollup={rollups?.get(item.id)}
           today={today}
+          tz={tz}
         />
       ))}
     </ul>
@@ -386,11 +406,13 @@ function TableLayout({
   view,
   propertyLabels,
   selectable,
+  tz,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
   selectable?: boolean;
+  tz: string;
 }) {
   // The view's chosen columns, or the default four (Type/Status/Urgency/Date)
   // expressed as field columns so one rendering path serves both. "Date" maps
@@ -452,7 +474,7 @@ function TableLayout({
                   key={`${col.source}:${col.key}`}
                   className="py-1.5 pr-3 text-neutral-400"
                 >
-                  {columnText(item, col)}
+                  {columnText(item, col, tz)}
                 </td>
               ))}
             </tr>
@@ -469,12 +491,14 @@ function BoardLayout({
   groupOrder,
   draggable,
   statuses,
+  tz,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   groupOrder?: string[];
   draggable?: boolean;
   statuses?: StatusDef[];
+  tz: string;
 }) {
   const now = new Date();
   // A status board colors its column headers with the status colors (S2).
@@ -494,7 +518,7 @@ function BoardLayout({
       dueDate: i.dueDate,
       scheduledDate: i.scheduledDate,
       properties: i.properties,
-      dateLabel: rowDate(i, view.dateProperty),
+      dateLabel: rowDate(i, view.dateProperty, tz),
     }));
     return <BoardDnd cards={cards} grouping={view.grouping} groupOrder={groupOrder} statuses={statuses} />;
   }
@@ -541,9 +565,9 @@ function BoardLayout({
                     <span className="block truncate">
                       {item.title || "Untitled"}
                     </span>
-                    {rowDate(item, view.dateProperty) && (
+                    {rowDate(item, view.dateProperty, tz) && (
                       <span className="mt-0.5 block text-xs text-neutral-600">
-                        {rowDate(item, view.dateProperty)}
+                        {rowDate(item, view.dateProperty, tz)}
                       </span>
                     )}
                   </Link>
@@ -565,6 +589,7 @@ function AgendaLayout({
   selectable,
   rollups,
   today,
+  tz,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -573,9 +598,10 @@ function AgendaLayout({
   selectable?: boolean;
   rollups?: Map<string, Progress>;
   today?: string;
+  tz: string;
 }) {
   const prop = view.dateProperty;
-  const longFmt = usesUtc(prop) ? utcDayLong : tzDayLong;
+  const longFmt = usesUtc(prop) ? utcDayLong : tzFmts(tz).dayLong;
   // Bucket by day; sort buckets chronologically; undated last.
   const buckets = new Map<string, { label: string; items: ViewItem[] }>();
   const undated: ViewItem[] = [];
@@ -585,7 +611,7 @@ function AgendaLayout({
       undated.push(item);
       continue;
     }
-    const key = dayKey(d, prop);
+    const key = dayKey(d, prop, tz);
     if (!buckets.has(key)) buckets.set(key, { label: longFmt.format(d), items: [] });
     buckets.get(key)!.items.push(item);
   }
@@ -609,6 +635,7 @@ function AgendaLayout({
                 selectable={selectable}
                 rollup={rollups?.get(item.id)}
                 today={today}
+                tz={tz}
               />
             ))}
           </ul>
@@ -631,6 +658,7 @@ function AgendaLayout({
                 selectable={selectable}
                 rollup={rollups?.get(item.id)}
                 today={today}
+                tz={tz}
               />
             ))}
           </ul>
@@ -645,9 +673,11 @@ function CalendarLayout({
   view,
   month,
   navHref,
+  tz,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
+  tz: string;
   // Which month to show, "YYYY-MM" (validated by the caller); defaults to the
   // current month. Items aren't month-bounded by the query, so navigating just
   // re-buckets the same rows into the chosen month — no re-fetch.
@@ -660,7 +690,7 @@ function CalendarLayout({
   const prop = view.dateProperty;
   const pad = (n: number) => String(n).padStart(2, "0");
   // The month to show: the provided YYYY-MM or the current month (app TZ).
-  const nowParts = tzKey.format(new Date()).split("-"); // YYYY-MM-DD
+  const nowParts = tzFmts(tz).key.format(new Date()).split("-"); // YYYY-MM-DD
   const shown = month && /^\d{4}-\d{2}$/.test(month) ? month : `${nowParts[0]}-${nowParts[1]}`;
   const [ys, ms] = shown.split("-");
   const year = Number(ys);
@@ -672,7 +702,7 @@ function CalendarLayout({
   }).format(new Date(Date.UTC(year, monthNum - 1, 1)));
   const daysInMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
   const firstWeekday = new Date(Date.UTC(year, monthNum - 1, 1)).getUTCDay();
-  const todayKey = tzKey.format(new Date());
+  const todayKey = tzFmts(tz).key.format(new Date());
   const onCurrentMonth = shown === `${nowParts[0]}-${nowParts[1]}`;
   // Prev/next month params (first-of-month math, DST-safe in UTC).
   const toParam = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
@@ -688,7 +718,7 @@ function CalendarLayout({
       outside += 1;
       continue;
     }
-    const key = dayKey(d, prop);
+    const key = dayKey(d, prop, tz);
     if (!key.startsWith(shown)) {
       outside += 1;
       continue;
@@ -797,6 +827,7 @@ export default function ViewRenderer({
   rowActions,
   rollups,
   today,
+  tz = DEFAULT_TIMEZONE,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
@@ -844,6 +875,10 @@ export default function ViewRenderer({
   // (the view page, view-lens body) pass it; dashboards leave it undefined so a
   // widget's rows stay read-only (defer by hiding).
   today?: string;
+  // The owner's resolved timezone (getAppTimezone). The timestamp columns and
+  // the calendar/agenda day grouping render in it. Defaults to DEFAULT_TIMEZONE
+  // so a caller that hasn't threaded it behaves exactly as before.
+  tz?: string;
 }) {
   if (items.length === 0) {
     return (
@@ -860,6 +895,7 @@ export default function ViewRenderer({
           view={view}
           propertyLabels={propertyLabels}
           selectable={selectable}
+          tz={tz}
         />
       );
     case "board":
@@ -870,6 +906,7 @@ export default function ViewRenderer({
           groupOrder={groupOrder}
           draggable={boardDraggable}
           statuses={statuses}
+          tz={tz}
         />
       );
     case "calendar": {
@@ -903,6 +940,7 @@ export default function ViewRenderer({
               view={view}
               month={month}
               navHref={calendarNavHref}
+              tz={tz}
             />
           </div>
           <div className="sm:hidden">
@@ -914,6 +952,7 @@ export default function ViewRenderer({
               selectable={selectable}
               rollups={rollups}
               today={today}
+              tz={tz}
             />
           </div>
         </>
@@ -929,6 +968,7 @@ export default function ViewRenderer({
           selectable={selectable}
           rollups={rollups}
           today={today}
+          tz={tz}
         />
       );
     default:
@@ -942,6 +982,7 @@ export default function ViewRenderer({
           rowActions={rowActions}
           rollups={rollups}
           today={today}
+          tz={tz}
         />
       );
   }

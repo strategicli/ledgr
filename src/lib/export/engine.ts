@@ -12,7 +12,7 @@ import { bodyMarkdown } from "@/lib/body";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { normalizeListIndent } from "@/lib/markdown-render";
 import { getStorage } from "@/lib/storage";
-import { APP_TIMEZONE } from "@/lib/today";
+import { getAppTimezone } from "@/lib/today";
 import type { ExportTarget } from "./target";
 
 // Per-run cap: the nightly cron runs in a 60s lambda and attachments can be
@@ -55,11 +55,11 @@ function slugify(title: string): string {
   return slug || "untitled";
 }
 
-// {year} comes from created_at in the app timezone: stable for the item's
+// {year} comes from created_at in the owner's timezone: stable for the item's
 // life (due/meeting dates are often null and titles change).
-function yearInZone(instant: Date): string {
+function yearInZone(instant: Date, tz: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: APP_TIMEZONE,
+    timeZone: tz,
     year: "numeric",
   }).format(instant);
 }
@@ -225,6 +225,7 @@ export async function runExport(
     .where(needsExportWhere(ownerId))
     .orderBy(items.updatedAt)
     .limit(batch);
+  const tz = await getAppTimezone(ownerId);
 
   const result: ExportRunResult = {
     exported: 0,
@@ -238,7 +239,7 @@ export async function runExport(
   for (const item of candidates) {
     try {
       const inArchive = item.deletedAt !== null || item.statusCategory === "archived";
-      const year = yearInZone(item.createdAt);
+      const year = yearInZone(item.createdAt, tz);
       // Resolve live {{item.*}} tokens against the item's current state (LT3):
       // an exported .md is a derived output, so it bakes the resolved values (the
       // DB keeps the tokens — ADR-037). Only items that actually contain tokens

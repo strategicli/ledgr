@@ -37,7 +37,7 @@ import {
   validateMatchConfig,
   type TemplateMatchConfig,
 } from "@/lib/templates/match-config";
-import { APP_TIMEZONE, todayBounds } from "@/lib/today";
+import { appTimezoneSync, getAppTimezone, todayBounds } from "@/lib/today";
 
 export type ItemTemplate = {
   id: string;
@@ -349,9 +349,9 @@ export async function duplicateTemplate(
   return rowToTemplate(rows[0]);
 }
 
-// App-timezone "today" as YYYY-MM-DD, for the variable resolver (TPL3).
-function ymdOf(now: Date): string {
-  const t = todayBounds(now).today;
+// Owner-timezone "today" as YYYY-MM-DD, for the variable resolver (TPL3).
+function ymdOf(now: Date, tz = appTimezoneSync()): string {
+  const t = todayBounds(now, tz).today;
   return `${t.y}-${String(t.m).padStart(2, "0")}-${String(t.d).padStart(2, "0")}`;
 }
 
@@ -388,10 +388,11 @@ async function resolveTemplateVars(
   opts: { answers?: Record<string, string>; now?: Date; title?: string }
 ): Promise<void> {
   const now = opts.now ?? new Date();
+  const timeZone = await getAppTimezone(ownerId);
   const base = {
-    todayYmd: ymdOf(now),
+    todayYmd: ymdOf(now, timeZone),
     now,
-    timeZone: APP_TIMEZONE,
+    timeZone,
     answers: opts.answers,
   };
   const nodes = await subtreeNodes(ownerId, rootId);
@@ -521,8 +522,9 @@ export async function applyTemplateToExisting(
   }
   const proto = await getItem(ownerId, tmpl.prototypeItemId);
   const now = opts.now ?? new Date();
-  const todayYmd = ymdOf(now);
-  const base = { todayYmd, now, timeZone: APP_TIMEZONE, answers: opts.answers };
+  const timeZone = await getAppTimezone(ownerId);
+  const todayYmd = ymdOf(now, timeZone);
+  const base = { todayYmd, now, timeZone, answers: opts.answers };
   const over = mode === "overwrite";
 
   // Title: fill keeps the target's if set; overwrite prefers the template's.

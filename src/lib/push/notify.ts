@@ -13,7 +13,7 @@ import {
   NOTIFICATION_CENTER_ENABLED,
 } from "@/lib/notifications";
 import { getSettings, notificationEnabled } from "@/lib/settings";
-import { getTodayData, APP_TIMEZONE, ymdInZone } from "@/lib/today";
+import { getTodayData, getAppTimezone, DEFAULT_TIMEZONE, ymdInZone } from "@/lib/today";
 import { listSubscriptions, pruneSubscription } from "./store";
 import type { PushMessage, PushSender } from "./types";
 
@@ -87,7 +87,9 @@ export async function runAgendaNotify(
   // Notification center paused (ADR-130) — no rows, no push, even on a manual
   // cron dispatch. The cron itself is disabled in config; this is the guard.
   if (!NOTIFICATION_CENTER_ENABLED) return { skipped: true };
-  const todayKey = `${ymdInZone(now, APP_TIMEZONE).y}-${ymdInZone(now, APP_TIMEZONE).m}-${ymdInZone(now, APP_TIMEZONE).d}`;
+  const tz = await getAppTimezone(ownerId);
+  const today = ymdInZone(now, tz);
+  const todayKey = `${today.y}-${today.m}-${today.d}`;
   const state = await readState(AGENDA_JOB_KEY);
   if (state.lastDay === todayKey) return { skipped: true };
 
@@ -99,7 +101,7 @@ export async function runAgendaNotify(
   const lead = firstMeeting?.meetingAt
     ? ` First: ${firstMeeting.title || "Untitled"} at ${new Intl.DateTimeFormat(
         "en-US",
-        { timeZone: APP_TIMEZONE, hour: "numeric", minute: "2-digit" }
+        { timeZone: tz, hour: "numeric", minute: "2-digit" }
       ).format(firstMeeting.meetingAt)}.`
     : "";
   const message: PushMessage = {
@@ -139,12 +141,6 @@ export async function runAgendaNotify(
   return { skipped: false, tally };
 }
 
-const timeFmt = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit",
-  timeZone: APP_TIMEZONE,
-});
-
 // Meeting-prep-ready (PRD §4.11). For each meeting coming due inside the window
 // that has a confirmed related entity (so there's prep worth opening) and
 // hasn't been notified yet, send one notice and stamp
@@ -169,6 +165,11 @@ export async function runPrepNotify(
   if (!notificationEnabled(settings.notificationPrefs, "meeting_prep")) {
     return { notified: 0, tally: { sent: 0, pruned: 0, failed: 0 } };
   }
+  const timeFmt = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: settings.timezone ?? DEFAULT_TIMEZONE,
+  });
   const windowEnd = new Date(now.getTime() + windowMinutes * 60_000);
   const candidates = await db
     .select({

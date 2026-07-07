@@ -6,19 +6,20 @@
 // The date lands on meeting_at server-side. Read-only rows link to the meeting.
 import Link from "next/link";
 import InlineContainAdd from "@/components/canvas/widgets/InlineContainAdd";
+import { useTimezone } from "@/components/providers/TimezoneProvider";
 
 type Row = { id: string; title: string; when: string | null };
 
-function dayLabel(iso: string | null): string | null {
+function dayLabel(iso: string | null, tz: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   // A date-only meeting is stored at UTC midnight; a timed one carries a real
-  // time. Show the time (local) only when there is one.
+  // time. Show the time (in the owner's timezone) only when there is one.
   const dateOnly = d.getUTCHours() === 0 && d.getUTCMinutes() === 0;
   if (dateOnly) {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   }
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz });
 }
 
 export default function MeetingsWidget({
@@ -28,6 +29,7 @@ export default function MeetingsWidget({
   recordId: string;
   items: Row[];
 }) {
+  const tz = useTimezone();
   // By date, closest on top (ascending); undated last (Tyler, 2026-07-01).
   const sorted = [...items].sort((a, b) => {
     if (!a.when) return b.when ? 1 : 0;
@@ -43,7 +45,7 @@ export default function MeetingsWidget({
             <Link href={`/items/${m.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
               {m.title || "Untitled"}
             </Link>
-            {dayLabel(m.when) && <span className="shrink-0 text-xs text-neutral-500">{dayLabel(m.when)}</span>}
+            {dayLabel(m.when, tz) && <span className="shrink-0 text-xs text-neutral-500">{dayLabel(m.when, tz)}</span>}
           </li>
         ))}
       </ul>

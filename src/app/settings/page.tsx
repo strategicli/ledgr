@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { hasScopedToken } from "@/lib/auth/machine";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
+import { DEFAULT_TIMEZONE } from "@/lib/today";
 import SettingsForm from "@/components/settings/SettingsForm";
 import IcsFeed from "@/components/settings/IcsFeed";
 import WebClipper from "@/components/settings/WebClipper";
@@ -37,7 +38,7 @@ export default async function SettingsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-neutral-100">User Settings</h1>
           <BackButton />
         </div>
-        <SettingsForm initial={settings} />
+        <SettingsForm initial={settings} serverDefaultTz={DEFAULT_TIMEZONE} />
         <IcsFeed initialToken={settings.icsToken} />
         <WebClipper origin={origin} hasApiToken={hasApiToken} />
       </div>

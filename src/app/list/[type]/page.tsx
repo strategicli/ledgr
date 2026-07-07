@@ -34,6 +34,7 @@ import { ItemError } from "@/lib/items";
 import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { relatedSummaryFor } from "@/lib/relations";
 import { appTodayYmd } from "@/lib/recurrence-service";
+import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
@@ -74,6 +75,7 @@ export default async function TypeList({
   const sp = await searchParams;
   const now = new Date();
   const settings = await getSettings(owner.id);
+  const tz = settings.timezone ?? DEFAULT_TIMEZONE;
   const lenses = lensesForType(settings, type);
   const active = selectLens(lenses, typeof sp.lens === "string" ? sp.lens : undefined);
   const reversed = sp.rev === "1";
@@ -149,7 +151,7 @@ export default async function TypeList({
   ]);
   const listRowClass = "group flex items-center gap-2 rounded px-2 py-1.5 hover:bg-surface-2";
   // App-timezone today for the row menu's Focus + Schedule quick-dates (S4).
-  const today = appTodayYmd();
+  const today = appTodayYmd(now, tz);
 
   const selects: FilterSelect[] = filterProps.map((fp) => ({
     param: `prop_${fp.key}`,
@@ -180,7 +182,7 @@ export default async function TypeList({
       {viewData ? (
         <ViewLensBody data={viewData} bulkConfig={bulkConfigForType(typeDef)} ownerId={owner.id} />
       ) : active.kind === "calendar" ? (
-        <CalendarFeed events={feed ?? []} now={now} />
+        <CalendarFeed events={feed ?? []} now={now} tz={tz} />
       ) : timeline ? (
         <SelectionProvider
           ids={[...timeline.upcoming, ...timeline.past, ...timeline.undated].map((m) => m.id)}
@@ -191,6 +193,7 @@ export default async function TypeList({
             past={timeline.past}
             undated={timeline.undated}
             now={now}
+            tz={tz}
           />
           <LoadMore
             shown={timeline.rows.length}

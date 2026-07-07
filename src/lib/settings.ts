@@ -55,6 +55,19 @@ const ALLOWED_ACCENTS = new Set<string>([
   ...HIGHLIGHT_GRADIENTS.map((g) => g.accent),
 ]);
 
+// True when `tz` is an IANA zone the runtime's own timezone database knows
+// (e.g. "America/Chicago"). Validated by asking Intl to build a formatter for
+// it — a bad string throws a RangeError. Used to keep a hand-edited or stale
+// setting from poisoning every date format.
+export function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Text size for the markdown prose canvas. Maps to the `--prose-font-size`
 // CSS variable; sm/base/lg/xl scale the reading body without touching UI chrome.
 export const TEXT_SIZES = ["sm", "base", "lg", "xl"] as const;
@@ -259,6 +272,12 @@ export type UserSettings = {
   // An absent key defaults to on (see NOTIFICATION_KINDS / notificationEnabled),
   // so a new source is on until the owner turns it off. Additive, no migration.
   notificationPrefs: Record<string, boolean>;
+  // The owner's IANA timezone (e.g. "America/Chicago"), defining every "today"
+  // boundary and the wall-clock of every displayed time. null = follow the
+  // server default (the LEDGR_TIMEZONE env var, else America/New_York), which is
+  // how a fresh instance and Tyler's instance behave until the owner picks one.
+  // Resolved server-side by getAppTimezone(); see src/lib/today.ts.
+  timezone: string | null;
   // AI Memory subsystem master switch (ADR-137). Off by default: a fresh Ledgr
   // behaves exactly as before. When on, the memory-specific MCP tools
   // (get_memory_stumps, remember) and the memory-protocol resource are exposed,
@@ -348,6 +367,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   tocByType: {},
   relatedLensChoices: {},
   notificationPrefs: {},
+  timezone: null,
   aiMemoryEnabled: false,
   collapsibleHeadingsEnabled: true,
   toggleBlocksEnabled: true,
@@ -534,6 +554,10 @@ export function parseSettings(raw: unknown): UserSettings {
   const tocByType = parseTocByType(r.tocByType);
   const relatedLensChoices = parseRelatedLensChoices(r.relatedLensChoices);
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
+  const timezone =
+    typeof r.timezone === "string" && isValidTimezone(r.timezone)
+      ? r.timezone
+      : DEFAULT_SETTINGS.timezone;
   const aiMemoryEnabled =
     typeof r.aiMemoryEnabled === "boolean" ? r.aiMemoryEnabled : DEFAULT_SETTINGS.aiMemoryEnabled;
   const collapsibleHeadingsEnabled =
@@ -570,6 +594,7 @@ export function parseSettings(raw: unknown): UserSettings {
     tocByType,
     relatedLensChoices,
     notificationPrefs,
+    timezone,
     aiMemoryEnabled,
     collapsibleHeadingsEnabled,
     toggleBlocksEnabled,

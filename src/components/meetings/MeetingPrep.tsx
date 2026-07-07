@@ -13,6 +13,7 @@ import { resolveProvidedGroup } from "@/lib/related-views";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { defaultLenses, lensesForType, relatedLensFor } from "@/lib/list-lenses";
 import { getSettings } from "@/lib/settings";
+import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { getType } from "@/lib/types";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import ViewLensBody from "@/components/lists/ViewLensBody";
@@ -21,9 +22,6 @@ import PinRuleButton from "./PinRuleButton";
 import RelatedLensPicker from "@/components/relations/RelatedLensPicker";
 import EventPeopleCard from "@/components/events/EventPeopleCard";
 import TaskPullPresets from "@/components/events/TaskPullPresets";
-
-const tsFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
-const dayFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 
 export default async function MeetingPrep({
   ownerId,
@@ -44,6 +42,15 @@ export default async function MeetingPrep({
   // (ADR-118). The lens choice shares the (event:task) key with the Linked-here
   // task group, so "how I view this meeting's tasks" stays one setting.
   const settings = await getSettings(ownerId);
+  // meeting_at is a real instant; render it in the owner's timezone (the server
+  // clock is UTC, so an unqualified formatter would be wrong).
+  const tz = settings.timezone ?? DEFAULT_TIMEZONE;
+  const tsFmt = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: tz,
+  });
+  const dayFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: tz });
   const taskSortLenses = lensesForType(settings, "task").filter((l) => l.kind === "sort");
   const chosenTaskLens = relatedLensFor(settings, "event", "task");
   const taskLens =

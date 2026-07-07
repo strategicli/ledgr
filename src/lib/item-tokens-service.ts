@@ -12,7 +12,7 @@ import { items, relations, types } from "@/db/schema";
 import { bodyMarkdown, isItemBody, MARKDOWN_FORMAT } from "@/lib/body";
 import { priorityLabel, type Priority } from "@/lib/priority";
 import { dateToYmdUtc } from "@/lib/recurrence";
-import { APP_TIMEZONE, ymdInZone } from "@/lib/today";
+import { getAppTimezone, ymdInZone } from "@/lib/today";
 import {
   hasItemTokens,
   resolveItemTokens,
@@ -31,9 +31,9 @@ function ymdString(p: { y: number; m: number; d: number }): string {
   return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
 }
 
-// A real timestamp (created/meeting) → its YMD in the app timezone.
-function instantYmd(d: Date | null): string | null {
-  return d ? ymdString(ymdInZone(d, APP_TIMEZONE)) : null;
+// A real timestamp (created/meeting) → its YMD in the owner's timezone.
+function instantYmd(d: Date | null, tz: string): string | null {
+  return d ? ymdString(ymdInZone(d, tz)) : null;
 }
 
 // Flatten a properties jsonb value to a display string. A YYYY-MM-DD string is
@@ -91,7 +91,7 @@ type ItemFieldRow = {
   parentId: string | null;
 };
 
-function toFields(row: ItemFieldRow): TokenItemFields {
+function toFields(row: ItemFieldRow, tz: string): TokenItemFields {
   return {
     title: row.title,
     status: row.status,
@@ -101,8 +101,8 @@ function toFields(row: ItemFieldRow): TokenItemFields {
     dates: {
       due: calDayYmd(row.dueDate),
       scheduled: calDayYmd(row.scheduledDate),
-      meeting: instantYmd(row.meetingAt),
-      created: instantYmd(row.createdAt),
+      meeting: instantYmd(row.meetingAt, tz),
+      created: instantYmd(row.createdAt, tz),
     },
     props: propsMap(row.properties),
   };
@@ -125,7 +125,8 @@ export async function buildItemTokenContext(
     .limit(1);
   if (!self) return null;
 
-  const todayYmd = ymdString(ymdInZone(now, APP_TIMEZONE));
+  const tz = await getAppTimezone(ownerId);
+  const todayYmd = ymdString(ymdInZone(now, tz));
 
   // Parent (one row, optional).
   let parent: TokenItemFields | undefined;
@@ -136,7 +137,7 @@ export async function buildItemTokenContext(
       .innerJoin(types, eq(types.key, items.type))
       .where(and(eq(items.id, self.parentId), eq(items.ownerId, ownerId), isNull(items.deletedAt)))
       .limit(1);
-    if (p) parent = toFields(p);
+    if (p) parent = toFields(p, tz);
   }
 
   // Children (subtasks) in authoring order, titles only.
@@ -191,7 +192,7 @@ export async function buildItemTokenContext(
 
   return {
     todayYmd,
-    self: toFields(self),
+    self: toFields(self, tz),
     parent,
     children,
     related,

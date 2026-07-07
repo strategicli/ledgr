@@ -20,6 +20,7 @@ import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import type { BulkActionConfig } from "@/lib/bulk-config";
 import { appTodayYmd } from "@/lib/recurrence-service";
+import { DEFAULT_TIMEZONE, getAppTimezone } from "@/lib/today";
 import { childRollups } from "@/lib/subtasks";
 import type { ViewLensData } from "@/lib/view-render";
 
@@ -39,10 +40,11 @@ export default async function ViewLensBody({
   const rollups = ownerId
     ? await childRollups(ownerId, data.items.map((i) => i.id))
     : undefined;
+  const tz = ownerId ? await getAppTimezone(ownerId) : DEFAULT_TIMEZONE;
   // Make rows interactive (swipe + row menu, ADR-142) on a real type-list lens,
   // but not when the related panel is driving this body (it passes rowActions —
   // its own relation controls are the row's interaction there; defer by hiding).
-  const today = rowActions ? undefined : appTodayYmd();
+  const today = rowActions ? undefined : appTodayYmd(new Date(), tz);
   // Anchor "Open beside" to this saved view — but only on an interactive lens
   // (`today` set). When the related panel drives this body (rowActions), the
   // rows carry no send menu, and the view isn't the reading context, so no host.
@@ -61,6 +63,7 @@ export default async function ViewLensBody({
         rowActions={rowActions}
         rollups={rollups}
         today={today}
+        tz={tz}
       />
     </DeskHostProvider>
   );

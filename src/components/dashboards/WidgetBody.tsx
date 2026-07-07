@@ -12,6 +12,7 @@
 import Link from "next/link";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import ViewRenderer, { type ViewItem } from "@/components/views/ViewRenderer";
+import { useTimezone } from "@/components/providers/TimezoneProvider";
 import ActionWidgetBody from "./ActionWidgetBody";
 import ContainerWidget from "./ContainerWidget";
 import EmbedWidget from "./EmbedWidget";
@@ -85,6 +86,7 @@ export default function WidgetBody({
   onSettings?: (id: string, settings: WidgetSettings) => void;
 }) {
   const { widget } = data;
+  const tz = useTimezone();
 
   if (widget.kind === "stat") {
     const s = widget.settings as StatWidgetSettings;
@@ -237,6 +239,7 @@ export default function WidgetBody({
           items={data.items}
           groupOrder={data.groupOrder}
           propertyLabels={data.propertyLabels}
+          tz={tz}
         />
       </div>
     );

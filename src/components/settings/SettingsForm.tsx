@@ -48,10 +48,52 @@ const SECTION_STYLE_LABELS: Record<SectionStyle, string> = {
   unified: "Unified",
 };
 
-export default function SettingsForm({ initial }: { initial: UserSettings }) {
+// The full IANA zone list from the runtime, with a curated fallback for the rare
+// engine without Intl.supportedValuesOf. Computed once (module scope).
+const ALL_TIMEZONES: string[] = (() => {
+  try {
+    const sv = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
+    if (sv) return sv("timeZone");
+  } catch {
+    /* fall through */
+  }
+  return [
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Phoenix",
+    "America/Los_Angeles",
+    "America/Anchorage",
+    "Pacific/Honolulu",
+    "UTC",
+  ];
+})();
+
+export default function SettingsForm({
+  initial,
+  serverDefaultTz,
+}: {
+  initial: UserSettings;
+  // The zone "Automatic" falls back to (the LEDGR_TIMEZONE env, else
+  // America/New_York), shown in the label so the default is legible.
+  serverDefaultTz: string;
+}) {
   const [settings, setSettings] = useState<UserSettings>(initial);
   const [saved, setSaved] = useState(false);
   const router = useRouter();
+
+  // Timezone drives every "today" boundary and the wall-clock of every displayed
+  // time. Server surfaces render it, so a change router.refresh()es to take hold.
+  const setTimezone = (tz: string | null) => {
+    setSettings((s) => ({ ...s, timezone: tz }));
+    void save({ timezone: tz }, true);
+  };
+  // Ensure the currently-saved zone is always selectable even if the runtime's
+  // list somehow omits it (a hand-set value, an older list).
+  const zoneOptions =
+    settings.timezone && !ALL_TIMEZONES.includes(settings.timezone)
+      ? [settings.timezone, ...ALL_TIMEZONES]
+      : ALL_TIMEZONES;
 
   const isRail = settings.navPosition === "left" || settings.navPosition === "right";
 
@@ -125,6 +167,43 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
           onBlur={() => void save({ displayName: settings.displayName })}
           className="mt-2 w-48 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
         />
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Timezone</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Sets what &quot;today&quot; means and the clock times shown throughout
+          the app (meetings, due dates, timestamps). Traveling doesn&apos;t
+          change it, so your times stay put wherever you are.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            value={settings.timezone ?? ""}
+            onChange={(e) => setTimezone(e.target.value || null)}
+            className="w-64 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+          >
+            <option value="">Automatic ({serverDefaultTz})</option>
+            {zoneOptions.map((z) => (
+              <option key={z} value={z}>
+                {z.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (detected) setTimezone(detected);
+              } catch {
+                /* leave the current value */
+              }
+            }}
+            className="rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+          >
+            Use this device&apos;s timezone
+          </button>
+        </div>
       </section>
 
       <section>

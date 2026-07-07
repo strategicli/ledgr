@@ -25,7 +25,7 @@ import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { resolveStatusSchema, type StatusDef } from "@/lib/status";
-import { todayBounds } from "@/lib/today";
+import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { queryViewItems, type ViewDefinition } from "@/lib/views";
 import { listCalendarEventsForRange } from "@/lib/calendar/feed";
@@ -139,11 +139,12 @@ export default async function Tasks({
 
   const taskType = await getType("task");
   const statuses = resolveStatusSchema(taskType.statusSchema);
-  const { dueToday } = todayBounds();
+  const tz = await getAppTimezone(owner.id);
+  const { dueToday } = todayBounds(new Date(), tz);
   // App-timezone today (YYYY-MM-DD) for the row menu's Focus + Schedule quick
   // dates (ADR-142). Named `todayYmd` to avoid the "today" tab's local `today`
   // (a filtered task array) shadowing it.
-  const todayYmd = appTodayYmd();
+  const todayYmd = appTodayYmd(new Date(), tz);
 
   const tabStrip = (
     <TabStrip
@@ -295,7 +296,7 @@ export default async function Tasks({
       display: { mode: "timegrid", placeBy: "scheduled" },
       createdAt: new Date(),
     };
-    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} calendarEvents={calendarEvents} />;
+    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} calendarEvents={calendarEvents} tz={tz} />;
   } else {
     // projects: each project + its open tasks
     const projects = await queryViewItems(owner.id, { type: "project" }, { field: "updatedAt", dir: "desc" });

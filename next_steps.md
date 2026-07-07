@@ -4,6 +4,16 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **⏭️ NEXT (2026-07-01) — DEPLOY THE PJ CHUNK:** `integrate-pj` is committed and **merged with `origin/main`** (which had advanced to ADR-137 / PRs→#138: AI Memory, calendar lenses, edit guard, etc.). Migrations linearized past the `0040` collision → `0040_memory_type` then `0041_solid_leech`…`0045_pursuit_type` (whens rewritten so prod won't skip them). tsc + `next build` + eslint clean; verify scripts green on the merged tree. **Remaining, in order (needs prod creds — Tyler):** (1) `npm run db:migrate` against **prod** `DATABASE_URL` (applies the 5 new migrations after `memory_type`) — must precede code going live; (2) push `main` (or PR → merge) → Vercel deploys; (3) verify `/health` + a project page. **Dev-DB gotcha:** `ledgr_dev` already ran the old-numbered branch migrations, so `db:migrate` there will collide — reset dev or fix `__drizzle_migrations` (prod is unaffected, it never had them). Project Type ADR renumbered 133→**138** (origin took 133 for the Planner).
 
+## ⟢ Session summary — Per-owner timezone setting (2026-07-07, ADR-151)
+
+**From Brandon: "times are all an hour off… is there a user setting? or a bug?"** Root cause: the app's timezone was a build-time env constant (`APP_TIMEZONE`, defaulting to `America/New_York`) with no UI control, so his Central instance rendered everything an hour ahead; his Eastern trip was a red herring (the value is server-side, not device-derived). Built the per-user setting the code had promised since ADR-008. **Non-core / solo**, additive to the `users.settings` jsonb (no migration).
+
+- **Setting + resolver:** `settings.timezone: string | null` (validated via `isValidTimezone`); `today.ts` now has `DEFAULT_TIMEZONE` (env fallback, `APP_TIMEZONE` kept as alias), `getAppTimezone(ownerId)` (request-memoized), and a process-cached `appTimezoneSync()` (primed per request by the root layout) for owner-less sync helpers. Env fallback preserved so nothing regresses to UTC.
+- **Threaded the resolved zone** through every display + day-boundary site: server components/routes/crons resolve `getAppTimezone`; pure libs take a `tz` param; `ViewRenderer` gets a `tz` prop; the client dashboard-widget path reads a new global `TimezoneProvider` context. Calendar-day fields (due/scheduled/note_date) stay UTC (ADR-008/110), unchanged.
+- **UI:** User Settings → Timezone — full IANA `<select>` (~418 zones) + "Automatic (server default)" + "Use this device's timezone"; changing it `router.refresh()`es so times update live.
+- **Verified + merged to main + deployed to prod-brandon (2026-07-07).** `next build` clean; 14:00Z → 10 AM Eastern vs 9 AM Central confirmed; `isValidTimezone` accepts Chicago, rejects garbage. **Owed:** Brandon sets his zone to `America/Chicago` in User Settings; device-verify the picker + refresh.
+- **Known follow-up (non-core):** the meeting-time *input* (`FieldStrip` `datetime-local`) still reads the browser's zone, not the setting — consistent when device == setting; flagged for later.
+
 ## ⟢ Session summary — `attach_file` MCP tool SHIPPED (2026-07-07, ADR-150, CORE — Tyler agreed)
 
 **From Brandon's "the MCP won't let an AI add images/files into a note — add that."** Confirmed the gap: MCP could write `bodyMarkdown` but had no attachment path (the upload flow is browser-only — presign → browser PUTs bytes → `![](url)`; an MCP client can't PUT a presigned URL or even obtain one).
@@ -84,7 +94,6 @@ The live, near-term work queue. Start here each session. When you finish a slice
 2. `npx tsx scripts/setup-groups.mts` — creates the `group` type; retypes Pastors/Elders/Staff tags → groups; merges the "elders"/"Finance Team" person items; trashes the unused "Pastors" person (backup-first; `--dry-run` verified).
 3. Open each group and add its **Members** (the roster drives expected-attendee ghosts + "✓ all here" + "anyone in <group>" seeds).
 4. Commit + deploy when satisfied. Nothing deferred — mark people OUT on the People card and the "Catch up" section + `{{absentees}}` populate.
-
 ## ⟢ Session summary — Unified UI/UX refresh, all 7 slices SHIPPED (2026-07-03, branch `claude/epic-boyd-6922ed`, ADR-141/142)
 
 **From Brandon's "take a UI/UX pass across the main surfaces and make a unified update."** Built the full brief (`explorations/ui-refresh.md`) end to end — all seven slices, one commit each, verified on the dev-auth preview at 1440px + 375px against production data. Non-core/solo; the two cross-cutting pieces (token layer, mobile interaction standard) got ADRs + CLAUDE.md convention lines + a COLLAB heads-up. UI-only: no schema, no new tables, no route changes. `npm run build` + full `eslint src` + tsc all clean; CSS unstyled-flash check green.

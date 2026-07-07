@@ -12,12 +12,12 @@ import { formatWhen } from "@/lib/event-format";
 // Structural row type: whatever the list query yields, we only touch these.
 export type TimelineRow = { id: string; title: string | null; meetingAt: Date | null };
 
-function MeetingRow({ meeting, now }: { meeting: TimelineRow; now: Date }) {
+function MeetingRow({ meeting, now, tz }: { meeting: TimelineRow; now: Date; tz: string }) {
   return (
     <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
       <SelectCheckbox id={meeting.id} />
       <span className="w-40 shrink-0 text-xs tabular-nums text-neutral-500">
-        {meeting.meetingAt ? formatWhen(meeting.meetingAt, now) : ""}
+        {meeting.meetingAt ? formatWhen(meeting.meetingAt, now, tz) : ""}
       </span>
       <Link
         href={`/items/${meeting.id}`}
@@ -36,10 +36,12 @@ function Section({
   title,
   rows,
   now,
+  tz,
 }: {
   title: string;
   rows: TimelineRow[];
   now: Date;
+  tz: string;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -49,7 +51,7 @@ function Section({
       </h2>
       <ul className="mt-1">
         {rows.map((m) => (
-          <MeetingRow key={m.id} meeting={m} now={now} />
+          <MeetingRow key={m.id} meeting={m} now={now} tz={tz} />
         ))}
       </ul>
     </section>
@@ -61,20 +63,22 @@ export default function EventTimeline({
   past,
   undated,
   now,
+  tz,
 }: {
   upcoming: TimelineRow[];
   past: TimelineRow[];
   undated: TimelineRow[];
   now: Date;
+  tz: string;
 }) {
   if (upcoming.length === 0 && past.length === 0 && undated.length === 0) {
     return <p className="mt-6 px-2 text-sm text-neutral-600">No events yet.</p>;
   }
   return (
     <>
-      <Section title="Upcoming" rows={upcoming} now={now} />
-      <Section title="Past" rows={past} now={now} />
-      <Section title="No date" rows={undated} now={now} />
+      <Section title="Upcoming" rows={upcoming} now={now} tz={tz} />
+      <Section title="Past" rows={past} now={now} tz={tz} />
+      <Section title="No date" rows={undated} now={now} tz={tz} />
     </>
   );
 }

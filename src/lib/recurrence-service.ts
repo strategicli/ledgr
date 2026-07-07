@@ -30,7 +30,7 @@ import {
   ymdToUtcDate,
   type RecurrenceRule,
 } from "@/lib/recurrence";
-import { APP_TIMEZONE, ymdInZone } from "@/lib/today";
+import { appTimezoneSync, ymdInZone } from "@/lib/today";
 import { defaultStatusKey } from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
@@ -43,10 +43,11 @@ export const OCCURRENCE_ROLE = "occurrence";
 
 type ItemRow = Awaited<ReturnType<typeof getItem>>;
 
-// Today as a calendar day in the app timezone (the day Brandon is actually in),
-// matching how the rest of the app computes "today" (today.ts).
-export function appTodayYmd(now = new Date()): string {
-  const { y, m, d } = ymdInZone(now, APP_TIMEZONE);
+// Today as a calendar day in the owner's timezone (the day Brandon is actually
+// in), matching how the rest of the app computes "today" (today.ts). tz defaults
+// to the process-cached owner zone; pass an explicit tz when one is resolved.
+export function appTodayYmd(now = new Date(), tz = appTimezoneSync()): string {
+  const { y, m, d } = ymdInZone(now, tz);
   return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 

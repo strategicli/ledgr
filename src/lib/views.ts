@@ -9,7 +9,7 @@ import { items, views } from "@/db/schema";
 import { type ItemStatus, type Urgency } from "@/lib/item-enums";
 import { toPriority } from "@/lib/priority";
 import { ItemError, listColumns } from "@/lib/items";
-import { APP_TIMEZONE, todayBounds, zonedMidnightUtc } from "@/lib/today";
+import { appTimezoneSync, todayBounds, zonedMidnightUtc } from "@/lib/today";
 
 // Date windows. "overdue" is strictly before today (for a meeting, "in the
 // past"); "today" is the single day; "week" is today through six days out;
@@ -173,7 +173,7 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
             createdAt: items.createdAt,
             updatedAt: items.updatedAt,
           }[field]}`;
-    const b = todayBounds();
+    const b = todayBounds(new Date(), appTimezoneSync());
     // Due and scheduled dates are UTC-midnight calendar days (ADR-008); the
     // timestamp fields use real timezone midnights (same split as today.ts).
     // The plan date is a COALESCE of two calendar-day columns, so it's UTC too.
@@ -185,7 +185,7 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
     const cutoff = (n: number) =>
       isCalendarDay
         ? new Date(Date.UTC(b.today.y, b.today.m - 1, b.today.d + n))
-        : zonedMidnightUtc({ ...b.today, d: b.today.d + n }, APP_TIMEZONE);
+        : zonedMidnightUtc({ ...b.today, d: b.today.d + n }, appTimezoneSync());
 
     if (filter.withinDays != null) {
       where.push(gte(col, startToday), lt(col, cutoff(filter.withinDays)));
