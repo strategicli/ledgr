@@ -58,7 +58,9 @@ export default async function PassagePage({
         <p className="mt-1 text-sm text-ink-muted">
           {grouped.length === 0
             ? "Nothing references this passage yet."
-            : `${grouped.length} item${grouped.length === 1 ? "" : "s"} reference this passage.`}
+            : grouped.length === 1
+              ? "1 item references this passage."
+              : `${grouped.length} items reference this passage.`}
         </p>
 
         {grouped.length > 0 && (
