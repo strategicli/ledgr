@@ -15,8 +15,15 @@ if (existsSync(".env.local")) {
   }
 }
 
-const { decodeBase64, filenameFromDisposition, isImageContentType, buildEmbedReference } =
-  await import("../src/lib/mcp/tools/attachments");
+const {
+  decodeBase64,
+  filenameFromDisposition,
+  isImageContentType,
+  buildEmbedReference,
+  embedMarkdown,
+  isImageByUrl,
+  basenameFromUrl,
+} = await import("../src/lib/mcp/tools/attachments");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -95,6 +102,31 @@ eq(
   "label brackets escaped in link",
   buildEmbedReference("application/pdf", "https://cdn.example/x.pdf", "notes [draft]"),
   "[notes \\[draft\\]](https://cdn.example/x.pdf)",
+);
+
+console.log("\n# URL basename + image-by-extension (embed_attachment path)");
+eq("basename from URL", basenameFromUrl("https://cdn.example/a/b/photo.jpg"), "photo.jpg");
+eq(
+  "basename decodes percent-encoding",
+  basenameFromUrl("https://cdn.example/x/my%20file.pdf"),
+  "my file.pdf",
+);
+eq("basename from bare path", basenameFromUrl("/owner/id/chart.png"), "chart.png");
+check("jpg URL is image", isImageByUrl("https://cdn.example/x/photo.JPG"));
+check("webp URL is image", isImageByUrl("https://cdn.example/x/pic.webp"));
+check("pdf URL is not image", !isImageByUrl("https://cdn.example/x/doc.pdf"));
+check("extensionless URL is not image", !isImageByUrl("https://cdn.example/x/blob"));
+
+console.log("\n# embedMarkdown (kind-driven, used by embed_attachment)");
+eq(
+  "image kind → inline",
+  embedMarkdown(true, "https://cdn.example/x.png", "Chart"),
+  "![Chart](https://cdn.example/x.png)",
+);
+eq(
+  "file kind → link",
+  embedMarkdown(false, "https://cdn.example/x.pdf", "Doc"),
+  "[Doc](https://cdn.example/x.pdf)",
 );
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);

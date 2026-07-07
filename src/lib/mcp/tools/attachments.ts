@@ -1,19 +1,29 @@
-// Attachment tool (ADR-150): let an AI put an image or file into a note.
-// The browser upload path (presign → PUT bytes → ![](url)) can't work over
-// MCP — an AI has no way to PUT to a presigned URL — so this tool hands the
-// bytes to Ledgr and the server does the R2 write via createAttachmentFromBytes
-// (the same owner/quota/cap checks the in-app POST /api/attachments runs). The
-// bytes arrive one of two ways: a sourceUrl the server fetches, or inline
-// base64. By default the tool also embeds a markdown reference in the item body
-// (image → ![alt](url), any other file → [name](url)), so "add this diagram to
-// the note" is a single call. Markdown stays the source of truth (ADR-037).
+// Attachment tools (ADR-150): let an AI put an image or file into a note.
+// The browser upload path (presign → PUT bytes → ![](url)) can't work over MCP
+// unchanged — an AI can't PUT to a presigned URL from inside a tool call — so
+// there are two doors, matched to what the AI can actually do:
+//   - attach_file: the AI hands Ledgr the bytes (a sourceUrl the server fetches,
+//     or inline base64) and the server does the R2 write via
+//     createAttachmentFromBytes. One call; best for small/medium files and for
+//     anything the AI has as a URL. base64 rides in the tool call, so it bloats
+//     the context — impractical for large files.
+//   - create_upload_url + embed_attachment: the presigned-PUT handshake for
+//     LOCAL or LARGE files (an agent that can perform an HTTP PUT — e.g. curl).
+//     create_upload_url reserves the row + returns a presigned PUT; the agent
+//     PUTs the local bytes STRAIGHT to R2 (never through the tool call or the
+//     app server, so size stops mattering); embed_attachment then adds the
+//     reference to the body. Same handshake the ~3,900-image migration used.
+// Both go through the same owner/quota/cap checks as the in-app POST
+// /api/attachments. By default the reference is embedded in the item body
+// (image → ![alt](url), any other file → [name](url)). Markdown stays the
+// source of truth (ADR-037).
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { imageToMarkdown } from "@/lib/editor/image-markdown";
-import { createAttachmentFromBytes } from "@/lib/attachments";
+import { createAttachment, createAttachmentFromBytes } from "@/lib/attachments";
 import { asUuid } from "@/lib/api";
 import { ItemError, getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
-import { optString } from "./args";
+import { optEnum, optInt, optString, reqString } from "./args";
 import type { McpTool } from "./wire";
 
 // Ceiling on bytes we'll pull from a sourceUrl in one shot. Comfortably covers
@@ -26,18 +36,68 @@ export function isImageContentType(contentType: string): boolean {
   return /^image\//i.test(contentType);
 }
 
+// File extensions we treat as inline images when a content type isn't known
+// (embed_attachment infers from the public URL, which ends in the filename).
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|heic|heif|bmp|tiff?)$/i;
+
+// The filename at the tail of a URL path (decoded), or undefined.
+export function basenameFromUrl(url: string): string | undefined {
+  let path = url;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    /* not an absolute URL — fall back to the raw string */
+  }
+  const last = path.split("/").pop() || "";
+  try {
+    return decodeURIComponent(last).trim() || undefined;
+  } catch {
+    return last.trim() || undefined;
+  }
+}
+
+// Best-effort "is this URL an image?" from its filename extension, for when no
+// content type is on hand (the embed_attachment path).
+export function isImageByUrl(url: string): boolean {
+  return IMAGE_EXT_RE.test(basenameFromUrl(url) ?? url);
+}
+
 // The markdown reference embedded in the item body: an image renders inline,
 // any other file becomes a link. Escapes brackets in the label either way.
 // Exported (with the parsers below) so the pure glue is node-testable, the same
 // discipline image-markdown.ts follows.
+export function embedMarkdown(
+  isImage: boolean,
+  publicUrl: string,
+  label: string
+): string {
+  return isImage
+    ? imageToMarkdown({ src: publicUrl, alt: label })
+    : `[${label.replace(/[[\]]/g, "\\$&")}](${publicUrl})`;
+}
+
 export function buildEmbedReference(
   contentType: string,
   publicUrl: string,
   label: string
 ): string {
-  return isImageContentType(contentType)
-    ? imageToMarkdown({ src: publicUrl, alt: label })
-    : `[${label.replace(/[[\]]/g, "\\$&")}](${publicUrl})`;
+  return embedMarkdown(isImageContentType(contentType), publicUrl, label);
+}
+
+// Append a markdown reference to an item's body without clobbering it: read the
+// current body, add the reference after a blank-line separator, save through the
+// same owner-scoped updateItem (revision-snapshotted) the app uses. Shared by
+// attach_file and embed_attachment so neither reimplements the safe merge (a
+// blind bodyMarkdown replace would drop the rest of the note).
+async function appendReferenceToBody(
+  ownerId: string,
+  itemId: string,
+  ref: string
+): Promise<void> {
+  const item = await getItem(ownerId, itemId);
+  const existing = bodyMarkdown(item.body);
+  const next = existing.trim() ? `${existing.replace(/\s+$/, "")}\n\n${ref}\n` : `${ref}\n`;
+  await updateItem(ownerId, itemId, { body: makeMarkdownBody(next) });
 }
 
 // Decode base64 (bare or a data: URI) to bytes without Buffer, so it works in
@@ -239,12 +299,9 @@ export const attachmentTools: McpTool[] = [
 
       let embedded = false;
       if (embedInBody) {
-        const item = await getItem(ownerId, itemId);
-        const existing = bodyMarkdown(item.body);
         const label = alt || attachment.filename;
         const ref = buildEmbedReference(contentType, attachment.publicUrl, label);
-        const next = existing.trim() ? `${existing.replace(/\s+$/, "")}\n\n${ref}\n` : `${ref}\n`;
-        await updateItem(ownerId, itemId, { body: makeMarkdownBody(next) });
+        await appendReferenceToBody(ownerId, itemId, ref);
         embedded = true;
       }
 
@@ -257,6 +314,115 @@ export const attachmentTools: McpTool[] = [
         publicUrl: attachment.publicUrl,
         embedded,
       };
+    },
+  },
+  {
+    name: "create_upload_url",
+    title: "Get a presigned upload URL for a local/large file",
+    description:
+      "Step 1 of the two-step upload for a LOCAL or LARGE file (use this instead " +
+      "of attach_file when the bytes are on the local disk or too big to inline as " +
+      "base64). Reserves an attachment on the item and returns a short-lived " +
+      "presigned PUT `uploadUrl` plus the eventual `publicUrl`. You then PUT the " +
+      "raw file bytes straight to uploadUrl with header 'Content-Type: <the same " +
+      "contentType>' (the bytes go directly to storage, never back through this " +
+      "tool), and finally call embed_attachment with the returned publicUrl to add " +
+      "it to the note. Requires file storage configured; subject to the per-file " +
+      "and ~10GB quota caps. The URL expires in ~15 minutes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        itemId: { type: "string", description: "The item (UUID) the file belongs to." },
+        filename: { type: "string", description: "Filename to store (e.g. photo.jpg)." },
+        contentType: {
+          type: "string",
+          description:
+            "MIME type (e.g. image/jpeg, application/pdf). You MUST send this exact " +
+            "value as the Content-Type header on the PUT or the signature fails.",
+        },
+        sizeBytes: {
+          type: "integer",
+          description: "The file's size in bytes (checked against the per-file + quota caps).",
+          minimum: 1,
+        },
+      },
+      required: ["itemId", "filename", "contentType", "sizeBytes"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const itemId = asUuid(args.itemId, "itemId");
+      const filename = reqString(args, "filename");
+      const contentType = reqString(args, "contentType");
+      const sizeBytes = optInt(args, "sizeBytes");
+      if (sizeBytes === undefined) {
+        throw new ItemError("bad_request", "sizeBytes is required");
+      }
+      const reserved = await createAttachment(ownerId, {
+        itemId,
+        filename,
+        contentType,
+        sizeBytes,
+      });
+      return {
+        attachmentId: reserved.id,
+        itemId,
+        filename: reserved.filename,
+        storageKey: reserved.storageKey,
+        uploadUrl: reserved.uploadUrl,
+        publicUrl: reserved.publicUrl,
+        contentType,
+        next:
+          `PUT the file bytes to uploadUrl with header 'Content-Type: ${contentType}' ` +
+          `(must match exactly), then call embed_attachment with itemId ${itemId} and ` +
+          `this publicUrl to add it to the note.`,
+      };
+    },
+  },
+  {
+    name: "embed_attachment",
+    title: "Embed an uploaded file into an item's body",
+    description:
+      "Step 2 of the two-step upload: after a successful PUT to a create_upload_url " +
+      "uploadUrl, add the file to the item's markdown body — an image renders inline " +
+      "as ![alt](url), any other file as a [name](url) link. Pass the publicUrl that " +
+      "create_upload_url returned. Whether it renders as an image is inferred from " +
+      "the URL's extension unless you set kind. Appends to the body without " +
+      "disturbing the rest of it. (attach_file already embeds on its own; this is " +
+      "only for the presigned-upload path.)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        itemId: { type: "string", description: "The item (UUID) to embed into." },
+        publicUrl: {
+          type: "string",
+          description: "The publicUrl returned by create_upload_url (the file must already be PUT).",
+        },
+        alt: {
+          type: "string",
+          description: "Alt text / caption (defaults to the filename from the URL).",
+        },
+        kind: {
+          type: "string",
+          enum: ["image", "file"],
+          description:
+            "Force inline image vs. file link. Omit to infer from the URL extension.",
+        },
+      },
+      required: ["itemId", "publicUrl"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const itemId = asUuid(args.itemId, "itemId");
+      const publicUrl = reqString(args, "publicUrl");
+      const alt = optString(args, "alt");
+      const kind = optEnum(args, "kind", ["image", "file"] as const);
+      const isImage = kind ? kind === "image" : isImageByUrl(publicUrl);
+      const label = alt || basenameFromUrl(publicUrl) || "attachment";
+      const ref = embedMarkdown(isImage, publicUrl, label);
+      await appendReferenceToBody(ownerId, itemId, ref);
+      return { itemId, embedded: true, isImage, markdown: ref };
     },
   },
 ];
