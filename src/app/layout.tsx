@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import ActionToast from "@/components/ui/ActionToast";
+import DeskSendContextMenu from "@/components/desk/DeskSendMenu";
 import Nav from "@/components/nav/Nav";
 import NavProgress from "@/components/nav/NavProgress";
 import PwaRegister from "@/components/pwa/PwaRegister";
@@ -124,6 +125,9 @@ export default async function RootLayout({
           <ActionToast />
           {/* One global toast for row/swipe actions (S4/S5); lives outside the
               list subtree so it survives the refresh that removes the acted row. */}
+          <DeskSendContextMenu />
+          {/* One global Send-to-Desk popover (ADR-146): opened at the cursor by
+              inline mention/link right-clicks; desktop-only. */}
           <PwaRegister />
           <OutboxSync />
         </body>

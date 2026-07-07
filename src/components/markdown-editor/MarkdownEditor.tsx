@@ -37,6 +37,17 @@ import {
 import { createMentionSuggestion } from "./mention-suggestion";
 import { ItemTokenDecoration } from "./token-decoration";
 import { ItemTokenSuggestion } from "./token-suggestion";
+import {
+  Toggle,
+  ToggleSummary,
+  ToggleContent,
+  insertToggle,
+} from "./toggle-extension";
+import {
+  CollapsibleHeadings,
+  setHeadingsCollapsible,
+} from "./collapsible-headings";
+import { SlashCommands, setSlashToggleEnabled } from "./slash-suggestion";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -51,6 +62,7 @@ import {
   type PromotedRefs,
 } from "./block-anchor-extension";
 import { extractPromotable } from "@/lib/editor/block-anchor";
+import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import PromoteLinePopup, { type PromoteDraft } from "./PromoteLinePopup";
 import "./markdown-editor.css";
 
@@ -121,20 +133,31 @@ async function insertUploadedImages(
   }
 }
 
-// Configurable toolbar (app-wide): the ids a user hid live in
-// settings.editorToolbarHidden. Fetched once per page load (memoized) so every
-// editor instance shares the single request.
-let hiddenToolbarPromise: Promise<string[]> | null = null;
-function loadHiddenToolbar(): Promise<string[]> {
-  hiddenToolbarPromise ??= fetch("/api/settings")
+// Editor settings the canvas needs (app-wide): the hidden-toolbar ids plus the
+// two feature switches. Fetched once per page load (memoized) so every editor
+// instance shares the single request.
+type EditorSettings = {
+  hidden: string[];
+  collapsibleHeadings: boolean;
+  toggleBlocks: boolean;
+};
+let editorSettingsPromise: Promise<EditorSettings> | null = null;
+function loadEditorSettings(): Promise<EditorSettings> {
+  editorSettingsPromise ??= fetch("/api/settings")
     .then((r) => (r.ok ? r.json() : null))
-    .then((d) =>
-      Array.isArray(d?.settings?.editorToolbarHidden)
-        ? (d.settings.editorToolbarHidden as string[])
-        : []
-    )
-    .catch(() => []);
-  return hiddenToolbarPromise;
+    .then((d) => {
+      const s = d?.settings ?? {};
+      return {
+        hidden: Array.isArray(s.editorToolbarHidden)
+          ? (s.editorToolbarHidden as string[])
+          : [],
+        // Default on when the field is absent (matches DEFAULT_SETTINGS).
+        collapsibleHeadings: s.collapsibleHeadingsEnabled !== false,
+        toggleBlocks: s.toggleBlocksEnabled !== false,
+      };
+    })
+    .catch(() => ({ hidden: [], collapsibleHeadings: true, toggleBlocks: true }));
+  return editorSettingsPromise;
 }
 
 function ToolbarButton({
@@ -211,6 +234,18 @@ export default function MarkdownEditor({
     onRequestSaveRef.current = onRequestSave;
   });
 
+  // The last markdown this editor emitted upward, seeded (in onCreate) with the
+  // editor's OWN canonical serialization of the loaded body. Tiptap re-emits the
+  // body once on mount (a programmatic transaction), and its serialization is
+  // rarely byte-identical to the stored markdown — a Notion import uses `*`/`1)`
+  // bullets, extra blank lines, etc., which round-trip to `-`/`1.` and single
+  // blanks. Comparing that mount re-emit against the *stored* string (as the
+  // autosave dedup does) misses, so merely opening an item PATCHed a normalized
+  // body and bumped its edit date + burned a revision — the "viewing an item
+  // marks it edited" bug. Comparing against the canonical baseline instead makes
+  // the mount re-emit a true no-op; only a real user edit differs and saves.
+  const lastEmitted = useRef<string | null>(null);
+
   const editor = useEditor({
     immediatelyRender: false,
     editable,
@@ -225,11 +260,11 @@ export default function MarkdownEditor({
       // legacy 2-space content (markdown-render.ts), so this is the source-side
       // half of keeping the editor and every render in agreement.
       Markdown.configure({ indentation: { style: "space", size: 4 } }),
-      // Empty-state hint: a quiet "Start writing…" while the body is empty, the
-      // first impression of every new note. First-party (@tiptap/extensions),
-      // styled via the is-editor-empty class in markdown-editor.css. No "/" hint
-      // since there's no slash menu yet (ADR-037 defers the Notion feel).
-      Placeholder.configure({ placeholder: "Start writing…" }),
+      // Empty-state hint: a quiet prompt while the body is empty, the first
+      // impression of every new note. First-party (@tiptap/extensions), styled
+      // via the is-editor-empty class in markdown-editor.css. The "/" hint points
+      // at the slash-command menu (SlashCommands, below).
+      Placeholder.configure({ placeholder: "Start writing, or press / for commands…" }),
       // GFM task lists (- [ ] / - [x]): @tiptap/markdown round-trips them, so no
       // bespoke serializer is needed (unlike the color marks). nested lets a
       // checklist item hold a sub-checklist.
@@ -254,7 +289,7 @@ export default function MarkdownEditor({
         HTMLAttributes: { class: "ledgr-mention" },
         suggestion: createMentionSuggestion(itemId),
       }),
-      // Passage @/refs (ADR-143) share the "@" picker via the /ref scope; the
+      // Passage @/refs (ADR-149) share the "@" picker via the /ref scope; the
       // node reclaims its own ledgr://passage/ links on parse. Additive to the
       // mention node above.
       LedgrPassage,
@@ -262,6 +297,18 @@ export default function MarkdownEditor({
       // and offer a `{{` insert menu. Tokens stay plain text — decoration only.
       ItemTokenDecoration,
       ItemTokenSuggestion,
+      // Collapsible "toggle" block (<details>). The three nodes are always
+      // registered so existing bodies with toggles parse; the toolbar button and
+      // "/toggle" command (the creation paths) are gated by toggleBlocksEnabled.
+      Toggle,
+      ToggleSummary,
+      ToggleContent,
+      // Collapsible headings (view-only fold). Enabled/disabled at runtime from
+      // the user's collapsibleHeadingsEnabled setting (dispatched below).
+      CollapsibleHeadings,
+      // The "/" slash-command menu (headings + toggle). Toggle entry gated by
+      // toggleBlocksEnabled (setSlashToggleEnabled below).
+      SlashCommands,
     ],
     content: initialMarkdown,
     contentType: "markdown",
@@ -300,7 +347,33 @@ export default function MarkdownEditor({
         return true;
       },
     },
-    onUpdate: ({ editor }) => onChangeRef.current(editor.getMarkdown()),
+    // Backstop for the common ordering: seed the baseline with the canonical
+    // serialization at creation. Under immediatelyRender:false the mount re-emit
+    // can fire onUpdate *before* onCreate, so the null-guard below is what
+    // actually catches it — this just keeps the baseline correct when onCreate
+    // does win the race.
+    onCreate: ({ editor }) => {
+      if (lastEmitted.current === null) lastEmitted.current = editor.getMarkdown();
+    },
+    onUpdate: ({ editor }) => {
+      const md = editor.getMarkdown();
+      // First emission after mount establishes the baseline WITHOUT saving. Tiptap
+      // re-serializes the loaded body once on mount (a programmatic transaction),
+      // and that serialization is rarely byte-identical to the stored markdown — a
+      // Notion import's `*`/`1)` bullets and double blanks round-trip to `-`/`1.`
+      // and single blanks. Treating that first emit (or any emit equal to the
+      // baseline) as a save is the "viewing an item marks it edited" bug: it
+      // PATCHed a normalized body and bumped the edit date + burned a revision.
+      // The user can't have edited before the editor mounted, so the first emit is
+      // always this programmatic one — adopt it, don't persist it. A real edit
+      // differs from the baseline and saves normally.
+      if (lastEmitted.current === null || md === lastEmitted.current) {
+        lastEmitted.current = md;
+        return;
+      }
+      lastEmitted.current = md;
+      onChangeRef.current(md);
+    },
   });
 
   // Keep the toolbar's active states in sync with the cursor. useEditor alone
@@ -322,6 +395,7 @@ export default function MarkdownEditor({
       isTaskList: editor?.isActive("taskList") ?? false,
       isBlockquote: editor?.isActive("blockquote") ?? false,
       isCodeBlock: editor?.isActive("codeBlock") ?? false,
+      isToggle: editor?.isActive("toggle") ?? false,
       isLink: editor?.isActive("link") ?? false,
       textColor: (editor?.getAttributes("textColor").color as string) || "",
       highlight: (editor?.getAttributes("highlight").color as string) || "",
@@ -337,7 +411,7 @@ export default function MarkdownEditor({
   useEffect(() => {
     return () => {
       document
-        .querySelectorAll(".ledgr-mention-popup")
+        .querySelectorAll(".ledgr-mention-popup, .ledgr-slash-popup")
         .forEach((n) => n.remove());
     };
   }, []);
@@ -432,6 +506,31 @@ export default function MarkdownEditor({
     return () => dom.removeEventListener(OPEN_ITEM_EVENT, handler);
   }, [editor, router]);
 
+  // Right-click a mention chip → the Send-to-Desk menu (S3b, ADR-146), with this
+  // item as "current" so "Open beside" puts the host left and the mention right.
+  // Desktop-only; otherwise the native context menu is left alone.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const handler = (e: MouseEvent) => {
+      if (!deskSendAvailable()) return;
+      const chip = (e.target as Element).closest?.(
+        ".ledgr-mention[data-item-id]"
+      ) as HTMLElement | null;
+      const linkedId = chip?.dataset.itemId;
+      if (!linkedId) return;
+      e.preventDefault();
+      openDeskSendMenu({
+        itemId: linkedId,
+        currentItemId: itemId,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    };
+    dom.addEventListener("contextmenu", handler);
+    return () => dom.removeEventListener("contextmenu", handler);
+  }, [editor, itemId]);
+
   // Deep link to a line (ADR-090): a #^id hash scrolls the editor to that line
   // and flashes it — on first mount (arriving from a copied link / a task's
   // source backlink) and on in-page hashchange. A short delay lets layout settle.
@@ -466,9 +565,19 @@ export default function MarkdownEditor({
   }, [initialMarkdown, editor]);
 
   const [hiddenTb, setHiddenTb] = useState<Set<string>>(new Set());
+  // Toggle-block creation gate (toolbar button + slash command). Default on;
+  // the fetched setting narrows it. Held in state so the toolbar re-renders.
+  const [toggleBlocksOn, setToggleBlocksOn] = useState(true);
   useEffect(() => {
-    loadHiddenToolbar().then((ids) => setHiddenTb(new Set(ids)));
-  }, []);
+    loadEditorSettings().then((s) => {
+      setHiddenTb(new Set(s.hidden));
+      setToggleBlocksOn(s.toggleBlocks);
+      // Gate the "/toggle" slash entry (module-level flag) and switch heading
+      // folding on/off in the plugin, now that the setting has resolved.
+      setSlashToggleEnabled(s.toggleBlocks);
+      if (editor) setHeadingsCollapsible(editor, s.collapsibleHeadings);
+    });
+  }, [editor]);
   const showTb = (id: string) => !hiddenTb.has(id);
   // The formatting bar is hidden by default when collapsible (task canvas); a
   // top-right toggle reveals it. When not collapsible it's always shown.
@@ -647,9 +756,12 @@ export default function MarkdownEditor({
             { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
             { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
             { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+            { id: "toggle", title: "Toggle (collapsible block)", icon: TOOLBAR_ICONS.toggle, active: toolbar.isToggle, run: () => insertToggle(editor) },
           ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; run: () => void }[]
         )
-          .filter((b) => showTb(b.id))
+          // Hide the toggle button when the feature is off; every button also
+          // honors the user's per-button toolbar visibility (editorToolbarHidden).
+          .filter((b) => showTb(b.id) && (b.id !== "toggle" || toggleBlocksOn))
           .map((b) => (
             <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
           ))}

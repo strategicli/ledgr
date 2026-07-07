@@ -1,4 +1,4 @@
-// Passage-ref body sync + read queries (ADR-143, slice 2) — the passage sibling
+// Passage-ref body sync + read queries (ADR-149, slice 2) — the passage sibling
 // of src/lib/mentions.ts. A passage link lives in the canonical markdown body as
 // a link whose href is `ledgr://passage/<start>[-<end>]` (ref.ts); on every body
 // save the passage_refs rows with role 'passage' are diffed against what the
@@ -108,7 +108,7 @@ export type PassageBacklink = {
   endRef: number;
 };
 
-// Every owner's item whose passage edge overlaps [startRef, endRef] (ADR-143 pt
+// Every owner's item whose passage edge overlaps [startRef, endRef] (ADR-149 pt
 // 5 — this same overlap query IS the passage page and the backlinks). Overlap =
 // stored.start <= queried.end AND stored.end >= queried.start. Owner-scoped +
 // deleted/template excluded; one row per matching edge (the page groups by

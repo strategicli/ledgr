@@ -35,8 +35,8 @@ const ownerId = tempUser.id;
 
 const mk = async (v: Record<string, unknown>) =>
   (await db.insert(items).values({ ownerId, ...(v as object) } as typeof items.$inferInsert).returning({ id: items.id }))[0].id;
-const relate = (s: string, t: string, state: "confirmed" | "suggested" = "confirmed") =>
-  db.insert(relations).values({ sourceId: s, targetId: t, role: "related", matchState: state });
+const relate = (s: string, t: string, state: "confirmed" | "suggested" = "confirmed", role = "related") =>
+  db.insert(relations).values({ sourceId: s, targetId: t, role, matchState: state });
 
 try {
   const roger = await mk({ type: "person", title: "Roger" });
@@ -63,13 +63,14 @@ try {
   const past2 = await mk({ type: "event", title: "1:1 Apr", meetingAt: new Date("2026-04-01T15:00:00Z") });
   const past3 = await mk({ type: "event", title: "1:1 Mar", meetingAt: new Date("2026-03-01T15:00:00Z") });
   const past4 = await mk({ type: "event", title: "1:1 Feb", meetingAt: new Date("2026-02-01T15:00:00Z") });
-  for (const m of [meeting, past1, past2, past3, past4]) await relate(m, roger);
+  // Attendance edges (ADR-144): a person is ON an event via role 'attending'.
+  for (const m of [meeting, past1, past2, past3, past4]) await relate(m, roger, "confirmed", "attending");
 
   // Relate the person to the meeting as well (the meeting<->Roger edge).
   // (meeting already related above.)
 
   const prep = await getMeetingPrep(ownerId, meeting);
-  check("gathers the confirmed person", prep.people.length === 1 && prep.people[0].id === roger);
+  check("gathers the confirmed attendee", prep.attending.length === 1 && prep.attending[0].id === roger);
   check(
     "open tasks: only Roger's open task (done/other-person/suggested excluded)",
     prep.openTasks.length === 1 && prep.openTasks[0].id === openTask,
@@ -85,7 +86,7 @@ try {
   // --- empty prep (no related person) -------------------------------------
   const lonelyMeeting = await mk({ type: "event", title: "Solo block" });
   const emptyPrep = await getMeetingPrep(ownerId, lonelyMeeting);
-  check("a meeting with no people yields empty prep", emptyPrep.people.length === 0 && emptyPrep.openTasks.length === 0);
+  check("a meeting with no people yields empty prep", emptyPrep.attending.length === 0 && emptyPrep.openTasks.length === 0);
 
   // --- action-item -> task promotion --------------------------------------
   const task = await promoteActionItem(ownerId, meeting, "  Follow up on the memo  ");
@@ -116,7 +117,7 @@ try {
   let crossOwnerEmpty = false;
   try {
     const cross = await getMeetingPrep(otherUser.id, meeting);
-    crossOwnerEmpty = cross.people.length === 0 && cross.openTasks.length === 0;
+    crossOwnerEmpty = cross.attending.length === 0 && cross.openTasks.length === 0;
   } finally {
     await db.delete(users).where(eq(users.id, otherUser.id));
   }

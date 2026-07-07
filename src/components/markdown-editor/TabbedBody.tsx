@@ -32,6 +32,12 @@ export type TabbedBodyProps = {
   // When false (a locked item): the editor is read-only and the tab controls
   // (add / rename / delete) are hidden, so the body can't be restructured.
   editable?: boolean;
+  // Desk panels (ADR-147 D5): when set, the active section is CONTROLLED by the
+  // panel chrome (its merged sub-tab chips) and TabbedBody's own strip + title
+  // input are hidden — section nav lives in the panel, not here. The index is
+  // clamped to the parsed sections. Undefined = the normal full-canvas behavior
+  // (internal strip, internal active state).
+  controlledSection?: number;
 };
 
 export default function TabbedBody({
@@ -43,11 +49,23 @@ export default function TabbedBody({
   promoteToMeetingId,
   promotedRefs,
   editable = true,
+  controlledSection,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
   const [untabbed, setUntabbed] = useState<string>(parsed ? "" : initialMarkdown);
-  const [active, setActive] = useState(0);
+  const [internalActive, setInternalActive] = useState(0);
+
+  // In the Desk the active section is controlled by the panel chrome; elsewhere
+  // TabbedBody owns it. Either way the index is clamped to the parsed sections.
+  const controlled = controlledSection !== undefined;
+  const hideChrome = controlled;
+  const active = controlled ? controlledSection : internalActive;
+  // A controlled switch is owned by the parent; internal buttons still drive the
+  // local state on the full canvas.
+  const setActive = (i: number) => {
+    if (!controlled) setInternalActive(i);
+  };
 
   const activeIdx = tabs ? Math.min(active, tabs.length - 1) : 0;
 
@@ -103,7 +121,7 @@ export default function TabbedBody({
 
   return (
     <div>
-      {tabs ? (
+      {hideChrome ? null : tabs ? (
         <div className="mb-2 flex flex-wrap items-center gap-1 border-b border-neutral-800 pb-2">
           {tabs.map((t, i) => {
             const isActive = i === activeIdx;
@@ -166,8 +184,9 @@ export default function TabbedBody({
         )
       )}
 
-      {/* Active tab title (inline-editable; read-only and unclickable when locked) */}
-      {tabs && (
+      {/* Active tab title (inline-editable; read-only and unclickable when locked).
+          Hidden in the Desk — section rename lives on the full canvas (D5). */}
+      {tabs && !hideChrome && (
         <input
           type="text"
           value={tabs[activeIdx]?.title ?? ""}

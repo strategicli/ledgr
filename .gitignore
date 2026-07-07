@@ -63,3 +63,7 @@ tmp/
 !.env.example
 .claude/
 ty-docs/
+
+# Prod-data backups written by one-shot migration scripts (ADR-144 etc.)
+scripts/backups/
+plans/

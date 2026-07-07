@@ -6,7 +6,9 @@
 const { marked } = await import("marked");
 const {
   blockIdOf,
+  ensureAnchorOnLine,
   extractPromotable,
+  findLineByText,
   generateBlockId,
   hasBlockId,
   lineWithBlockId,
@@ -100,6 +102,61 @@ check("extract body is empty when the line has no children", exNoChildren?.title
 check("extract returns null for an absent id", extractPromotable(promoteDoc, "zzzzzz") === null);
 const exPlain = extractPromotable("Just a paragraph action ^par111", "par111");
 check("extract handles a plain (non-list) line", exPlain?.title === "Just a paragraph action" && exPlain?.body === "");
+
+// --- findLineByText (MCP link-to-line: locate a line by content) ----------
+const findDoc = [
+  "# Meeting",
+  "",
+  "- [ ] Send the budget email ^bud123",
+  "- [ ] Review the Q3 forecast",
+  "- [ ] Send the follow-up note",
+  "```",
+  "Send the budget email // in code",
+  "```",
+].join("\n");
+{
+  const r = findLineByText(findDoc, "Review the Q3 forecast");
+  check("findLineByText locates a unique line", "index" in r && r.index === 3);
+}
+{
+  const r = findLineByText(findDoc, "Send the budget email");
+  // Exact-trim match on line 2 wins over the code-line substring occurrence.
+  check("findLineByText prefers an exact trim-match over substrings", "index" in r && r.index === 2);
+}
+{
+  const r = findLineByText(findDoc, "Send the");
+  check("findLineByText reports ambiguity", "ambiguous" in r && r.ambiguous.length >= 2);
+}
+{
+  const r = findLineByText(findDoc, "nothing here");
+  check("findLineByText reports not-found", "notFound" in r);
+}
+
+// --- ensureAnchorOnLine (reuse vs mint, guardrails) -----------------------
+{
+  // Line 2 (0-based) already has ^bud123 → reuse, no body change.
+  const r = ensureAnchorOnLine(findDoc, 2);
+  check("ensureAnchorOnLine reuses an existing anchor", "id" in r && r.id === "bud123" && r.created === false && r.markdown === findDoc);
+}
+{
+  // Line 3 has no anchor → mint one and append it.
+  const r = ensureAnchorOnLine(findDoc, 3);
+  const ok = "id" in r && r.created === true && /^[a-z0-9]{6}$/.test(r.id)
+    && r.markdown.split("\n")[3] === `- [ ] Review the Q3 forecast ^${r.id}`;
+  check("ensureAnchorOnLine mints + appends a fresh anchor", ok);
+}
+{
+  const r = ensureAnchorOnLine(findDoc, 1);
+  check("ensureAnchorOnLine refuses a blank line", "error" in r);
+}
+{
+  const r = ensureAnchorOnLine(findDoc, 6);
+  check("ensureAnchorOnLine refuses a line inside a code fence", "error" in r);
+}
+{
+  const r = ensureAnchorOnLine(findDoc, 99);
+  check("ensureAnchorOnLine refuses an out-of-range line", "error" in r);
+}
 
 console.log(failures === 0 ? "\nAll block-anchor checks passed." : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

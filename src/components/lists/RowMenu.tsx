@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/ui/ActionToast";
+import { DeskSendItems } from "@/components/desk/DeskSendMenu";
 import { addDaysYmd } from "@/lib/recurrence";
 
 const LONG_PRESS_MS = 450;
@@ -243,6 +244,8 @@ export function useRowMenu(opts: RowMenuOptions) {
           )}
         </div>
       )}
+      {/* Send to Desk (ADR-146): desktop-only, renders nothing on touch/small. */}
+      <DeskSendItems itemId={id} onDone={close} />
       <button
         type="button"
         role="menuitem"

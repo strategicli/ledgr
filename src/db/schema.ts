@@ -443,13 +443,13 @@ export const itemRelatedness = pgTable(
   ]
 );
 
-// Passage reference edges (ADR-143). A purpose-built linking substrate for the
+// Passage reference edges (ADR-149). A purpose-built linking substrate for the
 // Bible canon, kept OUT of both `items` (a passage is fixed, shared reference
 // data, NOT the owner's authored content — so the owner-scope invariant stays
 // unbroken and `items` keeps meaning exactly "the owner's content") and
 // `relations` (which is strictly item↔item; a passage target is a canon integer,
 // not an item id). One row = one item referencing one passage interval
-// [start_ref, end_ref] (ADR-143 pt 4); start==end is a single verse, and a range
+// [start_ref, end_ref] (ADR-149 pt 4); start==end is a single verse, and a range
 // is stored as ONE row — never fanned out to per-verse edges — so a range stays
 // a first-class object (the reversible-direction argument in the ADR). Owner
 // scope rides the FK to items (as `relations` does), plus a deleted_at filter on

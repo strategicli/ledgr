@@ -1,4 +1,4 @@
-// The passage reference resolver (ADR-143, decision pt 3) — the no-regret first
+// The passage reference resolver (ADR-149, decision pt 3) — the no-regret first
 // piece: a pure, deterministic map between human scripture references, a
 // canonical integer, and the `ledgr://passage/` body URI. No DB, no markdown
 // rendering, no owner scope, so it is safe on both client and server and is the
@@ -21,7 +21,7 @@ import {
   verseCount,
 } from "./canon";
 
-// The passage body URI (ADR-143, Tyler review pt 6 — a canonical-body-format
+// The passage body URI (ADR-149, Tyler review pt 6 — a canonical-body-format
 // concern, so its grammar is fixed here once). A passage mention serializes to a
 // markdown link exactly like an item mention (ledgr://item/<id>): the href is
 // canonical, the label is human. Href form: `ledgr://passage/<start>` for a

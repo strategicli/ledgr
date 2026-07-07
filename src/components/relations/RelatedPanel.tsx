@@ -63,7 +63,7 @@ export default async function RelatedPanel({
       .from(items)
       .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId))),
     getSettings(ownerId),
-    // Passage @/refs authored in the body (ADR-143). Body-owned like mentions, so
+    // Passage @/refs authored in the body (ADR-149). Body-owned like mentions, so
     // these render as read-only chips to the passage page — no un-relate control.
     resolvePassageRefs(ownerId, itemId),
   ]);
@@ -100,6 +100,14 @@ export default async function RelatedPanel({
   for (const f of relationFields) {
     for (const t of byRole.get(f.key) ?? []) {
       if (relatedById.has(t.id)) claimed.add(t.id);
+    }
+  }
+  // On an event, the People card (ADR-144) owns EVERY person and group —
+  // attending, absent, ghosts, groups, and the "Also mentioned" line — so none
+  // of them repeat down here. This is what retires the old three-list split.
+  if (hostType === "event") {
+    for (const r of related) {
+      if (r.type === "person" || r.type === "group") claimed.add(r.id);
     }
   }
 

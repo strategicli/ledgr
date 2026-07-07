@@ -321,6 +321,7 @@ These have each broken again after being fixed, so treat them as the usual suspe
 - **Lens interactions.** Lens work has broken unrelated surfaces (it once killed the upcoming-meetings calendar click-to-add), and lenses don't apply cleanly to meetings or to the tasks-of-a-meeting. After changing lenses, click through the calendar add and the meeting/task views before merging.
 - **Mobile markdown editor.** Indent and the toolbar have gone off-screen on mobile, fixed before and regressed since. Test any editor or toolbar change at mobile width, not just desktop.
 - **Favorites popup.** Has broken mid-change before; after touching nav or favorites, confirm it still opens.
+- **The Desk reuses two fragile pieces (ADR-146).** Its panels mount the shared `ItemEditor` (the focused/writer panel) and the dashboard `RglInner` grid (read-only, `editMode=false`). A change to either — or to `ItemEditor`'s save path / the `onLiveChange` tap, or the dashboard resolver in `src/lib/dashboard-resolve.ts` — should be re-checked in a Desk panel: open the same item in two panels and confirm one editor + one live preview (a single PATCH stream, no clobber), and open a dashboard panel and confirm it renders static with real (date-formatted) data. The Desk is desktop-only (`/desk` below 640px is a plain tab list).
 
 ---
 

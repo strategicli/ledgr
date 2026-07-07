@@ -4,7 +4,13 @@
 // contract or skip owner scoping. create/update reuse parseItemPayload, so
 // MCP writes validate exactly like /api/items writes.
 import { asUuid, parseItemPayload } from "@/lib/api";
-import { BODY_WINDOW_CHARS, bodyMarkdown, isLargeBody, windowBody } from "@/lib/body";
+import { BODY_WINDOW_CHARS, bodyMarkdown, isLargeBody, makeMarkdownBody, windowBody } from "@/lib/body";
+import {
+  ensureAnchorOnLine,
+  findLineByText,
+  lineWithBlockId,
+  stripAnchorFromLine,
+} from "@/lib/editor/block-anchor";
 import { ITEM_STATUSES, ItemError, URGENCIES, getItem } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
@@ -208,6 +214,111 @@ export const itemTools: McpTool[] = [
           nextOffset: win.nextOffset,
         },
         related: relatedView,
+      };
+    },
+  },
+  {
+    name: "link_to_line",
+    title: "Get a deep link to a line",
+    description:
+      "Get a shareable deep link to one specific line of an item's markdown body " +
+      "— a URL that opens the item and scrolls to that line. Point at the line " +
+      "one of three ways: line (a 1-based line number in the body get_item " +
+      "returned), lineText (a snippet of the line's text — most natural; matches " +
+      "the anchor-stripped line, errors if it's ambiguous), or blockRef (an " +
+      "existing ^anchor id you already saw in the body — a pure read, no change). " +
+      "If the line has no anchor yet, one stable ^id marker is appended to that " +
+      "line and saved (mirrors the app's own 'copy link to this line'); a line " +
+      "that's already anchored reuses its id, so repeat calls return the same " +
+      "link. Drop the returned url into a chat, a note, or another doc. Blank " +
+      "lines and lines inside fenced code blocks can't be linked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The item id (UUID)." },
+        line: {
+          type: "integer",
+          description:
+            "1-based line number in the item's markdown body (as get_item returns it).",
+          minimum: 1,
+        },
+        lineText: {
+          type: "string",
+          description:
+            "A snippet of the target line's text. Matched against the line with " +
+            "its ^anchor removed; must resolve to exactly one line or it errors " +
+            "(pass line to disambiguate).",
+        },
+        blockRef: {
+          type: "string",
+          description:
+            "An existing anchor id (the part after ^ in a line you saw via " +
+            "get_item). Builds the link for that line without changing the body.",
+        },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const id = asUuid(args.id, "id");
+      const item = await getItem(ownerId, id);
+      const markdown = bodyMarkdown(item.body);
+
+      // Resolve which line to point at. Precedence: an anchor id you already
+      // have (pure read) → a 1-based line number → a text snippet.
+      const blockRef = optString(args, "blockRef");
+      const line = optInt(args, "line");
+      const lineText = optString(args, "lineText");
+
+      let index: number;
+      if (blockRef !== undefined) {
+        const at = lineWithBlockId(markdown, blockRef);
+        if (at < 0) {
+          throw new ItemError("not_found", `no line in this item carries the anchor ^${blockRef}`);
+        }
+        index = at;
+      } else if (line !== undefined) {
+        index = line - 1;
+      } else if (lineText !== undefined) {
+        const found = findLineByText(markdown, lineText);
+        if ("notFound" in found) {
+          throw new ItemError(
+            "not_found",
+            `no line matches "${lineText}" — pass line (a 1-based line number) instead`
+          );
+        }
+        if ("ambiguous" in found) {
+          const nums = found.ambiguous.map((i) => i + 1).join(", ");
+          throw new ItemError(
+            "bad_request",
+            `"${lineText}" matches ${found.ambiguous.length} lines (${nums}) — pass line to pick one`
+          );
+        }
+        index = found.index;
+      } else {
+        throw new ItemError(
+          "bad_request",
+          "pass one of: line (1-based number), lineText (a snippet), or blockRef (an existing ^anchor id)"
+        );
+      }
+
+      const result = ensureAnchorOnLine(markdown, index);
+      if ("error" in result) {
+        throw new ItemError("bad_request", `can't link to that line: ${result.error}`);
+      }
+      if (result.created) {
+        await updateItem(ownerId, id, { body: makeMarkdownBody(result.markdown) });
+      }
+
+      const origin = (process.env.NEXT_PUBLIC_APP_URL || "https://ledgr-teal.vercel.app").replace(/\/+$/, "");
+      const resolvedLine = stripAnchorFromLine(result.markdown.split("\n")[index]).trim();
+      return {
+        url: `${origin}/items/${id}#^${result.id}`,
+        blockRef: result.id,
+        line: index + 1,
+        lineText: resolvedLine,
+        created: result.created,
       };
     },
   },

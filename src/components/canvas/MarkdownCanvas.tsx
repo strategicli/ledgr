@@ -223,6 +223,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       if (id.startsWith("rel:")) {
         const key = id.slice(4);
         const def = propertySchema.find((p) => p.key === key);
+        // On events, person-target relation fields (Attending) are edited on
+        // the People card (ADR-144) — don't render the same edges twice.
+        if (def && item.type === "event" && def.targetType === "person") return null;
         return def ? (
           <RelationProperties
             ownerId={ownerId}
@@ -345,7 +348,14 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
               ownerId={ownerId}
               itemId={item.id}
               typeKey={item.type}
-              props={propertySchema}
+              // On events, person-target relation fields (Attending) are edited
+              // on the People card (ADR-144); the field definition stays (views/
+              // filters still use it), only the duplicate editor row goes.
+              props={
+                item.type === "event"
+                  ? propertySchema.filter((p) => p.targetType !== "person")
+                  : propertySchema
+              }
               hideHeading
               bare
             />

@@ -1,4 +1,4 @@
-// The Bible canon as tiny static reference data (ADR-143). NOT verse items and
+// The Bible canon as tiny static reference data (ADR-149). NOT verse items and
 // NOT a table: a fixed, shared, read-only ontology (identical for every owner),
 // so it lives in code, not in the owner-scoped `items` table. This is enough to
 // (a) parse a reference, (b) validate it ("does Romans have a ch. 17?"), and

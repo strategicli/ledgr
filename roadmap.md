@@ -194,6 +194,20 @@ Full-pass refresh across item view, lists/lenses, dashboards, and nav; non-core/
 
 ---
 
+## The Desk: multi-panel workspace (BUILT 2026-07-06, ADR-146, `plans/desk-multi-panel-workspace.html`)
+
+Desktop-only workspace at `/desk` — items, saved views, and read-only dashboards in resizable, tabbed panels that persist per-device and survive closing the app. Non-core/solo (additive surface; one new dependency, `react-grid-layout` + `react-resizable-panels` coexist). Branch `desk-workspace`, one commit per slice, lint + build clean, dev-auth verified against prod data.
+
+- [x] S1 — versioned layout tree (`src/lib/desk/layout.ts`, fractions not pixels, behind the `DeskShell` seam) + `react-resizable-panels@^2.1.9` (classic API; autoSaveId unused); one-writer-per-item doc store (focused = reused `ItemEditor`, others = live `MarkdownPreview`; save path untouched, only an additive `onLiveChange` tap); `desk:layout` + `desk:recent` persistence; `/desk` route + 640px fallback + destination-picker entry.
+- [x] S2 — zone move (center docks / edge splits, Esc cancels), Editing/Viewing focus pills, named workspaces (`users.settings.deskWorkspaces`, no migration) + the Recent snapshot-on-replace ring.
+- [x] S3 + S3b — Send-to-Desk (Open in Desk / Open beside) from the ADR-142 RowMenu and inline @mentions/item-links (editor + preview), one shared `DeskSendMenu`, desktop-gated.
+- [x] S4 — `GET /api/views/[id]/items` (body-free) + `DeskViewPanel` (compact rows, click opens the item as a tab); picker lists views.
+- [x] S5 — read-only dashboards in panels: resolver extracted to `src/lib/dashboard-resolve.ts` (shared with `DashboardView`) + `GET /api/dashboards/[id]/resolved`; `DeskDashboardPanel` renders the RGL grid static (`editMode=false`), dates revived, "Edit ↗" → the full page; picker lists dashboards.
+- [x] **Round two (ADR-147, BUILT 2026-07-06, branch `desk-refinements-r2`):** D1 send-menu clarity ("Send to Desk" + host-anchored "Open beside" with append-column via `DeskHostContext` + `appendColumn`); D2 tab-strip fixes (overflow arrows track late labels; real view/dashboard names via denormalized `title?`); D3 right-click a tab → its own scoped `TabContextMenu` (no activate / no pen-steal); D4 canvas tabs render in a panel (`type` in the doc store → `tabsEnabled`); D5 canvas sections as per-panel sub-tabs (a compact segmented control; `section?` per tab; writer = controlled `TabbedBody`, twin = sliced `MarkdownPreview` via `sectionAt`); D6 opt-in "Show details" (`ItemDetails` over a new read-only `GET /api/items/[id]/details`, reusing `CustomProperties`/`RelationField`; per-tab `showDetails?`, editable only in the focused panel). Additive only; lint + build clean + dev-auth verified per slice.
+- **Deferred (defer-by-hiding):** the drag-and-drop move gesture (click-to-place ships first, shares the `DropTarget` vocabulary), bespoke canvases (chord/paper) in panels, two-caret co-editing, layout-in-URL; two-section-at-once editing, in-Desk section add/rename/delete, and a "details" companion-panel kind (ADR-147 Option B).
+
+---
+
 ## Phase 4: Packageable local / self-hosted build (exploratory)
 
 - [ ] Gated on a genuine alternative-deployment motivation (not resilience, already covered by export + Pulpit Ready)

@@ -228,7 +228,7 @@ export const LedgrMention = Mention.extend({
   },
 });
 
-// The passage node (ADR-143). A static inline atom — the passage sibling of
+// The passage node (ADR-149). A static inline atom — the passage sibling of
 // LedgrMention, but with NO NodeView: a passage is fixed reference data (no live
 // status, no checkbox), so a static chip is right. The markdown contract mirrors
 // the mention exactly:

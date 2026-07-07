@@ -1,4 +1,4 @@
-// Passage resolver + canon verification (ADR-143, slice 1). Pure — no DB. Covers
+// Passage resolver + canon verification (ADR-149, slice 1). Pure — no DB. Covers
 // the canon integrity (66 books / 31,102 verses / pinned KJV counts), the
 // ref→integer encoding and round-trip, parsePassageRef across the reference
 // forms + canon validation (bad chapter/verse → null), the versification pin

@@ -15,6 +15,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
+
+// Right-click an item link in the rendered body → the Send-to-Desk menu (S3b),
+// with the host item as "current" so "Open beside" puts it left, the link right.
+// Desktop-only; on touch/small screens the native context menu is left alone.
+function itemIdFromHref(href: string | null | undefined): string | null {
+  if (!href) return null;
+  const m = /\/items\/([0-9a-f-]{36})(?:[#?].*)?$/i.exec(href);
+  return m ? m[1] : null;
+}
 
 export default function MarkdownPreview({
   text,
@@ -64,6 +74,19 @@ export default function MarkdownPreview({
     return (
       <div
         className="ledgr-prose ledgr-preview"
+        onContextMenu={(e) => {
+          if (!deskSendAvailable()) return;
+          const a = (e.target as Element).closest?.('a[href^="/items/"]');
+          const linkedId = itemIdFromHref(a?.getAttribute("href"));
+          if (!linkedId) return;
+          e.preventDefault();
+          openDeskSendMenu({
+            itemId: linkedId,
+            currentItemId: itemId,
+            x: e.clientX,
+            y: e.clientY,
+          });
+        }}
         dangerouslySetInnerHTML={{ __html: rendered.html }}
       />
     );

@@ -189,6 +189,48 @@ export default function SettingsForm({ initial }: { initial: UserSettings }) {
       </section>
 
       <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Editor features</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Optional block behaviors in the markdown editor. Take effect on the
+          next page load.
+        </p>
+        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={settings.collapsibleHeadingsEnabled}
+            onChange={(e) => void save({ collapsibleHeadingsEnabled: e.target.checked })}
+            className="accent-[var(--accent)] mt-0.5"
+          />
+          <span>
+            Collapsible headings
+            <span className="block text-xs text-neutral-500">
+              A fold arrow on each heading hides or shows the section beneath it.
+              View only, nothing changes in the saved note.
+            </span>
+          </span>
+        </label>
+        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={settings.toggleBlocksEnabled}
+            onChange={(e) => void save({ toggleBlocksEnabled: e.target.checked })}
+            className="accent-[var(--accent)] mt-0.5"
+          />
+          <span>
+            Toggle blocks
+            <span className="block text-xs text-neutral-500">
+              Insert a collapsible block (a summary line that expands to reveal
+              content) from the toolbar or the{" "}
+              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+                /toggle
+              </code>{" "}
+              slash command. Existing toggles still show when this is off.
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <section>
         <h2 className="text-sm font-semibold text-neutral-200">Highlight color</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
           The accent used for primary buttons and highlights.

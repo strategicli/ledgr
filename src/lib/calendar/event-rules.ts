@@ -48,6 +48,12 @@ function regexMatches(pattern: string, flags: string | undefined, title: string)
   }
 }
 
+// An attendeeEmail rule captures a person's 1:1s, so it only fires on small
+// meetings (ADR-144). Without this, "Timothy attends the All Pastors Meeting"
+// makes the Timothy/Brandon check-in rule claim the group meeting — a live
+// misfire found in prod (2026-07-05). 3 = the two parties + one guest.
+const ATTENDEE_RULE_MAX_EMAILS = 3;
+
 // The structured (non-fuzzy) conditions test synchronously against the event.
 function nonFuzzyMatches(
   condition: MatcherCondition,
@@ -56,7 +62,10 @@ function nonFuzzyMatches(
 ): boolean {
   switch (condition.kind) {
     case "attendeeEmail":
-      return emails.has(condition.email.toLowerCase());
+      return (
+        emails.size <= ATTENDEE_RULE_MAX_EMAILS &&
+        emails.has(condition.email.toLowerCase())
+      );
     case "seriesId":
       return !!event.seriesMasterId && event.seriesMasterId === condition.seriesMasterId;
     case "titleRegex":

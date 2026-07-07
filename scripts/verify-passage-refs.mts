@@ -1,4 +1,4 @@
-// passage_refs body-sync + read-query verification (ADR-143, slice 2) against
+// passage_refs body-sync + read-query verification (ADR-149, slice 2) against
 // live Neon under throwaway owners. Covers: syncPassageRefs on create/update
 // (add/remove/dedup diffing), resolvePassageRefs, the itemsTouchingPassage
 // overlap query, owner-scoping, soft-delete exclusion, and role coexistence (a

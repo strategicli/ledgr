@@ -1,4 +1,4 @@
-// The passage page (ADR-143, decision pt 5): a VIRTUAL view, not a stored item.
+// The passage page (ADR-149, decision pt 5): a VIRTUAL view, not a stored item.
 // The [ref] segment is the canonical `<start>[-<end>]` slug (passageSlug); the
 // page decodes it against the static canon for the heading and runs one overlap
 // query (itemsTouchingPassage) for the body — that same query IS the passage's

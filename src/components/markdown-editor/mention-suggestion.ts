@@ -25,7 +25,7 @@ import { formatPassageRef, parsePassageRef } from "@/lib/passages/ref";
 // `type` is the target's type key; it rides onto the inserted mention node's
 // attrs so the chip is glyphed instantly (the default Mention command copies the
 // item's fields onto the node). label/id are the existing contract. A passage
-// candidate (ADR-143) rides the same list tagged with PASSAGE_TYPE + its resolved
+// candidate (ADR-149) rides the same list tagged with PASSAGE_TYPE + its resolved
 // interval, so the selection handler inserts a passage node instead of a mention.
 const PASSAGE_TYPE = "__passage__";
 type Item = {
@@ -36,7 +36,7 @@ type Item = {
   endRef?: number;
 };
 
-// The "/ref" scope inside the "@" picker (ADR-143, Tyler pt 4 — net-new scope
+// The "/ref" scope inside the "@" picker (ADR-149, Tyler pt 4 — net-new scope
 // parsing; "/passage", "/verse", "/scripture" alias it). Returns the query after
 // the scope token when active, else null. create-on-miss is deliberately OFF for
 // this scope — you can't create a verse.
@@ -176,7 +176,7 @@ export function createMentionSuggestion(
 
       // Whether to show the create-on-miss row: a non-empty (post-token) query
       // with no exact (case-insensitive) title match among the hits. Never in the
-      // passage scope (ADR-143 / Tyler pt 4 — you can't create a verse).
+      // passage scope (ADR-149 / Tyler pt 4 — you can't create a verse).
       const showCreate = () =>
         passageScope(query) === null &&
         effectiveQuery() !== "" &&

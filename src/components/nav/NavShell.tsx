@@ -19,15 +19,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-  type TouchEvent as ReactTouchEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import BuildSidebar from "@/components/nav/BuildSidebar";
 import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
@@ -148,44 +140,9 @@ export default function NavShell({
     hoverClose,
     toggle: toggleTools,
   } = useHoverPopover("[data-nav-tools]");
-  // --- Mobile bar swipe-up → launcher --------------------------------------
-  // The phone bottom bar is a FIXED icon-only bar (ui-refresh Q7): it never
-  // scrolls, showing the owner's daily few destinations; everything else lives in
-  // the pull-up Launcher. Beyond tapping the grip, a deliberate swipe-up anywhere
-  // on the bar opens the Launcher (S6a). The claim mirrors SwipeRow's discipline
-  // (mostly-vertical, upward, past a threshold) so a tap on a slot still fires
-  // and a horizontal drift never triggers it; the ensuing click is swallowed so a
-  // swipe that started on a slot doesn't also follow its link.
-  const barSwipeStart = useRef<{ x: number; y: number } | null>(null);
-  const barSwipeClaimed = useRef(false);
-  const onBarTouchStart = (e: ReactTouchEvent) => {
-    const t = e.touches[0];
-    barSwipeStart.current = { x: t.clientX, y: t.clientY };
-    barSwipeClaimed.current = false;
-  };
-  const onBarTouchMove = (e: ReactTouchEvent) => {
-    const s = barSwipeStart.current;
-    if (!s || barSwipeClaimed.current) return;
-    const t = e.touches[0];
-    const dx = t.clientX - s.x;
-    const dy = t.clientY - s.y;
-    // Upward, mostly-vertical, past the threshold → open the launcher.
-    if (dy < -28 && Math.abs(dy) > Math.abs(dx) * 1.5) {
-      barSwipeClaimed.current = true;
-      navigator.vibrate?.(8);
-      setLauncherOpen(true);
-    }
-  };
-  const onBarTouchEnd = () => {
-    barSwipeStart.current = null;
-  };
-  const onBarClickCapture = (e: ReactMouseEvent) => {
-    if (barSwipeClaimed.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      barSwipeClaimed.current = false;
-    }
-  };
+  // The phone bottom bar is the first row of the pull-up drawer (ADR-143): the
+  // Launcher panel owns the swipe/drag gesture for the whole surface, so the
+  // old per-bar swipe-up detection (S6a) is gone.
 
   const [railSize, setRailSize] = useState<RailSize>(railSizeProp);
   const [density, setDensity] = useState<NavDensity>(navDensityProp);
@@ -333,22 +290,29 @@ export default function NavShell({
     id: i === 0 ? "home" : `m${i}`,
   }));
 
-  // The pull-up launcher (S6) holds EVERY destination — the owner's full nav set
-  // (a tools group expands to its children) plus the built-in extras — so the
-  // fixed mobile bar can carry only the daily few and nothing is out of reach.
+  // The pull-up launcher holds every destination — the owner's full nav set (a
+  // tools group expands to its children) plus the built-in extras — EXCEPT the
+  // ones already visible on the bar row, because the bar IS the drawer's first
+  // row now (ADR-143): opening reveals the rest, it doesn't repeat the bar.
+  // Search is deduped too (the bar row always carries its own Search button).
+  const visibleBarHrefs = new Set([
+    "/search",
+    ...mobileBarSlots
+      .slice(0, RECOMMENDED_MOBILE_NAV_SLOTS)
+      .flatMap(({ slot }) => (slot.kind === "destination" ? [slot.href] : [])),
+  ]);
   const launcherTiles: LauncherTile[] = [
     ...[HOME_SLOT, ...slots].flatMap((s) =>
       s.kind === "tools"
         ? s.children.map((c) => ({ label: c.label, href: c.href, icon: c.icon, count: c.count }))
         : [{ label: s.label, href: s.href, icon: s.icon, count: s.count }]
     ),
-    { label: "Search", href: "/search", icon: "search" },
     { label: "Build", href: "/build", icon: "tools" },
     { label: "Edit nav", href: "/build/navigation", icon: "navigation" },
     { label: "Settings", href: "/settings", icon: "bolt" },
     { label: "Changelog", href: "/changelog", icon: "book" },
     { label: "Trash", href: "/trash", icon: "archive" },
-  ];
+  ].filter((t) => !visibleBarHrefs.has(t.href));
 
   const itemColors = (active: boolean) =>
     active
@@ -501,7 +465,12 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={() => toggleTools(id)}
+            onClick={() => {
+              // On the bar row, first collapse the drawer so the popover opens
+              // against the docked bar (its fixed anchor assumes the bottom edge).
+              if (mobileBar) setLauncherOpen(false);
+              toggleTools(id);
+            }}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -531,7 +500,12 @@ export default function NavShell({
           onMouseLeave={hoverClose}
         >
           <button
-            onClick={() => toggleTools(id)}
+            onClick={() => {
+              // Collapse the drawer first so the flyout opens against the
+              // docked bar (its fixed anchor assumes the bottom edge).
+              if (mobileBar) setLauncherOpen(false);
+              toggleTools(id);
+            }}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={slot.label}
@@ -560,7 +534,10 @@ export default function NavShell({
       return (
         <button
           key={id}
-          onClick={() => setSearchOpen(true)}
+          onClick={() => {
+            if (mobileBar) setLauncherOpen(false);
+            setSearchOpen(true);
+          }}
           aria-label={slot.label}
           title={`${slot.label} (⌘K)`}
           className={className}
@@ -573,6 +550,9 @@ export default function NavShell({
       <Link
         key={id}
         href={slot.href}
+        // A bar-row tap dismisses the open drawer as it navigates (parity with
+        // the drawer's own tiles); on desktop mobileBar is false, so this is inert.
+        onClick={mobileBar ? () => setLauncherOpen(false) : undefined}
         aria-label={slot.label}
         aria-current={isActive(slot.href) ? "page" : undefined}
         className={className}
@@ -730,7 +710,10 @@ export default function NavShell({
   const mobileTrailingControls = (
     <>
       <button
-        onClick={() => setSearchOpen(true)}
+        onClick={() => {
+          setLauncherOpen(false);
+          setSearchOpen(true);
+        }}
         title="Search (⌘K)"
         aria-label="Search"
         className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
@@ -738,7 +721,10 @@ export default function NavShell({
         <Icon icon="search" />
       </button>
       <button
-        onClick={() => setCaptureOpen(true)}
+        onClick={() => {
+          setLauncherOpen(false);
+          setCaptureOpen(true);
+        }}
         title="Quick capture (q)"
         aria-label="Quick capture"
         className="flex shrink-0 items-center rounded-xl p-2 text-[var(--accent)] hover:bg-neutral-800/60"
@@ -748,79 +734,52 @@ export default function NavShell({
     </>
   );
 
-  // The floating pill. `fill` = the desktop bottom bar (widened to the ~40rem
-  // canvas width, full labels). `mobile` = the phone bottom bar (Q7): a FIXED,
-  // icon-only, non-scrolling bar — a grip to the Launcher, the owner's daily few
-  // slots (label only under the active one), then Search + New. It never scrolls
-  // (the long tail lives in the Launcher, one tap on the grip or a swipe-up away),
-  // so a destination's position is stable and muscle memory forms. A mobile-bar
-  // tools/favorites popover portals above the bar (mobileBar in renderSlot).
+  // The floating pill (desktop bottom bar). `fill` widens it to the ~40rem
+  // canvas width with full labels.
   const floatingPill = (
     barSlots: { slot: ShellSlot; id: string }[],
     extraClass: string,
-    { fill = false, mobile = false }: { fill?: boolean; mobile?: boolean } = {}
+    { fill = false }: { fill?: boolean } = {}
   ) => (
     <div
       className={`fixed z-40 flex rounded-2xl border border-neutral-800 bg-neutral-900/95 shadow-xl shadow-black/40 backdrop-blur ${
         fill
           ? "items-center w-[40rem] max-w-[calc(100vw-2rem)] justify-between gap-1 p-2 [&_svg]:h-6 [&_svg]:w-6"
-          : mobile
-            ? "touch-none flex-col max-w-[calc(100vw-1rem)] gap-0.5 px-1.5 pb-1.5 pt-0.5"
-            : "items-center gap-1 p-1.5"
+          : "items-center gap-1 p-1.5"
       } ${extraClass}`}
-      {...(mobile
-        ? {
-            onTouchStart: onBarTouchStart,
-            onTouchMove: onBarTouchMove,
-            onTouchEnd: onBarTouchEnd,
-            onTouchCancel: onBarTouchEnd,
-            onClickCapture: onBarClickCapture,
-          }
-        : {})}
     >
-      {mobile ? (
-        <>
-          {/* Grab handle: the visible affordance for the pull-up gesture. Tap it
-              (or swipe up anywhere on the bar) to open the Launcher of every
-              destination (S6a). Sits at the top edge like a sheet grabber so the
-              bar reads as draggable. */}
-          <button
-            type="button"
-            onClick={() => setLauncherOpen(true)}
-            aria-label="All destinations (pull up)"
-            title="All destinations (pull up)"
-            className="flex justify-center py-1"
-          >
-            <span className="h-1 w-8 rounded-full bg-neutral-600" aria-hidden />
-          </button>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setLauncherOpen(true)}
-              aria-label="All destinations"
-              title="All destinations (pull up)"
-              className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
-            >
-              <Icon icon="grid" />
-            </button>
-            <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
-              {barSlots.map(({ slot, id }) =>
-                // Label only under the active slot; the rest are icon-only (Q7). The
-                // last arg = mobileBar: tools/favorites popovers portal above the bar.
-                renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">{mobileTrailingControls}</div>
-          </div>
-        </>
-      ) : (
-        <>
-          {barSlots.map(({ slot, id }) =>
-            renderSlot(slot, id, pillSlot, true, "bottom-full mb-2 left-1/2 -translate-x-1/2")
-          )}
-          {pillTrailingControls}
-        </>
+      {barSlots.map(({ slot, id }) =>
+        renderSlot(slot, id, pillSlot, true, "bottom-full mb-2 left-1/2 -translate-x-1/2")
       )}
+      {pillTrailingControls}
+    </div>
+  );
+
+  // The phone bottom bar row (Q7 → ADR-143): FIXED, icon-only, non-scrolling —
+  // the owner's daily few slots (label only under the active one) between an
+  // all-destinations toggle and Search + New. It is literally the first row of
+  // the pull-up Launcher panel, which wraps it with the grip, the drag gesture,
+  // and the tile grid of everything else; a destination's position is stable
+  // and muscle memory forms. A bar tools/favorites popover portals above the
+  // bar (mobileBar in renderSlot).
+  const mobileBarRow = (
+    <div className="flex items-center gap-1 px-1.5 pb-1.5">
+      <button
+        type="button"
+        onClick={() => setLauncherOpen((o) => !o)}
+        aria-label="All destinations"
+        aria-expanded={launcherOpen}
+        title="All destinations (pull up)"
+        className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
+      >
+        <Icon icon="grid" />
+      </button>
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+        {mobileBarSlots.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS).map(({ slot, id }) =>
+          renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">{mobileTrailingControls}</div>
     </div>
   );
 
@@ -839,19 +798,22 @@ export default function NavShell({
         />
       )}
 
-      {/* Mobile: always the floating bottom bar, whatever the desktop position.
-          data-work-nav-pill lets the markdown editor hide it while editing
-          (globals.css), so the floating formatting rail and this pill never
-          fight for the same bottom-of-screen spot. */}
+      {/* Mobile: the bottom bar + pull-up drawer are ONE full-width panel
+          (ADR-143) — the Launcher wraps the bar row with the grip, the drag
+          gesture, the backdrop, and the tile grid. data-work-nav-pill lets the
+          markdown editor hide the whole surface while editing (globals.css),
+          so the floating formatting rail and this panel never fight for the
+          same bottom-of-screen spot. */}
       {!inBuild && (
         <div className="sm:hidden" data-work-nav-pill>
-          {/* Fixed icon-only bar: Home + the owner's first few mobile slots
-              (RECOMMENDED_MOBILE_NAV_SLOTS cap); the rest live in the Launcher. */}
-          {floatingPill(
-            mobileBarSlots.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS),
-            "bottom-[calc(0.25rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2",
-            { mobile: true }
-          )}
+          <Launcher
+            open={launcherOpen}
+            onOpenChange={setLauncherOpen}
+            tiles={launcherTiles}
+            onSearch={() => setSearchOpen(true)}
+            barRow={mobileBarRow}
+            onDragClaim={() => setOpenTools(null)}
+          />
         </div>
       )}
 
@@ -1054,13 +1016,6 @@ export default function NavShell({
         <CaptureModal typeOptions={typeOptions} onClose={() => setCaptureOpen(false)} />
       )}
       {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} />}
-      {/* Pull-up launcher (S6): every destination, one tap up. Mobile-only. */}
-      <Launcher
-        open={launcherOpen}
-        onClose={() => setLauncherOpen(false)}
-        tiles={launcherTiles}
-        onSearch={() => setSearchOpen(true)}
-      />
     </nav>
   );
 }

@@ -11,6 +11,10 @@
 // nested "(A AND B) OR (C AND D)" is an additive "+ group" later, no migration.
 
 export const EVENT_PEOPLE_SEED = "@people";
+// A roster seed (ADR-144): "@members:<groupId>" = the people in that group
+// (its 'members' edges), so "tasks related to anyone IN Pastors" is expressible
+// alongside the plain group seed ("tasks related to the Pastors group itself").
+export const EVENT_MEMBERS_PREFIX = "@members:";
 
 export type TaskPullMatch = "any" | "all";
 export type TaskPullGroup = { match: TaskPullMatch; seeds: string[] };
@@ -52,12 +56,24 @@ export function isDefaultTaskPull(raw: unknown): boolean {
 }
 
 // Expand a group's seeds to concrete item ids: "@people" => the event's people,
-// every other seed kept as-is; deduped, order-stable.
-export function expandSeeds(seeds: string[], peopleIds: string[]): string[] {
+// "@members:<gid>" => that group's roster (resolved by the service and handed
+// in via membersByGroup; unresolvable rosters expand to nothing), every other
+// seed kept as-is; deduped, order-stable.
+export function expandSeeds(
+  seeds: string[],
+  peopleIds: string[],
+  membersByGroup?: Map<string, string[]>
+): string[] {
   const out = new Set<string>();
   for (const s of seeds) {
-    if (s === EVENT_PEOPLE_SEED) for (const p of peopleIds) out.add(p);
-    else out.add(s);
+    if (s === EVENT_PEOPLE_SEED) {
+      for (const p of peopleIds) out.add(p);
+    } else if (s.startsWith(EVENT_MEMBERS_PREFIX)) {
+      const members = membersByGroup?.get(s.slice(EVENT_MEMBERS_PREFIX.length)) ?? [];
+      for (const m of members) out.add(m);
+    } else {
+      out.add(s);
+    }
   }
   return [...out];
 }
