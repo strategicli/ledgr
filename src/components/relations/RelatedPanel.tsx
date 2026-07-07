@@ -30,6 +30,8 @@ import {
   type RelatedItem,
 } from "@/lib/relations";
 import { resolveRelatedGroup } from "@/lib/related-views";
+import { formatPassageRef, passageSlug } from "@/lib/passages/ref";
+import { resolvePassageRefs } from "@/lib/passages/refs";
 import { getSettings } from "@/lib/settings";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
@@ -53,7 +55,7 @@ export default async function RelatedPanel({
   itemId: string;
   bare?: boolean;
 }) {
-  const [related, typeRows, hostRows, settings] = await Promise.all([
+  const [related, typeRows, hostRows, settings, passages] = await Promise.all([
     listRelatedItems(ownerId, itemId),
     getDb().select({ key: types.key, label: types.label }).from(types),
     getDb()
@@ -61,6 +63,9 @@ export default async function RelatedPanel({
       .from(items)
       .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId))),
     getSettings(ownerId),
+    // Passage @/refs authored in the body (ADR-149). Body-owned like mentions, so
+    // these render as read-only chips to the passage page — no un-relate control.
+    resolvePassageRefs(ownerId, itemId),
   ]);
 
   // The add affordances ride along whether or not anything is linked yet.
@@ -78,7 +83,7 @@ export default async function RelatedPanel({
   );
 
   // Nothing linked yet: just the quiet add affordances, no section chrome.
-  if (related.length === 0) return emptyState;
+  if (related.length === 0 && passages.length === 0) return emptyState;
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
   const hostType = hostRows[0]?.type ?? "";
@@ -109,7 +114,7 @@ export default async function RelatedPanel({
   // Suggested edges render with the existing confirm/reject row (the relatedTo
   // view filter is confirmed-only). Everything else groups by type for the lens.
   const unclaimed = related.filter((r) => !claimed.has(r.id));
-  if (unclaimed.length === 0) return emptyState;
+  if (unclaimed.length === 0 && passages.length === 0) return emptyState;
   const suggested = unclaimed.filter((r) => r.matchState === "suggested");
   const confirmed = unclaimed.filter((r) => r.matchState !== "suggested");
 
@@ -181,7 +186,9 @@ export default async function RelatedPanel({
   const renderGroups = groups.filter((g) => g.data);
 
   const totalCount =
-    renderGroups.reduce((n, g) => n + (g.data?.count ?? 0), 0) + suggested.length;
+    renderGroups.reduce((n, g) => n + (g.data?.count ?? 0), 0) +
+    suggested.length +
+    passages.length;
 
   const body = (
     <>
@@ -226,6 +233,26 @@ export default async function RelatedPanel({
                 />
               );
             })}
+          </ul>
+        </div>
+      )}
+      {passages.length > 0 && (
+        <div className="mt-4">
+          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Passages
+            <span className="ml-2 font-normal text-neutral-600">{passages.length}</span>
+          </h3>
+          <ul className="mt-1 flex flex-wrap gap-1.5 px-2">
+            {passages.map((p) => (
+              <li key={p.id}>
+                <a
+                  href={`/passage/${passageSlug(p.startRef, p.endRef)}`}
+                  className="inline-flex items-center rounded-card border border-line bg-surface-2 px-2 py-0.5 text-sm text-ink hover:border-line-strong"
+                >
+                  {formatPassageRef(p.startRef, p.endRef)}
+                </a>
+              </li>
+            ))}
           </ul>
         </div>
       )}

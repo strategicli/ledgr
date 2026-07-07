@@ -27,6 +27,7 @@ import {
   Highlight,
   LedgrImage,
   LedgrMention,
+  LedgrPassage,
   LedgrTable,
   TableCell,
   TableHeader,
@@ -288,6 +289,10 @@ export default function MarkdownEditor({
         HTMLAttributes: { class: "ledgr-mention" },
         suggestion: createMentionSuggestion(itemId),
       }),
+      // Passage @/refs (ADR-149) share the "@" picker via the /ref scope; the
+      // node reclaims its own ledgr://passage/ links on parse. Additive to the
+      // mention node above.
+      LedgrPassage,
       // Live item tokens (LT2, ADR-139): highlight recognized {{item.*}} tokens
       // and offer a `{{` insert menu. Tokens stay plain text — decoration only.
       ItemTokenDecoration,
