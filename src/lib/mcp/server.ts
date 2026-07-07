@@ -46,6 +46,8 @@ export const INSTRUCTIONS = [
   "learn the available types and their custom properties before creating or",
   "filtering. A typical flow for \"what's open with Roger\": search_items for the",
   "Roger person, then list_items with that relatedTo, type=task, status=open.",
+  "Use attach_file to add an image or file to an item — pass a sourceUrl to fetch",
+  "or base64 bytes, and by default it embeds the image/link in the item's body.",
   "",
   "You can also SHAPE the workspace, not just its content: call describe_workspace",
   "for a snapshot of the types, views, dashboards, and navigation, then",

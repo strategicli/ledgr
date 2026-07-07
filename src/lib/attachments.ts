@@ -7,7 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments, items } from "@/db/schema";
 import { ItemError } from "@/lib/items";
-import { getStorage } from "@/lib/storage";
+import { getStorage, type StorageProvider } from "@/lib/storage";
 
 // PRD §3.4: per-user quota ~10GB. Per-file cap keeps one paste from eating
 // the quota. Audio/video (meeting recording v1b, ADR-088) gets a larger cap —
@@ -40,10 +40,20 @@ function sanitizeFilename(filename: string): string {
   return cleaned.slice(0, 200) || "file";
 }
 
-export async function createAttachment(
+// Validate the request, run the owner/quota/cap checks, and insert the metadata
+// row — everything that must happen before bytes exist, shared by both upload
+// paths. Returns the resolved storage provider + the row's identifiers. The
+// caller then either presigns (browser PUTs the bytes) or putObjects them
+// server-side, so the two paths can't drift on quota, cap, or owner scoping.
+async function reserveAttachment(
   ownerId: string,
   req: AttachmentRequest
-) {
+): Promise<{
+  storage: StorageProvider;
+  id: string;
+  filename: string;
+  storageKey: string;
+}> {
   const storage = getStorage();
   if (!storage) {
     throw new ItemError(
@@ -104,8 +114,40 @@ export async function createAttachment(
     storageKey,
   });
 
+  return { storage, id, filename, storageKey };
+}
+
+export async function createAttachment(
+  ownerId: string,
+  req: AttachmentRequest
+) {
+  const { storage, id, filename, storageKey } = await reserveAttachment(
+    ownerId,
+    req
+  );
   const presigned = await storage.presignUpload(storageKey, req.contentType);
   return { id, filename, storageKey, ...presigned };
+}
+
+// Server-side attachment creation: the bytes are already in hand (no browser in
+// the loop), so we reserve the row then putObject straight to R2. This is the
+// path the MCP attach_file tool uses (ADR-150) — an AI can't PUT to a presigned
+// URL, so it hands Ledgr the bytes and the server does the write. Same
+// validation/quota/owner checks as the presign path via reserveAttachment; the
+// row's sizeBytes is the actual byte length. Returns the row id + public CDN URL
+// for embedding in the item body.
+export async function createAttachmentFromBytes(
+  ownerId: string,
+  req: { itemId: string; filename: string; contentType: string; bytes: Uint8Array }
+): Promise<{ id: string; filename: string; storageKey: string; publicUrl: string }> {
+  const { storage, id, filename, storageKey } = await reserveAttachment(ownerId, {
+    itemId: req.itemId,
+    filename: req.filename,
+    contentType: req.contentType,
+    sizeBytes: req.bytes.byteLength,
+  });
+  const publicUrl = await storage.putObject(storageKey, req.bytes, req.contentType);
+  return { id, filename, storageKey, publicUrl };
 }
 
 export async function listAttachments(ownerId: string, itemId: string) {

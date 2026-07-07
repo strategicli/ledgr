@@ -15,6 +15,7 @@
 import { getSettings } from "@/lib/settings";
 import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
+import { attachmentTools } from "./attachments";
 import { dashboardTools } from "./dashboards";
 import { itemTools } from "./items";
 import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
@@ -30,6 +31,7 @@ export { MEMORY_TOOL_NAMES };
 
 const TOOLS: McpTool[] = [
   ...itemTools,
+  ...attachmentTools,
   ...typeTools,
   ...relationTools,
   ...viewTools,
