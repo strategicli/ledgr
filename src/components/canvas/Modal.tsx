@@ -7,10 +7,11 @@
 //             the peek following, Enter/click a row re-navigates.
 //   - CENTER — the original center modal, used when the window is narrow or a
 //             right rail already occupies the trailing edge.
-// Close = Esc, backdrop click (center only), or ✕ — all return to the surface
-// the peek was launched from, collapsing any intra-peek item-to-item hops (arrow
-// walk uses replace and adds no history; clicking a live list row underneath
-// pushes, so we count those pushes and step back over all of them at once).
+// Close = Esc, backdrop click (center only), or ✕ — all router.back(), which
+// tears down the intercepting @modal slot and returns to the launching surface.
+// Arrow-walk uses router.replace so ↑/↓ browsing the list doesn't grow history.
+// (Making a single back() always return to the list even after clicking through
+// several items inside the peek is a known rough edge, deferred to its own slice.)
 // Expand is a plain anchor (hard navigation) so the same URL re-renders as the
 // full page form.
 "use client";
@@ -111,29 +112,10 @@ export default function Modal({
   favorited?: boolean;
 }) {
   const router = useRouter();
-  // How many extra history entries the peek has pushed since it opened. The
-  // initial launch (list → this item) is always one entry, so closing steps
-  // back `1 + pushCount` to land on the launching surface, collapsing any
-  // item-to-item navigation. Arrow-walk uses router.replace (no new entry, so
-  // it isn't counted); clicking another row in the live list underneath is a
-  // Next <Link> push, which is.
-  const pushCount = useRef(0);
-  const walking = useRef(false);
-  const prevId = useRef(itemId);
-  useEffect(() => {
-    if (prevId.current === itemId) return;
-    if (!walking.current) pushCount.current += 1;
-    walking.current = false;
-    prevId.current = itemId;
-  }, [itemId]);
-  const close = useCallback(() => {
-    const steps = 1 + pushCount.current;
-    if (typeof window !== "undefined" && window.history.length > steps) {
-      window.history.go(-steps);
-    } else {
-      router.back();
-    }
-  }, [router]);
+  // Back to the surface the peek launched from. router.back() tears down the
+  // intercepting @modal slot and returns to the launching list/page. Shared by
+  // Esc, the ✕, the center backdrop, sheet-dismiss, and the post-delete path.
+  const close = useCallback(() => router.back(), [router]);
   // sheet (mobile) / peek (wide desktop) / center — decided from the layout on
   // mount and kept current on resize. Client-only guard makes the SSR pass
   // (never hit in practice — the @modal slot only fills on a client nav) fall
@@ -247,9 +229,8 @@ export default function Modal({
       const cur = hrefs.findIndex((h) => h === `/items/${itemId}`);
       const next = cur === -1 ? 0 : cur + delta;
       if (next < 0 || next >= hrefs.length) return;
-      // A replace adds no history entry, so flag it before it fires: the itemId
-      // effect that runs on the resulting re-render must not count it as a push.
-      walking.current = true;
+      // Replace (not push): the peek re-renders in place and close still returns
+      // to the one launching URL, so arrow-walking never grows the history.
       router.replace(hrefs[next], { scroll: false });
     },
     [itemId, router]
