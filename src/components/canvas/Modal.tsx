@@ -38,6 +38,26 @@ const SHEET_MAX = 640;
 
 type Mode = "sheet" | "peek" | "center";
 
+// Drag-to-resize bounds for the peek panel (px). Min keeps it usefully wide;
+// max never lets it swallow the screen. Persisted under PEEK_WIDTH_KEY so the
+// chosen width sticks across items and sessions; cleared → the responsive
+// default width strings below.
+const PEEK_WIDTH_KEY = "ledgr:peek-width";
+const PEEK_MIN_PX = 480; // ~30rem
+function peekMaxPx() {
+  if (typeof window === "undefined") return 1600;
+  return Math.min(window.innerWidth * 0.9, 1600); // min(90vw, 100rem)
+}
+function readStoredPeekWidth(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const n = parseInt(localStorage.getItem(PEEK_WIDTH_KEY) || "", 10);
+    return Number.isFinite(n) ? Math.max(PEEK_MIN_PX, Math.min(peekMaxPx(), n)) : null;
+  } catch {
+    return null;
+  }
+}
+
 function computeMode(): Mode {
   if (typeof window === "undefined") return "center";
   if (window.innerWidth < SHEET_MAX) return "sheet";
@@ -120,6 +140,52 @@ export default function Modal({
   // to center.
   const [mode, setMode] = useState<Mode>(computeMode);
   const peek = mode === "peek";
+  // User-chosen peek width in px (null → the responsive default). Lazy-init from
+  // localStorage on the client so a restored width shows without a flash (the
+  // peek only ever mounts on a client nav). Persisted on drag-end.
+  const [peekWidth, setPeekWidth] = useState<number | null>(readStoredPeekWidth);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Drag origin for the resize handle: the pointer x + panel width at grab.
+  const resizeStart = useRef<{ x: number; w: number } | null>(null);
+  const onResizeDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    resizeStart.current = {
+      x: e.clientX,
+      w: panelRef.current?.offsetWidth ?? PEEK_MIN_PX,
+    };
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {}
+  };
+  const onResizeMove = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    // Panel docks right, so dragging the left-edge handle leftward widens it.
+    const delta = resizeStart.current.x - e.clientX;
+    const next = resizeStart.current.w + delta;
+    setPeekWidth(Math.max(PEEK_MIN_PX, Math.min(peekMaxPx(), next)));
+  };
+  const onResizeUp = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    const delta = resizeStart.current.x - e.clientX;
+    const final = Math.round(
+      Math.max(PEEK_MIN_PX, Math.min(peekMaxPx(), resizeStart.current.w + delta))
+    );
+    resizeStart.current = null;
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {}
+    setPeekWidth(final);
+    try {
+      localStorage.setItem(PEEK_WIDTH_KEY, String(final));
+    } catch {}
+  };
+  // Double-click the handle → forget the custom width, back to the default.
+  const onResizeReset = () => {
+    setPeekWidth(null);
+    try {
+      localStorage.removeItem(PEEK_WIDTH_KEY);
+    } catch {}
+  };
   // Drag-to-dismiss offset for the bottom sheet (px the sheet is pulled down).
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -384,6 +450,7 @@ export default function Modal({
     // center). Non-modal — no backdrop, so the list stays live underneath.
     return (
       <div
+        ref={panelRef}
         role="dialog"
         aria-label={title || "Item"}
         className="fixed z-40 flex flex-col overflow-hidden border-l border-line-strong bg-surface-2 shadow-2xl shadow-black/50"
@@ -391,13 +458,40 @@ export default function Modal({
           top: "var(--nav-pt, 0px)",
           bottom: "var(--nav-pb, 0px)",
           right: "var(--nav-pr, 0px)",
-          // Non-wide holds the ~48rem canvas column comfortably (up from 34rem,
+          // A dragged width wins (persisted); otherwise the responsive default:
+          // non-wide holds the ~48rem canvas column comfortably (up from 34rem,
           // which squished it); wide (song chord charts) stays roomier. The vw
-          // cap keeps it responsive — it shrinks with the window, and the peek
-          // only activates at ≥1280px of content (PEEK_MIN_CONTENT).
-          width: wide ? "min(60rem, 50vw)" : "min(52rem, 46vw)",
+          // cap keeps the default responsive — it shrinks with the window, and
+          // the peek only activates at ≥1280px of content (PEEK_MIN_CONTENT).
+          width:
+            peekWidth != null
+              ? `${peekWidth}px`
+              : wide
+                ? "min(60rem, 50vw)"
+                : "min(52rem, 46vw)",
         }}
       >
+        {/* Drag handle on the panel's left (inner) edge — the resizable one,
+            since the peek docks right. A 6px hit strip along the full height;
+            the visible hairline brightens on hover/drag. touch-none so a touch
+            drag resizes instead of scrolling. Double-click resets to default. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panel"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+          onPointerCancel={onResizeUp}
+          onDoubleClick={onResizeReset}
+          className="group absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none select-none"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover:bg-[var(--accent,#2563eb)]"
+          />
+        </div>
         {panel}
       </div>
     );
