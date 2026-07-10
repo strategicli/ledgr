@@ -107,6 +107,10 @@ export default function ItemEditor({
   controlledSection,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
+  // Bumped when Enter is pressed in the title, to move the caret into the body
+  // editor (fix: Enter in the title should jump to the body, not just blur). 0 =
+  // don't focus, so the body never steals focus on a normal load.
+  const [bodyFocusSignal, setBodyFocusSignal] = useState(0);
   const pending = useRef<{ title?: string; body?: unknown }>({});
   // The markdown of the body as last persisted, seeded from what loaded. The
   // editor re-emits the loaded body once when it mounts (a programmatic editor
@@ -285,12 +289,35 @@ export default function ItemEditor({
         onLiveChange?.({ title: e.target.value });
         schedule();
       }}
-      // A title is one logical line that wraps; Enter commits (blurs) rather than
-      // inserting a newline.
+      // A title is one logical line that wraps; Enter commits it and moves the
+      // caret into the body (instead of just blurring), so a new note flows
+      // title → body without reaching for the mouse. In the combined layout the
+      // body editor focuses off the bumped signal. In the field-card layout
+      // (MarkdownCanvas/TaskCanvas/WidgetCanvas) the title is its own ItemEditor
+      // instance and the body is a sibling, so we reach the body editor through
+      // the DOM and drop the caret at its start; if there's no live body editor
+      // on this canvas (e.g. a Preview-mode large doc), we just blur.
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          e.currentTarget.blur();
+          if (slot === "title") {
+            const pm = document.querySelector<HTMLElement>(
+              '.ProseMirror[contenteditable="true"]'
+            );
+            if (pm) {
+              pm.focus();
+              const sel = window.getSelection();
+              if (sel) {
+                const r = document.createRange();
+                r.selectNodeContents(pm);
+                r.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(r);
+              }
+            } else {
+              e.currentTarget.blur();
+            }
+          } else setBodyFocusSignal((n) => n + 1);
         }
       }}
     />
@@ -322,6 +349,7 @@ export default function ItemEditor({
       editable={!locked}
       tabsEnabled={tabsEnabled}
       controlledSection={controlledSection}
+      focusSignal={bodyFocusSignal}
     />
   );
 

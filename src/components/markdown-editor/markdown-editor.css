@@ -34,8 +34,8 @@
   pointer-events: none;
 }
 
-/* position:relative anchors the collapsible-headings fold chevron (an absolutely
-   positioned widget) beside each heading's text. */
+/* position:relative anchors the collapsible-headings fold chevron (the
+   absolutely positioned .ledgr-foldable::before) in each heading's left gutter. */
 .ledgr-prose h1 {
   position: relative;
   font-size: 1.6rem;
@@ -517,43 +517,57 @@
   margin-top: 0;
 }
 
-/* Collapsible headings (view-only fold). The chevron is a widget inside the
-   heading; it sits in the left margin, is quiet until the heading is hovered,
-   and stays visible while the section is collapsed (so hidden content is
-   discoverable). The fold hides whole following blocks via display:none — they
-   stay in the document (copy/selection still see them; the plugin auto-expands
-   before a selection can enter them). */
-.ledgr-fold-toggle {
+/* Collapsible headings (view-only fold). The chevron is a CSS ::before painted
+   in the heading's left gutter (negative left → entirely LEFT of the heading
+   box), NOT an inline widget — so it never occupies the text-start position and
+   the heading's first character stays selectable. It's small and unobtrusive
+   (rem-sized, so it doesn't scale up with the heading), quiet until the heading
+   is hovered, and stays visible while the section is collapsed (so hidden content
+   is discoverable). pointer-events:none — the click is caught by the plugin's
+   gutter mousedown handler (keyed off click x), so a wider invisible hit zone in
+   the gutter provides the touch target without inflating the glyph. The fold
+   hides whole following blocks via display:none — they stay in the document
+   (copy/selection still see them; the plugin auto-expands before a selection can
+   enter them). */
+.ledgr-prose h1.ledgr-foldable::before,
+.ledgr-prose h2.ledgr-foldable::before,
+.ledgr-prose h3.ledgr-foldable::before {
+  content: "▸";
   position: absolute;
-  margin-left: -1.15rem;
+  left: -1.15rem;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 1rem;
-  padding: 0;
-  border: none;
-  background: transparent;
+  font-size: 0.75rem;
   color: #9ca3af;
-  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
   user-select: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
   transform: rotate(90deg);
 }
-.ledgr-prose h1:hover .ledgr-fold-toggle,
-.ledgr-prose h2:hover .ledgr-fold-toggle,
-.ledgr-prose h3:hover .ledgr-fold-toggle,
-.ledgr-fold-toggle:focus-visible {
-  opacity: 0.6;
+.ledgr-prose h1.ledgr-foldable:hover::before,
+.ledgr-prose h2.ledgr-foldable:hover::before,
+.ledgr-prose h3.ledgr-foldable:hover::before {
+  opacity: 0.55;
 }
-.ledgr-fold-toggle.is-collapsed {
+.ledgr-prose h1.ledgr-foldable.is-collapsed::before,
+.ledgr-prose h2.ledgr-foldable.is-collapsed::before,
+.ledgr-prose h3.ledgr-foldable.is-collapsed::before {
   opacity: 0.7;
   transform: rotate(0deg);
 }
 /* Touch has no hover, so the fold arrow would be invisible (and un-collapsible)
-   on a phone. Keep it faintly visible and give it a wider target there. */
+   on a phone. Keep it faintly visible there; the gutter hit zone (JS) stays the
+   same size, so no need to enlarge the glyph. */
 @media (pointer: coarse) {
-  .ledgr-fold-toggle {
-    opacity: 0.45;
-    width: 1.6em;
-    margin-left: -1.6em;
+  .ledgr-prose h1.ledgr-foldable::before,
+  .ledgr-prose h2.ledgr-foldable::before,
+  .ledgr-prose h3.ledgr-foldable::before {
+    opacity: 0.4;
   }
 }
 .ledgr-fold-hidden {
