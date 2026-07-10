@@ -175,6 +175,44 @@ export default function BodyEditor({
     setMode(next);
   };
 
+  // The body's view-mode controls: the collapse toggle (desktop + rich only) and
+  // the Rich/Source/Preview segmented pill. One element, rendered in two places
+  // (ADR-125, merged in S8): in rich mode on desktop it's handed to the editor
+  // and rides the right end of the formatting bar; on mobile, and in
+  // source/preview mode, it sits in the top row below instead. Only one copy is
+  // ever visible at a time (the responsive visibility below decides which).
+  const viewControls = (
+    <>
+      {showCollapseToggle && (
+        <button
+          type="button"
+          onClick={toggleToolbar}
+          aria-pressed={toolbarOpen}
+          title={toolbarOpen ? "Hide formatting bar" : "Show formatting bar"}
+          aria-label={toolbarOpen ? "Hide formatting bar" : "Show formatting bar"}
+          className={`hidden rounded-md px-2 py-1 sm:inline-flex sm:items-center ${
+            toolbarOpen
+              ? "bg-surface-2 text-ink"
+              : "text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
+          }`}
+        >
+          {FORMAT_ICON}
+        </button>
+      )}
+      <div className="inline-flex items-center gap-0.5 rounded-card border border-line bg-surface-0 p-0.5">
+        <ModeButton active={mode === "rich"} onClick={() => switchMode("rich")} title="Rich text" label="Rich text editor">
+          {RICH_ICON}
+        </ModeButton>
+        <ModeButton active={mode === "source"} onClick={() => switchMode("source")} title="Markdown source" label="Markdown source">
+          {SOURCE_ICON}
+        </ModeButton>
+        <ModeButton active={mode === "preview"} onClick={() => switchMode("preview")} title="Preview — tokens resolve here" label="Preview rendered output">
+          {PREVIEW_ICON}
+        </ModeButton>
+      </div>
+    </>
+  );
+
   let child: React.ReactNode;
   if (mode === "preview") {
     child = <MarkdownPreview key="preview" text={mountText} itemId={itemId} />;
@@ -202,7 +240,7 @@ export default function BodyEditor({
         controlledSection={controlledSection}
         focusSignal={focusSignal}
         toolbarOpen={toolbarOpen}
-        underModeRow
+        viewControls={viewControls}
       />
     );
   } else {
@@ -216,7 +254,7 @@ export default function BodyEditor({
         promoteToMeetingId={promoteToMeetingId}
         promotedRefs={promotedRefs}
         toolbarOpen={toolbarOpen}
-        underModeRow
+        viewControls={viewControls}
         compact={compact}
         onRequestSave={onRequestSave}
         editable={editable}
@@ -247,56 +285,17 @@ export default function BodyEditor({
           </div>
         </div>
       ) : (
-        // Normal note: a sticky mode-row. The collapse toggle (formatting-bar
-        // show/hide, desktop-only) sits on the LEFT, clearly separated from the
-        // quiet Rich/Source view pair on the RIGHT so it doesn't read as a third
-        // view mode. Sticky + opaque so the controls stay reachable and content
-        // scrolls cleanly under them on a long note; the formatting bar (in the
-        // editor below) pins flush beneath this row (underModeRow), the two
-        // reading as one bar. Fixed h-9 (2.25rem) matches that pin offset.
-        <div className="flex h-9 items-center gap-1 border-b border-neutral-800/70 bg-surface-0 sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-30">
-          {showCollapseToggle && (
-            <button
-              type="button"
-              onClick={toggleToolbar}
-              aria-pressed={toolbarOpen}
-              title={toolbarOpen ? "Hide formatting bar" : "Show formatting bar"}
-              aria-label={toolbarOpen ? "Hide formatting bar" : "Show formatting bar"}
-              className={`hidden rounded-md px-2 py-1 sm:inline-flex sm:items-center ${
-                toolbarOpen
-                  ? "bg-surface-2 text-ink"
-                  : "text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
-              }`}
-            >
-              {FORMAT_ICON}
-            </button>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            <ModeButton
-              active={mode === "rich"}
-              onClick={() => switchMode("rich")}
-              title="Rich text"
-              label="Rich text editor"
-            >
-              {RICH_ICON}
-            </ModeButton>
-            <ModeButton
-              active={mode === "source"}
-              onClick={() => switchMode("source")}
-              title="Markdown source"
-              label="Markdown source"
-            >
-              {SOURCE_ICON}
-            </ModeButton>
-            <ModeButton
-              active={mode === "preview"}
-              onClick={() => switchMode("preview")}
-              title="Preview — tokens resolve here"
-              label="Preview rendered output"
-            >
-              {PREVIEW_ICON}
-            </ModeButton>
-          </div>
+        // The view-mode controls' top row. In rich mode this is the MOBILE home
+        // for the pill (sm:hidden — desktop rich merges it into the formatting
+        // bar via viewControls). In source/preview there's no formatting bar, so
+        // the row shows at every width. Sticky + opaque so it stays reachable and
+        // content scrolls cleanly under it on a long note.
+        <div
+          className={`flex items-center border-b border-line bg-surface-1 px-2 py-1.5 sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-30 ${
+            mode === "rich" ? "sm:hidden" : ""
+          }`}
+        >
+          <div className="ml-auto flex items-center gap-1">{viewControls}</div>
         </div>
       )}
       {child}
