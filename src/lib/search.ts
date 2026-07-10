@@ -8,6 +8,7 @@ import { and, desc, eq, gte, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { listColumns } from "@/lib/items";
+import { RECENCY_MILD, recencyMultiplier, type RecencyWeight } from "@/lib/recency";
 
 export type SearchOptions = {
   type?: string;
@@ -17,6 +18,9 @@ export type SearchOptions = {
   from?: Date;
   to?: Date;
   limit?: number;
+  // Recency weighting folded into ts_rank (see @/lib/recency). Defaults to the
+  // mild full-search curve; quick search passes the strong one.
+  recency?: RecencyWeight;
 };
 
 const SEARCH_LIMIT = 50;
@@ -64,7 +68,9 @@ export function searchItemsQuery(
     .from(items)
     .where(and(...where))
     .orderBy(
-      sql`ts_rank(${items.search}, ${query}) desc`,
+      // Relevance scaled by the recency curve, so a fresh row outranks an
+      // equally-relevant stale one; updated_at stays as the final tiebreak.
+      sql`ts_rank(${items.search}, ${query}) * ${recencyMultiplier(opts.recency ?? RECENCY_MILD)} desc`,
       desc(items.updatedAt)
     )
     .limit(Math.min(Math.max(opts.limit ?? SEARCH_LIMIT, 1), SEARCH_LIMIT));
