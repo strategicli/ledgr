@@ -258,6 +258,33 @@ export default function Modal({
     return () => document.removeEventListener("keydown", onKey);
   }, [close, peek, walk]);
 
+  // Peek only: a click on a non-interactive area of the background (the list /
+  // canvas behind the panel) closes the peek, like clicking off a popover. The
+  // peek is deliberately non-modal (no backdrop), so we listen on the document
+  // and bail when the click is inside the panel or lands on an interactive
+  // element — a list row (<a data-peek-row>), the nav, a button/field — so those
+  // still act (a row still re-navigates the peek to that item) instead of
+  // closing. A text-selection drag (non-collapsed selection) is not a click-off.
+  useEffect(() => {
+    if (!peek) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (e.button !== 0 || e.defaultPrevented) return;
+      const target = e.target as Element | null;
+      if (!target || panelRef.current?.contains(target)) return;
+      if (
+        target.closest(
+          'a, button, input, textarea, select, label, summary, [role="button"], [role="menuitem"], [contenteditable="true"], [data-peek-row]'
+        )
+      )
+        return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+      close();
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [peek, close]);
+
   // Center modal owns the scroll context (one panel); the peek is non-modal, so
   // the list underneath must keep scrolling — only lock the body in center mode.
   useEffect(() => {
