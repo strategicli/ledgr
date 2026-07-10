@@ -8,10 +8,10 @@
 // component) from crashing the page.
 //
 // A workflow module adds its canvas component here (a chord grid, a paper
-// workspace); core wires the two it ships — the default markdown canvas and the
-// `link` URL chip (ADR-041).
+// workspace); core wires the default markdown canvas and the shared longform
+// document canvas (notes, links, journal, prayer, … — ADR-041/157).
 import ChordCanvas from "@/components/canvas/ChordCanvas";
-import LinkCanvas from "@/components/canvas/LinkCanvas";
+import LongformCanvas from "@/components/canvas/LongformCanvas";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
 import MindmapCanvas from "@/components/canvas/MindmapCanvas";
 import TaskCanvas from "@/components/canvas/TaskCanvas";
@@ -25,7 +25,7 @@ import "@/lib/modules/register";
 
 const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   [DEFAULT_CANVAS]: MarkdownCanvas,
-  link: LinkCanvas,
+  longform: LongformCanvas,
   chord: ChordCanvas,
   paper: PaperCanvas,
   task: TaskCanvas,

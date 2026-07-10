@@ -25,6 +25,10 @@ import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 import TypeCue from "@/components/canvas/TypeCue";
 
+// Compact date for the chrome timestamps ("Jan 3, 2021").
+const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtChromeDate = (d: Date) => CHROME_DATE.format(d);
+
 export default async function ItemCanvas({
   id,
   variant,
@@ -141,8 +145,15 @@ export default async function ItemCanvas({
                 </span>
               ))}
             </div>
-            {variant === "page" && !item.isTemplate && (
-              <span className="flex shrink-0 items-center gap-1">
+            <span className="flex shrink-0 items-center gap-3">
+              {/* Created/Updated are item chrome, not content: faint, right of
+                  the row, hidden on the narrow mobile breadcrumb. */}
+              <span className="hidden items-center gap-2 text-xs text-ink-faint sm:flex">
+                <span>Created {fmtChromeDate(item.createdAt)}</span>
+                <span aria-hidden>·</span>
+                <span>Updated {fmtChromeDate(item.updatedAt)}</span>
+              </span>
+              {variant === "page" && !item.isTemplate && (
                 <ItemActionsMenu
                   itemId={item.id}
                   type={item.type}
@@ -152,8 +163,8 @@ export default async function ItemCanvas({
                   )}
                   favorited={favorited}
                 />
-              </span>
-            )}
+              )}
+            </span>
           </div>
         )}
         {/* canvasComponentFor is a registry lookup (module-wiring.tsx) returning a
