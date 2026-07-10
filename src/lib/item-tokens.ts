@@ -21,9 +21,21 @@
 //   {{item.related.<roleOrType>}}   {{item.children}}                   — item lists
 //   {{item.children:ul}}  {{item.related.person:ol}}                    — list formats
 //   {{parent.title}} {{parent.due:long}} …                             — the parent's fields
+//   {{now}} {{now.today}} {{now.tomorrow}} {{now.yesterday}}            — LIVE dates
+//   {{now.today+7d}} {{now.today-1w}} {{now.nextweek}}                  — live date math
+//   {{now.sunday}} … {{now.saturday}}  {{now.nextfriday}}              — live weekdays
 // Date format suffixes match template-vars: iso/long/short/us/day, default
 // "Jun 20, 2026". A \{{…}} (backslash-escaped) renders literally.
+//
+// The {{now.*}} family (LT-live-time) is a SEPARATE vocabulary from template
+// apply-time vars (template-vars.ts): {{today}}/{{tomorrow}}/… there BAKE ONCE
+// when a template is applied; {{now}}/{{now.*}} here RE-RESOLVE against the
+// owner's timezone-aware "today" (ctx.todayYmd) at EVERY render. The live
+// resolver never touches the bare {{today}} vocabulary, so apply-time baking is
+// untouched. Both read ctx.todayYmd — never Date.now() — so a date never shifts
+// across a timezone.
 import { addDaysYmd, addMonthsYmd, isYmd, weekdayOf } from "@/lib/recurrence";
+import { parseNaturalDate } from "@/lib/nl-date";
 import { mentionToMarkdown } from "@/lib/editor/mention-markdown";
 
 // A referenced item (child or related): id + current title, for a mention link.
@@ -125,6 +137,21 @@ function applyOffset(ymd: string, offset: string): string | null {
     case "y": return addMonthsYmd(ymd, n * 12);
   }
   return null;
+}
+
+// Resolve a live {{now.<base>}} word to a YYYY-MM-DD against `todayYmd`, or null
+// when the word isn't a recognized "now" base (so an unknown now.* token is left
+// raw). Weekday words defer to the shared NL date parser (same semantics as the
+// apply-time weekday vars): a bare weekday is the coming one (incl. today),
+// "next<weekday>" jumps to next week's.
+function resolveNowBase(sub: string, todayYmd: string): string | null {
+  const b = sub.trim().toLowerCase();
+  if (b === "" || b === "today") return todayYmd;
+  if (b === "tomorrow") return addDaysYmd(todayYmd, 1);
+  if (b === "yesterday") return addDaysYmd(todayYmd, -1);
+  if (b === "nextweek") return addDaysYmd(todayYmd, 7);
+  const next = b.startsWith("next") ? b.slice(4) : null;
+  return parseNaturalDate(next ? `next ${next}` : b, todayYmd);
 }
 
 // Split "expr±Nd:fmt" into { base, offset, fmt }. base keeps its dots, and a
@@ -229,6 +256,16 @@ function resolveOne(inner: string, ctx: ItemTokenContext): string | null {
   const refs = refsFor(base, ctx);
   if (refs !== null) return renderRefList(refs, "", "");
 
+  // Live time tokens ({{now}}, {{now.today+7d}}, {{now.friday}}) — always the
+  // owner's current app-tz day, re-resolved every render (never baked).
+  if (lower === "now" || lower.startsWith("now.")) {
+    const ymd = resolveNowBase(lower === "now" ? "" : lower.slice("now.".length), ctx.todayYmd);
+    if (ymd == null) return null;
+    const shifted = offset ? applyOffset(ymd, offset) : ymd;
+    if (shifted == null) return null;
+    return formatYmd(shifted, fmt);
+  }
+
   // Scalar fields on the item or its parent.
   if (lower.startsWith("item.")) {
     return renderItemField(ctx.self, base.slice("item.".length), offset, fmt);
@@ -276,30 +313,30 @@ export function hasItemTokens(text: string | null | undefined): boolean {
   TOKEN_RE.lastIndex = 0;
   for (const m of text.matchAll(TOKEN_RE)) {
     if (m[1]) continue; // escaped
-    const { base } = splitExpr(m[2]);
-    const lower = base.toLowerCase();
-    if (
-      lower === "item.children" ||
-      lower.startsWith("item.related.") ||
-      lower.startsWith("item.") ||
-      lower.startsWith("parent.")
-    ) {
-      return true;
-    }
+    if (isLiveBase(splitExpr(m[2]).base.toLowerCase())) return true;
   }
   return false;
 }
 
-// Whether an inner token expression names a recognized live token (item./parent.
-// scalar, date, prop, or list). Shared by the scan helpers and the LT2 editor.
-export function isLiveTokenExpr(inner: string): boolean {
-  const lower = splitExpr(inner).base.toLowerCase();
+// True if a lowercased token base names a recognized live token: an item./parent.
+// scalar/date/prop/list, or a {{now.*}} live-time base. The one predicate every
+// recognition path shares (resolver gate, editor decoration, scans).
+function isLiveBase(lower: string): boolean {
   return (
     lower === "item.children" ||
     lower.startsWith("item.related.") ||
     lower.startsWith("item.") ||
-    lower.startsWith("parent.")
+    lower.startsWith("parent.") ||
+    lower === "now" ||
+    lower.startsWith("now.")
   );
+}
+
+// Whether an inner token expression names a recognized live token (item./parent.
+// scalar, date, prop, list, or a {{now.*}} live-time token). Shared by the scan
+// helpers and the LT2 editor.
+export function isLiveTokenExpr(inner: string): boolean {
+  return isLiveBase(splitExpr(inner).base.toLowerCase());
 }
 
 // Character ranges of every recognized live token in `text` (LT2 editor
@@ -328,11 +365,7 @@ export function scanItemTokens(text: string | null | undefined): string[] {
   for (const m of text.matchAll(TOKEN_RE)) {
     if (m[1]) continue;
     const inner = m[2].trim();
-    const lower = inner.toLowerCase();
-    if (
-      (lower.startsWith("item.") || lower.startsWith("parent.")) &&
-      !seen.has(inner)
-    ) {
+    if (isLiveBase(splitExpr(inner).base.toLowerCase()) && !seen.has(inner)) {
       seen.add(inner);
       out.push(inner);
     }

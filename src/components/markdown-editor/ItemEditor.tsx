@@ -18,6 +18,7 @@ import {
 } from "@/lib/save-status";
 import BodyEditor from "./BodyEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
+import { useTokenAutocomplete } from "./useTokenAutocomplete";
 
 const SAVE_DEBOUNCE_MS = 1500;
 
@@ -227,6 +228,16 @@ export default function ItemEditor({
     [flush]
   );
 
+  // `{{` live-token autocomplete for the title (the body editor has its own via
+  // token-suggestion.ts). Picking a token routes through the same setTitle +
+  // debounced-save path as typing, so nothing about autosave changes.
+  const titleAC = useTokenAutocomplete(titleRef, (next) => {
+    setTitle(next);
+    pending.current.title = next;
+    onLiveChange?.({ title: next });
+    schedule();
+  });
+
   // Title wraps and grows with content (Brandon, 2026-06-17): keep the textarea's
   // height matched to its content after every edit, so a long title shows in full
   // instead of scrolling in one line.
@@ -272,6 +283,7 @@ export default function ItemEditor({
   }, [item.id]);
 
   const titleInput = (
+    <>
     <textarea
       ref={titleRef}
       rows={1}
@@ -288,7 +300,13 @@ export default function ItemEditor({
         pending.current.title = e.target.value;
         onLiveChange?.({ title: e.target.value });
         schedule();
+        titleAC.sync();
       }}
+      onKeyUp={titleAC.sync}
+      onClick={titleAC.sync}
+      onBlur={titleAC.close}
+      onCompositionStart={titleAC.onCompositionStart}
+      onCompositionEnd={titleAC.onCompositionEnd}
       // A title is one logical line that wraps; Enter commits it and moves the
       // caret into the body (instead of just blurring), so a new note flows
       // title → body without reaching for the mouse. In the combined layout the
@@ -298,6 +316,8 @@ export default function ItemEditor({
       // the DOM and drop the caret at its start; if there's no live body editor
       // on this canvas (e.g. a Preview-mode large doc), we just blur.
       onKeyDown={(e) => {
+        // The token menu gets first crack at arrows/enter/tab/escape while open.
+        if (titleAC.onKeyDown(e)) return;
         if (e.key === "Enter") {
           e.preventDefault();
           if (slot === "title") {
@@ -321,6 +341,8 @@ export default function ItemEditor({
         }
       }}
     />
+    {titleAC.menu}
+    </>
   );
   const onBodyChange = (markdown: string) => {
     if (markdown === savedBodyText.current) return;

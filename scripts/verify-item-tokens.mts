@@ -33,6 +33,7 @@ const {
 const { filterTokenOptions, TOKEN_CATALOG } = await import(
   "../src/lib/editor/item-token-catalog"
 );
+const { weekdayOf, compareYmd } = await import("../src/lib/recurrence");
 type ItemTokenContext = import("../src/lib/item-tokens").ItemTokenContext;
 
 const ID1 = "11111111-1111-1111-1111-111111111111";
@@ -156,6 +157,55 @@ eq(
   r("Team: {{item.children:ul}}."),
   `Team: [@Prep](ledgr://item/${ID1}), [@Send notes](ledgr://item/${ID2}).`
 );
+
+// live "now" time tokens (Task A) — re-resolve against ctx.todayYmd (2026-06-20),
+// with the same offsets + formats as item dates. These always reflect the
+// current day at render, never a baked value.
+eq("{{now}} = today (default fmt)", r("{{now}}"), "Jun 20, 2026");
+eq("{{now.today:iso}}", r("{{now.today:iso}}"), "2026-06-20");
+eq("{{now.tomorrow:iso}}", r("{{now.tomorrow:iso}}"), "2026-06-21");
+eq("{{now.yesterday:iso}}", r("{{now.yesterday:iso}}"), "2026-06-19");
+eq("{{now.today+7d:iso}} offset", r("{{now.today+7d:iso}}"), "2026-06-27");
+eq("{{now.today-1w:iso}} offset", r("{{now.today-1w:iso}}"), "2026-06-13");
+eq("{{now.today+1m:iso}} offset", r("{{now.today+1m:iso}}"), "2026-07-20");
+eq("{{now.nextweek:iso}}", r("{{now.nextweek:iso}}"), "2026-06-27");
+eq("{{now.today:long}} format", r("{{now.today:long}}"), "June 20, 2026");
+eq("{{now.today:us}} format", r("{{now.today:us}}"), "6/20/2026");
+eq("{{now.today:short}} format", r("{{now.today:short}}"), "Jun 20");
+// weekday bases resolve to the correct weekday, on/after today (no hardcoded date,
+// cross-checked with the independent weekdayOf helper).
+{
+  const sun = r("{{now.sunday:iso}}");
+  truthy("{{now.sunday}} lands on a Sunday", weekdayOf(sun) === "SU");
+  truthy("{{now.sunday}} is today-or-later", compareYmd(sun, ctx.todayYmd) >= 0);
+  const nextFri = r("{{now.nextfriday:iso}}");
+  truthy("{{now.nextfriday}} lands on a Friday", weekdayOf(nextFri) === "FR");
+  truthy("{{now.nextfriday}} is in the future", compareYmd(nextFri, ctx.todayYmd) > 0);
+}
+// LIVE re-resolution: the same token yields a different value when "today" moves.
+eq(
+  "{{now}} re-resolves as today changes",
+  resolveItemTokens("{{now:iso}}", { ...ctx, todayYmd: "2027-01-15" }),
+  "2027-01-15"
+);
+// an unrecognized now.* word is left raw (not silently blanked)
+eq("{{now.bogus}} left raw", r("{{now.bogus}}"), "{{now.bogus}}");
+// recognition: hasItemTokens / isLiveTokenExpr see the now.* family, so the
+// service builds a context and resolves them at render.
+truthy("hasItemTokens true for {{now}}", hasItemTokens("as of {{now}}"));
+truthy("hasItemTokens true for {{now.today+7d}}", hasItemTokens("{{now.today+7d}}"));
+truthy("isLiveTokenExpr now", isLiveTokenExpr("now"));
+truthy("isLiveTokenExpr now.today+7d", isLiveTokenExpr("now.today+7d"));
+truthy("isLiveTokenExpr now.friday", isLiveTokenExpr("now.friday"));
+truthy(
+  "findItemTokenRanges highlights {{now}}",
+  findItemTokenRanges("x {{now.today:long}} y").length === 1
+);
+// the apply-time {{today}} vocabulary still passes UNTOUCHED through the LIVE
+// resolver, so a template can still bake it at apply time (template-vars.ts).
+eq("apply-time {{today}} still passes through live", r("{{today}}"), "{{today}}");
+eq("apply-time {{today+7d}} still passes through live", r("{{today+7d}}"), "{{today+7d}}");
+truthy("hasItemTokens false for apply-time {{today}} alone", !hasItemTokens("{{today}} {{tomorrow}}"));
 
 // passthrough / escaping / apply-time coexistence
 eq("unknown token left raw", r("{{item.bogus}} {{whatever}}"), "{{item.bogus}} {{whatever}}");
