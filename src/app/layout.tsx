@@ -56,6 +56,13 @@ export const viewport: Viewport = {
   // Paint under the iOS home indicator; the nav bar pads itself back out
   // with safe-area-inset-bottom.
   viewportFit: "cover",
+  // Keep content above the on-screen keyboard. Chrome Android's default
+  // (resizes-visual) leaves the layout viewport full-height when the keyboard
+  // opens, so a bottom-pinned bar sits behind it and the visualViewport-based
+  // keyboardInset math is unreliable. resizes-content shrinks the layout
+  // viewport to the space above the keyboard, so the editor's fixed formatting
+  // bar (bottom-pinned) lands above the keyboard without JS geometry.
+  interactiveWidget: "resizes-content",
 };
 
 export default async function RootLayout({
