@@ -32,6 +32,10 @@ export type TabbedBodyProps = {
   // When false (a locked item): the editor is read-only and the tab controls
   // (add / rename / delete) are hidden, so the body can't be restructured.
   editable?: boolean;
+  // Formatting-bar visibility + sticky offset (S5), owned by BodyEditor's
+  // mode-row and forwarded straight to the active tab's editor.
+  toolbarOpen?: boolean;
+  underModeRow?: boolean;
   // Desk panels (ADR-147 D5): when set, the active section is CONTROLLED by the
   // panel chrome (its merged sub-tab chips) and TabbedBody's own strip + title
   // input are hidden — section nav lives in the panel, not here. The index is
@@ -54,6 +58,8 @@ export default function TabbedBody({
   editable = true,
   controlledSection,
   focusSignal,
+  toolbarOpen,
+  underModeRow,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
@@ -217,6 +223,8 @@ export default function TabbedBody({
         onRequestSave={onRequestSave}
         editable={editable}
         focusSignal={focusSignal}
+        toolbarOpen={toolbarOpen}
+        underModeRow={underModeRow}
       />
     </div>
   );
