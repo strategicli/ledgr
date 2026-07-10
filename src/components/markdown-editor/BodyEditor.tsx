@@ -106,6 +106,16 @@ const SOURCE_ICON = (
     <polyline points="16 7 21 12 16 17" />
   </svg>
 );
+// The Preview/Reading toggle (slice 7): an eye — read-only rendered output, where
+// live {{item.*}}/{{parent.*}}/{{now.*}} tokens resolve to their current values
+// (MarkdownPreview posts itemId to /api/render-markdown). Its own glyph, distinct
+// from the Rich/Source pair, so the row reads as three views.
+const PREVIEW_ICON = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
 // The collapse toggle's glyph (S5): a text-format "A" + baseline — deliberately
 // distinct from the two view-mode icons (rendered-lines, code-brackets) so it
 // reads as "show/hide the formatting bar," not a third view mode.
@@ -277,6 +287,14 @@ export default function BodyEditor({
               label="Markdown source"
             >
               {SOURCE_ICON}
+            </ModeButton>
+            <ModeButton
+              active={mode === "preview"}
+              onClick={() => switchMode("preview")}
+              title="Preview — tokens resolve here"
+              label="Preview rendered output"
+            >
+              {PREVIEW_ICON}
             </ModeButton>
           </div>
         </div>

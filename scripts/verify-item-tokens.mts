@@ -33,6 +33,7 @@ const {
 const { filterTokenOptions, TOKEN_CATALOG } = await import(
   "../src/lib/editor/item-token-catalog"
 );
+const { hasVars } = await import("../src/lib/template-vars");
 const { weekdayOf, compareYmd } = await import("../src/lib/recurrence");
 type ItemTokenContext = import("../src/lib/item-tokens").ItemTokenContext;
 
@@ -257,10 +258,28 @@ eq(
 );
 truthy("filter 'title' hits item.title", filterTokenOptions("title").some((o) => o.token === "item.title"));
 eq("empty filter returns all", filterTokenOptions("").length, TOKEN_CATALOG.length);
+// Live-kind catalog tokens must be recognized live tokens (or the props starter);
+// bake-kind tokens must be recognized apply-time template vars (template-vars.ts).
 truthy(
-  "every catalog token is a recognized live token",
-  TOKEN_CATALOG.every((o) => isLiveTokenExpr(o.token) || o.token === "item.props.")
+  "every live catalog token is a recognized live token",
+  TOKEN_CATALOG.filter((o) => o.kind !== "bake").every(
+    (o) => isLiveTokenExpr(o.token) || o.token === "item.props."
+  )
 );
+truthy(
+  "every bake catalog token is a recognized apply-time var",
+  TOKEN_CATALOG.filter((o) => o.kind === "bake").every((o) => hasVars(`{{${o.token}}}`))
+);
+// Slice 7: the bake group offers {{today}} & friends, and a {{today}} query
+// surfaces BOTH the bake token and the live now.* one so they're distinguishable.
+truthy("catalog has a bake 'today'", TOKEN_CATALOG.some((o) => o.token === "today" && o.kind === "bake"));
+truthy("bake tokens are NOT live tokens", !isLiveTokenExpr("today") && !isLiveTokenExpr("nextSunday"));
+{
+  const hits = filterTokenOptions("today");
+  truthy("query 'today' offers a bake option", hits.some((o) => o.kind === "bake" && o.token === "today"));
+  truthy("query 'today' also offers a live now option", hits.some((o) => o.kind !== "bake" && o.token.startsWith("now")));
+}
+eq("bake 'today' inserts {{today}} literally (not now.today)", "today", TOKEN_CATALOG.find((o) => o.token === "today")?.token);
 
 // ===========================================================================
 // Part B — DB context builder + render helper (live Neon)

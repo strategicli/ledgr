@@ -5,7 +5,21 @@
 // "item.props." starter and the decoration highlights whatever you type. Dynamic
 // property/related keys can be threaded in later; this keeps LT2 dependency-free.
 
-export type TokenGroup = "Item" | "Dates" | "Now" | "Related" | "Parent";
+export type TokenGroup =
+  | "Item"
+  | "Dates"
+  | "Now"
+  | "Bakes on apply"
+  | "Related"
+  | "Parent";
+
+// A token is either LIVE — it re-resolves from the item's current state at
+// EVERY render/export/preview (item-tokens.ts / ADR-139) — or a BAKE token that
+// resolves ONCE, to the apply date, when a TEMPLATE is applied (template-vars.ts)
+// and is inert plain text everywhere else. The two families share the `{{ }}`
+// syntax, so the picker labels them distinctly to end the "{{today}} vs
+// {{now.today}}" confusion (slice 7 / ADR-154).
+export type TokenKind = "live" | "bake";
 
 export type TokenOption = {
   // The token inserted, without braces (e.g. "item.due:long").
@@ -15,6 +29,8 @@ export type TokenOption = {
   // One-line hint of what it resolves to.
   hint: string;
   group: TokenGroup;
+  // Defaults to "live"; the "Bakes on apply" group sets "bake".
+  kind?: TokenKind;
 };
 
 export const TOKEN_CATALOG: TokenOption[] = [
@@ -41,6 +57,18 @@ export const TOKEN_CATALOG: TokenOption[] = [
   { token: "now.today+7d", label: "Today + offset (live)", hint: "e.g. now.today+7d, now.today-1w, now.today+1m", group: "Now" },
   { token: "now.nextweek", label: "Next week (live)", hint: "Seven days from today", group: "Now" },
   { token: "now.sunday", label: "A weekday (live)", hint: "The coming Sunday…Saturday (or now.nextsunday)", group: "Now" },
+
+  // Apply-time BAKE tokens (template-vars.ts): fill in ONCE, to the apply date,
+  // when a template is applied — then they're plain text (they do NOT re-resolve
+  // and stay literal in a non-template note). The live "Now" group above is the
+  // opposite: it refreshes every render. Same :iso/:long/:us/:short/:day formats
+  // and ±Nd/w/m/y offsets as the date tokens.
+  { token: "today", label: "Today", hint: "The apply date, baked once (e.g. July 10, 2026)", group: "Bakes on apply", kind: "bake" },
+  { token: "tomorrow", label: "Tomorrow", hint: "The day after apply, baked once", group: "Bakes on apply", kind: "bake" },
+  { token: "yesterday", label: "Yesterday", hint: "The day before apply, baked once", group: "Bakes on apply", kind: "bake" },
+  { token: "today+7d", label: "Apply date + offset", hint: "e.g. today+7d, today-1w, today+1m — baked once", group: "Bakes on apply", kind: "bake" },
+  { token: "sunday", label: "This coming weekday", hint: "The next Sunday…Saturday (incl. today), baked once", group: "Bakes on apply", kind: "bake" },
+  { token: "nextSunday", label: "Next week's weekday", hint: "Next week's Sunday…Saturday, baked once", group: "Bakes on apply", kind: "bake" },
 
   // Related / children (lists — add :ul or :ol on their own line for a list)
   { token: "item.related.person", label: "Related people", hint: "People linked to this item", group: "Related" },
