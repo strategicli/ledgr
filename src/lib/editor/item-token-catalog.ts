@@ -5,7 +5,7 @@
 // "item.props." starter and the decoration highlights whatever you type. Dynamic
 // property/related keys can be threaded in later; this keeps LT2 dependency-free.
 
-export type TokenGroup = "Item" | "Dates" | "Related" | "Parent";
+export type TokenGroup = "Item" | "Dates" | "Now" | "Related" | "Parent";
 
 export type TokenOption = {
   // The token inserted, without braces (e.g. "item.due:long").
@@ -31,6 +31,16 @@ export const TOKEN_CATALOG: TokenOption[] = [
   { token: "item.scheduled:long", label: "Scheduled date", hint: "The planned date", group: "Dates" },
   { token: "item.meeting:long", label: "Meeting date", hint: "The event date/time", group: "Dates" },
   { token: "item.created:long", label: "Created date", hint: "When this item was made", group: "Dates" },
+
+  // Live "now" dates (LT-live-time): re-resolve to the current date at EVERY
+  // render (unlike template apply-time {{today}}, which bakes once). Same
+  // :iso/:long/:us/:short/:day formats and ±Nd/w/m/y offsets as item dates.
+  { token: "now", label: "Today (live)", hint: "The current date, refreshed every render", group: "Now" },
+  { token: "now.tomorrow", label: "Tomorrow (live)", hint: "Tomorrow's date, refreshed every render", group: "Now" },
+  { token: "now.yesterday", label: "Yesterday (live)", hint: "Yesterday's date, refreshed every render", group: "Now" },
+  { token: "now.today+7d", label: "Today + offset (live)", hint: "e.g. now.today+7d, now.today-1w, now.today+1m", group: "Now" },
+  { token: "now.nextweek", label: "Next week (live)", hint: "Seven days from today", group: "Now" },
+  { token: "now.sunday", label: "A weekday (live)", hint: "The coming Sunday…Saturday (or now.nextsunday)", group: "Now" },
 
   // Related / children (lists — add :ul or :ol on their own line for a list)
   { token: "item.related.person", label: "Related people", hint: "People linked to this item", group: "Related" },
