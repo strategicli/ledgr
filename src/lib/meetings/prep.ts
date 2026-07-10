@@ -207,7 +207,12 @@ export async function getMeetingPrep(
           recentAnchors.map((id) =>
             queryViewItems(
               ownerId,
-              { type: "event", relatedTo: id },
+              // Past only: "Recent meetings" is a look-back, so exclude events
+              // that haven't happened yet (they'd otherwise sort newest-first to
+              // the top). due:"overdue" on meetingAt compiles to
+              // meetingAt < start-of-today, filtering future at the query level so
+              // the limit below can't be starved by upcoming events.
+              { type: "event", relatedTo: id, dateField: "meetingAt", due: "overdue" },
               { field: "meetingAt", dir: "desc" },
               RECENT_MEETINGS + 1 // room to drop this meeting before slicing
             )
