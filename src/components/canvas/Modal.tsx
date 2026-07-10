@@ -7,9 +7,12 @@
 //             the peek following, Enter/click a row re-navigates.
 //   - CENTER — the original center modal, used when the window is narrow or a
 //             right rail already occupies the trailing edge.
-// Close = Esc, backdrop click (center only), or ✕ — all router.back() so the
-// list underneath is exactly where the user left it. Expand is a plain anchor
-// (hard navigation) so the same URL re-renders as the full page form.
+// Close = Esc, backdrop click (center only), or ✕ — all return to the surface
+// the peek was launched from, collapsing any intra-peek item-to-item hops (arrow
+// walk uses replace and adds no history; clicking a live list row underneath
+// pushes, so we count those pushes and step back over all of them at once).
+// Expand is a plain anchor (hard navigation) so the same URL re-renders as the
+// full page form.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -88,7 +91,29 @@ export default function Modal({
   favorited?: boolean;
 }) {
   const router = useRouter();
-  const close = useCallback(() => router.back(), [router]);
+  // How many extra history entries the peek has pushed since it opened. The
+  // initial launch (list → this item) is always one entry, so closing steps
+  // back `1 + pushCount` to land on the launching surface, collapsing any
+  // item-to-item navigation. Arrow-walk uses router.replace (no new entry, so
+  // it isn't counted); clicking another row in the live list underneath is a
+  // Next <Link> push, which is.
+  const pushCount = useRef(0);
+  const walking = useRef(false);
+  const prevId = useRef(itemId);
+  useEffect(() => {
+    if (prevId.current === itemId) return;
+    if (!walking.current) pushCount.current += 1;
+    walking.current = false;
+    prevId.current = itemId;
+  }, [itemId]);
+  const close = useCallback(() => {
+    const steps = 1 + pushCount.current;
+    if (typeof window !== "undefined" && window.history.length > steps) {
+      window.history.go(-steps);
+    } else {
+      router.back();
+    }
+  }, [router]);
   // sheet (mobile) / peek (wide desktop) / center — decided from the layout on
   // mount and kept current on resize. Client-only guard makes the SSR pass
   // (never hit in practice — the @modal slot only fills on a client nav) fall
@@ -156,6 +181,9 @@ export default function Modal({
       const cur = hrefs.findIndex((h) => h === `/items/${itemId}`);
       const next = cur === -1 ? 0 : cur + delta;
       if (next < 0 || next >= hrefs.length) return;
+      // A replace adds no history entry, so flag it before it fires: the itemId
+      // effect that runs on the resulting re-render must not count it as a push.
+      walking.current = true;
       router.replace(hrefs[next], { scroll: false });
     },
     [itemId, router]
@@ -358,12 +386,16 @@ export default function Modal({
       <div
         role="dialog"
         aria-label={title || "Item"}
-        className="fixed z-40 flex flex-col overflow-hidden border-l border-line bg-[var(--background)] shadow-2xl shadow-black/40"
+        className="fixed z-40 flex flex-col overflow-hidden border-l border-line-strong bg-surface-2 shadow-2xl shadow-black/50"
         style={{
           top: "var(--nav-pt, 0px)",
           bottom: "var(--nav-pb, 0px)",
           right: "var(--nav-pr, 0px)",
-          width: wide ? "min(48rem, 46vw)" : "min(34rem, 40vw)",
+          // Non-wide holds the ~48rem canvas column comfortably (up from 34rem,
+          // which squished it); wide (song chord charts) stays roomier. The vw
+          // cap keeps it responsive — it shrinks with the window, and the peek
+          // only activates at ≥1280px of content (PEEK_MIN_CONTENT).
+          width: wide ? "min(60rem, 50vw)" : "min(52rem, 46vw)",
         }}
       >
         {panel}

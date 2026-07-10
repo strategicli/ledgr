@@ -87,11 +87,14 @@ export default async function ItemCanvas({
 
   return (
     <>
-      {/* The full-page view is wider than the modal (Brandon, 2026-06-17):
-          `canvas-wide` widens the standard max-w-3xl canvas blocks so "expand"
-          actually gains room, and matches the grid width so entering Arrange
-          doesn't jump. The modal stays the narrow quick reader. */}
-      <div data-toc-scope className={variant === "page" ? "canvas-wide" : undefined}>
+      {/* `canvas-wide` widens the standard max-w-3xl canvas blocks (to 64rem) so
+          the content fills the surface instead of staying pinned at the narrow
+          "quick reader" column. On the full page this matches the grid width so
+          entering Arrange doesn't jump; in the modal it lets the canvas fill the
+          widened side peek (the block still can't exceed its panel, so the
+          center modal and mobile sheet are unaffected). ADR: Brandon 2026-06-17;
+          extended to the modal in the side-panel refresh. */}
+      <div data-toc-scope className="canvas-wide">
         {item.isTemplate &&
           (template ? (
             <TemplateBanner
