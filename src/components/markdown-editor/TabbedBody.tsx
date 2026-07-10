@@ -35,7 +35,9 @@ export type TabbedBodyProps = {
   // Formatting-bar visibility + sticky offset (S5), owned by BodyEditor's
   // mode-row and forwarded straight to the active tab's editor.
   toolbarOpen?: boolean;
-  underModeRow?: boolean;
+  // The body's view-mode controls, forwarded straight to the active tab's editor
+  // so they ride the right end of its formatting bar (desktop). See BodyEditor.
+  viewControls?: React.ReactNode;
   // Desk panels (ADR-147 D5): when set, the active section is CONTROLLED by the
   // panel chrome (its merged sub-tab chips) and TabbedBody's own strip + title
   // input are hidden — section nav lives in the panel, not here. The index is
@@ -59,7 +61,7 @@ export default function TabbedBody({
   controlledSection,
   focusSignal,
   toolbarOpen,
-  underModeRow,
+  viewControls,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
@@ -224,7 +226,7 @@ export default function TabbedBody({
         editable={editable}
         focusSignal={focusSignal}
         toolbarOpen={toolbarOpen}
-        underModeRow={underModeRow}
+        viewControls={viewControls}
       />
     </div>
   );
