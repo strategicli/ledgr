@@ -89,10 +89,17 @@ export type MarkdownEditorProps = {
   // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
   // those lines instead of the promote button, and links to the task.
   promotedRefs?: PromotedRefs;
-  // When true, the formatting toolbar starts HIDDEN behind a small top-right
-  // toggle button (the task canvas default — a task body is mostly plain text, so
-  // the bar is opt-in noise). Default false keeps the bar always-on (notes etc.).
-  collapsibleToolbar?: boolean;
+  // Controlled visibility of the formatting bar on desktop (S5): the collapse
+  // toggle now lives in BodyEditor's mode-row, which owns this state (and its
+  // per-item persistence). When false the bar renders NOTHING on desktop (zero
+  // height — no empty reserved strip); on mobile the bar always shows regardless,
+  // since the collapse affordance is desktop-only. Default true = always shown,
+  // for the direct callers (scratch, changelog) that have no mode-row.
+  toolbarOpen?: boolean;
+  // When true, a mode-row sits sticky directly above this bar (the BodyEditor
+  // path), so the sticky toolbar pins one row lower to stack flush beneath it.
+  // Default false pins at the scroll-container top (direct callers, no mode-row).
+  underModeRow?: boolean;
   // When true, the editor has no tall min-height: it starts one line tall and
   // grows with content (the task canvas, where bodies are short). Default false
   // keeps the roomy 14rem writing area.
@@ -211,7 +218,8 @@ export default function MarkdownEditor({
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
-  collapsibleToolbar = false,
+  toolbarOpen = true,
+  underModeRow = false,
   compact = false,
   editable = true,
   focusSignal = 0,
@@ -595,15 +603,20 @@ export default function MarkdownEditor({
     });
   }, [editor]);
   const showTb = (id: string) => !hiddenTb.has(id);
-  // The formatting bar is hidden by default when collapsible (task canvas); a
-  // top-right toggle reveals it. When not collapsible it's always shown.
-  const [toolbarOpen, setToolbarOpen] = useState(!collapsibleToolbar);
-  // Collapse is a DESKTOP affordance only. On mobile the toolbar floats over the
-  // keyboard and must always show its buttons — collapsing it there leaves an
-  // empty bar with just a toggle (the mobile regression this guards against). So
-  // below `sm`, buttons always render and the toggle is hidden.
+  // Collapse is a DESKTOP affordance only (the toggle lives in BodyEditor's
+  // mode-row). On mobile the toolbar floats over the keyboard and must always
+  // show its buttons — collapsing it there would leave an empty bar (the mobile
+  // regression this guards against). So below `sm`, buttons always render; on
+  // desktop the controlled `toolbarOpen` decides, and when it's false the whole
+  // bar renders nothing (no reserved strip).
   const isDesktop = useIsDesktop();
   const showToolbarButtons = toolbarOpen || !isDesktop;
+  // Desktop sticky offset. With a mode-row sitting sticky directly above (the
+  // BodyEditor path), pin one row (2.25rem, the mode-row's fixed height) lower so
+  // the two stack flush as one bar; otherwise pin at the scroll-container top.
+  const stickyTop = underModeRow
+    ? "sm:top-[calc(var(--nav-pt,0px)+2.25rem)]"
+    : "sm:top-[var(--nav-pt,0px)]";
 
   // Mobile editing posture (≥640px / `sm` is desktop and unaffected). On a phone
   // the toolbar becomes a single-row bar that floats on top of the on-screen
@@ -746,26 +759,30 @@ export default function MarkdownEditor({
   return (
     <div className="border-b border-neutral-800">
       {/* The formatting toolbar is hidden on a locked item — nothing here can
-          act on a read-only document (item lock toggle).
+          act on a read-only document (item lock toggle) — and, on desktop, hidden
+          when the mode-row's collapse toggle has closed it (showToolbarButtons
+          false → the whole bar renders NOTHING, so no empty reserved strip; only
+          the mode-row remains). On mobile the bar always shows.
           Desktop: the bar follows the editor (sticky) so it stays reachable on a
           long note, with an opaque page-colored background so scrolled text
           doesn't bleed through, and it clears a docked top nav via --nav-pt (0
-          for the default bottom nav, so it pins to the scroll-container top). In
+          for the default bottom nav). With a sticky mode-row above it (BodyEditor
+          path) it pins one row lower (stickyTop) so the two read as one bar. In
           the item modal the scroll container is the modal body, so top:0 lands
           just under the modal header. Mobile keeps the keyboard-pinned fixed bar
           (bottom) unchanged — the `bottom` inline is gated to mobile so it can't
           fight the desktop sticky. */}
-      {editable && (
+      {editable && showToolbarButtons && (
       <div
         className={
           focused
-            ? "fixed inset-x-0 z-50 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur sm:sticky sm:inset-x-auto sm:top-[var(--nav-pt,0px)] sm:z-30 sm:border-t-0 sm:bg-surface-0 sm:backdrop-blur-none"
-            : "hidden sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-30 sm:block sm:bg-surface-0"
+            ? `fixed inset-x-0 z-50 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur sm:sticky sm:inset-x-auto ${stickyTop} sm:z-30 sm:border-t-0 sm:bg-surface-0 sm:backdrop-blur-none`
+            : `hidden sm:sticky ${stickyTop} sm:z-30 sm:block sm:bg-surface-0`
         }
         style={focused && !isDesktop ? { bottom: keyboardInset } : undefined}
       >
-      <div className={`flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible ${showToolbarButtons ? "border-b border-neutral-800/70" : ""}`}>
-        {showToolbarButtons && (<>{(
+      <div className="flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain border-b border-neutral-800/70 px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible">
+        {(
           [
             { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
             { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
@@ -856,20 +873,6 @@ export default function MarkdownEditor({
           <span className="ml-2 text-xs text-neutral-500">
             Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
           </span>
-        )}</>)}
-        {collapsibleToolbar && isDesktop && (
-          <button
-            type="button"
-            onClick={() => setToolbarOpen((v) => !v)}
-            title={toolbarOpen ? "Hide formatting" : "Formatting"}
-            aria-label={toolbarOpen ? "Hide formatting" : "Formatting"}
-            aria-pressed={toolbarOpen}
-            className="ml-auto rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              {toolbarOpen ? <path d="M6 15l6-6 6 6" /> : <><path d="M4 7h16M4 12h10M4 17h13" /></>}
-            </svg>
-          </button>
         )}
       </div>
       </div>

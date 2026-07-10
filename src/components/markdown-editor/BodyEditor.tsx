@@ -27,6 +27,7 @@ import TabbedBody from "./TabbedBody";
 import RawMarkdownEditor from "./RawMarkdownEditor";
 import MarkdownPreview from "./MarkdownPreview";
 import { isLargeBody } from "@/lib/body";
+import { setToolbarOpenPref, useToolbarOpenPref } from "@/lib/toolbar-prefs";
 import type { PromotedRefs } from "./block-anchor-extension";
 import "./markdown-editor.css";
 
@@ -105,6 +106,16 @@ const SOURCE_ICON = (
     <polyline points="16 7 21 12 16 17" />
   </svg>
 );
+// The collapse toggle's glyph (S5): a text-format "A" + baseline — deliberately
+// distinct from the two view-mode icons (rendered-lines, code-brackets) so it
+// reads as "show/hide the formatting bar," not a third view mode.
+const FORMAT_ICON = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M4 20h16" />
+    <path d="m6 16 6-12 6 12" />
+    <path d="M8.5 11h7" />
+  </svg>
+);
 
 export default function BodyEditor({
   itemId,
@@ -128,6 +139,20 @@ export default function BodyEditor({
   // mode switch, so editing within a mode never remounts the child.
   const [mountText, setMountText] = useState(initialMarkdown);
   const [mode, setMode] = useState<Mode>(large ? "preview" : "rich");
+
+  // Formatting-bar collapse state (S5). The toggle lives in the mode-row below
+  // and its state is owned here so it survives a rich↔source switch and persists
+  // per item. Default follows the surface: notes (tabbed) start OPEN; task/compact
+  // bodies (collapsibleToolbar, not tabbed) start COLLAPSED. A stored per-item
+  // preference wins over the default.
+  const defaultToolbarOpen = tabsEnabled || !collapsibleToolbar;
+  const toolbarOpen = useToolbarOpenPref(itemId, defaultToolbarOpen);
+  const toggleToolbar = () => setToolbarOpenPref(itemId, !toolbarOpen);
+  // The collapse toggle is offered only where a formatting bar exists to hide:
+  // an editable, collapsible surface, in rich mode. (Desktop-only; hidden below
+  // `sm` in CSS, where the bar always shows above the keyboard. A locked note has
+  // no bar to collapse, so no toggle.)
+  const showCollapseToggle = editable && collapsibleToolbar && mode === "rich";
 
   const handleChange = (md: string) => {
     liveText.current = md;
@@ -166,6 +191,8 @@ export default function BodyEditor({
         editable={editable}
         controlledSection={controlledSection}
         focusSignal={focusSignal}
+        toolbarOpen={toolbarOpen}
+        underModeRow
       />
     );
   } else {
@@ -178,7 +205,8 @@ export default function BodyEditor({
         onChange={handleChange}
         promoteToMeetingId={promoteToMeetingId}
         promotedRefs={promotedRefs}
-        collapsibleToolbar={collapsibleToolbar}
+        toolbarOpen={toolbarOpen}
+        underModeRow
         compact={compact}
         onRequestSave={onRequestSave}
         editable={editable}
@@ -209,24 +237,48 @@ export default function BodyEditor({
           </div>
         </div>
       ) : (
-        // Normal note: a quiet icon-only Rich/Source toggle, available on any note.
-        <div className="mb-1 flex items-center justify-end gap-1">
-          <ModeButton
-            active={mode === "rich"}
-            onClick={() => switchMode("rich")}
-            title="Rich text"
-            label="Rich text editor"
-          >
-            {RICH_ICON}
-          </ModeButton>
-          <ModeButton
-            active={mode === "source"}
-            onClick={() => switchMode("source")}
-            title="Markdown source"
-            label="Markdown source"
-          >
-            {SOURCE_ICON}
-          </ModeButton>
+        // Normal note: a sticky mode-row. The collapse toggle (formatting-bar
+        // show/hide, desktop-only) sits on the LEFT, clearly separated from the
+        // quiet Rich/Source view pair on the RIGHT so it doesn't read as a third
+        // view mode. Sticky + opaque so the controls stay reachable and content
+        // scrolls cleanly under them on a long note; the formatting bar (in the
+        // editor below) pins flush beneath this row (underModeRow), the two
+        // reading as one bar. Fixed h-9 (2.25rem) matches that pin offset.
+        <div className="flex h-9 items-center gap-1 border-b border-neutral-800/70 bg-surface-0 sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-30">
+          {showCollapseToggle && (
+            <button
+              type="button"
+              onClick={toggleToolbar}
+              aria-pressed={toolbarOpen}
+              title={toolbarOpen ? "Hide formatting bar" : "Show formatting bar"}
+              aria-label={toolbarOpen ? "Hide formatting bar" : "Show formatting bar"}
+              className={`hidden rounded-md px-2 py-1 sm:inline-flex sm:items-center ${
+                toolbarOpen
+                  ? "bg-surface-2 text-ink"
+                  : "text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
+              }`}
+            >
+              {FORMAT_ICON}
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-1">
+            <ModeButton
+              active={mode === "rich"}
+              onClick={() => switchMode("rich")}
+              title="Rich text"
+              label="Rich text editor"
+            >
+              {RICH_ICON}
+            </ModeButton>
+            <ModeButton
+              active={mode === "source"}
+              onClick={() => switchMode("source")}
+              title="Markdown source"
+              label="Markdown source"
+            >
+              {SOURCE_ICON}
+            </ModeButton>
+          </div>
         </div>
       )}
       {child}
