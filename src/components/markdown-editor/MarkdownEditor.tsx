@@ -42,6 +42,7 @@ import {
   ToggleSummary,
   ToggleContent,
   insertToggle,
+  wrapSelectionInToggle,
 } from "./toggle-extension";
 import {
   CollapsibleHeadings,
@@ -100,6 +101,11 @@ export type MarkdownEditorProps = {
   // Tiptap drops contenteditable so the cursor can't enter, and the toolbar is
   // hidden — the document still renders, it just can't be changed. Defaults true.
   editable?: boolean;
+  // Imperative focus signal: a monotonically increasing counter the host bumps to
+  // move the caret INTO the editor (the title's Enter → jump to the body). The
+  // mount value 0 means "don't focus", so a normal load never steals focus; each
+  // increment focuses once. Defaults 0.
+  focusSignal?: number;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -208,6 +214,7 @@ export default function MarkdownEditor({
   collapsibleToolbar = false,
   compact = false,
   editable = true,
+  focusSignal = 0,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
@@ -420,6 +427,15 @@ export default function MarkdownEditor({
   useEffect(() => {
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  // Imperative focus (title Enter → jump into the body): when the host bumps
+  // focusSignal, move the caret to the start of the body. Guarded on a truthy
+  // signal so the mount value (0) can't steal focus on a normal load; each later
+  // increment focuses once. No-op on a locked/read-only editor.
+  useEffect(() => {
+    if (!editor || !focusSignal || !editable) return;
+    editor.commands.focus("start");
+  }, [editor, focusSignal, editable]);
 
   // Lock/unlock at runtime (the item lock toggle): a locked item drops
   // contenteditable so the cursor can't enter, and the toolbar hides below.
@@ -730,15 +746,23 @@ export default function MarkdownEditor({
   return (
     <div className="border-b border-neutral-800">
       {/* The formatting toolbar is hidden on a locked item — nothing here can
-          act on a read-only document (item lock toggle). */}
+          act on a read-only document (item lock toggle).
+          Desktop: the bar follows the editor (sticky) so it stays reachable on a
+          long note, with an opaque page-colored background so scrolled text
+          doesn't bleed through, and it clears a docked top nav via --nav-pt (0
+          for the default bottom nav, so it pins to the scroll-container top). In
+          the item modal the scroll container is the modal body, so top:0 lands
+          just under the modal header. Mobile keeps the keyboard-pinned fixed bar
+          (bottom) unchanged — the `bottom` inline is gated to mobile so it can't
+          fight the desktop sticky. */}
       {editable && (
       <div
         className={
           focused
-            ? "fixed inset-x-0 z-50 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur sm:static sm:z-auto sm:border-t-0 sm:bg-transparent sm:backdrop-blur-none"
-            : "hidden sm:block"
+            ? "fixed inset-x-0 z-50 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur sm:sticky sm:inset-x-auto sm:top-[var(--nav-pt,0px)] sm:z-30 sm:border-t-0 sm:bg-surface-0 sm:backdrop-blur-none"
+            : "hidden sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-30 sm:block sm:bg-surface-0"
         }
-        style={focused ? { bottom: keyboardInset } : undefined}
+        style={focused && !isDesktop ? { bottom: keyboardInset } : undefined}
       >
       <div className={`flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible ${showToolbarButtons ? "border-b border-neutral-800/70" : ""}`}>
         {showToolbarButtons && (<>{(
@@ -756,7 +780,13 @@ export default function MarkdownEditor({
             { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
             { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
             { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-            { id: "toggle", title: "Toggle (collapsible block)", icon: TOOLBAR_ICONS.toggle, active: toolbar.isToggle, run: () => insertToggle(editor) },
+            { id: "toggle", title: "Toggle (collapsible block; wraps the selection)", icon: TOOLBAR_ICONS.toggle, active: toolbar.isToggle, run: () => {
+              // With a selection, convert the selected block(s) into a toggle;
+              // otherwise (or if the wrap can't apply) insert an empty one.
+              const sel = editor.state.selection;
+              if (!sel.empty && wrapSelectionInToggle(editor)) return;
+              insertToggle(editor);
+            } },
           ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; run: () => void }[]
         )
           // Hide the toggle button when the feature is off; every button also

@@ -38,6 +38,9 @@ export type TabbedBodyProps = {
   // clamped to the parsed sections. Undefined = the normal full-canvas behavior
   // (internal strip, internal active state).
   controlledSection?: number;
+  // Imperative focus signal (title Enter → jump to the body): forwarded to the
+  // active tab's editor.
+  focusSignal?: number;
 };
 
 export default function TabbedBody({
@@ -50,6 +53,7 @@ export default function TabbedBody({
   promotedRefs,
   editable = true,
   controlledSection,
+  focusSignal,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
@@ -212,6 +216,7 @@ export default function TabbedBody({
         promotedRefs={promotedRefs}
         onRequestSave={onRequestSave}
         editable={editable}
+        focusSignal={focusSignal}
       />
     </div>
   );

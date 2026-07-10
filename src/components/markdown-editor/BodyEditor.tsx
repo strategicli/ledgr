@@ -49,6 +49,9 @@ export type BodyEditorProps = {
   // Desk panels (ADR-147 D5): the active canvas-section is controlled by the
   // panel chrome and TabbedBody's own strip is hidden. Forwarded to TabbedBody.
   controlledSection?: number;
+  // Imperative focus signal (title Enter → jump to the body): forwarded to the
+  // rich editor. Only meaningful in rich mode; source/preview ignore it.
+  focusSignal?: number;
 };
 
 function ModeButton({
@@ -116,6 +119,7 @@ export default function BodyEditor({
   editable = true,
   tabsEnabled = false,
   controlledSection,
+  focusSignal,
 }: BodyEditorProps) {
   const large = isLargeBody(initialMarkdown);
   // Latest emitted markdown (every mode reports through handleChange).
@@ -161,6 +165,7 @@ export default function BodyEditor({
         onRequestSave={onRequestSave}
         editable={editable}
         controlledSection={controlledSection}
+        focusSignal={focusSignal}
       />
     );
   } else {
@@ -177,6 +182,7 @@ export default function BodyEditor({
         compact={compact}
         onRequestSave={onRequestSave}
         editable={editable}
+        focusSignal={focusSignal}
       />
     );
   }

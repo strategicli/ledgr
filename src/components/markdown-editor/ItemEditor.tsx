@@ -107,6 +107,10 @@ export default function ItemEditor({
   controlledSection,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
+  // Bumped when Enter is pressed in the title, to move the caret into the body
+  // editor (fix: Enter in the title should jump to the body, not just blur). 0 =
+  // don't focus, so the body never steals focus on a normal load.
+  const [bodyFocusSignal, setBodyFocusSignal] = useState(0);
   const pending = useRef<{ title?: string; body?: unknown }>({});
   // The markdown of the body as last persisted, seeded from what loaded. The
   // editor re-emits the loaded body once when it mounts (a programmatic editor
@@ -285,12 +289,15 @@ export default function ItemEditor({
         onLiveChange?.({ title: e.target.value });
         schedule();
       }}
-      // A title is one logical line that wraps; Enter commits (blurs) rather than
-      // inserting a newline.
+      // A title is one logical line that wraps; Enter commits it and moves the
+      // caret into the body (instead of just blurring), so a new note flows
+      // title → body without reaching for the mouse. The body editor focuses off
+      // the bumped signal; on the bare "title" slot (no body here) it just blurs.
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          e.currentTarget.blur();
+          if (slot === "title") e.currentTarget.blur();
+          else setBodyFocusSignal((n) => n + 1);
         }
       }}
     />
@@ -322,6 +329,7 @@ export default function ItemEditor({
       editable={!locked}
       tabsEnabled={tabsEnabled}
       controlledSection={controlledSection}
+      focusSignal={bodyFocusSignal}
     />
   );
 
