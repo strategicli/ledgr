@@ -25,7 +25,13 @@
 // never hydrated far enough to run it. On localhost this worker now precaches
 // nothing, intercepts nothing (pure network passthrough), and unregisters itself
 // on activate, so a leftover registration tears itself down on the next load.
-const VERSION = "v6";
+// v7: fix a double-respond in the fetch handler. The navigation branch called
+// event.respondWith() but fell through (missing return) into the catch-all
+// branch, which called respondWith() a second time — throwing InvalidStateError
+// ("respondWith() was already called") and making hard navigations (direct
+// open / reload of a URL, notification taps) resolve as a network error. Added
+// the missing return so the four fetch branches stay mutually exclusive.
+const VERSION = "v7";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -140,6 +146,7 @@ self.addEventListener("fetch", (event) => {
         return offline ?? Response.error();
       })
     );
+    return;
   }
   // Everything else (API, same-origin images, fonts): network, falling back
   // to a pinned copy when one exists. The SW itself never writes item data
