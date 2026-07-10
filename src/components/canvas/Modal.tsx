@@ -364,7 +364,13 @@ export default function Modal({
       </div>
   );
   const bodyClass = "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12";
-  const body = <div className={bodyClass}>{children}</div>;
+  // The modal is its own scroll container below its own header — there's no page
+  // top-nav over it to clear. Zero out --nav-pt so the body editor's sticky
+  // mode-row/toolbar (top: var(--nav-pt)) pin to the modal's top instead of
+  // 56px below it, which left a scroll-through gap above the toolbar when the
+  // owner's nav is docked top (--nav-pt = 3.5rem).
+  const bodyStyle = { "--nav-pt": "0px" } as React.CSSProperties;
+  const body = <div className={bodyClass} style={bodyStyle}>{children}</div>;
   const panel = (
     <>
       {header}
@@ -440,6 +446,7 @@ export default function Modal({
           <div
             ref={bodyRef}
             className={bodyClass}
+            style={bodyStyle}
             onTouchStart={(e) => onDragStart(e, true)}
             onTouchMove={onDragMove}
             onTouchEnd={onDragEnd}
