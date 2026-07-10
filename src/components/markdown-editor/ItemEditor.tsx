@@ -291,13 +291,33 @@ export default function ItemEditor({
       }}
       // A title is one logical line that wraps; Enter commits it and moves the
       // caret into the body (instead of just blurring), so a new note flows
-      // title → body without reaching for the mouse. The body editor focuses off
-      // the bumped signal; on the bare "title" slot (no body here) it just blurs.
+      // title → body without reaching for the mouse. In the combined layout the
+      // body editor focuses off the bumped signal. In the field-card layout
+      // (MarkdownCanvas/TaskCanvas/WidgetCanvas) the title is its own ItemEditor
+      // instance and the body is a sibling, so we reach the body editor through
+      // the DOM and drop the caret at its start; if there's no live body editor
+      // on this canvas (e.g. a Preview-mode large doc), we just blur.
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          if (slot === "title") e.currentTarget.blur();
-          else setBodyFocusSignal((n) => n + 1);
+          if (slot === "title") {
+            const pm = document.querySelector<HTMLElement>(
+              '.ProseMirror[contenteditable="true"]'
+            );
+            if (pm) {
+              pm.focus();
+              const sel = window.getSelection();
+              if (sel) {
+                const r = document.createRange();
+                r.selectNodeContents(pm);
+                r.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(r);
+              }
+            } else {
+              e.currentTarget.blur();
+            }
+          } else setBodyFocusSignal((n) => n + 1);
         }
       }}
     />
