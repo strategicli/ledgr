@@ -21,14 +21,19 @@ function check(name: string, ok: boolean, detail = "") {
 
 // --- canvas resolution -----------------------------------------------------
 check("the default canvas id is 'markdown'", DEFAULT_CANVAS === "markdown");
-check("link resolves to its own canvas", canvasIdForType("link") === "link");
+check("link resolves to the shared longform canvas", canvasIdForType("link") === "longform");
 check("link is not the default", canvasIdForType("link") !== DEFAULT_CANVAS);
 // `task` has its own bespoke canvas (ADR-041; redesigned in ADR-108), so it
 // does NOT fall back to the default — it delegates to the default's grid only
 // while arranging or when a custom layout is saved (ADR-109, in MarkdownCanvas).
 check("task resolves to its own canvas", canvasIdForType("task") === "task");
 check("task is not the default", canvasIdForType("task") !== DEFAULT_CANVAS);
-for (const t of ["note", "event", "person"]) {
+// `note` (and `link`) render through the shared longform document canvas
+// (bespoke-first item views, ADR-157), delegating to the default's grid only
+// while arranging or when a custom layout is saved, like task.
+check("note resolves to the shared longform canvas", canvasIdForType("note") === "longform");
+check("note is not the default", canvasIdForType("note") !== DEFAULT_CANVAS);
+for (const t of ["event", "person"]) {
   check(`${t} falls back to the default canvas`, canvasIdForType(t) === DEFAULT_CANVAS);
 }
 check("an unregistered module type falls back to the default", canvasIdForType("song") === DEFAULT_CANVAS);

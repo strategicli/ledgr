@@ -54,6 +54,7 @@ export default function FieldStrip({
   today,
   statuses,
   layout = "strip",
+  flush = false,
   locked = false,
 }: {
   itemId: string;
@@ -63,6 +64,9 @@ export default function FieldStrip({
   // "rail" = a vertical stack of labeled, divided sections for a narrow right
   // pane (the task canvas), flush (no wide centered-column padding).
   layout?: "strip" | "rail";
+  // Drop the strip's built-in centered-column padding so it aligns inside a
+  // parent that already provides the column padding (e.g. the note byline).
+  flush?: boolean;
   // App-timezone today (YYYY-MM-DD); enables the reschedule shortcuts + natural-
   // language date entry on the scheduled field (native tasks, T2). Absent → the
   // scheduled field is a plain date picker.
@@ -293,9 +297,9 @@ export default function FieldStrip({
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 px-2 pb-2 sm:px-8 md:px-12 ${
-        locked ? "opacity-60" : ""
-      }`}
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
+        flush ? "" : "px-2 pb-2 sm:px-8 md:px-12"
+      } ${locked ? "opacity-60" : ""}`}
     >
       {/* A disabled fieldset locks every control inside at once (a locked item);
           `contents` keeps the flex layout flat, so the row looks unchanged. */}

@@ -25,6 +25,10 @@ import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 import TypeCue from "@/components/canvas/TypeCue";
 
+// Compact date for the chrome timestamps ("Jan 3, 2021").
+const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtChromeDate = (d: Date) => CHROME_DATE.format(d);
+
 export default async function ItemCanvas({
   id,
   variant,
@@ -113,7 +117,7 @@ export default async function ItemCanvas({
             </div>
           ))}
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-ink-muted sm:px-8 sm:pt-6 md:px-12">
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
                 <PageTrashButton itemId={item.id} parentId={item.parentId ?? null} />
@@ -125,24 +129,31 @@ export default async function ItemCanvas({
                 <TypeCue icon={typeDef?.icon ?? null} label={typeDef?.label ?? item.type} />
               )}
               {!item.isTemplate && ancestors.length > 0 && (
-                <span className="text-neutral-700">·</span>
+                <span className="text-ink-faint">·</span>
               )}
               {ancestors.map((a, i) => (
                 <span key={a.id} className="flex min-w-0 items-center gap-1">
                   {i > 0 && (
-                    <span className="text-neutral-700">/</span>
+                    <span className="text-ink-faint">/</span>
                   )}
                   <Link
                     href={`/items/${a.id}`}
-                    className="truncate hover:text-neutral-300"
+                    className="truncate hover:text-ink"
                   >
                     {a.title || "Untitled"}
                   </Link>
                 </span>
               ))}
             </div>
-            {variant === "page" && !item.isTemplate && (
-              <span className="flex shrink-0 items-center gap-1">
+            <span className="flex shrink-0 items-center gap-3">
+              {/* Created/Updated are item chrome, not content: faint, right of
+                  the row, hidden on the narrow mobile breadcrumb. */}
+              <span className="hidden items-center gap-2 text-xs text-ink-faint sm:flex">
+                <span>Created {fmtChromeDate(item.createdAt)}</span>
+                <span aria-hidden>·</span>
+                <span>Updated {fmtChromeDate(item.updatedAt)}</span>
+              </span>
+              {variant === "page" && !item.isTemplate && (
                 <ItemActionsMenu
                   itemId={item.id}
                   type={item.type}
@@ -152,8 +163,8 @@ export default async function ItemCanvas({
                   )}
                   favorited={favorited}
                 />
-              </span>
-            )}
+              )}
+            </span>
           </div>
         )}
         {/* canvasComponentFor is a registry lookup (module-wiring.tsx) returning a
