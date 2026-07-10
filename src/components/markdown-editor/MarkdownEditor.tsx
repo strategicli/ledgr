@@ -15,6 +15,7 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { useIsDesktop } from "./useIsDesktop";
@@ -927,19 +928,14 @@ export default function MarkdownEditor({
   const showHighlight = showTb("highlight");
   const sep = <span className="mx-1 h-5 w-px shrink-0 bg-line" aria-hidden />;
 
-  return (
-    <div className="border-b border-line">
-      {/* The formatting bar is hidden on a locked item (nothing here can act on a
-          read-only document). On desktop it merges with the body's view-mode
-          controls (viewControls, right-aligned) into one bar; when the collapse
-          toggle has hidden the formatting buttons, the bar still renders so the
-          toggle and view pill stay reachable. Desktop: sticky so it stays with a
-          long note, opaque surface so scrolled text doesn't bleed through, pinned
-          at --nav-pt (0 inside the item modal, top-nav height on a full page).
-          Mobile: the formatting buttons float above the keyboard (fixed, bottom);
-          the view controls live in a separate top row the host renders, so
-          viewControls is desktop-only here. */}
-      {editable && (showToolbarButtons || viewControls) && (
+  // The formatting/merged bar. Built here (not inline in the return) so the
+  // mobile-portal branch below can reference one element. On mobile the focused
+  // bar is position:fixed to float above the keyboard; but a field-card canvas
+  // (ADR-069) wraps the editor in react-grid-layout, whose CSS transform becomes
+  // the containing block for fixed descendants — the bar would anchor to the
+  // grid cell (deep in the doc, behind the keyboard). So it's portaled to <body>
+  // to escape the transform. Desktop renders it inline (sticky), no portal.
+  const formattingBar = (
       <div
         className={
           focused
@@ -998,7 +994,24 @@ export default function MarkdownEditor({
         )}
       </div>
       </div>
-      )}
+  );
+
+  return (
+    <div className="border-b border-line">
+      {/* The formatting bar is hidden on a locked item (nothing here can act on a
+          read-only document). On desktop it merges with the body's view-mode
+          controls (viewControls, right-aligned) into one bar; when the collapse
+          toggle has hidden the formatting buttons, the bar still renders so the
+          toggle and view pill stay reachable. Desktop: sticky so it stays with a
+          long note, opaque surface so scrolled text doesn't bleed through, pinned
+          at --nav-pt (0 inside the item modal, top-nav height on a full page).
+          Mobile: the formatting buttons float above the keyboard (fixed, bottom);
+          the view controls live in a separate top row the host renders, so
+          viewControls is desktop-only here. */}
+      {editable && (showToolbarButtons || viewControls) &&
+        (focused && !isDesktop
+          ? createPortal(formattingBar, document.body)
+          : formattingBar)}
 
       {/* Hyperlink editor: a one-line URL input below the toolbar, open while
           linkDraft is non-null. Enter applies, Escape cancels; Remove clears an
