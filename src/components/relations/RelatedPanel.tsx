@@ -207,9 +207,9 @@ export default async function RelatedPanel({
       ))}
       {suggested.length > 0 && (
         <div className="mt-4">
-          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Suggested
-            <span className="ml-2 font-normal text-neutral-600">{suggested.length}</span>
+            <span className="ml-2 font-normal text-ink-subtle">{suggested.length}</span>
           </h3>
           <ul className="mt-1">
             {suggested.map((r) => {
@@ -238,9 +238,9 @@ export default async function RelatedPanel({
       )}
       {passages.length > 0 && (
         <div className="mt-4">
-          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Passages
-            <span className="ml-2 font-normal text-neutral-600">{passages.length}</span>
+            <span className="ml-2 font-normal text-ink-subtle">{passages.length}</span>
           </h3>
           <ul className="mt-1 flex flex-wrap gap-1.5 px-2">
             {passages.map((p) => (

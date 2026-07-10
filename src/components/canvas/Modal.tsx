@@ -317,7 +317,7 @@ export default function Modal({
               confirmLabel="Trash"
               trigger={<ActionGlyph icon="trash" />}
               triggerLabel="Move to Trash"
-              triggerClassName="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
+              triggerClassName="rounded p-1 text-ink-subtle hover:bg-surface-2 hover:text-red-400"
               align="left"
               onConfirm={async () => {
                 const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
@@ -347,7 +347,7 @@ export default function Modal({
               intercepted; a document load renders the full page form. */}
           <a
             href={`/items/${itemId}`}
-            className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+            className="rounded px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
             title="Expand to full page"
           >
             ⤢ Expand
@@ -355,7 +355,7 @@ export default function Modal({
           <button
             onClick={close}
             aria-label="Close"
-            className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+            className="rounded px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
             title="Close (Esc)"
           >
             ✕
@@ -520,7 +520,7 @@ export default function Modal({
       }}
     >
       <div
-        className={`flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[var(--background)] shadow-2xl ${
+        className={`flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-[var(--background)] shadow-2xl ${
           wide ? "max-w-5xl" : "max-w-3xl"
         }`}
       >

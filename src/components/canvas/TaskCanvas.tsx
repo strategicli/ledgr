@@ -71,7 +71,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
       {parentLink && (
         <Link
           href={parentLink.href}
-          className="mb-2 inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-300"
+          className="mb-2 inline-flex items-center gap-1 text-xs text-ink-muted hover:text-ink"
         >
           ↑ <span className="max-w-[20rem] truncate">{parentLink.title}</span>
         </Link>
@@ -103,7 +103,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             heavy editors (date · time · repeat · reminder) collapse behind the
             single Schedule row's popover (ADR-108); everything stays one tap
             away but out of sight until needed. */}
-        <aside className="flex flex-col lg:border-l lg:border-neutral-800 lg:pl-6">
+        <aside className="flex flex-col lg:border-l lg:border-line lg:pl-6">
           {/* Status: the completion circle now lives next to the title in
               checkbox mode (TaskTitle), so the rail only carries a status row
               for multi-status 'select' types; 'none' shows nothing (ADR-106/108). */}
@@ -151,7 +151,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
           {/* Focus today: a one-tap star, kept in plain sight (not behind a
               popover) since it's a frequent daily action. */}
           <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
-            <span className="flex items-center gap-2 text-sm text-neutral-300">
+            <span className="flex items-center gap-2 text-sm text-ink">
               <FocusStar itemId={item.id} focused={isFocusedOn(item.properties, today)} today={today} />
               Focus today
             </span>

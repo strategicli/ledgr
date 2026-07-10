@@ -113,7 +113,7 @@ export default async function ItemCanvas({
             </div>
           ))}
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-neutral-500 sm:px-8 sm:pt-6 md:px-12">
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-ink-muted sm:px-8 sm:pt-6 md:px-12">
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
                 <PageTrashButton itemId={item.id} parentId={item.parentId ?? null} />
@@ -125,16 +125,16 @@ export default async function ItemCanvas({
                 <TypeCue icon={typeDef?.icon ?? null} label={typeDef?.label ?? item.type} />
               )}
               {!item.isTemplate && ancestors.length > 0 && (
-                <span className="text-neutral-700">·</span>
+                <span className="text-ink-faint">·</span>
               )}
               {ancestors.map((a, i) => (
                 <span key={a.id} className="flex min-w-0 items-center gap-1">
                   {i > 0 && (
-                    <span className="text-neutral-700">/</span>
+                    <span className="text-ink-faint">/</span>
                   )}
                   <Link
                     href={`/items/${a.id}`}
-                    className="truncate hover:text-neutral-300"
+                    className="truncate hover:text-ink"
                   >
                     {a.title || "Untitled"}
                   </Link>
