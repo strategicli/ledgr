@@ -124,6 +124,10 @@ export default function BodyEditor({
   // mode switch, so editing within a mode never remounts the child.
   const [mountText, setMountText] = useState(initialMarkdown);
   const [mode, setMode] = useState<Mode>(large ? "preview" : "rich");
+  // Reading-first (perceived speed) applies only to the FIRST rich mount — a
+  // note opened to read. Once the user deliberately toggles a mode, a later
+  // switch back to rich means "edit now", so we mount Tiptap directly then.
+  const [touchedMode, setTouchedMode] = useState(false);
 
   const handleChange = (md: string) => {
     liveText.current = md;
@@ -132,6 +136,7 @@ export default function BodyEditor({
 
   const switchMode = (next: Mode) => {
     if (next === mode) return;
+    setTouchedMode(true);
     setMountText(liveText.current);
     setMode(next);
   };
@@ -161,6 +166,7 @@ export default function BodyEditor({
         onRequestSave={onRequestSave}
         editable={editable}
         controlledSection={controlledSection}
+        readingFirst={!touchedMode}
       />
     );
   } else {
@@ -177,6 +183,7 @@ export default function BodyEditor({
         compact={compact}
         onRequestSave={onRequestSave}
         editable={editable}
+        readingFirst={!touchedMode && !compact}
       />
     );
   }

@@ -100,6 +100,10 @@ export type MarkdownEditorProps = {
   // Tiptap drops contenteditable so the cursor can't enter, and the toolbar is
   // hidden — the document still renders, it just can't be changed. Defaults true.
   editable?: boolean;
+  // Focus the editor as soon as it mounts. Set by LazyMarkdownEditor's
+  // reading-first swap when the user clicks/taps into the body to edit, so the
+  // interaction lands as an edit; unused on the direct mount path.
+  autoFocus?: boolean;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -208,6 +212,7 @@ export default function MarkdownEditor({
   collapsibleToolbar = false,
   compact = false,
   editable = true,
+  autoFocus = false,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
@@ -426,6 +431,15 @@ export default function MarkdownEditor({
   useEffect(() => {
     editor?.setEditable(editable);
   }, [editor, editable]);
+
+  // Focus once on mount when the reading-first swap asked for it (the user
+  // clicked/tapped into the body to edit). focus() with no arg restores the
+  // default position rather than scrolling to the end of a long note.
+  useEffect(() => {
+    if (editor && autoFocus && editable) editor.commands.focus();
+    // Mount-only: autoFocus never changes for a given mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // Promote affordance (ADR-090): a checkbox line's "→ task" button fires a DOM
   // event carrying its position. Ensure the line has an ^id anchor, then open

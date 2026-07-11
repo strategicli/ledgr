@@ -38,6 +38,9 @@ export type TabbedBodyProps = {
   // clamped to the parsed sections. Undefined = the normal full-canvas behavior
   // (internal strip, internal active state).
   controlledSection?: number;
+  // Reading-first: forwarded to the per-tab editor so a tabbed note opens as
+  // rendered HTML and mounts Tiptap only on edit (perceived speed).
+  readingFirst?: boolean;
 };
 
 export default function TabbedBody({
@@ -50,6 +53,7 @@ export default function TabbedBody({
   promotedRefs,
   editable = true,
   controlledSection,
+  readingFirst,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
@@ -212,6 +216,7 @@ export default function TabbedBody({
         promotedRefs={promotedRefs}
         onRequestSave={onRequestSave}
         editable={editable}
+        readingFirst={readingFirst}
       />
     </div>
   );
