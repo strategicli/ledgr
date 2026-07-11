@@ -31,7 +31,15 @@
 // ("respondWith() was already called") and making hard navigations (direct
 // open / reload of a URL, notification taps) resolve as a network error. Added
 // the missing return so the four fetch branches stay mutually exclusive.
-const VERSION = "v7";
+// v8: fix Android share-target cold-start. Sharing to a fully-closed PWA
+// cold-launches Chrome to `POST /capture/share` at the exact moment this worker
+// is booting. The old `method !== "GET"` early-return handed the POST navigation
+// to the browser's default path, which races the worker startup and renders
+// "URL not found" until the worker is warmed (open the app, retry). Now the
+// worker explicitly owns that POST via respondWith(fetch(...)), which keeps it
+// alive across the request. The request's manual redirect mode yields an
+// opaqueredirect the browser follows to the 303 target (/items/… etc.).
+const VERSION = "v8";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -101,8 +109,18 @@ self.addEventListener("fetch", (event) => {
   // ever served while this worker unregisters itself (the reload-loop fix).
   if (IS_DEV) return;
   const { request } = event;
-  if (request.method !== "GET") return;
   const url = new URL(request.url);
+
+  // Share-target POST (Android share sheet → /capture/share). Own it explicitly
+  // so respondWith keeps this worker alive across the request on a cold launch;
+  // letting the POST navigation fall through races worker startup and shows
+  // "URL not found" (v8). The manual redirect surfaces the route's 303 target.
+  if (request.method === "POST" && url.pathname === "/capture/share") {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (request.method !== "GET") return;
 
   // Cross-origin GETs (R2 attachment images): network, falling back to a
   // pinned copy if Save Offline stored one. Never cached here.
