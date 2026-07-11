@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layouts } from "react-grid-layout";
 import AddWidgetMenu from "./AddWidgetMenu";
 import BackgroundPanel from "./BackgroundPanel";
@@ -31,6 +31,7 @@ import {
   buildViewWidget,
   type ViewWidgetKind,
 } from "./widget-defaults";
+import { estimateGridHeight } from "@/lib/dashboard-grid";
 import {
   GRID_BREAKPOINTS,
   type ActionKind,
@@ -360,6 +361,11 @@ export default function DashboardClient({
   const contentPad = density === "compact" ? "py-6" : "py-10";
   const showTitle = appearance?.showTitle ?? true;
 
+  // Reserve the grid's (estimated) height during load so the widgets don't pile
+  // up before RGL measures its width. Estimated from the lg layout — a rough
+  // placeholder is fine; the reservation is dropped once RGL reports its layout.
+  const reservedHeight = useMemo(() => estimateGridHeight(widgets), [widgets]);
+
   return (
     <main className="relative min-h-screen">
       <StageBackground appearance={appearance} />
@@ -455,6 +461,7 @@ export default function DashboardClient({
             <DashboardGridLayout
               widgets={widgets}
               editMode={editMode}
+              reservedHeight={reservedHeight}
               onLayoutChange={handleLayoutChange}
               onRemove={handleRemove}
               onSettings={handleSettings}
