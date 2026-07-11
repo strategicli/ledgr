@@ -42,13 +42,12 @@ function check(name: string, ok: boolean, detail = "") {
 // --- 1. core dogfoods the boundary -----------------------------------------
 check("core is a registered, enabled module", isModuleEnabled("core") === true);
 check("core owns the system types", moduleForType("task")?.id === "core");
-for (const t of ["event", "person"]) {
-  check(`${t} resolves to the default canvas`, canvasIdForType(t) === DEFAULT_CANVAS);
-}
+check("person resolves to the default canvas", canvasIdForType("person") === DEFAULT_CANVAS);
 for (const t of ["event", "note", "person"]) {
   check(`${t} is markdown-canonical`, canonicalFormatForType(t) === MARKDOWN_FORMAT);
 }
 check("task keeps its bespoke canvas (ADR-108)", canvasIdForType("task") === "task");
+check("event keeps its bespoke canvas (ADR-158)", canvasIdForType("event") === "event");
 check("note renders through the shared longform canvas (ADR-157)", canvasIdForType("note") === "longform");
 check("link renders through the shared longform canvas (ADR-157)", canvasIdForType("link") === "longform");
 check("core contributes no per-type exporters", exportersForType("task").length === 0);

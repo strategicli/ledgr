@@ -148,7 +148,7 @@ export const coreModule: ModuleManifest = {
   enabledByDefault: true,
   types: [
     { key: "task", label: "Task", icon: "check-square", canonicalFormat: MARKDOWN_FORMAT, canvasId: "task" },
-    { key: "event", label: "Event", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
+    { key: "event", label: "Event", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: "event" },
     { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: "longform" },
     { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "longform" },
     { key: "person", label: "Person", icon: "user", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },

@@ -12,6 +12,7 @@ import TaskTitle from "@/components/canvas/TaskTitle";
 import RelationProperties from "@/components/relations/RelationProperties";
 import CustomProperties from "@/components/build/CustomProperties";
 import CanvasSection from "@/components/canvas/CanvasSection";
+import CanvasTwoPane from "@/components/canvas/CanvasTwoPane";
 import SchedulePopover from "@/components/canvas/rail/SchedulePopover";
 import DueRow from "@/components/canvas/rail/DueRow";
 import PriorityRow from "@/components/canvas/rail/PriorityRow";
@@ -33,12 +34,13 @@ import type { CanvasProps } from "@/lib/modules";
 export default async function TaskCanvas(canvasProps: CanvasProps) {
   const { item, ownerId, arrange = false } = canvasProps;
   const typeDef = await getType("task").catch(() => null);
-  // Per-type layout (ADR-069, Feature B): the bespoke compact rail below is the
-  // DEFAULT, but a saved custom layout — or entering arrange mode (?arrange=1) —
-  // renders the same field-level draggable grid every other type gets. The grid
-  // path lives in the default canvas; tasks delegate to it so "Customize layout"
-  // works again on the task type (it regressed when ADR-108 moved tasks off the
-  // default canvas onto this bespoke rail). Reset (layout → null) returns here.
+  // Per-type layout (ADR-069): a saved custom layout — or arrange mode
+  // (?arrange=1) — renders the field-level draggable grid every other type gets
+  // (the "Customize layout" path, which regressed when ADR-108 moved tasks onto
+  // this bespoke rail). The bespoke rail renders in both the full page and the
+  // modal — CanvasTwoPane splits on container width, stacking when narrow. Tasks
+  // are collapse-only (resizable={false}), so no inner resizer clashes with the
+  // modal's own.
   if (arrange || typeDef?.canvasLayout != null) {
     return <MarkdownCanvas {...canvasProps} />;
   }
@@ -77,33 +79,41 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
         </Link>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* Left: title · description · subtasks */}
-        <div className="min-w-0">
-          <TaskTitle
-            item={{ id: item.id, title: item.title, body: item.body }}
-            done={statusDone}
-            priority={item.urgency}
-            showCircle={statusMode === "checkbox"}
-          />
-          <div className="mt-3">
-            <ItemEditor
+      {/* Two-pane: title/body/subtasks + a collapsible details rail. Shared with
+          the event canvas (ADR-158); tasks opt out of drag-resize (the compact
+          rail rarely needs widening) but keep collapse, remembering its own state
+          under the "task" storage key. */}
+      <CanvasTwoPane
+        storageKey="task"
+        resizable={false}
+        defaultWidth={340}
+        main={
+          <div className="min-w-0">
+            <TaskTitle
               item={{ id: item.id, title: item.title, body: item.body }}
-              slot="body"
-              collapsibleToolbar
-              compactBody
+              done={statusDone}
+              priority={item.urgency}
+              showCircle={statusMode === "checkbox"}
             />
+            <div className="mt-3">
+              <ItemEditor
+                item={{ id: item.id, title: item.title, body: item.body }}
+                slot="body"
+                collapsibleToolbar
+                compactBody
+              />
+            </div>
+            <div className="mt-4">
+              <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
+            </div>
           </div>
-          <div className="mt-4">
-            <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
-          </div>
-        </div>
-
-        {/* Right rail: the task's details as a clean divided list of rows. The
-            heavy editors (date · time · repeat · reminder) collapse behind the
-            single Schedule row's popover (ADR-108); everything stays one tap
-            away but out of sight until needed. */}
-        <aside className="flex flex-col lg:border-l lg:border-line lg:pl-6">
+        }
+        rail={
+          // The task's details as a clean divided list of rows. The heavy editors
+          // (date · time · repeat · reminder) collapse behind the single Schedule
+          // row's popover (ADR-108); everything stays one tap away but out of
+          // sight until needed.
+          <div className="flex flex-col">
           {/* Status: the completion circle now lives next to the title in
               checkbox mode (TaskTitle), so the rail only carries a status row
               for multi-status 'select' types; 'none' shows nothing (ADR-106/108). */}
@@ -156,8 +166,9 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               Focus today
             </span>
           </div>
-        </aside>
-      </div>
+          </div>
+        }
+      />
 
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />

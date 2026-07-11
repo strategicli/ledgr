@@ -11,6 +11,7 @@
 // workspace); core wires the default markdown canvas and the shared longform
 // document canvas (notes, links, journal, prayer, … — ADR-041/157).
 import ChordCanvas from "@/components/canvas/ChordCanvas";
+import EventCanvas from "@/components/canvas/EventCanvas";
 import LongformCanvas from "@/components/canvas/LongformCanvas";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
 import MindmapCanvas from "@/components/canvas/MindmapCanvas";
@@ -25,6 +26,7 @@ import "@/lib/modules/register";
 
 const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   [DEFAULT_CANVAS]: MarkdownCanvas,
+  event: EventCanvas,
   longform: LongformCanvas,
   chord: ChordCanvas,
   paper: PaperCanvas,
