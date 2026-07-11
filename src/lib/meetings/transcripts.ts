@@ -72,7 +72,7 @@ function transcriptionOf(
 }
 
 // The meeting's transcripts, newest-edited first. Body-free (the word count is
-// computed in SQL off body_text, never shipping the transcript text to a list).
+// computed in SQL off body->>'text', never shipping the transcript text to a list).
 export async function listMeetingTranscripts(
   ownerId: string,
   meetingId: string
@@ -84,7 +84,10 @@ export async function listMeetingTranscripts(
       properties: items.properties,
       updatedAt: items.updatedAt,
       // POSIX whitespace class (no backslash escaping); empty body → 0, not 1.
-      wordCount: sql<number>`case when btrim(coalesce(${items.bodyText}, '')) = '' then 0 else coalesce(array_length(regexp_split_to_array(btrim(${items.bodyText}), '[[:space:]]+'), 1), 0) end`,
+      // Counts words off the canonical markdown (body->>'text') since body_text
+      // was dropped (ADR-153); markdown tokens are a negligible skew for a
+      // transcript's word estimate.
+      wordCount: sql<number>`case when btrim(coalesce(${items.body} ->> 'text', '')) = '' then 0 else coalesce(array_length(regexp_split_to_array(btrim(${items.body} ->> 'text'), '[[:space:]]+'), 1), 0) end`,
     })
     .from(items)
     .where(

@@ -59,9 +59,14 @@ try {
   );
   const searchSql = searchItemsQuery(ownerId, "x").toSQL().sql;
   check("search SQL is owner-scoped", searchSql.includes("owner_id"));
+  // Since ADR-153 (lever C) the body_text column is gone: the snippet reads the
+  // canonical body markdown (body->>'text') directly, but only through a bounded
+  // ts_headline/left(...,4000) — so the full body is never returned to the caller.
+  // Assert exactly that: the ONE body reference sits inside the bounded snippet.
   check(
-    "search SQL selects no raw body (snippet reads body_text only)",
-    !/"body"(?!_)/.test(searchSql)
+    "search SQL reads body only via the bounded ts_headline snippet, never as a returned column (ADR-153)",
+    /ts_headline\('english', left\(coalesce\([^)]*"body" ->> 'text'/.test(searchSql) &&
+      (searchSql.match(/"body"/g) ?? []).length === 1
   );
 
   // 2. Fixtures.

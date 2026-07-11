@@ -26,7 +26,8 @@ export async function GET(_request: Request, context: Context) {
 }
 
 // PATCH /api/items/[id] — partial update; a body change snapshots a revision
-// (debounced) and refreshes body_text for search.
+// (debounced). The FTS tsvector regenerates from the body automatically
+// (generated column, ADR-153); no app-maintained body_text to refresh.
 export async function PATCH(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;

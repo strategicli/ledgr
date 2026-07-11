@@ -29,7 +29,6 @@ import {
   MARKDOWN_FORMAT,
   type ItemBody,
 } from "@/lib/body";
-import { extractBodyText } from "@/lib/body-text";
 // Type-only (erased at runtime): types.ts imports ItemError from items.ts, so
 // a value import of getType would form a circular dependency. getType is
 // loaded dynamically inside moveItemType instead.
@@ -245,7 +244,6 @@ export async function createItem(ownerId: string, input: ItemInput) {
       type: input.type,
       title: input.title ?? "",
       body,
-      bodyText: extractBodyText(body),
       status: statusKey,
       statusCategory: statusCat,
       dueDate: input.dueDate ?? null,
@@ -434,7 +432,6 @@ export async function updateItem(
   if (patch.inbox !== undefined) set.inbox = patch.inbox;
   if (writeBody) {
     set.body = patch.body;
-    set.bodyText = extractBodyText(patch.body);
   }
   if (Object.keys(set).length === 0) {
     // A patch that carried only a no-op body (the editor's on-open phantom
@@ -771,7 +768,7 @@ export async function restoreRevision(
   const body = rev[0].body;
   const rows = await db
     .update(items)
-    .set({ body, bodyText: extractBodyText(body) })
+    .set({ body })
     .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
   // The restored body's mentions + passage refs are the live ones now.

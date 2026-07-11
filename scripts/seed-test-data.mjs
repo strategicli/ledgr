@@ -67,22 +67,9 @@ function meetingTime(isoDate, hour = 9, minute = 0) {
 function md(text) {
   return JSON.stringify({ format: "markdown", text });
 }
-// Lightweight markdown stripper for body_text (full version lives in body-text.ts)
-function stripMd(text) {
-  return text
-    .replace(/#{1,6}\s+/gm, "")
-    .replace(/\*\*(.+?)\*\*/gs, "$1")
-    .replace(/\*(.+?)\*/gs, "$1")
-    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-    .replace(/`{3}[\s\S]*?`{3}/g, "")
-    .replace(/`(.+?)`/g, "$1")
-    .replace(/^[-*+]\s+/gm, "")
-    .replace(/^>\s+/gm, "")
-    .replace(/^-{3,}$/gm, "")
-    .replace(/\n{2,}/g, " ")
-    .replace(/\n/g, " ")
-    .trim();
-}
+// (The body_text column + its markdown stripper were removed in ADR-153; the
+// items.search tsvector now generates straight from body->>'text', so seeds only
+// supply body.)
 
 // --- Insert helpers ---
 async function insertItem({
@@ -102,7 +89,6 @@ async function insertItem({
   updatedAt = null,
 } = {}) {
   const bodyJson = body ? body : null; // already JSON.stringify'd
-  const bodyText = body ? stripMd(JSON.parse(body).text) : null;
   const propsJson = properties ? JSON.stringify(properties) : null;
   const created = createdAt ?? new Date().toISOString();
   const updated = updatedAt ?? created;
@@ -110,14 +96,14 @@ async function insertItem({
   await sql`
     INSERT INTO items (
       id, owner_id, type, title,
-      body, body_text,
+      body,
       status, due_date, urgency,
       meeting_at, url,
       inbox, parent_id, properties,
       created_at, updated_at
     ) VALUES (
       ${id}, ${ownerId}, ${type}, ${title},
-      ${bodyJson}::jsonb, ${bodyText},
+      ${bodyJson}::jsonb,
       ${status}::item_status,
       ${dueDate},
       ${urgency}::urgency,

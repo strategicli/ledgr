@@ -7,9 +7,12 @@
 //    public link), the color/highlight inline HTML the editor emits
 //    (<span style>, <mark class>) passes through, and body headings shift down
 //    one level so the document title keeps the <h1>.
-//  - markdownToText feeds full-text search (items.body_text). It renders, then
-//    strips tags, so the FTS document indexes mention labels and code text but
-//    never URIs, color hexes, or markup.
+//  - markdownToText renders then strips tags, keeping prose + mention labels +
+//    code text while dropping URIs, color hexes, and markup. It fed the old
+//    body_text FTS column; since ADR-153 (lever C) dropped that column, the
+//    generated tsvector reads the raw body markdown directly and this stays as
+//    the stripper the C2 fallback (body-text.ts) would reuse if the raw-markdown
+//    noise ever needs cleaning up again.
 //
 // markdown-it is the one vetted markdown dependency (roadmap Phase M; a
 // Principle-5 call): a single synchronous, battle-tested CommonMark/GFM package.

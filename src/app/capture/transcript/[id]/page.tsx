@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { resolveOwner } from "@/lib/owner";
+import { bodyMarkdown } from "@/lib/body";
 import {
   TRANSCRIPT_TYPE,
   listRecentMeetingsForPicker,
@@ -31,7 +32,7 @@ export default async function TranscriptSharePicker({
       title: items.title,
       type: items.type,
       parentId: items.parentId,
-      bodyText: items.bodyText,
+      body: items.body,
     })
     .from(items)
     .where(and(eq(items.id, id), eq(items.ownerId, owner.id), isNull(items.deletedAt)));
@@ -45,7 +46,7 @@ export default async function TranscriptSharePicker({
   }
 
   const meetings = await listRecentMeetingsForPicker(owner.id);
-  const text = (transcript.bodyText ?? "").trim();
+  const text = bodyMarkdown(transcript.body).trim();
   const wordCount = text ? text.split(/\s+/).length : 0;
   const preview = text.length > 280 ? `${text.slice(0, 280)}…` : text;
 

@@ -232,7 +232,7 @@ export const types = pgTable("types", {
     .defaultNow(),
 });
 
-// The one big table. List queries never select body or bodyText.
+// The one big table. List queries never select body.
 export const items = pgTable(
   "items",
   {
@@ -248,10 +248,6 @@ export const items = pgTable(
     // jsonb so the format tag travels with the text and markdown-family formats
     // (chordpro, etc.) are per-type. null until "gone deeper".
     body: jsonb("body"),
-    // Plain-text extraction of the body's markdown, maintained by app code on
-    // save (body-text.ts), so the generated tsvector below indexes real words
-    // instead of markup, URIs, or color hexes (ADR-003).
-    bodyText: text("body_text"),
     // The item's status KEY (Tasks Polish S2, ADR-082): a slug from its type's
     // status_schema (open/done/archived in the inherited default). Free text, not
     // an enum, because statuses are now user-defined per type.
@@ -336,9 +332,19 @@ export const items = pgTable(
     // metadata (C: url + custom property string values). The URL is split on
     // punctuation so "youtube" matches a youtube.com link; status/urgency/
     // dates stay out on purpose (they're filters, not prose).
+    //
+    // The body term reads the canonical markdown straight from the jsonb body
+    // (body->>'text'), NOT a stored plain-text column (ADR-153, lever C): the
+    // old app-maintained body_text column duplicated body.text for ~40% of each
+    // item's storage, purely to feed this generated tsvector (ADR-153, lever C).
+    // Indexing the raw markdown reintroduces a little noise (chordpro chords,
+    // ledgr:// mention URIs, color hexes are no longer stripped), accepted as the
+    // cost of dropping the duplicate; to_tsvector already discards markdown
+    // punctuation, so prose matching is unchanged. A chordpro-family body indexes
+    // its source verbatim.
     search: tsvector("search").generatedAlwaysAs(
       (): SQL =>
-        sql`setweight(to_tsvector('english', coalesce(${items.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${items.bodyText}, '')), 'B') || setweight(to_tsvector('english', regexp_replace(coalesce(${items.url}, ''), '[^a-zA-Z0-9]+', ' ', 'g')), 'C') || setweight(jsonb_to_tsvector('english', coalesce(${items.properties}, '{}'::jsonb), '["string"]'), 'C')`
+        sql`setweight(to_tsvector('english', coalesce(${items.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${items.body} ->> 'text', '')), 'B') || setweight(to_tsvector('english', regexp_replace(coalesce(${items.url}, ''), '[^a-zA-Z0-9]+', ' ', 'g')), 'C') || setweight(jsonb_to_tsvector('english', coalesce(${items.properties}, '{}'::jsonb), '["string"]'), 'C')`
     ),
   },
   (t) => [

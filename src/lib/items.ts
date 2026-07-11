@@ -61,7 +61,7 @@ export type ListOptions = {
   offset?: number;
 };
 
-// Everything except body, body_text, search, owner_id. The body exclusion is
+// Everything except body, search, owner_id. The body exclusion is
 // a non-negotiable (CLAUDE.md rule 8); properties stays because table views
 // render custom fields in lists. Exported so other list-shaped queries
 // (related items, future views) select the exact same body-free set.

@@ -1,7 +1,7 @@
 // One-off demo content for exploring the Songs + Papers modules. Creates a
 // couple of song items (ChordPro bodies) and a paper item (markdown draft +
 // outline + quote-bank scaffold in properties) owned by the v1 user, via the
-// app's own createItem so they get body_text/FTS, a revision, and mention-sync
+// app's own createItem so they get FTS (tsvector from body), a revision, and mention-sync
 // like any real item. Idempotent-ish: skips a title that already exists for the
 // owner (re-runnable without piling up duplicates).
 //

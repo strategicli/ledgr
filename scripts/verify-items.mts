@@ -96,7 +96,8 @@ try {
   check("created item appears in list", !!rowA);
   check("list rows have no body key", rowA !== undefined && !("body" in rowA));
 
-  // 4. Body update refreshes body_text and debounces the snapshot.
+  // 4. Body update regenerates the tsvector (now straight from body->>'text',
+  //    ADR-153 — no body_text column) and debounces the snapshot.
   const a2 = await updateItem(ownerId, a.id, { body: bodyV2 });
   check("update returns new body", canon(a2.body) === canon(bodyV2));
   const revs2 = await listRevisions(ownerId, a.id);
@@ -104,7 +105,7 @@ try {
   const ft = await db.execute(
     sql`select id from items where id = ${a.id} and search @@ plainto_tsquery('english', 'edited')`
   );
-  check("body_text feeds tsvector", ft.rows.length === 1);
+  check("body markdown feeds tsvector", ft.rows.length === 1);
 
   // 5. Revision restore: pre-restore body force-snapshotted, body rolled back.
   const a3 = await restoreRevision(ownerId, a.id, revs2[0].id);

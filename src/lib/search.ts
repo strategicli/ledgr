@@ -1,9 +1,11 @@
 // Full-text search (slice 13, PRD §4.2): Postgres FTS over the stored
-// generated tsvector (title + body_text, ADR-003), riding items_search_gin.
-// websearch_to_tsquery parses Google-ish syntax (words, "quoted phrases",
-// OR, -exclusions) and never throws on user input, so the raw query string
-// binds straight in. Filters: type, relatedTo (confirmed relations, either
-// direction), and an updated-at date window.
+// generated tsvector (title + body->>'text', ADR-003/ADR-153), riding
+// items_search_gin. websearch_to_tsquery parses Google-ish syntax (words,
+// "quoted phrases", OR, -exclusions) and never throws on user input, so the raw
+// query string binds straight in. Filters: type, relatedTo (confirmed
+// relations, either direction), and an updated-at date window. The snippet
+// headline reads the same canonical markdown the tsvector indexes, so a
+// fragment may show light markdown syntax (ADR-153, lever C).
 import { and, desc, eq, gte, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
@@ -59,7 +61,7 @@ export function searchItemsQuery(
       rank: sql<number>`ts_rank(${items.search}, ${query})`,
       snippet: sql<
         string | null
-      >`ts_headline('english', left(coalesce(${items.bodyText}, ''), 4000), ${query}, 'StartSel=[[, StopSel=]], MaxWords=18, MinWords=8, MaxFragments=2, FragmentDelimiter=" … "')`,
+      >`ts_headline('english', left(coalesce(${items.body} ->> 'text', ''), 4000), ${query}, 'StartSel=[[, StopSel=]], MaxWords=18, MinWords=8, MaxFragments=2, FragmentDelimiter=" … "')`,
     })
     .from(items)
     .where(and(...where))
