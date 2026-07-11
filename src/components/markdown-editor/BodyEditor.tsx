@@ -149,6 +149,10 @@ export default function BodyEditor({
   // mode switch, so editing within a mode never remounts the child.
   const [mountText, setMountText] = useState(initialMarkdown);
   const [mode, setMode] = useState<Mode>(large ? "preview" : "rich");
+  // Reading-first (perceived speed) applies only to the FIRST rich mount — a
+  // note opened to read. Once the user deliberately toggles a mode, a later
+  // switch back to rich means "edit now", so we mount Tiptap directly then.
+  const [touchedMode, setTouchedMode] = useState(false);
 
   // Formatting-bar collapse state (S5). The toggle lives in the mode-row below
   // and its state is owned here so it survives a rich↔source switch and persists
@@ -171,6 +175,7 @@ export default function BodyEditor({
 
   const switchMode = (next: Mode) => {
     if (next === mode) return;
+    setTouchedMode(true);
     setMountText(liveText.current);
     setMode(next);
   };
@@ -238,6 +243,7 @@ export default function BodyEditor({
         onRequestSave={onRequestSave}
         editable={editable}
         controlledSection={controlledSection}
+        readingFirst={!touchedMode}
         focusSignal={focusSignal}
         toolbarOpen={toolbarOpen}
         viewControls={viewControls}
@@ -258,6 +264,7 @@ export default function BodyEditor({
         compact={compact}
         onRequestSave={onRequestSave}
         editable={editable}
+        readingFirst={!touchedMode && !compact}
         focusSignal={focusSignal}
       />
     );

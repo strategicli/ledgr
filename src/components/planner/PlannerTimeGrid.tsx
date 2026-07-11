@@ -89,6 +89,7 @@ export default function PlannerTimeGrid({
   notify,
   anchor,
   setAnchor,
+  today,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -100,6 +101,9 @@ export default function PlannerTimeGrid({
   notify: Notify;
   anchor: string;
   setAnchor: (ymd: string) => void;
+  // App-timezone "today" (YYYY-MM-DD) from the server, so the "today" column
+  // marker is deterministic across SSR/hydration (see PlannerCalendar).
+  today: string;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -116,6 +120,11 @@ export default function PlannerTimeGrid({
   const [resizingId, setResizingId] = useState<string | null>(null);
   const [creatingSlot, setCreatingSlot] = useState<{ ymd: string; start: string } | null>(null);
   const [nowMin, setNowMin] = useState(localNowMinutes);
+  // The "now" line's position is the browser's local time-of-day, which the
+  // server can't know — so it's held out of SSR and the first client render
+  // (both mounted=false) and revealed after mount, avoiding a hydration
+  // mismatch on its `top` style.
+  const [mounted, setMounted] = useState(false);
   const { effectiveDone, toggle } = usePlannerComplete(statuses, notify);
   const { create, busy: createBusy } = usePlannerCreate(notify);
 
@@ -138,10 +147,7 @@ export default function PlannerTimeGrid({
   const place = (item: ViewItem): Placement =>
     Object.prototype.hasOwnProperty.call(override, item.id) ? override[item.id] : stored(item);
 
-  const todayYmd = (() => {
-    const n = new Date();
-    return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
-  })();
+  const todayYmd = today;
   const days = Array.from({ length: RANGE_DAYS }, (_, i) => addDaysYmd(anchor, i));
   const dayset = new Set(days);
 
@@ -198,8 +204,14 @@ export default function PlannerTimeGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor, workStart]);
 
-  // Advance the "now" line each minute.
+  // Reveal the "now" line after mount (it's browser-local time, held out of SSR
+  // to avoid a hydration mismatch — see `mounted`) and advance it each minute.
+  // The `nowMin` initializer already reads the client clock on hydration, so no
+  // resync is needed here. Same set-state-on-mount pattern as PlannerCalendar's
+  // localStorage read.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
     const id = setInterval(() => setNowMin(localNowMinutes()), 60000);
     return () => clearInterval(id);
   }, []);
@@ -563,8 +575,8 @@ export default function PlannerTimeGrid({
                       </div>
                     );
                   })}
-                  {/* "Now" line in today's column */}
-                  {ymd === todayYmd && (
+                  {/* "Now" line in today's column (client-only, post-mount) */}
+                  {mounted && ymd === todayYmd && (
                     <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2" style={{ top: (nowMin / 60) * HOUR_PX, borderColor: "var(--accent)" }}>
                       <span className="absolute -left-1 -top-[5px] h-2 w-2 rounded-full" style={{ backgroundColor: "var(--accent)" }} />
                     </div>

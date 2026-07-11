@@ -175,24 +175,47 @@ export default async function Tasks({
 
   if (tab === "today") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
-    const today = active.filter((t) => {
+    const onPlate = active.filter((t) => {
       const d = effDate(t);
       return d != null && d <= dueToday;
     });
-    // group by priority (1..6; null → 6/none)
+    // Overdue (effective date strictly before today) gets its own group above the
+    // priority groups (Todoist-style); the rest — due exactly today — group by
+    // priority so an overdue item shows once, in Overdue, not also under a
+    // priority. Overdue keeps the query's plan-asc order (oldest first).
+    const overdue = onPlate.filter((t) => {
+      const d = effDate(t);
+      return d != null && d < dueToday;
+    });
+    const dueNow = onPlate.filter((t) => {
+      const d = effDate(t);
+      return d != null && d >= dueToday;
+    });
+    // group the rest by priority (1..6; null → 6/none)
     const groups = new Map<number, ListedItem[]>();
-    for (const t of today) {
+    for (const t of dueNow) {
       const k = prioritySortKey(t.urgency != null ? (t.urgency as Priority) : null);
       (groups.get(k) ?? groups.set(k, []).get(k)!).push(t);
     }
     const ordered = [...groups.entries()].sort((a, b) => a[0] - b[0]);
-    selectableIds = ordered.flatMap(([, items]) => items.map((t) => t.id));
+    selectableIds = [
+      ...overdue.map((t) => t.id),
+      ...ordered.flatMap(([, items]) => items.map((t) => t.id)),
+    ];
     const rollups = await childRollups(owner.id, selectableIds);
     body =
-      today.length === 0 ? (
+      onPlate.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
       ) : (
         <div className="mt-4 space-y-4">
+          {overdue.length > 0 && (
+            <div>
+              <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">
+                Overdue
+              </h3>
+              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
+            </div>
+          )}
           {ordered.map(([k, items]) => {
             const s = priorityStyle(k as Priority);
             return (
@@ -296,7 +319,7 @@ export default async function Tasks({
       display: { mode: "timegrid", placeBy: "scheduled" },
       createdAt: new Date(),
     };
-    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} calendarEvents={calendarEvents} tz={tz} />;
+    body = <ViewRenderer view={plannerView} items={active} statuses={statuses} calendarEvents={calendarEvents} today={todayYmd} tz={tz} />;
   } else {
     // projects: each project + its open tasks
     const projects = await queryViewItems(owner.id, { type: "project" }, { field: "updatedAt", dir: "desc" });

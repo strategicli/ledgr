@@ -42,10 +42,31 @@ export default function CaptureModal({
   onClose: () => void;
 }) {
   // Prepend the catch-all "Unsorted" (the nav filters the hidden `unmarked`
-  // type out of its options) and default to it: an unchanged capture lands in
-  // the Inbox as untyped, triaged later.
+  // type out of its options). Every capture lands in the Inbox for triage
+  // regardless of type (ADR-010); the type just seeds the created item.
   const captureOptions = [{ key: "unmarked", label: "Unsorted" }, ...(typeOptions ?? [])];
-  const [type, setType] = useState("unmarked");
+  // Default to "task" — the overwhelmingly common capture (Brandon) — but honor
+  // the last-used type per browser so a run of same-type captures doesn't re-pick
+  // each time. The modal only mounts after a client click, so reading
+  // localStorage in the initializer is SSR-safe (it never server-renders).
+  const [type, setType] = useState<string>(() => {
+    if (typeof window === "undefined") return "task";
+    try {
+      const last = localStorage.getItem("capture:lastType");
+      if (last && captureOptions.some((o) => o.key === last)) return last;
+    } catch {
+      /* storage unavailable */
+    }
+    return "task";
+  });
+  const chooseType = (next: string) => {
+    setType(next);
+    try {
+      localStorage.setItem("capture:lastType", next);
+    } catch {
+      /* storage unavailable */
+    }
+  };
 
   return (
     <div
@@ -66,7 +87,7 @@ export default function CaptureModal({
           <span className="relative inline-flex items-center">
             <select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => chooseType(e.target.value)}
               aria-label="Type to capture"
               className="appearance-none rounded-md border border-neutral-700 bg-neutral-800 py-1 pl-2.5 pr-7 text-sm text-neutral-200 outline-none hover:border-neutral-600 focus:border-neutral-500"
             >

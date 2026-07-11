@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ViewItem } from "@/components/views/ViewRenderer";
 import DashboardGridLayout from "@/components/dashboards/DashboardGridLayout";
+import { estimateGridHeight } from "@/lib/dashboard-grid";
 import type { WidgetData } from "@/lib/dashboard-widgets";
 
 // The date fields the widget bodies format (Intl.format needs real Dates, but
@@ -100,6 +101,7 @@ export default function DeskDashboardPanel({ dashboardId }: { dashboardId: strin
           <DashboardGridLayout
             widgets={state.widgets}
             editMode={false}
+            reservedHeight={estimateGridHeight(state.widgets)}
             onLayoutChange={noop}
             onRemove={noop}
             onSettings={noop}

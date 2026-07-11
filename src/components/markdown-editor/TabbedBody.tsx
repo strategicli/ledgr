@@ -44,6 +44,9 @@ export type TabbedBodyProps = {
   // clamped to the parsed sections. Undefined = the normal full-canvas behavior
   // (internal strip, internal active state).
   controlledSection?: number;
+  // Reading-first: forwarded to the per-tab editor so a tabbed note opens as
+  // rendered HTML and mounts Tiptap only on edit (perceived speed).
+  readingFirst?: boolean;
   // Imperative focus signal (title Enter → jump to the body): forwarded to the
   // active tab's editor.
   focusSignal?: number;
@@ -59,6 +62,7 @@ export default function TabbedBody({
   promotedRefs,
   editable = true,
   controlledSection,
+  readingFirst,
   focusSignal,
   toolbarOpen,
   viewControls,
@@ -224,6 +228,7 @@ export default function TabbedBody({
         promotedRefs={promotedRefs}
         onRequestSave={onRequestSave}
         editable={editable}
+        readingFirst={readingFirst}
         focusSignal={focusSignal}
         toolbarOpen={toolbarOpen}
         viewControls={viewControls}

@@ -3,13 +3,14 @@
 // list) get the SAME check UI as the task type: a ring that fills with the
 // user's highlight color when done, with a check that hints on hover. Optimistic
 // — fills instantly, then the /complete endpoint lands (recurrence-aware) and a
-// refresh re-syncs. Priority-colored ring when a priority is set, else neutral;
+// coalesced (debounced) refresh re-syncs, so triaging many tasks in a burst
+// queues one refetch on idle. Priority-colored ring when a priority is set, else neutral;
 // the done fill uses the priority color when present, otherwise the accent.
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { beginSave, endSave } from "@/lib/save-status";
+import { useListRefresh } from "@/lib/list-refresh";
 import { priorityStyle, toPriority } from "@/lib/priority";
 
 export default function TaskCheckCircle({
@@ -21,7 +22,7 @@ export default function TaskCheckCircle({
   done: boolean;
   priority?: number | null;
 }) {
-  const router = useRouter();
+  const refresh = useListRefresh();
   const [done, setDone] = useState(initialDone);
   const [prev, setPrev] = useState(initialDone);
   if (initialDone !== prev) {
@@ -37,7 +38,7 @@ export default function TaskCheckCircle({
       const res = await fetch(`/api/items/${itemId}/complete`, { method: "POST" });
       if (!res.ok) throw new Error(String(res.status));
       endSave(true);
-      router.refresh();
+      refresh();
     } catch {
       setDone(!next);
       endSave(false);

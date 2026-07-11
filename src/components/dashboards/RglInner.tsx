@@ -17,42 +17,15 @@ import {
   type WidgetData,
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
+import { defaultCell, GRID_MARGIN, ROW_HEIGHT } from "@/lib/dashboard-grid";
 import WidgetFrame from "./WidgetFrame";
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 const COLS: Record<GridBreakpoint, number> = { lg: 12, md: 6, sm: 1 };
 const BREAKPOINT_PX: Record<GridBreakpoint, number> = { lg: 1024, md: 768, sm: 0 };
-// A short row height gives fine vertical control, so a text header can sit just
-// one short row tall (≈40px) right above the next widget. Default heights below
-// are expressed in these rows, so normal widgets still open at a sensible size.
-const ROW_HEIGHT = 40;
 
 type Kind = WidgetData["widget"]["kind"];
-
-// Default cell height (in rows) by kind: a heading is one short row; a count a
-// couple; an embed/list taller; a container the tallest. Stat defaults to 2 rows
-// (ui-refresh S7a) — the audit found a one-number card opening ~200px tall — but
-// stays fully resizable (minH:2, isResizable), so this only sets the default a
-// fresh/un-resized stat opens at; a manually-resized one keeps its stored size.
-function defaultH(kind: Kind) {
-  if (kind === "text") return 1;
-  if (kind === "action") return 2;
-  if (kind === "stat") return 2;
-  if (kind === "embed") return 6;
-  if (kind === "image") return 5;
-  if (kind === "container") return 10;
-  return 8;
-}
-
-// Default placement when a widget has no stored cell for a breakpoint: two per
-// row on lg/md, single column on sm (mobile is always a vertical stack).
-function defaultCell(bp: GridBreakpoint, i: number, kind: Kind) {
-  const h = defaultH(kind);
-  if (bp === "sm") return { x: 0, y: i * 8, w: 1, h };
-  if (bp === "md") return { x: (i % 2) * 3, y: Math.floor(i / 2) * 8, w: 3, h };
-  return { x: (i % 2) * 6, y: Math.floor(i / 2) * 8, w: 6, h };
-}
 
 function minFor(kind: Kind) {
   if (kind === "stat") return { minW: 2, minH: 2 };
@@ -105,8 +78,13 @@ export default function RglInner({
       breakpoints={BREAKPOINT_PX}
       cols={COLS}
       rowHeight={ROW_HEIGHT}
-      margin={[16, 12]}
+      margin={GRID_MARGIN}
       containerPadding={[0, 0]}
+      // Don't paint the grid until WidthProvider has measured the container.
+      // Default (false) renders once at width:1280 → lg/12-col → items pile up
+      // and overflow the real viewport, then snap; measuring first kills that
+      // load-flash and the md right-edge clip it caused.
+      measureBeforeMount
       isDraggable={editMode}
       isResizable={editMode}
       draggableHandle=".widget-drag-handle"

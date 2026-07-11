@@ -1,14 +1,25 @@
 # Email-in import (slice 26, PRD §5.3). Polls the "Ledgr Import" Outlook
 # folder via Graph messages/delta on the GitHub Actions scheduler — same door
-# and cron token as the other syncs. Every 30 min: email capture should feel
-# reasonably prompt, and delta makes each poll cheap.
+# and cron token as the other syncs.
+#
+# Cadence: twice daily (was every 30 min). The 30-min poll was the single
+# largest driver of Neon compute — each run wakes the DB and holds it for the
+# fixed 5-min autosuspend tail, so 48 runs/day ≈ half the compute bill, mostly
+# to check a mailbox that usually had nothing new. Twice a day covers a personal
+# inbox's real needs; when you know something specific needs pulling in NOW, use
+# a manual trigger instead of paying for a tight poll:
+#   • this workflow → "Run workflow" (workflow_dispatch, below), or
+#   • the in-app user-authed twin: POST /api/email/import.
+# Times are UTC. 12:00 = ~7am Central (also when calendar-sync runs, so the two
+# share one compute wake); 23:00 = ~6pm Central (end-of-day catch).
 #
 # Auth: LEDGR_CRON_TOKEN repo secret (cron-scope machine token, runbook §3).
 name: email-import
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 12 * * *"
+    - cron: "0 23 * * *"
   workflow_dispatch:
 
 permissions:

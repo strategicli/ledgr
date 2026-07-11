@@ -249,6 +249,22 @@ body {
   height: 0.875rem;
 }
 
+/* Touch hit area for the task done-toggle. The visual stays 16px; on coarse
+   pointers the wrapping label pads out to a ~40px tap target (the row's own
+   py adds the rest, clearing the ~44px minimum) so the checkbox no longer
+   abuts the tap-to-open title. Fine pointers (desktop mouse) keep today's
+   compact density — the padding only applies on touch. */
+.ledgr-check-hit {
+  display: inline-grid;
+  place-content: center;
+}
+@media (pointer: coarse) {
+  .ledgr-check-hit {
+    padding: 0.75rem;
+    margin: -0.5rem;
+  }
+}
+
 /* Build-mode wordmark glow (ADR-063). The "Build Mode" wordmark in the Build
    sidebar breathes a slow accent glow — a "you are here" signal subtle enough
    for a long Build session, unmistakable on entry. A slow oscillation of the
