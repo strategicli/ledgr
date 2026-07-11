@@ -193,6 +193,7 @@ async function snapshotRevision(
   const large = isLargeBody(bodyMarkdown(body));
   const debounceMs = large ? LARGE_REVISION_DEBOUNCE_MS : REVISION_DEBOUNCE_MS;
   const cap = large ? LARGE_REVISION_CAP : REVISION_CAP;
+  // Debounce first — the cheap, body-free check on the hot autosave path.
   if (!opts.force) {
     const latest = await db
       .select({ createdAt: revisions.createdAt })
@@ -206,6 +207,23 @@ async function snapshotRevision(
     ) {
       return;
     }
+  }
+  // We're about to insert (past the debounce, or forced). Skip a snapshot that
+  // is byte-identical to the previous one: it adds a full duplicate body to
+  // history for zero new restore value. Applies to a forced snapshot too (the
+  // pre-restore save) — if the current body already equals the latest revision
+  // it is already recoverable from that row. Only now do we pull the previous
+  // body (rare: once per real snapshot, never per debounced autosave); the
+  // digest compare (bodyDigest, the cross-device-guard primitive) avoids holding
+  // two multi-MB strings just to answer "did it change?".
+  const prior = await db
+    .select({ body: revisions.body })
+    .from(revisions)
+    .where(eq(revisions.itemId, itemId))
+    .orderBy(desc(revisions.createdAt))
+    .limit(1);
+  if (prior.length > 0 && bodyDigest(prior[0].body) === bodyDigest(body)) {
+    return;
   }
   await db.insert(revisions).values({ itemId, body });
   await db.execute(sql`
