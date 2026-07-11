@@ -337,7 +337,16 @@ export default function MarkdownEditor({
       // toggleBlocksEnabled (setSlashToggleEnabled below).
       SlashCommands,
     ],
-    content: initialMarkdown,
+    // Start EMPTY; the body is loaded in the post-mount effect below via
+    // setContent. Parsing markdown in the constructor — before every extension's
+    // markdown hooks are wired — mis-nests a standalone inline image (an image
+    // alone on its line, common in imported/clipped notes) as a bare child of the
+    // doc, which is schema-invalid. The editor doesn't check on load, so the
+    // first plugin appendTransaction (TrailingNode) throws "contentMatchAt on a
+    // node with invalid content" and the editor never mounts — the item modal
+    // then drops back to the list. setContent on the ready editor wraps the image
+    // correctly, so loading there yields a valid doc. (ADR-159.)
+    content: "",
     contentType: "markdown",
     editorProps: {
       attributes: { class: compact ? "ProseMirror ledgr-prose ledgr-prose-compact" : "ProseMirror ledgr-prose" },
@@ -587,8 +596,14 @@ export default function MarkdownEditor({
     if (editor) setPromotedRefs(editor, promotedRefs ?? {});
   }, [editor, promotedRefs]);
 
-  // If the host swaps in a different document (e.g. "reload from saved" on the
-  // scratch route), reset the editor to it without firing onUpdate.
+  // Loads the body into the editor. Runs once on mount (the editor starts empty,
+  // see the `content: ""` note above) and again if the host swaps in a different
+  // document (e.g. "reload from saved" on the scratch route). setContent on the
+  // ready editor parses markdown correctly — including wrapping a standalone
+  // inline image in a paragraph, which the constructor path gets wrong (ADR-159).
+  // emitUpdate:false so this load never counts as a user edit; we then adopt the
+  // canonical serialization as the save baseline so a later programmatic
+  // re-serialize isn't mistaken for one either.
   useEffect(() => {
     if (!editor) return;
     const current = editor.getMarkdown();
@@ -597,6 +612,7 @@ export default function MarkdownEditor({
         contentType: "markdown",
         emitUpdate: false,
       });
+      lastEmitted.current = editor.getMarkdown();
     }
   }, [initialMarkdown, editor]);
 
