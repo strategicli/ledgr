@@ -7,9 +7,13 @@
 //             the peek following, Enter/click a row re-navigates.
 //   - CENTER — the original center modal, used when the window is narrow or a
 //             right rail already occupies the trailing edge.
-// Close = Esc, backdrop click (center only), or ✕ — all router.back() so the
-// list underneath is exactly where the user left it. Expand is a plain anchor
-// (hard navigation) so the same URL re-renders as the full page form.
+// Close = Esc, backdrop click (center only), or ✕ — all router.back(), which
+// tears down the intercepting @modal slot and returns to the launching surface.
+// Arrow-walk uses router.replace so ↑/↓ browsing the list doesn't grow history.
+// (Making a single back() always return to the list even after clicking through
+// several items inside the peek is a known rough edge, deferred to its own slice.)
+// Expand is a plain anchor (hard navigation) so the same URL re-renders as the
+// full page form.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -34,6 +38,26 @@ const PEEK_MIN_CONTENT = 1280;
 const SHEET_MAX = 640;
 
 type Mode = "sheet" | "peek" | "center";
+
+// Drag-to-resize bounds for the peek panel (px). Min keeps it usefully wide;
+// max never lets it swallow the screen. Persisted under PEEK_WIDTH_KEY so the
+// chosen width sticks across items and sessions; cleared → the responsive
+// default width strings below.
+const PEEK_WIDTH_KEY = "ledgr:peek-width";
+const PEEK_MIN_PX = 480; // ~30rem
+function peekMaxPx() {
+  if (typeof window === "undefined") return 1600;
+  return Math.min(window.innerWidth * 0.9, 1600); // min(90vw, 100rem)
+}
+function readStoredPeekWidth(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const n = parseInt(localStorage.getItem(PEEK_WIDTH_KEY) || "", 10);
+    return Number.isFinite(n) ? Math.max(PEEK_MIN_PX, Math.min(peekMaxPx(), n)) : null;
+  } catch {
+    return null;
+  }
+}
 
 function computeMode(): Mode {
   if (typeof window === "undefined") return "center";
@@ -88,6 +112,9 @@ export default function Modal({
   favorited?: boolean;
 }) {
   const router = useRouter();
+  // Back to the surface the peek launched from. router.back() tears down the
+  // intercepting @modal slot and returns to the launching list/page. Shared by
+  // Esc, the ✕, the center backdrop, sheet-dismiss, and the post-delete path.
   const close = useCallback(() => router.back(), [router]);
   // sheet (mobile) / peek (wide desktop) / center — decided from the layout on
   // mount and kept current on resize. Client-only guard makes the SSR pass
@@ -95,6 +122,52 @@ export default function Modal({
   // to center.
   const [mode, setMode] = useState<Mode>(computeMode);
   const peek = mode === "peek";
+  // User-chosen peek width in px (null → the responsive default). Lazy-init from
+  // localStorage on the client so a restored width shows without a flash (the
+  // peek only ever mounts on a client nav). Persisted on drag-end.
+  const [peekWidth, setPeekWidth] = useState<number | null>(readStoredPeekWidth);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Drag origin for the resize handle: the pointer x + panel width at grab.
+  const resizeStart = useRef<{ x: number; w: number } | null>(null);
+  const onResizeDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    resizeStart.current = {
+      x: e.clientX,
+      w: panelRef.current?.offsetWidth ?? PEEK_MIN_PX,
+    };
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {}
+  };
+  const onResizeMove = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    // Panel docks right, so dragging the left-edge handle leftward widens it.
+    const delta = resizeStart.current.x - e.clientX;
+    const next = resizeStart.current.w + delta;
+    setPeekWidth(Math.max(PEEK_MIN_PX, Math.min(peekMaxPx(), next)));
+  };
+  const onResizeUp = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    const delta = resizeStart.current.x - e.clientX;
+    const final = Math.round(
+      Math.max(PEEK_MIN_PX, Math.min(peekMaxPx(), resizeStart.current.w + delta))
+    );
+    resizeStart.current = null;
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {}
+    setPeekWidth(final);
+    try {
+      localStorage.setItem(PEEK_WIDTH_KEY, String(final));
+    } catch {}
+  };
+  // Double-click the handle → forget the custom width, back to the default.
+  const onResizeReset = () => {
+    setPeekWidth(null);
+    try {
+      localStorage.removeItem(PEEK_WIDTH_KEY);
+    } catch {}
+  };
   // Drag-to-dismiss offset for the bottom sheet (px the sheet is pulled down).
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -156,6 +229,8 @@ export default function Modal({
       const cur = hrefs.findIndex((h) => h === `/items/${itemId}`);
       const next = cur === -1 ? 0 : cur + delta;
       if (next < 0 || next >= hrefs.length) return;
+      // Replace (not push): the peek re-renders in place and close still returns
+      // to the one launching URL, so arrow-walking never grows the history.
       router.replace(hrefs[next], { scroll: false });
     },
     [itemId, router]
@@ -182,6 +257,33 @@ export default function Modal({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [close, peek, walk]);
+
+  // Peek only: a click on a non-interactive area of the background (the list /
+  // canvas behind the panel) closes the peek, like clicking off a popover. The
+  // peek is deliberately non-modal (no backdrop), so we listen on the document
+  // and bail when the click is inside the panel or lands on an interactive
+  // element — a list row (<a data-peek-row>), the nav, a button/field — so those
+  // still act (a row still re-navigates the peek to that item) instead of
+  // closing. A text-selection drag (non-collapsed selection) is not a click-off.
+  useEffect(() => {
+    if (!peek) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (e.button !== 0 || e.defaultPrevented) return;
+      const target = e.target as Element | null;
+      if (!target || panelRef.current?.contains(target)) return;
+      if (
+        target.closest(
+          'a, button, input, textarea, select, label, summary, [role="button"], [role="menuitem"], [contenteditable="true"], [data-peek-row]'
+        )
+      )
+        return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+      close();
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [peek, close]);
 
   // Center modal owns the scroll context (one panel); the peek is non-modal, so
   // the list underneath must keep scrolling — only lock the body in center mode.
@@ -215,7 +317,7 @@ export default function Modal({
               confirmLabel="Trash"
               trigger={<ActionGlyph icon="trash" />}
               triggerLabel="Move to Trash"
-              triggerClassName="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-red-400"
+              triggerClassName="rounded p-1 text-ink-subtle hover:bg-surface-2 hover:text-red-400"
               align="left"
               onConfirm={async () => {
                 const res = await fetch(`/api/items/${itemId}`, { method: "DELETE" });
@@ -245,7 +347,7 @@ export default function Modal({
               intercepted; a document load renders the full page form. */}
           <a
             href={`/items/${itemId}`}
-            className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+            className="rounded px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
             title="Expand to full page"
           >
             ⤢ Expand
@@ -253,7 +355,7 @@ export default function Modal({
           <button
             onClick={close}
             aria-label="Close"
-            className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+            className="rounded px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
             title="Close (Esc)"
           >
             ✕
@@ -262,7 +364,13 @@ export default function Modal({
       </div>
   );
   const bodyClass = "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12";
-  const body = <div className={bodyClass}>{children}</div>;
+  // The modal is its own scroll container below its own header — there's no page
+  // top-nav over it to clear. Zero out --nav-pt so the body editor's sticky
+  // mode-row/toolbar (top: var(--nav-pt)) pin to the modal's top instead of
+  // 56px below it, which left a scroll-through gap above the toolbar when the
+  // owner's nav is docked top (--nav-pt = 3.5rem).
+  const bodyStyle = { "--nav-pt": "0px" } as React.CSSProperties;
+  const body = <div className={bodyClass} style={bodyStyle}>{children}</div>;
   const panel = (
     <>
       {header}
@@ -338,6 +446,7 @@ export default function Modal({
           <div
             ref={bodyRef}
             className={bodyClass}
+            style={bodyStyle}
             onTouchStart={(e) => onDragStart(e, true)}
             onTouchMove={onDragMove}
             onTouchEnd={onDragEnd}
@@ -356,16 +465,48 @@ export default function Modal({
     // center). Non-modal — no backdrop, so the list stays live underneath.
     return (
       <div
+        ref={panelRef}
         role="dialog"
         aria-label={title || "Item"}
-        className="fixed z-40 flex flex-col overflow-hidden border-l border-line bg-[var(--background)] shadow-2xl shadow-black/40"
+        className="fixed z-40 flex flex-col overflow-hidden border-l border-line-strong bg-surface-2 shadow-2xl shadow-black/50"
         style={{
           top: "var(--nav-pt, 0px)",
           bottom: "var(--nav-pb, 0px)",
           right: "var(--nav-pr, 0px)",
-          width: wide ? "min(48rem, 46vw)" : "min(34rem, 40vw)",
+          // A dragged width wins (persisted); otherwise the responsive default:
+          // non-wide holds the ~48rem canvas column comfortably (up from 34rem,
+          // which squished it); wide (song chord charts) stays roomier. The vw
+          // cap keeps the default responsive — it shrinks with the window, and
+          // the peek only activates at ≥1280px of content (PEEK_MIN_CONTENT).
+          width:
+            peekWidth != null
+              ? `${peekWidth}px`
+              : wide
+                ? "min(60rem, 50vw)"
+                : "min(52rem, 46vw)",
         }}
       >
+        {/* Drag handle on the panel's left (inner) edge — the resizable one,
+            since the peek docks right. A 6px hit strip along the full height;
+            the visible hairline brightens on hover/drag. touch-none so a touch
+            drag resizes instead of scrolling. Double-click resets to default. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panel"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+          onPointerCancel={onResizeUp}
+          onDoubleClick={onResizeReset}
+          className="group absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none select-none"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover:bg-[var(--accent,#2563eb)]"
+          />
+        </div>
         {panel}
       </div>
     );
@@ -379,7 +520,7 @@ export default function Modal({
       }}
     >
       <div
-        className={`flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-neutral-800 bg-[var(--background)] shadow-2xl ${
+        className={`flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-[var(--background)] shadow-2xl ${
           wide ? "max-w-5xl" : "max-w-3xl"
         }`}
       >

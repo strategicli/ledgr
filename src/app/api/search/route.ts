@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import { searchItems, type SearchOptions } from "@/lib/search";
+import { RECENCY_STRONG } from "@/lib/recency";
 import { getAppTimezone, zonedMidnightUtc } from "@/lib/today";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,9 @@ export async function GET(request: Request) {
     if (!q) return NextResponse.json({ items: [] });
 
     const opts: SearchOptions = { type: params.get("type") ?? undefined };
+    // Quick search (command palette) leans hard on recency; the full search
+    // page omits the flag and gets the mild default.
+    if (params.get("recency") === "strong") opts.recency = RECENCY_STRONG;
     const person = params.get("person");
     if (person) {
       if (!UUID_RE.test(person)) {

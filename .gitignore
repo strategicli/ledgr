@@ -67,3 +67,12 @@ ty-docs/
 # Prod-data backups written by one-shot migration scripts (ADR-144 etc.)
 scripts/backups/
 plans/
+
+# impeccable (design plugin): local-only. .claude/ is already ignored above; these
+# are the plugin's other harness mirrors + working data. Keep plugin code/config
+# out of the repo. PRODUCT.md / DESIGN.md live at the root and ARE committed.
+.agents/
+.codex/
+.github/skills/
+.github/hooks/
+.impeccable/

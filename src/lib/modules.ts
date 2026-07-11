@@ -148,9 +148,9 @@ export const coreModule: ModuleManifest = {
   enabledByDefault: true,
   types: [
     { key: "task", label: "Task", icon: "check-square", canonicalFormat: MARKDOWN_FORMAT, canvasId: "task" },
-    { key: "event", label: "Event", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
-    { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
-    { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "link" },
+    { key: "event", label: "Event", icon: "users", canonicalFormat: MARKDOWN_FORMAT, canvasId: "event" },
+    { key: "note", label: "Note", icon: "file-text", canonicalFormat: MARKDOWN_FORMAT, canvasId: "longform" },
+    { key: "link", label: "Link", icon: "link", canonicalFormat: MARKDOWN_FORMAT, canvasId: "longform" },
     { key: "person", label: "Person", icon: "user", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
   ],
   exporters: [],
@@ -160,6 +160,19 @@ export const coreModule: ModuleManifest = {
   // other type from the Build bespoke-tool catalog. Tabs are sections of the
   // same markdown body, so the canonical format is unchanged.
   capabilities: [
+    {
+      // Longform document canvas (ADR-157): the body is the star, with a compact
+      // metadata byline under the title. Its canvas (LongformCanvas) enables tabs
+      // itself, so a type that wants both a document layout and tabs attaches this
+      // one capability (the single-capability slot can't hold "tabs" as well).
+      id: "longform",
+      label: "Longform document",
+      description: "A document-shaped canvas: the markdown body runs the full width, with a compact metadata byline under the title.",
+      usage:
+        "Best for prose types you mostly write body text in — journals, prayers, meeting or email notes, transcripts, teachings — where a few fields belong quietly at the top, not in a side panel.",
+      canvasId: "longform",
+      canonicalFormat: MARKDOWN_FORMAT,
+    },
     {
       id: "tabs",
       label: "Tabs",

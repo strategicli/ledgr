@@ -13,7 +13,7 @@
 import { Extension, type Editor, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
-import { insertToggle } from "./toggle-extension";
+import { insertToggle, wrapSelectionInToggle } from "./toggle-extension";
 
 // A unique key: @tiptap/suggestion defaults every instance to the same
 // "suggestion$" key, so a second default-keyed Suggestion (the "{{" token menu
@@ -73,6 +73,21 @@ const COMMANDS: SlashCommand[] = [
     run: (editor, range) => {
       editor.chain().focus().deleteRange(range).run();
       insertToggle(editor);
+    },
+  },
+  {
+    id: "toggleWrap",
+    label: "Turn into toggle",
+    hint: "Wrap this block in a collapsible toggle",
+    keywords: ["toggle", "wrap", "convert", "collapse", "fold", "details"],
+    enabled: () => toggleEnabled,
+    // Convert the current block into a toggle (its text becomes the summary),
+    // mirroring the setHeading convert pattern above. After deleting the "/query"
+    // range the caret sits in the block being converted; wrap it, falling back to
+    // an empty toggle if wrapping isn't possible (e.g. already inside a toggle).
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run();
+      if (!wrapSelectionInToggle(editor)) insertToggle(editor);
     },
   },
 ];

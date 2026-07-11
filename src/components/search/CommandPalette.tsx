@@ -80,10 +80,10 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
       try {
         const url =
           parsed && parsed.rest
-            ? `/api/search?q=${encodeURIComponent(parsed.rest)}&type=${encodeURIComponent(parsed.type.key)}&limit=8`
+            ? `/api/search?q=${encodeURIComponent(parsed.rest)}&type=${encodeURIComponent(parsed.type.key)}&limit=8&recency=strong`
             : parsed
               ? `/api/items?type=${encodeURIComponent(parsed.type.key)}&limit=8`
-              : `/api/search?q=${encodeURIComponent(q.trim())}&limit=8`;
+              : `/api/search?q=${encodeURIComponent(q.trim())}&limit=8&recency=strong`;
         const res = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) return;
         const json = (await res.json()) as { items: ItemHit[] };

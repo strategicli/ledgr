@@ -65,13 +65,16 @@ export default async function MeetingPrep({
     prep.templatePrototypeId ? (
       <Link
         href={`/items/${prep.templatePrototypeId}`}
-        title="Edit or unpin this rule's template"
-        className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-normal normal-case tracking-normal text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+        title={`from rule: ${prep.templateName} — edit or unpin this rule's template`}
+        className="inline-block max-w-[11rem] truncate rounded bg-neutral-800 px-1.5 py-0.5 align-bottom text-xs font-normal normal-case tracking-normal text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
       >
         from rule: {prep.templateName}
       </Link>
     ) : (
-      <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-xs font-normal normal-case tracking-normal text-neutral-400">
+      <span
+        title={`from rule: ${prep.templateName}`}
+        className="inline-block max-w-[11rem] truncate rounded bg-neutral-800 px-1.5 py-0.5 align-bottom text-xs font-normal normal-case tracking-normal text-neutral-400"
+      >
         from rule: {prep.templateName}
       </span>
     )

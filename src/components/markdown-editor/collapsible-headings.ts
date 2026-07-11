@@ -73,13 +73,17 @@ function buildDecorations(doc: PMNode, state: HeadingsState): DecorationSet {
     // No chevron on a heading with nothing beneath it to fold (e.g. a trailing
     // heading) — unless it's somehow marked collapsed, so it can be re-opened.
     if (!range && !isCollapsed) return;
-    // The fold chevron — a widget just before the heading text, inside the
-    // heading. contentEditable=false; clicking dispatches a toggle meta.
+    // Tag the heading ITSELF (a node decoration), rather than inserting an inline
+    // widget at pos+1: an inline widget sat before the heading's first character
+    // and stole clicks/selection there (you couldn't click into or select the
+    // first letter). With a node decoration nothing is inserted into the inline
+    // content, so the first character stays fully selectable. The chevron is
+    // painted by CSS (`.ledgr-foldable::before`) in the left gutter; clicks on it
+    // are caught by the gutter mousedown handler below (which reads data-fold-pos).
     decos.push(
-      Decoration.widget(pos + 1, () => foldChevron(pos, isCollapsed), {
-        side: -1,
-        key: `fold-${pos}-${isCollapsed ? "c" : "o"}`,
-        ignoreSelection: true,
+      Decoration.node(pos, pos + node.nodeSize, {
+        class: "ledgr-foldable" + (isCollapsed ? " is-collapsed" : ""),
+        "data-fold-pos": String(pos),
       })
     );
     if (isCollapsed && range) {
@@ -101,31 +105,17 @@ function buildDecorations(doc: PMNode, state: HeadingsState): DecorationSet {
   return DecorationSet.create(doc, decos);
 }
 
-function foldChevron(pos: number, collapsed: boolean): HTMLButtonElement {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "ledgr-fold-toggle" + (collapsed ? " is-collapsed" : "");
-  btn.contentEditable = "false";
-  btn.setAttribute("aria-label", collapsed ? "Expand section" : "Collapse section");
-  btn.textContent = "▸";
-  btn.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    btn.dispatchEvent(
-      new CustomEvent(FOLD_TOGGLE_EVENT, { detail: { pos }, bubbles: true })
-    );
-  });
-  return btn;
-}
-
-// The chevron dispatches this DOM event (bubbles to the editor root); the plugin
-// view listens and turns it into a toggle meta. A DOM event keeps the widget
-// factory pure (no editor handle threaded through every decoration rebuild).
+// The gutter chevron dispatches this DOM event (bubbles to the editor root); the
+// plugin view listens and turns it into a toggle meta. A DOM event keeps the
+// gutter mousedown handler decoupled from the toggle/caret-management logic.
 const FOLD_TOGGLE_EVENT = "ledgr-fold-toggle";
+
+// The chevron lives in the heading's left gutter (a CSS ::before at negative
+// left, so its box sits entirely LEFT of the heading's border box). A click on
+// it therefore lands on the heading element with clientX to the left of the
+// heading's left edge — the discriminator we use to tell a fold click from a
+// click on the heading text. Pixels of gutter we treat as the chevron's hit zone.
+const FOLD_GUTTER_HIT_PX = 30;
 
 export const CollapsibleHeadings = Extension.create({
   name: "collapsibleHeadings",
@@ -185,6 +175,29 @@ export const CollapsibleHeadings = Extension.create({
           },
         },
         view: (editorView) => {
+          // Catch a click on the gutter chevron (the CSS ::before, which paints
+          // to the left of the heading box) and turn it into a fold toggle. We
+          // key off the click's x being left of the heading's left edge, so a
+          // click on the heading text itself is left alone (caret/selection work
+          // normally — the whole point of dropping the inline widget). mousedown
+          // (not click) so we can preventDefault before the caret moves.
+          const gutter = (e: MouseEvent) => {
+            const heading = (e.target as HTMLElement | null)?.closest?.(
+              "h1.ledgr-foldable, h2.ledgr-foldable, h3.ledgr-foldable"
+            ) as HTMLElement | null;
+            if (!heading) return;
+            const rect = heading.getBoundingClientRect();
+            if (e.clientX >= rect.left || e.clientX < rect.left - FOLD_GUTTER_HIT_PX)
+              return;
+            const attr = heading.getAttribute("data-fold-pos");
+            const pos = attr == null ? NaN : Number(attr);
+            if (!Number.isFinite(pos)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            heading.dispatchEvent(
+              new CustomEvent(FOLD_TOGGLE_EVENT, { detail: { pos }, bubbles: true })
+            );
+          };
           const handler = (e: Event) => {
             const pos = (e as CustomEvent<{ pos: number }>).detail?.pos;
             if (typeof pos !== "number") return;
@@ -211,9 +224,12 @@ export const CollapsibleHeadings = Extension.create({
             editorView.dispatch(tr.setMeta(key, { toggle: pos }));
           };
           editorView.dom.addEventListener(FOLD_TOGGLE_EVENT, handler);
+          editorView.dom.addEventListener("mousedown", gutter);
           return {
-            destroy: () =>
-              editorView.dom.removeEventListener(FOLD_TOGGLE_EVENT, handler),
+            destroy: () => {
+              editorView.dom.removeEventListener(FOLD_TOGGLE_EVENT, handler);
+              editorView.dom.removeEventListener("mousedown", gutter);
+            },
           };
         },
       }),

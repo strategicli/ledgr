@@ -15,6 +15,7 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { useIsDesktop } from "./useIsDesktop";
@@ -42,6 +43,7 @@ import {
   ToggleSummary,
   ToggleContent,
   insertToggle,
+  wrapSelectionInToggle,
 } from "./toggle-extension";
 import {
   CollapsibleHeadings,
@@ -88,10 +90,20 @@ export type MarkdownEditorProps = {
   // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
   // those lines instead of the promote button, and links to the task.
   promotedRefs?: PromotedRefs;
-  // When true, the formatting toolbar starts HIDDEN behind a small top-right
-  // toggle button (the task canvas default — a task body is mostly plain text, so
-  // the bar is opt-in noise). Default false keeps the bar always-on (notes etc.).
-  collapsibleToolbar?: boolean;
+  // Controlled visibility of the formatting bar on desktop (S5): the collapse
+  // toggle now lives in BodyEditor's mode-row, which owns this state (and its
+  // per-item persistence). When false the bar renders NOTHING on desktop (zero
+  // height — no empty reserved strip); on mobile the bar always shows regardless,
+  // since the collapse affordance is desktop-only. Default true = always shown,
+  // for the direct callers (scratch, changelog) that have no mode-row.
+  toolbarOpen?: boolean;
+  // Desktop only: the body's view-mode controls (Rich/Source/Preview pill +
+  // collapse toggle), rendered right-aligned on the SAME row as the formatting
+  // buttons so the two read as one bar (ADR-125 mode switch, merged in S8). The
+  // caller (BodyEditor) owns the markup and its own visibility; MarkdownEditor
+  // just docks it. When set, the bar always renders (even with the formatting
+  // buttons collapsed) so the toggle stays reachable. Direct callers pass none.
+  viewControls?: ReactNode;
   // When true, the editor has no tall min-height: it starts one line tall and
   // grows with content (the task canvas, where bodies are short). Default false
   // keeps the roomy 14rem writing area.
@@ -104,6 +116,11 @@ export type MarkdownEditorProps = {
   // reading-first swap when the user clicks/taps into the body to edit, so the
   // interaction lands as an edit; unused on the direct mount path.
   autoFocus?: boolean;
+  // Imperative focus signal: a monotonically increasing counter the host bumps to
+  // move the caret INTO the editor (the title's Enter → jump to the body). The
+  // mount value 0 means "don't focus", so a normal load never steals focus; each
+  // increment focuses once. Defaults 0.
+  focusSignal?: number;
 };
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
@@ -164,6 +181,20 @@ function loadEditorSettings(): Promise<EditorSettings> {
   return editorSettingsPromise;
 }
 
+// Shared ghost-button look for every toolbar control (formatting buttons + the
+// swatch controls), on the refreshed token layer (ADR-141): quiet idle ink, a
+// surface-2 wash on hover/active. Kept in one place so the two control kinds
+// can't drift apart.
+function toolbarBtnClass(active?: boolean, disabled?: boolean) {
+  return `flex h-7 min-w-[28px] items-center justify-center rounded-md px-1.5 text-sm font-medium ${
+    disabled
+      ? "cursor-default text-ink-faint"
+      : active
+        ? "bg-surface-2 text-ink"
+        : "text-ink-subtle hover:bg-surface-2 hover:text-ink"
+  }`;
+}
+
 function ToolbarButton({
   label,
   icon,
@@ -187,13 +218,7 @@ function ToolbarButton({
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-sm font-medium ${
-        disabled
-          ? "cursor-default text-neutral-600"
-          : active
-            ? "bg-neutral-700 text-neutral-100"
-            : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-      }`}
+      className={toolbarBtnClass(active, disabled)}
     >
       {icon ?? label}
     </button>
@@ -209,10 +234,12 @@ export default function MarkdownEditor({
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
-  collapsibleToolbar = false,
+  toolbarOpen = true,
+  viewControls,
   compact = false,
   editable = true,
   autoFocus = false,
+  focusSignal = 0,
 }: MarkdownEditorProps) {
   // onChange and uploadImage are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
@@ -315,7 +342,16 @@ export default function MarkdownEditor({
       // toggleBlocksEnabled (setSlashToggleEnabled below).
       SlashCommands,
     ],
-    content: initialMarkdown,
+    // Start EMPTY; the body is loaded in the post-mount effect below via
+    // setContent. Parsing markdown in the constructor — before every extension's
+    // markdown hooks are wired — mis-nests a standalone inline image (an image
+    // alone on its line, common in imported/clipped notes) as a bare child of the
+    // doc, which is schema-invalid. The editor doesn't check on load, so the
+    // first plugin appendTransaction (TrailingNode) throws "contentMatchAt on a
+    // node with invalid content" and the editor never mounts — the item modal
+    // then drops back to the list. setContent on the ready editor wraps the image
+    // correctly, so loading there yields a valid doc. (ADR-159.)
+    content: "",
     contentType: "markdown",
     editorProps: {
       attributes: { class: compact ? "ProseMirror ledgr-prose ledgr-prose-compact" : "ProseMirror ledgr-prose" },
@@ -425,6 +461,15 @@ export default function MarkdownEditor({
   useEffect(() => {
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  // Imperative focus (title Enter → jump into the body): when the host bumps
+  // focusSignal, move the caret to the start of the body. Guarded on a truthy
+  // signal so the mount value (0) can't steal focus on a normal load; each later
+  // increment focuses once. No-op on a locked/read-only editor.
+  useEffect(() => {
+    if (!editor || !focusSignal || !editable) return;
+    editor.commands.focus("start");
+  }, [editor, focusSignal, editable]);
 
   // Lock/unlock at runtime (the item lock toggle): a locked item drops
   // contenteditable so the cursor can't enter, and the toolbar hides below.
@@ -565,8 +610,14 @@ export default function MarkdownEditor({
     if (editor) setPromotedRefs(editor, promotedRefs ?? {});
   }, [editor, promotedRefs]);
 
-  // If the host swaps in a different document (e.g. "reload from saved" on the
-  // scratch route), reset the editor to it without firing onUpdate.
+  // Loads the body into the editor. Runs once on mount (the editor starts empty,
+  // see the `content: ""` note above) and again if the host swaps in a different
+  // document (e.g. "reload from saved" on the scratch route). setContent on the
+  // ready editor parses markdown correctly — including wrapping a standalone
+  // inline image in a paragraph, which the constructor path gets wrong (ADR-159).
+  // emitUpdate:false so this load never counts as a user edit; we then adopt the
+  // canonical serialization as the save baseline so a later programmatic
+  // re-serialize isn't mistaken for one either.
   useEffect(() => {
     if (!editor) return;
     const current = editor.getMarkdown();
@@ -575,6 +626,7 @@ export default function MarkdownEditor({
         contentType: "markdown",
         emitUpdate: false,
       });
+      lastEmitted.current = editor.getMarkdown();
     }
   }, [initialMarkdown, editor]);
 
@@ -593,15 +645,21 @@ export default function MarkdownEditor({
     });
   }, [editor]);
   const showTb = (id: string) => !hiddenTb.has(id);
-  // The formatting bar is hidden by default when collapsible (task canvas); a
-  // top-right toggle reveals it. When not collapsible it's always shown.
-  const [toolbarOpen, setToolbarOpen] = useState(!collapsibleToolbar);
-  // Collapse is a DESKTOP affordance only. On mobile the toolbar floats over the
-  // keyboard and must always show its buttons — collapsing it there leaves an
-  // empty bar with just a toggle (the mobile regression this guards against). So
-  // below `sm`, buttons always render and the toggle is hidden.
+  // Collapse is a DESKTOP affordance only (the toggle lives in BodyEditor's
+  // mode-row). On mobile the toolbar floats over the keyboard and must always
+  // show its buttons — collapsing it there would leave an empty bar (the mobile
+  // regression this guards against). So below `sm`, buttons always render; on
+  // desktop the controlled `toolbarOpen` decides, and when it's false the whole
+  // bar renders nothing (no reserved strip).
   const isDesktop = useIsDesktop();
   const showToolbarButtons = toolbarOpen || !isDesktop;
+  // The merged bar pins at the scroll container's top (its --nav-pt is 0 inside
+  // the item modal; on a full page it clears the docked top nav). The mode-row
+  // no longer stacks above it — the view controls ride the same row.
+  const stickyTop = "sm:top-[var(--nav-pt,0px)]";
+  // Which color popover is open (text color / highlight), or null. Only one at a
+  // time; a full-viewport backdrop closes it on an outside click.
+  const [openSwatch, setOpenSwatch] = useState<null | "color" | "highlight">(null);
 
   // Mobile editing posture (≥640px / `sm` is desktop and unaffected). On a phone
   // the toolbar becomes a single-row bar that floats on top of the on-screen
@@ -648,6 +706,114 @@ export default function MarkdownEditor({
     else chain.unsetMark("highlight").run();
   };
 
+  // The two color controls (text color, highlight): a ghost button showing a
+  // swatch of the current value that opens a popover of the 9 Notion colors
+  // (ADR-155). Replaces the OS-native <select>s, which read as foreign chrome
+  // in the toolbar. `hex` is the color's text stroke for the "color" kind and
+  // its highlight fill for the "highlight" kind.
+  const swatchHex = (kind: "color" | "highlight", c: BlockNoteColor) =>
+    kind === "color" ? BLOCKNOTE_COLORS[c].text : BLOCKNOTE_COLORS[c].background;
+  const swatchControl = (
+    kind: "color" | "highlight",
+    current: string,
+    onPick: (c: BlockNoteColor | null) => void
+  ) => {
+    const open = openSwatch === kind;
+    const title = kind === "color" ? "Text color" : "Highlight";
+    // Mobile: the formatting bar is a horizontally-scrolling strip pinned above
+    // the keyboard, so an absolutely-positioned popover would be clipped by the
+    // scroll container (overflow-x:auto forces overflow-y:auto) and would open
+    // down into the keyboard. Fall back to a native <select> — the OS picker is
+    // unclipped, keyboard-safe, and idiomatic on touch. Desktop gets the swatch
+    // popover below.
+    if (!isDesktop) {
+      return (
+        <select
+          title={title}
+          aria-label={title}
+          className="h-7 rounded-md bg-surface-2 px-1 text-sm text-ink-muted"
+          value={current}
+          onChange={(e) => onPick((e.target.value || null) as BlockNoteColor | null)}
+        >
+          <option value="">{title}</option>
+          {COLOR_NAMES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      );
+    }
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          title={title}
+          aria-label={title}
+          aria-haspopup="true"
+          aria-expanded={open}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setOpenSwatch(open ? null : kind)}
+          className={toolbarBtnClass(open || !!current)}
+        >
+          <span className="flex items-center gap-1">
+            {kind === "color" ? (
+              <span className="text-sm font-semibold leading-none">A</span>
+            ) : (
+              <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{TOOLBAR_ICONS.highlight}</span>
+            )}
+            <span
+              className="h-1 w-3.5 rounded-full"
+              style={{
+                backgroundColor: current
+                  ? swatchHex(kind, current as BlockNoteColor)
+                  : "var(--line-strong, #444)",
+              }}
+            />
+          </span>
+        </button>
+        {open && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onMouseDown={() => setOpenSwatch(null)}
+            />
+            <div className="absolute right-0 top-full z-50 mt-1 flex w-max items-center gap-1 rounded-card border border-line bg-surface-3 p-1.5 shadow-lg sm:left-0 sm:right-auto">
+              <button
+                type="button"
+                title="None"
+                aria-label="No color"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onPick(null);
+                  setOpenSwatch(null);
+                }}
+                className="flex h-6 w-6 items-center justify-center rounded text-xs text-ink-subtle ring-1 ring-line hover:text-ink"
+              >
+                ✕
+              </button>
+              {COLOR_NAMES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title={c}
+                  aria-label={c}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onPick(c);
+                    setOpenSwatch(null);
+                  }}
+                  className={`h-6 w-6 rounded ring-1 ring-line ${
+                    current === c ? "ring-2 ring-ink" : ""
+                  }`}
+                  style={{ backgroundColor: swatchHex(kind, c) }}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   // List nesting (the mobile Tab-key replacement). Bullet/ordered lists nest
   // their `listItem`; the GFM checklist nests `taskItem` (configured nested:true
   // above). Pick the node type from the active list so one pair of buttons
@@ -683,6 +849,9 @@ export default function MarkdownEditor({
       console.error("promote failed", err);
     }
   };
+
+  // Open the hidden file picker behind the toolbar's Image button.
+  const openImagePicker = () => fileInputRef.current?.click();
 
   // Open the hyperlink editor, prefilled with the current link's href if the
   // cursor sits inside one (so the button edits rather than stacks links).
@@ -741,129 +910,144 @@ export default function MarkdownEditor({
     }
   };
 
-  return (
-    <div className="border-b border-neutral-800">
-      {/* The formatting toolbar is hidden on a locked item — nothing here can
-          act on a read-only document (item lock toggle). */}
-      {editable && (
+  // Formatting buttons in visual groups (text · headings · lists · blocks ·
+  // insert), each rendered as a cluster with a hairline between clusters, so the
+  // long run of icons reads in chunks instead of one undifferentiated strip. A
+  // group with every button hidden (per-button visibility / feature gates) drops
+  // out, and its separator with it.
+  type Btn = { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; when?: boolean; run: () => void };
+  const groups: Btn[][] = [
+    [
+      { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
+      { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
+      { id: "strike", title: "Strikethrough", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
+    ],
+    [
+      { id: "h1", title: "Heading 1", label: "H1", active: toolbar.isH1, run: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+      { id: "h2", title: "Heading 2", label: "H2", active: toolbar.isH2, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+    ],
+    [
+      { id: "bulletList", title: "Bullet list", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
+      { id: "orderedList", title: "Numbered list", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
+      { id: "tasks", title: "Checklist (- [ ])", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
+      { id: "outdent", title: "Outdent (un-nest list item)", icon: TOOLBAR_ICONS.outdent, disabled: !inList, run: outdent },
+      { id: "indent", title: "Indent (nest list item)", icon: TOOLBAR_ICONS.indent, disabled: !inList, run: indent },
+    ],
+    [
+      { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
+      { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
+      { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+      { id: "toggle", title: "Toggle (collapsible block; wraps the selection)", icon: TOOLBAR_ICONS.toggle, when: toggleBlocksOn, active: toolbar.isToggle, run: () => {
+        const sel = editor.state.selection;
+        if (!sel.empty && wrapSelectionInToggle(editor)) return;
+        insertToggle(editor);
+      } },
+    ],
+  ];
+  const visibleGroups = groups
+    .map((g) => g.filter((b) => showTb(b.id) && b.when !== false))
+    .filter((g) => g.length > 0);
+  // The insert cluster (image / link / line-link) is rendered explicitly rather
+  // than in the data array: its handlers read a DOM ref (the file input) / the
+  // clipboard, which the refs lint rule won't allow inside a mapped structure.
+  const showImage = showTb("image") && !!uploadImage;
+  const showWeblink = showTb("weblink");
+  const showCopyLink = showTb("link") && !!itemId;
+  const hasInsert = showImage || showWeblink || showCopyLink;
+  const showColor = showTb("color");
+  const showHighlight = showTb("highlight");
+  const sep = <span className="mx-1 h-5 w-px shrink-0 bg-line" aria-hidden />;
+
+  // The formatting/merged bar. Built here (not inline in the return) so the
+  // mobile-portal branch below can reference one element. On mobile the focused
+  // bar is position:fixed to float above the keyboard; but a field-card canvas
+  // (ADR-069) wraps the editor in react-grid-layout, whose CSS transform becomes
+  // the containing block for fixed descendants — the bar would anchor to the
+  // grid cell (deep in the doc, behind the keyboard). So it's portaled to <body>
+  // to escape the transform. Desktop renders it inline (sticky), no portal.
+  const formattingBar = (
       <div
         className={
           focused
-            ? "fixed inset-x-0 z-50 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur sm:static sm:z-auto sm:border-t-0 sm:bg-transparent sm:backdrop-blur-none"
-            : "hidden sm:block"
+            ? `fixed inset-x-0 z-50 border-t border-line bg-neutral-900/95 backdrop-blur sm:sticky sm:inset-x-auto ${stickyTop} sm:z-30 sm:border-t-0 sm:bg-surface-1 sm:backdrop-blur-none`
+            : `hidden sm:sticky ${stickyTop} sm:z-30 sm:block sm:bg-surface-1`
         }
-        style={focused ? { bottom: keyboardInset } : undefined}
+        style={focused && !isDesktop ? { bottom: keyboardInset } : undefined}
       >
-      <div className={`flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-1 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible ${showToolbarButtons ? "border-b border-neutral-800/70" : ""}`}>
-        {showToolbarButtons && (<>{(
-          [
-            { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
-            { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
-            { id: "strike", title: "Strikethrough", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
-            { id: "h1", title: "Heading 1", label: "H1", active: toolbar.isH1, run: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
-            { id: "h2", title: "Heading 2", label: "H2", active: toolbar.isH2, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
-            { id: "bulletList", title: "Bullet list", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
-            { id: "orderedList", title: "Numbered list", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
-            { id: "tasks", title: "Checklist (- [ ])", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
-            { id: "outdent", title: "Outdent (un-nest list item)", icon: TOOLBAR_ICONS.outdent, disabled: !inList, run: outdent },
-            { id: "indent", title: "Indent (nest list item)", icon: TOOLBAR_ICONS.indent, disabled: !inList, run: indent },
-            { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
-            { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
-            { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-            { id: "toggle", title: "Toggle (collapsible block)", icon: TOOLBAR_ICONS.toggle, active: toolbar.isToggle, run: () => insertToggle(editor) },
-          ] as { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; run: () => void }[]
-        )
-          // Hide the toggle button when the feature is off; every button also
-          // honors the user's per-button toolbar visibility (editorToolbarHidden).
-          .filter((b) => showTb(b.id) && (b.id !== "toggle" || toggleBlocksOn))
-          .map((b) => (
-            <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
-          ))}
-
-        {showTb("image") && uploadImage && (
-          <ToolbarButton
-            icon={TOOLBAR_ICONS.image}
-            title="Insert image (or paste/drop one)"
-            onClick={() => fileInputRef.current?.click()}
-          />
-        )}
-        {showTb("weblink") && (
-          <ToolbarButton
-            icon={TOOLBAR_ICONS.weblink}
-            title="Insert link"
-            active={toolbar.isLink || linkDraft !== null}
-            onClick={openLinkEditor}
-          />
-        )}
-        {showTb("link") && itemId && (
-          <ToolbarButton
-            icon={TOOLBAR_ICONS.link}
-            title="Copy a link to this line (from the cursor)"
-            active={linkCopied}
-            onClick={() => void copyLineLink()}
-          />
-        )}
-
-        {(showTb("color") || showTb("highlight")) && (
-          <span className="mx-1 h-5 w-px bg-neutral-700" />
-        )}
-
-        {showTb("color") && (
-          <select
-            title="Text color"
-            className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-            value={toolbar.textColor}
-            onChange={(e) => setColor((e.target.value || null) as BlockNoteColor | null)}
-          >
-            <option value="">Color…</option>
-            {COLOR_NAMES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+      <div className="flex flex-nowrap items-center gap-0.5 overflow-x-auto overscroll-x-contain px-2 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible">
+        {showToolbarButtons && (
+          <>
+            {visibleGroups.map((g, gi) => (
+              <div key={g[0].id} className="flex items-center gap-0.5">
+                {gi > 0 && sep}
+                {g.map((b) => (
+                  <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
+                ))}
+              </div>
             ))}
-          </select>
+
+            {hasInsert && (
+              <div className="flex items-center gap-0.5">
+                {visibleGroups.length > 0 && sep}
+                {showImage && (
+                  <ToolbarButton icon={TOOLBAR_ICONS.image} title="Insert image (or paste/drop one)" onClick={openImagePicker} />
+                )}
+                {showWeblink && (
+                  <ToolbarButton icon={TOOLBAR_ICONS.weblink} title="Insert link" active={toolbar.isLink || linkDraft !== null} onClick={openLinkEditor} />
+                )}
+                {showCopyLink && (
+                  <ToolbarButton icon={TOOLBAR_ICONS.link} title="Copy a link to this line (from the cursor)" active={linkCopied} onClick={() => void copyLineLink()} />
+                )}
+              </div>
+            )}
+
+            {(showColor || showHighlight) && (
+              <div className="flex items-center gap-0.5">
+                {(visibleGroups.length > 0 || hasInsert) && sep}
+                {showColor && swatchControl("color", toolbar.textColor, setColor)}
+                {showHighlight && swatchControl("highlight", toolbar.highlight, setHighlight)}
+              </div>
+            )}
+
+            {showTb("mention") && (
+              <span className="ml-2 text-xs text-ink-subtle">
+                Type <kbd className="rounded bg-surface-2 px-1">@</kbd> to mention
+              </span>
+            )}
+          </>
         )}
 
-        {showTb("highlight") && (
-          <select
-            title="Highlight"
-            className="rounded bg-neutral-800 px-1 py-1 text-sm text-neutral-200"
-            value={toolbar.highlight}
-            onChange={(e) => setHighlight((e.target.value || null) as BlockNoteColor | null)}
-          >
-            <option value="">Highlight…</option>
-            {COLOR_NAMES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        )}
-
-        {showTb("mention") && (
-          <span className="ml-2 text-xs text-neutral-500">
-            Type <kbd className="rounded bg-neutral-800 px-1">@</kbd> to mention
-          </span>
-        )}</>)}
-        {collapsibleToolbar && isDesktop && (
-          <button
-            type="button"
-            onClick={() => setToolbarOpen((v) => !v)}
-            title={toolbarOpen ? "Hide formatting" : "Formatting"}
-            aria-label={toolbarOpen ? "Hide formatting" : "Formatting"}
-            aria-pressed={toolbarOpen}
-            className="ml-auto rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              {toolbarOpen ? <path d="M6 15l6-6 6 6" /> : <><path d="M4 7h16M4 12h10M4 17h13" /></>}
-            </svg>
-          </button>
+        {viewControls && (
+          <div className="ml-auto hidden items-center gap-1 pl-2 sm:flex">
+            {viewControls}
+          </div>
         )}
       </div>
       </div>
-      )}
+  );
+
+  return (
+    <div className="border-b border-line">
+      {/* The formatting bar is hidden on a locked item (nothing here can act on a
+          read-only document). On desktop it merges with the body's view-mode
+          controls (viewControls, right-aligned) into one bar; when the collapse
+          toggle has hidden the formatting buttons, the bar still renders so the
+          toggle and view pill stay reachable. Desktop: sticky so it stays with a
+          long note, opaque surface so scrolled text doesn't bleed through, pinned
+          at --nav-pt (0 inside the item modal, top-nav height on a full page).
+          Mobile: the formatting buttons float above the keyboard (fixed, bottom);
+          the view controls live in a separate top row the host renders, so
+          viewControls is desktop-only here. */}
+      {editable && (showToolbarButtons || viewControls) &&
+        (focused && !isDesktop
+          ? createPortal(formattingBar, document.body)
+          : formattingBar)}
 
       {/* Hyperlink editor: a one-line URL input below the toolbar, open while
           linkDraft is non-null. Enter applies, Escape cancels; Remove clears an
           existing link. Markdown round-trips the resulting [text](url). */}
       {editable && linkDraft !== null && (
-        <div className="flex items-center gap-1.5 border-b border-neutral-800/70 px-2 py-1.5">
+        <div className="flex items-center gap-1.5 border-b border-line bg-surface-1 px-2 py-1.5">
           <input
             type="url"
             autoFocus

@@ -18,6 +18,7 @@ import {
 } from "@/lib/save-status";
 import BodyEditor from "./BodyEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
+import { useTokenAutocomplete } from "./useTokenAutocomplete";
 
 const SAVE_DEBOUNCE_MS = 1500;
 
@@ -107,6 +108,10 @@ export default function ItemEditor({
   controlledSection,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
+  // Bumped when Enter is pressed in the title, to move the caret into the body
+  // editor (fix: Enter in the title should jump to the body, not just blur). 0 =
+  // don't focus, so the body never steals focus on a normal load.
+  const [bodyFocusSignal, setBodyFocusSignal] = useState(0);
   const pending = useRef<{ title?: string; body?: unknown }>({});
   // The markdown of the body as last persisted, seeded from what loaded. The
   // editor re-emits the loaded body once when it mounts (a programmatic editor
@@ -223,6 +228,16 @@ export default function ItemEditor({
     [flush]
   );
 
+  // `{{` live-token autocomplete for the title (the body editor has its own via
+  // token-suggestion.ts). Picking a token routes through the same setTitle +
+  // debounced-save path as typing, so nothing about autosave changes.
+  const titleAC = useTokenAutocomplete(titleRef, (next) => {
+    setTitle(next);
+    pending.current.title = next;
+    onLiveChange?.({ title: next });
+    schedule();
+  });
+
   // Title wraps and grows with content (Brandon, 2026-06-17): keep the textarea's
   // height matched to its content after every edit, so a long title shows in full
   // instead of scrolling in one line.
@@ -268,6 +283,7 @@ export default function ItemEditor({
   }, [item.id]);
 
   const titleInput = (
+    <>
     <textarea
       ref={titleRef}
       rows={1}
@@ -284,16 +300,49 @@ export default function ItemEditor({
         pending.current.title = e.target.value;
         onLiveChange?.({ title: e.target.value });
         schedule();
+        titleAC.sync();
       }}
-      // A title is one logical line that wraps; Enter commits (blurs) rather than
-      // inserting a newline.
+      onKeyUp={titleAC.sync}
+      onClick={titleAC.sync}
+      onBlur={titleAC.close}
+      onCompositionStart={titleAC.onCompositionStart}
+      onCompositionEnd={titleAC.onCompositionEnd}
+      // A title is one logical line that wraps; Enter commits it and moves the
+      // caret into the body (instead of just blurring), so a new note flows
+      // title → body without reaching for the mouse. In the combined layout the
+      // body editor focuses off the bumped signal. In the field-card layout
+      // (MarkdownCanvas/TaskCanvas/WidgetCanvas) the title is its own ItemEditor
+      // instance and the body is a sibling, so we reach the body editor through
+      // the DOM and drop the caret at its start; if there's no live body editor
+      // on this canvas (e.g. a Preview-mode large doc), we just blur.
       onKeyDown={(e) => {
+        // The token menu gets first crack at arrows/enter/tab/escape while open.
+        if (titleAC.onKeyDown(e)) return;
         if (e.key === "Enter") {
           e.preventDefault();
-          e.currentTarget.blur();
+          if (slot === "title") {
+            const pm = document.querySelector<HTMLElement>(
+              '.ProseMirror[contenteditable="true"]'
+            );
+            if (pm) {
+              pm.focus();
+              const sel = window.getSelection();
+              if (sel) {
+                const r = document.createRange();
+                r.selectNodeContents(pm);
+                r.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(r);
+              }
+            } else {
+              e.currentTarget.blur();
+            }
+          } else setBodyFocusSignal((n) => n + 1);
         }
       }}
     />
+    {titleAC.menu}
+    </>
   );
   const onBodyChange = (markdown: string) => {
     if (markdown === savedBodyText.current) return;
@@ -322,6 +371,7 @@ export default function ItemEditor({
       editable={!locked}
       tabsEnabled={tabsEnabled}
       controlledSection={controlledSection}
+      focusSignal={bodyFocusSignal}
     />
   );
 

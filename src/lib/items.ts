@@ -21,6 +21,7 @@ import {
 import { getDb } from "@/db";
 import { items, revisions } from "@/db/schema";
 import { bodyMarkdown } from "@/lib/body";
+import { RECENCY_STRONG, recencyMultiplier } from "@/lib/recency";
 import type { StatusCategory } from "@/lib/status";
 
 // Re-exported from item-enums.ts (client-safe home) so server callers keep
@@ -135,15 +136,20 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   // contain the words. When there's a query, rank by match quality first:
   // exact title, then prefix, then pg_trgm full-string similarity (which
   // penalizes the extra trigrams in a longer title, so the closer/shorter
-  // title wins), with recency only as the final tiebreak. word_similarity
-  // would score ~1.0 for any title *containing* the words, so it can't make
-  // this distinction — full-string similarity() is deliberate.
+  // title wins). word_similarity would score ~1.0 for any title *containing*
+  // the words, so it can't make this distinction — full-string similarity() is
+  // deliberate. Recency is *modulated into* similarity (× the recency curve,
+  // see @/lib/recency), not used as a hard sort key: among close-similarity
+  // hits (typing "rog" → several "Roger …") the recently-touched one wins,
+  // but a short exact-ish match ("Roger Knowlton") keeps its similarity lead
+  // over a long freshly-entered task ("Roger Knowlton's email …"), so recency
+  // never overturns a clear title match. updated_at stays the final tiebreak.
   const orderBy: SQL[] = [];
   if (opts.q) {
     orderBy.push(
       sql`(lower(${items.title}) = lower(${opts.q})) desc`,
       sql`(${items.title} ilike ${`${escapedQ}%`}) desc`,
-      sql`similarity(lower(${items.title}), lower(${opts.q})) desc`
+      sql`similarity(lower(${items.title}), lower(${opts.q})) * ${recencyMultiplier(RECENCY_STRONG)} desc`
     );
   }
   orderBy.push(opts.trash ? desc(items.deletedAt) : desc(items.updatedAt));

@@ -15,10 +15,14 @@ export default async function MeetingNotes({
   // A single grid card (ADR-069): drop the per-section card chrome so the list
   // stacks inside the one grid card, matching MeetingPrep/MeetingTranscripts.
   bare = false,
+  // Render collapsed by default (event canvas, Brandon 2026-07-10): notes are
+  // supporting docs, opened rarely, so the section starts closed.
+  collapsed = false,
 }: {
   ownerId: string;
   itemId: string;
   bare?: boolean;
+  collapsed?: boolean;
 }) {
   const notes = await queryViewItems(
     ownerId,
@@ -28,7 +32,13 @@ export default async function MeetingNotes({
   );
 
   return (
-    <CanvasSection bare={bare} icon="notes" title="Notes" count={notes.length}>
+    <CanvasSection
+      bare={bare}
+      icon="notes"
+      title="Notes"
+      count={notes.length}
+      defaultOpen={collapsed ? false : undefined}
+    >
       <ul className="canvas-rows empty:hidden">
         {notes.map((n) => (
           <li
