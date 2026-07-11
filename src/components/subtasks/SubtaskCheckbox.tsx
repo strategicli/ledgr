@@ -37,13 +37,20 @@ export default function SubtaskCheckbox({
     }
   }
 
+  // A padded label wraps the 16px control so touch gets a ~40px tap target
+  // (clearing the ~44px minimum with the row's own padding) without abutting the
+  // tap-to-open title; the enlargement is scoped to coarse pointers, so desktop
+  // density is unchanged (globals.css `.ledgr-check-hit`). Swipe-right stays the
+  // primary mobile complete gesture (SwipeRow).
   return (
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={toggle}
-      className="ledgr-check"
-      aria-label={checked ? "Mark not done" : "Mark done"}
-    />
+    <label className="ledgr-check-hit">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={toggle}
+        className="ledgr-check"
+        aria-label={checked ? "Mark not done" : "Mark done"}
+      />
+    </label>
   );
 }

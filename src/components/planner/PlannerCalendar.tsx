@@ -17,12 +17,6 @@ import type { ViewItem } from "@/components/views/ViewRenderer";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
 import type { StatusDef } from "@/lib/status";
 
-const pad = (n: number) => String(n).padStart(2, "0");
-function localTodayYmd(): string {
-  const n = new Date();
-  return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
-}
-
 export default function PlannerCalendar({
   items,
   prop,
@@ -32,6 +26,7 @@ export default function PlannerCalendar({
   navHref,
   calendarEvents,
   statuses,
+  today,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -41,12 +36,17 @@ export default function PlannerCalendar({
   navHref?: string;
   calendarEvents?: OverlayEvent[];
   statuses?: StatusDef[];
+  // App-timezone "today" (YYYY-MM-DD), resolved server-side and passed down so
+  // SSR and the client's first render agree (a browser-local `new Date()` here
+  // mismatched a UTC server render — a hydration warning). Seeds the time-grid
+  // anchor and both sub-views' "today" marker.
+  today: string;
 }) {
   const [mode, setMode] = useState<CalendarMode>(display?.mode ?? DISPLAY_DEFAULTS.mode);
   // The multi-day time-grid's leftmost day, lifted here so the month grid can
   // jump to a specific day ("+N more" / a day number → open that day in the
   // time-grid). Owned by the shell; both are passed to the time-grid.
-  const [anchor, setAnchor] = useState<string>(localTodayYmd);
+  const [anchor, setAnchor] = useState<string>(today);
   // Show/hide tasks with no due/scheduled date (the Unscheduled rail). Off by
   // default — most days you want to see only what's already placed; persisted
   // per browser so the choice sticks.
@@ -146,9 +146,9 @@ export default function PlannerCalendar({
         </p>
       )}
       {mode === "month" ? (
-        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} onOpenDay={openDay} />
+        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} onOpenDay={openDay} today={today} />
       ) : (
-        <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} anchor={anchor} setAnchor={setAnchor} />
+        <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} anchor={anchor} setAnchor={setAnchor} today={today} />
       )}
       <PlannerToast toast={toast} onDismiss={() => setToast(null)} />
     </div>

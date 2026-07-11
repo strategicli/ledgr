@@ -554,6 +554,9 @@ export default function NavShell({
         // the drawer's own tiles); on desktop mobileBar is false, so this is inert.
         onClick={mobileBar ? () => setLauncherOpen(false) : undefined}
         aria-label={slot.label}
+        // Hover tooltip so the icon-only thin rail (and the mobile bar) stays
+        // identifiable — the fat rail / top bar show the label inline anyway.
+        title={slot.label}
         aria-current={isActive(slot.href) ? "page" : undefined}
         className={className}
       >

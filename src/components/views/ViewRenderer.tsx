@@ -929,6 +929,12 @@ export default function ViewRenderer({
             navHref={calendarNavHref}
             calendarEvents={calendarEvents}
             statuses={statuses}
+            // App-timezone "today", resolved server-side so SSR and the client's
+            // first render agree (the planner used to seed today/anchor from the
+            // browser's local `new Date()`, which mismatches a UTC server render
+            // and tripped a hydration warning). Computed once here and passed as a
+            // plain string, so the client never recomputes it.
+            today={today ?? tzFmts(tz).key.format(new Date())}
           />
         );
       }

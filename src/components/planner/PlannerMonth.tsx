@@ -67,6 +67,7 @@ export default function PlannerMonth({
   statuses,
   notify,
   onOpenDay,
+  today,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -78,6 +79,10 @@ export default function PlannerMonth({
   statuses?: StatusDef[];
   notify: Notify;
   onOpenDay?: (ymd: string) => void;
+  // App-timezone "today" (YYYY-MM-DD) from the server, so the default month and
+  // the "today" cell marker are deterministic across SSR/hydration (a
+  // browser-local `new Date()` here mismatched a UTC server render).
+  today: string;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -99,17 +104,19 @@ export default function PlannerMonth({
   const effectiveYmd = (item: ViewItem): string | null =>
     Object.prototype.hasOwnProperty.call(override, item.id) ? override[item.id] : storedYmd(item);
 
-  // Month to show (YYYY-MM), else the current month in local time.
-  const now = new Date();
-  const shown = month && /^\d{4}-\d{2}$/.test(month) ? month : `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  // Month to show (YYYY-MM), else the current month (app timezone, from the
+  // server-resolved `today` — never the browser's local `new Date()`, which
+  // mismatched a UTC server render).
+  const todayYmd = today;
+  const currentMonth = today.slice(0, 7); // YYYY-MM
+  const shown = month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth;
   const [ys, ms] = shown.split("-");
   const year = Number(ys);
   const monthNum = Number(ms); // 1-12
   const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNum - 1, 1)));
   const daysInMonth = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
   const firstWeekday = new Date(Date.UTC(year, monthNum - 1, 1)).getUTCDay();
-  const todayYmd = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const onCurrentMonth = shown === `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  const onCurrentMonth = shown === currentMonth;
   const toParam = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`;
   const prevMonth = toParam(new Date(Date.UTC(year, monthNum - 2, 1)));
   const nextMonth = toParam(new Date(Date.UTC(year, monthNum, 1)));

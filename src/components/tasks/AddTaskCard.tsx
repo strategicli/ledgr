@@ -119,6 +119,13 @@ export default function AddTaskCard({
   const [busy, setBusy] = useState(false);
   const [pickDate, setPickDate] = useState(false);
   const showAction = (id: string) => !qaHidden.has(id);
+  // Two chip-row controls are placeholders with nothing wired behind them yet:
+  // the "Rich editor" button (no canvas handoff) and the "Assignee" chip (the
+  // @-assignee shortcut was retired; no dedicated picker exists). Deferred by
+  // hiding until they do something (Brandon, 2026-06-21) — the code stays put and
+  // still respects the Quick Add config (showAction) so flipping this to true
+  // re-surfaces them cleanly. Non-functional controls shouldn't ship visible.
+  const PLACEHOLDERS_READY = false;
 
   // "@"-mention linking (unified with the universal capture card): typing "@"
   // links this task to any existing item as a `related` edge (create-on-miss
@@ -358,7 +365,9 @@ export default function AddTaskCard({
         </div>
         <div className="flex shrink-0 items-center gap-1 text-neutral-500">
           <button type="button" title="Toggle description" aria-label="Toggle description" onClick={() => setShowDesc((v) => !v)} className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-300">{IconDescription}</button>
-          <button type="button" title="Rich editor" aria-label="Rich editor" className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-300">{IconCanvas}</button>
+          {PLACEHOLDERS_READY && (
+            <button type="button" title="Rich editor" aria-label="Rich editor" className="rounded p-1 hover:bg-neutral-800 hover:text-neutral-300">{IconCanvas}</button>
+          )}
         </div>
       </div>
 
@@ -416,7 +425,7 @@ export default function AddTaskCard({
         {/* Assignee is kept as a placeholder chip (defer-by-hiding): assign-by-@
             was retired when "@" became a generic link, and a dedicated picker
             can hang off this chip later. Config-hideable via Quick Add. */}
-        {showAction("assignee") && (
+        {PLACEHOLDERS_READY && showAction("assignee") && (
           <span className={chip} title="Assignee (dedicated picker coming soon)">
             {IconUser} Assignee
           </span>
