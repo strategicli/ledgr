@@ -30,10 +30,14 @@ export default async function MeetingTranscripts({
   itemId,
   // Rendered as a single grid card (ADR-069): drop the section card chrome.
   bare = false,
+  // Render collapsed by default (event canvas, Brandon 2026-07-10): a meeting's
+  // transcript is opened rarely, so the section starts closed.
+  collapsed = false,
 }: {
   ownerId: string;
   itemId: string;
   bare?: boolean;
+  collapsed?: boolean;
 }) {
   const transcripts = await listMeetingTranscripts(ownerId, itemId);
   const transcriptionEnabled = getTranscription() != null;
@@ -49,6 +53,7 @@ export default async function MeetingTranscripts({
         icon="document"
         title="Transcripts"
         count={transcripts.length || undefined}
+        defaultOpen={collapsed ? false : undefined}
       >
       {transcripts.length === 0 ? (
         <p className="mt-2 px-2 text-sm text-neutral-600">

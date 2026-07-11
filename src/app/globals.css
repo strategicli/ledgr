@@ -429,6 +429,27 @@ body {
   padding-top: 0.4rem;
 }
 
+/* Collapsible section (CanvasSection defaultOpen): the head is a <summary>. Hide
+   the native disclosure marker and rotate our own caret when open. */
+.canvas-section-summary {
+  cursor: pointer;
+  list-style: none;
+}
+.canvas-section-summary::-webkit-details-marker {
+  display: none;
+}
+.cs-caret {
+  transition: transform 120ms ease;
+}
+details[open] > .canvas-section-summary .cs-caret {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-caret {
+    transition: none;
+  }
+}
+
 /* Header: icon + label + count, with an optional right-aligned action slot. */
 .canvas-section-head {
   display: flex;

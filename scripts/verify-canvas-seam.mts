@@ -33,9 +33,13 @@ check("task is not the default", canvasIdForType("task") !== DEFAULT_CANVAS);
 // while arranging or when a custom layout is saved, like task.
 check("note resolves to the shared longform canvas", canvasIdForType("note") === "longform");
 check("note is not the default", canvasIdForType("note") !== DEFAULT_CANVAS);
-for (const t of ["event", "person"]) {
-  check(`${t} falls back to the default canvas`, canvasIdForType(t) === DEFAULT_CANVAS);
-}
+// `event` has its own bespoke two-pane meeting canvas (ADR-158), delegating to
+// the default's grid only while arranging / with a saved layout, like task/note.
+check("event resolves to its own canvas", canvasIdForType("event") === "event");
+check("event is not the default", canvasIdForType("event") !== DEFAULT_CANVAS);
+// `person` still falls back to the default markdown canvas (its bespoke canvas
+// is the next slice after event).
+check("person falls back to the default canvas", canvasIdForType("person") === DEFAULT_CANVAS);
 check("an unregistered module type falls back to the default", canvasIdForType("song") === DEFAULT_CANVAS);
 check("an empty type falls back to the default", canvasIdForType("") === DEFAULT_CANVAS);
 
