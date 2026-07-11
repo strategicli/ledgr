@@ -15,7 +15,7 @@
 // NOTE: the `@min-[640px]:` classes are written out in full — Tailwind's scanner
 // only detects complete class literals, so they must never be built by string
 // interpolation.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 function Chevron({ dir }: { dir: "left" | "right" }) {
   return (
@@ -61,10 +61,14 @@ export default function CanvasTwoPane({
 
   const [open, setOpen] = useState(true);
   const [width, setWidth] = useState(defaultWidth);
-  const widthRef = useRef(width);
-  widthRef.current = width;
   const [ready, setReady] = useState(false);
 
+  // Hydrate the client-only preferences (localStorage) after mount — the SSR-safe
+  // pattern: render the defaults on the server and the first client render, then
+  // adjust. The synchronous setState here is exactly that intended hydrate-on-
+  // mount use (react-hooks/set-state-in-effect flags it as a false positive), and
+  // the empty deps are deliberate (run once).
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (localStorage.getItem(OPEN_KEY) === "0") setOpen(false);
     if (resizable) {
@@ -72,8 +76,8 @@ export default function CanvasTwoPane({
       if (w) setWidth(clamp(w));
     }
     setReady(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (ready) localStorage.setItem(OPEN_KEY, open ? "1" : "0");
   }, [open, ready, OPEN_KEY]);
@@ -81,7 +85,8 @@ export default function CanvasTwoPane({
   function startDrag(e: React.PointerEvent) {
     e.preventDefault();
     const startX = e.clientX;
-    const startW = widthRef.current;
+    // startDrag is recreated each render, so `width` here is always current.
+    const startW = width;
     let latest = startW;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
