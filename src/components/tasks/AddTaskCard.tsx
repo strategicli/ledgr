@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { parseTaskTitle } from "@/lib/nl-date";
 import { priorityStyle, type Priority } from "@/lib/priority";
 import { enqueueCapture } from "@/lib/outbox";
+import { scheduleListRefresh } from "@/lib/list-refresh";
 import {
   consumeMentionText,
   detectMentionToken,
@@ -82,6 +83,14 @@ function loadQuickAddHidden(): Promise<string[]> {
 
 type ProjectOpt = { id: string; title: string };
 
+// The provisional task a host can render immediately, before the POST resolves
+// (optimistic add). Just enough to paint a recognizable row.
+export type OptimisticTask = {
+  id: string;
+  title: string;
+  scheduleLabel: string | null;
+};
+
 export default function AddTaskCard({
   defaultDueYmd,
   host,
@@ -89,6 +98,7 @@ export default function AddTaskCard({
   lockDestination = false,
   onDone,
   onCancel,
+  onOptimisticAdd,
 }: {
   defaultDueYmd?: string;
   // The item the task is added FROM (a project card, a note, …): the task
@@ -101,6 +111,11 @@ export default function AddTaskCard({
   lockDestination?: boolean;
   onDone: () => void;
   onCancel: () => void;
+  // When provided (inline list surfaces), the add is OPTIMISTIC: the card closes
+  // and this fires with the provisional task immediately, the POST runs behind
+  // it, and a coalesced refresh reconciles the real row in. Absent (modal /
+  // related panel) keeps the original await-then-refresh-then-close flow.
+  onOptimisticAdd?: (task: OptimisticTask) => void;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -218,7 +233,6 @@ export default function AddTaskCard({
     const sched = effScheduled;
     const urg = urgency ?? p.urgency ?? null;
     const rec = p.recurrence ?? null;
-    setBusy(true);
     const body: Record<string, unknown> = { type: "task", title: finalTitle };
     if (destId === "inbox") body.inbox = true;
     if (dueDay) body.dueDate = `${dueDay}T00:00:00.000Z`;
@@ -228,7 +242,10 @@ export default function AddTaskCard({
     if (rec) props.recurrence = rec;
     if (Object.keys(props).length) body.properties = props;
     if (description.trim()) body.body = { format: "markdown", text: description.trim() };
-    try {
+
+    // POST the task and wire up its destination/@-linked relations. Shared by
+    // both paths below.
+    const persist = async () => {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -247,6 +264,35 @@ export default function AddTaskCard({
         // "@"-linked items → plain `related` edges (the universal related list).
         await Promise.all(linked.map((l) => rel(l.id, "related")));
       }
+    };
+
+    if (onOptimisticAdd) {
+      // Optimistic: paint the row and close the card now; POST behind it and let
+      // a single coalesced refresh reconcile the real row in (matching how
+      // completing already feels). A failure falls back to the offline outbox.
+      // busy guards against a re-entrant submit (rapid double-Enter) in the tick
+      // before onDone unmounts the card.
+      setBusy(true);
+      onOptimisticAdd({
+        id: `tmp-${Date.now()}`,
+        title: finalTitle,
+        scheduleLabel,
+      });
+      onDone();
+      void persist()
+        .then(() => scheduleListRefresh(() => router.refresh()))
+        .catch(() => {
+          enqueueCapture(body);
+          window.dispatchEvent(new Event("ledgr:outbox"));
+          scheduleListRefresh(() => router.refresh());
+        });
+      return;
+    }
+
+    // Non-optimistic (modal / related panel): await, refresh, then close.
+    setBusy(true);
+    try {
+      await persist();
       router.refresh();
       onDone();
     } catch {
