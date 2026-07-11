@@ -3,8 +3,14 @@
 # endpoint — the scheduler interface the PRD chose (§6.1), the same door the
 # purge/export crons use, swappable for a local cron in Phase 4.
 #
-# Default 6h: prep-freshness sets the cadence, not cost (the poll is free
-# either way). Adjust the cron below if 6h feels stale or chatty.
+# Cadence: weekday work-hours (was every 6h, round the clock). Each run wakes
+# Neon and holds it for the fixed 5-min autosuspend tail, so fewer, shared
+# windows = less compute. Times are UTC, Mon–Fri at 13:00 / 18:00 / 22:00
+# (~8am / ~1pm / ~5pm Central; ~1h earlier in winter), the same windows
+# email-import uses so the two ride one compute wake. Plus one weekend pull
+# (Sat + Sun 13:00 UTC) so weekend changes still land the same day. Overnight
+# changes wait for the next window; the offline export covers Sundays. Need a
+# pull NOW → "Run workflow" (workflow_dispatch) below.
 #
 # Auth: a cron-scoped Ledgr machine token in the LEDGR_CRON_TOKEN repo secret
 # (issue with `node scripts/make-token.mjs gh-actions cron`; one cron-scope
@@ -14,7 +20,8 @@ name: calendar-sync
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 13,18,22 * * 1-5"
+    - cron: "0 13 * * 6,0"
   workflow_dispatch:
 
 permissions:
