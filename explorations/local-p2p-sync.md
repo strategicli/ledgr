@@ -63,6 +63,21 @@ Pure-local kills shareable links, the remote MCP, email-in/Graph webhooks, and m
 
 This reframes the whole idea: not "leave the cloud," but "make the cloud one replica among several." Almost everything on the loss list evaporates, and the mobile problem defers itself until a native/local mobile story is genuinely wanted.
 
+## Two flavors of the always-on peer (and the MCP question)
+
+The always-on peer doesn't have to be the cloud. There are two flavors, not mutually exclusive:
+
+- **Cloud peer (Vercel + Neon).** Zero hardware, zero ops, ~$0, but keeps the free-tier ceilings (R2 10GB, Neon compute/row limits) and the "someone else can pull it" dependency.
+- **Self-hosted peer (an old laptop in the closet, always on, on a tunnel).** No storage limit, no compute limit, no cloud dependency, reuses hardware you own. The cost is that uptime, reachability, and the box not dying become yours. This is the genuinely attractive "no limits" case raised.
+
+**The MCP runs on whichever peer is always-on** — it is a thin layer over the same app + DB (CLAUDE.md: "Claude via a thin MCP server"; machine/MCP calls already use scoped API tokens, separate from Clerk). So a self-hosted closet box answers *every* "needs a public URL" loss at once: MCP for claude.ai and phone Claude, the phone PWA, shareable links, and email-in/Graph webhooks. It's not a separate REST API to build; it's "run Ledgr on that box and expose it."
+
+**Would MCP get slower?** Almost certainly not perceptibly, and the DB half likely gets faster. The latency of an MCP tool call has three parts: (1) network hop from claude.ai's datacenter to the server, (2) app/function warm-up, (3) the DB query. Today: hop to a Vercel edge (~10–40ms), but a **cold start tax** on the first call of a session — Vercel function wake plus Neon scale-to-zero wake — that can be hundreds of ms to multiple seconds. Self-hosted: hop to a residential IP over a tunnel (~30–120ms, a bit higher and payloads are tiny so bandwidth is irrelevant), but the process is **always warm** and local Postgres answers sub-millisecond with **no cold start**. Net: the network hop is slightly worse, the DB and warm-up are meaningfully better, and the cold-start tail disappears. Crucially, **all of it is dwarfed by Claude's own inference time** (seconds per response), so a 50ms vs 100ms round-trip difference is invisible in practice. You are not "losing speed on the AI/MCP end."
+
+**Reachability is the real work, and it's bought, not built.** A residential box needs a stable public HTTPS endpoint despite dynamic IPs and no port-forwarding. **Tailscale Funnel** (or a Cloudflare Tunnel) exposes one local service to the public internet over HTTPS with a stable hostname and automatic TLS, no router config. That's the same Tailscale from the transport section doing double duty: private mesh for peer sync, Funnel for the public MCP/PWA/webhook surface. The existing scoped-token auth on `/api/machine` is what keeps that public surface safe.
+
+The honest tradeoff: the closet box converts recurring free-tier ceilings and cloud dependence into a one-time ops burden (uptime, a tunnel, backups, aging hardware). Every other peer is itself a live backup and the OneDrive export stays as the independent copy, so a dead closet laptop is an inconvenience, not a data-loss event.
+
 ## How much faster would it feel?
 
 Neon's free tier scales to zero, so the first query of a session can pay a cold start (hundreds of ms to seconds), then every query pays pooler round-trip, plus Vercel function cold starts on top. Local Postgres answers in sub-millisecond; navigation stops being masked-fast (optimistic UI, SWR) and becomes actually-fast. Biggest felt wins: first open of the day, search, large list views, and everything on bad wifi. But measure before believing: a day of instrumented p50/p95 route timings is the cheap experiment that says whether latency is even the felt problem.
