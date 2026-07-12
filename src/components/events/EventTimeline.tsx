@@ -7,21 +7,26 @@
 import Link from "next/link";
 import RowAction from "@/components/home/RowAction";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
-import { formatWhen } from "@/lib/event-format";
+import { formatWhenShort } from "@/lib/event-format";
 
 // Structural row type: whatever the list query yields, we only touch these.
 export type TimelineRow = { id: string; title: string | null; meetingAt: Date | null };
 
 function MeetingRow({ meeting, now, tz }: { meeting: TimelineRow; now: Date; tz: string }) {
+  const when = formatWhenShort(meeting.meetingAt, now, tz);
   return (
-    <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
+    <li className="group flex items-start gap-2.5 rounded px-2 py-1.5 hover:bg-neutral-800/60">
       <SelectCheckbox id={meeting.id} />
-      <span className="w-40 shrink-0 text-xs tabular-nums text-neutral-500">
-        {meeting.meetingAt ? formatWhen(meeting.meetingAt, now, tz) : ""}
+      <span
+        className="w-16 shrink-0 pt-0.5 text-xs leading-tight tabular-nums text-neutral-500"
+        title={when.full}
+      >
+        <span className="block">{when.day}</span>
+        {when.time && <span className="block text-neutral-600">{when.time}</span>}
       </span>
       <Link
         href={`/items/${meeting.id}`}
-        className={`min-w-0 flex-1 truncate text-sm ${
+        className={`min-w-0 flex-1 text-sm [overflow-wrap:anywhere] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden ${
           meeting.title ? "text-neutral-200" : "text-neutral-500"
         }`}
       >
