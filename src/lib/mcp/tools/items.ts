@@ -337,7 +337,7 @@ export const itemTools: McpTool[] = [
       properties: {
         type: { type: "string", description: "Type key (task, event, note, link, person, or a custom type — see list_types)." },
         title: { type: "string", description: "Item title." },
-        bodyMarkdown: { type: "string", description: "Body as markdown." },
+        bodyMarkdown: { type: "string", description: "Body as markdown. To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
         dueDate: { type: "string", description: "Due date, ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
         meetingAt: { type: "string", description: "Event start time, ISO 8601 date-time. Events only." },
@@ -375,7 +375,7 @@ export const itemTools: McpTool[] = [
       properties: {
         id: { type: "string", description: "The item id (UUID)." },
         title: { type: "string", description: "New title." },
-        bodyMarkdown: { type: "string", description: "New body markdown (replaces the entire body)." },
+        bodyMarkdown: { type: "string", description: "New body markdown (replaces the entire body). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "New status." },
         dueDate: { type: "string", description: "New due date (ISO 8601), or null to clear." },
         meetingAt: { type: "string", description: "New meeting time (ISO 8601), or null to clear." },
