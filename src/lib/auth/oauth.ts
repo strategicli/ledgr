@@ -17,6 +17,7 @@
 // LEDGR_API_TOKENS Bearer, so Claude Code/Desktop and the HTTP-API callers are
 // untouched.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { verifyMachineToken, type MachineIdentity } from "@/lib/auth/machine";
 
 // The single scope the MCP server grants. Mirrors the static token's `mcp`
 // scope so both credential paths authorize the same capability.
@@ -93,9 +94,10 @@ function sign(body: string, key: string): string {
   return createHmac("sha256", key).update(body).digest("base64url");
 }
 
-function signToken(payload: Record<string, unknown>): string {
-  const key = secret();
-  if (!key) throw new Error("LEDGR_OAUTH_SECRET not configured");
+// key defaults to the OAuth secret; the browser-minted-token path (below) passes
+// a different per-purpose secret so those tokens have their own kill switch.
+function signToken(payload: Record<string, unknown>, key = secret()): string {
+  if (!key) throw new Error("signing secret not configured");
   const body = b64url(JSON.stringify(payload));
   return `${body}.${sign(body, key)}`;
 }
@@ -105,9 +107,9 @@ function signToken(payload: Record<string, unknown>): string {
 // (same discipline as verifyMachineToken).
 function verifyToken<P extends BasePayload>(
   token: string | null | undefined,
-  kind: TokenKind
+  kind: TokenKind,
+  key = secret()
 ): P | null {
-  const key = secret();
   if (!key || !token) return null;
   const dot = token.indexOf(".");
   if (dot <= 0) return null;
@@ -184,16 +186,21 @@ export function verifyCode(code: string | null | undefined): CodePayload | null 
 
 // --- access + refresh tokens -------------------------------------------------
 
-export function issueAccessToken(sub: string, scope: string): string {
+export function issueAccessToken(
+  sub: string,
+  scope: string,
+  ttlSeconds = ACCESS_TTL_SECONDS,
+  key = secret()
+): string {
   const iat = nowSeconds();
   const payload: AccessPayload = {
     t: "access",
     iat,
-    exp: iat + ACCESS_TTL_SECONDS,
+    exp: iat + ttlSeconds,
     scope,
     sub,
   };
-  return signToken(payload);
+  return signToken(payload, key);
 }
 
 export function issueRefreshToken(sub: string, scope: string): string {
@@ -228,6 +235,74 @@ export function verifyAccessToken(
 }
 
 export const ACCESS_TOKEN_TTL_SECONDS = ACCESS_TTL_SECONDS;
+
+// --- browser-minted personal tokens (ADR-160) -------------------------------
+// The AI & MCP page mints long-lived Bearer tokens in-browser instead of the
+// make-token.mjs CLI + env edit + redeploy. Same signed-blob model as the OAuth
+// flow (no DB, no new dependency), with two deliberately SEPARATE signing keys
+// so the two purposes revoke independently:
+//   - MCP token   → `access`/`mcp` signed with LEDGR_OAUTH_SECRET, so the
+//     existing verifyAccessToken on /api/mcp accepts it with no route change.
+//     Durable: revoking it means rotating LEDGR_OAUTH_SECRET, which also signs
+//     out the phone/web OAuth connector — acceptable since MCP is rarely revoked.
+//   - clipper token → `access`/`api` signed with LEDGR_CLIPPER_SECRET, its own
+//     kill switch: rotate that to revoke every clipper token without touching
+//     MCP or the phone connector.
+// Minting is ADDITIVE — a new token never invalidates an old one (same secret
+// signs both); only rotating a purpose's secret revokes, killing every token of
+// that purpose at once. Long TTL because these are pasted into clients with no
+// refresh path (Claude Code config, a bookmarklet); the secret, not the exp, is
+// the real lifetime bound.
+const MINTED_TTL_SECONDS = 60 * 60 * 24 * 365 * 10; // 10y
+
+function clipperSecret(): string | undefined {
+  return process.env.LEDGR_CLIPPER_SECRET || undefined;
+}
+
+// Whether the clipper minting/verification path is wired up (its secret is set),
+// reported the same way oauthConfigured/hasScopedToken surface configured-ness.
+export function clipperConfigured(): boolean {
+  return !!clipperSecret();
+}
+
+export function signMcpToken(sub: string): string {
+  return issueAccessToken(sub, MCP_SCOPE, MINTED_TTL_SECONDS);
+}
+
+export function signClipperToken(sub: string): string {
+  const key = clipperSecret();
+  if (!key) throw new Error("LEDGR_CLIPPER_SECRET not configured");
+  return issueAccessToken(sub, "api", MINTED_TTL_SECONDS, key);
+}
+
+// Verifies a browser-minted clipper token: an `api`-scoped access token signed
+// with the clipper secret. Null (→ the caller's 401) when the secret is unset,
+// the signature/kind/expiry fail, or the `api` scope is absent.
+export function verifyClipperToken(
+  authorizationHeader: string | null
+): AccessPayload | null {
+  const key = clipperSecret();
+  if (!key || !authorizationHeader?.startsWith("Bearer ")) return null;
+  const token = authorizationHeader.slice("Bearer ".length).trim();
+  const payload = verifyToken<AccessPayload>(token, "access", key);
+  if (!payload) return null;
+  if (!payload.scope.split(" ").includes("api")) return null;
+  return payload;
+}
+
+// The `api`-scope credential check for the HTTP API + web-clipper routes: the
+// static env token (Savor / CLI-minted, ADR-004) OR a browser-minted clipper
+// token. Returns an identity-or-null with the same contract as
+// verifyMachineToken, so the routes only swap which function they call.
+export function verifyApiToken(
+  authorizationHeader: string | null
+): MachineIdentity | null {
+  const machine = verifyMachineToken(authorizationHeader, "api");
+  if (machine) return machine;
+  const clipper = verifyClipperToken(authorizationHeader);
+  if (clipper) return { name: "clipper", scopes: clipper.scope.split(" ") };
+  return null;
+}
 
 // --- PKCE (S256 only) --------------------------------------------------------
 // RFC 7636: challenge = base64url(SHA256(verifier)). We require S256 (the

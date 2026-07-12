@@ -12,10 +12,15 @@ import ClipperSetup from "@/components/build/ClipperSetup";
 export default function WebClipper({
   origin,
   hasApiToken,
+  canMint,
 }: {
   origin: string;
   hasApiToken: boolean;
+  canMint: boolean;
 }) {
+  // Minting works when the clipper secret is set; a static api token also works
+  // (paste it below). Either satisfies the "you have a way to get a token" state.
+  const ready = canMint || hasApiToken;
   return (
     <section className="mt-10 border-t border-neutral-800 pt-6">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
@@ -27,25 +32,21 @@ export default function WebClipper({
         keep the substance even if the original moves or disappears.
       </p>
 
-      {/* Token breadcrumb: the clipper rides the same api-scoped token as the
-          HTTP API, which is generated over in AI & MCP. */}
+      {/* Token breadcrumb: the clipper needs an api-scoped token — generate one
+          right here (below) when LEDGR_CLIPPER_SECRET is set, or paste one. */}
       <div className="mt-3 flex items-start gap-2.5">
         <span
           className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
-            hasApiToken ? "bg-emerald-500" : "bg-amber-500"
+            ready ? "bg-emerald-500" : "bg-amber-500"
           }`}
           aria-hidden
         />
         <p className="text-sm text-neutral-400">
-          {hasApiToken
-            ? "An api token is configured. Paste it below to build your bookmarklet."
-            : "You'll need an api-scoped token first, then paste it below."}{" "}
-          <a
-            href="/build/claude"
-            className="text-[var(--accent)] hover:underline"
-          >
-            Manage tokens in AI &amp; MCP →
-          </a>
+          {canMint
+            ? "Generate a clipper token below and it loads straight into your bookmarklet."
+            : hasApiToken
+              ? "An api token is configured. Paste it below to build your bookmarklet."
+              : "You'll need a token first: set LEDGR_CLIPPER_SECRET to generate one here, or paste an api-scoped token below."}
         </p>
       </div>
 
@@ -53,7 +54,7 @@ export default function WebClipper({
       <h3 className="mt-6 text-xs font-semibold uppercase tracking-wide text-neutral-500">
         On desktop
       </h3>
-      <ClipperSetup origin={origin} />
+      <ClipperSetup origin={origin} canMint={canMint} />
 
       {/* Mobile: the PWA share target. The share sheet only hands us the URL,
           so Ledgr re-fetches the page server-side to pull its content — which

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { asUuid } from "@/lib/api";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyApiToken } from "@/lib/auth/oauth";
 import { ItemError } from "@/lib/items";
 import { relateItems } from "@/lib/relations";
 import { resolveMachineOwner } from "@/lib/machine/owner";
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 const MAX_BATCH = 100;
 
 export async function POST(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "api");
+  const identity = verifyApiToken(request.headers.get("authorization"));
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
