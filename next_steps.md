@@ -4,6 +4,16 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **⏭️ NEXT (2026-07-01) — DEPLOY THE PJ CHUNK:** `integrate-pj` is committed and **merged with `origin/main`** (which had advanced to ADR-137 / PRs→#138: AI Memory, calendar lenses, edit guard, etc.). Migrations linearized past the `0040` collision → `0040_memory_type` then `0041_solid_leech`…`0045_pursuit_type` (whens rewritten so prod won't skip them). tsc + `next build` + eslint clean; verify scripts green on the merged tree. **Remaining, in order (needs prod creds — Tyler):** (1) `npm run db:migrate` against **prod** `DATABASE_URL` (applies the 5 new migrations after `memory_type`) — must precede code going live; (2) push `main` (or PR → merge) → Vercel deploys; (3) verify `/health` + a project page. **Dev-DB gotcha:** `ledgr_dev` already ran the old-numbered branch migrations, so `db:migrate` there will collide — reset dev or fix `__drizzle_migrations` (prod is unaffected, it never had them). Project Type ADR renumbered 133→**138** (origin took 133 for the Planner).
 
+## ⟢ Session summary — Browser-minted API tokens (2026-07-11, ADR-160, CORE — Tyler agreed; MERGED PR #191)
+
+**From Brandon: "make a way to generate a Ledgr API token from WITHIN the web browser."** Getting a token meant the `make-token.mjs` CLI + pasting a hash into `LEDGR_API_TOKENS` + a redeploy. Now two "Generate token" buttons mint stateless signed tokens in-browser (no DB table, no redeploy — reuses the OAuth shim's signed-blob model, ADR-004/117).
+
+- **MCP token** (Build → AI & MCP): durable, signed with `LEDGR_OAUTH_SECRET`, scope `mcp`, 10y TTL; `/api/mcp`'s existing `verifyAccessToken` accepts it with **no route change**.
+- **Clipper token** (User Settings → Save from the web): signed with the **new, separate** `LEDGR_CLIPPER_SECRET`, scope `api`, loads straight into the bookmarklet. The four `api`-scope routes now call a combined `verifyApiToken` (static `LEDGR_API_TOKENS` token OR minted clipper token).
+- **Two secrets = independent revocation** (Brandon's core requirement): rotate the clipper secret → every clipper token dies, MCP + phone connector untouched; and the reverse. Minting is additive (never invalidates an old token); only rotating a secret revokes, warned in the UI.
+- **Verified:** live minted MCP → `POST /api/mcp` 200 (bogus/none 401); live minted clipper → `POST /api/machine/capture` 201 (bogus 401); `scripts/verify-minted-tokens.mts` (roundtrip, scope enforcement, tamper/expiry, per-purpose kill-switch isolation); `tsc` + `eslint` clean.
+- **New env:** `LEDGR_CLIPPER_SECRET` (additive — unset just disables the clipper Generate button; nothing breaks). Files: `oauth.ts`, new `mint-actions.ts` + `TokenMinter.tsx`, the 4 machine routes, clipper/settings wiring, `.env.example`, runbook §1/§3.
+
 ## ⟢ Session summary — Bespoke event/meeting canvas (2026-07-10, ADR-158, branch `claude/ledgr-bespoke-canvas-1c433c`)
 
 **Second bespoke structured canvas after the longform family (ADR-157).** The event is the heaviest/densest type (~1,400 items) with big sub-panels (People card, rule-pulled Open tasks, Transcripts, Notes) that fit neither a byline nor a task rail. Shaped with Brandon over three mockups; he picked **two-pane** and resolved the "long notes lose width" risk by making the rail float + collapse.
