@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, parseItemPayload } from "@/lib/api";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyApiToken } from "@/lib/auth/oauth";
 import {
   ITEM_STATUSES,
   ItemError,
@@ -27,7 +27,7 @@ const MAX_BATCH = 100;
 // path). Filters mirror the in-app list: ?type= &status= &parentId= &q= &limit=
 // &offset=. Open an item's body via the MCP get_item tool if you need it.
 export async function GET(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "api");
+  const identity = verifyApiToken(request.headers.get("authorization"));
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
 // Response: { count, created: Item[], errors: [{ index, error }] }. Status is
 // 201 if anything was created, 400 if every entry failed.
 export async function POST(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "api");
+  const identity = verifyApiToken(request.headers.get("authorization"));
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
 // entry is reported in `errors` and skipped, never failing the rest. Response:
 // { count, updated, errors }; 200 if anything updated, 400 if every entry failed.
 export async function PATCH(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "api");
+  const identity = verifyApiToken(request.headers.get("authorization"));
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

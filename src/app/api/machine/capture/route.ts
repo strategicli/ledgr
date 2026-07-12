@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyApiToken } from "@/lib/auth/oauth";
 import { makeMarkdownBody } from "@/lib/body";
 import { extractArticle, fetchAndExtract } from "@/lib/clip/extract";
 import { createItem } from "@/lib/item-mutations";
@@ -42,7 +42,7 @@ export function OPTIONS() {
 }
 
 export async function POST(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "api");
+  const identity = verifyApiToken(request.headers.get("authorization"));
   if (!identity) return json({ error: "unauthorized" }, 401);
 
   const ownerId = await resolveMachineOwner();

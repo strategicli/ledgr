@@ -11,7 +11,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasScopedToken } from "@/lib/auth/machine";
 import { oauthConfigured } from "@/lib/auth/oauth";
+import { mintMcpToken } from "@/lib/auth/mint-actions";
 import CopyField from "@/components/build/CopyField";
+import TokenMinter from "@/components/build/TokenMinter";
 import { SUPPORTED_PROTOCOL_VERSIONS } from "@/lib/mcp/protocol";
 import { resolveMcpOwner } from "@/lib/mcp/owner";
 import { SERVER_INFO } from "@/lib/mcp/server";
@@ -47,7 +49,11 @@ export default async function AiAndMcp() {
   const hasToken = hasScopedToken("mcp");
   const oauthReady = oauthConfigured();
   const ownerResolves = !!(await resolveMcpOwner());
-  const configured = hasToken && ownerResolves;
+  // Connectable when a static mcp token exists OR the OAuth secret is set —
+  // the latter now also backs browser-minted MCP tokens (ADR-160), so a green
+  // status no longer requires an env-configured token.
+  const canConnect = hasToken || oauthReady;
+  const configured = canConnect && ownerResolves;
   const hasApiToken = hasScopedToken("api");
 
   // The UPN the server acts as (owner.ts's resolution order). It's the owner's
@@ -115,10 +121,12 @@ export default async function AiAndMcp() {
               </p>
             </div>
             <ul className="mt-3 flex flex-col gap-1.5">
-              <CheckRow ok={hasToken}>
+              <CheckRow ok={canConnect}>
                 {hasToken
                   ? "A token with the mcp scope is configured."
-                  : "No mcp-scoped token configured — generate one below."}
+                  : oauthReady
+                    ? "Ready to mint MCP tokens below (LEDGR_OAUTH_SECRET is set)."
+                    : "No mcp-scoped token, and minting isn't set up — see below."}
               </CheckRow>
               <CheckRow ok={ownerResolves}>
                 {ownerResolves ? (
@@ -178,27 +186,32 @@ export default async function AiAndMcp() {
             <li>
               <p className="text-sm text-neutral-300">
                 <span className="font-semibold text-neutral-100">1.</span> Generate a
-                token. Tokens are stored hashed, so the raw value is shown only once
-                when you create it — copy it then.
+                token. It&rsquo;s shown only once — copy it right away. Generating
+                one takes effect immediately (no redeploy).
               </p>
-              <div className="mt-1.5">
-                <CopyField value={tokenCommand} label="token command" />
+              <div className="mt-2">
+                <TokenMinter
+                  action={mintMcpToken}
+                  noun="MCP token"
+                  disabled={!oauthReady}
+                  disabledHint="Set LEDGR_OAUTH_SECRET on your host and redeploy to mint tokens here (runbook §3a)."
+                />
               </div>
-            </li>
-            <li>
-              <p className="text-sm text-neutral-300">
-                <span className="font-semibold text-neutral-100">2.</span> Add the
-                printed entry to the{" "}
-                <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-xs text-neutral-300">
+              <p className="mt-2 text-xs text-neutral-500">
+                Prefer the CLI? Run{" "}
+                <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+                  {tokenCommand}
+                </code>{" "}
+                and add the printed entry to the{" "}
+                <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
                   LEDGR_API_TOKENS
                 </code>{" "}
-                env var (locally and on Vercel), then redeploy. The status above flips
-                green once a mcp-scoped token is present.
+                env var, then redeploy.
               </p>
             </li>
             <li>
               <p className="text-sm text-neutral-300">
-                <span className="font-semibold text-neutral-100">3.</span> Point a
+                <span className="font-semibold text-neutral-100">2.</span> Point a
                 client at the endpoint with that token. For Claude Code:
               </p>
               <div className="mt-1.5">
@@ -252,15 +265,24 @@ export default async function AiAndMcp() {
               )}
             </p>
           </div>
-          <p className="mt-3 text-xs text-neutral-500">
-            Revoking phone/web access is rotating{" "}
-            <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
-              LEDGR_OAUTH_SECRET
-            </code>
-            , which signs every OAuth token out at once. It does not affect the
-            manual-token clients above, and nothing about your non-Ledgr
-            connectors.
-          </p>
+          <div className="mt-3 rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+            <p className="text-xs leading-relaxed text-amber-200/80">
+              <span className="font-semibold text-amber-200">Revoking MCP access:</span>{" "}
+              rotate{" "}
+              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-300">
+                LEDGR_OAUTH_SECRET
+              </code>{" "}
+              on your host and redeploy. ⚠️ This signs out{" "}
+              <strong>every</strong> MCP credential signed by it at once — the
+              phone/web connector <em>and</em> every browser-minted MCP token
+              above. Generating a new token never revokes an old one; only this
+              does. It does not affect static{" "}
+              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-300">
+                LEDGR_API_TOKENS
+              </code>{" "}
+              clients, the web clipper, or your non-Ledgr connectors.
+            </p>
+          </div>
         </section>
 
         {/* Tools the server exposes */}
