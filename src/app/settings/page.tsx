@@ -6,6 +6,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasScopedToken } from "@/lib/auth/machine";
+import { clipperConfigured } from "@/lib/auth/oauth";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
@@ -30,6 +31,7 @@ export default async function SettingsPage() {
     h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
   const hasApiToken = hasScopedToken("api");
+  const canMintClipper = clipperConfigured();
 
   return (
     <main className="min-h-screen">
@@ -40,7 +42,11 @@ export default async function SettingsPage() {
         </div>
         <SettingsForm initial={settings} serverDefaultTz={DEFAULT_TIMEZONE} />
         <IcsFeed initialToken={settings.icsToken} />
-        <WebClipper origin={origin} hasApiToken={hasApiToken} />
+        <WebClipper
+          origin={origin}
+          hasApiToken={hasApiToken}
+          canMint={canMintClipper}
+        />
       </div>
     </main>
   );

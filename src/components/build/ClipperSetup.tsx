@@ -1,12 +1,14 @@
-// Web clipper bookmarklet generator (ADR-100). The clipper needs a bookmarklet
-// carrying an api-scoped token, but the server never holds the raw token (it's
-// stored hashed in LEDGR_API_TOKENS). So the user pastes the token they
-// generated on the CLI and this assembles the draggable bookmarklet entirely
-// client-side — the token never leaves the browser. Drag the link to the
-// bookmarks bar; clicking it on any page POSTs the page to /api/machine/capture.
+// Web clipper bookmarklet generator (ADR-100, ADR-160). The clipper needs a
+// bookmarklet carrying an api-scoped token. Two ways to get one: click Generate
+// to mint a clipper token in-browser (signed with LEDGR_CLIPPER_SECRET, its own
+// kill switch), or paste an existing token (a CLI/static one). Either way the
+// token is baked into the draggable bookmarklet entirely client-side and never
+// leaves the browser. Drag the link to the bookmarks bar; clicking it on any
+// page POSTs the page to /api/machine/capture.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { mintClipperToken } from "@/lib/auth/mint-actions";
 
 // Reads the live DOM (no script injection, so page CSP can't block it),
 // extraction + image-stripping happen server-side. {TOKEN}/{ORIGIN} are filled
@@ -31,10 +33,32 @@ function buildBookmarklet(origin: string, token: string): string {
   return "javascript:" + encodeURIComponent(src);
 }
 
-export default function ClipperSetup({ origin }: { origin: string }) {
+export default function ClipperSetup({
+  origin,
+  canMint = false,
+}: {
+  origin: string;
+  canMint?: boolean;
+}) {
   const [token, setToken] = useState("");
+  const [minting, setMinting] = useState(false);
+  const [mintError, setMintError] = useState<string | null>(null);
   const linkRef = useRef<HTMLAnchorElement>(null);
   const trimmed = token.trim();
+
+  async function mint() {
+    setMinting(true);
+    setMintError(null);
+    try {
+      const res = await mintClipperToken();
+      if ("token" in res) setToken(res.token);
+      else setMintError(res.error);
+    } catch {
+      setMintError("Couldn't generate a token — try again.");
+    } finally {
+      setMinting(false);
+    }
+  }
 
   // Set the href imperatively: React sanitizes `javascript:` hrefs in JSX, so
   // we write the attribute straight to the DOM node instead.
@@ -50,10 +74,28 @@ export default function ClipperSetup({ origin }: { origin: string }) {
 
   return (
     <div className="mt-4 flex flex-col gap-3">
+      {canMint && (
+        <div>
+          <button
+            onClick={() => void mint()}
+            disabled={minting}
+            className="self-start rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/15 px-3.5 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/25 disabled:opacity-50"
+          >
+            {minting ? "Generating…" : token ? "Generate another token" : "Generate a clipper token"}
+          </button>
+          {mintError && <p className="mt-1 text-xs text-red-400">{mintError}</p>}
+          {token && (
+            <p className="mt-1 text-xs text-amber-500/90">
+              Token generated and loaded into the bookmarklet below — drag it now.
+              Generating another won&rsquo;t revoke this one.
+            </p>
+          )}
+        </div>
+      )}
       <div>
         <label className="mb-1 block text-xs text-neutral-500">
-          Paste an api-scoped token. It&rsquo;s baked into the bookmarklet and
-          stays in your browser.
+          {canMint ? "…or paste an existing api-scoped token" : "Paste an api-scoped token"}
+          . It&rsquo;s baked into the bookmarklet and stays in your browser.
         </label>
         <input
           type="text"
@@ -95,7 +137,13 @@ export default function ClipperSetup({ origin }: { origin: string }) {
         pop-ups for it if your browser asks. On mobile, share a link to the
         installed Ledgr app instead — the share sheet route captures content
         the same way. The token sits in the bookmark, so treat the bookmark as
-        a secret; revoke it by removing the entry from{" "}
+        a secret. To revoke: for a generated token, rotate{" "}
+        <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+          LEDGR_CLIPPER_SECRET
+        </code>{" "}
+        and redeploy — that kills every clipper token at once but leaves MCP and
+        your phone connector untouched. For a pasted CLI token, remove its entry
+        from{" "}
         <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
           LEDGR_API_TOKENS
         </code>
