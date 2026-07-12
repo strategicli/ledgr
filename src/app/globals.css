@@ -208,6 +208,24 @@ body {
   }
 }
 
+/* Mobile horizontal-overflow guard. The Work nav is a `position: fixed`,
+   `inset-x-0` bottom bar on phones; if ANY page element is wider than the
+   viewport, the page gains a horizontal scroll, the layout viewport widens, and
+   the fixed bar is laid out across that wider box — its centered slots drift
+   right and the trailing Search/New controls fall off the visible edge (the
+   reported "nav slid/cut off on the right"). Clipping the root on the x-axis
+   keeps the layout viewport == the visual viewport, so the bar can't drift no
+   matter what a page renders. `clip` (not `hidden`) adds no scroll container and
+   leaves `position: sticky`/`fixed` untouched; the other axis stays `visible`,
+   so vertical page scroll is unaffected. Any surface that genuinely needs
+   sideways scrolling must wrap it in its own `overflow-x-auto` region (already
+   the convention), not lean on the page. sm+ is unchanged. */
+@media (max-width: 639.98px) {
+  html {
+    overflow-x: clip;
+  }
+}
+
 /* Circular checkbox used across the app — task done-toggles and Build/config
    form checkboxes alike. Dark-mode friendly: a gray ring on a dark fill that
    turns the highlight accent with a white check when ticked. Mirrors the

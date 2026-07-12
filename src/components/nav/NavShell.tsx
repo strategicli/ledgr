@@ -777,7 +777,13 @@ export default function NavShell({
       >
         <Icon icon="grid" />
       </button>
-      <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+      {/* The slot strip scrolls horizontally if it can't fit (no-scrollbar
+          hides the bar); the grid toggle and Search/New stay pinned outside it.
+          Its tools/favorites popovers portal to <body> (mobileBar), so a scroll
+          container here can't clip them. Belt-and-suspenders with the mobile
+          overflow-x guard (globals.css): even a pathological width keeps every
+          control reachable instead of pushing Search/New off the edge. */}
+      <div className="no-scrollbar flex min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto">
         {mobileBarSlots.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS).map(({ slot, id }) =>
           renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
         )}
