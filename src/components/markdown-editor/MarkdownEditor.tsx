@@ -30,6 +30,7 @@ import {
   LedgrMention,
   LedgrPassage,
   LedgrTable,
+  MarkdownEscapeFix,
   TableCell,
   TableHeader,
   TableRow,
@@ -292,6 +293,11 @@ export default function MarkdownEditor({
       // legacy 2-space content (markdown-render.ts), so this is the source-side
       // half of keeping the editor and every render in agreement.
       Markdown.configure({ indentation: { style: "space", size: 4 } }),
+      // Must sit right after Markdown: it patches the markdown manager (created in
+      // Markdown's onBeforeCreate) so text inside the color/highlight marks isn't
+      // backslash-escaped, which otherwise compounded on every rich⇄source flip.
+      // See MarkdownEscapeFix in extensions.ts.
+      MarkdownEscapeFix,
       // Empty-state hint: a quiet prompt while the body is empty, the first
       // impression of every new note. First-party (@tiptap/extensions), styled
       // via the is-editor-empty class in markdown-editor.css. The "/" hint points

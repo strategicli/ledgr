@@ -7,7 +7,7 @@
 // (ADR-037), so every renderMarkdown here is part of the canonical contract.
 "use client";
 
-import { Mark, Node, mergeAttributes, type JSONContent } from "@tiptap/core";
+import { Extension, Mark, Node, mergeAttributes, type JSONContent } from "@tiptap/core";
 import Mention from "@tiptap/extension-mention";
 import Image from "@tiptap/extension-image";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
@@ -127,6 +127,43 @@ export const Highlight = Mark.create({
     if (!isBlockNoteColor(color)) return `<mark>${content}</mark>`;
     const tag = highlightTag(color);
     return `${tag.open}${content}${tag.close}`;
+  },
+});
+
+// @tiptap/markdown 3.26 backslash-escapes markdown-significant characters
+// (* _ [ ] ` ~ \) in every non-code text node on serialize, so a literal `*`
+// in text can't be misread as an emphasis delimiter when the output is parsed
+// again AS MARKDOWN. But the two marks above emit their content inside raw
+// inline HTML (<span style="color:…">…</span>, <mark>…</mark>), and the parse
+// side reads HTML content back as LITERAL text — it never decodes the escapes.
+// So every rich⇄source round-trip re-escaped the escapes of colored/highlighted
+// text (** → \*\* → \\\*\\\* → …), corrupting it without bound and dropping the
+// bold. Fix: for a text node carrying one of those marks, undo the markdown
+// escaping the serializer just added (HTML-entity encoding is left intact),
+// restoring the raw-content shape the export/render pipeline has always
+// expected. Patches the one manager method the library exposes no hook for;
+// added to the editor's extension list alongside the marks it protects.
+const HTML_WRAPPED_MARKS = new Set(["textColor", "highlight"]);
+export const MarkdownEscapeFix = Extension.create({
+  name: "markdownEscapeFix",
+  // onBeforeCreate (not onCreate): the Markdown extension sets `editor.markdown`
+  // in its own onBeforeCreate, and all onBeforeCreate hooks run — in registration
+  // order, so this must sit AFTER Markdown in the extension list — before any
+  // onCreate. Patching here means the wrapper is in place the moment the manager
+  // exists, with no dependency on the (deferred) onCreate tick.
+  onBeforeCreate() {
+    const mgr = (this.editor as unknown as { markdown?: Record<string, unknown> }).markdown;
+    const orig = mgr?.encodeTextForMarkdown;
+    if (!mgr || typeof orig !== "function") return;
+    const bound = (orig as (...a: unknown[]) => string).bind(mgr);
+    mgr.encodeTextForMarkdown = (text: string, node: { marks?: unknown[] }, parentNode: unknown) => {
+      const encoded = bound(text, node, parentNode);
+      const marks = node?.marks ?? [];
+      const inHtmlMark = marks.some((m) =>
+        HTML_WRAPPED_MARKS.has(typeof m === "string" ? m : (m as { type?: string })?.type ?? "")
+      );
+      return inHtmlMark ? encoded.replace(/\\([\\`*_[\]~])/g, "$1") : encoded;
+    };
   },
 });
 
