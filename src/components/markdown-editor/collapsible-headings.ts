@@ -110,12 +110,11 @@ function buildDecorations(doc: PMNode, state: HeadingsState): DecorationSet {
 // gutter mousedown handler decoupled from the toggle/caret-management logic.
 const FOLD_TOGGLE_EVENT = "ledgr-fold-toggle";
 
-// The chevron lives in the heading's left gutter (a CSS ::before at negative
-// left, so its box sits entirely LEFT of the heading's border box). A click on
-// it therefore lands on the heading element with clientX to the left of the
-// heading's left edge — the discriminator we use to tell a fold click from a
-// click on the heading text. Pixels of gutter we treat as the chevron's hit zone.
-const FOLD_GUTTER_HIT_PX = 30;
+// The chevron lives in the heading's own LEFT PADDING (see markdown-editor.css:
+// a +ve padding-left grows the box left, a matching -ve margin-left keeps the
+// text put). So a click on the chevron lands ON the heading element, at clientX
+// between the heading's left edge and its text (padding-left px in) — the
+// discriminator we use to tell a fold click from a click on the heading text.
 
 export const CollapsibleHeadings = Extension.create({
   name: "collapsibleHeadings",
@@ -176,19 +175,20 @@ export const CollapsibleHeadings = Extension.create({
         },
         view: (editorView) => {
           // Catch a click on the gutter chevron (the CSS ::before, which paints
-          // to the left of the heading box) and turn it into a fold toggle. We
-          // key off the click's x being left of the heading's left edge, so a
-          // click on the heading text itself is left alone (caret/selection work
-          // normally — the whole point of dropping the inline widget). mousedown
-          // (not click) so we can preventDefault before the caret moves.
+          // in the heading's left padding) and turn it into a fold toggle. We
+          // key off the click's x falling within that padding (between the
+          // heading's left edge and its text), so a click on the heading text
+          // itself is left alone (caret/selection work normally — the whole point
+          // of dropping the inline widget). mousedown (not click) so we can
+          // preventDefault before the caret moves.
           const gutter = (e: MouseEvent) => {
             const heading = (e.target as HTMLElement | null)?.closest?.(
               "h1.ledgr-foldable, h2.ledgr-foldable, h3.ledgr-foldable"
             ) as HTMLElement | null;
             if (!heading) return;
             const rect = heading.getBoundingClientRect();
-            if (e.clientX >= rect.left || e.clientX < rect.left - FOLD_GUTTER_HIT_PX)
-              return;
+            const pad = parseFloat(getComputedStyle(heading).paddingLeft) || 0;
+            if (e.clientX < rect.left || e.clientX > rect.left + pad) return;
             const attr = heading.getAttribute("data-fold-pos");
             const pos = attr == null ? NaN : Number(attr);
             if (!Number.isFinite(pos)) return;
