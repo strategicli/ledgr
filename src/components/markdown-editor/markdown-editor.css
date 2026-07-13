@@ -518,29 +518,36 @@
 }
 
 /* Collapsible headings (view-only fold). The chevron is a CSS ::before painted
-   in the heading's left gutter (negative left → entirely LEFT of the heading
-   box), NOT an inline widget — so it never occupies the text-start position and
-   the heading's first character stays selectable. It's small and unobtrusive
-   (rem-sized, so it doesn't scale up with the heading), quiet until the heading
-   is hovered, and stays visible while the section is collapsed (so hidden content
-   is discoverable). pointer-events:none — the click is caught by the plugin's
-   gutter mousedown handler (keyed off click x), so a wider invisible hit zone in
-   the gutter provides the touch target without inflating the glyph. The fold
-   hides whole following blocks via display:none — they stay in the document
-   (copy/selection still see them; the plugin auto-expands before a selection can
-   enter them). */
+   in the heading's own LEFT PADDING (a node decoration adds `padding-left` +ve
+   plus a matching -ve `margin-left`, so the box grows left into the gutter while
+   the text stays put). This keeps the chevron INSIDE the heading's box — so it's
+   hoverable (moving to it doesn't leave the heading's :hover) and hittable (a
+   click there lands on the heading, which the plugin's gutter handler needs to
+   toggle) — without an inline widget stealing the first character. It's small and
+   unobtrusive (rem-sized, so it doesn't scale up with the heading), quiet until
+   the heading is hovered, and stays visible while collapsed (so hidden content is
+   discoverable). pointer-events:none — the click is caught by the plugin's gutter
+   mousedown handler (keyed off click x within the padding). The fold hides whole
+   following blocks via display:none — they stay in the document (copy/selection
+   still see them; the plugin auto-expands before a selection can enter them). */
+.ledgr-prose h1.ledgr-foldable,
+.ledgr-prose h2.ledgr-foldable,
+.ledgr-prose h3.ledgr-foldable {
+  padding-left: 1.4rem;
+  margin-left: -1.4rem;
+}
 .ledgr-prose h1.ledgr-foldable::before,
 .ledgr-prose h2.ledgr-foldable::before,
 .ledgr-prose h3.ledgr-foldable::before {
   content: "▸";
   position: absolute;
-  left: -1.15rem;
+  left: 0;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
+  width: 1.4rem;
   font-size: 0.75rem;
   color: #9ca3af;
   opacity: 0;
