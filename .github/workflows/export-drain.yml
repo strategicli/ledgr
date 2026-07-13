@@ -1,0 +1,46 @@
+# Manual "drain the OneDrive export backlog" (maintenance, runbook §4). The
+# nightly export (vercel.json cron) processes a bounded batch per 60s run and
+# leaves the rest in `remaining` for the next run. After a stall or a big burst
+# of edits the backlog can span many runs; rather than wait days of once-a-day
+# cron, this dispatch calls the same authenticated endpoint in a loop until
+# `remaining` hits 0. Sub-daily/on-demand, so it runs from GitHub Actions
+# hitting the authenticated endpoint (the scheduler seam, PRD §6.1), same door
+# and same LEDGR_CRON_TOKEN as health-check.
+name: export-drain
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_runs:
+        description: "Safety cap on export passes (30 items/run)"
+        default: "80"
+
+permissions:
+  contents: read
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Drain export backlog
+        env:
+          LEDGR_CRON_TOKEN: ${{ secrets.LEDGR_CRON_TOKEN }}
+          APP_URL: ${{ vars.LEDGR_APP_URL || 'https://ledgr-teal.vercel.app' }}
+          MAX_RUNS: ${{ inputs.max_runs }}
+        run: |
+          test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
+          for i in $(seq 1 "${MAX_RUNS:-80}"); do
+            HTTP=$(curl -sS --max-time 90 -o resp.json -w "%{http_code}" -X GET \
+              "$APP_URL/api/machine/export" \
+              -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
+            echo "pass $i -> HTTP $HTTP: $(cat resp.json)"
+            [ "$HTTP" = "200" ] || { echo "::error::export returned $HTTP (a 504 means a run still overran 60s)"; exit 1; }
+            REMAINING=$(jq -r '.remaining // 0' resp.json)
+            ERRORS=$(jq -r '.errors // 0' resp.json)
+            if [ "$REMAINING" = "0" ]; then
+              echo "backlog drained after $i pass(es) (errors=$ERRORS)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::hit MAX_RUNS with backlog still remaining; re-run to continue"
