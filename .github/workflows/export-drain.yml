@@ -13,7 +13,7 @@ on:
     inputs:
       max_runs:
         description: "Safety cap on export passes (30 items/run)"
-        default: "80"
+        default: "200"
 
 permissions:
   contents: read
@@ -29,18 +29,33 @@ jobs:
           MAX_RUNS: ${{ inputs.max_runs }}
         run: |
           test -n "$LEDGR_CRON_TOKEN" || { echo "::error::LEDGR_CRON_TOKEN secret is not set (cron-scope machine token, runbook §3)"; exit 1; }
-          for i in $(seq 1 "${MAX_RUNS:-80}"); do
-            HTTP=$(curl -sS --max-time 90 -o resp.json -w "%{http_code}" -X GET \
+          # A run commits each item's exported_at as it goes, so a 504 (the run
+          # overran the 60s lambda on an attachment-heavy batch) still made
+          # partial progress — the next pass continues. So a 504 is NOT fatal;
+          # only bail if many passes in a row fail, which means the front of the
+          # queue has an item a single 60s run can't finish (needs a look).
+          fails=0
+          for i in $(seq 1 "${MAX_RUNS:-200}"); do
+            HTTP=$(curl -sS --max-time 120 -o resp.json -w "%{http_code}" -X GET \
               "$APP_URL/api/machine/export" \
               -H "Authorization: Bearer $LEDGR_CRON_TOKEN")
-            echo "pass $i -> HTTP $HTTP: $(cat resp.json)"
-            [ "$HTTP" = "200" ] || { echo "::error::export returned $HTTP (a 504 means a run still overran 60s)"; exit 1; }
-            REMAINING=$(jq -r '.remaining // 0' resp.json)
-            ERRORS=$(jq -r '.errors // 0' resp.json)
-            if [ "$REMAINING" = "0" ]; then
-              echo "backlog drained after $i pass(es) (errors=$ERRORS)"
-              exit 0
+            if [ "$HTTP" = "200" ]; then
+              fails=0
+              echo "pass $i -> 200: $(cat resp.json)"
+              REMAINING=$(jq -r '.remaining // 0' resp.json)
+              ERRORS=$(jq -r '.errors // 0' resp.json)
+              if [ "$REMAINING" = "0" ]; then
+                echo "backlog drained after $i pass(es) (errors=$ERRORS)"
+                exit 0
+              fi
+            else
+              fails=$((fails + 1))
+              echo "pass $i -> HTTP $HTTP (partial progress persists; continuing) [$fails in a row]"
+              if [ "$fails" -ge 8 ]; then
+                echo "::error::8 passes in a row failed — a single item likely can't finish in 60s; inspect and retry"
+                exit 1
+              fi
             fi
-            sleep 5
+            sleep 3
           done
           echo "::warning::hit MAX_RUNS with backlog still remaining; re-run to continue"
