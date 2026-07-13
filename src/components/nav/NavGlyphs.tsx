@@ -4,25 +4,15 @@
 "use client";
 
 import Link from "next/link";
+import NavGlyph from "@/components/nav/NavGlyph";
 import { badgeCount } from "@/lib/format-count";
-import { navIconPaths } from "@/lib/nav-icons";
 
-// Icon glyphs come from the shared NAV_ICONS library (key -> SVG paths); an
-// unknown key falls back to a generic list glyph.
+// Delegate to NavGlyph so both the stroke-glyph keys AND the licensed "ai:"
+// filled set render (NavGlyph is the single resolution point). Rendering the
+// paths inline here missed "ai:" refs, so a slot with an AI-set icon fell back
+// to the generic glyph in the real nav while the Build picker showed it right.
 export function Icon({ icon }: { icon: string }) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      dangerouslySetInnerHTML={{ __html: navIconPaths(icon) }}
-    />
-  );
+  return <NavGlyph icon={icon} size={20} />;
 }
 
 export function PlusIcon() {
