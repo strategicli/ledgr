@@ -15,10 +15,15 @@ import { getStorage } from "@/lib/storage";
 import { getAppTimezone } from "@/lib/today";
 import type { ExportTarget } from "./target";
 
-// Per-run cap: the nightly cron runs in a 60s lambda and attachments can be
-// large; whatever a run can't reach is counted in `remaining` (logged, not
+// Per-run cap: the nightly cron runs in a 60s lambda (the Vercel Hobby
+// ceiling) and each item is a sequential OneDrive PUT over Graph, so ~100
+// items/run overran 60s once a backlog built up and every run timed out
+// before recording progress (2026-07-13). 30 keeps a run comfortably under
+// budget; whatever it can't reach is counted in `remaining` (logged, not
 // silent) and the next run picks it up.
-const DEFAULT_BATCH = 100;
+// ponytail: fixed per-run cap; parallelize the PUTs with a concurrency pool
+// if daily throughput ever falls behind the edit rate.
+const DEFAULT_BATCH = 30;
 
 export const EXPORT_JOB_KEY = "onedrive_export";
 
