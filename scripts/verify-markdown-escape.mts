@@ -13,6 +13,9 @@
 // PARSE direction can't run under linkedom (it drops <mark>), so it's covered by
 // the in-browser check on the real canvas.
 // Run: npx tsx scripts/verify-markdown-escape.mts
+/* eslint-disable @typescript-eslint/no-explicit-any -- dev-only harness: the
+   linkedom DOM shim and Tiptap editor construction need loose typing at the
+   library boundary; this script never ships in the app bundle. */
 import { parseHTML } from "linkedom";
 
 const { window, document } = parseHTML("<!doctype html><html><body></body></html>");
