@@ -53,14 +53,25 @@ export function getDb(): Db {
 // contrib extensions are dynamically imported so the cloud/Neon bundle never
 // pulls the WASM payload. pg_trgm is loaded because migration 0004 CREATE
 // EXTENSIONs it (spike-confirmed 2026-07-15). The returned instance is used
-// exactly like the Neon one; migrations are applied by the caller via
-// drizzle-orm/pglite/migrator against ./drizzle.
-export async function initLocalDb(dataDir = "memory://ledgr"): Promise<Db> {
+// exactly like the Neon one. Pass `migrationsFolder` to apply the Drizzle
+// migration chain here (done internally so the pglite-typed handle reaches the
+// migrator before it is cast to Db).
+export async function initLocalDb(
+  opts: { dataDir?: string; migrationsFolder?: string } = {}
+): Promise<Db> {
   const { PGlite } = await import("@electric-sql/pglite");
   const { pg_trgm } = await import("@electric-sql/pglite/contrib/pg_trgm");
   const { drizzle: drizzlePglite } = await import("drizzle-orm/pglite");
-  const client = await PGlite.create({ dataDir, extensions: { pg_trgm } });
+  const client = await PGlite.create({
+    dataDir: opts.dataDir ?? "memory://ledgr",
+    extensions: { pg_trgm },
+  });
+  const local = drizzlePglite(client, { schema });
+  if (opts.migrationsFolder) {
+    const { migrate } = await import("drizzle-orm/pglite/migrator");
+    await migrate(local, { migrationsFolder: opts.migrationsFolder });
+  }
   // Same query API as the Neon handle; typed as Db so callers are unchanged.
-  db = drizzlePglite(client, { schema }) as unknown as Db;
+  db = local as unknown as Db;
   return db;
 }

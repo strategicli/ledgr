@@ -9,6 +9,7 @@
 // `@/lib` call, exactly like its route.
 import { listItems } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
+import { searchItems } from "@/lib/search";
 
 export type DataRequest = { method: string; path: string; body?: unknown };
 export type DataResponse = { ok: boolean; status: number; data: unknown };
@@ -47,6 +48,17 @@ export async function dispatchDataRequest(
       const offset = q.get("offset");
       if (offset !== null) opts.offset = Number(offset) || undefined;
       return ok({ items: await listItems(ownerId, opts) });
+    }
+
+    if (method === "GET" && path === "/api/search") {
+      const query = (q.get("q") ?? "").trim();
+      if (!query) return ok({ items: [] });
+      const opts: NonNullable<Parameters<typeof searchItems>[2]> = {
+        type: q.get("type") ?? undefined,
+      };
+      const limit = q.get("limit");
+      if (limit !== null) opts.limit = Number(limit) || undefined;
+      return ok({ items: await searchItems(ownerId, query, opts) });
     }
 
     return { ok: false, status: 404, data: { error: `no handler for ${method} ${path}` } };

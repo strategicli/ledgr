@@ -6,7 +6,6 @@
 //                                                          └─ dispatchDataRequest → @/lib → PGlite
 import path from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { initLocalDb } from "@/db";
 import { users } from "@/db/schema";
 import { dispatchDataRequest, type DataRequest } from "./data-router";
@@ -19,12 +18,13 @@ let ownerId = "";
 
 async function boot(): Promise<void> {
   // On-disk database under the OS app-data dir (Win: %APPDATA%, Mac: Application Support).
+  // Applies the real Drizzle migration chain on boot (PGlite spike-confirmed,
+  // ADR-139). drizzle/ ships next to the app; in dev it's two levels up from dist/.
   const dataDir = path.join(app.getPath("userData"), "ledgr.pgdata");
-  const db = await initLocalDb(dataDir);
-
-  // Apply the real Drizzle migration chain (PGlite spike-confirmed, ADR-139).
-  // drizzle/ ships next to the app; in dev it's two levels up from dist/.
-  await migrate(db, { migrationsFolder: path.resolve(__dirname, "..", "..", "drizzle") });
+  const db = await initLocalDb({
+    dataDir,
+    migrationsFolder: path.resolve(__dirname, "..", "..", "drizzle"),
+  });
 
   // Single local owner (no Clerk): reuse the existing one or create it.
   const existing = await db.select().from(users).limit(1);

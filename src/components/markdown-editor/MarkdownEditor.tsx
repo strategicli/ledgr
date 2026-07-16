@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { useRouter } from "next/navigation";
+import { apiRequest } from "@/lib/api-client";
 import {
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
@@ -122,11 +123,10 @@ async function insertUploadedImages(
 // editor instance shares the single request.
 let hiddenToolbarPromise: Promise<string[]> | null = null;
 function loadHiddenToolbar(): Promise<string[]> {
-  hiddenToolbarPromise ??= fetch("/api/settings")
-    .then((r) => (r.ok ? r.json() : null))
+  hiddenToolbarPromise ??= apiRequest<{ settings?: { editorToolbarHidden?: string[] } }>("/api/settings")
     .then((d) =>
-      Array.isArray(d?.settings?.editorToolbarHidden)
-        ? (d.settings.editorToolbarHidden as string[])
+      Array.isArray(d.settings?.editorToolbarHidden)
+        ? (d.settings!.editorToolbarHidden as string[])
         : []
     )
     .catch(() => []);

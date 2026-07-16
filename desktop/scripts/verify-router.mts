@@ -3,7 +3,6 @@
 // the same dispatchDataRequest() the IPC handler calls. Proves window → (IPC) →
 // @/lib → PGlite at the router level. Run: npm run verify:router  (from desktop/).
 import { randomUUID } from "node:crypto";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { initLocalDb } from "@/db";
 import { users, types } from "@/db/schema";
 import { createItem } from "@/lib/item-mutations";
@@ -11,8 +10,10 @@ import { dispatchDataRequest } from "../main/data-router";
 
 process.env.LEDGR_DB_DRIVER = "pglite";
 
-const db = await initLocalDb("memory://router-verify");
-await migrate(db, { migrationsFolder: "./drizzle" });
+const db = await initLocalDb({
+  dataDir: "memory://router-verify",
+  migrationsFolder: "./drizzle",
+});
 
 const [owner] = await db
   .insert(users)
@@ -24,6 +25,10 @@ await createItem(owner.id, { type: "note", title: "Router proof note" });
 const settings = await dispatchDataRequest({ method: "GET", path: "/api/settings" }, owner.id);
 const items = await dispatchDataRequest(
   { method: "GET", path: "/api/items?type=note&limit=50" },
+  owner.id
+);
+const search = await dispatchDataRequest(
+  { method: "GET", path: "/api/search?q=proof" },
   owner.id
 );
 const unknown = await dispatchDataRequest({ method: "GET", path: "/api/nope" }, owner.id);
@@ -39,6 +44,11 @@ console.log(
         hasSettings: !!(settings.data as { settings?: unknown }).settings,
       },
       items: { ok: items.ok, status: items.status, count: (data.items ?? []).length },
+      search: {
+        ok: search.ok,
+        status: search.status,
+        hits: ((search.data as { items?: unknown[] }).items ?? []).length,
+      },
       unknown_route: { ok: unknown.ok, status: unknown.status },
     },
     null,

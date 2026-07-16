@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import NavGlyph from "@/components/nav/NavGlyph";
+import { apiRequest } from "@/lib/api-client";
 
 type TypeOption = { key: string; label: string; icon: string | null };
 
@@ -54,11 +55,9 @@ export default function ChangeTypeDialog({
     let alive = true;
     (async () => {
       try {
-        const res = await fetch("/api/types");
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as {
+        const data = await apiRequest<{
           types: { key: string; label: string; icon: string | null }[];
-        };
+        }>("/api/types");
         if (!alive) return;
         setTypes(
           data.types
