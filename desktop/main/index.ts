@@ -157,7 +157,8 @@ async function boot(): Promise<void> {
         let input, addBtn;
         for (let i = 0; i < 40; i++) {
           input = q("input"); addBtn = findAdd();
-          if ((input && addBtn) || q("textarea")) break;
+          const hasCreateView = Array.from(document.querySelectorAll("button")).some((b) => b.textContent.trim() === "Create view");
+          if ((input && addBtn) || q("textarea") || hasCreateView) break;
           await wait(200);
         }
         if (input && addBtn) {
@@ -186,6 +187,20 @@ async function boot(): Promise<void> {
           const res = await window.__ledgrDesktop.request({ method: "GET", path: "/api/items/" + id });
           const saved = !!(res && res.data && res.data.item && res.data.item.title === nt);
           return "titleEditSaved=" + saved;
+        }
+        // view builder: fill the name + create, verify a view was saved
+        const createViewBtn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Create view");
+        if (createViewBtn) {
+          const nameInput = q("input");
+          if (nameInput) {
+            const s2 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            s2.call(nameInput, "Demo view " + Date.now());
+            nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          createViewBtn.click();
+          await wait(1800);
+          const vres = await window.__ledgrDesktop.request({ method: "GET", path: "/api/views" });
+          return "viewsAfterCreate=" + (((vres.data || {}).views) || []).length;
         }
         return "no testable UI on this route";
       })()`);

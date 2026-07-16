@@ -8,6 +8,20 @@ import { apiRequest } from "@/lib/api-client";
 
 type ViewRow = { id: string; name: string };
 
+function Header() {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <h1 className="text-xl font-bold tracking-tight text-neutral-100">Views</h1>
+      <Link
+        href="/view/new"
+        className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-200 no-underline hover:bg-neutral-800"
+      >
+        New view
+      </Link>
+    </div>
+  );
+}
+
 export default function ViewsPage() {
   const [views, setViews] = useState<ViewRow[] | null>(null);
 
@@ -19,7 +33,7 @@ export default function ViewsPage() {
 
   return (
     <section className="p-6">
-      <h1 className="text-xl font-bold tracking-tight text-neutral-100">Views</h1>
+      <Header />
       {views === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : views.length ? (

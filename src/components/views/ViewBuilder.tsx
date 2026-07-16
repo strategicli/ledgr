@@ -129,6 +129,7 @@ export default function ViewBuilder({
   initial,
   people,
   types,
+  onSaved,
 }: {
   initial?: ViewDefinition;
   people: PersonOption[];
@@ -143,6 +144,9 @@ export default function ViewBuilder({
     propertySchema?: PropertyDef[];
     statusMode?: StatusMode;
   }[];
+  // Optional: when provided, called with the saved view id instead of the
+  // built-in navigation (the desktop build routes to /view?id=…). ADR-139.
+  onSaved?: (id: string) => void;
 }) {
   // A type's select/multi_select properties, as group-by options encoded
   // "prop:<key>" so they share the one Group-by control with the built-in
@@ -358,8 +362,12 @@ export default function ViewBuilder({
         return;
       }
       const data = (await res.json()) as { view: { id: string } };
-      router.push(`/views/${data.view.id}`);
-      router.refresh();
+      if (onSaved) {
+        onSaved(data.view.id);
+      } else {
+        router.push(`/views/${data.view.id}`);
+        router.refresh();
+      }
     } catch {
       setError("save failed (offline?)");
       setBusy(false);
