@@ -56,7 +56,7 @@ npm run verify:router
 Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 `dispatchDataRequest()` the IPC handler uses. Prints pass/counts.
 
-## Status (2026-07-15)
+## Status (2026-07-16)
 
 - ✅ `@/lib` runs on embedded PGlite (reads/writes/FTS) — verified.
 - ✅ main + preload bundle via esbuild — verified.
@@ -94,10 +94,33 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
   open an item and edit **title + body in the real Tiptap `ItemEditor`**, autosave
   over the seam (ADR-134 conflict handling intact). Verified in-window
   (`titleEditSaved=true`).
-- ⏳ convert the remaining screens (today/events/inbox/item-detail/list) to the
-  same pattern; expand `data-router` to the full endpoint set.
+- ✅ **Work screens** — Today, Tasks, Notes, Inbox, Events, People, Search, and
+  the generic `/list?type=…`, all through the seam. Query-param routes
+  (`?id=`/`?type=`) keep the static export free of `generateStaticParams`.
+- ✅ **views** — `/views` index + `/view?id=…` render a saved view's items
+  (list layout via `ItemRows`; board/table/calendar layouts are the parity
+  follow-up).
+- ✅ **Build (authoring)** — `/build` index; `/view/new` and `/type/new` reuse
+  the **real cloud `ViewBuilder`/`TypeBuilder`** over the seam (additive
+  `onSaved` prop), verified in-window (`viewsAfterCreate`, `typeCreated=true`).
+- ✅ **dashboard read grid** — `/dashboard?id=…` renders a dashboard's resolved
+  widgets (view/stat/tree/embed/text/action/image/container) in a static
+  12-column grid. The fan-out is `@/lib/dashboard-resolve` (shared with the
+  cloud `DashboardView`); the drag/resize editor stays cloud-only for now
+  (defer-by-hiding). Verified (`dashCards=3 hasStat/hasText/hasViewRow=true`).
+- ✅ **markdown vault export** — Build → Maintain → "Export markdown vault" runs
+  the shared `runExport` engine through `LocalExportTarget` into `~/LedgrVault`
+  (markdown + frontmatter, incremental), so the vault opens in Obsidian / reads
+  in Claude. Verified (`exported=2 errors=0`, files on disk).
+- ⏳ **view-layout parity** (board/table/calendar on desktop; list-only today).
+- ⏳ **Trash** surface (soft-delete recovery) + a Settings screen.
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux
   builds (config present; build on those platforms or via CI).
+
+Endpoints now in `data-router`: settings; items (list/inbox/status/search + full
+CRUD + complete/version/related); types (list/get/create); views
+(list/get/create/run); dashboards (list/get/create/patch/delete + `/resolved`);
+export (get state / run).
 
 ## Package (macOS, unsigned)
 
