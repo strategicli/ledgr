@@ -3,6 +3,7 @@
 // Desktop Notes screen: fetches notes via the seam and renders the shared
 // <ItemRows>, with a quick-add that creates through the seam (ADR-139).
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
 import ItemRows, { type ItemRow } from "@/components/ItemRows";
 import QuickAddItem from "@/components/QuickAddItem";
@@ -27,6 +28,8 @@ export default function NotesPage() {
     load();
   }, [load]);
 
+  const router = useRouter();
+  const open = useCallback((id: string) => router.push(`/item?id=${id}`), [router]);
   const remove = useCallback(
     (id: string) => {
       apiRequest(`/api/items/${id}`, { method: "DELETE" }).then(load).catch(() => {});
@@ -41,7 +44,7 @@ export default function NotesPage() {
       {items === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (
-        <ItemRows items={items} empty="No notes yet." onDelete={remove} />
+        <ItemRows items={items} empty="No notes yet." onOpen={open} onDelete={remove} />
       )}
     </section>
   );

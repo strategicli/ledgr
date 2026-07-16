@@ -14,11 +14,13 @@ export type ItemRow = {
 export default function ItemRows({
   items,
   empty = "Nothing here yet.",
+  onOpen,
   onToggle,
   onDelete,
 }: {
   items: ItemRow[];
   empty?: string;
+  onOpen?: (id: string) => void;
   onToggle?: (id: string) => void;
   onDelete?: (id: string) => void;
 }) {
@@ -49,13 +51,24 @@ export default function ItemRows({
                 </span>
               )
             ) : null}
-            <span
-              className={`min-w-0 flex-1 truncate ${
-                done ? "text-neutral-500 line-through" : "text-neutral-200"
-              }`}
-            >
-              {it.title || "(untitled)"}
-            </span>
+            {onOpen ? (
+              <button
+                onClick={() => onOpen(it.id)}
+                className={`min-w-0 flex-1 truncate text-left hover:underline ${
+                  done ? "text-neutral-500 line-through" : "text-neutral-200"
+                }`}
+              >
+                {it.title || "(untitled)"}
+              </button>
+            ) : (
+              <span
+                className={`min-w-0 flex-1 truncate ${
+                  done ? "text-neutral-500 line-through" : "text-neutral-200"
+                }`}
+              >
+                {it.title || "(untitled)"}
+              </span>
+            )}
             {it.dueDate ? (
               <span className="text-xs text-neutral-500">
                 {String(it.dueDate).slice(0, 10)}

@@ -3,6 +3,7 @@
 // Desktop Tasks screen: fetches tasks via the seam and renders the shared
 // <ItemRows>, with a quick-add that creates through the seam (ADR-139).
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
 import ItemRows, { type ItemRow } from "@/components/ItemRows";
 import QuickAddItem from "@/components/QuickAddItem";
@@ -27,6 +28,8 @@ export default function TasksPage() {
     load();
   }, [load]);
 
+  const router = useRouter();
+  const open = useCallback((id: string) => router.push(`/item?id=${id}`), [router]);
   const toggle = useCallback(
     (id: string) => {
       apiRequest(`/api/items/${id}/complete`, { method: "POST" }).then(load).catch(() => {});
@@ -47,7 +50,7 @@ export default function TasksPage() {
       {items === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (
-        <ItemRows items={items} empty="No tasks yet." onToggle={toggle} onDelete={remove} />
+        <ItemRows items={items} empty="No tasks yet." onOpen={open} onToggle={toggle} onDelete={remove} />
       )}
     </section>
   );
