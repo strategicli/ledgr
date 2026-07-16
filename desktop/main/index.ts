@@ -129,16 +129,24 @@ async function boot(): Promise<void> {
   if (process.env.LEDGR_SELFTEST === "1") {
     try {
       const result = await win.webContents.executeJavaScript(`(async () => {
-        const input = document.querySelector("input");
-        const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Add");
-        if (!input || !btn) return "no quick-add UI on this route";
-        const before = document.querySelectorAll("li").length;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const q = (s) => document.querySelector(s);
+        const input = q("input");
+        const addBtn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Add");
+        if (!input || !addBtn) return "no quick-add UI on this route";
         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
         setter.call(input, "Selftest " + Date.now());
         input.dispatchEvent(new Event("input", { bubbles: true }));
-        btn.click();
-        await new Promise((r) => setTimeout(r, 1000));
-        return "rows before=" + before + " after=" + document.querySelectorAll("li").length;
+        addBtn.click();
+        await wait(1200);
+        const created = document.querySelectorAll("li").length;
+        // toggle done on the first row, then delete it (self-cleaning)
+        let toggled = "n/a";
+        const t = q('li button[aria-label^="Mark"]');
+        if (t) { t.click(); await wait(1000); toggled = (q('li button[aria-label^="Mark"]') || {}).textContent || "?"; }
+        const d = q('li button[aria-label="Delete"]');
+        if (d) { d.click(); await wait(1000); }
+        return "created=" + created + " toggled=" + toggled.trim() + " afterDelete=" + document.querySelectorAll("li").length;
       })()`);
       console.log("[selftest]", result);
     } catch (e) {

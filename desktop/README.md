@@ -28,8 +28,9 @@ cloud app; only the runtime differs:
   the window.
 - `main/data-router.ts` — path/method → `@/lib` dispatch (the IPC handler's
   body). Covered: `GET /api/settings|items|search|dashboards`, item CRUD
-  (`POST /api/items`, `GET|PATCH|DELETE /api/items/:id`), with `ItemError`-code
-  → HTTP status mapping. Remaining endpoints are the mechanical follow-up.
+  (`POST /api/items`, `GET|PATCH|DELETE /api/items/:id`), done toggle
+  (`POST /api/items/:id/complete`), with `ItemError`-code → HTTP status mapping.
+  Remaining endpoints are the mechanical follow-up.
 - `preload/index.ts` — exposes the `DesktopDataBridge` on `window.__ledgrDesktop`.
 - `esbuild.mjs` — bundles main + preload; aliases `server-only` → `empty.ts`,
   resolves `@/*` → `../src`, leaves node_modules external.
@@ -83,6 +84,9 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ **core types auto-seeded** on a fresh local DB (`src/lib/seed-core-types.ts`,
   idempotent, mirrors `scripts/seed.mjs`) — migrations create tables, not type
   rows, so a local DB needs this to be usable.
+- ✅ **interactive lists** — toggle a task done (recurrence-aware
+  `/complete`, strikethrough) and delete a row, both via the seam. Full
+  create→toggle→delete loop verified in-window (`created=1 toggled=☑ afterDelete=0`).
 - ⏳ convert the remaining screens (today/events/inbox/item-detail/list) to the
   same pattern; expand `data-router` to the full endpoint set.
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux

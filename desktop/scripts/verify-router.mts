@@ -47,6 +47,10 @@ const patched = await dispatchDataRequest(
   { method: "PATCH", path: `/api/items/${newId}`, body: { title: "Router write test (edited)" } },
   owner.id
 );
+const completed = await dispatchDataRequest(
+  { method: "POST", path: `/api/items/${newId}/complete` },
+  owner.id
+);
 const deleted = await dispatchDataRequest({ method: "DELETE", path: `/api/items/${newId}` }, owner.id);
 
 const unknown = await dispatchDataRequest({ method: "GET", path: "/api/nope" }, owner.id);
@@ -78,6 +82,11 @@ console.log(
         patch: {
           ok: patched.ok,
           title: (patched.data as { item?: { title?: string } }).item?.title,
+        },
+        complete: {
+          ok: completed.ok,
+          category: (completed.data as { item?: { statusCategory?: string } }).item
+            ?.statusCategory,
         },
         delete: { ok: deleted.ok, status: deleted.status },
       },

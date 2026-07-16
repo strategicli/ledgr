@@ -27,6 +27,13 @@ export default function NotesPage() {
     load();
   }, [load]);
 
+  const remove = useCallback(
+    (id: string) => {
+      apiRequest(`/api/items/${id}`, { method: "DELETE" }).then(load).catch(() => {});
+    },
+    [load]
+  );
+
   return (
     <section className="p-6">
       <h1 className="text-xl font-bold tracking-tight text-neutral-100">Notes</h1>
@@ -34,7 +41,7 @@ export default function NotesPage() {
       {items === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (
-        <ItemRows items={items} empty="No notes yet." />
+        <ItemRows items={items} empty="No notes yet." onDelete={remove} />
       )}
     </section>
   );

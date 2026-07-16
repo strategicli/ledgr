@@ -11,7 +11,12 @@ import { listItems, getItem } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
 import { listDashboards } from "@/lib/dashboards";
-import { createItem, updateItem, softDeleteItem } from "@/lib/item-mutations";
+import {
+  createItem,
+  updateItem,
+  softDeleteItem,
+  toggleItemDone,
+} from "@/lib/item-mutations";
 import { parseItemPayload } from "@/lib/item-input";
 
 export type DataRequest = { method: string; path: string; body?: unknown };
@@ -71,6 +76,12 @@ export async function dispatchDataRequest(
     if (method === "POST" && path === "/api/items") {
       const item = await createItem(ownerId, parseItemPayload(req.body, "create"));
       return { ok: true, status: 201, data: { item } };
+    }
+
+    // /api/items/:id/complete — recurrence-aware done toggle.
+    const completeId = path.match(/^\/api\/items\/([^/]+)\/complete$/)?.[1];
+    if (method === "POST" && completeId) {
+      return ok({ item: await toggleItemDone(ownerId, completeId) });
     }
 
     // /api/items/:id — GET (read one) · PATCH (update) · DELETE (soft-delete).

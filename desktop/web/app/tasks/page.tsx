@@ -27,6 +27,19 @@ export default function TasksPage() {
     load();
   }, [load]);
 
+  const toggle = useCallback(
+    (id: string) => {
+      apiRequest(`/api/items/${id}/complete`, { method: "POST" }).then(load).catch(() => {});
+    },
+    [load]
+  );
+  const remove = useCallback(
+    (id: string) => {
+      apiRequest(`/api/items/${id}`, { method: "DELETE" }).then(load).catch(() => {});
+    },
+    [load]
+  );
+
   return (
     <section className="p-6">
       <h1 className="text-xl font-bold tracking-tight text-neutral-100">Tasks</h1>
@@ -34,7 +47,7 @@ export default function TasksPage() {
       {items === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (
-        <ItemRows items={items} empty="No tasks yet." />
+        <ItemRows items={items} empty="No tasks yet." onToggle={toggle} onDelete={remove} />
       )}
     </section>
   );
