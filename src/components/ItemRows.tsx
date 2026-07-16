@@ -9,6 +9,7 @@ export type ItemRow = {
   type?: string;
   statusCategory?: string | null;
   dueDate?: string | null;
+  scheduledDate?: string | null;
 };
 
 export default function ItemRows({

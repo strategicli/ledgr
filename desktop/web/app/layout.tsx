@@ -18,9 +18,14 @@ const CSP =
 // the desktop uses a simple fixed rail for now (nav slots + styling are a later
 // pass). Links use the Next client router (static export navigates client-side).
 const NAV = [
+  { href: "/today", label: "Today" },
   { href: "/", label: "Dashboards" },
   { href: "/tasks", label: "Tasks" },
   { href: "/notes", label: "Notes" },
+  { href: "/inbox", label: "Inbox" },
+  { href: "/list?type=event", label: "Events" },
+  { href: "/list?type=person", label: "People" },
+  { href: "/search", label: "Search" },
 ];
 
 // Route raw `fetch("/api/...")` through the IPC bridge so the shared cloud
