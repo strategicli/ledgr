@@ -23,6 +23,33 @@ const NAV = [
   { href: "/notes", label: "Notes" },
 ];
 
+// Route raw `fetch("/api/...")` through the IPC bridge so the shared cloud
+// client components (the Tiptap editor, field/property editors, …) work on the
+// desktop with no per-component changes (ADR-139). Non-/api fetches pass through.
+// Installed as an inline head script so it patches window.fetch before any
+// component runs. Cloud is unaffected (no window.__ledgrDesktop there).
+const FETCH_SHIM = `(function () {
+  var orig = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    try {
+      var url = typeof input === "string" ? input : (input && input.url);
+      var bridge = window.__ledgrDesktop;
+      if (bridge && typeof url === "string" && url.indexOf("/api/") === 0) {
+        var method = (init && init.method) || "GET";
+        var body;
+        if (init && typeof init.body === "string") { try { body = JSON.parse(init.body); } catch (e) {} }
+        return bridge.request({ method: method, path: url, body: body }).then(function (r) {
+          return new Response(r.data == null ? null : JSON.stringify(r.data), {
+            status: r.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        });
+      }
+    } catch (e) {}
+    return orig(input, init);
+  };
+})();`;
+
 export default function RootLayout({
   children,
 }: {
@@ -32,6 +59,7 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <meta httpEquiv="Content-Security-Policy" content={CSP} />
+        <script dangerouslySetInnerHTML={{ __html: FETCH_SHIM }} />
       </head>
       <body>
         <div className="flex min-h-screen">

@@ -109,7 +109,22 @@ async function boot(): Promise<void> {
   );
   // Deep-link support (also lets a route be verified directly): LEDGR_START_ROUTE
   // overrides the initial route. Defaults to the home screen.
-  const startRoute = process.env.LEDGR_START_ROUTE || "/";
+  let startRoute = process.env.LEDGR_START_ROUTE || "/";
+  // Gated demo-seed (verification aid): create a note via the main process's own
+  // DB connection (no second connection → no PGlite lock) and open it.
+  if (process.env.LEDGR_SEED_DEMO === "1") {
+    const created = await dispatchDataRequest(
+      {
+        method: "POST",
+        path: "/api/items",
+        body: { type: "note", title: "Demo note", body: { format: "markdown", text: "Editable **body** in the desktop window." } },
+      },
+      ownerId
+    );
+    const demoId = (created.data as { item?: { id?: string } }).item?.id;
+    if (demoId) startRoute = `/item?id=${demoId}`;
+    console.log("[seed-demo] created note, opening", startRoute);
+  }
   await win.loadURL(`app://local${startRoute}`);
 
   // Boot self-check: drive the same data path the window uses, so stdout carries
@@ -131,22 +146,42 @@ async function boot(): Promise<void> {
       const result = await win.webContents.executeJavaScript(`(async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         const q = (s) => document.querySelector(s);
-        const input = q("input");
-        const addBtn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Add");
-        if (!input || !addBtn) return "no quick-add UI on this route";
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        setter.call(input, "Selftest " + Date.now());
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        addBtn.click();
-        await wait(1200);
-        const created = document.querySelectorAll("li").length;
-        // toggle done on the first row, then delete it (self-cleaning)
-        let toggled = "n/a";
-        const t = q('li button[aria-label^="Mark"]');
-        if (t) { t.click(); await wait(1000); toggled = (q('li button[aria-label^="Mark"]') || {}).textContent || "?"; }
-        const d = q('li button[aria-label="Delete"]');
-        if (d) { d.click(); await wait(1000); }
-        return "created=" + created + " toggled=" + toggled.trim() + " afterDelete=" + document.querySelectorAll("li").length;
+        const findAdd = () => Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Add");
+        // Poll up to ~8s for a testable surface (data fetch + lazy editor mount).
+        let input, addBtn;
+        for (let i = 0; i < 40; i++) {
+          input = q("input"); addBtn = findAdd();
+          if ((input && addBtn) || q("textarea")) break;
+          await wait(200);
+        }
+        if (input && addBtn) {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          setter.call(input, "Selftest " + Date.now());
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          addBtn.click();
+          await wait(1200);
+          const created = document.querySelectorAll("li").length;
+          let toggled = "n/a";
+          const t = q('li button[aria-label^="Mark"]');
+          if (t) { t.click(); await wait(1000); toggled = (q('li button[aria-label^="Mark"]') || {}).textContent || "?"; }
+          const d = q('li button[aria-label="Delete"]');
+          if (d) { d.click(); await wait(1000); }
+          return "created=" + created + " toggled=" + toggled.trim() + " afterDelete=" + document.querySelectorAll("li").length;
+        }
+        // item detail: edit the title textarea, wait for autosave, verify it persisted
+        const ta = q("textarea");
+        if (ta) {
+          const id = new URLSearchParams(location.search).get("id");
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+          const nt = "Edited " + Date.now();
+          setter.call(ta, nt);
+          ta.dispatchEvent(new Event("input", { bubbles: true }));
+          await wait(2600);
+          const res = await window.__ledgrDesktop.request({ method: "GET", path: "/api/items/" + id });
+          const saved = !!(res && res.data && res.data.item && res.data.item.title === nt);
+          return "titleEditSaved=" + saved;
+        }
+        return "no testable UI on this route";
       })()`);
       console.log("[selftest]", result);
     } catch (e) {

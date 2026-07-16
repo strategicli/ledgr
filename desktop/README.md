@@ -87,6 +87,13 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ **interactive lists** — toggle a task done (recurrence-aware
   `/complete`, strikethrough) and delete a row, both via the seam. Full
   create→toggle→delete loop verified in-window (`created=1 toggled=☑ afterDelete=0`).
+- ✅ **`fetch` shim** (`web/app/layout.tsx`) — routes raw `fetch("/api/…")` through
+  the IPC bridge, so the shared cloud client components work on desktop **unchanged**
+  (the unlock for reusing the Tiptap editor & co).
+- ✅ **item detail** (`/item?id=…`, query-param route to stay export-friendly) —
+  open an item and edit **title + body in the real Tiptap `ItemEditor`**, autosave
+  over the seam (ADR-134 conflict handling intact). Verified in-window
+  (`titleEditSaved=true`).
 - ⏳ convert the remaining screens (today/events/inbox/item-detail/list) to the
   same pattern; expand `data-router` to the full endpoint set.
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux

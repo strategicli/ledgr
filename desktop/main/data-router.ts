@@ -7,7 +7,7 @@
 // Coverage here is the proof set (GET /api/settings, GET /api/items). The rest
 // of the ~97 endpoints are the mechanical follow-up — each is a thin wrap of an
 // `@/lib` call, exactly like its route.
-import { listItems, getItem } from "@/lib/items";
+import { listItems, getItem, getItemVersion } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
 import { listDashboards } from "@/lib/dashboards";
@@ -76,6 +76,13 @@ export async function dispatchDataRequest(
     if (method === "POST" && path === "/api/items") {
       const item = await createItem(ownerId, parseItemPayload(req.body, "create"));
       return { ok: true, status: 201, data: { item } };
+    }
+
+    // /api/items/:id/version — updated_at only (ADR-134 focus/conflict check).
+    const versionId = path.match(/^\/api\/items\/([^/]+)\/version$/)?.[1];
+    if (method === "GET" && versionId) {
+      const { updatedAt } = await getItemVersion(ownerId, versionId);
+      return ok({ updatedAt: updatedAt.toISOString() });
     }
 
     // /api/items/:id/complete — recurrence-aware done toggle.
