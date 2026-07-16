@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../src/*"],
+      "server-only": ["./empty.ts"]
+    },
+    "noEmit": true
+  },
+  "include": ["main", "preload", "scripts", "empty.ts"]
+}

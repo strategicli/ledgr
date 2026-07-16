@@ -1,0 +1,16 @@
+{
+  "name": "ledgr-desktop",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Ledgr local desktop build — Electron + embedded PGlite, no server (ADR-139).",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "start": "npm run build && electron .",
+    "verify:router": "cd .. && npx tsx --tsconfig desktop/tsconfig.json desktop/scripts/verify-router.mts"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "esbuild": "^0.24.2"
+  }
+}
