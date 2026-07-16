@@ -10,7 +10,15 @@
 import { listItems, getItem, getItemVersion } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
-import { listDashboards } from "@/lib/dashboards";
+import {
+  createDashboard,
+  deleteDashboard,
+  getDashboard,
+  listDashboards,
+  parseDashboardInput,
+  updateDashboard,
+} from "@/lib/dashboards";
+import { resolveDashboard } from "@/lib/dashboard-resolve";
 import { getType, listTypes, createType, parseTypeInput } from "@/lib/types";
 import { listRelatedItems } from "@/lib/relations";
 import { getView, listViews, queryViewItems, createView, parseViewInput } from "@/lib/views";
@@ -74,6 +82,28 @@ export async function dispatchDataRequest(
 
     if (method === "GET" && path === "/api/dashboards") {
       return ok({ dashboards: await listDashboards(ownerId) });
+    }
+    if (method === "POST" && path === "/api/dashboards") {
+      const dashboard = await createDashboard(ownerId, parseDashboardInput(req.body));
+      return { ok: true, status: 201, data: { dashboard } };
+    }
+    // /api/dashboards/:id/resolved — the full per-widget fan-out for rendering
+    // (desktop read grid). Shares resolveDashboard with the cloud DashboardView.
+    const resolvedId = path.match(/^\/api\/dashboards\/([^/]+)\/resolved$/)?.[1];
+    if (method === "GET" && resolvedId) {
+      return ok(await resolveDashboard(ownerId, resolvedId));
+    }
+    // /api/dashboards/:id — GET raw · PATCH replace · DELETE.
+    const dashId = path.match(/^\/api\/dashboards\/([^/]+)$/)?.[1];
+    if (dashId) {
+      if (method === "GET") return ok({ dashboard: await getDashboard(ownerId, dashId) });
+      if (method === "PATCH") {
+        return ok({ dashboard: await updateDashboard(ownerId, dashId, parseDashboardInput(req.body)) });
+      }
+      if (method === "DELETE") {
+        await deleteDashboard(ownerId, dashId);
+        return ok({ ok: true });
+      }
     }
 
     if (method === "GET" && path === "/api/types") {

@@ -7,6 +7,7 @@
 //                                                                    └─ dispatchDataRequest → @/lib → PGlite
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 import { initLocalDb } from "@/db";
@@ -131,6 +132,54 @@ async function boot(): Promise<void> {
     }
     console.log("[seed-demo] created demo item + subtask, opening", startRoute);
   }
+  // Gated dashboard seed (verification aid): a task + a view + a dashboard with
+  // view/stat/text widgets, then open it — proves the resolved-widget read grid.
+  if (process.env.LEDGR_SEED_DASH === "1") {
+    await dispatchDataRequest(
+      { method: "POST", path: "/api/items", body: { type: "task", title: "Dashboard task " + startRoute } },
+      ownerId
+    );
+    const viewRes = await dispatchDataRequest(
+      { method: "POST", path: "/api/views", body: { name: "Desktop tasks", layout: "list", filter: { type: "task" } } },
+      ownerId
+    );
+    const viewId = (viewRes.data as { view?: { id?: string } }).view?.id;
+    if (viewId) {
+      const widgets = [
+        {
+          id: randomUUID(),
+          kind: "view",
+          viewId,
+          itemId: null,
+          settings: { titleOverride: null, itemLimit: null, sortOverride: null, renderStyle: "compact" },
+          layout: { lg: { x: 0, y: 0, w: 6, h: 4 } },
+        },
+        {
+          id: randomUUID(),
+          kind: "stat",
+          viewId,
+          itemId: null,
+          settings: { label: "Open tasks", metric: "count" },
+          layout: { lg: { x: 6, y: 0, w: 3, h: 2 } },
+        },
+        {
+          id: randomUUID(),
+          kind: "text",
+          viewId: null,
+          itemId: null,
+          settings: { heading: "Notes", body: "Hello from the desktop dashboard" },
+          layout: { lg: { x: 0, y: 4, w: 6, h: 2 } },
+        },
+      ];
+      const dashRes = await dispatchDataRequest(
+        { method: "POST", path: "/api/dashboards", body: { name: "Desktop Home", focusItemId: null, appearance: null, widgets } },
+        ownerId
+      );
+      const dashId = (dashRes.data as { dashboard?: { id?: string } }).dashboard?.id;
+      if (dashId) startRoute = `/dashboard?id=${dashId}`;
+      console.log("[seed-dash] created view + 3-widget dashboard, opening", startRoute);
+    }
+  }
   await win.loadURL(`app://local${startRoute}`);
 
   // Boot self-check: drive the same data path the window uses, so stdout carries
@@ -158,8 +207,17 @@ async function boot(): Promise<void> {
         for (let i = 0; i < 40; i++) {
           input = q("input"); addBtn = findAdd();
           const hasCreate = Array.from(document.querySelectorAll("button")).some((b) => b.textContent.trim().indexOf("Create ") === 0);
-          if ((input && addBtn) || q("textarea") || hasCreate) break;
+          if ((input && addBtn) || q("textarea") || hasCreate || q("section .grid > div")) break;
           await wait(200);
+        }
+        // dashboard read grid: assert the resolved widgets rendered.
+        if (location.pathname === "/dashboard" || q("section .grid > div")) {
+          const cards = document.querySelectorAll("section .grid > div").length;
+          const text = document.body.innerText;
+          return "dashCards=" + cards +
+            " hasStat=" + /Open tasks/.test(text) +
+            " hasText=" + /Hello from the desktop dashboard/.test(text) +
+            " hasViewRow=" + /Dashboard task/.test(text);
         }
         if (input && addBtn) {
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;

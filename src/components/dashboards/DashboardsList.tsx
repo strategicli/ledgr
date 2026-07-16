@@ -8,17 +8,24 @@ import NewDashboardButton from "@/components/dashboards/NewDashboardButton";
 // (cloud) and a client tree (desktop).
 export type DashboardListItem = { id: string; name: string; widgets: unknown[] };
 
+// hrefFor / onCreated are additive hooks (defaults target the cloud
+// /dashboards/:id route) so the desktop build can point at its own query-param
+// page. ADR-139.
 export default function DashboardsList({
   dashboards,
+  hrefFor,
+  onCreated,
 }: {
   dashboards: DashboardListItem[];
+  hrefFor?: (id: string) => string;
+  onCreated?: (id: string) => void;
 }) {
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
         <div className="flex items-baseline justify-between gap-2">
           <h1 className="text-2xl font-bold tracking-tight text-neutral-100">Dashboards</h1>
-          <NewDashboardButton />
+          <NewDashboardButton onCreated={onCreated} />
         </div>
 
         {dashboards.length > 0 ? (
@@ -26,7 +33,7 @@ export default function DashboardsList({
             {dashboards.map((d) => (
               <li key={d.id}>
                 <Link
-                  href={`/dashboards/${d.id}`}
+                  href={hrefFor ? hrefFor(d.id) : `/dashboards/${d.id}`}
                   className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3 hover:border-neutral-700"
                 >
                   <span className="font-medium text-neutral-200">{d.name}</span>

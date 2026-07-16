@@ -5,12 +5,14 @@
 // <DashboardsList> the cloud server page renders. Proves shared-component reuse
 // across the Next-export boundary (ADR-139) — one view, per-target data-fetch.
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
 import DashboardsList, {
   type DashboardListItem,
 } from "@/components/dashboards/DashboardsList";
 
 export default function Home() {
+  const router = useRouter();
   const [dashboards, setDashboards] = useState<DashboardListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,5 +44,11 @@ export default function Home() {
       </main>
     );
   }
-  return <DashboardsList dashboards={dashboards} />;
+  return (
+    <DashboardsList
+      dashboards={dashboards}
+      hrefFor={(id) => `/dashboard?id=${id}`}
+      onCreated={(id) => router.push(`/dashboard?id=${id}`)}
+    />
+  );
 }

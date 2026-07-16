@@ -7,7 +7,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function NewDashboardButton() {
+// onCreated is an additive hook (default: navigate to the cloud /dashboards/:id
+// route) so the desktop build can route to its own query-param page instead.
+export default function NewDashboardButton({
+  onCreated,
+}: {
+  onCreated?: (id: string) => void;
+} = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -26,7 +32,8 @@ export default function NewDashboardButton() {
       });
       if (!res.ok) throw new Error("create failed");
       const { dashboard } = (await res.json()) as { dashboard: { id: string } };
-      router.push(`/dashboards/${dashboard.id}`);
+      if (onCreated) onCreated(dashboard.id);
+      else router.push(`/dashboards/${dashboard.id}`);
     } catch {
       setError(true);
       setBusy(false);
