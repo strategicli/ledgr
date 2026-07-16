@@ -50,10 +50,29 @@ So the capture project is not "build a time tracker"; it's "fill the gaps the da
 | **Location / visits** | hospital visits, home visits, "at the church" vs elsewhere | iOS Shortcuts **arrive/leave geofences** (church, hospital(s), home) → POST enter/exit signals | zero | This is the only automatic window into off-device pastoral work, which is exactly the work that's invisible today. Coarse by design: "at Mercy Hospital 1:10–2:35," not a location history. |
 | **Phone usage** | phone-based work (email, calls, texts) | iOS Screen Time has **no export API**. Realistic options: Shortcuts app-open/close automations for 2–3 work apps (Outlook, Teams), or accept the gap | zero | iOS also exposes no call log. Don't over-engineer this: phone work is mostly email/Teams, and the M365 side (below) evidences it. |
 | **Email/Teams evidence** | when correspondence happened | Graph query for sent-mail timestamps (metadata only, incremental) | zero | Cheap corroboration for "admin/comms" blocks; not a primary source. |
+| **Teams calls** | call time, participants | Graph `callRecords` webhook (admin-consent app permission) | zero | Push-based: the call ends, Graph notifies Ledgr. See "three lanes" below. |
+| **Texts (iMessage/SMS)** | messaging bursts | Mac agent reads `chat.db` metadata (when/volume only) | zero | Metadata only by default — see the sensitivity note below. |
+| **Cellular calls** | real phone-call time | Mac agent reads the Continuity call-history store | zero | The one path to iPhone call logs; needs a verification spike. |
 | **Build/system time** | Ledgr + Claude sessions | git log / session records | zero | Brandon's system-building hours are real work hours; git already timestamps them. |
 | **Manual quick capture** | everything else | Siri/Shortcut "log work: 45 min counseling call" → capture endpoint; or quick-add in Ledgr; or tell Claude via MCP | seconds, on demand | The escape hatch. The system's job is to make this rare, not to eliminate it. |
 
 **The coverage strategy:** calendar + Mac activity + drive punches + geofences gets most weekdays to near-full coverage automatically. The timeline then renders **uncaptured gaps explicitly**, so the human contribution collapses to "name the 90-minute gap on Thursday," a 10-second act at review time instead of reconstruction.
+
+## Getting the data in: three lanes, no export/import (Brandon, 2026-07-16)
+
+The standing requirement: **data flows continuously to where it belongs; no manual export/import cycles.** Every source lands in one of three lanes, all of which already have working precedent in this system:
+
+1. **Cloud pull (Ledgr-side, Graph):** things Microsoft already knows. Calendar/appointments (built, ADR-023, delta sync), sent/received mail metadata (same delta discipline), and **Teams calls via the Graph `callRecords` API** — an application permission (`CallRecords.Read.All`, admin consent, which Brandon can grant) with **webhook subscriptions**, so a finished Teams call pushes its start/end/participants to Ledgr on its own. No polling, no export.
+2. **Phone push (Shortcuts → the machine API):** things only the phone witnesses. CarPlay/Bluetooth connect/disconnect (drives), arrive/leave geofences (visits, campus presence). A Shortcut is just an authenticated `POST` to the signals endpoint — the token minting for exactly this kind of client shipped in ADR-160. Fire-and-forget, zero taps.
+3. **Home-base agent push (a self-run Mac collector):** things only Brandon's Mac can see. **The pattern already exists and runs: `~/code/logos-sync`** — a small local runner, zero deps, that reads a local app database and posts to Ledgr. This exploration generalizes that into one collector agent (launchd, runs every N minutes) with small readers per source:
+   - **ActivityWatch** local REST → app/document time buckets.
+   - **iMessage/SMS metadata** from the Mac's Messages store (`chat.db`) — when/duration-of-thread only (sensitivity below).
+   - **Cellular call history** — with Continuity, iPhone call logs sync into the Mac's CallHistory store; a reader gets when/duration for real phone calls, the thing iOS itself will never expose. (Worth a verification spike; if it holds, it closes the biggest "phone work" gap.)
+   - **git activity** across `~/code` for build time.
+
+   One agent, many readers, one batched `POST /api/machine/signals` — not N cron jobs. It's the "self-run app" Brandon named, and it stays a feeder (no Ledgr code depends on it existing; a day without the Mac online is just a day with more gaps).
+
+**Sensitivity note for texts/calls:** pastoral texts and calls are the most confidential data in the whole system. Default capture is **when + duration only** — enough for the timeline block ("calls/texts, 40 min, evening") — with counterparty capture off by default and opt-in per the review ritual ("this call was the Hendersons" is a manual enrichment, never automatic). This keeps the ADR-075 posture intact: the sensitive fact never enters the database, rather than entering and being filtered.
 
 ## Categorization: deterministic rules, AI on purpose
 
@@ -71,14 +90,34 @@ Proposed split:
 - **Daily rollup → items (deterministic cron):** a nightly job distills signals into per-day summary data — the timeline's render source. Whether the rollup is (a) a `day_log` item per day (fits Principle 2, gets FTS/export/share for free, and the OneDrive markdown export makes the timeline Sunday-proof readable outside the app) or (b) just a query over `time_signals` with no materialization is an open question; (a) is the instinct because the *human-readable narrative* is content, even though the telemetry isn't.
 - **Capture ingestion:** extend the machine API with `POST /api/machine/signals` (batch), same token model as ADR-160. Machine-API contract change = core.
 
-## The timeline surface
+## Facets: every hour has four answers (Brandon, 2026-07-16)
 
-Work surface, mobile-friendly (this is a glance-and-review thing, not a Build tool):
+One block of time answers four different questions, and Brandon named them. These are **orthogonal facets, not one tag soup**:
 
-- **Day view:** a vertical day strip of blocks (like a calendar day, but *actual* not planned), colored by category, gaps rendered honestly as gaps with a one-tap "what was this?" fill. Click-through via `ref` to the meeting/note/task.
-- **Week/month view:** category stacked bars per day + the week's completed-tasks/progress highlights. This is the skimmable "how I spend my time" answer and the self-analysis workhorse.
-- **Review ritual:** a 2-minute end-of-day (or end-of-week) pass: confirm inferred blocks, fill gaps, correct categories. Confirmed vs inferred rendering reuses the provisional-until-confirmed gesture.
-- **Intention overlay:** scheduled blocks (ADR-091) ghosted behind actuals — the drift view.
+| Facet | Question | Examples | Where it comes from |
+|---|---|---|---|
+| **Activity** | *how* was the time spent | email, meeting, call, texting, driving, writing, deep work | = the signal's `kind`; deterministic from the source (calendar → meeting, CarPlay → driving, Outlook frontmost → email). Fixed small vocabulary. |
+| **Project** | *what* was being advanced | hiring, building Ledgr, Advent series, capital campaign | a **relation to a real project item** (`explorations/project-items.md`), not a string tag |
+| **Campus** | *where/for whom* organizationally | WPN, BVD, all-church | a **relation to a campus entity item**; geofences map to campuses for free |
+| **Job category** | *which part of the role* | staff leadership, strategic planning, preaching, pastoral care, admin | small owner-defined taxonomy — this is the supervisor's language and the lens the report renders in |
+
+The model falls out of what's already built: **activity lives on the signal; the other three are relations on the distilled block** (the rollup artifact), through the existing `relations` system — so "everything related to the hiring project" naturally includes time blocks alongside notes and tasks, with no new tagging machinery. Job category is the one genuinely new vocabulary, and it should be a *small, stable* list because week-over-week comparability is what makes the supervisor report meaningful.
+
+**Auto-association is deterministic rules, corrections teach (the matcher pattern, ADR-024):** a calendar event matched to the hiring template → project=hiring, category=staff-leadership; a geofence at BVD → campus=BVD; ActivityWatch says Word on `advent-week-2.docx` → project=Advent series, category=preaching; the weekly staff meeting inherits from its template. When Brandon corrects a block's facet, offer "always file this like that" — the same suggested/confirmed gesture the calendar matcher uses. AI never assigns facets in the background; at most, "help me facet this week" is an on-demand MCP action whose output is suggestions to confirm.
+
+## UI/UX: what the data looks like
+
+Work surface, mobile-friendly (this is a glance-and-review thing, not a Build tool). Three renders of the same data, in increasing distance from the raw hours:
+
+**1. Day view (Brandon, daily/reviewing).** A vertical day strip like a calendar day, but *actual* rather than planned: blocks colored by **activity**, with tiny facet chips (project/campus) on blocks that have them. Gaps render honestly as hatched "unaccounted" slots with a one-tap "what was this?" fill. Inferred blocks render provisional (dashed) until confirmed — same trust gesture as calendar matches. Scheduled blocks (ADR-091) ghost behind actuals as the intention-vs-reality overlay.
+
+**2. Drill-in (click any block).** A block opens a detail panel (the existing item-modal gesture): the **evidence** (the raw signals that composed it: "CarPlay 8:12–8:41", "Word on advent-week-2.docx, 94 min", the Graph call record), the **linked artifact** via `ref` (the meeting item with its notes, the task completed, the note edited — one click from "what was this hour" to the actual work product), and the **four facet chips, editable in place**, with corrections offering to become rules. If the rollup materializes as `day_log` items, the drill-in is just… opening an item, with everything items already do.
+
+**3. Week/month view (Brandon, strategic).** Stacked bars per day, and — the payoff of orthogonal facets — a **pivot control: view the same week by activity, by project, by campus, or by job category.** "How much of me did BVD get this month?" and "how fragmented are my mornings?" and "preaching hours trend across the fall" are the same query with a different group-by. Plus the week's completed-tasks/progress highlights and a fragmentation read (block count vs. hours).
+
+**4. Supervisor report (weekly/monthly).** Rendered in the **job-category lens** (their language, not app names): hours by category with trend vs. prior weeks, a campus split line, and opt-in highlights. Aggregate-by-construction — no item titles, no names, no drill-in. Delivered as a share-token page or a pandoc PDF. The self-views and the report are different renderers over the same rollup, and only the report renderer is shareable.
+
+**Review ritual:** a 2-minute end-of-day (or end-of-week) pass: confirm inferred blocks, fill gaps, correct facets. The system's success metric is this staying under 2 minutes.
 
 ## Sharing with a supervisor (privacy is the constraint)
 
@@ -101,7 +140,9 @@ ADR-075 declined a confidential tier because nothing left the platform; **a shar
 
 - **Rollup materialization:** `day_log` items (FTS/export/Sunday-proof for free) vs. pure query? Leaning items.
 - **Granularity floor:** what's the smallest block worth keeping — 10 min? 25? (Below some floor, fragmentation is noise.) Affects both rollup and the honesty of "fragmentation" analysis.
-- **Category taxonomy:** fixed small set (8-ish) vs. owner-configurable? Fixed-first is the instinct; the report and trends need stable categories to be comparable across weeks.
+- **Category taxonomy:** the activity vocabulary is fixed-small; the **job-category** list is owner-defined but should be stable — who arbitrates changes to it mid-year, since renaming breaks week-over-week trend comparability? (Probably: additive only, merge on report render.)
+- **Campus/project as items:** campuses presumably already exist as entities; project blocks depend on `explorations/project-items.md` landing. Does the facet model wait for it, or start with campus + category only?
+- **Mac-agent verification spikes:** does Continuity call history actually sync and stay readable on Brandon's Mac? Does `chat.db` access survive macOS privacy prompts under launchd? (Both are cheap afternoon tests before anything is designed around them.)
 - **Retention:** keep raw signals forever, or purge after rollup + N months? (Purge leans against the pack-rat instinct; the rollup is the record.)
 - **Everlance:** is mileage/purpose detail wanted in Ledgr at all, or does Everlance stay the reimbursement system of record and CarPlay punches suffice for the timeline?
 - **Phone-side ambition:** are Shortcuts app-open automations worth their fiddliness, or is phone time accepted as a known small gap (partially evidenced by sent-mail metadata)?
