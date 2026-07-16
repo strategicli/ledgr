@@ -122,8 +122,14 @@ async function boot(): Promise<void> {
       ownerId
     );
     const demoId = (created.data as { item?: { id?: string } }).item?.id;
-    if (demoId) startRoute = `/item?id=${demoId}`;
-    console.log("[seed-demo] created demo item, opening", startRoute);
+    if (demoId) {
+      await dispatchDataRequest(
+        { method: "POST", path: "/api/items", body: { type: "task", title: "Subtask A", parentId: demoId } },
+        ownerId
+      );
+      startRoute = `/item?id=${demoId}`;
+    }
+    console.log("[seed-demo] created demo item + subtask, opening", startRoute);
   }
   await win.loadURL(`app://local${startRoute}`);
 

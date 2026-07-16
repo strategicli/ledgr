@@ -12,6 +12,7 @@ import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
 import { listDashboards } from "@/lib/dashboards";
 import { getType, listTypes } from "@/lib/types";
+import { listRelatedItems } from "@/lib/relations";
 import {
   createItem,
   updateItem,
@@ -92,6 +93,12 @@ export async function dispatchDataRequest(
     if (method === "GET" && versionId) {
       const { updatedAt } = await getItemVersion(ownerId, versionId);
       return ok({ updatedAt: updatedAt.toISOString() });
+    }
+
+    // /api/items/:id/related — items linked to this one ("Linked here").
+    const relatedId = path.match(/^\/api\/items\/([^/]+)\/related$/)?.[1];
+    if (method === "GET" && relatedId) {
+      return ok({ items: await listRelatedItems(ownerId, relatedId) });
     }
 
     // /api/items/:id/complete — recurrence-aware done toggle.

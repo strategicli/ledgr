@@ -5,8 +5,8 @@
 // canvas widgets — ItemEditor (title/body, Tiptap), FieldStrip (status/dates),
 // CustomProperties (the type's custom fields), SaveStatusIndicator — whose raw
 // fetch("/api/…") saves travel over the IPC seam via the fetch shim. ADR-139.
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
 import { topStripFields } from "@/lib/canvas-fields";
 import { resolveStatusSchema } from "@/lib/status";
@@ -14,6 +14,7 @@ import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import CustomProperties from "@/components/build/CustomProperties";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
+import LinkedList from "./LinkedList";
 
 type LoadedItem = {
   id: string;
@@ -40,6 +41,8 @@ function todayYmd(): string {
 
 function ItemDetail() {
   const id = useSearchParams().get("id") ?? "";
+  const router = useRouter();
+  const open = useCallback((rid: string) => router.push(`/item?id=${rid}`), [router]);
   const [item, setItem] = useState<LoadedItem | null>(null);
   const [typeDef, setTypeDef] = useState<TypeDef>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +117,12 @@ function ItemDetail() {
           />
         </div>
       ) : null}
+      <LinkedList
+        heading="Subtasks"
+        path={`/api/items?parentId=${item.id}&limit=200`}
+        onOpen={open}
+      />
+      <LinkedList heading="Linked here" path={`/api/items/${item.id}/related`} onOpen={open} />
       <SaveStatusIndicator itemId={item.id} loadedAt={loadedAt} />
     </section>
   );
