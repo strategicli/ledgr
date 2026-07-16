@@ -117,13 +117,13 @@ async function boot(): Promise<void> {
       {
         method: "POST",
         path: "/api/items",
-        body: { type: "note", title: "Demo note", body: { format: "markdown", text: "Editable **body** in the desktop window." } },
+        body: { type: "task", title: "Demo task", body: { format: "markdown", text: "Editable **body** in the desktop window." } },
       },
       ownerId
     );
     const demoId = (created.data as { item?: { id?: string } }).item?.id;
     if (demoId) startRoute = `/item?id=${demoId}`;
-    console.log("[seed-demo] created note, opening", startRoute);
+    console.log("[seed-demo] created demo item, opening", startRoute);
   }
   await win.loadURL(`app://local${startRoute}`);
 
