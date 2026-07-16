@@ -59,13 +59,30 @@ async function boot(): Promise<void> {
   // (client-side navigation targets, incl. dynamic segments) fall back to
   // index.html so the Next client router can resolve them (SPA fallback).
   protocol.handle("app", async (request) => {
+    const isFile = (p: string) => {
+      try {
+        return fs.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    };
     const { pathname } = new URL(request.url);
     let rel = decodeURIComponent(pathname);
     if (rel === "/" || rel === "") rel = "/index.html";
     let filePath = path.join(OUT_DIR, rel);
-    if (!fs.existsSync(filePath)) {
+    // Must be a FILE — Next export creates a `tasks/` DIR alongside `tasks.html`,
+    // so `existsSync` isn't enough; a dir must fall through to the route mapping.
+    if (!isFile(filePath)) {
       if (path.extname(rel)) return new Response("Not found", { status: 404 });
-      filePath = path.join(OUT_DIR, "index.html"); // SPA fallback for routes
+      // Next static export names routes `<route>.html`; map route → page file,
+      // then a directory index, then the SPA fallback.
+      const asHtml = `${filePath}.html`;
+      const asIndex = path.join(filePath, "index.html");
+      filePath = isFile(asHtml)
+        ? asHtml
+        : isFile(asIndex)
+          ? asIndex
+          : path.join(OUT_DIR, "index.html");
     }
     return net.fetch(pathToFileURL(filePath).toString());
   });
@@ -85,7 +102,10 @@ async function boot(): Promise<void> {
   win.webContents.on("console-message", (_e, _level, message) =>
     console.log("[renderer]", message)
   );
-  await win.loadURL("app://local/");
+  // Deep-link support (also lets a route be verified directly): LEDGR_START_ROUTE
+  // overrides the initial route. Defaults to the home screen.
+  const startRoute = process.env.LEDGR_START_ROUTE || "/";
+  await win.loadURL(`app://local${startRoute}`);
 
   // Boot self-check: drive the same data path the window uses, so stdout carries
   // a definitive "the no-server path works" confirmation even without eyeballing.

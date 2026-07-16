@@ -17,8 +17,11 @@ cloud app; only the runtime differs:
 
 - `web/` — the renderer: a **static Next export** (`output: 'export'`) whose
   client pages import the shared views from `../src/components` (via
-  `experimental.externalDir`) and fetch through the seam. `web/app/page.tsx`
-  renders the shared `<DashboardsList>` from `GET /api/dashboards`.
+  `experimental.externalDir`) and fetch through the seam. A minimal nav shell
+  (`web/app/layout.tsx`) links the screens: `/` (Dashboards, shared
+  `<DashboardsList>`), `/tasks` and `/notes` (shared `<ItemRows>`). Each page is
+  a thin client loader; navigation is Next client-side routing (multi-route
+  export served by `app://` with a route→`.html` mapping in main).
 - `main/index.ts` — Electron main: boots PGlite, migrates, resolves the single
   local owner, registers the `ledgr:data` IPC handler, serves `web/out` over a
   custom `app://` protocol (with SPA fallback for client-side routing), opens
@@ -67,8 +70,12 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ **packaged unsigned macOS `.app`** (`npm run package:mac` → `release/`) — the
   packaged binary boots self-contained: embedded PGlite, migrations from the
   shipped `drizzle` resources, PGlite wasm unpacked, real UI rendered. Verified.
-- ⏳ convert the remaining ~40 pages to the shared-view + desktop-loader pattern
-  and expand `data-router` to the full endpoint set.
+- ✅ nav shell + first Work screens (Dashboards / Tasks / Notes), multi-route
+  static export with `app://` route→`.html` mapping — verified in the window.
+- ⏳ convert the remaining screens (today/events/inbox/item-detail/list) to the
+  same pattern; expand `data-router` to the full endpoint set.
+- ⏳ styling: wire Tailwind into the desktop export (shared components using
+  Tailwind classes render unstyled for now; `ItemRows`/nav use inline styles).
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux
   builds (config present; build on those platforms or via CI).
 
