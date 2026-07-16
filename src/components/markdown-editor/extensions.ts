@@ -41,6 +41,12 @@ import { createMentionNodeView } from "./mention-node-view";
 export const TextColor = Mark.create({
   name: "textColor",
 
+  // Render OUTSIDE the underline/strike marks (StarterKit default priority 100)
+  // so those decoration-bearing elements sit inside the colored span and inherit
+  // its `color` as currentColor — otherwise the underline paints in the default
+  // text color, not the text's own color. Below Link (1000) so links still wrap.
+  priority: 120,
+
   addAttributes() {
     return {
       // The palette name (e.g. "red"); the hex is derived so the single
