@@ -27,6 +27,7 @@ import {
   updateItem,
   softDeleteItem,
   toggleItemDone,
+  restoreItem,
 } from "@/lib/item-mutations";
 import { parseItemPayload } from "@/lib/item-input";
 import { runExport, getExportState } from "@/lib/export/engine";
@@ -187,6 +188,12 @@ export async function dispatchDataRequest(
     const completeId = path.match(/^\/api\/items\/([^/]+)\/complete$/)?.[1];
     if (method === "POST" && completeId) {
       return ok({ item: await toggleItemDone(ownerId, completeId) });
+    }
+
+    // /api/items/:id/restore — bring a trashed item (+ its children) back.
+    const restoreId = path.match(/^\/api\/items\/([^/]+)\/restore$/)?.[1];
+    if (method === "POST" && restoreId) {
+      return ok(await restoreItem(ownerId, restoreId));
     }
 
     // /api/items/:id — GET (read one) · PATCH (update) · DELETE (soft-delete).

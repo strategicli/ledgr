@@ -104,6 +104,11 @@ export default function BuildPage() {
         </div>
         {exportMsg ? <p className="mt-3 text-sm text-neutral-400">{exportMsg}</p> : null}
       </div>
+      <div className="mt-2">
+        <Link href="/trash" className={btn}>
+          Open Trash
+        </Link>
+      </div>
     </section>
   );
 }

@@ -220,6 +220,27 @@ async function boot(): Promise<void> {
     );
   }
 
+  // Gated Trash round-trip (LEDGR_TRASH_TEST=1): create → soft-delete → confirm
+  // it's in trash → restore → confirm it's gone from trash.
+  if (process.env.LEDGR_TRASH_TEST === "1") {
+    const created = await dispatchDataRequest(
+      { method: "POST", path: "/api/items", body: { type: "task", title: "Trash roundtrip" } },
+      ownerId
+    );
+    const tid = (created.data as { item?: { id?: string } }).item?.id;
+    const trashCount = async () => {
+      const r = await dispatchDataRequest({ method: "GET", path: "/api/items?trash=true&limit=200" }, ownerId);
+      return ((r.data as { items?: unknown[] }).items ?? []).length;
+    };
+    await dispatchDataRequest({ method: "DELETE", path: `/api/items/${tid}` }, ownerId);
+    const afterDelete = await trashCount();
+    const restored = await dispatchDataRequest({ method: "POST", path: `/api/items/${tid}/restore` }, ownerId);
+    const afterRestore = await trashCount();
+    console.log(
+      `[trash-test] inTrashAfterDelete=${afterDelete} restoreStatus=${restored.status} inTrashAfterRestore=${afterRestore}`
+    );
+  }
+
   // Gated in-window smoke test (LEDGR_SELFTEST=1): drives the quick-add on the
   // current screen and reports the row count before/after, so create-through-
   // the-UI is verifiable without a human typing. Harmless when unset.
