@@ -1,2 +1,5 @@
 node_modules/
 dist/
+web/.next/
+web/out/
+web/next-env.d.ts

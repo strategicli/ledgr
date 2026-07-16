@@ -5,9 +5,16 @@
   "description": "Ledgr local desktop build — Electron + embedded PGlite, no server (ADR-139).",
   "main": "dist/main.js",
   "scripts": {
-    "build": "node esbuild.mjs",
+    "build:web": "next build web",
+    "build:main": "node esbuild.mjs",
+    "build": "npm run build:web && npm run build:main",
     "start": "npm run build && electron .",
     "verify:router": "cd .. && npx tsx --tsconfig desktop/tsconfig.json desktop/scripts/verify-router.mts"
+  },
+  "dependencies": {
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "electron": "^33.2.0",

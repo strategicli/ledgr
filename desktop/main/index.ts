@@ -1,11 +1,14 @@
 // Electron main process — the "no server" core (ADR-139). It runs the embedded
-// PGlite database and Ledgr's domain logic (@/lib), and answers the renderer's
-// data requests over IPC. There is no HTTP server and no port.
+// PGlite database and Ledgr's domain logic (@/lib), answers the renderer's data
+// requests over IPC, and serves the statically-exported Next UI over a custom
+// app:// protocol. There is no HTTP server and no port.
 //
-//   window (client-rendered UI)  --IPC 'ledgr:data'-->  main process
-//                                                          └─ dispatchDataRequest → @/lib → PGlite
+//   window (Next export, client-rendered)  --IPC 'ledgr:data'-->  main process
+//                                                                    └─ dispatchDataRequest → @/lib → PGlite
+import fs from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { pathToFileURL } from "node:url";
+import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 import { initLocalDb } from "@/db";
 import { users } from "@/db/schema";
 import { dispatchDataRequest, type DataRequest } from "./data-router";
@@ -13,6 +16,18 @@ import { dispatchDataRequest, type DataRequest } from "./data-router";
 // Select the embedded-PGlite driver in getDb() (ADR-139). Set before any @/lib
 // query runs; initLocalDb() below actually creates the instance.
 process.env.LEDGR_DB_DRIVER = "pglite";
+
+// The statically-exported Next app (desktop/web/out). dist/main.js → ../web/out.
+const OUT_DIR = path.resolve(__dirname, "..", "web", "out");
+
+// Must be registered before app `ready`. A standard, secure scheme so the Next
+// client bundle (absolute /_next/... asset paths) and client-side routing work.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app",
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+]);
 
 let ownerId = "";
 
@@ -36,6 +51,21 @@ async function boot(): Promise<void> {
     dispatchDataRequest(req, ownerId)
   );
 
+  // Serve the Next export from OUT_DIR. Assets resolve by path; unknown routes
+  // (client-side navigation targets, incl. dynamic segments) fall back to
+  // index.html so the Next client router can resolve them (SPA fallback).
+  protocol.handle("app", async (request) => {
+    const { pathname } = new URL(request.url);
+    let rel = decodeURIComponent(pathname);
+    if (rel === "/" || rel === "") rel = "/index.html";
+    let filePath = path.join(OUT_DIR, rel);
+    if (!fs.existsSync(filePath)) {
+      if (path.extname(rel)) return new Response("Not found", { status: 404 });
+      filePath = path.join(OUT_DIR, "index.html"); // SPA fallback for routes
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   const win = new BrowserWindow({
     width: 1100,
     height: 800,
@@ -46,7 +76,12 @@ async function boot(): Promise<void> {
       nodeIntegration: false,
     },
   });
-  await win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  // Forward the renderer's console to stdout so the in-window seam call is
+  // observable headlessly (verification aid).
+  win.webContents.on("console-message", (_e, _level, message) =>
+    console.log("[renderer]", message)
+  );
+  await win.loadURL("app://local/");
 
   // Boot self-check: drive the same data path the window uses, so stdout carries
   // a definitive "the no-server path works" confirmation even without eyeballing.
@@ -56,7 +91,7 @@ async function boot(): Promise<void> {
   );
   const count = ((selfcheck.data as { items?: unknown[] }).items ?? []).length;
   console.log(
-    `[ledgr-desktop] booted OK — owner=${ownerId}, GET /api/items → ${selfcheck.status} (${count} items), window open.`
+    `[ledgr-desktop] booted OK — owner=${ownerId}, GET /api/items → ${selfcheck.status} (${count} items), serving Next export from ${OUT_DIR}.`
   );
 }
 
