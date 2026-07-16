@@ -167,6 +167,14 @@ Per-page complications live in the desktop loaders, never the cloud pages:
 
 **Reference — DONE (2026-07-15):** `dashboards/page.tsx` now delegates to a shared `<DashboardsList>` (cloud page unchanged behavior: still a Server Component, still `await listDashboards`, still SSR — verified typecheck-clean). `GET /api/dashboards` added to the desktop router (headless verify: settings/items/search/dashboards all 200, unknown 404). The desktop client loader that renders `<DashboardsList>` from the seam lands with the desktop Next-app slice above.
 
+## Slice 4 landed on the branch (2026-07-15) — real Next UI in the window
+
+The `desktop/web` **static Next export** is live and verified on macOS:
+- `web/` is a minimal Next app with `output: 'export'` + `experimental.externalDir` (so its pages import the shared `../src/components`). `web/app/page.tsx` is a client page that fetches `GET /api/dashboards` via the seam and renders the **shared `<DashboardsList>`** — the same view the cloud SSR page uses.
+- Electron main serves `web/out` over a custom **`app://` protocol** with an **SPA fallback** (unknown/dynamic routes → `index.html`, so the Next client router resolves any path), and loads `app://local/`.
+- **Verified:** the export builds (shared-component import across the boundary included), and in the running window the renderer logs `[page] dashboards: 0` — the exported Next client page renders the shared component from local PGlite over IPC, **no server**. `src/app` (cloud) is untouched, still SSR.
+- This proves the whole **keep-both** approach end to end for the first screen. Remaining pages follow the same pattern (shared view + thin desktop client loader). One tidy item: set a CSP to silence the dev-only Electron security warning.
+
 ## Phasing
 
 See `roadmap.md` Phase 4. For "easiest, ASAP, cross-platform, no server": (0) PGlite spike + round-trip export prototype; (1) the `desktop/` Electron package proving the no-server path end to end — main process runs PGlite + `src/lib`, renderer renders one client-side UI slice over an IPC data-access layer, built for Win + Mac; (2) widen client-rendering + IPC coverage screen by screen, plus the local seam impls (`localAuthProvider`, `FilesystemStorageProvider` over IPC, in-process scheduler over extracted job functions); (3) storage offload (`storage-cost-offload.md`, a parallel cloud track desktop inherits); (4) signing/notarization + shippable Windows + Mac builds. Every step after (0) is gated on the joint ADR.
