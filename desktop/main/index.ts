@@ -47,6 +47,17 @@ async function boot(): Promise<void> {
     },
   });
   await win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+
+  // Boot self-check: drive the same data path the window uses, so stdout carries
+  // a definitive "the no-server path works" confirmation even without eyeballing.
+  const selfcheck = await dispatchDataRequest(
+    { method: "GET", path: "/api/items?limit=50" },
+    ownerId
+  );
+  const count = ((selfcheck.data as { items?: unknown[] }).items ?? []).length;
+  console.log(
+    `[ledgr-desktop] booted OK — owner=${ownerId}, GET /api/items → ${selfcheck.status} (${count} items), window open.`
+  );
 }
 
 app.whenReady().then(boot).catch((err) => {

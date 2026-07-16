@@ -51,6 +51,6 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ `@/lib` runs on embedded PGlite (reads/writes/FTS) — verified.
 - ✅ main + preload bundle via esbuild — verified.
 - ✅ data-router headless proof — verified.
-- ⏳ launching the actual Electron window — verify on your machine (`npm start`).
+- ✅ launching the actual Electron window — confirmed 2026-07-15 (`npm start`; main logs `booted OK — GET /api/items → 200`, window renders from local PGlite).
 - ⏳ swap the proof renderer for the client-rendered Next app (the ~40-page
   conversion) and expand `data-router` to the full endpoint set.

@@ -145,7 +145,7 @@ The `desktop/` Electron package skeleton — the no-server core (ADR-139), isola
 - `main/data-router.ts` dispatches path/method → `@/lib` (proof set: `GET /api/settings`, `GET /api/items`), mirroring the route shapes — the IPC handler's body.
 - `preload/index.ts` exposes the `DesktopDataBridge` on `window.__ledgrDesktop` (the contract from `api-client.ts`); `renderer/index.html` is a minimal proof slice (lists items via the bridge).
 - `esbuild.mjs` bundles main + preload — aliases `server-only` → empty, `@/*` → `../src`, node_modules external.
-- **Verified here:** the router headless against PGlite (`GET /api/settings` 200, `GET /api/items` 200, unknown → 404), and main+preload bundle cleanly with `server-only` neutralized (no runtime require in the bundle). **Pending a Mac/GUI:** `cd desktop && npm install && npm start` to launch the actual window — the one thing not verifiable headlessly.
+- **Verified:** the router headless against PGlite (`GET /api/settings` 200, `GET /api/items` 200, unknown → 404); main+preload bundle cleanly with `server-only` neutralized (no runtime require); and **the actual Electron window boots (2026-07-15, on Tyler's Mac)** — main logs `booted OK — GET /api/items → 200`, the window renders items from local PGlite (0 on a fresh DB). The full path window → IPC → `@/lib` → PGlite runs with no server.
 - Remaining for the desktop target: swap the proof renderer for the client-rendered Next app (the ~40-page conversion), and expand `data-router` to the full endpoint set (mechanical). `electron-builder` packaging is Phase 4 step (4).
 
 ## Phasing
