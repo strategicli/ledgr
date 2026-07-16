@@ -10,6 +10,7 @@
 import { listItems } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
+import { listDashboards } from "@/lib/dashboards";
 
 export type DataRequest = { method: string; path: string; body?: unknown };
 export type DataResponse = { ok: boolean; status: number; data: unknown };
@@ -59,6 +60,10 @@ export async function dispatchDataRequest(
       const limit = q.get("limit");
       if (limit !== null) opts.limit = Number(limit) || undefined;
       return ok({ items: await searchItems(ownerId, query, opts) });
+    }
+
+    if (method === "GET" && path === "/api/dashboards") {
+      return ok({ dashboards: await listDashboards(ownerId) });
     }
 
     return { ok: false, status: 404, data: { error: `no handler for ${method} ${path}` } };

@@ -31,6 +31,10 @@ const search = await dispatchDataRequest(
   { method: "GET", path: "/api/search?q=proof" },
   owner.id
 );
+const dashboards = await dispatchDataRequest(
+  { method: "GET", path: "/api/dashboards" },
+  owner.id
+);
 const unknown = await dispatchDataRequest({ method: "GET", path: "/api/nope" }, owner.id);
 
 const data = items.data as { items?: unknown[] };
@@ -48,6 +52,11 @@ console.log(
         ok: search.ok,
         status: search.status,
         hits: ((search.data as { items?: unknown[] }).items ?? []).length,
+      },
+      dashboards: {
+        ok: dashboards.ok,
+        status: dashboards.status,
+        count: ((dashboards.data as { dashboards?: unknown[] }).dashboards ?? []).length,
       },
       unknown_route: { ok: unknown.ok, status: unknown.status },
     },

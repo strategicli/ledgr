@@ -148,20 +148,24 @@ The `desktop/` Electron package skeleton — the no-server core (ADR-139), isola
 - **Verified:** the router headless against PGlite (`GET /api/settings` 200, `GET /api/items` 200, unknown → 404); main+preload bundle cleanly with `server-only` neutralized (no runtime require); and **the actual Electron window boots (2026-07-15, on Tyler's Mac)** — main logs `booted OK — GET /api/items → 200`, the window renders items from local PGlite (0 on a fresh DB). The full path window → IPC → `@/lib` → PGlite runs with no server.
 - Remaining for the desktop target: swap the proof renderer for the client-rendered Next app (the ~40-page conversion), and expand `data-router` to the full endpoint set (mechanical). `electron-builder` packaging is Phase 4 step (4).
 
-## Open decision: rendering the real UI (SSR → CSR) — needs Brandon (2026-07-15)
+## Decided: keep both — cloud stays SSR, desktop client-renders shared views (2026-07-15)
 
-Starting the page conversion surfaced a consequence worth a deliberate, core-level call. The desktop target must be **client-rendered** (no server). Because it's **one shared codebase**, converting a page to client-rendered + seam-fetch makes that page client-rendered on the **cloud** build too — the cloud app moves from SSR to **CSR** for every converted page (a brief loading state instead of server-rendered-with-data). Functionally identical, perceptually a change, and it touches Brandon's production app app-wide, so it's a both-agree call.
+Decided (Tyler): **do not compromise the cloud build for desktop.** The cloud app stays server-rendered (SSR) exactly as today. The desktop build renders **client-side** (it has no server) by reusing the same building blocks below the page layer. Not a fork — one repo, shared code; only the thin per-route data-loader differs.
 
-Two per-page complications also surfaced (per-page judgment, not pure mechanics):
-- **Server-request context** — some pages use `headers()`, `hasScopedToken()`, request-scoped `resolveOwner()` / `redirect()` (e.g. `settings/page.tsx`). No client/desktop analog: re-expressed client-side (401 → sign-in) or dropped (middleware already guards cloud; desktop is single-owner).
-- **Cloud-only features** — WebClipper, the ICS feed, Clerk sign-in: hidden on desktop (defer-by-hiding), shown on cloud.
-- **Dynamic routes** (`items/[id]`, `list/[type]`, …) need the Electron loader to serve `index.html` as an SPA fallback (a custom protocol) so client-side routing resolves any path.
+**Approach — shared views + per-target data loaders:**
+- Extract each page's UI into a **shared presentational component** that takes its data as props. This is behavior-preserving for cloud: the server page still fetches and renders it, so **SSR is unchanged**.
+- **Cloud page** stays a server component: `await @/lib(...)` → `<PageView data=… />`. Rendering model untouched.
+- **Desktop** renders the same `<PageView>` from a thin client loader that fetches via the seam (IPC → `@/lib` → PGlite), with a loading state.
+- Shared: the view components, `@/lib`, the seam, everything below the page. Divergent: only the thin data-loader wrapper per route.
 
-**Options:**
-- **A — accept app-wide CSR (recommended).** Convert shared pages to client-rendered + seam. True one-codebase, simplest. Cloud pages lose SSR (a loading flash), which is acceptable for an authenticated single-user PWA. Needs Brandon's nod (core, affects his app).
-- **B — keep cloud SSR via dual page wrappers.** Each route keeps a server `page.tsx` (cloud, awaits `@/lib`) and gains a desktop client variant fetching via the seam; both render a shared presentational component. Preserves cloud SSR; costs a thin wrapper per route + build-time route selection. More scaffolding, some duplication.
+Per-page complications live in the desktop loaders, never the cloud pages:
+- **Server-request context** (`headers()`, `hasScopedToken()`, request-scoped `resolveOwner()`/`redirect()`, e.g. `settings/page.tsx`) — handled client-side on desktop (401 → sign-in) or dropped (desktop is single-owner); cloud pages keep theirs.
+- **Cloud-only features** (WebClipper, ICS feed, Clerk sign-in) — hidden on desktop (defer-by-hiding).
+- **Dynamic routes** (`items/[id]`, `list/[type]`, …) — the desktop loader/router serves an SPA fallback so client-side routing resolves any path.
 
-Reference conversion candidate (clean, data-only): `dashboards/page.tsx` → a client component reading `GET /api/dashboards` via the seam. Ready to execute once A/B is chosen.
+**Mechanism (next slice):** the desktop build is its own minimal **Next app in `desktop/`** with `output: 'export'`, whose thin client pages reuse `src/components` (the shared views) and fetch via the seam; Electron loads the exported static site through a custom protocol with an SPA fallback (so client-side routing resolves any path, incl. dynamic routes). The cloud `src/app` tree stays **completely untouched** (SSR preserved) — the two builds share everything below the page layer, diverge only at the thin page/loader.
+
+**Reference — DONE (2026-07-15):** `dashboards/page.tsx` now delegates to a shared `<DashboardsList>` (cloud page unchanged behavior: still a Server Component, still `await listDashboards`, still SSR — verified typecheck-clean). `GET /api/dashboards` added to the desktop router (headless verify: settings/items/search/dashboards all 200, unknown 404). The desktop client loader that renders `<DashboardsList>` from the seam lands with the desktop Next-app slice above.
 
 ## Phasing
 
