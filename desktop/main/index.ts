@@ -186,6 +186,37 @@ async function boot(): Promise<void> {
       console.log("[seed-dash] created view + 3-widget dashboard, opening", startRoute);
     }
   }
+  // Gated view-layout seed (LEDGR_SEED_VIEWS=1): a few dated tasks + board/table/
+  // calendar views; opens the one named by LEDGR_VIEW_LAYOUT (default board).
+  if (process.env.LEDGR_SEED_VIEWS === "1") {
+    const mk = (title: string, dueDate: string) =>
+      dispatchDataRequest({ method: "POST", path: "/api/items", body: { type: "task", title, dueDate } }, ownerId);
+    const t1 = await mk("Layout task A", "2026-07-18");
+    await mk("Layout task B", "2026-07-20");
+    await mk("Layout task C", "2026-07-24");
+    // Complete one so the board shows more than one status column.
+    const t1id = (t1.data as { item?: { id?: string } }).item?.id;
+    if (t1id) await dispatchDataRequest({ method: "POST", path: `/api/items/${t1id}/complete` }, ownerId);
+
+    const mkView = async (body: unknown) => {
+      const r = await dispatchDataRequest({ method: "POST", path: "/api/views", body }, ownerId);
+      return (r.data as { view?: { id?: string } }).view?.id ?? "";
+    };
+    const boardId = await mkView({ name: "Board by status", layout: "board", filter: { type: "task" }, grouping: { field: "status" } });
+    const tableId = await mkView({
+      name: "Task table",
+      layout: "table",
+      filter: { type: "task" },
+      columns: [
+        { source: "field", key: "status" },
+        { source: "field", key: "dueDate" },
+      ],
+    });
+    const calId = await mkView({ name: "Task calendar", layout: "calendar", filter: { type: "task" }, dateProperty: "plan" });
+    const pick = { board: boardId, table: tableId, calendar: calId }[process.env.LEDGR_VIEW_LAYOUT || "board"];
+    if (pick) startRoute = `/view?id=${pick}`;
+    console.log(`[seed-views] board=${boardId} table=${tableId} calendar=${calId}, opening ${startRoute}`);
+  }
   await win.loadURL(`app://local${startRoute}`);
 
   // Boot self-check: drive the same data path the window uses, so stdout carries
@@ -255,8 +286,18 @@ async function boot(): Promise<void> {
         for (let i = 0; i < 40; i++) {
           input = q("input"); addBtn = findAdd();
           const hasCreate = Array.from(document.querySelectorAll("button")).some((b) => b.textContent.trim().indexOf("Create ") === 0);
-          if ((input && addBtn) || q("textarea") || hasCreate || q("section .grid > div")) break;
+          if ((input && addBtn) || q("textarea") || hasCreate || q("section .grid > div") || q("[data-testlayout]")) break;
           await wait(200);
+        }
+        // view layouts: report which layout rendered + a content count.
+        const layoutEl = q("[data-testlayout]");
+        if (layoutEl) {
+          const kind = layoutEl.getAttribute("data-testlayout");
+          const count =
+            kind === "table" ? document.querySelectorAll("tbody tr").length :
+            kind === "board" ? layoutEl.children.length :
+            document.querySelectorAll(".grid-cols-7").length; // calendar: 1 grid present
+          return "layout=" + kind + " count=" + count;
         }
         // dashboard read grid: assert the resolved widgets rendered.
         if (location.pathname === "/dashboard" || q("section .grid > div")) {

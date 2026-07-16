@@ -1,30 +1,33 @@
 "use client";
 
 // Desktop saved-view: /view?id=… runs the view (getView → queryViewItems over
-// the seam) and renders results with the shared <ItemRows> (list layout; the
-// board/calendar/table layouts are a later port). ADR-139.
+// the seam) and renders by the view's layout — list/agenda via <ItemRows>,
+// table/board/calendar via the lightweight <ViewLayouts> renderers. The heavy
+// interactive layouts (drag board, planner time-grid) stay in the cloud app.
+// ADR-139.
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api-client";
-import ItemRows, { type ItemRow } from "@/components/ItemRows";
+import type { ViewDefinition } from "@/lib/views";
+import ViewLayouts, { type WireItem } from "./ViewLayouts";
 
 function ViewInner() {
   const id = useSearchParams().get("id") ?? "";
   const router = useRouter();
-  const [name, setName] = useState("View");
-  const [items, setItems] = useState<ItemRow[] | null>(null);
+  const [view, setView] = useState<ViewDefinition | null>(null);
+  const [items, setItems] = useState<WireItem[] | null>(null);
 
   const load = useCallback(() => {
     if (!id) {
       setItems([]);
       return;
     }
-    apiRequest<{ view?: { name?: string } }>(`/api/views/${id}`)
+    apiRequest<{ view?: ViewDefinition }>(`/api/views/${id}`)
       .then((d) => {
-        if (d.view?.name) setName(d.view.name);
+        if (d.view) setView(d.view);
       })
       .catch(() => {});
-    apiRequest<{ items?: ItemRow[] }>(`/api/views/${id}/items`)
+    apiRequest<{ items?: WireItem[] }>(`/api/views/${id}/items`)
       .then((d) => setItems(d.items ?? []))
       .catch(() => setItems([]));
   }, [id]);
@@ -41,13 +44,18 @@ function ViewInner() {
     [load]
   );
 
+  const layoutLabel = view && view.layout !== "list" ? ` · ${view.layout}` : "";
+
   return (
     <section className="p-6">
-      <h1 className="text-xl font-bold tracking-tight text-neutral-100">{name}</h1>
-      {items === null ? (
+      <h1 className="text-xl font-bold tracking-tight text-neutral-100">
+        {view?.name ?? "View"}
+        <span className="text-sm font-normal text-neutral-600">{layoutLabel}</span>
+      </h1>
+      {items === null || view === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (
-        <ItemRows items={items} empty="No items in this view." onOpen={open} onToggle={toggle} />
+        <ViewLayouts view={view} items={items} onOpen={open} onToggle={toggle} />
       )}
     </section>
   );
