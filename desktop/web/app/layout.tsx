@@ -25,6 +25,7 @@ const NAV = [
   { href: "/inbox", label: "Inbox" },
   { href: "/list?type=event", label: "Events" },
   { href: "/list?type=person", label: "People" },
+  { href: "/views", label: "Views" },
   { href: "/search", label: "Search" },
 ];
 

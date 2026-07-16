@@ -13,6 +13,7 @@ import { searchItems } from "@/lib/search";
 import { listDashboards } from "@/lib/dashboards";
 import { getType, listTypes } from "@/lib/types";
 import { listRelatedItems } from "@/lib/relations";
+import { getView, listViews, queryViewItems } from "@/lib/views";
 import {
   createItem,
   updateItem,
@@ -81,6 +82,20 @@ export async function dispatchDataRequest(
     const typeKey = path.match(/^\/api\/types\/([^/]+)$/)?.[1];
     if (method === "GET" && typeKey) {
       return ok({ type: await getType(typeKey) });
+    }
+
+    if (method === "GET" && path === "/api/views") {
+      return ok({ views: await listViews(ownerId) });
+    }
+    // /api/views/:id/items — run the view (getView → queryViewItems).
+    const viewItemsId = path.match(/^\/api\/views\/([^/]+)\/items$/)?.[1];
+    if (method === "GET" && viewItemsId) {
+      const view = await getView(ownerId, viewItemsId);
+      return ok({ items: await queryViewItems(ownerId, view.filter, view.sort, 200) });
+    }
+    const viewId = path.match(/^\/api\/views\/([^/]+)$/)?.[1];
+    if (method === "GET" && viewId) {
+      return ok({ view: await getView(ownerId, viewId) });
     }
 
     if (method === "POST" && path === "/api/items") {
