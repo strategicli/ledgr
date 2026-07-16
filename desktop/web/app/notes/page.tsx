@@ -1,15 +1,16 @@
 "use client";
 
-// Desktop Notes screen: thin client loader (seam → @/lib → PGlite) rendering the
-// shared <ItemRows>. Same pattern as Tasks (ADR-139).
-import { useEffect, useState } from "react";
+// Desktop Notes screen: fetches notes via the seam and renders the shared
+// <ItemRows>, with a quick-add that creates through the seam (ADR-139).
+import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import ItemRows, { type ItemRow } from "@/components/ItemRows";
+import QuickAddItem from "@/components/QuickAddItem";
 
 export default function NotesPage() {
   const [items, setItems] = useState<ItemRow[] | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     apiRequest<{ items?: ItemRow[] }>("/api/items?type=note&limit=200")
       .then((d) => {
         const list = d.items ?? [];
@@ -22,9 +23,14 @@ export default function NotesPage() {
       });
   }, []);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
   return (
     <section className="p-6">
       <h1 className="text-xl font-bold tracking-tight text-neutral-100">Notes</h1>
+      <QuickAddItem type="note" placeholder="Add a note…" onCreated={load} />
       {items === null ? (
         <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (

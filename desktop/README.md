@@ -77,6 +77,12 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
   export ships the cloud dark theme + component CSS + the utilities the shared
   components use. Nav / `ItemRows` restyled to the dark palette. Verified: CSS
   emitted with theme + utilities; app boots with no CSP refusal.
+- ✅ **create through the UI** — quick-add on Tasks/Notes creates via the seam
+  (`POST /api/items` → IPC → `@/lib` → PGlite), list reloads; verified in-window
+  (row count 0→1). Router covers item CRUD.
+- ✅ **core types auto-seeded** on a fresh local DB (`src/lib/seed-core-types.ts`,
+  idempotent, mirrors `scripts/seed.mjs`) — migrations create tables, not type
+  rows, so a local DB needs this to be usable.
 - ⏳ convert the remaining screens (today/events/inbox/item-detail/list) to the
   same pattern; expand `data-router` to the full endpoint set.
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux

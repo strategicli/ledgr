@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 import { initLocalDb } from "@/db";
 import { users } from "@/db/schema";
+import { seedCoreTypes } from "@/lib/seed-core-types";
 import { dispatchDataRequest, type DataRequest } from "./data-router";
 
 // Select the embedded-PGlite driver in getDb() (ADR-139). Set before any @/lib
@@ -44,6 +45,10 @@ async function boot(): Promise<void> {
   // ADR-139). drizzle/ ships next to the app; in dev it's two levels up from dist/.
   const dataDir = path.join(app.getPath("userData"), "ledgr.pgdata");
   const db = await initLocalDb({ dataDir, migrationsFolder: MIGRATIONS_DIR });
+
+  // Seed the core types (fresh local DBs have none — migrations create tables,
+  // not type rows; the cloud runs seed.mjs). Idempotent.
+  await seedCoreTypes();
 
   // Single local owner (no Clerk): reuse the existing one or create it.
   const existing = await db.select().from(users).limit(1);
@@ -117,6 +122,29 @@ async function boot(): Promise<void> {
   console.log(
     `[ledgr-desktop] booted OK — owner=${ownerId}, GET /api/items → ${selfcheck.status} (${count} items), serving Next export from ${OUT_DIR}.`
   );
+
+  // Gated in-window smoke test (LEDGR_SELFTEST=1): drives the quick-add on the
+  // current screen and reports the row count before/after, so create-through-
+  // the-UI is verifiable without a human typing. Harmless when unset.
+  if (process.env.LEDGR_SELFTEST === "1") {
+    try {
+      const result = await win.webContents.executeJavaScript(`(async () => {
+        const input = document.querySelector("input");
+        const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Add");
+        if (!input || !btn) return "no quick-add UI on this route";
+        const before = document.querySelectorAll("li").length;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        setter.call(input, "Selftest " + Date.now());
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        btn.click();
+        await new Promise((r) => setTimeout(r, 1000));
+        return "rows before=" + before + " after=" + document.querySelectorAll("li").length;
+      })()`);
+      console.log("[selftest]", result);
+    } catch (e) {
+      console.log("[selftest] error:", (e as Error).message);
+    }
+  }
 }
 
 app.whenReady().then(boot).catch((err) => {
