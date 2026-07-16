@@ -97,9 +97,12 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ **Work screens** — Today, Tasks, Notes, Inbox, Events, People, Search, and
   the generic `/list?type=…`, all through the seam. Query-param routes
   (`?id=`/`?type=`) keep the static export free of `generateStaticParams`.
-- ✅ **views** — `/views` index + `/view?id=…` render a saved view's items
-  (list layout via `ItemRows`; board/table/calendar layouts are the parity
-  follow-up).
+- ✅ **views (all layouts)** — `/views` index + `/view?id=…` render a saved
+  view by its layout: list/agenda via `ItemRows`, plus a columns-driven
+  **table**, a grouping **board** (kanban columns), and a read-only **calendar**
+  month grid (`web/app/view/ViewLayouts.tsx`, lightweight — the cloud
+  `ViewRenderer`'s drag board + planner time-grid stay cloud-side). Verified per
+  layout (`board count=2`, `table count=3`, `calendar count=1`).
 - ✅ **Build (authoring)** — `/build` index; `/view/new` and `/type/new` reuse
   the **real cloud `ViewBuilder`/`TypeBuilder`** over the seam (additive
   `onSaved` prop), verified in-window (`viewsAfterCreate`, `typeCreated=true`).
@@ -112,8 +115,12 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
   the shared `runExport` engine through `LocalExportTarget` into `~/LedgrVault`
   (markdown + frontmatter, incremental), so the vault opens in Obsidian / reads
   in Claude. Verified (`exported=2 errors=0`, files on disk).
-- ⏳ **view-layout parity** (board/table/calendar on desktop; list-only today).
-- ⏳ **Trash** surface (soft-delete recovery) + a Settings screen.
+- ✅ **Trash** — `web/app/trash` lists soft-deleted items with one-click Restore
+  (reached from Build → Maintain), via `POST /api/items/:id/restore`. Verified
+  (delete → in-trash → restore → gone).
+- ⏳ a **Settings** screen (nav config, retention window, etc.); the interactive
+  dashboard editor (react-grid-layout drag/resize) and the planner time-grid
+  stay cloud-side for now (defer-by-hiding).
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux
   builds (config present; build on those platforms or via CI).
 
