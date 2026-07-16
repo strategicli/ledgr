@@ -13,7 +13,7 @@ import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 import { initLocalDb } from "@/db";
 import { users } from "@/db/schema";
 import { seedCoreTypes } from "@/lib/seed-core-types";
-import { dispatchDataRequest, type DataRequest } from "./data-router";
+import { configureExport, dispatchDataRequest, type DataRequest } from "./data-router";
 
 // Select the embedded-PGlite driver in getDb() (ADR-139). Set before any @/lib
 // query runs; initLocalDb() below actually creates the instance.
@@ -56,6 +56,12 @@ async function boot(): Promise<void> {
   ownerId =
     existing[0]?.id ??
     (await db.insert(users).values({ email: "local@ledgr.app" }).returning())[0].id;
+
+  // The markdown vault lives in the user's home so Obsidian/Claude can open it
+  // directly (the "unfettered reads" win — CLAUDE.md Principle 4 / Phase 4).
+  const vaultDir = path.join(app.getPath("home"), "LedgrVault");
+  configureExport(vaultDir);
+  console.log("[ledgr-desktop] vault dir:", vaultDir);
 
   ipcMain.handle("ledgr:data", async (_e, req: DataRequest) =>
     dispatchDataRequest(req, ownerId)
@@ -192,6 +198,27 @@ async function boot(): Promise<void> {
   console.log(
     `[ledgr-desktop] booted OK — owner=${ownerId}, GET /api/items → ${selfcheck.status} (${count} items), serving Next export from ${OUT_DIR}.`
   );
+
+  // Gated export self-check (LEDGR_EXPORT_TEST=1): run the markdown vault export
+  // through the same door the UI uses, then confirm files landed on disk.
+  if (process.env.LEDGR_EXPORT_TEST === "1") {
+    const res = await dispatchDataRequest({ method: "POST", path: "/api/export" }, ownerId);
+    const data = res.data as { vaultDir?: string; result?: { exported: number; errors: number } };
+    let mdFiles = 0;
+    if (data.vaultDir && fs.existsSync(data.vaultDir)) {
+      const walk = (dir: string): void => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const p = path.join(dir, e.name);
+          if (e.isDirectory()) walk(p);
+          else if (e.name.endsWith(".md")) mdFiles++;
+        }
+      };
+      walk(data.vaultDir);
+    }
+    console.log(
+      `[export-test] status=${res.status} exported=${data.result?.exported} errors=${data.result?.errors} mdFilesOnDisk=${mdFiles} dir=${data.vaultDir}`
+    );
+  }
 
   // Gated in-window smoke test (LEDGR_SELFTEST=1): drives the quick-add on the
   // current screen and reports the row count before/after, so create-through-

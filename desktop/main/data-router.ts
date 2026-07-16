@@ -29,9 +29,22 @@ import {
   toggleItemDone,
 } from "@/lib/item-mutations";
 import { parseItemPayload } from "@/lib/item-input";
+import { runExport, getExportState } from "@/lib/export/engine";
+import { LocalExportTarget } from "@/lib/export/local";
 
 export type DataRequest = { method: string; path: string; body?: unknown };
 export type DataResponse = { ok: boolean; status: number; data: unknown };
+
+// The on-disk markdown vault directory (the Obsidian/Claude-readable folder).
+// main/index.ts resolves the real path at boot and calls configureExport; until
+// then the export endpoints report unconfigured rather than writing nowhere.
+let vaultDir: string | null = null;
+export function configureExport(dir: string): void {
+  vaultDir = dir;
+}
+export function getVaultDir(): string | null {
+  return vaultDir;
+}
 
 type ListOpts = NonNullable<Parameters<typeof listItems>[1]>;
 
@@ -51,6 +64,22 @@ export async function dispatchDataRequest(
   try {
     if (method === "GET" && path === "/api/settings") {
       return ok({ settings: await getSettings(ownerId) });
+    }
+
+    // Markdown vault export (the local ExportTarget seam — CLAUDE.md Phase 4).
+    // POST runs an incremental export into ~/LedgrVault; GET reports last-run
+    // state + the vault path. Cloud exports to OneDrive; desktop to disk.
+    if (path === "/api/export") {
+      if (method === "GET") {
+        return ok({ vaultDir, state: await getExportState() });
+      }
+      if (method === "POST") {
+        if (!vaultDir) {
+          return { ok: false, status: 503, data: { error: "vault directory not configured" } };
+        }
+        const result = await runExport(ownerId, new LocalExportTarget(vaultDir));
+        return ok({ vaultDir, result });
+      }
     }
 
     if (method === "GET" && path === "/api/items") {
