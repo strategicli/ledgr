@@ -7,10 +7,12 @@
 // Coverage here is the proof set (GET /api/settings, GET /api/items). The rest
 // of the ~97 endpoints are the mechanical follow-up — each is a thin wrap of an
 // `@/lib` call, exactly like its route.
-import { listItems } from "@/lib/items";
+import { listItems, getItem } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
 import { listDashboards } from "@/lib/dashboards";
+import { createItem, updateItem, softDeleteItem } from "@/lib/item-mutations";
+import { parseItemPayload } from "@/lib/item-input";
 
 export type DataRequest = { method: string; path: string; body?: unknown };
 export type DataResponse = { ok: boolean; status: number; data: unknown };
@@ -66,8 +68,33 @@ export async function dispatchDataRequest(
       return ok({ dashboards: await listDashboards(ownerId) });
     }
 
+    if (method === "POST" && path === "/api/items") {
+      const item = await createItem(ownerId, parseItemPayload(req.body, "create"));
+      return { ok: true, status: 201, data: { item } };
+    }
+
+    // /api/items/:id — GET (read one) · PATCH (update) · DELETE (soft-delete).
+    const itemId = path.match(/^\/api\/items\/([^/]+)$/)?.[1];
+    if (itemId) {
+      if (method === "GET") return ok({ item: await getItem(ownerId, itemId) });
+      if (method === "PATCH") {
+        return ok({ item: await updateItem(ownerId, itemId, parseItemPayload(req.body, "patch")) });
+      }
+      if (method === "DELETE") return ok(await softDeleteItem(ownerId, itemId));
+    }
+
     return { ok: false, status: 404, data: { error: `no handler for ${method} ${path}` } };
   } catch (err) {
-    return { ok: false, status: 500, data: { error: (err as Error).message } };
+    // Map the @/lib ItemError code convention to a status (the cloud routes do
+    // this via errorResponse in @/lib/api, which we can't import here — it pulls
+    // next). Same vocabulary, no dependency.
+    const code = (err as { code?: string }).code;
+    const status =
+      code === "bad_request" ? 400
+      : code === "not_found" ? 404
+      : code === "conflict" ? 409
+      : code === "forbidden" ? 403
+      : 500;
+    return { ok: false, status, data: { error: (err as Error).message } };
   }
 }

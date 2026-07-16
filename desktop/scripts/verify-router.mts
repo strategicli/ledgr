@@ -35,6 +35,20 @@ const dashboards = await dispatchDataRequest(
   { method: "GET", path: "/api/dashboards" },
   owner.id
 );
+
+// Write round-trip through the router: create → read → patch → delete.
+const created = await dispatchDataRequest(
+  { method: "POST", path: "/api/items", body: { type: "note", title: "Router write test" } },
+  owner.id
+);
+const newId = (created.data as { item?: { id?: string } }).item?.id ?? "";
+const readOne = await dispatchDataRequest({ method: "GET", path: `/api/items/${newId}` }, owner.id);
+const patched = await dispatchDataRequest(
+  { method: "PATCH", path: `/api/items/${newId}`, body: { title: "Router write test (edited)" } },
+  owner.id
+);
+const deleted = await dispatchDataRequest({ method: "DELETE", path: `/api/items/${newId}` }, owner.id);
+
 const unknown = await dispatchDataRequest({ method: "GET", path: "/api/nope" }, owner.id);
 
 const data = items.data as { items?: unknown[] };
@@ -57,6 +71,15 @@ console.log(
         ok: dashboards.ok,
         status: dashboards.status,
         count: ((dashboards.data as { dashboards?: unknown[] }).dashboards ?? []).length,
+      },
+      write_roundtrip: {
+        create: { ok: created.ok, status: created.status, id: !!newId },
+        read: { ok: readOne.ok, status: readOne.status },
+        patch: {
+          ok: patched.ok,
+          title: (patched.data as { item?: { title?: string } }).item?.title,
+        },
+        delete: { ok: deleted.ok, status: deleted.status },
       },
       unknown_route: { ok: unknown.ok, status: unknown.status },
     },

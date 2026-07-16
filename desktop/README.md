@@ -24,8 +24,9 @@ cloud app; only the runtime differs:
   custom `app://` protocol (with SPA fallback for client-side routing), opens
   the window.
 - `main/data-router.ts` — path/method → `@/lib` dispatch (the IPC handler's
-  body). Covered: `GET /api/settings|items|search|dashboards`. Remaining
-  endpoints are the mechanical follow-up.
+  body). Covered: `GET /api/settings|items|search|dashboards`, item CRUD
+  (`POST /api/items`, `GET|PATCH|DELETE /api/items/:id`), with `ItemError`-code
+  → HTTP status mapping. Remaining endpoints are the mechanical follow-up.
 - `preload/index.ts` — exposes the `DesktopDataBridge` on `window.__ledgrDesktop`.
 - `esbuild.mjs` — bundles main + preload; aliases `server-only` → `empty.ts`,
   resolves `@/*` → `../src`, leaves node_modules external.
@@ -60,7 +61,9 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ **real Next UI in the window** — the static Next export renders the shared
   `<DashboardsList>` from local PGlite over IPC (renderer logs `[page]
   dashboards: 0`), no server. Confirmed 2026-07-15.
+- ✅ item CRUD through the router (`POST/GET/PATCH/DELETE /api/items[/:id]`) —
+  headless round-trip verified (create 201 → read → patch → delete).
+- ✅ Content-Security-Policy set (Electron no-CSP warning gone, page still renders).
 - ⏳ convert the remaining ~40 pages to the shared-view + desktop-loader pattern
   and expand `data-router` to the full endpoint set.
-- ⏳ tidy: set a Content-Security-Policy (silences the dev-only Electron CSP
-  warning); `electron-builder` packaging + signing.
+- ⏳ `electron-builder` packaging + signing (needs certs).
