@@ -11,7 +11,7 @@ import { listItems, getItem, getItemVersion } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { searchItems } from "@/lib/search";
 import { listDashboards } from "@/lib/dashboards";
-import { getType, listTypes } from "@/lib/types";
+import { getType, listTypes, createType, parseTypeInput } from "@/lib/types";
 import { listRelatedItems } from "@/lib/relations";
 import { getView, listViews, queryViewItems, createView, parseViewInput } from "@/lib/views";
 import {
@@ -78,6 +78,10 @@ export async function dispatchDataRequest(
 
     if (method === "GET" && path === "/api/types") {
       return ok({ types: await listTypes() });
+    }
+    if (method === "POST" && path === "/api/types") {
+      const type = await createType(parseTypeInput(req.body, "create"));
+      return { ok: true, status: 201, data: { type } };
     }
     const typeKey = path.match(/^\/api\/types\/([^/]+)$/)?.[1];
     if (method === "GET" && typeKey) {

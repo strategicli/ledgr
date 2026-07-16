@@ -122,6 +122,7 @@ export default function TypeBuilder({
   attached,
   itemCount = 0,
   availableTypes = [],
+  onSaved,
 }: {
   initial?: TypeDefinition;
   // SPIKE (bespoke-tool catalog): the bespoke tool this type borrows, resolved
@@ -135,6 +136,9 @@ export default function TypeBuilder({
   // dropdown. Server-resolved (listTypes) so this client form never imports the
   // DB-backed registry; hidden types are already excluded upstream.
   availableTypes?: { key: string; label: string }[];
+  // Optional: when provided, called with the saved type key instead of the
+  // built-in navigation (the desktop build routes to /list?type=…). ADR-139.
+  onSaved?: (key: string) => void;
 }) {
   const router = useRouter();
   const editing = !!initial;
@@ -307,8 +311,12 @@ export default function TypeBuilder({
         const data = (await res.json().catch(() => null)) as
           | { type?: { key?: string } }
           | null;
-        router.push(`/build/types/${data?.type?.key ?? finalKey}/edit`);
-        router.refresh();
+        if (onSaved) {
+          onSaved(data?.type?.key ?? finalKey);
+        } else {
+          router.push(`/build/types/${data?.type?.key ?? finalKey}/edit`);
+          router.refresh();
+        }
       } else {
         // Editing: stay put (Brandon, 2026-07-01 — saving shouldn't dump you
         // back at the types list). Flash a "Saved" toast and refresh so the page

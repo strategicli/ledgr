@@ -157,8 +157,8 @@ async function boot(): Promise<void> {
         let input, addBtn;
         for (let i = 0; i < 40; i++) {
           input = q("input"); addBtn = findAdd();
-          const hasCreateView = Array.from(document.querySelectorAll("button")).some((b) => b.textContent.trim() === "Create view");
-          if ((input && addBtn) || q("textarea") || hasCreateView) break;
+          const hasCreate = Array.from(document.querySelectorAll("button")).some((b) => b.textContent.trim().indexOf("Create ") === 0);
+          if ((input && addBtn) || q("textarea") || hasCreate) break;
           await wait(200);
         }
         if (input && addBtn) {
@@ -201,6 +201,21 @@ async function boot(): Promise<void> {
           await wait(1800);
           const vres = await window.__ledgrDesktop.request({ method: "GET", path: "/api/views" });
           return "viewsAfterCreate=" + (((vres.data || {}).views) || []).length;
+        }
+        // type builder: fill name + key, create, verify the type was saved
+        const createTypeBtn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Create type");
+        if (createTypeBtn) {
+          const setV = (el, v) => { const s = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set; s.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+          const sfx = "" + Date.now();
+          const nameI = document.querySelector('input[placeholder*="Hiring Candidate"]');
+          const keyI = document.querySelector('input[placeholder="hiring_candidate"]');
+          if (nameI) setV(nameI, "Demo Type " + sfx);
+          if (keyI) setV(keyI, "demo_type_" + sfx);
+          createTypeBtn.click();
+          await wait(1800);
+          const tres = await window.__ledgrDesktop.request({ method: "GET", path: "/api/types" });
+          const created = (((tres.data || {}).types) || []).some((t) => t.key && t.key.indexOf("demo_type_") === 0);
+          return "typeCreated=" + created;
         }
         return "no testable UI on this route";
       })()`);

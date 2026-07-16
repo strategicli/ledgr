@@ -27,6 +27,7 @@ const NAV = [
   { href: "/list?type=person", label: "People" },
   { href: "/views", label: "Views" },
   { href: "/search", label: "Search" },
+  { href: "/build", label: "Build" },
 ];
 
 // Route raw `fetch("/api/...")` through the IPC bridge so the shared cloud
