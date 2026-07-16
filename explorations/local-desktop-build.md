@@ -137,6 +137,17 @@ The client data-access seam the audit flagged as missing: **`src/lib/api-client.
 - Pattern established by converting `AddTaskCard`'s three GET reads (settings/projects/people); typecheck clean, behavior-preserving.
 - Remaining: the IPC *implementation* (preload bridge + the main-process path→`@/lib` router) lands with the `desktop/` package; the mass conversion of the other ~100 `fetch` sites + 40 server-page reads is the bulk (best done with running-app verification).
 
+## Slice 3 landed on the branch (2026-07-15)
+
+The `desktop/` Electron package skeleton — the no-server core (ADR-139), isolated, cloud app untouched:
+
+- `main/index.ts` boots embedded PGlite, applies the real migration chain, resolves the single local owner, registers the `ledgr:data` IPC handler, opens the window.
+- `main/data-router.ts` dispatches path/method → `@/lib` (proof set: `GET /api/settings`, `GET /api/items`), mirroring the route shapes — the IPC handler's body.
+- `preload/index.ts` exposes the `DesktopDataBridge` on `window.__ledgrDesktop` (the contract from `api-client.ts`); `renderer/index.html` is a minimal proof slice (lists items via the bridge).
+- `esbuild.mjs` bundles main + preload — aliases `server-only` → empty, `@/*` → `../src`, node_modules external.
+- **Verified here:** the router headless against PGlite (`GET /api/settings` 200, `GET /api/items` 200, unknown → 404), and main+preload bundle cleanly with `server-only` neutralized (no runtime require in the bundle). **Pending a Mac/GUI:** `cd desktop && npm install && npm start` to launch the actual window — the one thing not verifiable headlessly.
+- Remaining for the desktop target: swap the proof renderer for the client-rendered Next app (the ~40-page conversion), and expand `data-router` to the full endpoint set (mechanical). `electron-builder` packaging is Phase 4 step (4).
+
 ## Phasing
 
 See `roadmap.md` Phase 4. For "easiest, ASAP, cross-platform, no server": (0) PGlite spike + round-trip export prototype; (1) the `desktop/` Electron package proving the no-server path end to end — main process runs PGlite + `src/lib`, renderer renders one client-side UI slice over an IPC data-access layer, built for Win + Mac; (2) widen client-rendering + IPC coverage screen by screen, plus the local seam impls (`localAuthProvider`, `FilesystemStorageProvider` over IPC, in-process scheduler over extracted job functions); (3) storage offload (`storage-cost-offload.md`, a parallel cloud track desktop inherits); (4) signing/notarization + shippable Windows + Mac builds. Every step after (0) is gated on the joint ADR.
