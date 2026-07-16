@@ -72,10 +72,13 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
   shipped `drizzle` resources, PGlite wasm unpacked, real UI rendered. Verified.
 - ✅ nav shell + first Work screens (Dashboards / Tasks / Notes), multi-route
   static export with `app://` route→`.html` mapping — verified in the window.
+- ✅ **styling** — Tailwind v4 wired into the export (`web/app/globals.css`
+  re-imports the cloud `src/app/globals.css` + `@source ../../../src`), so the
+  export ships the cloud dark theme + component CSS + the utilities the shared
+  components use. Nav / `ItemRows` restyled to the dark palette. Verified: CSS
+  emitted with theme + utilities; app boots with no CSP refusal.
 - ⏳ convert the remaining screens (today/events/inbox/item-detail/list) to the
   same pattern; expand `data-router` to the full endpoint set.
-- ⏳ styling: wire Tailwind into the desktop export (shared components using
-  Tailwind classes render unstyled for now; `ItemRows`/nav use inline styles).
 - ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux
   builds (config present; build on those platforms or via CI).
 

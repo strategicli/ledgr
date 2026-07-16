@@ -23,10 +23,10 @@ export default function NotesPage() {
   }, []);
 
   return (
-    <section style={{ padding: "1.5rem" }}>
-      <h1 style={{ fontSize: "1.2rem", margin: 0 }}>Notes</h1>
+    <section className="p-6">
+      <h1 className="text-xl font-bold tracking-tight text-neutral-100">Notes</h1>
       {items === null ? (
-        <p style={{ color: "#777" }}>loading…</p>
+        <p className="mt-3 text-sm text-neutral-500">loading…</p>
       ) : (
         <ItemRows items={items} empty="No notes yet." />
       )}

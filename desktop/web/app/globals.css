@@ -1,0 +1,10 @@
+/* Desktop renderer styling (ADR-139). Reuse the cloud theme + component CSS
+   verbatim (single source of truth, no fork), and tell Tailwind v4 to scan the
+   shared components in ../src (outside this app's root) so their utility classes
+   are generated for the export. The cloud globals.css is imported as-is — it
+   carries the one `@import "tailwindcss"`, the dark theme tokens, and the
+   component styles (.ledgr-check, canvas sections, …). */
+@import "../../../src/app/globals.css";
+
+@source "../../../src";
+@source ".";

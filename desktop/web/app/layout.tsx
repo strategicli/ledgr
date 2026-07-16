@@ -1,3 +1,4 @@
+import "./globals.css";
 import Link from "next/link";
 
 export const metadata = { title: "Ledgr" };
@@ -32,34 +33,21 @@ export default function RootLayout({
       <head>
         <meta httpEquiv="Content-Security-Policy" content={CSP} />
       </head>
-      <body style={{ margin: 0, font: "14px/1.5 system-ui, sans-serif", color: "#111" }}>
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <nav
-            style={{
-              width: 180,
-              flexShrink: 0,
-              borderRight: "1px solid #e5e5e5",
-              padding: "1rem",
-              boxSizing: "border-box",
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: "1rem" }}>Ledgr</div>
+      <body>
+        <div className="flex min-h-screen">
+          <nav className="w-44 flex-shrink-0 border-r border-neutral-800 p-4">
+            <div className="mb-4 font-bold tracking-tight text-neutral-100">Ledgr</div>
             {NAV.map((n) => (
               <Link
                 key={n.href}
                 href={n.href}
-                style={{
-                  display: "block",
-                  padding: "0.35rem 0",
-                  color: "#222",
-                  textDecoration: "none",
-                }}
+                className="block py-1.5 text-neutral-300 no-underline hover:text-neutral-100"
               >
                 {n.label}
               </Link>
             ))}
           </nav>
-          <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+          <div className="min-w-0 flex-1">{children}</div>
         </div>
       </body>
     </html>

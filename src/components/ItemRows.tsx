@@ -1,9 +1,7 @@
 // A minimal shared list of item summaries (title + optional done/date), used by
 // the desktop Work screens (Tasks, Notes, …). Presentational, data-as-props, so
 // it renders in both a server component (cloud) and the desktop client pages.
-// Inline styles because the desktop Next export doesn't yet ship the Tailwind
-// stylesheet (a later styling pass); on cloud it can be restyled/replaced by the
-// richer ViewRenderer surfaces.
+// Styled with the app's Tailwind neutral palette so it matches the dark theme.
 export type ItemRow = {
   id: string;
   title: string | null;
@@ -20,27 +18,25 @@ export default function ItemRows({
   empty?: string;
 }) {
   if (!items.length) {
-    return <p style={{ color: "#777", padding: "0.5rem 0" }}>{empty}</p>;
+    return <p className="py-2 text-sm text-neutral-500">{empty}</p>;
   }
   return (
-    <ul style={{ listStyle: "none", padding: 0, margin: "0.5rem 0 0" }}>
+    <ul className="mt-3 flex list-none flex-col p-0">
       {items.map((it) => (
         <li
           key={it.id}
-          style={{
-            display: "flex",
-            gap: "0.6rem",
-            alignItems: "center",
-            padding: "0.45rem 0.2rem",
-            borderBottom: "1px solid #eee",
-          }}
+          className="flex items-center gap-3 border-b border-neutral-800 px-1 py-2"
         >
           {it.statusCategory ? (
-            <span aria-hidden>{it.statusCategory === "done" ? "☑" : "☐"}</span>
+            <span aria-hidden className="text-neutral-400">
+              {it.statusCategory === "done" ? "☑" : "☐"}
+            </span>
           ) : null}
-          <span style={{ flex: 1, minWidth: 0 }}>{it.title || "(untitled)"}</span>
+          <span className="min-w-0 flex-1 truncate text-neutral-200">
+            {it.title || "(untitled)"}
+          </span>
           {it.dueDate ? (
-            <span style={{ fontSize: "12px", color: "#999" }}>
+            <span className="text-xs text-neutral-500">
               {String(it.dueDate).slice(0, 10)}
             </span>
           ) : null}
