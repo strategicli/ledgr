@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { parseTaskTitle } from "@/lib/nl-date";
 import { priorityStyle, type Priority } from "@/lib/priority";
 import { enqueueCapture } from "@/lib/outbox";
+import { apiRequest } from "@/lib/api-client";
 
 function localTodayYmd(): string {
   const d = new Date();
@@ -66,9 +67,8 @@ const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" c
 
 let quickAddPromise: Promise<string[]> | null = null;
 function loadQuickAddHidden(): Promise<string[]> {
-  quickAddPromise ??= fetch("/api/settings")
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => (Array.isArray(d?.settings?.quickAddHidden) ? (d.settings.quickAddHidden as string[]) : []))
+  quickAddPromise ??= apiRequest<{ settings?: { quickAddHidden?: string[] } }>("/api/settings")
+    .then((d) => (Array.isArray(d.settings?.quickAddHidden) ? (d.settings!.quickAddHidden as string[]) : []))
     .catch(() => []);
   return quickAddPromise;
 }
@@ -116,13 +116,11 @@ export default function AddTaskCard({
 
   useEffect(() => {
     loadQuickAddHidden().then((ids) => setQaHidden(new Set(ids)));
-    fetch("/api/items?type=project&limit=50")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setProjects(Array.isArray(d?.items) ? d.items : []))
+    apiRequest<{ items?: ProjectOpt[] }>("/api/items?type=project&limit=50")
+      .then((d) => setProjects(Array.isArray(d.items) ? d.items : []))
       .catch(() => {});
-    fetch("/api/items?type=person&limit=50")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPeople(Array.isArray(d?.items) ? d.items : []))
+    apiRequest<{ items?: ProjectOpt[] }>("/api/items?type=person&limit=50")
+      .then((d) => setPeople(Array.isArray(d.items) ? d.items : []))
       .catch(() => {});
   }, []);
 

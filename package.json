@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "7.5.2",
+    "@electric-sql/pglite": "^0.5.4",
     "@mozilla/readability": "^0.6.0",
     "@neondatabase/serverless": "1.1.0",
     "@tiptap/core": "^3.26.1",
