@@ -179,11 +179,19 @@ In-app recording stays deferred. **Live audio→transcript eyeball gated on a co
 
 ---
 
-## Phase 4: Packageable local / self-hosted build (exploratory)
+## Phase 4: Cross-platform desktop app (Windows + Mac) + storage-cost offload (PROPOSED)
 
-- [ ] Gated on a genuine alternative-deployment motivation (not resilience, already covered by export + Pulpit Ready)
-- [ ] Swap/stub external deps behind provider interfaces (Clerk → local single-user, R2 → local FS, scheduler → local cron, Graph/Todoist → off or stubbed)
-- [ ] DB is already portable (Drizzle connection-string change)
+Motivation is now concrete (Tyler): a local, Obsidian-*like* **Windows + Mac** app running the whole feature set on-device (the app *and* the data are user-owned), plus keeping the cloud version under the free-tier ceiling. **DB-canonical, one shared codebase / multiple runtime targets (not a fork, not a native rewrite), Electron shell with NO local server (main process runs the DB + `src/lib`; the client-rendered window talks to it over IPC), embedded local Postgres + one-way markdown vault export.** Guiding constraint: easiest path, ASAP, reuse the existing code, no bundled server. The one real rework is moving data-fetching from server-side to client-side-over-IPC. CORE and PROPOSED — gated on Brandon + a joint ADR (ADR-139 desktop build, ADR-140 storage offload). Design: `explorations/local-desktop-build.md` + `explorations/storage-cost-offload.md`.
+
+- [x] **(0a) PGlite feature spike — PASSED (2026-07-15).** Ledgr's real 46-migration chain applies on PGlite 0.5.4 / PostgreSQL 18.3; generated `search` tsvector STORED column + GIN + `jsonb_to_tsvector` + `pg_trgm` all confirmed working. Embedded DB = PGlite (native Postgres demoted to unlikely fallback).
+- [x] **(0b) `src/app/` audit — DONE (2026-07-15).** 44 server pages (40 fetch server-side), 97 thin API routes over `@/lib`, writes already client→fetch→route→lib, zero server actions, no client data layer. Size: L (M if auth is its own workstream).
+- [x] **(0c) DB driver seam + `@/lib`-on-PGlite proof — DONE (2026-07-15), branch `feat/desktop-electron-pglite`.** `initLocalDb()` in `src/db/index.ts` (PGlite dynamic-imported behind the Neon default, `pg_trgm` loaded); the real domain layer (`getSettings`/`createItem`/`listItems`/`searchItems` FTS) runs green against embedded PGlite outside Next. Build note: the main-process bundle must alias `server-only`→empty and skip the `next`-importing `src/lib/api.ts`.
+- [ ] **(0d) Remaining spike.** Round-trip export prototype (export → open vault in Obsidian → diff).
+- [x] **(1a) Client data-access seam — DONE (2026-07-15).** `src/lib/api-client.ts` (`apiRequest`): behavior-preserving `fetch` on cloud, IPC via `window.__ledgrDesktop` on desktop; `/api/*` stays the shared contract. Pattern established on `AddTaskCard`; typecheck clean. IPC impl + main-process router land with the `desktop/` package.
+- [ ] **(1) No-server path proven end to end** — a `desktop/` Electron package (Win + Mac from one `electron-builder` config): main process runs PGlite + `src/lib`, the client-rendered window renders one UI slice over an IPC data-access layer (window → IPC → `src/lib` → PGlite). The load-bearing proof before widening.
+- [ ] **(2) Widen coverage + local seam impls** — convert the app's server-side data-fetching to the client-side-over-IPC data-access layer screen by screen; `localAuthProvider` (ADR-006 shape); `FilesystemStorageProvider` (uploads over IPC, not an HTTP route); in-process scheduler over job functions extracted from the `/api/machine/*` handlers; Graph/Todoist/Web Push off or stubbed. (DB driver select landed in 0c.)
+- [ ] **(3) Storage offload (ADR-140)** — revision snapshots + large bodies to the `StorageProvider` seam (R2 cloud / FS local); additive migration + backfill. A parallel cloud track that ships ahead of the desktop build (solves Brandon's current ceiling); desktop inherits it via the shared seam.
+- [ ] **(4) Signing + shippable builds** — Apple notarization (Mac) + Authenticode (Windows), then distributable Windows + Mac artifacts.
 
 ---
 

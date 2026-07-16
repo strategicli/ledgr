@@ -1,6 +1,8 @@
 # Exploration: local-first split (MD files local, light cloud app)
 
-**Status:** parked, not a current direction (2026-06-11)
+> **➡️ Graduated (2026-07-15).** A concrete direction was chosen and moved to `local-desktop-build.md` (PROPOSED, ADR-139): a full local macOS build with an **embedded, canonical local Postgres** + a one-way markdown vault, paired with the storage-cost offload in `storage-cost-offload.md` (ADR-140). That path is **none of the A/B/C options below** — it keeps rule #1 (DB canonical) and runs the whole app locally, closest to the 6.14 "the app *and* the data are user-owned" reframing. Option C (files-canonical) stays rejected. This doc is kept for the record and the reasoning that got there.
+
+**Status:** parked, not a current direction (2026-06-11); superseded for the chosen path by `local-desktop-build.md` (2026-07-15)
 **What this doc is:** a captured fork-in-the-road idea. Not PRD intent, not a decision. If a direction here is ever chosen, it graduates to an ADR in `decisions.md` and a PRD amendment.
 
 > **⚠️ Re-weighted by ADR-037 (Markdown epoch).** This doc's option C ("true local-first: MD files canonical on disk") was rejected partly because it "fights BlockNote-JSON-canonical (markdown can't natively hold sermon colors/highlights)." That specific objection is **gone**: markdown is now the canonical body (extended dialect, colors as inline HTML), and the round-trip prototype this doc calls for is essentially the foundation rework itself. Local-first is still *not* a current direction (it still reverses rule #1 DB-canonical and fights everything-is-an-item + boring-stack), but the format barrier no longer applies — so if it's ever revisited, the gap is smaller than this doc estimated. Re-read options B and C with that in mind.
