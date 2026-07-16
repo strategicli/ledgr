@@ -17,8 +17,15 @@ import { dispatchDataRequest, type DataRequest } from "./data-router";
 // query runs; initLocalDb() below actually creates the instance.
 process.env.LEDGR_DB_DRIVER = "pglite";
 
-// The statically-exported Next app (desktop/web/out). dist/main.js → ../web/out.
-const OUT_DIR = path.resolve(__dirname, "..", "web", "out");
+// The static Next export + the Drizzle migrations. In dev they sit in the repo
+// (relative to dist/); in a packaged app they're shipped as extraResources
+// (under process.resourcesPath). See the electron-builder config in package.json.
+const OUT_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, "web-out")
+  : path.resolve(__dirname, "..", "web", "out");
+const MIGRATIONS_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, "drizzle")
+  : path.resolve(__dirname, "..", "..", "drizzle");
 
 // Must be registered before app `ready`. A standard, secure scheme so the Next
 // client bundle (absolute /_next/... asset paths) and client-side routing work.
@@ -36,10 +43,7 @@ async function boot(): Promise<void> {
   // Applies the real Drizzle migration chain on boot (PGlite spike-confirmed,
   // ADR-139). drizzle/ ships next to the app; in dev it's two levels up from dist/.
   const dataDir = path.join(app.getPath("userData"), "ledgr.pgdata");
-  const db = await initLocalDb({
-    dataDir,
-    migrationsFolder: path.resolve(__dirname, "..", "..", "drizzle"),
-  });
+  const db = await initLocalDb({ dataDir, migrationsFolder: MIGRATIONS_DIR });
 
   // Single local owner (no Clerk): reuse the existing one or create it.
   const existing = await db.select().from(users).limit(1);

@@ -1,8 +1,9 @@
-// Bundle the Electron main + preload from TypeScript. Two deliberate choices
-// (ADR-139): (1) `packages: "external"` leaves node_modules (drizzle, pglite,
-// electron, …) to be required at runtime from the repo's node_modules — no WASM
-// bundling; (2) tsconfig `paths` resolve `@/*` → ../src and alias `server-only`
-// → ./empty.ts, so @/lib runs in the plain-Node main process.
+// Bundle the Electron main + preload from TypeScript. Choices (ADR-139):
+// (1) bundle @/lib + its deps INTO main.js so a packaged app needs no repo
+// node_modules; only `electron` (runtime-provided) and `@electric-sql/pglite`
+// (ships its WASM as an unpacked node_module) stay external. (2) tsconfig
+// `paths` resolve `@/*` → ../src and alias `server-only` → ./empty.ts, so
+// @/lib runs in the plain-Node main process.
 import { build } from "esbuild";
 
 const common = {
@@ -10,7 +11,7 @@ const common = {
   platform: "node",
   target: "node20",
   format: "cjs",
-  packages: "external",
+  external: ["electron", "@electric-sql/pglite", "@electric-sql/pglite/*"],
   tsconfig: "./tsconfig.json",
   logLevel: "info",
   sourcemap: true,

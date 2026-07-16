@@ -64,6 +64,19 @@ Boots PGlite, applies migrations, seeds via `@/lib`, and drives the same
 - ✅ item CRUD through the router (`POST/GET/PATCH/DELETE /api/items[/:id]`) —
   headless round-trip verified (create 201 → read → patch → delete).
 - ✅ Content-Security-Policy set (Electron no-CSP warning gone, page still renders).
+- ✅ **packaged unsigned macOS `.app`** (`npm run package:mac` → `release/`) — the
+  packaged binary boots self-contained: embedded PGlite, migrations from the
+  shipped `drizzle` resources, PGlite wasm unpacked, real UI rendered. Verified.
 - ⏳ convert the remaining ~40 pages to the shared-view + desktop-loader pattern
   and expand `data-router` to the full endpoint set.
-- ⏳ `electron-builder` packaging + signing (needs certs).
+- ⏳ code signing + notarization (needs Apple/Windows certs); Windows/Linux
+  builds (config present; build on those platforms or via CI).
+
+## Package (macOS, unsigned)
+
+```
+npm run package:mac      # → release/mac-arm64/Ledgr.app
+```
+
+Ships `web/out` and `../drizzle` as resources; unpacks `@electric-sql/pglite`
+(wasm) from the asar. `mac.identity` is `null` (no signing) for local builds.

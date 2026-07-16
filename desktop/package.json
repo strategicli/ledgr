@@ -9,15 +9,32 @@
     "build:main": "node esbuild.mjs",
     "build": "npm run build:web && npm run build:main",
     "start": "npm run build && electron .",
+    "package:mac": "npm run build && electron-builder --mac",
     "verify:router": "cd .. && npx tsx --tsconfig desktop/tsconfig.json desktop/scripts/verify-router.mts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
-  "devDependencies": {
-    "electron": "^33.2.0",
-    "esbuild": "^0.24.2"
+  "build": {
+    "appId": "org.ledgr.desktop",
+    "productName": "Ledgr",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "!dist/**/*.map", "package.json"],
+    "extraResources": [
+      { "from": "web/out", "to": "web-out" },
+      { "from": "../drizzle", "to": "drizzle" }
+    ],
+    "asarUnpack": ["**/node_modules/@electric-sql/pglite/**"],
+    "mac": { "target": "dir", "identity": null },
+    "win": { "target": "dir" },
+    "linux": { "target": "dir" }
   }
 }
