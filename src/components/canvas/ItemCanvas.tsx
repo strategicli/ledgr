@@ -19,6 +19,7 @@ import { getType } from "@/lib/types";
 import { getSettings } from "@/lib/settings";
 import { tocForType } from "@/lib/toc";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
+import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
 import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import PageTrashButton from "@/components/canvas/PageTrashButton";
@@ -185,6 +186,12 @@ export default async function ItemCanvas({
       {/* One always-visible autosave indicator for the whole canvas; also owns
           the cross-device conflict banner + refresh-on-focus check (ADR-134). */}
       <SaveStatusIndicator itemId={item.id} loadedAt={item.updatedAt.toISOString()} />
+      {/* Live editing context (ADR-161): report the open item + text selection so
+          Claude can resolve "this note"/"this sentence" over MCP. Opt-in, and
+          never for a template prototype (that's authoring, not the live note). */}
+      {settings.liveContextEnabled && !item.isTemplate && (
+        <ActiveContextTracker itemId={item.id} title={item.title} />
+      )}
     </>
   );
 }

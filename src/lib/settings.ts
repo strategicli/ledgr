@@ -284,6 +284,20 @@ export type UserSettings = {
   // and the Build → AI Memory surface appears. When off, none of those are
   // listed or callable, so a "vanilla" MCP client never sees the memory concept.
   aiMemoryEnabled: boolean;
+  // Live editing context subsystem switch (ADR-161). Off by default: a fresh
+  // Ledgr behaves exactly as before. When on, the open item canvas reports the
+  // item you're viewing (and your current text selection) to a single per-owner
+  // active_context row, the context-specific MCP tools (get_active_context,
+  // edit_item_body) are exposed, and a "Note Editing Partner" prompt item is
+  // seeded so Claude can co-edit the note you're looking at. When off, nothing
+  // is tracked and those tools aren't listed or callable.
+  liveContextEnabled: boolean;
+  // The "Note Editing Partner" prompt item seeded when Live editing context is
+  // first turned on (ADR-161). The canonical text lives in the repo
+  // (note-editing-prompt.ts); this points at the owner's editable copy so the
+  // settings surface can link to it and "Revert to default" can find it. null
+  // until the feature is enabled (or if the item was purged — it's re-seeded).
+  noteEditingPromptItemId: string | null;
   // Editor: show a fold chevron on H1/H2/H3 to collapse the section beneath a
   // heading (view-only, never written to the body). On by default. When off the
   // markdown editor renders headings plainly.
@@ -369,6 +383,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   notificationPrefs: {},
   timezone: null,
   aiMemoryEnabled: false,
+  liveContextEnabled: false,
+  noteEditingPromptItemId: null,
   collapsibleHeadingsEnabled: true,
   toggleBlocksEnabled: true,
   deskWorkspaces: [],
@@ -560,6 +576,9 @@ export function parseSettings(raw: unknown): UserSettings {
       : DEFAULT_SETTINGS.timezone;
   const aiMemoryEnabled =
     typeof r.aiMemoryEnabled === "boolean" ? r.aiMemoryEnabled : DEFAULT_SETTINGS.aiMemoryEnabled;
+  const liveContextEnabled =
+    typeof r.liveContextEnabled === "boolean" ? r.liveContextEnabled : DEFAULT_SETTINGS.liveContextEnabled;
+  const noteEditingPromptItemId = dashRef(r.noteEditingPromptItemId);
   const collapsibleHeadingsEnabled =
     typeof r.collapsibleHeadingsEnabled === "boolean"
       ? r.collapsibleHeadingsEnabled
@@ -596,6 +615,8 @@ export function parseSettings(raw: unknown): UserSettings {
     notificationPrefs,
     timezone,
     aiMemoryEnabled,
+    liveContextEnabled,
+    noteEditingPromptItemId,
     collapsibleHeadingsEnabled,
     toggleBlocksEnabled,
     deskWorkspaces,

@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import {
   consumeLocalSave,
   getKnownVersion,
+  hasPendingEdits,
   requestForceSave,
   requestSaveRetry,
   setKnownVersion,
@@ -61,10 +62,17 @@ export default function SaveStatusIndicator({
         }
         // The server moved on. Our own save? (one happened since the last sync,
         // or one is in flight) — adopt it silently. Otherwise it's another
-        // device: adopt the new version too (so we nag once, not in a loop) and
-        // raise the banner.
+        // writer (another device, or Claude over MCP): adopt the new version so
+        // we act once, not in a loop, then reconcile. Auto-swap when clean
+        // (ADR-161): with no unsaved local edits there's nothing to lose, so
+        // silently reload to show the new text — the fluid AI-editing loop. Only
+        // when the owner has their own unsaved work do we stop and ask, so a
+        // reload can't drop it.
         setKnownVersion(updatedAt);
-        if (!consumeLocalSave()) setStale(true);
+        if (!consumeLocalSave()) {
+          if (hasPendingEdits()) setStale(true);
+          else window.location.reload();
+        }
       } catch {
         // A failed version check is non-fatal: leave the baseline as-is.
       }

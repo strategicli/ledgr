@@ -32,6 +32,12 @@ const retryListeners = new Set<() => void>();
 // (overwriting the other device's change — an informed choice, and the
 // clobbered version stays in revision history).
 const forceSaveListeners = new Set<() => void>();
+// Editors register a predicate reporting whether they hold unsaved edits (a
+// queued patch or an in-flight save). The refresh-on-focus check (ADR-161)
+// reads this to decide, when the item changed elsewhere, whether it's safe to
+// silently reload (clean) or must ask first (dirty — reloading would drop the
+// owner's own unsaved work).
+const dirtyCheckers = new Set<() => boolean>();
 
 // Refresh-on-focus baseline (ADR-134). knownVersion is the item updated_at the
 // canvas last saw; the focus check compares the server's value to it.
@@ -137,6 +143,32 @@ export function consumeLocalSave(): boolean {
   const had = localSaveSinceSync || inFlight > 0;
   localSaveSinceSync = false;
   return had;
+}
+// Clear the "we saved" flag WITHOUT consuming it (ADR-161). The body/title
+// editor advances knownVersion to the server's returned updated_at on every
+// successful save, so that write is already fully accounted for by knownVersion;
+// leaving localSaveSinceSync set would make the NEXT genuinely-external change
+// (e.g. an edit Claude made over MCP while the owner was in another tab) be
+// misread as our own and silently swallowed. Editors that advance knownVersion
+// call this right after a save; surfaces that bump updated_at without advancing
+// knownVersion (field/property saves) keep relying on consumeLocalSave.
+export function clearLocalSave() {
+  localSaveSinceSync = false;
+}
+
+// An editor registers a predicate for "do I have unsaved edits?"; the returned
+// fn unregisters on unmount.
+export function registerDirtyCheck(fn: () => boolean): () => void {
+  dirtyCheckers.add(fn);
+  return () => {
+    dirtyCheckers.delete(fn);
+  };
+}
+// True if any mounted editor holds a queued or in-flight edit. Used by the
+// refresh-on-focus check to choose reload-silently (clean) vs. ask (dirty).
+export function hasPendingEdits(): boolean {
+  for (const fn of dirtyCheckers) if (fn()) return true;
+  return false;
 }
 
 function getSnapshot() {

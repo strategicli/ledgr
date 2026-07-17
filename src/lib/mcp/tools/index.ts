@@ -16,6 +16,7 @@ import { getSettings } from "@/lib/settings";
 import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
 import { attachmentTools } from "./attachments";
+import { contextTools, LIVE_CONTEXT_TOOL_NAMES } from "./context";
 import { dashboardTools } from "./dashboards";
 import { itemTools } from "./items";
 import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
@@ -39,15 +40,29 @@ const TOOLS: McpTool[] = [
   ...workspaceTools,
   ...dashboardTools,
   ...memoryTools,
+  ...contextTools,
 ];
 
 const MEMORY_TOOL_SET = new Set<string>(MEMORY_TOOL_NAMES);
+const LIVE_CONTEXT_TOOL_SET = new Set<string>(LIVE_CONTEXT_TOOL_NAMES);
+
+// Whether an owner-gated tool is enabled for this owner. A tool that isn't
+// behind a gate is always available.
+function toolEnabled(
+  name: string,
+  flags: { aiMemoryEnabled: boolean; liveContextEnabled: boolean }
+): boolean {
+  if (MEMORY_TOOL_SET.has(name)) return flags.aiMemoryEnabled;
+  if (LIVE_CONTEXT_TOOL_SET.has(name)) return flags.liveContextEnabled;
+  return true;
+}
 
 // The wire definitions (handler stripped) for tools/list. Owner-aware: the
-// memory tools drop out unless the owner enabled AI Memory.
+// memory tools drop out unless AI Memory is on; the live-context tools unless
+// Live editing context is on.
 export async function listToolDefs(ownerId: string): Promise<McpToolDef[]> {
-  const { aiMemoryEnabled } = await getSettings(ownerId);
-  return TOOLS.filter((t) => aiMemoryEnabled || !MEMORY_TOOL_SET.has(t.name)).map(
+  const flags = await getSettings(ownerId);
+  return TOOLS.filter((t) => toolEnabled(t.name, flags)).map(
     ({ handler: _handler, ...def }) => def
   );
 }
@@ -71,10 +86,14 @@ export async function callTool(
       ? (args as Record<string, unknown>)
       : {};
   try {
-    // Defense in depth: a disabled memory tool is rejected even if a client
-    // calls it directly without listing (listToolDefs already hides it).
-    if (MEMORY_TOOL_SET.has(name) && !(await getSettings(ownerId)).aiMemoryEnabled) {
-      return toolError(`tool '${name}' is not enabled — turn on AI Memory in User Settings`);
+    // Defense in depth: a disabled gated tool is rejected even if a client calls
+    // it directly without listing (listToolDefs already hides it).
+    if (MEMORY_TOOL_SET.has(name) || LIVE_CONTEXT_TOOL_SET.has(name)) {
+      const flags = await getSettings(ownerId);
+      if (!toolEnabled(name, flags)) {
+        const feature = MEMORY_TOOL_SET.has(name) ? "AI Memory" : "Live editing context";
+        return toolError(`tool '${name}' is not enabled — turn on ${feature} in User Settings`);
+      }
     }
     const payload = await tool.handler(ownerId, a);
     return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
