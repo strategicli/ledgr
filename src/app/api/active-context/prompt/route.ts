@@ -6,7 +6,7 @@ import {
   revertNoteEditingPrompt,
 } from "@/lib/note-editing-prompt";
 
-// The Note Editing Partner prompt item (ADR-161). GET returns its id (seeding it
+// The Note Editing Partner prompt item (ADR-162). GET returns its id (seeding it
 // if the feature is on but the item is missing) so the settings surface can link
 // to it; POST reverts its body to the repo-canonical default. Both require Live
 // editing context to be on. Clerk-authed, owner-scoped.

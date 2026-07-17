@@ -90,7 +90,7 @@ const MEMORY_INSTRUCTIONS = [
 ].join("\n");
 
 // Appended to INSTRUCTIONS only when the owner has Live editing context on
-// (ADR-161). Like the memory addendum, the connect-time instructions are the one
+// (ADR-162). Like the memory addendum, the connect-time instructions are the one
 // place every client reliably surfaces to the model, so this is what actually
 // gets the co-editing loop used. Kept short; points at the tools.
 const LIVE_CONTEXT_INSTRUCTIONS = [

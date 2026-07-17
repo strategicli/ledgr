@@ -841,7 +841,7 @@ export const templates = pgTable(
   ]
 );
 
-// Live editing context (ADR-161): the single "what am I looking at right now"
+// Live editing context (ADR-162): the single "what am I looking at right now"
 // row per owner, so Claude (over MCP, via get_active_context) can resolve "this
 // note" / "the draft" / "this sentence" to the item the owner currently has open
 // and their current text selection — the Notion-style live co-editing loop.

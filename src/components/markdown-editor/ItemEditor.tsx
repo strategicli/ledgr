@@ -205,7 +205,7 @@ export default function ItemEditor({
       endSave(true);
       // This save advanced knownVersion to the server's value, so it's fully
       // accounted for; drop the "we saved" flag so a later external change (e.g.
-      // Claude editing over MCP) isn't misread as ours and swallowed (ADR-161).
+      // Claude editing over MCP) isn't misread as ours and swallowed (ADR-162).
       if (advanced) clearLocalSave();
     } catch {
       // Re-queue what failed under anything newer, retry on the next tick.
@@ -234,7 +234,7 @@ export default function ItemEditor({
     () => registerForceSave(() => void flush({ force: true })),
     [flush]
   );
-  // Report unsaved state to the refresh-on-focus check (ADR-161): a queued patch
+  // Report unsaved state to the refresh-on-focus check (ADR-162): a queued patch
   // or an in-flight save means "dirty", so it asks before reloading rather than
   // dropping the owner's own work.
   useEffect(
@@ -265,7 +265,7 @@ export default function ItemEditor({
     el.style.height = `${el.scrollHeight}px`;
   }, [title]);
 
-  // Flush the moment the tab is backgrounded (ADR-161): switching to the Claude
+  // Flush the moment the tab is backgrounded (ADR-162): switching to the Claude
   // app fires visibilitychange → hidden (not pagehide, which is unload-only), so
   // without this a just-typed edit would sit in the 1.5s debounce and Claude
   // would read a stale body when asked "what do you think of this draft?". Uses

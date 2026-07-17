@@ -64,7 +64,7 @@ export default function SaveStatusIndicator({
         // or one is in flight) — adopt it silently. Otherwise it's another
         // writer (another device, or Claude over MCP): adopt the new version so
         // we act once, not in a loop, then reconcile. Auto-swap when clean
-        // (ADR-161): with no unsaved local edits there's nothing to lose, so
+        // (ADR-162): with no unsaved local edits there's nothing to lose, so
         // silently reload to show the new text — the fluid AI-editing loop. Only
         // when the owner has their own unsaved work do we stop and ask, so a
         // reload can't drop it.

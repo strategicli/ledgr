@@ -1,4 +1,4 @@
--- Live editing context (ADR-161): one ephemeral "what am I looking at now" row
+-- Live editing context (ADR-162): one ephemeral "what am I looking at now" row
 -- per owner, so Claude (over MCP, via get_active_context) can resolve "this
 -- note" / "this sentence" to the item the owner currently has open and their
 -- current text selection. Transient UI state, not user content (rule 2): stays

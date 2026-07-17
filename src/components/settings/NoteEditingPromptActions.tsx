@@ -1,4 +1,4 @@
-// Actions for the seeded "Note Editing Partner" prompt (ADR-161), shown in the
+// Actions for the seeded "Note Editing Partner" prompt (ADR-162), shown in the
 // Live editing context settings section when the feature is on: open the
 // editable prompt item, or revert its text to the repo-canonical default. Kept
 // as its own small client component so SettingsForm doesn't grow more state.

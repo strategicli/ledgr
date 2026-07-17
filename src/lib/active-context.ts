@@ -1,4 +1,4 @@
-// Live editing context (ADR-161): the read/write helpers over the single
+// Live editing context (ADR-162): the read/write helpers over the single
 // per-owner active_context row — "what note am I looking at, and what have I
 // highlighted right now." The open item canvas reports into it (the tracker →
 // POST /api/active-context) and Claude reads it over MCP (get_active_context) to

@@ -33,7 +33,7 @@ const retryListeners = new Set<() => void>();
 // clobbered version stays in revision history).
 const forceSaveListeners = new Set<() => void>();
 // Editors register a predicate reporting whether they hold unsaved edits (a
-// queued patch or an in-flight save). The refresh-on-focus check (ADR-161)
+// queued patch or an in-flight save). The refresh-on-focus check (ADR-162)
 // reads this to decide, when the item changed elsewhere, whether it's safe to
 // silently reload (clean) or must ask first (dirty — reloading would drop the
 // owner's own unsaved work).
@@ -144,7 +144,7 @@ export function consumeLocalSave(): boolean {
   localSaveSinceSync = false;
   return had;
 }
-// Clear the "we saved" flag WITHOUT consuming it (ADR-161). The body/title
+// Clear the "we saved" flag WITHOUT consuming it (ADR-162). The body/title
 // editor advances knownVersion to the server's returned updated_at on every
 // successful save, so that write is already fully accounted for by knownVersion;
 // leaving localSaveSinceSync set would make the NEXT genuinely-external change

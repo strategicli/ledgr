@@ -1,4 +1,4 @@
-// Live editing context tools (ADR-161): the MCP side of the Notion-style
+// Live editing context tools (ADR-162): the MCP side of the Notion-style
 // co-editing loop. get_active_context tells Claude which note the owner is
 // looking at right now (and what they've highlighted); edit_item_body makes a
 // surgical, single-spot change to a note's markdown without resending the whole

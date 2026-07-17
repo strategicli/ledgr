@@ -1,4 +1,4 @@
-// Live editing context tracker (ADR-161). Mounted once per open item canvas
+// Live editing context tracker (ADR-162). Mounted once per open item canvas
 // (only when settings.liveContextEnabled), this reports to the server what the
 // owner is currently looking at: the item on mount, and their live text
 // selection within the canvas as it changes. That single per-owner row is what

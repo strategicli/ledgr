@@ -284,7 +284,7 @@ export type UserSettings = {
   // and the Build → AI Memory surface appears. When off, none of those are
   // listed or callable, so a "vanilla" MCP client never sees the memory concept.
   aiMemoryEnabled: boolean;
-  // Live editing context subsystem switch (ADR-161). Off by default: a fresh
+  // Live editing context subsystem switch (ADR-162). Off by default: a fresh
   // Ledgr behaves exactly as before. When on, the open item canvas reports the
   // item you're viewing (and your current text selection) to a single per-owner
   // active_context row, the context-specific MCP tools (get_active_context,
@@ -293,7 +293,7 @@ export type UserSettings = {
   // is tracked and those tools aren't listed or callable.
   liveContextEnabled: boolean;
   // The "Note Editing Partner" prompt item seeded when Live editing context is
-  // first turned on (ADR-161). The canonical text lives in the repo
+  // first turned on (ADR-162). The canonical text lives in the repo
   // (note-editing-prompt.ts); this points at the owner's editable copy so the
   // settings surface can link to it and "Revert to default" can find it. null
   // until the feature is enabled (or if the item was purged — it's re-seeded).

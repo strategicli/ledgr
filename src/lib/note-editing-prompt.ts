@@ -1,4 +1,4 @@
-// The "Note Editing Partner" prompt (ADR-161). The canonical, tuned text lives
+// The "Note Editing Partner" prompt (ADR-162). The canonical, tuned text lives
 // HERE in the repo so it stays in lockstep with how the live-context MCP tools
 // actually behave (no drift). When the owner turns Live editing context on, we
 // seed it as an editable `prompt` item (their muscle memory: "use my note-editing

@@ -24,7 +24,7 @@ export async function PATCH(request: Request) {
     const patch = (await request.json()) as Partial<UserSettings>;
     const before = await getSettings(owner.id);
     let settings = await updateSettings(owner.id, patch);
-    // First time Live editing context is turned on (ADR-161): seed the editable
+    // First time Live editing context is turned on (ADR-162): seed the editable
     // "Note Editing Partner" prompt item, then refresh so the response carries
     // the stored item id.
     if (!before.liveContextEnabled && settings.liveContextEnabled) {
