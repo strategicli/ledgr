@@ -1,6 +1,6 @@
 # Exploration: work timeline + capture (know where the hours went)
 
-**Status:** exploration, raised 2026-07-16 (Brandon). Two halves that must be designed together: (1) a **timeline surface** in Ledgr, a human-readable, skimmable account of how time was spent and what progress was made; (2) a **capture layer**, tools that record work happening *outside* Ledgr (phone, computer, driving, visits) with near-zero manual effort. Parts are **core** (a new table or a new machine-API surface = both-agree + ADR); the timeline UI and individual capture scripts are solo-movable.
+**Status:** exploration, raised 2026-07-16 (Brandon). Two halves that must be designed together: (1) a **timeline** — a human-readable, skimmable account of how time was spent and what progress was made; (2) a **capture layer** that records work happening across all Brandon's tools with near-zero manual effort. **Architecture pivoted 2026-07-16 (see "Where this lives" below): the recommended build is a standalone scheduled Claude agent on Brandon's always-on PC, with Ledgr as an input stream *and* the write-back home — NOT an engine built into Ledgr core.** That pivot makes almost all of this **non-core and solo** (no new table, no machine-API surface, no ADR, no Tyler dependency); the heavier in-Ledgr sections below are kept as the alternative, deprioritized path.
 **Source:** Brandon. Two audiences for the output: a supervisor ("here is what I spend my time on") and Brandon himself (strategic analysis of work habits).
 
 ## The idea
@@ -11,6 +11,24 @@ The goal is a timeline where **most hours of a workday are accounted for automat
 
 - **Supervisor view:** aggregated, curated, weekly-ish. "Meetings 11h, sermon prep 9h, pastoral care 6h, admin 5h, driving 4h" plus highlights of what moved forward. Never raw items (privacy, below).
 - **Self-analysis view:** finer-grained. Day-by-day blocks, category trends over weeks, fragmentation (how chopped-up were the mornings?), gaps, drift between intention (scheduled blocks) and reality.
+
+## Where this lives (Brandon, 2026-07-16) — recommended architecture
+
+Brandon's question: *does this benefit from being built IN Ledgr, or should Ledgr just be one input stream? Could it run on a local PC that stays on all the time? It's a Brandon-only thing (maybe not even Tyler). Setting up so many always-on streams feels fragile, lengthy, and a long-term maintenance burden.* The instinct is right. **Recommendation: build it OUTSIDE Ledgr, as a standalone scheduled Claude agent on the always-on PC.** Ledgr is one input among many *and* the archive the agent writes finished summaries back into — but not the engine.
+
+**1. The "so many streams" burden is mostly imaginary here.** The fear pictures N bespoke always-on integrations, each with its own OAuth/webhook/breakage. But the sources are largely **MCP connectors Brandon has already authorized** (M365 mail/calendar/Teams, Todoist, Ledgr, Logos, Notion). A local Claude agent on a nightly schedule just *uses those connectors*. Not building streams — pointing an agent at connectors that already exist. Long-term maintenance becomes **a prompt + a cron**, not N integrations to babysit; a broken connector is the connector's problem, not bespoke code.
+
+**2. Building outside Ledgr erases the Tyler/core problem entirely.** If the agent writes finished day/week summaries back as **ordinary notes via the Ledgr MCP** (`create_item`, `relate_items`, `[@…](ledgr://item/…)` mentions), there is **no new table, no new API, no ADR, no core change** — it's a client creating notes, which the MCP already does. Tyler agrees to nothing, builds nothing, toggles nothing; he just never runs the local tool. This is a cleaner answer to "this is a Brandon thing" than a settings flag on shared core (the toggle question dissolves).
+
+**3. It flips last turn's Principle-3 advice, and that's fine.** P3 ("AI never in a cron") is *Ledgr's* rule for *Ledgr's codebase*. A personal tool on Brandon's PC isn't bound by it. Outside that constraint the calculus flips to exactly the trade Brandon asked for: **pay a bit of token cost to make integration + maintenance work nearly vanish.** He named maintenance as the real worry, so paying tokens to erase it is the right call.
+
+**4. Ledgr gives the "product" parts for free, with zero core work.** Writing back as notes means: **viewing** = a saved view over the day/week notes (Ledgr renders it); **Sunday-proof** = the existing OneDrive Markdown export already makes them readable offline; **supervisor sharing** = the existing share-token render / pandoc PDF. The fancy day-strip/week-pivot UI (mockup) becomes a *nice-later, solo, non-core* addition, not a prerequisite. Because the write-back goes through MCP, the agent still creates **real relations to project/campus items**, so the facet-as-relation model (below) survives intact.
+
+**5. The bonus only this placement unlocks: local machine activity.** No cloud connector can see which app/document was open, but a local agent on the PC can read **git logs, the filesystem, and ActivityWatch's local API** directly. The always-on PC isn't just convenient — it's the only place that can close the "computer work" gap at all.
+
+**Honest trade-offs:** fuzzier than deterministic sync (fine for a skimmable, morning-reviewed timeline — not accounting); token cost is real but bounded and pay-per-use (quiet nights cost little); the PC must stay on (Brandon proposed exactly that); keep the **morning-confirm** step so nothing untrusted lands in Ledgr. Rough cost: one nightly run reading ~5 connectors + drafting a summary is small-change per night; it scales with the day's volume, not with a fixed always-on bill.
+
+**What this does to the rest of this doc:** the signal-shape contract, facet model, and UI/UX sketches all still apply — but they describe *the agent's* internal data and *notes it writes*, not new Ledgr core. The **`time_signals` table + `POST /api/machine/signals`** sections become the **heavier in-Ledgr alternative**, only worth it if this graduates from "Brandon's private tool" to "a feature multiple users want." Start standalone; promote into core later if and only if it earns it (the catch-all → bespoke promotion pattern, Principle 6).
 
 ## The alignment contract: one signal shape
 
@@ -85,7 +103,9 @@ Brandon: *use Claude (Sonnet) to run a nightly gather that polls all the key pla
 
 AI sits where it belongs, in the human-in-the-loop layer: "summarize my week for the elder board" is an MCP/Claude action that reads the week's signals and drafts the narrative + highlights. Per the gather reframe above, the nightly interpretation is produced as *provisional* suggestions confirmed in the morning review; the deterministic rollup is always available without any model.
 
-## The data model question (core, the both-agree part)
+## The data model question (the HEAVIER in-Ledgr alternative — deprioritized)
+
+> Applies only if this graduates from the standalone-agent design above into a first-class Ledgr feature. In the recommended build, raw signals live in the agent's own local store (a SQLite file on the PC) and only the finished day/week *notes* land in Ledgr — so none of the below is needed to start.
 
 Raw signals are machine telemetry, high-volume and low-meaning (a day of app-switches could be hundreds of rows). Making each one an item would pollute the one big table with non-content — items are for things a human names and revisits. Precedent already exists for machine-side tables (`job_state`, `error_log`, `push_subscriptions`).
 
@@ -154,11 +174,12 @@ ADR-075 declined a confidential tier because nothing left the platform; **a shar
 - **Desktop agent — is it worth it, or is computer work inferable?** A lot of Brandon's screen time is already visible (mail via Graph, sermon writing via document/revision clusters, Ledgr building via git). Start without ActivityWatch and see if the inferred resolution is good enough before installing anything on two machines.
 - **Does the supervisor actually want a live link,** or is a monthly PDF the real deliverable? (Determines whether the share-token render is v1 or later.)
 
-## Suggested shape of a build (if pursued)
+## Suggested shape of a build (standalone-agent path, recommended)
 
-1. **Prove it with zero new capture:** timeline view over what the DB already holds (calendar + completions + revision clusters + Logos). If *that* isn't useful to skim, more capture won't save it.
-2. **ADR for the core pieces:** `time_signals` + `POST /api/machine/signals` + the rollup/`day_log` decision + the Principle-3 gather decision (one ADR, both-agree).
-3. **The nightly gather (deterministic):** pull Teams calls + mail metadata + Google Voice texts (+ Everlance, if kept) into signals. Biggest coverage per unit effort, nothing installed anywhere.
-4. **Review ritual + gap-filling UX**, then the AI narrative/facet-suggestion layer as provisional-until-confirmed output.
-5. **Weekly report render + share** (the supervisor deliverable).
-6. **Only if resolution is short:** the ActivityWatch desktop agent (PC + Mac) and optional Tasker phone triggers.
+1. **Smallest real test — a scheduled Claude agent that reads and writes back.** On the always-on PC: a nightly Claude Code / Agent SDK run that reads yesterday via the *already-authorized* connectors (M365 calendar + mail + Teams, Todoist, Ledgr's own activity, Logos) and writes **one `day_log` note back into Ledgr via MCP**, with @-mention relations to any project/campus items it recognizes. No table, no endpoint, no ADR. If that one note isn't useful to skim, nothing heavier will be.
+2. **Add the local-only sources the connectors can't see:** git across repos, and (if resolution is short) ActivityWatch's local API — read directly by the same local agent.
+3. **Weekly rollup note + the supervisor render** (share-token page or pandoc PDF over the week's notes — both already exist in Ledgr).
+4. **Morning-confirm loop:** the agent writes provisional; a light review marks it confirmed. Keep raw signals in the agent's local SQLite; only summaries sync.
+5. **Google Voice texts + Everlance drives** via whichever mailbox catches them (open question), parsed by the agent.
+6. **Optional Tasker phone triggers** (visits/drives) — last, only if the gaps bother him.
+7. **Promote into Ledgr core only if it earns it** — if the timeline becomes something multiple users want, *then* do the `time_signals` + machine-API ADR (the heavier alternative above). Not before.
