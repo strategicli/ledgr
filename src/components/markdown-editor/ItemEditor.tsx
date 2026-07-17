@@ -10,7 +10,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { bodyDigest, bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import {
   beginSave,
+  clearLocalSave,
   endSave,
+  registerDirtyCheck,
   registerForceSave,
   registerSaveRetry,
   reportConflict,
@@ -197,9 +199,14 @@ export default function ItemEditor({
         item?: { updatedAt?: string };
       } | null;
       if (sentBodyText !== null) syncedBodyText.current = sentBodyText;
-      if (data?.item?.updatedAt) setKnownVersion(data.item.updatedAt);
+      const advanced = Boolean(data?.item?.updatedAt);
+      if (advanced) setKnownVersion(data!.item!.updatedAt!);
       conflictPending.current = false;
       endSave(true);
+      // This save advanced knownVersion to the server's value, so it's fully
+      // accounted for; drop the "we saved" flag so a later external change (e.g.
+      // Claude editing over MCP) isn't misread as ours and swallowed (ADR-162).
+      if (advanced) clearLocalSave();
     } catch {
       // Re-queue what failed under anything newer, retry on the next tick.
       pending.current = { ...patch, ...pending.current };
@@ -227,6 +234,16 @@ export default function ItemEditor({
     () => registerForceSave(() => void flush({ force: true })),
     [flush]
   );
+  // Report unsaved state to the refresh-on-focus check (ADR-162): a queued patch
+  // or an in-flight save means "dirty", so it asks before reloading rather than
+  // dropping the owner's own work.
+  useEffect(
+    () =>
+      registerDirtyCheck(
+        () => Object.keys(pending.current).length > 0 || inFlight.current
+      ),
+    []
+  );
 
   // `{{` live-token autocomplete for the title (the body editor has its own via
   // token-suggestion.ts). Picking a token routes through the same setTitle +
@@ -247,6 +264,22 @@ export default function ItemEditor({
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [title]);
+
+  // Flush the moment the tab is backgrounded (ADR-162): switching to the Claude
+  // app fires visibilitychange → hidden (not pagehide, which is unload-only), so
+  // without this a just-typed edit would sit in the 1.5s debounce and Claude
+  // would read a stale body when asked "what do you think of this draft?". Uses
+  // the real flush (a normal async PATCH — the page stays alive on a tab switch),
+  // so it also advances the sync/known-version baseline and clears the dirty
+  // flag, which is what lets the refresh-on-focus check auto-swap cleanly when
+  // the owner returns.
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") void flush();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => document.removeEventListener("visibilitychange", onHidden);
+  }, [flush]);
 
   // A tab close inside the debounce window shouldn't lose the last edit.
   useEffect(() => {
