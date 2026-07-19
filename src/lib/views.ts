@@ -10,6 +10,7 @@ import { type ItemStatus, type Urgency } from "@/lib/item-enums";
 import { toPriority } from "@/lib/priority";
 import { ItemError, listColumns } from "@/lib/items";
 import { appTimezoneSync, todayBounds, zonedMidnightUtc } from "@/lib/today";
+import { parseWhere, type WhereCondition, type WhereGroup } from "@/lib/view-where";
 
 // Date windows. "overdue" is strictly before today (for a meeting, "in the
 // past"); "today" is the single day; "week" is today through six days out;
@@ -56,6 +57,11 @@ export type ViewFilter = {
   // array via top-level jsonb containment, so the items_properties_gin index
   // serves it; value null means "not set".
   propertyFilters?: { key: string; value: string | null }[];
+  // The AND/OR "rules" layer (ADR-164): a single-combinator group of conditions
+  // over ANY property, relation, or the priority/status built-ins. Combined with
+  // every field above via AND (the scalar filters scope; the rules refine). Null
+  // / absent = no rules, so every pre-existing view is unchanged.
+  where?: WhereGroup;
   // Today's focus only (S6, ADR-086): items day-stamped into today's focus
   // (properties.focus.date == today). "Today" resolves at query time (the marker
   // auto-clears overnight, ADR-078), so it can't be a stored date; the predicate
@@ -72,6 +78,10 @@ export const SORT_FIELDS = [
   "dueDate",
   "scheduledDate",
   "meetingAt",
+  // "urgency" = task priority P1–P6 (ADR-096; column stored 1..6, 1 highest).
+  // Sorted ascending → P1 first, with nulls (unset ≈ P6) last, so "priority"
+  // reads highest-first. Task-only in the UI (like the urgency filter/column).
+  "urgency",
   "updatedAt",
   "createdAt",
   "title",
@@ -93,6 +103,7 @@ const SORT_COLUMNS = {
   dueDate: items.dueDate,
   scheduledDate: items.scheduledDate,
   meetingAt: items.meetingAt,
+  urgency: items.urgency,
   updatedAt: items.updatedAt,
   createdAt: items.createdAt,
   title: items.title,
@@ -247,7 +258,168 @@ function viewWhere(ownerId: string, filter: ViewFilter): SQL[] {
     const ymd = `${t.y}-${String(t.m).padStart(2, "0")}-${String(t.d).padStart(2, "0")}`;
     where.push(sql`${items.properties} @> ${JSON.stringify({ focus: { date: ymd } })}::jsonb`);
   }
+
+  // The AND/OR rules layer (ADR-164). buildWhereSql folds the group's conditions
+  // with its combinator into one parenthesized SQL; AND-ing it here means the
+  // scalar filters above scope, and the rules refine within that scope.
+  if (filter.where) {
+    const clause = buildWhereSql(filter.where);
+    if (clause) where.push(clause);
+  }
   return where;
+}
+
+// --- Rules layer (ADR-164): a WhereGroup → one SQL clause ------------------
+
+// Join a list of SQL fragments with a boolean connector, parenthesized. Drops
+// nulls (a condition that couldn't build any SQL, e.g. an empty value list).
+function joinBool(parts: (SQL | null)[], connector: "and" | "or"): SQL | null {
+  const live = parts.filter((p): p is SQL => p != null);
+  if (!live.length) return null;
+  if (live.length === 1) return live[0];
+  return sql`(${sql.join(live, connector === "or" ? sql` or ` : sql` and `)})`;
+}
+
+// A scalar-property condition against items.properties->>key. Membership ops use
+// top-level jsonb containment (index-friendly, and matches a multi_select array
+// element or a scalar select alike); comparisons cast to numeric when hinted,
+// else compare as text (ISO dates sort lexically, ADR-008).
+function propertyConditionSql(key: string, c: WhereCondition): SQL | null {
+  const text = sql`(${items.properties} ->> ${key})`;
+  const present = sql`(${items.properties} -> ${key} is not null and ${items.properties} ->> ${key} <> '')`;
+  const absent = sql`(${items.properties} -> ${key} is null or ${items.properties} ->> ${key} = '')`;
+  // "value present as scalar OR as an array element" — the equality/membership atom.
+  const has = (v: string) =>
+    sql`(${items.properties} @> ${JSON.stringify({ [key]: v })}::jsonb or ${items.properties} @> ${JSON.stringify({ [key]: [v] })}::jsonb)`;
+  const cmp = (op: SQL) => {
+    if (c.value == null) return null;
+    if (c.numeric) {
+      const n = Number(c.value);
+      if (!Number.isFinite(n)) return null;
+      return sql`(case when ${text} ~ ${NUMERIC_RE} then (${text})::numeric end) ${op} ${n}`;
+    }
+    return sql`${text} ${op} ${c.value}`;
+  };
+  switch (c.op) {
+    case "set":
+      return present;
+    case "empty":
+      return absent;
+    case "contains":
+      return c.value != null ? sql`${text} ilike ${`%${c.value}%`}` : null;
+    case "eq":
+      return c.value != null ? has(c.value) : null;
+    case "neq":
+      return c.value != null ? sql`not ${has(c.value)}` : null;
+    case "gt":
+      return cmp(sql`>`);
+    case "lt":
+      return cmp(sql`<`);
+    case "gte":
+      return cmp(sql`>=`);
+    case "lte":
+      return cmp(sql`<=`);
+    case "anyOf":
+      return joinBool((c.values ?? []).map(has), "or");
+    case "allOf":
+      return joinBool((c.values ?? []).map(has), "and");
+    case "noneOf": {
+      const any = joinBool((c.values ?? []).map(has), "or");
+      return any ? sql`not ${any}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+// A relation-field condition (Tags/People/Project…), matched against confirmed
+// relations edges whose role is the field key. Property-relations are authored
+// with the item as the edge SOURCE (relations.ts), so match source_id = item,
+// target_id ∈ picked ids — directional, precise for a field.
+function relationConditionSql(role: string, c: WhereCondition): SQL | null {
+  const anyEdge = sql`exists (select 1 from relations r where r.match_state = 'confirmed' and r.role = ${role} and r.source_id = ${items.id})`;
+  const hasAnyOf = (ids: string[]): SQL | null => {
+    if (!ids.length) return null;
+    const inList = sql.join(
+      ids.map((id) => sql`${id}`),
+      sql`, `
+    );
+    return sql`exists (select 1 from relations r where r.match_state = 'confirmed' and r.role = ${role} and r.source_id = ${items.id} and r.target_id in (${inList}))`;
+  };
+  switch (c.op) {
+    case "set":
+      return anyEdge;
+    case "empty":
+      return sql`not ${anyEdge}`;
+    case "anyOf":
+      return hasAnyOf(c.values ?? []);
+    case "allOf":
+      return joinBool((c.values ?? []).map((id) => hasAnyOf([id])), "and");
+    case "noneOf": {
+      const any = hasAnyOf(c.values ?? []);
+      return any ? sql`not ${any}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+// The priority (urgency, 1..6) built-in as a rule condition.
+function priorityConditionSql(c: WhereCondition): SQL | null {
+  switch (c.op) {
+    case "set":
+      return sql`${items.urgency} is not null`;
+    case "empty":
+      return sql`${items.urgency} is null`;
+    case "anyOf": {
+      const ns = (c.values ?? []).map(Number).filter((n) => Number.isInteger(n));
+      return ns.length ? inArray(items.urgency, ns) : null;
+    }
+    case "eq":
+      return c.value != null ? eq(items.urgency, Number(c.value)) : null;
+    default:
+      return null;
+  }
+}
+
+// The status-category built-in as a rule condition. "active" expands to the two
+// open buckets, mirroring the scalar statusCategory filter.
+function statusConditionSql(c: WhereCondition): SQL | null {
+  const cats = new Set<string>();
+  const add = (v: string) => {
+    if (v === "active") {
+      cats.add("not_started");
+      cats.add("in_progress");
+    } else if (["not_started", "in_progress", "done", "archived"].includes(v)) {
+      cats.add(v);
+    }
+  };
+  if (c.op === "anyOf") (c.values ?? []).forEach(add);
+  else if (c.op === "eq" && c.value != null) add(c.value);
+  else return null;
+  const list = [...cats] as ("not_started" | "in_progress" | "done" | "archived")[];
+  return list.length ? inArray(items.statusCategory, list) : null;
+}
+
+function conditionSql(c: WhereCondition): SQL | null {
+  switch (c.subject) {
+    case "property":
+      return c.key ? propertyConditionSql(c.key, c) : null;
+    case "relation":
+      return c.key ? relationConditionSql(c.key, c) : null;
+    case "priority":
+      return priorityConditionSql(c);
+    case "status":
+      return statusConditionSql(c);
+    default:
+      return null;
+  }
+}
+
+// A whole rule group → one parenthesized SQL clause, or null when nothing in it
+// produced usable SQL (so the caller simply omits it).
+export function buildWhereSql(group: WhereGroup): SQL | null {
+  return joinBool(group.conditions.map(conditionSql), group.combinator);
 }
 
 // Numeric guard for a property sort: a value that isn't a number sorts as NULL
@@ -410,7 +582,9 @@ export type ViewDefinition = {
   name: string;
   isSystem: boolean;
   filter: ViewFilter;
-  sort: ViewSort;
+  // ListSort (ADR-164): a built-in field, or { field:"property", propertyKey,
+  // numeric } to sort by a custom property. A plain built-in sort is the norm.
+  sort: ListSort;
   grouping: ViewGrouping;
   // Ordered columns for the list/table layouts; null = the layout's defaults
   // (so every pre-existing view is unchanged).
@@ -426,7 +600,7 @@ export type ViewDefinition = {
 export type ViewInput = {
   name: string;
   filter: ViewFilter;
-  sort: ViewSort;
+  sort: ListSort;
   grouping: ViewGrouping;
   columns: ViewColumn[] | null;
   layout: ViewLayout;
@@ -515,6 +689,10 @@ export function parseViewFilter(raw: unknown): ViewFilter {
     }
     if (pfs.length) out.propertyFilters = pfs;
   }
+  if (r.where != null) {
+    const w = parseWhere(r.where);
+    if (w) out.where = w;
+  }
   if (r.focusedToday === true) out.focusedToday = true;
   return out;
 }
@@ -556,13 +734,23 @@ export function propertyFiltersFromParams(
   return out;
 }
 
-export function parseSort(raw: unknown): ViewSort {
+// Parse a view's sort. Widened (ADR-164) to a ListSort so a saved view can sort
+// by any custom property, not just the built-in fields — the query engine
+// already accepts the { field:"property", propertyKey, numeric } shape (it powers
+// list-tab lenses). A plain built-in sort is unchanged; an unknown field is
+// rejected as before.
+export function parseSort(raw: unknown): ListSort {
   if (raw == null) return { field: "updatedAt", dir: "desc" };
   if (typeof raw !== "object" || Array.isArray(raw)) bad("sort must be an object");
   const r = raw as Record<string, unknown>;
+  const dir = r.dir === "asc" ? "asc" : "desc";
+  if (r.field === "property") {
+    const key = String(r.propertyKey ?? "").trim();
+    if (!key || key.length > 40) bad("sort.propertyKey invalid");
+    return { field: "property", propertyKey: key, numeric: r.numeric === true, dir };
+  }
   const field = r.field as SortField;
   if (!SORT_FIELDS.includes(field)) bad("sort.field invalid");
-  const dir = r.dir === "asc" ? "asc" : "desc";
   return { field, dir };
 }
 
