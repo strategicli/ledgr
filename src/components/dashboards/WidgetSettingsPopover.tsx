@@ -324,7 +324,7 @@ function SortField({
         {value && (
           <select
             value={value.dir}
-            onChange={(e) => onChange({ field: value.field, dir: e.target.value as "asc" | "desc" })}
+            onChange={(e) => onChange({ ...value, dir: e.target.value as "asc" | "desc" })}
             className={input}
           >
             <option value="desc">↓</option>

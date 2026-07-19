@@ -77,7 +77,13 @@ export const viewTools: McpTool[] = [
       "name. `layout` is list | table | board | calendar | agenda. `filter` " +
       "scopes the items: { type, status, due (overdue|today|week|none), " +
       "dateField, withinDays, relatedTo (an item id), propertyFilters: " +
-      "[{key, value}] }. Optional `sort` { field, dir }, `grouping` ({ field } or " +
+      "[{key, value}] }. For richer AND/OR filtering use `filter.where`: " +
+      "{ combinator:'and'|'or', conditions:[{ subject, op, value|values }] } — " +
+      "subject is 'property'|'relation' (with `key`) or 'priority'|'status'; op is " +
+      "set|empty|eq|neq|contains|gt|lt|gte|lte|anyOf|allOf|noneOf|checked|unchecked " +
+      "(relation/tag conditions use anyOf/allOf/noneOf with `values` of item ids). " +
+      "Optional `sort` { field, dir } or a property sort " +
+      "{ field:'property', propertyKey, numeric }, `grouping` ({ field } or " +
       "{ propertyKey } for a board), `columns`, and `dateProperty` (which date a " +
       "calendar/agenda places items on). Example: \"This week's tasks\" = " +
       "{ name, layout:'list', filter:{ type:'task', due:'week' } }. Use run_view " +
@@ -88,7 +94,7 @@ export const viewTools: McpTool[] = [
         name: { type: "string", description: "Display name. E.g. \"This week's tasks\"." },
         layout: { type: "string", enum: [...VIEW_LAYOUTS], description: "list | table | board | calendar | agenda." },
         filter: { type: "object", description: "Item filter (see description). Omit for an unscoped list." },
-        sort: { type: "object", description: "{ field, dir } — field one of dueDate|scheduledDate|meetingAt|updatedAt|createdAt|title; dir asc|desc." },
+        sort: { type: "object", description: "{ field, dir } — field one of plan|dueDate|scheduledDate|meetingAt|urgency|updatedAt|createdAt|title (urgency = task priority P1–P6, asc = P1 first); OR a property sort { field:'property', propertyKey, numeric }; dir asc|desc." },
         grouping: { type: "object", description: "Board/agenda grouping: { field: status|urgency|type|due|scheduled } or { propertyKey } for a custom select." },
         columns: { type: "array", description: "Ordered columns for list/table (advanced). Omit for the layout defaults.", items: { type: "object" } },
         dateProperty: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date a calendar/agenda places items on (default dueDate; meetingAt for events)." },

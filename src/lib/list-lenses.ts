@@ -33,7 +33,10 @@ export type Lens =
 // plus "mostLinked" (the confirmed-relation count). Date/scheduled/meeting
 // fields aren't offered as generic defaults (they're type-specific); a type
 // that wants them adds a property lens or a view lens.
-export const LENS_FIELDS = ["updatedAt", "createdAt", "title", "mostLinked"] as const;
+// "urgency" (task priority P1–P6, ADR-096) is allowed for tasks so a list tab
+// can order by priority; it's only OFFERED by the editor where the type has it
+// (see ListTabsEditor), not in the generic default strip.
+export const LENS_FIELDS = ["updatedAt", "createdAt", "title", "mostLinked", "urgency"] as const;
 export type LensField = (typeof LENS_FIELDS)[number];
 
 const LENS_CAP = 12; // per type
