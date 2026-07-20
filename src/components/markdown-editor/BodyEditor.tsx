@@ -132,6 +132,17 @@ const FORMAT_ICON = (
     <path d="M8.5 11h7" />
   </svg>
 );
+// The "add tab" glyph: a page/tab rectangle with a plus, so it reads as "start
+// tabs here". Sits in the body controls row as a third little section (Brandon,
+// 2026-07-20) — the standalone "+ Add tab" line is gone; once tabs exist the
+// add affordance moves to the tab strip's "+ New tab" (TabbedBody).
+const TAB_PLUS_ICON = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="5" width="11" height="14" rx="2" />
+    <line x1="19" y1="9" x2="19" y2="15" />
+    <line x1="16" y1="12" x2="22" y2="12" />
+  </svg>
+);
 
 export default function BodyEditor({
   itemId,
@@ -150,6 +161,12 @@ export default function BodyEditor({
   follower = false,
 }: BodyEditorProps) {
   const large = isLargeBody(initialMarkdown);
+  // Tab affordance (Brandon, 2026-07-20): TabbedBody owns tab state, but the
+  // "start tabs" trigger now rides the body controls row here. It reports whether
+  // any tab currently exists (so the icon shows only when there are none — once
+  // tabs exist, the strip's own "+ New tab" takes over) and hands us its addTab.
+  const [hasTabs, setHasTabs] = useState(false);
+  const addTabRef = useRef<(() => void) | null>(null);
   // Latest emitted markdown (every mode reports through handleChange).
   const liveText = useRef(initialMarkdown);
   // Content the currently-mounted child is seeded with; only re-snapshotted on a
@@ -187,6 +204,16 @@ export default function BodyEditor({
   // `sm` in CSS, where the bar always shows above the keyboard. A locked note has
   // no bar to collapse, so no toggle.)
   const showCollapseToggle = editable && collapsibleToolbar && mode === "rich";
+  // The add-tab icon shows only for a tab-enabled type, in rich mode, on the full
+  // canvas (not the Desk's controlled sections), and only until the first tab
+  // exists. Visible at every width (unlike the desktop-only collapse toggle) —
+  // the whole point of this change is to reach it on mobile too.
+  const showAddTab =
+    tabsEnabled &&
+    editable &&
+    mode === "rich" &&
+    controlledSection === undefined &&
+    !hasTabs;
 
   const handleChange = (md: string) => {
     liveText.current = md;
@@ -234,6 +261,17 @@ export default function BodyEditor({
           {PREVIEW_ICON}
         </ModeButton>
       </div>
+      {showAddTab && (
+        <button
+          type="button"
+          onClick={() => addTabRef.current?.()}
+          title="Add tab"
+          aria-label="Add tab"
+          className="inline-flex items-center rounded-md px-2 py-1 text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
+        >
+          {TAB_PLUS_ICON}
+        </button>
+      )}
     </>
   );
 
@@ -266,6 +304,8 @@ export default function BodyEditor({
         follower={follower}
         toolbarOpen={toolbarOpen}
         viewControls={viewControls}
+        onTabsPresence={setHasTabs}
+        addTabRef={addTabRef}
       />
     );
   } else {

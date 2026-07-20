@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ItemError, getItem } from "@/lib/items";
+import { bodyMarkdown } from "@/lib/body";
 import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
 import { canvasComponentFor } from "@/lib/module-wiring";
@@ -29,6 +30,11 @@ import TypeCue from "@/components/canvas/TypeCue";
 // Compact date for the chrome timestamps ("Jan 3, 2021").
 const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const fmtChromeDate = (d: Date) => CHROME_DATE.format(d);
+
+// Rough word count for the chrome indicator: count word-like runs so bare
+// markdown punctuation (#, -, *, link brackets) doesn't inflate the total.
+const wordCountOf = (md: string) =>
+  (md.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
 
 export default async function ItemCanvas({
   id,
@@ -89,6 +95,9 @@ export default async function ItemCanvas({
   // whatever canvas this type uses. The component self-gates on heading count.
   const settings = await getSettings(owner.id);
   const toc = tocForType(settings, item.type);
+
+  // Word count for the chrome (top-right on desktop, in the ⋯ menu everywhere).
+  const wordCount = wordCountOf(bodyMarkdown(item.body));
 
   return (
     <>
@@ -153,6 +162,8 @@ export default async function ItemCanvas({
                 <span>Created {fmtChromeDate(item.createdAt)}</span>
                 <span aria-hidden>·</span>
                 <span>Updated {fmtChromeDate(item.updatedAt)}</span>
+                <span aria-hidden>·</span>
+                <span>{wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}</span>
               </span>
               {variant === "page" && !item.isTemplate && (
                 <ItemActionsMenu
@@ -163,6 +174,9 @@ export default async function ItemCanvas({
                     (item.properties as Record<string, unknown> | null)?.locked
                   )}
                   favorited={favorited}
+                  createdLabel={fmtChromeDate(item.createdAt)}
+                  updatedLabel={fmtChromeDate(item.updatedAt)}
+                  wordCount={wordCount}
                 />
               )}
             </span>
