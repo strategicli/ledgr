@@ -9,7 +9,7 @@
 // is never disturbed.
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import type { PromotedRefs } from "./block-anchor-extension";
@@ -55,6 +55,12 @@ export type TabbedBodyProps = {
   // Imperative focus signal (title Enter → jump to the body): forwarded to the
   // active tab's editor.
   focusSignal?: number;
+  // Add-tab affordance now lives in BodyEditor's controls row, not a standalone
+  // line here (Brandon, 2026-07-20). We report whether tabs currently exist (so
+  // BodyEditor shows its "+ tab" icon only when there are none) and expose our
+  // addTab through this ref so that icon can trigger it.
+  onTabsPresence?: (hasTabs: boolean) => void;
+  addTabRef?: RefObject<(() => void) | null>;
 };
 
 export default function TabbedBody({
@@ -72,6 +78,8 @@ export default function TabbedBody({
   focusSignal,
   toolbarOpen,
   viewControls,
+  onTabsPresence,
+  addTabRef,
 }: TabbedBodyProps) {
   const parsed = parseTabs(initialMarkdown);
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
@@ -158,6 +166,14 @@ export default function TabbedBody({
 
   const editorInitial = tabs ? (tabs[activeIdx]?.body ?? "") : untabbed;
 
+  // Point BodyEditor's controls-row "+ tab" icon at our addTab (always the latest
+  // closure), and tell it whether any tab exists so it can hide the icon once the
+  // strip's own "+ New tab" takes over.
+  if (addTabRef) addTabRef.current = addTab;
+  useEffect(() => {
+    onTabsPresence?.(tabs !== null);
+  }, [tabs, onTabsPresence]);
+
   return (
     <div>
       {hideChrome ? null : tabs ? (
@@ -199,29 +215,18 @@ export default function TabbedBody({
               </span>
             );
           })}
+          {/* Farthest-right item in the strip, browser-style: add another tab. */}
           {editable && (
             <button
               type="button"
               onClick={addTab}
-              className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+              className="ml-auto rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
             >
-              + Add tab
+              + New tab
             </button>
           )}
         </div>
-      ) : (
-        editable && (
-          <div className="mb-1 flex justify-end">
-            <button
-              type="button"
-              onClick={addTab}
-              className="rounded-md px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-900 hover:text-neutral-400"
-            >
-              + Add tab
-            </button>
-          </div>
-        )
-      )}
+      ) : null}
 
       {/* Active tab title (inline-editable; read-only and unclickable when locked).
           Hidden in the Desk — section rename lives on the full canvas (D5). */}

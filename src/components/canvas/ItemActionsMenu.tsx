@@ -26,12 +26,21 @@ export default function ItemActionsMenu({
   title,
   locked,
   favorited,
+  createdLabel,
+  updatedLabel,
+  wordCount,
 }: {
   itemId: string;
   type: string;
   title: string;
   locked: boolean;
   favorited: boolean;
+  // Chrome info shown at the top of the open menu (page canvas only). On mobile
+  // this is where Created/Updated live, since the top-right chrome hides them for
+  // width; word count sits alongside. Omitted by the modal peek.
+  createdLabel?: string;
+  updatedLabel?: string;
+  wordCount?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -161,6 +170,20 @@ export default function ItemActionsMenu({
           role="menu"
           className="absolute right-0 z-50 mt-1 w-56 rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl shadow-black/50"
         >
+          {(createdLabel || updatedLabel || wordCount !== undefined) && (
+            <>
+              <div className="px-2 py-1.5 text-xs text-neutral-500">
+                {createdLabel && <div>Created {createdLabel}</div>}
+                {updatedLabel && <div>Updated {updatedLabel}</div>}
+                {wordCount !== undefined && (
+                  <div>
+                    {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}
+                  </div>
+                )}
+              </div>
+              <div className="my-1 h-px bg-neutral-800" />
+            </>
+          )}
           <button
             type="button"
             role="menuitem"
