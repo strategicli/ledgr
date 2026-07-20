@@ -93,6 +93,15 @@ export type ItemEditorProps = {
   // unsaved text. Does NOT touch the save path (debounce/PATCH/revisions); it's
   // a read-only observation, unused by the normal item canvas.
   onLiveChange?: (next: { title?: string; markdown?: string }) => void;
+  // Follower mode (ADR-165, the Desk). When true this editor is a live MIRROR of
+  // the item, not the source of edits: it stays mounted and editable-looking (so
+  // taking the pen is a seamless in-place flip, not a remount) but it applies the
+  // source panel's live title/body from the `item` prop instead of driving them,
+  // and it never publishes or saves. It also keeps its save baseline advanced to
+  // the mirrored content and flushes on becoming a follower, so handing the pen
+  // back and forth between panels never trips the cross-device 409 guard
+  // (ADR-134). Default false = the normal, sole-source editor.
+  follower?: boolean;
 };
 
 export default function ItemEditor({
@@ -108,8 +117,20 @@ export default function ItemEditor({
   done = false,
   onLiveChange,
   controlledSection,
+  follower = false,
 }: ItemEditorProps) {
   const [title, setTitle] = useState(item.title);
+  // Follower mode (ADR-165): mirror the source's live title. `item.title` comes
+  // from the Desk doc store and updates as the source publishes; a follower
+  // adopts it. Done as a render-time state adjustment (React's "adjusting state
+  // on a prop change") rather than an effect, so it doesn't cascade — and so the
+  // value the pen inherits when this panel later becomes the source is already
+  // current. The source ignores it (its own typing drives the title).
+  const [lastItemTitle, setLastItemTitle] = useState(item.title);
+  if (item.title !== lastItemTitle) {
+    setLastItemTitle(item.title);
+    if (follower) setTitle(item.title);
+  }
   // Bumped when Enter is pressed in the title, to move the caret into the body
   // editor (fix: Enter in the title should jump to the body, not just blur). 0 =
   // don't focus, so the body never steals focus on a normal load.
@@ -244,6 +265,25 @@ export default function ItemEditor({
       ),
     []
   );
+
+  // While following, keep the save baseline pinned to the mirrored body: the
+  // content on screen IS what the (other) source is saving, so treating it as
+  // "synced" is correct. Then if the pen returns to this panel, its next save
+  // digests against content the server already has — no false 409 (ADR-134).
+  useEffect(() => {
+    if (!follower) return;
+    const md = bodyMarkdown(item.body);
+    savedBodyText.current = md;
+    syncedBodyText.current = md;
+  }, [follower, item.body]);
+
+  // The moment this editor becomes a follower (the pen left this panel), flush any
+  // pending save so the server is up to date before another panel takes over —
+  // the other panel then follows the freshly-saved content and inherits a correct
+  // baseline. No-op when there's nothing pending.
+  useEffect(() => {
+    if (follower) void flush();
+  }, [follower, flush]);
 
   // `{{` live-token autocomplete for the title (the body editor has its own via
   // token-suggestion.ts). Picking a token routes through the same setTitle +
@@ -405,6 +445,7 @@ export default function ItemEditor({
       tabsEnabled={tabsEnabled}
       controlledSection={controlledSection}
       focusSignal={bodyFocusSignal}
+      follower={follower}
     />
   );
 
