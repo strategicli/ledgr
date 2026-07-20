@@ -1,6 +1,7 @@
 // Canvas tabs (ADR-095): a thin client wrapper around the markdown editor that
-// splits one item's body into named tabs (a strip + "+ Add tab" across the top,
-// an inline title for the active tab). Tabs are sections of the SAME body
+// splits one item's body into named tabs (a strip across the top; the active
+// chip is enlarged and doubles as the section header, double-click to rename it
+// in place, drag to reorder). Tabs are sections of the SAME body
 // (src/lib/editor/canvas-tabs.ts); this component only manages which section is
 // shown and reassembles the whole body on save. The editor is unchanged — it's
 // remounted per tab (via `key`) on a switch so it reloads that tab's content,
@@ -16,7 +17,6 @@ import type { PromotedRefs } from "./block-anchor-extension";
 import {
   parseTabs,
   serializeTabs,
-  sanitizeTabTitle,
   type CanvasTab,
 } from "@/lib/editor/canvas-tabs";
 
@@ -85,6 +85,11 @@ export default function TabbedBody({
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
   const [untabbed, setUntabbed] = useState<string>(parsed ? "" : initialMarkdown);
   const [internalActive, setInternalActive] = useState(0);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Which chip is being inline-renamed (double-click). The active chip doubles as
+  // the section header now that the standalone title heading is gone, so its name
+  // is edited in place rather than in a separate field.
+  const [renamingIdx, setRenamingIdx] = useState<number | null>(null);
 
   // Follower mode (ADR-165): re-derive the sections from the source's latest body
   // when it changes, so a mirror panel's active section updates in place. Done as
@@ -143,9 +148,24 @@ export default function TabbedBody({
     }
   }
 
-  function renameActive(title: string) {
+  // Drag-reorder the strip: reordering the tabs array reassembles the body with
+  // its sections in the new order (commitTabs → serializeTabs). The active index
+  // is remapped so the same tab stays selected after the move.
+  function reorderTabs(from: number, to: number) {
+    if (!tabs || from === to) return;
+    const next = [...tabs];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    const a = activeIdx;
+    if (a === from) setActive(to);
+    else if (from < a && a <= to) setActive(a - 1);
+    else if (to <= a && a < from) setActive(a + 1);
+    commitTabs(next);
+  }
+
+  function renameTab(i: number, title: string) {
     if (!tabs) return;
-    commitTabs(tabs.map((t, i) => (i === activeIdx ? { ...t, title } : t)));
+    commitTabs(tabs.map((t, idx) => (idx === i ? { ...t, title } : t)));
   }
 
   function deleteTab(i: number) {
@@ -180,23 +200,59 @@ export default function TabbedBody({
         <div className="mb-2 flex flex-wrap items-center gap-1 border-b border-neutral-800 pb-2">
           {tabs.map((t, i) => {
             const isActive = i === activeIdx;
+            const isRenaming = renamingIdx === i;
             return (
               <span
                 key={i}
-                className={`group inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm ${
+                draggable={editable && !isRenaming}
+                onDragStart={() => setDragIndex(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIndex !== null) reorderTabs(dragIndex, i);
+                  setDragIndex(null);
+                }}
+                onDragEnd={() => setDragIndex(null)}
+                className={`group inline-flex items-center gap-1 rounded-md ${
+                  editable && !isRenaming ? "cursor-grab active:cursor-grabbing" : ""
+                } ${dragIndex === i ? "opacity-50" : ""} ${
                   isActive
-                    ? "bg-neutral-800 text-neutral-100"
-                    : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+                    ? "bg-neutral-800 px-3 py-1.5 text-base font-semibold text-neutral-100"
+                    : "px-2.5 py-1 text-sm text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => setActive(i)}
-                  className="max-w-[14rem] truncate"
-                >
-                  {t.title.trim() || "Untitled"}
-                </button>
-                {editable && (
+                {isRenaming ? (
+                  <input
+                    type="text"
+                    autoFocus
+                    value={t.title}
+                    onChange={(e) => renameTab(i, e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onBlur={() => setRenamingIdx(null)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Escape") {
+                        e.preventDefault();
+                        setRenamingIdx(null);
+                      }
+                    }}
+                    placeholder="Tab title"
+                    className="w-40 max-w-[14rem] bg-transparent text-base font-semibold text-neutral-100 outline-none placeholder:text-neutral-500"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActive(i)}
+                    onDoubleClick={() => {
+                      if (!editable) return;
+                      setActive(i);
+                      setRenamingIdx(i);
+                    }}
+                    title={editable ? "Double-click to rename" : undefined}
+                    className="max-w-[14rem] truncate"
+                  >
+                    {t.title.trim() || "Untitled"}
+                  </button>
+                )}
+                {editable && !isRenaming && (
                   <ConfirmButton
                     onConfirm={() => deleteTab(i)}
                     title="Delete this tab?"
@@ -227,22 +283,6 @@ export default function TabbedBody({
           )}
         </div>
       ) : null}
-
-      {/* Active tab title (inline-editable; read-only and unclickable when locked).
-          Hidden in the Desk — section rename lives on the full canvas (D5). */}
-      {tabs && !hideChrome && (
-        <input
-          type="text"
-          value={tabs[activeIdx]?.title ?? ""}
-          onChange={(e) => renameActive(sanitizeTabTitle(e.target.value))}
-          placeholder="Tab title"
-          readOnly={!editable}
-          tabIndex={editable ? undefined : -1}
-          className={`mb-2 w-full bg-transparent text-base font-semibold text-neutral-200 outline-none placeholder:text-neutral-600 ${
-            editable ? "" : "pointer-events-none"
-          }`}
-        />
-      )}
 
       <LazyMarkdownEditor
         // Remount on tab switch / structural change so the editor reloads the
