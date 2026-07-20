@@ -188,8 +188,12 @@ export default function TabbedBody({
 
   // Point BodyEditor's controls-row "+ tab" icon at our addTab (always the latest
   // closure), and tell it whether any tab exists so it can hide the icon once the
-  // strip's own "+ New tab" takes over.
-  if (addTabRef) addTabRef.current = addTab;
+  // strip's own "+ New tab" takes over. The ref is written in a no-deps effect
+  // (after commit, not during render) so it refreshes to the current addTab every
+  // render — the icon only calls it in a click handler, well after commit.
+  useEffect(() => {
+    if (addTabRef) addTabRef.current = addTab;
+  });
   useEffect(() => {
     onTabsPresence?.(tabs !== null);
   }, [tabs, onTabsPresence]);
