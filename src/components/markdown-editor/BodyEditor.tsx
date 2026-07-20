@@ -21,7 +21,7 @@
 // so a switch always carries the latest text across — including unsaved edits.
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
 import TabbedBody from "./TabbedBody";
 import RawMarkdownEditor from "./RawMarkdownEditor";
@@ -53,6 +53,12 @@ export type BodyEditorProps = {
   // Imperative focus signal (title Enter → jump to the body): forwarded to the
   // rich editor. Only meaningful in rich mode; source/preview ignore it.
   focusSignal?: number;
+  // Follower mode (ADR-165, the Desk): this body is a live mirror, not the source
+  // of edits. When set, an incoming `initialMarkdown` (the source's latest text)
+  // is re-snapshotted into the mounted editor in place, and forwarded so the rich
+  // editor applies it without a remount. Ignored on the sole-source editor, which
+  // must NOT re-seed from its own emitted text (that would reset the caret).
+  follower?: boolean;
 };
 
 function ModeButton({
@@ -141,6 +147,7 @@ export default function BodyEditor({
   tabsEnabled = false,
   controlledSection,
   focusSignal,
+  follower = false,
 }: BodyEditorProps) {
   const large = isLargeBody(initialMarkdown);
   // Latest emitted markdown (every mode reports through handleChange).
@@ -149,6 +156,23 @@ export default function BodyEditor({
   // mode switch, so editing within a mode never remounts the child.
   const [mountText, setMountText] = useState(initialMarkdown);
   const [mode, setMode] = useState<Mode>(large ? "preview" : "rich");
+
+  // Follower mode (ADR-165): re-snapshot the source's latest text into the mounted
+  // child in place, so a mirror panel updates without a remount. Gated on
+  // `follower` — the sole-source editor must never re-seed from its own emitted
+  // text (that would reset the caret mid-type). The child applies it via its own
+  // setContent(emitUpdate:false) path, so this never triggers a save. Trailing-
+  // debounced (300ms, the old preview cadence) so a fast typist in the source
+  // doesn't fire a re-parse + setContent into every mirror on each keystroke —
+  // the mirror catches up a moment after each pause.
+  useEffect(() => {
+    if (!follower) return;
+    const t = setTimeout(() => {
+      liveText.current = initialMarkdown;
+      setMountText(initialMarkdown);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [follower, initialMarkdown]);
 
   // Formatting-bar collapse state (S5). The toggle lives in the mode-row below
   // and its state is owned here so it survives a rich↔source switch and persists
@@ -239,6 +263,7 @@ export default function BodyEditor({
         editable={editable}
         controlledSection={controlledSection}
         focusSignal={focusSignal}
+        follower={follower}
         toolbarOpen={toolbarOpen}
         viewControls={viewControls}
       />

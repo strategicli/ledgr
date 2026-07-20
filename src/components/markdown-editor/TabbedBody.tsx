@@ -47,6 +47,11 @@ export type TabbedBodyProps = {
   // Reading-first: forwarded to the per-tab editor so a tabbed note opens as
   // rendered HTML and mounts Tiptap only on edit (perceived speed).
   readingFirst?: boolean;
+  // Follower mode (ADR-165, the Desk): re-parse the source's latest body into the
+  // sections in place when it changes, so a mirror panel's active section updates
+  // without a remount. Ignored on the sole-source editor (its sections are driven
+  // by its own edits).
+  follower?: boolean;
   // Imperative focus signal (title Enter → jump to the body): forwarded to the
   // active tab's editor.
   focusSignal?: number;
@@ -63,6 +68,7 @@ export default function TabbedBody({
   editable = true,
   controlledSection,
   readingFirst,
+  follower = false,
   focusSignal,
   toolbarOpen,
   viewControls,
@@ -71,6 +77,23 @@ export default function TabbedBody({
   const [tabs, setTabs] = useState<CanvasTab[] | null>(parsed);
   const [untabbed, setUntabbed] = useState<string>(parsed ? "" : initialMarkdown);
   const [internalActive, setInternalActive] = useState(0);
+
+  // Follower mode (ADR-165): re-derive the sections from the source's latest body
+  // when it changes, so a mirror panel's active section updates in place. Done as
+  // a render-time state adjustment (not an effect) so it doesn't cascade; uses
+  // setTabs directly (not commitTabs) so it never publishes. Content-only edits
+  // keep the section count stable, so the active editor is re-fed, not remounted.
+  // Tracked for the source too (so becoming a follower later re-syncs cleanly),
+  // but only APPLIED when following — the source's sections are its own edits.
+  const [lastInitial, setLastInitial] = useState(initialMarkdown);
+  if (initialMarkdown !== lastInitial) {
+    setLastInitial(initialMarkdown);
+    if (follower) {
+      const next = parseTabs(initialMarkdown);
+      setTabs(next);
+      setUntabbed(next ? "" : initialMarkdown);
+    }
+  }
 
   // In the Desk the active section is controlled by the panel chrome; elsewhere
   // TabbedBody owns it. Either way the index is clamped to the parsed sections.
