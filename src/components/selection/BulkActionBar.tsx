@@ -23,14 +23,16 @@ import { bulkDelete, bulkPatch, type BulkResult } from "@/components/selection/b
 import { useSelection } from "@/components/selection/SelectionProvider";
 import type { BulkActionConfig } from "@/lib/bulk-config";
 import { orderedStatuses, type StatusDef } from "@/lib/status";
+import { PRIORITIES } from "@/lib/priority";
 
-// A field the Set… menu can write. Status and dates are built in; the rest come
-// from the type's select/multi_select properties.
+// A field the Set… menu can write. Status, dates, and priority are built in; the
+// rest come from the type's select/multi_select properties.
 type SetField =
   | { kind: "status"; statuses: StatusDef[] }
   | { kind: "select"; key: string; label: string; options: string[] }
   | { kind: "multi_select"; key: string; label: string; options: string[] }
-  | { kind: "date"; key: "dueDate" | "scheduledDate"; label: string };
+  | { kind: "date"; key: "dueDate" | "scheduledDate"; label: string }
+  | { kind: "priority" };
 
 export default function BulkActionBar(config: BulkActionConfig) {
   const router = useRouter();
@@ -98,6 +100,9 @@ export default function BulkActionBar(config: BulkActionConfig) {
   for (const key of config.dateFields ?? []) {
     setFields.push({ kind: "date", key, label: key === "dueDate" ? "Due date" : "Scheduled date" });
   }
+  if (config.priorityField) {
+    setFields.push({ kind: "priority" });
+  }
 
   const btn =
     "rounded-md px-2.5 py-1 text-sm text-neutral-200 hover:bg-neutral-700 disabled:opacity-50";
@@ -134,6 +139,18 @@ export default function BulkActionBar(config: BulkActionConfig) {
               />
             )}
           </div>
+        )}
+
+        {/* Triaged — clears the inbox flag on the selection (Inbox only). */}
+        {config.canTriage && (
+          <button
+            type="button"
+            className={btn}
+            disabled={busy}
+            onClick={() => run(() => bulkPatch(ids(), { inbox: false }))}
+          >
+            ✓ Triaged
+          </button>
         )}
 
         {/* Move… */}
@@ -216,7 +233,7 @@ function SetMenu({
       <ul className="w-1/2 shrink-0 overflow-y-auto border-r border-neutral-800 py-1">
         {fields.map((f) => {
           const label =
-            f.kind === "status" ? "Status" : f.label;
+            f.kind === "status" ? "Status" : f.kind === "priority" ? "Priority" : f.label;
           const active = fieldKey(f) === fieldKey(field);
           return (
             <li key={fieldKey(f)}>
@@ -278,6 +295,30 @@ function SetMenu({
           </>
         )}
 
+        {field.kind === "priority" && (
+          <>
+            {PRIORITIES.map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={busy}
+                onClick={() => onApply({ urgency: p })}
+                className="block w-full px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+              >
+                P{p}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onApply({ urgency: null })}
+              className="block w-full px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-800 disabled:opacity-50"
+            >
+              Clear priority
+            </button>
+          </>
+        )}
+
         {field.kind === "date" && (
           <div className="p-2">
             <input
@@ -312,5 +353,7 @@ function SetMenu({
 }
 
 function fieldKey(f: SetField): string {
-  return f.kind === "status" ? "status" : f.key;
+  if (f.kind === "status") return "status";
+  if (f.kind === "priority") return "priority";
+  return f.key;
 }
