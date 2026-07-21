@@ -4,6 +4,42 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **⏭️ NEXT (2026-07-01) — DEPLOY THE PJ CHUNK:** `integrate-pj` is committed and **merged with `origin/main`** (which had advanced to ADR-137 / PRs→#138: AI Memory, calendar lenses, edit guard, etc.). Migrations linearized past the `0040` collision → `0040_memory_type` then `0041_solid_leech`…`0045_pursuit_type` (whens rewritten so prod won't skip them). tsc + `next build` + eslint clean; verify scripts green on the merged tree. **Remaining, in order (needs prod creds — Tyler):** (1) `npm run db:migrate` against **prod** `DATABASE_URL` (applies the 5 new migrations after `memory_type`) — must precede code going live; (2) push `main` (or PR → merge) → Vercel deploys; (3) verify `/health` + a project page. **Dev-DB gotcha:** `ledgr_dev` already ran the old-numbered branch migrations, so `db:migrate` there will collide — reset dev or fix `__drizzle_migrations` (prod is unaffected, it never had them). Project Type ADR renumbered 133→**138** (origin took 133 for the Planner).
 
+## ⟢ Parked — Over-engineering audit candidates (2026-07-20, IDEAS ONLY — nothing confirmed for deletion)
+
+**These are audit findings to *consider*, not a work order.** A `/ponytail-audit` static-reachability scan flagged exported symbols that appear only at their own definition site in `src/` (0 callers at scan time). Reachability ≠ dead: some may be wired by string key (registries), kept as deliberate public API (MCP/module seams), or ops helpers run by hand. **Verify each before touching anything; delete none on faith.** Net if all were removed: ~400–450 lines, 0 deps. Deps are already lean.
+
+- **modules.ts registry accessors** — `moduleForType`, `exportersForType`, `canonicalFormatForType`, `registeredTypeKeys` (0 callers). *Check first:* the module system is CORE; these may be intended registry API. Least safe to cut.
+- **papers/citation.ts format variants** — `citeFull`, `citeShort`, `citeIbid`, `formsForEntry` (0 callers; `citationForms`/`bibliographyEntry` are live).
+- **overview/weave.ts story helpers** — `splitHeadStory`, `buildStorySkeleton`, `appendToStory` (route uses only `weaveStory`/`proposeStoryUpdate`).
+- **composition.ts** — `addableWidgets`, `isWidgetEnabled`.
+- **dashboards.ts** — `removeWidget`, `updateWidget`. *Check first:* possible widget-registry indirection.
+- **priority.ts migration leftovers** — `fromLegacyUrgency`, `autoPriorityOnFirstSubtask` (urgency→priority migration is done).
+- **planner-grid.ts** — `slotCount`, `slotStartHhmm`.
+- **push ops helpers** — `generateVapidKeys`, `countSubscriptions` (not called even from scripts). *Note:* `generateVapidKeys` may be worth keeping as a documented one-time setup helper.
+- **status/recurrence/scheduling predicates** — `isDoneCategory`, `isRecurring`, `countOverdueScheduled`.
+- **favorites.ts** — `isFavorited`, `addFavorite`, `applyReorder`.
+- **related-lens.ts** — `useRelatedLens`, `applyRelatedLens`.
+- **misc singletons** — `templateCountsByType`, `hasVars`, `scanItemTokens`, `mentionTitleFromLabel`, `navIconSvg`, `recencyFactor`, `resolveLayout`, `semitonesBetween`, `setLineText`, `getDoc`, `isDefaultTaskPull`, `basenameFromUrl`, `buildEmbedReference`, `buildAlertMessage`, `chartToText`, `allLeaves`, `applyTypeScope`, `cardSpec`, `addYearsYmd`.
+- **dead constants / types** — `DEFAULT_PROTOCOL_VERSION`, `EMPTY_PROGRESS`, `MENTION_PREFIX` (alias of `MENTION_URI_PREFIX`), `TOTAL_VERSES`, `LocalExportTarget` (uncalled class), `itemStatus` / `activityKind` (unused schema type aliases).
+- **`_resetTokenCacheForTests`** (graph/client.ts) — test hook with no test calling it (no test runner in repo).
+- **minor `shrink:`** — `clamp01` (dashboards.ts) and `clampFrac` (desk/layout.ts) are two hand-rolled clamps; could share one `Math.max(lo, Math.min(hi, v))` helper.
+- **Housekeeping (not repo code):** 3 stale git worktrees under `.claude/worktrees/` (`ai-editing-partner-mcp`, `claude-md-memory-docs`, `online-meeting-recording-transcription`) — full duplicate `src/` checkouts from finished sessions. Gitignored (not in the repo), but every local grep hits 4× copies. `git worktree remove <each>` when convenient.
+
+*Left in place as deliberate, not flagged:* the provider seams (storage/auth/transcription — Phase-4 discipline), the YMD-UTC recurrence math, and the client-safe/server two-file splits (e.g. `relative-subtask.ts`).
+
+## ⟢ Session summary — Inbox fast-processing + UX pass (2026-07-21, branch `claude/inbox-fast-triage`, NOT merged)
+
+**From Brandon: "most inbox items are tasks and there's no quick way to process them."** Added inline per-task processing, bulk triage, and a richer capture box — all by reusing existing endpoints/components (no new API, no deps). Mobile full-screen swipe triage mode is the **designed-but-deferred fast-follow** (Brandon chose "desktop inline first").
+
+- **Per-task inline controls** (`src/components/inbox/InboxTaskControls.tsx`, rendered only for `type=task` rows under the title): Schedule chip (Today/Tomorrow/Next week/pick/clear → `PATCH scheduledDate`, mirrors `RowMenu`), Priority P1–P6 select (→ `PATCH urgency`), **+ Project** and **+ People** via a new compact type-locked typeahead `RelatePicker.tsx` (distilled from `AddRelation`; project → relations `role:"project"`, people → default `related`).
+- **Bulk triage + task actions** (`BulkActionBar` + `bulk-config.ts`): new `canTriage` → a **"✓ Triaged"** button (`bulkPatch {inbox:false}`), and `priorityField` → a Priority column in the Set… menu (`bulkPatch {urgency}`). Inbox passes `{canTriage, priorityField, dateFields:[scheduledDate,dueDate]}` — universal columns only, safe on the mixed-type selection.
+- **Richer "Capture anything"**: extracted `CaptureModal`'s inner into shared `CaptureCard.tsx` (type picker + `AddTaskCard`/`SimpleCapture`); the inbox `QuickCapture` keeps the slim one-line fast path and adds a **"＋ Details"** toggle that expands into the full `CaptureCard`. `CaptureModal` now just wraps `CaptureCard`.
+- **Layout + visible Delete (Brandon follow-up):** the Inbox doubles as a filter, so `TriageControls` now renders a **visible per-row 🗑 Delete** (soft-delete + undo toast) beside **✓ Triaged**, both with a color cue (faint green / faint red) + icon. The **type dropdown moved down to the control line** (it and the resolve actions are `ml-auto`-anchored right, wrap on narrow); the **title now wraps** (`break-words`) instead of truncating. `RowMenu` stays for touch long-press / right-click (Complete/Schedule/Trash, ADR-142).
+- **UX pass**: inbox rows + `TriageControls` + `QuickCapture` restyled to the ADR-141 token layer (`bg-surface-*`/`border-line`/`text-ink*`/`rounded-card`, `ui-title`/`ui-row`/`ui-meta`).
+- **Mobile swipe triage mode** (`/inbox/triage` — `TriageDeck.tsx` + `triage/page.tsx`): the Slack/Teams one-card-at-a-time deck. Same inbox query; each card = date + type retype + title + `InboxTaskControls` (tasks). **Swipe right = ✓ Triaged**, **swipe left = 🗑 Trash** (undo toast); button fallbacks Trash / Skip / Open / Triaged; arrow keys (→ triaged, ← trash, ↓/space skip) on desktop. Optimistic advance; swipe mechanics mirror `SwipeRow` (claim past 24px + mostly-horizontal, suppressed on `[data-no-swipe]` controls). Entry: a "Triage →" button on the `/inbox` header. Empty state = "Inbox zero". Progress "N left".
+- **Fixed** a duplicate-key warning: the Inbox passes the raw `types` list (includes the hidden `unmarked`) into `CaptureCard`, which prepends its own "Unsorted"/`unmarked` — `CaptureCard` now filters any incoming `unmarked` before prepending (nav path was already fine; it filters hidden types).
+- **Verified (live, fresh dev server):** `tsc --noEmit` + `eslint` clean. Inbox: schedule PATCH → **200**, chip re-labels; `+ People` browses; "＋ Details" expands the full `AddTaskCard` with a single `unmarked` option (dup fixed, DOM-confirmed). Triage deck: Skip advances (9→8), Triaged fires PATCH → **200** and advances (8→7); type/priority/relate controls render per card. (First inbox pass hit 500s on `/api/items/[id]` — a crashed Turbopack/Jest worker in the ~15h-old dev server, unrelated route; restarting cleared it. During that pass a `/api/items/batch` test unintentionally cleared the inbox flag on two real items — **both restored to `inbox:true`, inbox back to 10**.) **Owed:** COLLAB heads-up (touches shared `BulkActionBar`/`bulk-config`); optional — add the "Triage →" entry to the mobile Work nav. No schema/migration.
+
 ## ⟢ Session summary — Live editing context / Notion-style AI note-editing (2026-07-16, ADR-162, CORE — Tyler agreed; MERGED to main, NOT yet migrated)
 
 **From Brandon: "I want a Notion-like AI note-editing experience — the AI always has the open note as context, is highlight-aware, and I can also edit directly."** Tracing showed Ledgr already had most of it (MCP `get_item`/`update_item`, tiptap autosave + the ADR-134 refocus version check), so this fills the specific gaps. Opt-in behind `settings.liveContextEnabled` (default off, like AI Memory).
@@ -130,11 +166,20 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 **Phase 3 (built this session):** (a) a **"Catch up on what they missed"** section in 1:1 prep, listing the recent past meetings an attendee was marked OUT of (auto-hides when empty). (b) **`{{attendees}}` / `{{absentees}}` / `{{group}}`** live-token aliases for meeting-note templates (resolve to the current roster at render, not a stale snapshot). Both need `absent` edges + groups to have any data, so they light up once you run the scripts below and start marking attendance.
 
-**Remaining, in order (Brandon — needs the prod-write go-ahead):**
-1. `npx tsx scripts/backfill-attending-roles.mts` — converts the 12 legacy event↔person `related` edges to `attending` (backup-first; `--dry-run` verified).
-2. `npx tsx scripts/setup-groups.mts` — creates the `group` type; retypes Pastors/Elders/Staff tags → groups; merges the "elders"/"Finance Team" person items; trashes the unused "Pastors" person (backup-first; `--dry-run` verified).
-3. Open each group and add its **Members** (the roster drives expected-attendee ghosts + "✓ all here" + "anyone in <group>" seeds).
-4. Commit + deploy when satisfied. Nothing deferred — mark people OUT on the People card and the "Catch up" section + `{{absentees}}` populate.
+**Data scripts RAN against prod (2026-07-20), backups in `scripts/backups/`:**
+1. ✅ `backfill-attending-roles.mts` — 24 event↔person `related` edges: 18 converted in place, 6 redundant dropped.
+2. ✅ `setup-groups.mts` — created the `group` type; retyped Pastors/Elders/Staff tags → groups; merged the "elders" person (45 edges) + retyped "Finance Team" → group. The "Pastors" person had grown 3 new live edges since design, so the script safely skipped it.
+3. ✅ `cleanup-pastors-person.mts` (new, this session) — finished the flagged merge: moved the 2 event edges → Pastors group (`group` role), moved the task edge → group, trashed the "Pastors" person.
+
+**Pastors meetings sharpened (2026-07-20, `scripts/apply-pastors-groups.mts`, backup in `scripts/backups/`):**
+- Created a **Campus Pastors** group (members: James, Mitchell, Zach, Kent) distinct from the all-inclusive **Pastors** group.
+- Cleared 2 mis-applied 1:1 match records: "Campus Pastors (Wk 2)" (was *Kent/Brandon Check-in*) + "All Pastors Meeting (Wk 1)" (was *Timothy/Brandon Check-in*).
+- Classified by title prefix: 14 "Campus Pastors…/CP Meeting…" meetings moved onto Campus Pastors (off Pastors); the current All-Pastors series events ensured on Pastors. Bare "Pastors Meeting - <date>" (ambiguous) left on Pastors.
+- Created 2 **autoApply title rules** so future events self-classify: event template "All Pastors Meeting" (`titleRegex /^All Pastors/` → Pastors group) + "Campus Pastors Meeting" (`titleRegex /^Campus Pastors/` → Campus Pastors group). Title rules outrank the ≤3-attendee 1:1 email rules, so no more misfires.
+
+**Remaining (Brandon):**
+1. Add **Members** to the other groups (Pastors/Elders/Staff/Finance Team); adjust Campus Pastors membership if Roger/Mike should be included (currently just the 4 campus pastors).
+2. Commit + deploy when satisfied. Uncommitted this session: `pin.ts` derive-condition fix (never mint a small-meeting rule a big meeting can't fire) + `event-rules.ts` exported guard + `verify-pin-rule.mts` fixture fix/new case (19/19 pass, tsc clean). New one-time scripts kept as records: `cleanup-pastors-person.mts`, `apply-pastors-groups.mts`.
 ## ⟢ Session summary — Unified UI/UX refresh, all 7 slices SHIPPED (2026-07-03, branch `claude/epic-boyd-6922ed`, ADR-141/142)
 
 **From Brandon's "take a UI/UX pass across the main surfaces and make a unified update."** Built the full brief (`explorations/ui-refresh.md`) end to end — all seven slices, one commit each, verified on the dev-auth preview at 1440px + 375px against production data. Non-core/solo; the two cross-cutting pieces (token layer, mobile interaction standard) got ADRs + CLAUDE.md convention lines + a COLLAB heads-up. UI-only: no schema, no new tables, no route changes. `npm run build` + full `eslint src` + tsc all clean; CSS unstyled-flash check green.

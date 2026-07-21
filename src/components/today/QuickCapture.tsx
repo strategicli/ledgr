@@ -1,19 +1,29 @@
 // Quick-capture box (PRD §4.2): title-only, type defaults to the catch-all
 // `unmarked` (§4.4, ADR-067) so it never pre-assumes a task; Enter submits and
-// keeps focus for rapid entry. Captures arrive untriaged
-// (inbox: true) so they queue in the Inbox until assigned a date/entity.
-// The global affordance, desktop shortcut, and share target are the
-// quick-capture slice; this is just the box.
+// keeps focus for rapid entry. Captures arrive untriaged (inbox: true) so they
+// queue in the Inbox until assigned a date/entity.
+//
+// When `typeOptions` is passed (the Inbox), a small "＋ details" toggle expands
+// the slim box into the shared CaptureCard (Slice 3) — the same type-picker +
+// AddTaskCard/SimpleCapture the global "+" modal uses — so a capture that needs
+// a date, priority, project, or a non-task type can be filed without leaving the
+// page. The slim one-line input stays the default fast path.
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import CaptureCard from "@/components/capture/CaptureCard";
 import { enqueueCapture } from "@/lib/outbox";
 
-export default function QuickCapture() {
+export default function QuickCapture({
+  typeOptions,
+}: {
+  typeOptions?: { key: string; label: string }[];
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<"idle" | "busy" | "error" | "offline">("idle");
+  const [expanded, setExpanded] = useState(false);
 
   async function capture() {
     const title = inputRef.current?.value.trim();
@@ -42,6 +52,18 @@ export default function QuickCapture() {
     }
   }
 
+  // Expanded: the full CaptureCard replaces the slim box. Collapses back on
+  // add/cancel; the added item shows up via the card's own router.refresh().
+  if (expanded) {
+    return (
+      <CaptureCard
+        typeOptions={typeOptions}
+        onDone={() => setExpanded(false)}
+        onCancel={() => setExpanded(false)}
+      />
+    );
+  }
+
   return (
     <div className="flex items-center gap-2">
       <input
@@ -49,18 +71,28 @@ export default function QuickCapture() {
         type="text"
         placeholder="Capture anything…"
         aria-label="Quick capture"
-        className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
+        className="w-full rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
         onKeyDown={(e) => {
           if (e.key === "Enter") void capture();
         }}
       />
+      {typeOptions && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          title="Add with details (date, priority, project, type…)"
+          className="shrink-0 rounded-lg border border-line px-2.5 py-2 text-sm text-ink-muted hover:border-line-strong hover:text-ink"
+        >
+          ＋ Details
+        </button>
+      )}
       {state === "error" && (
         <span className="shrink-0 text-xs text-red-400">
           Failed, press Enter to retry
         </span>
       )}
       {state === "offline" && (
-        <span className="shrink-0 text-xs text-neutral-500">
+        <span className="shrink-0 text-xs text-ink-subtle">
           Saved offline · will sync
         </span>
       )}

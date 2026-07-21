@@ -15,6 +15,12 @@ export type BulkActionConfig = {
   }[];
   statuses?: StatusDef[];
   dateFields?: ("dueDate" | "scheduledDate")[];
+  // A "✓ Triaged" button (clears the inbox flag on the selection). The Inbox
+  // turns this on; ordinary lists leave it off (ADR-118 + the inbox slice).
+  canTriage?: boolean;
+  // A Priority (P1–P6) field in the Set… menu. `urgency` is a real column on
+  // every type, so it's safe on a mixed-type selection like the Inbox.
+  priorityField?: boolean;
 };
 
 // A type whose status mode is "none" (person, link, most notes) has no
