@@ -18,6 +18,7 @@ export default function RelatePicker({
   role,
   label,
   icon,
+  autoRefresh = true,
 }: {
   itemId: string;
   type: string;
@@ -25,6 +26,9 @@ export default function RelatePicker({
   role?: string;
   label: string;
   icon: React.ReactNode;
+  // The triage deck sets this false — it owns a stable snapshot and must not
+  // re-fetch (which would reshuffle the deck under the current card).
+  autoRefresh?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -88,7 +92,7 @@ export default function RelatePicker({
       setHits([]);
       setOpen(false);
       setState("idle");
-      router.refresh();
+      if (autoRefresh) router.refresh();
     } catch {
       setState("error");
     }

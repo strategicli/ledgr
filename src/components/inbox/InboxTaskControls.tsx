@@ -45,16 +45,31 @@ export default function InboxTaskControls({
   today,
   scheduledDate,
   urgency,
+  autoRefresh = true,
+  onEdited,
 }: {
   id: string;
   today: string;
   scheduledDate: Date | null;
   urgency: Priority | null;
+  // The Inbox list refreshes the server render after an edit so the list stays
+  // in sync (default). The triage deck sets this false: it owns a stable local
+  // snapshot, so a refresh there would reshuffle the deck under the current
+  // card — instead it updates optimistically and reports back via onEdited.
+  autoRefresh?: boolean;
+  onEdited?: (patch: { scheduledDate?: Date | null; urgency?: Priority | null }) => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const dateWrapRef = useRef<HTMLSpanElement>(null);
+  // Optimistic local values, used only when autoRefresh is off (deck mode) so
+  // the chips update instantly without a server round-trip. The list path stays
+  // purely prop-driven (its router.refresh re-renders with fresh props).
+  const [localSched, setLocalSched] = useState<Date | null>(scheduledDate);
+  const [localPrio, setLocalPrio] = useState<Priority | null>(urgency);
+  const dispSched = autoRefresh ? scheduledDate : localSched;
+  const dispPrio = autoRefresh ? urgency : localPrio;
 
   useEffect(() => {
     if (!dateOpen) return;
@@ -65,7 +80,7 @@ export default function InboxTaskControls({
     return () => document.removeEventListener("mousedown", onDown);
   }, [dateOpen]);
 
-  async function patch(body: Record<string, unknown>) {
+  async function patch(body: Record<string, unknown>, optimistic?: () => void) {
     if (busy) return;
     setBusy(true);
     try {
@@ -76,17 +91,23 @@ export default function InboxTaskControls({
       });
       if (!res.ok) throw new Error(String(res.status));
       setDateOpen(false);
-      router.refresh();
+      optimistic?.();
+      if (autoRefresh) router.refresh();
     } finally {
       setBusy(false);
     }
   }
 
-  const schedule = (ymd: string | null) =>
-    void patch({ scheduledDate: ymd ? ymdToIso(ymd) : null });
+  const schedule = (ymd: string | null) => {
+    const d = ymd ? new Date(ymdToIso(ymd)) : null;
+    void patch({ scheduledDate: ymd ? ymdToIso(ymd) : null }, () => {
+      setLocalSched(d);
+      onEdited?.({ scheduledDate: d });
+    });
+  };
 
-  const dateLabel = scheduleLabel(scheduledDate, today);
-  const pStyle = urgency ? priorityStyle(urgency) : null;
+  const dateLabel = scheduleLabel(dispSched, today);
+  const pStyle = dispPrio ? priorityStyle(dispPrio) : null;
   const chip =
     "inline-flex items-center gap-1 rounded-card border px-2 py-0.5 text-xs";
 
@@ -125,10 +146,16 @@ export default function InboxTaskControls({
       {/* Priority */}
       <span className="relative inline-flex items-center">
         <select
-          value={urgency ?? ""}
+          value={dispPrio ?? ""}
           disabled={busy}
           aria-label="Priority"
-          onChange={(e) => void patch({ urgency: e.target.value ? Number(e.target.value) : null })}
+          onChange={(e) => {
+            const p = (e.target.value ? Number(e.target.value) : null) as Priority | null;
+            void patch({ urgency: p }, () => {
+              setLocalPrio(p);
+              onEdited?.({ urgency: p });
+            });
+          }}
           className={`inline-flex appearance-none items-center gap-1 rounded-card border py-0.5 pl-2 pr-6 text-xs ${pStyle ? `${pStyle.text} ${pStyle.border}` : "border-line text-ink-muted hover:border-line-strong hover:text-ink"} disabled:opacity-50`}
         >
           <option value="">Priority</option>
@@ -138,8 +165,8 @@ export default function InboxTaskControls({
       </span>
 
       {/* Project + People */}
-      <RelatePicker itemId={id} type="project" role="project" label="Project" icon={IconHash} />
-      <RelatePicker itemId={id} type="person" label="People" icon={IconUser} />
+      <RelatePicker itemId={id} type="project" role="project" label="Project" icon={IconHash} autoRefresh={autoRefresh} />
+      <RelatePicker itemId={id} type="person" label="People" icon={IconUser} autoRefresh={autoRefresh} />
     </div>
   );
 }
