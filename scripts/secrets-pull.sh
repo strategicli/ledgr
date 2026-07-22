@@ -26,9 +26,13 @@ get_note() {
 for f in "${FILES[@]}"; do
   name="${PREFIX}${f}"
   if content="$(get_note "$name")"; then
-    [ -f "$f" ] && cp "$f" "$f.bak.$(date +%s)"
-    printf '%s' "$content" > "$f"
-    echo "wrote: $f"
+    if [ -f "$f" ] && [ "$content" = "$(cat "$f")" ]; then
+      echo "unchanged: $f"
+    else
+      [ -f "$f" ] && cp "$f" "$f.bak.$(date +%s)"
+      printf '%s' "$content" > "$f"
+      echo "wrote: $f"
+    fi
   else
     echo "not found in vault: $name"
   fi
@@ -37,9 +41,13 @@ done
 # Splice the Biblia key back into ~/.claude.json without touching anything else.
 if biblia="$(get_note "${PREFIX}biblia")"; then
   if [ -f "$CLAUDE_JSON" ] && [ "$(jq 'has("mcpServers") and (.mcpServers|has("logos"))' "$CLAUDE_JSON")" = "true" ]; then
-    tmp="$(mktemp)"
-    jq --arg v "$biblia" '.mcpServers.logos.env.BIBLIA_API_KEY=$v' "$CLAUDE_JSON" > "$tmp" && mv "$tmp" "$CLAUDE_JSON"
-    echo "spliced BIBLIA_API_KEY into ~/.claude.json"
+    if [ "$biblia" = "$(jq -r '.mcpServers.logos.env.BIBLIA_API_KEY // ""' "$CLAUDE_JSON")" ]; then
+      echo "unchanged: BIBLIA_API_KEY"
+    else
+      tmp="$(mktemp)"
+      jq --arg v "$biblia" '.mcpServers.logos.env.BIBLIA_API_KEY=$v' "$CLAUDE_JSON" > "$tmp" && mv "$tmp" "$CLAUDE_JSON"
+      echo "spliced BIBLIA_API_KEY into ~/.claude.json"
+    fi
   else
     echo "biblia note found but logos MCP server missing in ~/.claude.json; skipped splice"
   fi
