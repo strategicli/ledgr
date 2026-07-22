@@ -21,9 +21,13 @@ function Get-Note($name) {
 foreach ($f in $Files) {
   $content = Get-Note "$Prefix$f"
   if ($null -eq $content) { Write-Host "not found in vault: $Prefix$f"; continue }
+  $new = ($content -replace "`r`n", "`n")
+  if ((Test-Path $f) -and ((Get-Content $f -Raw) -replace "`r`n", "`n") -eq $new) {
+    Write-Host "unchanged: $f"; continue
+  }
   if (Test-Path $f) { Copy-Item $f "$f.bak.$([int](Get-Date -UFormat %s))" }
   # Write UTF-8 (no BOM) with LF line endings, matching a normal .env file.
-  [System.IO.File]::WriteAllText((Join-Path (Get-Location).Path $f), ($content -replace "`r`n", "`n"))
+  [System.IO.File]::WriteAllText((Join-Path (Get-Location).Path $f), $new)
   Write-Host "wrote: $f"
 }
 
@@ -35,9 +39,13 @@ if ($biblia -and (Test-Path $ClaudeJson)) {
   } else {
     $cfg = Get-Content $ClaudeJson -Raw | ConvertFrom-Json
     if ($cfg.mcpServers.logos.env) {
-      $cfg.mcpServers.logos.env.BIBLIA_API_KEY = $biblia
-      ($cfg | ConvertTo-Json -Depth 30) | Set-Content $ClaudeJson -Encoding utf8
-      Write-Host "spliced BIBLIA_API_KEY into ~/.claude.json"
+      if ($cfg.mcpServers.logos.env.BIBLIA_API_KEY -eq $biblia) {
+        Write-Host "unchanged: BIBLIA_API_KEY"
+      } else {
+        $cfg.mcpServers.logos.env.BIBLIA_API_KEY = $biblia
+        ($cfg | ConvertTo-Json -Depth 30) | Set-Content $ClaudeJson -Encoding utf8
+        Write-Host "spliced BIBLIA_API_KEY into ~/.claude.json"
+      }
     } else {
       Write-Host "biblia note found but logos MCP server missing in ~/.claude.json; skipped splice"
     }
