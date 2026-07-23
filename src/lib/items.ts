@@ -76,6 +76,7 @@ export const listColumns = {
   scheduledDate: items.scheduledDate,
   urgency: items.urgency,
   meetingAt: items.meetingAt,
+  endAt: items.endAt,
   noteDate: items.noteDate,
   url: items.url,
   parentId: items.parentId,
