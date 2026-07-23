@@ -81,6 +81,10 @@ export type ItemInput = {
   scheduledDate?: Date | null;
   urgency?: Urgency | null;
   meetingAt?: Date | null;
+  // The end of a timed item, pairing with meetingAt as its start (the range
+  // rule, ADR-timeline). A real instant; null = single-anchor. Set/cleared by
+  // the Planner's event resize and the event canvas End field.
+  endAt?: Date | null;
   // The date a note was actually taken (ADR-110), distinct from created_at /
   // updated_at. Stored UTC-midnight like dueDate. createItem defaults it to the
   // creation day for notes; user-editable thereafter.
@@ -412,6 +416,7 @@ export async function updateItem(
   if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
   if (patch.urgency !== undefined) set.urgency = patch.urgency;
   if (patch.meetingAt !== undefined) set.meetingAt = patch.meetingAt;
+  if (patch.endAt !== undefined) set.endAt = patch.endAt;
   if (patch.noteDate !== undefined) set.noteDate = patch.noteDate;
   if (patch.url !== undefined) set.url = patch.url;
   if (patch.parentId !== undefined) set.parentId = patch.parentId;

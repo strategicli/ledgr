@@ -35,6 +35,10 @@ export type ViewItem = {
   scheduledDate: Date | null;
   urgency: number | null;
   meetingAt: Date | null;
+  // The end of a timed item (the range rule): paired with meetingAt for events.
+  // null = single-anchor. noteDate is the day a note was taken (ADR-110).
+  endAt: Date | null;
+  noteDate: Date | null;
   url: string | null;
   properties: unknown;
   createdAt: Date;
@@ -935,6 +939,7 @@ export default function ViewRenderer({
             // and tripped a hydration warning). Computed once here and passed as a
             // plain string, so the client never recomputes it.
             today={today ?? tzFmts(tz).key.format(new Date())}
+            tz={tz}
           />
         );
       }
