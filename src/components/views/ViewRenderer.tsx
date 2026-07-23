@@ -939,6 +939,7 @@ export default function ViewRenderer({
             // and tripped a hydration warning). Computed once here and passed as a
             // plain string, so the client never recomputes it.
             today={today ?? tzFmts(tz).key.format(new Date())}
+            tz={tz}
           />
         );
       }

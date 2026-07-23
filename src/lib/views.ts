@@ -11,6 +11,7 @@ import { toPriority } from "@/lib/priority";
 import { ItemError, listColumns } from "@/lib/items";
 import { appTimezoneSync, todayBounds, zonedMidnightUtc } from "@/lib/today";
 import { parseWhere, type WhereCondition, type WhereGroup } from "@/lib/view-where";
+import { BUILTIN_DATES, type DateRef, type BuiltinDate } from "@/lib/placement";
 
 // Date windows. "overdue" is strictly before today (for a meeting, "in the
 // past"); "today" is the single day; "week" is today through six days out;
@@ -541,9 +542,23 @@ export type ViewColumn =
 // The interactive calendar layout's options, stored in views.display (jsonb).
 // null = the defaults below, so a pre-existing calendar view is unchanged.
 
-// The calendar sub-mode: a month grid (all-day chips) or a multi-day time-grid.
-export const CALENDAR_MODES = ["month", "timegrid"] as const;
+// The calendar sub-mode: a month grid (all-day chips), the multi-day time-grid
+// (retiring; ADR-166), or the horizontal zoomable Timeline that replaces it.
+export const CALENDAR_MODES = ["month", "timegrid", "timeline"] as const;
 export type CalendarMode = (typeof CALENDAR_MODES)[number];
+
+// Timeline zoom = how much time fills the screen; sets px-per-day (the geometry
+// lives in timeline-geometry.ts). "week" is the default (the Multi-day analog).
+export const TIMELINE_ZOOMS = [
+  "hour",
+  "day",
+  "week",
+  "month",
+  "quarter",
+  "year",
+  "halfDecade",
+] as const;
+export type TimelineZoom = (typeof TIMELINE_ZOOMS)[number];
 
 // Which date a planner drag WRITES (and reads tasks by): the scheduled (planned)
 // day, or the due deadline. Scheduled is the default — the Planner plans work,
@@ -563,6 +578,14 @@ export type ViewDisplay = {
   workEndHour?: number; // 1–24, default 19; always > workStartHour
   showWeekends?: boolean; // default true
   showCalendar?: boolean; // overlay read-only synced calendar events; default false
+  // --- Timeline mode (ADR-166) ---
+  zoom?: TimelineZoom; // px-per-day; default "week"
+  // The date field an item is anchored by, and optionally the field that ends
+  // its span (a bar). null = derive from `prop` (start) / no span (end). A
+  // withEnd date prop auto-pairs its "__end" key; startField/endField cover
+  // ad-hoc pairings (e.g. scheduled→due). See placement.ts.
+  startField?: DateRef | null;
+  endField?: DateRef | null;
 };
 
 // Resolved defaults for a calendar view with no (or partial) display config.
@@ -575,6 +598,9 @@ export const DISPLAY_DEFAULTS: Required<ViewDisplay> = {
   workEndHour: 19,
   showWeekends: true,
   showCalendar: false,
+  zoom: "week",
+  startField: null,
+  endField: null,
 };
 
 export type ViewDefinition = {
@@ -837,7 +863,29 @@ export function parseDisplay(raw: unknown): ViewDisplay | null {
   }
   if (typeof r.showWeekends === "boolean") out.showWeekends = r.showWeekends;
   if (typeof r.showCalendar === "boolean") out.showCalendar = r.showCalendar;
+  // Timeline mode (ADR-166): tolerant like the rest — drop anything malformed.
+  if ((TIMELINE_ZOOMS as readonly string[]).includes(r.zoom as string)) {
+    out.zoom = r.zoom as TimelineZoom;
+  }
+  const sf = parseDateRef(r.startField);
+  if (sf) out.startField = sf;
+  const ef = parseDateRef(r.endField);
+  if (ef) out.endField = ef;
   return Object.keys(out).length ? out : null;
+}
+
+// A DateRef ({field} | {prop}) for the timeline start/end. Tolerant: an unknown
+// built-in field or a non-string prop key drops to null (falls back to derive).
+function parseDateRef(raw: unknown): DateRef | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.field === "string" && (BUILTIN_DATES as readonly string[]).includes(r.field)) {
+    return { field: r.field as BuiltinDate };
+  }
+  if (typeof r.prop === "string" && r.prop.length > 0) {
+    return { prop: r.prop };
+  }
+  return null;
 }
 
 export function parseViewInput(raw: unknown): ViewInput {

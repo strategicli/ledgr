@@ -26,15 +26,17 @@ import {
 
 // A built-in date field, or "plan" (scheduled ?? due, ADR-109). Real-instant
 // fields carry a time-of-day; the rest are calendar days.
-export type BuiltinDate =
-  | "plan"
-  | "scheduledDate"
-  | "dueDate"
-  | "meetingAt"
-  | "endAt"
-  | "noteDate"
-  | "createdAt"
-  | "updatedAt";
+export const BUILTIN_DATES = [
+  "plan",
+  "scheduledDate",
+  "dueDate",
+  "meetingAt",
+  "endAt",
+  "noteDate",
+  "createdAt",
+  "updatedAt",
+] as const;
+export type BuiltinDate = (typeof BUILTIN_DATES)[number];
 
 // Where a spec's start or end points: a built-in field, or a custom date
 // property by key (its end sibling is the key "<key>__end", the range rule).
@@ -165,6 +167,11 @@ export function resolvePlacement(item: PlaceableItem, spec: PlacementSpec, tz: s
     end = { ymd: start.ymd, minutes: start.minutes + dur };
   }
 
+  // Guard a backwards span: an end before the start (e.g. a scheduled→due task
+  // whose deadline is already past its planned day) can't be a bar — drop the
+  // end so it renders as a single chip at the start.
+  if (start && end && anchorBefore(end, start)) end = null;
+
   const startWritable = !("prop" in spec.start) ? isWritableField(spec.start.field) : true;
   const endWritable = spec.end
     ? "prop" in spec.end || isWritableField(spec.end.field)
@@ -265,4 +272,10 @@ function ymdToRec(ymd: string): Ymd {
 function minutesToHhmm(minutes: number): string {
   const within = ((minutes % 1440) + 1440) % 1440;
   return `${pad(Math.floor(within / 60))}:${pad(within % 60)}`;
+}
+// True when anchor `a` falls strictly before `b`. ISO ymd sorts lexically
+// (ADR-008); same day compares minutes (a null minute = day start = 0).
+function anchorBefore(a: Anchor, b: Anchor): boolean {
+  if (a.ymd !== b.ymd) return a.ymd < b.ymd;
+  return (a.minutes ?? 0) < (b.minutes ?? 0);
 }

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import PlannerMonth from "@/components/planner/PlannerMonth";
 import PlannerTimeGrid from "@/components/planner/PlannerTimeGrid";
+import PlannerTimeline from "@/components/planner/PlannerTimeline";
 import PlannerToast, { type PlannerToastMsg } from "@/components/planner/PlannerToast";
 import type { DateProperty, PlaceBy, ViewDisplay, CalendarMode } from "@/lib/views";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
@@ -27,6 +28,7 @@ export default function PlannerCalendar({
   calendarEvents,
   statuses,
   today,
+  tz,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
@@ -36,6 +38,9 @@ export default function PlannerCalendar({
   navHref?: string;
   calendarEvents?: OverlayEvent[];
   statuses?: StatusDef[];
+  // The owner's timezone, needed to place real-instant fields (meeting_at/end_at)
+  // on the Timeline. Threaded from ViewRenderer (ADR-166).
+  tz: string;
   // App-timezone "today" (YYYY-MM-DD), resolved server-side and passed down so
   // SSR and the client's first render agree (a browser-local `new Date()` here
   // mismatched a UTC server render — a hydration warning). Seeds the time-grid
@@ -115,6 +120,7 @@ export default function PlannerCalendar({
         <div className="inline-flex items-center gap-0.5 rounded-lg border border-neutral-800 p-0.5">
           {seg("month", "Month")}
           {seg("timegrid", "Multi-day")}
+          {seg("timeline", "Timeline")}
         </div>
         <span className="ml-2 text-[11px] text-neutral-600">
           Drag to plan · {mode === "timegrid" ? "click a slot to add · " : "double-click a day to add · "}
@@ -147,6 +153,8 @@ export default function PlannerCalendar({
       )}
       {mode === "month" ? (
         <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} onOpenDay={openDay} today={today} />
+      ) : mode === "timeline" ? (
+        <PlannerTimeline items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} today={today} tz={tz} />
       ) : (
         <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} anchor={anchor} setAnchor={setAnchor} today={today} />
       )}

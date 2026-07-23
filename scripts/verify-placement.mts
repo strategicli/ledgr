@@ -116,6 +116,18 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
   check("prop range write → launch__end = 07-30", pp?.["launch__end"] === "2026-07-30", pp?.["launch__end"]);
 }
 
+// --- backwards span (scheduled after due) → drops the end, renders a chip
+{
+  const it = item({
+    scheduledDate: new Date("2026-07-25T00:00:00.000Z"),
+    dueDate: new Date("2026-07-20T00:00:00.000Z"),
+  });
+  const spec: PlacementSpec = { start: { field: "scheduledDate" }, end: { field: "dueDate" } };
+  const p = resolvePlacement(it, spec, TZ);
+  check("backwards span → start kept", p.start?.ymd === "2026-07-25");
+  check("backwards span → end dropped (chip)", p.end === null);
+}
+
 // --- read-only anchor (createdAt): shown, not movable/resizable
 {
   const it = item({ createdAt: new Date("2026-07-23T18:00:00.000Z") });
