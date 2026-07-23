@@ -63,7 +63,10 @@ export function defaultLenses(typeKey?: string): Lens[] {
   if (typeKey === "event") {
     return [
       { id: "calendar", kind: "calendar", label: "Calendar" },
-      { id: "timeline", kind: "timeline", label: "Timeline" },
+      // "Agenda" (not "Timeline") — the meeting-time upcoming/past list. Renamed
+      // from "Timeline" (ADR-166) so it isn't confused with the planner's new
+      // Timeline calendar mode; the internal kind stays "timeline" (no migration).
+      { id: "timeline", kind: "timeline", label: "Agenda" },
       ...generic,
     ];
   }

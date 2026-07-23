@@ -48,10 +48,13 @@ export default function PlannerCalendar({
   today: string;
 }) {
   const [mode, setMode] = useState<CalendarMode>(display?.mode ?? DISPLAY_DEFAULTS.mode);
-  // The multi-day time-grid's leftmost day, lifted here so the month grid can
-  // jump to a specific day ("+N more" / a day number → open that day in the
-  // time-grid). Owned by the shell; both are passed to the time-grid.
+  // The multi-day time-grid's leftmost day. Multi-day is retired from the UI
+  // (ADR-166 slice 5) — the Timeline replaces it — but the mode is kept
+  // renderable (defer-by-hiding) for any stored view that still selects it.
   const [anchor, setAnchor] = useState<string>(today);
+  // The day the Timeline centers on when the month grid opens one (replacing
+  // Multi-day's per-day open). Null = center on today.
+  const [focusDay, setFocusDay] = useState<string | null>(null);
   // Show/hide tasks with no due/scheduled date (the Unscheduled rail). Off by
   // default — most days you want to see only what's already placed; persisted
   // per browser so the choice sticks.
@@ -93,10 +96,11 @@ export default function PlannerCalendar({
       /* ignore storage failures */
     }
   }
-  // Open a specific day in the multi-day time-grid (from the month grid).
+  // Open a specific day from the month grid — now on the Timeline (Multi-day is
+  // retired, ADR-166 slice 5). Center the axis on that day.
   const openDay = useCallback((ymd: string) => {
-    setAnchor(ymd);
-    setMode("timegrid");
+    setFocusDay(ymd);
+    setMode("timeline");
   }, []);
   // Only hand the grids events when the overlay is on (toggle off = no blocks).
   const overlay = showCalendar ? calendarEvents : undefined;
@@ -119,11 +123,11 @@ export default function PlannerCalendar({
       <div className="flex items-center gap-1">
         <div className="inline-flex items-center gap-0.5 rounded-lg border border-neutral-800 p-0.5">
           {seg("month", "Month")}
-          {seg("timegrid", "Multi-day")}
+          {mode === "timegrid" && seg("timegrid", "Multi-day")}
           {seg("timeline", "Timeline")}
         </div>
         <span className="ml-2 text-[11px] text-neutral-600">
-          Drag to plan · {mode === "timegrid" ? "click a slot to add · " : "double-click a day to add · "}
+          Drag to plan · {mode === "month" ? "double-click a day to add · " : mode === "timegrid" ? "click a slot to add · " : "grab an edge to resize · "}
           places by {placeBy === "due" ? "due date" : "scheduled date"}
         </span>
         <div className="ml-auto flex items-center gap-3">
@@ -152,9 +156,9 @@ export default function PlannerCalendar({
         </p>
       )}
       {mode === "month" ? (
-        <PlannerMonth items={items} prop={prop} placeBy={placeBy} month={month} navHref={navHref} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} onOpenDay={openDay} today={today} />
+        <PlannerMonth items={items} prop={prop} placeBy={placeBy} display={display} month={month} navHref={navHref} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} onOpenDay={openDay} today={today} tz={tz} />
       ) : mode === "timeline" ? (
-        <PlannerTimeline items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} today={today} tz={tz} />
+        <PlannerTimeline items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} today={today} tz={tz} focusDay={focusDay} />
       ) : (
         <PlannerTimeGrid items={items} prop={prop} placeBy={placeBy} display={display} showUnscheduled={showUnscheduled} calendarEvents={overlay} statuses={statuses} notify={notify} anchor={anchor} setAnchor={setAnchor} today={today} />
       )}

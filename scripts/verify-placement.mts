@@ -72,6 +72,26 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
   check("task block resize → duration 120", st?.durationMinutes === 120, String(st?.durationMinutes));
 }
 
+// --- timed task under a scheduled→due spec with NO due date: a chip (the block
+// is NOT surfaced as a due span), and a move preserves the block, never writing
+// dueDate (ADR-166 slice 5 regression guard).
+{
+  const it = item({
+    scheduledDate: new Date("2026-07-23T00:00:00.000Z"),
+    properties: { scheduledTime: { start: "14:00", durationMinutes: 90 } },
+  });
+  const spec: PlacementSpec = { start: { field: "plan" }, end: { field: "dueDate" } };
+  const p = resolvePlacement(it, spec, TZ);
+  check("timed task, no due → chip (end null)", p.end === null, JSON.stringify(p.end));
+  check("timed task, no due → movable, not resizable", p.can.move && !p.can.resizeEnd);
+
+  const body = buildPatch(it, spec, TZ, { start: { ymd: "2026-07-25", minutes: 840 }, end: null });
+  check("timed task move → scheduledDate moved", body.scheduledDate === "2026-07-25T00:00:00.000Z", String(body.scheduledDate));
+  const st = asRec(asRec(body.propertyPatch).scheduledTime);
+  check("timed task move → duration preserved (90)", st?.durationMinutes === 90, String(st?.durationMinutes));
+  check("timed task move → does NOT set dueDate to a day", body.dueDate === null, String(body.dueDate));
+}
+
 // --- event: meeting_at + end_at instants, round-trip preserves time-of-day
 {
   // 10:00 local on 2026-07-23 in America/New_York = 14:00Z (EDT, -4).

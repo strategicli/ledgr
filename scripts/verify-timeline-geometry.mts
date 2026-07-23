@@ -8,6 +8,7 @@ import {
   addDays,
   snapMinutes,
   ticks,
+  applyTimelineDrag,
 } from "../src/lib/timeline-geometry";
 
 let failures = 0;
@@ -70,6 +71,70 @@ check(
   check("hour ticks = 24 in a day", t.length === 24, String(t.length));
   check("hour tick 0 major (midnight)", t[0].major === true);
   check("hour tick 1 not major", t[1].major === false);
+}
+
+// --- drag math (slice 4) ---------------------------------------------------
+
+// Move a day-only chip: whole-day shift by exactly one day's px, end stays null.
+{
+  const r = applyTimelineDrag("move", O, { ymd: O, minutes: null }, null, pxPerDay("week"), "week");
+  check("move day-only chip +1 day", r.start.ymd === addDays(O, 1) && r.start.minutes === null, JSON.stringify(r.start));
+  check("move chip keeps single anchor", r.end === null);
+}
+
+// Move a day-only BAR (scheduled→due) preserves the span (both edges shift same).
+{
+  const start = { ymd: O, minutes: null };
+  const end = { ymd: addDays(O, 3), minutes: null }; // 3-day span
+  const r = applyTimelineDrag("move", O, start, end, 2 * pxPerDay("week"), "week");
+  check("move bar start +2 days", r.start.ymd === addDays(O, 2), r.start.ymd);
+  check("move bar preserves span (end +2 days)", r.end?.ymd === addDays(O, 5), r.end?.ymd);
+}
+
+// Move a timed anchor at hour zoom snaps to 15-min slots and preserves the day.
+{
+  const start = { ymd: O, minutes: 600 }; // 10:00
+  // +40px at 2400px/day = +40/2400 day = +24 min → snaps to +30 (nearest 15 → 45? 624 rounded to 15 = 630)
+  const r = applyTimelineDrag("move", O, start, null, 40, "hour");
+  check("move timed snaps to 15 (10:00 +24min → 10:30)", r.start.minutes === 630, String(r.start.minutes));
+  check("move timed keeps day", r.start.ymd === O, r.start.ymd);
+}
+
+// Move a timed anchor at COARSE zoom moves whole days and keeps the time-of-day.
+{
+  const start = { ymd: O, minutes: 540 }; // 9:00 meeting
+  const r = applyTimelineDrag("move", O, start, { ymd: O, minutes: 600 }, pxPerDay("month"), "month");
+  check("coarse move keeps time-of-day (9:00)", r.start.minutes === 540, String(r.start.minutes));
+  check("coarse move shifts one day", r.start.ymd === addDays(O, 1), r.start.ymd);
+  check("coarse move preserves end time + span", r.end?.minutes === 600 && r.end?.ymd === addDays(O, 1), JSON.stringify(r.end));
+}
+
+// resizeEnd extends the span; start is untouched.
+{
+  const start = { ymd: O, minutes: null };
+  const end = { ymd: addDays(O, 1), minutes: null };
+  const r = applyTimelineDrag("resizeEnd", O, start, end, 2 * pxPerDay("week"), "week");
+  check("resizeEnd extends to +3 days", r.end?.ymd === addDays(O, 3), r.end?.ymd);
+  check("resizeEnd leaves start put", r.start.ymd === O, r.start.ymd);
+}
+
+// resizeEnd clamps so a day-only bar can't collapse below one day.
+{
+  const start = { ymd: O, minutes: null };
+  const end = { ymd: addDays(O, 3), minutes: null };
+  const r = applyTimelineDrag("resizeEnd", O, start, end, -10 * pxPerDay("week"), "week");
+  check("resizeEnd clamps to start + 1 day", r.end?.ymd === addDays(O, 1), r.end?.ymd);
+}
+
+// resizeStart moves the front edge; end untouched; clamps against the end.
+{
+  const start = { ymd: O, minutes: null };
+  const end = { ymd: addDays(O, 4), minutes: null };
+  const r = applyTimelineDrag("resizeStart", O, start, end, 2 * pxPerDay("week"), "week");
+  check("resizeStart moves front +2 days", r.start.ymd === addDays(O, 2), r.start.ymd);
+  check("resizeStart leaves end put", r.end?.ymd === addDays(O, 4), r.end?.ymd);
+  const clamp = applyTimelineDrag("resizeStart", O, start, end, 99 * pxPerDay("week"), "week");
+  check("resizeStart clamps to end − 1 day", clamp.start.ymd === addDays(O, 3), clamp.start.ymd);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

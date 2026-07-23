@@ -914,15 +914,17 @@ export default function ViewRenderer({
         />
       );
     case "calendar": {
-      // The Planner (ADR-131): when the calendar places items on a WRITABLE
-      // calendar-day field (scheduled/due/plan, or unset → defaults to plan),
-      // mount the interactive month grid so chips can be dragged to re-plan.
-      // Read-only calendars (events by meeting_at, created/updated) keep the
-      // static grid (desktop) + agenda (mobile) — dragging those isn't meaningful.
+      // The Planner (ADR-131, extended by ADR-166): mount the interactive
+      // planner whenever the calendar places items on a WRITABLE date field —
+      // scheduled/due/plan (calendar days), or a meeting's "When" (meeting_at,
+      // now draggable through the placement layer, the ADR-166 gate). The static
+      // grid + agenda remain only for genuinely read-only anchors (created/
+      // updated), where dragging isn't meaningful.
       const prop = view.dateProperty;
-      const writable =
-        prop == null || prop === "plan" || prop === "scheduledDate" || prop === "dueDate";
-      if (writable) {
+      const interactive =
+        prop == null || prop === "plan" || prop === "scheduledDate" ||
+        prop === "dueDate" || prop === "meetingAt";
+      if (interactive) {
         return (
           <PlannerCalendar
             items={items}

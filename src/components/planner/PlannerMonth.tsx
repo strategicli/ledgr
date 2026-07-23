@@ -23,33 +23,40 @@ import QuickCreateInput from "@/components/planner/QuickCreateInput";
 import { usePlannerTouchDrag } from "@/components/planner/usePlannerTouchDrag";
 import { usePlannerComplete } from "@/components/planner/usePlannerComplete";
 import { usePlannerCreate } from "@/components/planner/usePlannerCreate";
+import {
+  resolvePlacement,
+  buildPatch,
+  deriveSpec,
+  type Anchor,
+  type PlaceableItem,
+} from "@/lib/placement";
+import { daysBetween } from "@/lib/timeline-geometry";
 import type { ViewItem } from "@/components/views/ViewRenderer";
-import type { DateProperty, PlaceBy } from "@/lib/views";
+import type { DateProperty, PlaceBy, ViewDisplay } from "@/lib/views";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
 import type { StatusDef } from "@/lib/status";
 import { urgencyRank } from "@/lib/planner-rail";
-import { formatTime12, parseScheduledTime } from "@/lib/scheduled-time";
+import { formatTime12 } from "@/lib/scheduled-time";
 
 const RAIL = "__none__";
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymdToIso = (ymd: string) => `${ymd}T00:00:00.000Z`;
-const utcKey = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" });
 
 type Notify = (text: string, undo?: () => void) => void;
+type Override = { start: Anchor | null; end: Anchor | null };
 
-// Minutes-since-midnight of a task's floating start, or null if untimed.
-function startMin(item: ViewItem): number | null {
-  const st = parseScheduledTime(item.properties);
-  if (!st) return null;
-  const [h, m] = st.start.split(":").map(Number);
-  return h * 60 + m;
+// hh:mm for a minutes-since-midnight value, for the day-cell time label.
+function minToHhmm(minutes: number): string {
+  const within = ((minutes % 1440) + 1440) % 1440;
+  return `${pad(Math.floor(within / 60))}:${pad(within % 60)}`;
 }
 
-// Day-cell order: timed tasks first (by start), then untimed by priority, then
-// title — so a day reads top-to-bottom like a schedule.
-function compareDay(a: ViewItem, b: ViewItem): number {
-  const sa = startMin(a);
-  const sb = startMin(b);
+// Day-cell order: timed items first (by start minute), then untimed by priority,
+// then title — so a day reads top-to-bottom like a schedule. Minutes come from
+// the placement (a task's scheduledTime block, or an event's meeting time).
+function compareDay(a: ViewItem, b: ViewItem, minutesOf: (i: ViewItem) => number | null): number {
+  const sa = minutesOf(a);
+  const sb = minutesOf(b);
   if (sa != null && sb != null) return sa - sb || (a.title || "").localeCompare(b.title || "");
   if (sa != null) return -1;
   if (sb != null) return 1;
@@ -59,7 +66,7 @@ function compareDay(a: ViewItem, b: ViewItem): number {
 export default function PlannerMonth({
   items,
   prop,
-  placeBy,
+  display,
   month,
   navHref,
   showUnscheduled = true,
@@ -68,10 +75,15 @@ export default function PlannerMonth({
   notify,
   onOpenDay,
   today,
+  tz,
 }: {
   items: ViewItem[];
   prop: DateProperty | null;
-  placeBy: PlaceBy;
+  // Kept for API compatibility with PlannerCalendar; placement now derives the
+  // spec from prop/display (startField/endField), so placeBy is no longer read
+  // here (parity with PlannerTimeline; slice 6's field pickers supersede it).
+  placeBy?: PlaceBy;
+  display: ViewDisplay | null;
   month?: string;
   navHref?: string;
   showUnscheduled?: boolean;
@@ -83,26 +95,35 @@ export default function PlannerMonth({
   // the "today" cell marker are deterministic across SSR/hydration (a
   // browser-local `new Date()` here mismatched a UTC server render).
   today: string;
+  // Owner timezone — placement needs it to read real-instant fields (meetingAt)
+  // onto a local day (ADR-166). Threaded from PlannerCalendar.
+  tz: string;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [override, setOverride] = useState<Record<string, string | null>>({});
+  const [override, setOverride] = useState<Record<string, Override>>({});
   const [dragId, setDragId] = useState<string | null>(null);
   const [overDay, setOverDay] = useState<string | null>(null);
   const [creatingDay, setCreatingDay] = useState<string | null>(null);
   const { effectiveDone, toggle } = usePlannerComplete(statuses, notify);
   const { create, busy: creating } = usePlannerCreate(notify);
 
-  const field: "scheduledDate" | "dueDate" =
-    prop === "dueDate" ? "dueDate" : prop === "scheduledDate" ? "scheduledDate" : placeBy === "due" ? "dueDate" : "scheduledDate";
-
+  // The placement layer decides which date field an item sits on and what may be
+  // written (ADR-166) — the month grid no longer hardcodes scheduled/due, so any
+  // dated item (task, event by meetingAt, note by note_date, custom date prop)
+  // shows and, when writable, drags. Month is day-granular: a chip sits on its
+  // START day; a drop moves the start there and shifts an end by the same days.
+  const spec = deriveSpec(prop, display);
   const byId = new Map(items.map((it) => [it.id, it]));
-  function storedYmd(item: ViewItem): string | null {
-    const d = prop === "dueDate" ? item.dueDate : prop === "scheduledDate" ? item.scheduledDate : (item.scheduledDate ?? item.dueDate);
-    return d ? utcKey.format(d) : null;
+  // Server-truth placement (before any optimistic drag) — for undo + capability.
+  const resolvedOf = (item: ViewItem) => resolvePlacement(item as unknown as PlaceableItem, spec, tz);
+  // Effective placement: the optimistic override if a drag set one, else stored.
+  function placementOf(item: ViewItem) {
+    const base = resolvedOf(item);
+    const o = override[item.id];
+    return o ? { start: o.start, end: o.end, can: base.can } : base;
   }
-  const effectiveYmd = (item: ViewItem): string | null =>
-    Object.prototype.hasOwnProperty.call(override, item.id) ? override[item.id] : storedYmd(item);
+  const effectiveYmd = (item: ViewItem): string | null => placementOf(item).start?.ymd ?? null;
 
   // Month to show (YYYY-MM), else the current month (app timezone, from the
   // server-resolved `today` — never the browser's local `new Date()`, which
@@ -148,7 +169,8 @@ export default function PlannerMonth({
     if (!byDay.has(ymd)) byDay.set(ymd, []);
     byDay.get(ymd)!.push(item);
   }
-  for (const list of byDay.values()) list.sort(compareDay);
+  const minutesOf = (item: ViewItem) => placementOf(item).start?.minutes ?? null;
+  for (const list of byDay.values()) list.sort((a, b) => compareDay(a, b, minutesOf));
 
   // Read-only synced calendar events, bucketed by their (app-tz) day. These are
   // context to plan around — never draggable, never editable.
@@ -158,40 +180,69 @@ export default function PlannerMonth({
     eventsByDay.get(ev.ymd)!.push(ev);
   }
 
-  // Commit a drop. `announce` off for the undo re-drop so undo doesn't re-toast.
-  async function commitDrop(id: string | null, day: string | null, announce = true) {
+  // Commit a drop onto a day cell (or the rail). Moves the placement's START to
+  // the target day, preserving any time-of-day, and shifts an end by the same
+  // number of days so a span keeps its length; a rail drop clears the date. All
+  // writes go through placement.buildPatch, so events, notes, and custom date
+  // props are handled the same as tasks.
+  function commitDrop(id: string | null, day: string | null) {
     setDragId(null);
     setOverDay(null);
     if (!id || day === null) return;
     const item = byId.get(id);
     if (!item) return;
-    const prev = effectiveYmd(item); // ymd or null (was unscheduled)
-    const target = day === RAIL ? null : day;
-    if (target === prev) return;
-    setOverride((o) => ({ ...o, [id]: target }));
-    try {
-      const res = await fetch(`/api/items/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: target ? ymdToIso(target) : null }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      router.refresh();
-      if (announce) {
-        const where = target
-          ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(ymdToIso(target)))
-          : "Unscheduled";
-        notify(`Moved “${item.title || "Untitled"}” → ${where}`, () =>
-          commitDrop(id, prev === null ? RAIL : prev, false),
-        );
-      }
-    } catch {
-      setOverride((o) => {
-        const next = { ...o };
-        delete next[id];
-        return next;
-      });
+    const base = resolvedOf(item);
+    if (!base.can.move) return; // read-only anchor (created/updated) — not draggable
+    const before: Override = { start: base.start, end: base.end };
+
+    let next: Override;
+    if (day === RAIL) {
+      next = { start: null, end: null };
+    } else if (base.start) {
+      const delta = daysBetween(base.start.ymd, day);
+      if (delta === 0) return; // dropped on its own day — no change
+      next = {
+        start: { ymd: day, minutes: base.start.minutes },
+        end: base.end ? { ymd: addDaysYmd(base.end.ymd, delta), minutes: base.end.minutes } : null,
+      };
+    } else {
+      // Scheduling from the rail: a single all-day anchor on the target day.
+      next = { start: { ymd: day, minutes: null }, end: null };
     }
+
+    const body = buildPatch(item as unknown as PlaceableItem, spec, tz, next);
+    setOverride((o) => ({ ...o, [id]: next }));
+    fetch(`/api/items/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        router.refresh();
+        const where = next.start
+          ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(ymdToIso(next.start.ymd)))
+          : "Unscheduled";
+        notify(`Moved “${item.title || "Untitled"}” → ${where}`, () => {
+          setOverride((o) => ({ ...o, [id]: before }));
+          fetch(`/api/items/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildPatch(item as unknown as PlaceableItem, spec, tz, before)),
+          })
+            .then((r) => {
+              if (r.ok) router.refresh();
+            })
+            .catch(() => {});
+        });
+      })
+      .catch(() => {
+        setOverride((o) => {
+          const nx = { ...o };
+          delete nx[id];
+          return nx;
+        });
+      });
   }
 
   usePlannerTouchDrag(containerRef, {
@@ -215,36 +266,37 @@ export default function PlannerMonth({
   function chip(item: ViewItem) {
     const done = effectiveDone(item);
     const lifted = dragId === item.id;
-    const st = parseScheduledTime(item.properties);
+    const p = placementOf(item);
+    const startMinutes = p.start?.minutes ?? null; // time-of-day if any (task block / meeting)
+    const canMove = p.can.move; // read-only anchors (created/updated) aren't draggable
     return (
       <div
         key={item.id}
         role="button"
         tabIndex={0}
-        data-card-id={item.id}
-        draggable
+        {...(canMove ? { "data-card-id": item.id, draggable: true } : {})}
         title={item.title || "Untitled"}
-        onDragStart={(e) => {
+        onDragStart={canMove ? (e) => {
           e.dataTransfer.setData("text/plain", item.id);
           e.dataTransfer.effectAllowed = "move";
           setDragId(item.id);
-        }}
-        onDragEnd={() => {
+        } : undefined}
+        onDragEnd={canMove ? () => {
           setDragId(null);
           setOverDay(null);
-        }}
+        } : undefined}
         onClick={() => router.push(`/items/${item.id}`)}
         onKeyDown={(e) => {
           if (e.key === "Enter") router.push(`/items/${item.id}`);
         }}
-        className={`group flex cursor-grab touch-none select-none items-center gap-1 rounded px-1 py-0.5 text-[11px] active:cursor-grabbing ${done ? "text-neutral-500 line-through" : "text-neutral-300"} ${lifted ? "opacity-40" : ""}`}
+        className={`group flex touch-none select-none items-center gap-1 rounded px-1 py-0.5 text-[11px] ${canMove ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${done ? "text-neutral-500 line-through" : "text-neutral-300"} ${lifted ? "opacity-40" : ""}`}
         style={{
           backgroundColor: "rgb(38 38 38)",
           borderLeft: item.urgency != null && item.urgency <= 2 ? "2px solid var(--accent)" : "2px solid transparent",
         }}
       >
         <CompleteButton done={done} onToggle={() => toggle(item)} />
-        {st && <span className="shrink-0 text-neutral-500">{formatTime12(st.start)}</span>}
+        {startMinutes != null && <span className="shrink-0 text-neutral-500">{formatTime12(minToHhmm(startMinutes))}</span>}
         <span className="min-w-0 truncate">{item.title || "Untitled"}</span>
       </div>
     );
