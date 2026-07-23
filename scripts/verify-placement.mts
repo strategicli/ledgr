@@ -12,6 +12,7 @@ import {
 import { ymdInZone, minutesInZone } from "../src/lib/zone";
 
 const TZ = "America/New_York";
+const asRec = (v: unknown): Record<string, unknown> => (v ?? {}) as Record<string, unknown>;
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
@@ -46,7 +47,7 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
 
   const body = buildPatch(it, spec, TZ, { start: { ymd: "2026-07-25", minutes: null }, end: null });
   check("task day move → scheduledDate UTC midnight", body.scheduledDate === "2026-07-25T00:00:00.000Z", String(body.scheduledDate));
-  check("task day move → clears scheduledTime", (body.propertyPatch as any)?.scheduledTime === null);
+  check("task day move → clears scheduledTime", asRec(body.propertyPatch).scheduledTime === null);
 }
 
 // --- task with a time block → bar within the day, resizable (writes duration)
@@ -66,7 +67,7 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
     start: { ymd: "2026-07-23", minutes: 840 },
     end: { ymd: "2026-07-23", minutes: 960 },
   });
-  const st = (body.propertyPatch as any)?.scheduledTime;
+  const st = asRec(asRec(body.propertyPatch).scheduledTime);
   check("task block resize → start kept 14:00", st?.start === "14:00", st?.start);
   check("task block resize → duration 120", st?.durationMinutes === 120, String(st?.durationMinutes));
 }
@@ -111,7 +112,7 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
     start: { ymd: "2026-07-21", minutes: null },
     end: { ymd: "2026-07-30", minutes: null },
   });
-  const pp = body.propertyPatch as any;
+  const pp = asRec(body.propertyPatch);
   check("prop range write → launch = 07-21", pp?.launch === "2026-07-21", pp?.launch);
   check("prop range write → launch__end = 07-30", pp?.["launch__end"] === "2026-07-30", pp?.["launch__end"]);
 }
@@ -149,7 +150,7 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
   const it = item({ scheduledDate: new Date("2026-07-23T00:00:00.000Z") });
   const body = buildPatch(it, { start: { field: "scheduledDate" } }, TZ, { start: null, end: null });
   check("rail clear → scheduledDate null", body.scheduledDate === null);
-  check("rail clear → scheduledTime null", (body.propertyPatch as any)?.scheduledTime === null);
+  check("rail clear → scheduledTime null", asRec(body.propertyPatch).scheduledTime === null);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
