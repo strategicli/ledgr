@@ -23,6 +23,10 @@ import {
   startMinutes,
   DEFAULT_DURATION_MINUTES,
 } from "@/lib/scheduled-time";
+// Type-only (erased at build) so this client-safe seam never pulls the
+// DB-importing views.ts into a bundle, and there's no runtime import cycle
+// (views.ts imports values from here; this imports only types from there).
+import type { DateProperty, ViewDisplay } from "@/lib/views";
 
 // A built-in date field, or "plan" (scheduled ?? due, ADR-109). Real-instant
 // fields carry a time-of-day; the rest are calendar days.
@@ -45,6 +49,21 @@ export type DateRef = { field: BuiltinDate } | { prop: string };
 // A view's placement config: the field an item is anchored by, and optionally
 // the field that ends its span (a bar). endField null/absent = a single anchor.
 export type PlacementSpec = { start: DateRef; end?: DateRef | null };
+
+// Derive the placement spec from a view's date property + any explicit
+// start/end fields (ADR-166), shared by every planner renderer so Month and
+// Timeline agree. A meeting anchors to its end_at; a scheduled/plan task pairs
+// with its due date (chip if only one is set, bar if both). An explicit
+// startField/endField in the view display wins over the derivation.
+export function deriveSpec(prop: DateProperty | null, display: ViewDisplay | null): PlacementSpec {
+  const start: DateRef = display?.startField ?? (prop ? { field: prop } : { field: "plan" });
+  let end: DateRef | undefined = display?.endField ?? undefined;
+  if (!end && "field" in start) {
+    if (start.field === "meetingAt") end = { field: "endAt" };
+    else if (start.field === "scheduledDate" || start.field === "plan") end = { field: "dueDate" };
+  }
+  return { start, end };
+}
 
 // The suffix a `withEnd` date property uses for its end value (ADR-timeline).
 // Start lives at properties[key] (an ISO scalar, ADR-008, so existing filters/
@@ -158,10 +177,15 @@ export function resolvePlacement(item: PlaceableItem, spec: PlacementSpec, tz: s
 
   // A scheduled task with a time block but no explicit endField still spans its
   // block within the day: derive the end from start + the block's duration, so a
-  // 2:00–3:30 task shows as a bar and its bottom edge is grabbable.
+  // 2:00–3:30 task shows as a bar and its bottom edge is grabbable. This is ONLY
+  // for a spec with no end field (the intra-day / Multi-day case). When the spec
+  // DOES declare an end (e.g. deriveSpec pairing scheduled→due), the end is that
+  // field: a block must not masquerade as a due date, or buildPatch would write
+  // the block's end into dueDate on a move (ADR-166 slice 5 fix). The block's
+  // duration is then preserved by buildPatch's writeRef, not surfaced as a bar.
   const startIsSchedule =
     !("prop" in spec.start) && (spec.start.field === "scheduledDate" || spec.start.field === "plan");
-  if (!end && start && startIsSchedule && start.minutes != null) {
+  if (!spec.end && !end && start && startIsSchedule && start.minutes != null) {
     const st = parseScheduledTime(item.properties);
     const dur = st?.durationMinutes ?? DEFAULT_DURATION_MINUTES;
     end = { ymd: start.ymd, minutes: start.minutes + dur };
@@ -225,8 +249,13 @@ function writeRef(
   // The scheduled day owns the intra-day time block (properties.scheduledTime).
   if (dayField === "scheduledDate") {
     if (anchor && anchor.minutes != null) {
-      const durEnd = blockEndMinutes != null ? blockEndMinutes : anchor.minutes + DEFAULT_DURATION_MINUTES;
-      const durationMinutes = Math.max(1, durEnd - anchor.minutes);
+      // Duration: from an explicit same-day resize end when given; otherwise keep
+      // the block's existing duration (a plain move must not reset it), falling
+      // back to the default only when there's no prior block.
+      const durationMinutes =
+        blockEndMinutes != null
+          ? Math.max(1, blockEndMinutes - anchor.minutes)
+          : parseScheduledTime(item.properties)?.durationMinutes ?? DEFAULT_DURATION_MINUTES;
       parts.propertyPatch.scheduledTime = { start: minutesToHhmm(anchor.minutes), durationMinutes };
     } else {
       parts.propertyPatch.scheduledTime = null; // all-day or cleared

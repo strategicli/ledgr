@@ -70,6 +70,82 @@ export function xToDate(
   return { ymd, minutes };
 }
 
+// --- drag math (ADR-166 slice 4) -----------------------------------------
+// Turning a horizontal pixel drag into a new placement. Pure and node-testable
+// (the sibling of dateToX/xToDate); the component feeds the result to
+// placement.buildPatch. Structurally identical to placement.Anchor, kept local
+// so this file stays dependency-free (geometry only, no placement import).
+export type GAnchor = { ymd: string; minutes: number | null };
+export type TimelineDragKind = "move" | "resizeStart" | "resizeEnd";
+
+// An anchor as absolute minutes from the origin day's midnight (day + intraday).
+function units(origin: string, a: GAnchor): number {
+  return daysBetween(origin, a.ymd) * 1440 + (a.minutes ?? 0);
+}
+// Inverse: absolute minutes → an anchor. `hadTime` preserves the anchor's own
+// precision — a day-only field never gains an invented time-of-day.
+function fromUnits(origin: string, u: number, hadTime: boolean): GAnchor {
+  const dayIndex = Math.floor(u / 1440);
+  return { ymd: addDays(origin, dayIndex), minutes: hadTime ? u - dayIndex * 1440 : null };
+}
+
+// Shift ONE anchor by a pixel delta, honoring both the zoom's snap and the
+// anchor's precision: a day-only anchor (scheduled/due/note/custom date) moves
+// in whole days; a timed anchor (meeting/end, or a task's scheduledTime block)
+// snaps to the slot at fine zoom, or moves in whole days keeping its time at
+// coarse zoom (where there is no sub-day snap to land on).
+function shiftAnchor(origin: string, a: GAnchor, deltaPx: number, zoom: TimelineZoom): GAnchor {
+  const deltaDays = deltaPx / pxPerDay(zoom);
+  const snap = snapMinutes(zoom);
+  if (a.minutes == null || snap == null) {
+    return { ymd: addDays(a.ymd, Math.round(deltaDays)), minutes: a.minutes };
+  }
+  const snapped = Math.round((units(origin, a) + deltaDays * 1440) / snap) * snap;
+  return fromUnits(origin, snapped, true);
+}
+
+// Apply a drag to a placement and return the desired {start, end} (which
+// placement.buildPatch turns into a PATCH). Move shifts both edges by the same
+// amount so the span is preserved exactly; the resizes move one edge and clamp
+// so the span stays positive (at least a day when either edge is a calendar day,
+// else one snap slot). Callers guard capability (can.move / can.resize*) before
+// invoking — a single-anchor item passes end=null and only "move" is meaningful.
+export function applyTimelineDrag(
+  kind: TimelineDragKind,
+  origin: string,
+  start: GAnchor,
+  end: GAnchor | null,
+  deltaPx: number,
+  zoom: TimelineZoom,
+): { start: GAnchor; end: GAnchor | null } {
+  // Minimum span the resizes preserve: a whole day when either edge is a
+  // calendar-day field (a "2,880-minute" span is meaningless there), else a slot.
+  const dayOnly = start.minutes == null || (end != null && end.minutes == null);
+  const minGap = dayOnly ? 1440 : snapMinutes(zoom) ?? 1440;
+
+  if (kind === "move") {
+    const ns = shiftAnchor(origin, start, deltaPx, zoom);
+    if (!end) return { start: ns, end: null };
+    const shift = units(origin, ns) - units(origin, start);
+    return { start: ns, end: fromUnits(origin, units(origin, end) + shift, end.minutes != null) };
+  }
+  if (kind === "resizeStart") {
+    if (!end) return { start, end };
+    let ns = shiftAnchor(origin, start, deltaPx, zoom);
+    if (units(origin, ns) > units(origin, end) - minGap) {
+      ns = fromUnits(origin, units(origin, end) - minGap, start.minutes != null);
+    }
+    return { start: ns, end };
+  }
+  // resizeEnd
+  if (!end) return { start, end };
+  let ne = shiftAnchor(origin, end, deltaPx, zoom);
+  if (units(origin, ne) < units(origin, start) + minGap) {
+    ne = fromUnits(origin, units(origin, start) + minGap, end.minutes != null);
+  }
+  return { start, end: ne };
+}
+
 // A ruler tick: its x offset, a label, and whether it's a major (labeled,
 // stronger) gridline.
 export type Tick = { x: number; label: string; major: boolean };
