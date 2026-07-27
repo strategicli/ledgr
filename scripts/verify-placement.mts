@@ -14,8 +14,12 @@ import { ymdInZone, minutesInZone } from "../src/lib/zone";
 const TZ = "America/New_York";
 const asRec = (v: unknown): Record<string, unknown> => (v ?? {}) as Record<string, unknown>;
 let failures = 0;
-function check(name: string, ok: boolean, detail = "") {
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+// `detail` takes unknown and stringifies here: most call sites pass a value
+// read back out of a Record<string, unknown> patch, which is `unknown`, and
+// making each caller wrap it in String() is the kind of thing that gets missed
+// (it broke the build on main — three call sites, one missing wrapper each).
+function check(name: string, ok: boolean, detail: unknown = "") {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${String(detail)})` : ""}`);
   if (!ok) failures += 1;
 }
 
