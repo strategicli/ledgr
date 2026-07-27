@@ -44,12 +44,18 @@ export async function POST(request: Request) {
 }
 
 // DELETE — clear the owner's active context (the canvas closed). Idempotent.
-export async function DELETE() {
+// An optional ?itemId= makes it conditional: clear only if the row still points
+// at that item. Trackers always send it, so a DELETE from a canvas that's being
+// handed off (item → item, or the Desk moving the pen between panels) can't land
+// after the incoming POST and blank the fresh context.
+export async function DELETE(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
 
   try {
-    await clearActiveContext(owner.id);
+    const raw = new URL(request.url).searchParams.get("itemId");
+    const onlyItemId = raw ? asUuid(raw, "itemId") : undefined;
+    await clearActiveContext(owner.id, onlyItemId);
     return new NextResponse(null, { status: 204 });
   } catch (err) {
     return errorResponse(err);

@@ -25,6 +25,9 @@ export default async function DeskPage() {
       // pin list, resolved here because a Desk panel is a client component.
       tocByType={settings.tocByType}
       tocPinnedItems={settings.tocPinnedItems}
+      // Live editing context (ADR-167a): the Desk reports the focused panel's
+      // item so Claude's get_active_context works here as it does on a canvas.
+      liveContextEnabled={settings.liveContextEnabled}
     />
   );
 }

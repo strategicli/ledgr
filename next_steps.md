@@ -16,6 +16,12 @@ The outline was missing in the Desk. Root cause: `FloatingToc` mounts only in `I
 - Verified live: two split Desk panels holding two different notes render two independent outlines with independent pins; clamps, persistence, reload, narrow-panel fallback, and unpin all confirmed. `tsc` + `eslint` + `next build` clean.
 - **Deferred:** per-*type* pinning as a Build setting (worth seeing if it's wanted after living with per-item).
 
+**Same chunk — live editing context now works in the Desk (ADR-167a).** Same root cause: `ActiveContextTracker` mounted only in `ItemCanvas`. The Desk now mounts **one** reporter for the whole surface (`DeskActiveContext`), pointed at the focused panel's active tab, since only one panel holds the pen. Selections are scoped to `[data-desk-focused] [data-toc-scope]`, resolved per selection change, so a highlight in a follower panel isn't attributed to the focused note.
+
+- **Fixed a latent race while in there:** the tracker used to DELETE in the same cleanup that preceded the next item's POST. Rare page-to-page, but Desk focus switching would have hit it constantly and randomly blanked the context. Teardown is now a mount-only effect, and the DELETE carries `?itemId=` (`clearActiveContext(ownerId, onlyItemId?)`) so a straggler can't wipe fresh context.
+- **Known gap:** a template prototype opened in a Desk panel still reports context (the canvas suppresses it via `item.isTemplate`; the Desk doc store doesn't carry that field). Harmless, not worth a store field yet.
+- **Verification note for next time:** `liveContextEnabled` is **off** on the dev branch and `noteEditingPromptItemId` is null, so flipping it through `PATCH /api/settings` would *create* a "Note Editing Partner" prompt item. To test, flip the flag directly in the DB instead and restore it after.
+
 ## ⟢ IN PROGRESS — Planner → app-wide scheduling surface (2026-07-23, branch `worktree-planner-timeline`, ADR-166)
 
 Rebuilding the tasks-only Planner into a Ledgr-wide feature: any dated item renders on Month / Multi-day / a new **Timeline** mode; writable dates drag, start+end resizes, missing capabilities just drop. See `plans/timeline-view.html` (local visual plan, gitignored) for the full design.

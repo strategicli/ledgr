@@ -36,6 +36,11 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
       onMouseDownCapture={(e) => {
         if (e.button === 0 && !isFocused) actions.focus(leaf.id);
       }}
+      // Marks the panel holding the pen, so the Desk's single live-context
+      // tracker can read selections from this panel and no other (ADR-167a).
+      // Focus follows click, so a drag-select in another panel focuses it first
+      // and the marker moves with the selection.
+      data-desk-focused={isFocused ? "" : undefined}
       className={`flex h-full min-h-0 min-w-0 flex-col bg-surface-0 ${
         isFocused ? "ring-1 ring-inset ring-accent/50" : ""
       }`}
