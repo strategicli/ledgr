@@ -384,10 +384,16 @@ export default function FloatingToc({
   // the scope's first child: a sticky box only pins while its containing block
   // is in view, so mounting it after the content would leave it stuck at the
   // bottom. h-0 keeps it out of the layout entirely.
+  //
+  // z-40, not z-30: the scope's other sticky bars (the item header row and the
+  // editor's formatting bar) are z-30, and being first child means an equal
+  // z-index loses the DOM-order tiebreak — they painted over the flyout and the
+  // pinned sidebar. One step up clears both and still sits under the app's
+  // overlays (z-50+). Don't lower it back to match them.
   const layer = (children?: React.ReactNode) => (
     <div
       ref={rootRef}
-      className="pointer-events-none sticky top-[var(--nav-pt,0px)] z-30 h-0"
+      className="pointer-events-none sticky top-[var(--nav-pt,0px)] z-40 h-0"
     >
       {children}
     </div>
