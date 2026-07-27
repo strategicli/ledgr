@@ -1,31 +1,75 @@
-// Floating table of contents (ADR-114): a Notion-style outline built from the
-// item body's headings, universal across every canvas type because it mounts
-// once in ItemCanvas. One engine, two presentations:
-//   - desktop / wide page  → a thin right-edge rail of marks that expands on
-//     hover into a clickable, indented heading list (pure CSS group-hover).
-//   - phone / narrow / modal → a floating round button that opens a bottom sheet
-//     of the same list (tap a heading to jump + close).
+// Table of contents (ADR-114, reworked by ADR-167): a Notion-style outline built
+// from the item body's headings, universal across every canvas type and every
+// surface that renders a body editor.
+//
+// POSITIONING (ADR-167). The outline is container-relative, not viewport-
+// relative: it renders as a `sticky top-0 h-0` layer that must be the FIRST
+// child of its [data-toc-scope]. One pattern pins it correctly against whatever
+// actually scrolls — the window on the full page, the peek's scroll body in the
+// modal, and each Desk panel's own overflow-auto div — with no coordinate math
+// and no per-host special-casing. The old `fixed`-to-viewport rail could only
+// ever serve one document per screen, which is why the Desk (N panels, N
+// documents) had no outline at all.
+//
+// THREE STATES, chosen from the CONTAINER's measured size (not a viewport media
+// query, so a slim Desk panel behaves like a phone and a wide one like a page):
+//   1. collapsed — a thin right-edge rail of marks, taking no layout width.
+//   2. flyout    — hover (pointer) or click/tap (touch) expands the marks into
+//                  the heading list, floating over the content. Its header row
+//                  carries the pin.
+//   3. pinned    — a docked, drag-resizable sidebar the content makes room for.
+//                  Remembered PER ITEM (users.settings.tocPinnedItems) so a long
+//                  note you pinned once opens pinned everywhere.
+// Below RAIL_MIN the rail gives way to the original round button + bottom sheet.
+//
 // The engine reads the live editor DOM (.ledgr-prose), so the outline tracks
-// edits as you type, and drives scroll + active-section tracking against whatever
-// actually scrolls — the window on the full page, the modal's own scroll div in
-// the intercept modal (getScrollParent). It self-gates: with fewer than two
-// headings of the enabled levels, it renders nothing. Heading nodes are never
-// mutated (ProseMirror owns that DOM); we re-query live by document order and key
-// the list by index.
+// edits as you type, and drives scroll + active-section tracking against
+// whatever actually scrolls (getScrollParent). It self-gates: with fewer than
+// two headings of the enabled levels, it renders nothing. Heading nodes are
+// never mutated (ProseMirror owns that DOM); we re-query live by document order
+// and key the list by index.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { NavPosition } from "@/lib/settings";
 
 type Heading = { text: string; level: number };
 
 const MIN_HEADINGS = 2;
 
+// Container width (px) at which the marks rail replaces the button + sheet.
+const RAIL_MIN = 560;
+// Pinning needs both room for a sidebar AND a tall enough window. Width alone
+// can't express "tablet yes, phone no": a landscape phone is WIDER than a
+// portrait tablet, so the height clause is what separates them (Brandon,
+// 2026-07-27 — a pinned column would eat too much of a phone screen).
+const PIN_MIN_W = 640;
+const PIN_MIN_H = 600;
+
+// Pinned sidebar width: default and drag bounds (px).
+const PIN_DEFAULT_W = 240; // 15rem
+const PIN_MIN_PX = 192; // 12rem
+const PIN_MAX_PX = 384; // 24rem
+// Per-device, like ledgr:peek-width — how wide the rail is is about the screen
+// you're on, not about the note (which is why the PIN itself syncs and this
+// doesn't).
+const PIN_WIDTH_KEY = "ledgr:toc-width";
+
 // Width of a collapsed rail mark and the label indent, per heading level.
 const MARK_WIDTH: Record<number, number> = { 1: 18, 2: 13, 3: 9 };
 const INDENT_PX: Record<number, number> = { 1: 8, 2: 18, 3: 28 };
 
-// The nearest scrollable ancestor (the modal body); null means the window/page.
+function readStoredWidth(): number {
+  if (typeof window === "undefined") return PIN_DEFAULT_W;
+  try {
+    const n = parseInt(localStorage.getItem(PIN_WIDTH_KEY) || "", 10);
+    return Number.isFinite(n) ? Math.max(PIN_MIN_PX, Math.min(PIN_MAX_PX, n)) : PIN_DEFAULT_W;
+  } catch {
+    return PIN_DEFAULT_W;
+  }
+}
+
+// The nearest scrollable ancestor (the modal body, a Desk panel); null means the
+// window/page.
 function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node?.parentElement ?? null;
   while (el) {
@@ -56,23 +100,63 @@ function scrollToEl(el: HTMLElement, container: HTMLElement | null, offset: numb
   }
 }
 
+// Monochrome stroke pin, inheriting currentColor like the outline's other icons
+// (no emoji, no colored default — Brandon, 2026-07-27).
+function PinIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      fillOpacity={filled ? 0.15 : undefined}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </svg>
+  );
+}
+
 export default function FloatingToc({
-  variant,
+  itemId,
   levels,
-  navPosition,
+  pinned: initialPinned,
 }: {
-  variant: "page" | "modal";
+  // Which item this outline belongs to — the key for the per-item pin.
+  itemId: string;
   levels: number[];
-  navPosition: NavPosition;
+  // Whether this item is in users.settings.tocPinnedItems (resolved by the host:
+  // server-side on the canvas, from DeskContext in a Desk panel).
+  pinned: boolean;
 }) {
-  const rootRef = useRef<HTMLSpanElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const proseRef = useRef<HTMLElement | null>(null);
   const scrollElRef = useRef<HTMLElement | null>(null);
+  const scopeRef = useRef<HTMLElement | null>(null);
   const offsetRef = useRef(16);
 
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [active, setActive] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Click/tap-held flyout. Hover alone is a pure-CSS affordance that touch can
+  // never reach, so the marks are also a button.
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(initialPinned);
+  // Lazy-init from localStorage, like Modal.tsx's peek width. Safe against
+  // hydration mismatch: the server pass returns the default, and width only
+  // reaches the DOM in the pinned branch, which can't render until the
+  // ResizeObserver has measured (box.w === 0 short-circuits above).
+  const [width, setWidth] = useState(readStoredWidth);
+  // The scope's measured box: `w` is the scope's own width, `h` the height of
+  // the VISIBLE scroll viewport it lives in (the panel/modal box, or the window
+  // below the nav). Both drive the presentation; `h` is also the pinned rail's
+  // height. w=0 means "not measured yet" and suppresses everything.
+  const [box, setBox] = useState({ w: 0, h: 0 });
 
   // CSS selector for the enabled heading levels, in document order.
   const selector = [...levels]
@@ -90,11 +174,11 @@ export default function FloatingToc({
   }, [selector]);
 
   // Rebuild the outline from the current DOM. Finds the body editor within this
-  // canvas's own scope (critical: when the modal is open, the page canvas is also
-  // mounted, so we must read THIS instance's .ledgr-prose, not document's first).
+  // canvas's own scope (critical: several scopes can be mounted at once — the
+  // page canvas behind an open modal, or four Desk panels — so we must read THIS
+  // instance's .ledgr-prose, not document's first).
   const rescan = useCallback(() => {
-    const scope =
-      rootRef.current?.closest<HTMLElement>("[data-toc-scope]") ?? document.body;
+    const scope = scopeRef.current ?? document.body;
     const prose = scope.querySelector<HTMLElement>(".ledgr-prose");
     proseRef.current = prose;
     if (!prose || !selector) {
@@ -102,14 +186,11 @@ export default function FloatingToc({
       return;
     }
     scrollElRef.current = getScrollParent(prose);
-    // Window/page clears the fixed top header (h-14) on sm+; the modal has none.
-    offsetRef.current =
-      variant === "modal"
-        ? 12
-        : typeof window !== "undefined" &&
-            window.matchMedia("(min-width: 640px)").matches
-          ? 72
-          : 16;
+    // Jump offset matches where the sticky layer sits: the scope's own --nav-pt
+    // (the page's fixed header height; zeroed by the modal and by a Desk panel,
+    // which are their own scroll containers), plus a little breathing room.
+    const navPt = parseFloat(getComputedStyle(scope).getPropertyValue("--nav-pt")) || 0;
+    offsetRef.current = navPt + 16;
     const els = Array.from(prose.querySelectorAll<HTMLElement>(selector));
     setHeadings(
       els.map((el) => ({
@@ -117,26 +198,60 @@ export default function FloatingToc({
         level: Number(el.tagName.slice(1)) || 1,
       }))
     );
-  }, [selector, variant]);
+  }, [selector]);
 
-  // Watch this canvas's subtree: catches the (lazy) editor mounting and every
-  // heading add/remove/retitle. Debounced — scanning is cheap but edits are bursty.
+  // Resolve the scope once, then watch its subtree: catches the (lazy) editor
+  // mounting and every heading add/remove/retitle. Debounced — scanning is cheap
+  // but edits are bursty. A ResizeObserver on the same element drives the
+  // presentation, so a Desk panel dragged narrower switches to the sheet live.
   useEffect(() => {
-    const scope =
-      rootRef.current?.closest<HTMLElement>("[data-toc-scope]") ?? document.body;
+    const scope = rootRef.current?.closest<HTMLElement>("[data-toc-scope]") ?? document.body;
+    scopeRef.current = scope;
     let t: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       if (t) clearTimeout(t);
       t = setTimeout(rescan, 200);
     };
+    // The visible height to measure against: the scroll container's box in a
+    // Desk panel or the modal, else the window minus the fixed nav. This is what
+    // makes canPin correct in every host — and it's what keeps a landscape phone
+    // out (short window) while letting a portrait tablet in.
+    const measure = () => {
+      const navPt = parseFloat(getComputedStyle(scope).getPropertyValue("--nav-pt")) || 0;
+      const h = scrollElRef.current?.clientHeight ?? window.innerHeight - navPt;
+      setBox({ w: scope.clientWidth, h });
+    };
     rescan();
     const mo = new MutationObserver(schedule);
     mo.observe(scope, { childList: true, subtree: true, characterData: true });
+    const ro = new ResizeObserver(measure); // fires once on observe
+    ro.observe(scope);
+    window.addEventListener("resize", measure);
     return () => {
       if (t) clearTimeout(t);
       mo.disconnect();
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
     };
   }, [rescan]);
+
+  // Close the click-held flyout on Esc or an outside click (hover-out already
+  // handles the pointer case; this is the touch/keyboard path).
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   // Active-section tracking: the current section is the last heading scrolled
   // past the offset line. Deterministic and flicker-free; rAF-throttled.
@@ -169,6 +284,28 @@ export default function FloatingToc({
     };
   }, [headings.length, liveEls]);
 
+  const showRail = box.w >= RAIL_MIN;
+  const canPin = box.w >= PIN_MIN_W && box.h >= PIN_MIN_H;
+  const isPinned = pinned && canPin && headings.length >= MIN_HEADINGS;
+
+  // Give the content its right inset while pinned. One variable drives BOTH the
+  // sidebar's width and the scope's padding, so they cannot drift apart. This
+  // writes to a node the component doesn't render (the scope), which is the
+  // deliberate trade in ADR-167: the alternative is threading pin state up into
+  // three separate server components. Cleanup always restores it.
+  useEffect(() => {
+    const scope = scopeRef.current;
+    if (!scope) return;
+    if (!isPinned) {
+      scope.style.removeProperty("--toc-pin-w");
+      return;
+    }
+    scope.style.setProperty("--toc-pin-w", `${width}px`);
+    return () => {
+      scope.style.removeProperty("--toc-pin-w");
+    };
+  }, [isPinned, width]);
+
   const jump = useCallback(
     (i: number) => {
       const el = liveEls()[i];
@@ -177,16 +314,112 @@ export default function FloatingToc({
     [liveEls]
   );
 
-  // The sentinel always renders so the mount effect can locate the scope even
-  // before the editor (and its headings) exist.
-  const sentinel = <span ref={rootRef} className="hidden" aria-hidden />;
-  if (headings.length < MIN_HEADINGS) return sentinel;
+  // Persist the pin to owner settings (per item, so it follows the note across
+  // devices). Optimistic: flip local state first, then PATCH the existing
+  // generic settings route — no bespoke endpoint.
+  const togglePin = useCallback(() => {
+    const next = !pinned;
+    setPinned(next);
+    setOpen(false);
+    void fetch("/api/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { settings?: { tocPinnedItems?: string[] } } | null) => {
+        const current = d?.settings?.tocPinnedItems ?? [];
+        const list = next
+          ? current.includes(itemId)
+            ? current
+            : [...current, itemId]
+          : current.filter((x) => x !== itemId);
+        return fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tocPinnedItems: list }),
+        });
+      })
+      .catch(() => {
+        /* offline / failed write: the pin still applies for this session */
+      });
+  }, [itemId, pinned]);
 
-  // Rail sits in the right gutter; nudge it clear of a right-side nav rail.
-  const railRight = navPosition === "right" ? "right-20" : "right-4";
-  // Page: rail on lg+, button below. Modal: button only (narrow, scroll-contained).
-  const railClass = variant === "page" ? "hidden lg:flex" : "hidden";
-  const buttonClass = variant === "page" ? "lg:hidden" : "";
+  // Drag-to-resize the pinned rail, on its inner (left) edge — the same
+  // pointer-capture handle Modal.tsx uses for the peek panel, same
+  // double-click-to-reset.
+  const resizeStart = useRef<{ x: number; w: number } | null>(null);
+  const clampW = (n: number) => Math.max(PIN_MIN_PX, Math.min(PIN_MAX_PX, n));
+  const onResizeDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    resizeStart.current = { x: e.clientX, w: width };
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {}
+  };
+  const onResizeMove = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    // Docked right, so dragging the left edge leftward widens it.
+    setWidth(clampW(resizeStart.current.w + (resizeStart.current.x - e.clientX)));
+  };
+  const onResizeUp = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    const final = clampW(
+      Math.round(resizeStart.current.w + (resizeStart.current.x - e.clientX))
+    );
+    resizeStart.current = null;
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {}
+    setWidth(final);
+    try {
+      localStorage.setItem(PIN_WIDTH_KEY, String(final));
+    } catch {}
+  };
+  const onResizeReset = () => {
+    setWidth(PIN_DEFAULT_W);
+    try {
+      localStorage.removeItem(PIN_WIDTH_KEY);
+    } catch {}
+  };
+
+  // The sticky layer always renders so the mount effect can locate the scope
+  // (and measure it) before the editor — and its headings — exist. It must be
+  // the scope's first child: a sticky box only pins while its containing block
+  // is in view, so mounting it after the content would leave it stuck at the
+  // bottom. h-0 keeps it out of the layout entirely.
+  const layer = (children?: React.ReactNode) => (
+    <div
+      ref={rootRef}
+      className="pointer-events-none sticky top-[var(--nav-pt,0px)] z-30 h-0"
+    >
+      {children}
+    </div>
+  );
+
+  // Nothing to show, or nothing measured yet (rendering before the first
+  // ResizeObserver callback would flash the narrow presentation on a wide page).
+  if (headings.length < MIN_HEADINGS || box.w === 0) return layer();
+
+  const pinButton = canPin ? (
+    <button
+      type="button"
+      onClick={togglePin}
+      aria-pressed={pinned}
+      title={pinned ? "Unpin the outline" : "Pin the outline as a sidebar"}
+      aria-label={pinned ? "Unpin the outline" : "Pin the outline as a sidebar"}
+      className={`shrink-0 rounded p-1 transition-colors ${
+        pinned
+          ? "text-[var(--accent)] hover:bg-surface-3"
+          : "text-ink-faint hover:bg-surface-3 hover:text-ink"
+      }`}
+    >
+      <PinIcon filled={pinned} />
+    </button>
+  ) : null;
+
+  const listHeader = (
+    <div className="flex items-center justify-between gap-2 px-2 pb-1">
+      <p className="ui-section-label text-ink-faint">On this page</p>
+      {pinButton}
+    </div>
+  );
 
   const labelList = (
     <ul className="space-y-0.5">
@@ -197,12 +430,13 @@ export default function FloatingToc({
             onClick={() => {
               jump(i);
               setSheetOpen(false);
+              setOpen(false);
             }}
             style={{ paddingLeft: INDENT_PX[h.level] ?? 8 }}
             className={`block w-full truncate rounded py-1.5 pr-2 text-left text-sm transition-colors ${
               i === active
                 ? "bg-[var(--accent)]/15 font-medium text-[var(--accent)]"
-                : "text-neutral-300 hover:bg-neutral-800"
+                : "text-ink-muted hover:bg-surface-2 hover:text-ink"
             }`}
           >
             {h.text}
@@ -212,41 +446,91 @@ export default function FloatingToc({
     </ul>
   );
 
-  return (
-    <>
-      {sentinel}
+  // --- Pinned: a docked, resizable column the content makes room for ---------
+  if (isPinned) {
+    return layer(
+      <aside
+        aria-label="Table of contents"
+        // right: -width, not 0. --toc-pin-w is the scope's padding-right, which
+        // also shrinks this sticky layer's content box — so `right: 0` would
+        // park the sidebar one full width INSIDE the gutter it just opened and
+        // overlap the prose. Offsetting by exactly its own width lands it flush
+        // in that gutter, and since both numbers are `width` they can't drift.
+        style={{ width, height: box.h, right: -width }}
+        className="pointer-events-auto absolute top-0 flex flex-col overflow-hidden border-l border-line bg-surface-1"
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the outline"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+          onPointerCancel={onResizeUp}
+          onDoubleClick={onResizeReset}
+          className="group absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none select-none"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover:bg-[var(--accent)]"
+          />
+        </div>
+        <div className="overflow-y-auto p-2 pt-3">
+          {listHeader}
+          {labelList}
+        </div>
+      </aside>
+    );
+  }
 
-      {/* Desktop right-edge rail: marks → hover-expand labels (pure CSS hover). */}
+  // --- Wide container: marks rail → hover/click flyout -----------------------
+  if (showRail) {
+    return layer(
       <nav
         aria-label="Table of contents"
-        className={`group fixed top-1/2 z-[45] -translate-y-1/2 ${railRight} ${railClass}`}
+        className="group pointer-events-auto absolute right-2 top-4"
       >
-        <div className="flex flex-col items-end gap-1.5 py-2 pl-6 transition-opacity duration-150 group-hover:opacity-0">
+        <button
+          type="button"
+          aria-label="Table of contents"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className={`flex flex-col items-end gap-1.5 py-2 pl-6 transition-opacity duration-150 group-hover:opacity-0 ${
+            open ? "opacity-0" : ""
+          }`}
+        >
           {headings.map((h, i) => (
             <span
               key={i}
               style={{ width: MARK_WIDTH[h.level] ?? 9 }}
               className={`h-[3px] rounded-full transition-colors ${
-                i === active ? "bg-[var(--accent)]" : "bg-neutral-600"
+                i === active ? "bg-[var(--accent)]" : "bg-ink-faint"
               }`}
             />
           ))}
-        </div>
-        <div className="pointer-events-none absolute right-0 top-1/2 max-h-[70vh] w-64 -translate-y-1/2 translate-x-2 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900/95 p-2 opacity-0 shadow-xl shadow-black/40 backdrop-blur transition-all duration-150 group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100">
-          <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-            On this page
-          </p>
+        </button>
+        <div
+          className={`absolute right-0 top-0 max-h-[70vh] w-64 translate-x-2 overflow-y-auto rounded-card border border-line-strong bg-surface-2 p-2 opacity-0 shadow-xl shadow-black/40 backdrop-blur transition-all duration-150 group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100 ${
+            open ? "pointer-events-auto translate-x-0 opacity-100" : "pointer-events-none"
+          }`}
+        >
+          {listHeader}
           {labelList}
         </div>
       </nav>
+    );
+  }
 
-      {/* Phone / modal: a floating button that opens a bottom sheet. */}
+  // --- Narrow container (phone, slim Desk panel): button + bottom sheet ------
+  return layer(
+    <>
       <button
         type="button"
         aria-label="Table of contents"
         aria-expanded={sheetOpen}
         onClick={() => setSheetOpen(true)}
-        className={`fixed bottom-24 right-4 z-[55] flex h-11 w-11 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900/95 text-neutral-200 shadow-lg backdrop-blur transition-colors hover:bg-neutral-800 ${buttonClass}`}
+        className="pointer-events-auto absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-2/95 text-ink-muted shadow-lg backdrop-blur transition-colors hover:bg-surface-3 hover:text-ink"
       >
         <svg
           width="20"
@@ -270,17 +554,15 @@ export default function FloatingToc({
 
       {sheetOpen && (
         <div
-          className="fixed inset-0 z-[70] flex flex-col justify-end bg-black/50"
+          className="pointer-events-auto fixed inset-0 z-[70] flex flex-col justify-end bg-black/50"
           onClick={() => setSheetOpen(false)}
         >
           <div
-            className="max-h-[60vh] overflow-y-auto rounded-t-2xl border-t border-neutral-700 bg-neutral-900 p-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl"
+            className="max-h-[60vh] overflow-y-auto rounded-t-2xl border-t border-line-strong bg-surface-1 p-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-neutral-700" />
-            <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-              On this page
-            </p>
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong" />
+            {listHeader}
             {labelList}
           </div>
         </div>

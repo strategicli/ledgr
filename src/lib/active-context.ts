@@ -10,7 +10,7 @@
 // (Brandon, 2026-07-16): the context is "in the moment," last-writer-wins, so a
 // second device simply overwrites the row rather than forking it. Everything is
 // owner-scoped like the rest of the app.
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { activeContext } from "@/db/schema";
 
@@ -100,6 +100,22 @@ export async function setActiveContext(
 // Clear the owner's context (the canvas closed / navigated away). Deleting the
 // row is the "nothing open" state, so a reader never sees a stale note after the
 // owner has moved on. No-op when there's no row.
-export async function clearActiveContext(ownerId: string): Promise<void> {
-  await getDb().delete(activeContext).where(eq(activeContext.ownerId, ownerId));
+//
+// `onlyItemId` makes the clear conditional: delete only if the row still points
+// at that item. A departing tracker passes the item it was reporting, so when a
+// handoff happens (close item X, open item Y — or in the Desk, move the pen to
+// another panel) a slow DELETE landing after the new POST can't wipe the fresh
+// context. Without it the two requests race and the owner's context blanks at
+// random (ADR-167a). Omit the argument for an unconditional clear.
+export async function clearActiveContext(
+  ownerId: string,
+  onlyItemId?: string
+): Promise<void> {
+  await getDb()
+    .delete(activeContext)
+    .where(
+      onlyItemId
+        ? and(eq(activeContext.ownerId, ownerId), eq(activeContext.itemId, onlyItemId))
+        : eq(activeContext.ownerId, ownerId)
+    );
 }
