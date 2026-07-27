@@ -8,10 +8,13 @@
 // side reads back as literal — so the escapes compounded. MarkdownEscapeFix
 // (extensions.ts) undoes the escaping for text carrying one of those marks.
 //
-// This drives the real editor headlessly (linkedom DOM shim) and checks the
-// SERIALIZE direction, where the bug originates and the fix lives. The HTML-mark
-// PARSE direction can't run under linkedom (it drops <mark>), so it's covered by
-// the in-browser check on the real canvas.
+// This drives the real editor headlessly (linkedom DOM shim). It checks the
+// SERIALIZE direction (escaping) AND the PARSE direction: the color/highlight
+// marks now reclaim their <span>/<mark> with an inline markdownTokenizer that
+// re-tokenizes the inner markdown, so **bold**/*italic*/~~strike~~ inside a
+// colored span survive a source⇄rich flip instead of being flattened to literal
+// text by @tiptap/markdown's default inline-HTML merge. That parse path is pure
+// regex + marked (no DOM span parse), so it runs headlessly here.
 // Run: npx tsx scripts/verify-markdown-escape.mts
 /* eslint-disable @typescript-eslint/no-explicit-any -- dev-only harness: the
    linkedom DOM shim and Tiptap editor construction need loose typing at the
@@ -48,9 +51,10 @@ function editorFor(withFix: boolean) {
   return new Editor({ element: el as any, extensions: exts as any, content: "", contentType: "markdown" } as any);
 }
 
-// The doc state the HTML-mark parse always yields: literal "**28**" text carrying
-// the mark (bold flattened by the raw-HTML round-trip). This is the fixed point
-// each rich⇄source flip round-trips on.
+// A colored run carrying literal markdown-significant characters. The serializer
+// must escape them AND then MarkdownEscapeFix must strip the escapes back off, so
+// the stored shape stays the un-escaped raw content the render/export pipeline
+// expects.
 const marked = (mark: "highlight" | "textColor") => ({
   type: "doc",
   content: [{ type: "paragraph", content: [
@@ -80,6 +84,34 @@ const plain = editorFor(true);
 plain.commands.setContent({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "math a*b and _c_" }] }] } as any, { emitUpdate: false } as any);
 const plainOut = plain.getMarkdown();
 check("plain text still escapes * and _", plainOut.includes("\\*") && plainOut.includes("\\_"), plainOut);
+
+// PARSE direction (the reported bug): formatting inside a colored span must
+// survive markdown → doc → markdown. Before the fix, @tiptap/markdown merged the
+// span with its inner tokens and re-parsed it as literal HTML, flattening the
+// **bold** to a literal "**8**" text node. Now the mark's inline tokenizer
+// re-tokenizes the inner markdown, so the bold node survives and round-trips.
+function hasBoldTextIn(doc: any, markType: string): boolean {
+  const walk = (node: any): boolean => {
+    if (node?.type === "text") {
+      const marks = (node.marks ?? []).map((m: any) => m.type);
+      if (marks.includes("bold") && marks.includes(markType)) return true;
+    }
+    return (node?.content ?? []).some(walk);
+  };
+  return walk(doc);
+}
+
+for (const [mark, md] of [
+  ["textColor", `<span style="color:#e03e3e">**8** For by grace</span>`],
+  ["highlight", `<mark class="hl-yellow" style="background-color:#fbf3db">**8** For by grace</mark>`],
+] as const) {
+  const ed = editorFor(true);
+  ed.commands.setContent(md, { emitUpdate: false, contentType: "markdown" } as any);
+  const doc = ed.getJSON();
+  check(`${mark}: bold INSIDE the colored run survives parse`, hasBoldTextIn(doc, mark), JSON.stringify(doc));
+  const out = ed.getMarkdown();
+  check(`${mark}: bold round-trips back to **8** (not flattened)`, out.includes("**8**"), out);
+}
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

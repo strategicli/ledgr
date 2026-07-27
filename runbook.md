@@ -75,7 +75,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 
 ## 1a. Schema migrations and seed
 - **Change the schema** in `src/db/schema.ts`, then `npm run db:generate` (writes SQL to `drizzle/`; no DB needed). Review the generated SQL before applying.
-- **Apply:** `npm run db:migrate` (reads `DATABASE_URL` from `.env` / `.env.local`; refuses a non-pooler Neon URL).
+- **Apply:** `npm run db:migrate` (reads `DATABASE_URL` from `.env` / `.env.local`; refuses a non-pooler Neon URL). Your `.env.local` points at the **dev** Neon branch (a copy-on-write child of `main`), so this migrates **dev only**; production goes through `db:migrate:prod` / `release:prod` (§1j), which read prod creds from the gitignored `.env.production.local`, never `.env.local`.
 - **Seed:** `npm run db:seed` — idempotent (five system `types` rows + the single `users` row); safe to re-run any time.
 - Migration files in `drizzle/` are committed history. Never edit an applied migration; generate a new one.
 - **After every `git pull`, run `npm run db:migrate`.** Migrations are committed but each builder's database applies them separately. A pull that brings new `drizzle/*.sql` files leaves your DB a table behind until you apply them, and the missing-table error only shows when you hit the page that queries it (see §7, the `templates` incident).
@@ -316,6 +316,7 @@ Back-end (cheap compute/storage/traffic):
 ## 6. Known failure modes
 - **GitHub Actions auto-disabled after 60 days of repo inactivity** → sub-daily calendar/email sync silently stops. Caught by the `/health` export-timestamp check. Fix: re-enable the workflow; consider a trivial scheduled commit to keep the repo active.
 - **Free-tier ceilings** (Neon rows+compute, Clerk MAU, Vercel Hobby, GitHub Actions minutes, R2 10GB). Fine at one user; a multi-user expansion crosses several at once (a real cost cliff, not a slope).
+- **Neon Free specifics — compute is the real lever, not storage.** Exceeding the **0.5 GB** storage cap on Neon Free *suspends compute until the next billing month* (a hard stop, not a slowdown); the full commentary-library import (ADR-149) alone would blow past it, so that import gates on cleanup or a plan upgrade. Autosuspend is **fixed at 5 min on every Neon plan** (Free can't lower it; paid can only *disable* it, i.e. always-on — don't), so the one compute knob is **wakeup frequency**, not storage size. The busiest automated waker is `email-import` (`.github/workflows/email-import.yml`, every 30 min); `transcription-poll` and `todoist-sync` are config-gated no-ops that return before touching the DB unless their tokens are set. To cut compute cost, widen cron cadence (§5) rather than chasing storage.
 - **Two-device concurrent edits** → optimistic UI + last-write-wins on `body` can clobber one side. Safety net is revision restore (not merge). Accepted for single user.
 - **Todoist content edits are lossy by rule** (Ledgr is canonical for content). Don't rewrite task *content* in Todoist; date/completion changes sync back fine.
 - **Offline note capture has no path** (only offline *task* capture via Todoist's queue). Accepted gap.

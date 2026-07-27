@@ -75,6 +75,13 @@ export type PropertyDef = {
   options?: string[];
   targetType?: string | null;
   cardinality?: RelationCardinality;
+  // `date` kind only (the range rule, ADR-timeline): when true the field carries
+  // an optional END date alongside its start, letting an item span a range on
+  // the Planner's Timeline. Start stays the plain ISO scalar at properties[key];
+  // the end lives at properties[key + "__end"] (placement.ts END_SUFFIX), so
+  // every existing filter/sort on the start key is untouched. Unset = a single
+  // date. Declared once here, so no manual "which field is the end" wiring.
+  withEnd?: boolean;
 };
 
 export type TypeDefinition = {
@@ -197,6 +204,11 @@ export function parsePropertySchema(raw: unknown): PropertyDef[] {
       bad(`property '${key}' has an unknown kind`);
     }
     const def: PropertyDef = { key, label, kind: kind as PropertyKind };
+    // A date field may opt into an end date (the range rule, ADR-timeline).
+    // Tolerant: only honored for `date`, only when literally true.
+    if (def.kind === "date" && e.withEnd === true) {
+      def.withEnd = true;
+    }
     if (KINDS_WITH_OPTIONS.includes(def.kind)) {
       if (!Array.isArray(e.options)) bad(`property '${key}' needs options`);
       const options = Array.from(

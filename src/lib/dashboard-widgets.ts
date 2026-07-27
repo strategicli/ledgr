@@ -5,7 +5,7 @@
 // safe in the "use client" bundle. The DB CRUD + tolerant parsers live in
 // dashboards.ts and import the shapes from here.
 import type { ViewItem } from "@/components/views/ViewRenderer";
-import type { ViewDefinition, ViewFilter, ViewSort } from "@/lib/views";
+import type { ListSort, ViewDefinition, ViewFilter } from "@/lib/views";
 
 // --- Widget kinds & settings ---------------------------------------------
 
@@ -29,7 +29,7 @@ export type RenderStyle = (typeof RENDER_STYLES)[number];
 export type ViewWidgetSettings = {
   titleOverride: string | null; // null = use the view's name
   itemLimit: number | null; // null = the dashboard's default preview cap
-  sortOverride: ViewSort | null; // null = the view's stored sort
+  sortOverride: ListSort | null; // null = the view's stored sort (may be a property sort)
   renderStyle: RenderStyle;
 };
 
@@ -76,7 +76,7 @@ export type TreeWidgetSettings = {
   relationRole: string | null; // when childSource = "relation": the edge role (e.g. "project")
   childType: string | null; // optional: only children of this type
   hideCompletedChildren: boolean; // default true (show live work)
-  sortOverride: ViewSort | null; // parent sort (null = the view's stored sort)
+  sortOverride: ListSort | null; // parent sort (null = the view's stored sort; may be a property sort)
 };
 
 // Item-embed widget: renders ONE item's title (toggled by appearance.showHeader)

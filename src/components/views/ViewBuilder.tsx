@@ -8,9 +8,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import RuleBuilder, { type RuleSubjectOption } from "@/components/views/RuleBuilder";
 import type { StatusMode } from "@/lib/status";
 import type { PropertyDef } from "@/lib/types";
-import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
+import type { WhereGroup } from "@/lib/view-where";
+import { CALENDAR_MODES, TIMELINE_ZOOMS } from "@/lib/views";
+import type { ColumnField, ViewColumn, ViewDefinition, ViewDisplay, CalendarMode, TimelineZoom } from "@/lib/views";
+
+// Friendly labels for the calendar-display controls (ADR-166). "timegrid"
+// (Multi-day) is retired from new views but kept selectable when a stored view
+// already uses it, so editing round-trips it rather than silently flipping it.
+const MODE_LABELS: Record<CalendarMode, string> = { month: "Month", timegrid: "Multi-day (legacy)", timeline: "Timeline" };
+const ZOOM_LABELS: Record<TimelineZoom, string> = {
+  hour: "Hour", day: "Day", week: "Week", month: "Month", quarter: "Quarter", year: "Year", halfDecade: "5-Year",
+};
 
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 // Status filter is by CATEGORY now (S2): statuses are user-defined per type, so
@@ -22,7 +33,12 @@ const STATUS_CATEGORY_OPTS = [
   { value: "done", label: "done" },
   { value: "archived", label: "archived (closed)" },
 ];
-const URGENCIES = ["low", "normal", "high", "critical"];
+// Task priority P1–P6 (ADR-096; 1 highest, 6 = no special priority). Stored as
+// the numeric `urgency` column; the option value is the number, label is "P1"…
+const PRIORITY_OPTS = [1, 2, 3, 4, 5, 6].map((n) => ({
+  value: String(n),
+  label: `P${n}`,
+}));
 // Mirrors views.ts PROPERTY_FILTER_NONE (kept local so this client form never
 // imports the DB-backed views module). "" = any (no filter); this = "not set".
 const FILTER_NONE = "__none__";
@@ -60,8 +76,12 @@ function dateFieldsFor(type: string): string[] {
   return ["createdAt", "updatedAt"]; // note / link / person
 }
 function sortFieldsFor(type: string): string[] {
-  return [...dateFieldsFor(type), "title"];
+  // Priority is offered only where the type has it (task/any), alongside title.
+  const extra = showsUrgency(type) ? ["urgency", "title"] : ["title"];
+  return [...dateFieldsFor(type), ...extra];
 }
+// Sort-select labels: dates reuse DATE_LABELS; urgency reads as "priority".
+const SORT_LABELS: Record<string, string> = { ...DATE_LABELS, urgency: "priority", title: "title" };
 // urgency + due window are task-only in the UI (ADR-018).
 function groupFieldsFor(type: string): string[] {
   if (type === "task") return ["status", "urgency", "plan", "due", "scheduled", "type"];
@@ -168,6 +188,39 @@ export default function ViewBuilder({
       .filter((p) => p.kind === "select" || p.kind === "multi_select")
       .map((p) => ({ key: p.key, label: p.label, options: p.options ?? [] }));
   }
+  // Properties usable as a SORT key (ADR-164): text/number/date/select/checkbox
+  // order sensibly; url/multi_select/relation don't. Encoded "prop:<key>" so the
+  // one Sort-by control carries them beside the built-in fields.
+  function sortPropsFor(typeKey: string): { key: string; label: string; numeric: boolean }[] {
+    const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
+    return schema
+      .filter((p) => ["text", "number", "date", "select", "checkbox"].includes(p.kind))
+      .map((p) => ({ key: p.key, label: p.label, numeric: p.kind === "number" }));
+  }
+  // Every condition subject the rule builder offers for a type: scalar
+  // properties, relation fields, plus the priority/status built-ins where the
+  // type has them (ADR-164).
+  function subjectOptionsFor(typeKey: string): RuleSubjectOption[] {
+    const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
+    const opts: RuleSubjectOption[] = [];
+    for (const p of schema) {
+      if (p.kind === "relation") {
+        opts.push({ subject: "relation", key: p.key, label: p.label, targetType: p.targetType ?? null });
+      } else {
+        opts.push({
+          subject: "property",
+          key: p.key,
+          label: p.label,
+          kind: p.kind,
+          options: p.options,
+          numeric: p.kind === "number",
+        });
+      }
+    }
+    if (showsUrgency(typeKey)) opts.push({ subject: "priority", label: "Priority" });
+    if (usesStatus(typeKey)) opts.push({ subject: "status", label: "Status" });
+    return opts;
+  }
   // Whether the view's type surfaces status at all (ADR-106). A type whose mode
   // is 'none' (person, link, a note) hides the Status filter, the status group
   // option, and the status column — the same "offer a field only if the type has
@@ -229,9 +282,17 @@ export default function ViewBuilder({
     }
     return m;
   });
-  const [sortField, setSortField] = useState<string>(
-    pick(sortFieldsFor(t0), initial?.sort.field, "updatedAt")
-  );
+  // Sort key: a built-in field, or "prop:<key>" for a custom-property sort
+  // (ADR-164). Seeded from the stored ListSort (property or field).
+  const [sortField, setSortField] = useState<string>(() => {
+    const s = initial?.sort;
+    if (s && s.field === "property") {
+      return sortPropsFor(t0).some((p) => p.key === s.propertyKey)
+        ? `prop:${s.propertyKey}`
+        : "updatedAt";
+    }
+    return pick(sortFieldsFor(t0), s?.field, "updatedAt");
+  });
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     initial?.sort.dir ?? "desc"
   );
@@ -241,6 +302,13 @@ export default function ViewBuilder({
   const [dateProperty, setDateProperty] = useState<string>(
     pick(df0, initial?.dateProperty, df0[0])
   );
+  // Calendar display defaults (ADR-166): the mode a calendar view opens in and,
+  // for the Timeline, its initial zoom. Stored in views.display; null → defaults.
+  const [calMode, setCalMode] = useState<CalendarMode>(initial?.display?.mode ?? "month");
+  const [calZoom, setCalZoom] = useState<TimelineZoom>(initial?.display?.zoom ?? "week");
+  // The AND/OR rules group (ADR-164); null = no rules. Cleared when the type
+  // changes, since its conditions reference that type's properties.
+  const [where, setWhere] = useState<WhereGroup | null>(initial?.filter.where ?? null);
   // Chosen columns, in order; empty = the layout's default columns. Toggling
   // appends (so check order = column order) or removes.
   const [columns, setColumns] = useState<ViewColumn[]>(initial?.columns ?? []);
@@ -272,8 +340,15 @@ export default function ViewBuilder({
     const df = dateFieldsFor(t);
     setDateField((v) => (df.includes(v) ? v : df[0]));
     setDateProperty((v) => (df.includes(v) ? v : df[0]));
-    setSortField((v) => (sortFieldsFor(t).includes(v) ? v : "updatedAt"));
+    setSortField((v) => {
+      if (v.startsWith("prop:")) {
+        return sortPropsFor(t).some((p) => `prop:${p.key}` === v) ? v : "updatedAt";
+      }
+      return sortFieldsFor(t).includes(v) ? v : "updatedAt";
+    });
     setGroupField((v) => validGroup(t, v));
+    // Rules reference the old type's properties; clear them on a type change.
+    setWhere(null);
     if (!showsUrgency(t)) setUrgency("");
     // Clear a status filter the new type can't use (ADR-106), mirroring urgency.
     if (!usesStatus(t)) setStatusCategory("");
@@ -328,11 +403,31 @@ export default function ViewBuilder({
         value: propFilters[p.key] === FILTER_NONE ? null : propFilters[p.key],
       }));
     if (propertyFilters.length) filter.propertyFilters = propertyFilters;
+    // The AND/OR rules group (ADR-164): only persist conditions that still
+    // resolve to a subject the current type offers (a stale one is dropped).
+    if (where && where.conditions.length) {
+      const okSubjects = subjectOptionsFor(type);
+      const conditions = where.conditions.filter((c) =>
+        c.subject === "property" || c.subject === "relation"
+          ? okSubjects.some((o) => o.subject === c.subject && "key" in o && o.key === c.key)
+          : okSubjects.some((o) => o.subject === c.subject)
+      );
+      if (conditions.length) filter.where = { combinator: where.combinator, conditions };
+    }
+    // Sort by a built-in field, or by a custom property ("prop:<key>", ADR-164).
+    const sort = sortField.startsWith("prop:")
+      ? {
+          field: "property" as const,
+          propertyKey: sortField.slice(5),
+          numeric: sortPropsFor(type).find((p) => `prop:${p.key}` === sortField)?.numeric ?? false,
+          dir: sortDir,
+        }
+      : { field: sortField, dir: sortDir };
     const payload = {
       name: name.trim(),
       layout,
       filter,
-      sort: { field: sortField, dir: sortDir },
+      sort,
       grouping:
         canGroup && groupField
           ? groupField.startsWith("prop:")
@@ -341,6 +436,12 @@ export default function ViewBuilder({
           : null,
       columns: showsColumns(layout) && columns.length ? columns : null,
       dateProperty: needsDate ? dateProperty : null,
+      // Preserve any other display fields the view already had (dayCount, etc.)
+      // and overlay the calendar mode + timeline zoom this builder edits.
+      display:
+        layout === "calendar"
+          ? ({ ...(initial?.display ?? {}), mode: calMode, zoom: calZoom } as ViewDisplay)
+          : initial?.display ?? null,
     };
     try {
       const res = await fetch(
@@ -433,15 +534,15 @@ export default function ViewBuilder({
           </Field>
         )}
         {showsUrgency(type) && (
-          <Field label="Urgency">
+          <Field label="Priority">
             <select
               value={urgency}
               onChange={(e) => setUrgency(e.target.value)}
               className={selectClass}
             >
               <Opt value="" label="any" />
-              {URGENCIES.map((u) => (
-                <Opt key={u} value={u} />
+              {PRIORITY_OPTS.map((p) => (
+                <Opt key={p.value} value={p.value} label={p.label} />
               ))}
             </select>
           </Field>
@@ -522,16 +623,37 @@ export default function ViewBuilder({
         ))}
       </fieldset>
 
+      <RuleBuilder
+        value={where}
+        onChange={setWhere}
+        subjectOptions={subjectOptionsFor(type)}
+      />
+
       <div className="flex gap-3">
         <Field label="Sort by">
           <select
             value={sortField}
-            onChange={(e) => setSortField(e.target.value)}
+            onChange={(e) => {
+              const f = e.target.value;
+              setSortField(f);
+              // Priority reads highest-first (P1) by default; switching to it
+              // flips direction to asc so P1 leads without a second click.
+              if (f === "urgency") setSortDir("asc");
+            }}
             className={selectClass}
           >
             {sortFields.map((f) => (
-              <Opt key={f} value={f} label={DATE_LABELS[f] ?? f} />
+              <Opt key={f} value={f} label={SORT_LABELS[f] ?? f} />
             ))}
+            {sortPropsFor(type).length > 0 && (
+              <optgroup label="Properties">
+                {sortPropsFor(type).map((p) => (
+                  <option key={`prop:${p.key}`} value={`prop:${p.key}`}>
+                    {p.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </Field>
         <Field label="Direction">
@@ -540,8 +662,17 @@ export default function ViewBuilder({
             onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
             className={selectClass}
           >
-            <Opt value="desc" label="newest / Z-A" />
-            <Opt value="asc" label="oldest / A-Z" />
+            {sortField === "urgency" ? (
+              <>
+                <Opt value="asc" label="highest first (P1→P6)" />
+                <Opt value="desc" label="lowest first (P6→P1)" />
+              </>
+            ) : (
+              <>
+                <Opt value="desc" label="newest / Z-A" />
+                <Opt value="asc" label="oldest / A-Z" />
+              </>
+            )}
           </select>
         </Field>
       </div>
@@ -624,6 +755,40 @@ export default function ViewBuilder({
           >
             {dateFields.map((d) => (
               <Opt key={d} value={d} label={DATE_LABELS[d]} />
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {layout === "calendar" && (
+        <Field
+          label="Default view"
+          hint="How this calendar opens. Month is the grid; Timeline is a zoomable horizontal axis where any writable date can be dragged."
+        >
+          <select
+            value={calMode}
+            onChange={(e) => setCalMode(e.target.value as CalendarMode)}
+            className={selectClass}
+          >
+            {CALENDAR_MODES.filter((m) => m !== "timegrid" || calMode === "timegrid").map((m) => (
+              <Opt key={m} value={m} label={MODE_LABELS[m]} />
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {layout === "calendar" && calMode === "timeline" && (
+        <Field
+          label="Timeline zoom"
+          hint="The span the timeline shows at first. You can still zoom in and out inside the view."
+        >
+          <select
+            value={calZoom}
+            onChange={(e) => setCalZoom(e.target.value as TimelineZoom)}
+            className={selectClass}
+          >
+            {TIMELINE_ZOOMS.map((z) => (
+              <Opt key={z} value={z} label={ZOOM_LABELS[z]} />
             ))}
           </select>
         </Field>

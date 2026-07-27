@@ -46,6 +46,8 @@ import {
 } from "@/lib/desk/persist";
 import { DESK_LAYOUT_CHANGED_EVENT } from "@/lib/desk/send";
 import type { DeskWorkspace } from "@/lib/settings";
+import type { TocConfig } from "@/lib/toc";
+import DeskActiveContext from "./DeskActiveContext";
 import { DeskProvider, type DeskActions, type MoveArmed } from "./DeskContext";
 import DeskShell from "./DeskShell";
 import DeskWorkspacesMenu from "./DeskWorkspacesMenu";
@@ -74,8 +76,19 @@ function newWorkspaceId(): string {
 
 export default function DeskClient({
   initialWorkspaces,
+  tocByType,
+  tocPinnedItems,
+  liveContextEnabled,
 }: {
   initialWorkspaces: DeskWorkspace[];
+  // Outline config from owner settings (ADR-167), passed straight through to
+  // context: the Desk is a client shell, so a panel can't resolve these itself
+  // the way the server-rendered ItemCanvas does.
+  tocByType: Record<string, TocConfig>;
+  tocPinnedItems: string[];
+  // Live editing context (ADR-162): off by default, so the Desk only mounts the
+  // reporter when the owner has opted in — same gate ItemCanvas applies.
+  liveContextEnabled: boolean;
 }) {
   const isDesktop = useIsDesktop();
   const mounted = useMounted();
@@ -267,9 +280,19 @@ export default function DeskClient({
 
   return (
     <DeskProvider
-      value={{ layout, focusedLeaf: layout.focusedLeaf, moveArmed, actions }}
+      value={{
+        layout,
+        focusedLeaf: layout.focusedLeaf,
+        moveArmed,
+        actions,
+        tocByType,
+        tocPinnedItems,
+      }}
     >
       <div className="flex h-[100dvh] flex-col bg-surface-0">
+        {/* One reporter for the whole surface: however many panels are open,
+            only the focused one holds the pen, so there's one active item. */}
+        {liveContextEnabled && <DeskActiveContext />}
         <DeskTopBar right={workspacesMenu} />
         {moveArmed && (
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-accent/40 bg-accent/10 px-4 py-1.5 text-xs text-ink">

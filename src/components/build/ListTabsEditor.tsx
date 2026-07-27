@@ -23,13 +23,20 @@ const FIELD_PRESETS: { field: LensField; label: string; dir: "asc" | "desc" }[] 
   { field: "createdAt", label: "Newest", dir: "desc" },
   { field: "title", label: "A → Z", dir: "asc" },
   { field: "mostLinked", label: "Most linked", dir: "desc" },
+  // Priority (P1 first) is task-only: filtered out of the picker for other
+  // types below, since urgency isn't meaningful on notes/links/etc.
+  { field: "urgency", label: "Priority", dir: "asc" },
 ];
+
+// Fields that only make sense for tasks (they read the task-only urgency column).
+const TASK_ONLY_FIELDS = new Set<LensField>(["urgency"]);
 
 const FIELD_DESC: Record<LensField, string> = {
   updatedAt: "Recently edited",
   createdAt: "Newest first",
   title: "Alphabetical",
   mostLinked: "Most relations",
+  urgency: "Highest priority first",
 };
 
 function genId(): string {
@@ -51,7 +58,7 @@ function describe(lens: Lens, views: ViewDefinition[] | null): string {
 function kindBadge(lens: Lens): { label: string; accent: boolean } {
   if (lens.kind === "view") return { label: "Widget", accent: true };
   if (lens.kind === "calendar") return { label: "Calendar", accent: true };
-  if (lens.kind === "timeline") return { label: "Timeline", accent: true };
+  if (lens.kind === "timeline") return { label: "Agenda", accent: true };
   return { label: "Sort", accent: false };
 }
 
@@ -132,7 +139,7 @@ export default function ListTabsEditor({
     } else if (kind === "calendar") {
       lens = { id: genId(), kind: "calendar", label: "Calendar" };
     } else if (kind === "timeline") {
-      lens = { id: genId(), kind: "timeline", label: "Timeline" };
+      lens = { id: genId(), kind: "timeline", label: "Agenda" };
     }
     if (lens) {
       setLenses((ls) => [...ls, lens as Lens]);
@@ -270,11 +277,13 @@ export default function ListTabsEditor({
           {typeKey === "event" && (
             <optgroup label="Event views">
               <option value="calendar:calendar">Calendar (events to add)</option>
-              <option value="timeline:timeline">Timeline (upcoming / past)</option>
+              <option value="timeline:timeline">Agenda (upcoming / past)</option>
             </optgroup>
           )}
           <optgroup label="Sort by field">
-            {FIELD_PRESETS.map((f) => (
+            {FIELD_PRESETS.filter(
+              (f) => !TASK_ONLY_FIELDS.has(f.field) || typeKey === "task"
+            ).map((f) => (
               <option key={f.field} value={`field:${f.field}`}>
                 {f.label}
               </option>

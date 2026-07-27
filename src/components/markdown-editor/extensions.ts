@@ -41,6 +41,12 @@ import { createMentionNodeView } from "./mention-node-view";
 export const TextColor = Mark.create({
   name: "textColor",
 
+  // Render OUTSIDE the underline/strike marks (StarterKit default priority 100)
+  // so those decoration-bearing elements sit inside the colored span and inherit
+  // its `color` as currentColor — otherwise the underline paints in the default
+  // text color, not the text's own color. Below Link (1000) so links still wrap.
+  priority: 120,
+
   addAttributes() {
     return {
       // The palette name (e.g. "red"); the hex is derived so the single
@@ -78,6 +84,41 @@ export const TextColor = Mark.create({
     if (!isBlockNoteColor(color)) return content;
     const tag = textColorTag(color);
     return `${tag.open}${content}${tag.close}`;
+  },
+
+  // Reclaim <span style="color:…">…</span> at the INLINE level, before marked's
+  // generic inline-HTML handling can claim it. That default path (see
+  // @tiptap/markdown parseInlineTokens) merges the opening tag with the RAW text
+  // of every following token up to </span> and re-parses the blob as literal
+  // HTML — which flattens any **bold**/*italic*/~~strike~~ inside the span to
+  // literal text (the "formatting drops inside colored text on a source⇄rich
+  // flip" bug). Instead we capture the inner markdown and re-tokenize it, then
+  // apply the color mark over the parsed result, so nested formatting survives
+  // the round-trip. Same reclaim-before-Link shape as the mention/passage nodes.
+  // parseHTML above still covers the HTML paste/clipboard path.
+  markdownTokenizer: {
+    name: "textColor",
+    level: "inline",
+    start: (src: string) => {
+      const i = src.indexOf("<span");
+      return i < 0 ? src.length : i;
+    },
+    tokenize: (src: string) => {
+      const m = /^<span\b([^>]*)>([\s\S]*?)<\/span>/i.exec(src);
+      if (!m) return undefined;
+      const styleM = /style\s*=\s*"([^"]*)"/i.exec(m[1]);
+      const color = styleM ? textColorName(styleM[1]) : null;
+      // Only a recognized palette color is ours; anything else (e.g. a mention's
+      // fallback span) falls through to the default handling untouched.
+      if (!color) return undefined;
+      return { type: "textColor", raw: m[0], color, inner: m[2] };
+    },
+  },
+
+  parseMarkdown(token, helpers) {
+    // tokenizeInline is always present at runtime; the type marks it optional.
+    const inner = helpers.parseInline(helpers.tokenizeInline?.(token.inner) ?? []);
+    return helpers.applyMark("textColor", inner, { color: token.color });
   },
 });
 
@@ -127,6 +168,40 @@ export const Highlight = Mark.create({
     if (!isBlockNoteColor(color)) return `<mark>${content}</mark>`;
     const tag = highlightTag(color);
     return `${tag.open}${content}${tag.close}`;
+  },
+
+  // Reclaim <mark …>…</mark> at the inline level, same reason as TextColor above:
+  // keep the default inline-HTML merge from flattening formatting inside the mark.
+  // A <mark> with no recognized color is still ours (renderMarkdown emits a bare
+  // <mark>), so we claim it too and parse with a null color.
+  markdownTokenizer: {
+    name: "highlight",
+    level: "inline",
+    start: (src: string) => {
+      const i = src.indexOf("<mark");
+      return i < 0 ? src.length : i;
+    },
+    tokenize: (src: string) => {
+      const m = /^<mark\b([^>]*)>([\s\S]*?)<\/mark>/i.exec(src);
+      if (!m) return undefined;
+      const clsM = /class\s*=\s*"([^"]*)"/i.exec(m[1]);
+      const styleM = /style\s*=\s*"([^"]*)"/i.exec(m[1]);
+      const color = highlightColorName(
+        clsM ? clsM[1] : null,
+        styleM ? styleM[1] : null
+      );
+      return { type: "highlight", raw: m[0], color, inner: m[2] };
+    },
+  },
+
+  parseMarkdown(token, helpers) {
+    // tokenizeInline is always present at runtime; the type marks it optional.
+    const inner = helpers.parseInline(helpers.tokenizeInline?.(token.inner) ?? []);
+    return helpers.applyMark(
+      "highlight",
+      inner,
+      token.color ? { color: token.color } : undefined
+    );
   },
 });
 

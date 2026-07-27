@@ -273,6 +273,16 @@ export const items = pgTable(
     scheduledDate: timestamp("scheduled_date", { withTimezone: true }),
     urgency: integer("urgency"),
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
+    // The end of a timed item, pairing with meeting_at as its start (the range
+    // rule, ADR-timeline): a real timezone-aware instant so an event can span
+    // hours or days. null = a single-anchor item (renders as a point/chip, not
+    // a bar). Custom date properties carry their own end at properties[key__end]
+    // (a UTC-midnight ISO scalar, ADR-008); this column is the built-in-field
+    // analog for events. No dedicated index — like meeting_at it is read on
+    // already-fetched rows, not window-queried (schema rule; add if that changes).
+    // ponytail: promote a task scheduled→due span here only if tasks ever need a
+    // second real instant; today a task range is its two existing day columns.
+    endAt: timestamp("end_at", { withTimezone: true }),
     // The date a NOTE was actually taken (ADR-110), distinct from created_at
     // (the row's birth) and updated_at (last edit). Defaults to the creation
     // day for notes and is user-editable in the canvas. A real column, not a
@@ -839,6 +849,48 @@ export const templates = pgTable(
       .on(t.ownerId, t.type)
       .where(sql`${t.matchConfig} is not null`),
   ]
+);
+
+// Live editing context (ADR-162): the single "what am I looking at right now"
+// row per owner, so Claude (over MCP, via get_active_context) can resolve "this
+// note" / "the draft" / "this sentence" to the item the owner currently has open
+// and their current text selection — the Notion-style live co-editing loop.
+// Deliberately EPHEMERAL and NOT user content (rule 2): it's transient UI state,
+// like a cursor position, so it stays out of `items` and doesn't get exported,
+// searched, or revisioned. One upserted row per owner (owner_id unique):
+// devices clobbering each other is fine and intended (Brandon, 2026-07-16) — the
+// context is "in the moment," last-writer-wins. selection_text is null when
+// nothing is highlighted; the two *_at stamps let the reader judge staleness
+// (an abandoned tab shouldn't masquerade as the live note) and tell a fresh
+// selection from a stale one. Cascade on the item FK so a purged item can't
+// leave a dangling active-context pointer. Gated by settings.liveContextEnabled;
+// when off, nothing writes here.
+export const activeContext = pgTable(
+  "active_context",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    // The item the owner currently has open. Cascade so a purge clears the
+    // pointer; nullable so the row can say "no item open" without being deleted.
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "cascade" }),
+    // Denormalized title, so the reader can name the note without a second read
+    // (and so a just-deleted item still reads sensibly). Refreshed on each report.
+    title: text("title"),
+    // The owner's current text selection within the open item, or null when
+    // nothing is highlighted — the "highlight-aware" sub-context. Bounded by the
+    // API writer so a huge selection can't bloat the row.
+    selectionText: text("selection_text"),
+    // When the selection was last set/cleared, distinct from updated_at: lets the
+    // reader treat a selection older than the focus as "no live selection".
+    selectionAt: timestamp("selection_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("active_context_owner_uq").on(t.ownerId)]
 );
 
 // No silent failures: failed crons/webhooks land here and surface through

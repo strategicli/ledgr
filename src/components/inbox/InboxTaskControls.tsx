@@ -1,0 +1,145 @@
+// Fast per-task processing controls for the Inbox (Slice 1). Rendered on its own
+// line under a task row's title so Brandon can schedule, prioritize, assign a
+// project, and add people without opening the canvas — the common triage moves.
+// Everything is optimistic → router.refresh(); it reuses the same endpoints the
+// canvas and RowMenu use (PATCH /api/items/:id for date+priority, the relations
+// route for project/people). Non-task rows never render this (see the Inbox page).
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import RelatePicker from "@/components/inbox/RelatePicker";
+import { addDaysYmd } from "@/lib/recurrence";
+import { priorityStyle, PRIORITIES, type Priority } from "@/lib/priority";
+
+// --- inline SVG icons (matching AddTaskCard's set) ---
+function I({ d, extra }: { d: string; extra?: React.ReactNode }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d={d} />
+      {extra}
+    </svg>
+  );
+}
+const IconCalendar = <I d="M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" extra={<><path d="M4 9h16" /><path d="M8 3v3M16 3v3" /></>} />;
+const IconFlag = <I d="M5 21V4" extra={<path d="M5 4h12l-2 4 2 4H5" />} />;
+const IconHash = <I d="M4 9h16M4 15h15M10 3L8 21M16 3l-2 18" />;
+const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />;
+
+function ymdToIso(ymd: string): string {
+  return `${ymd}T00:00:00.000Z`;
+}
+
+// A Date → app-local "Mon D" label, reading the stored UTC-midnight value.
+function scheduleLabel(iso: Date | null, today: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const ymd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  if (ymd === today) return "Today";
+  if (ymd === addDaysYmd(today, 1)) return "Tomorrow";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+export default function InboxTaskControls({
+  id,
+  today,
+  scheduledDate,
+  urgency,
+}: {
+  id: string;
+  today: string;
+  scheduledDate: Date | null;
+  urgency: Priority | null;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
+  const dateWrapRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!dateOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!dateWrapRef.current?.contains(e.target as Node)) setDateOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [dateOpen]);
+
+  async function patch(body: Record<string, unknown>) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setDateOpen(false);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const schedule = (ymd: string | null) =>
+    void patch({ scheduledDate: ymd ? ymdToIso(ymd) : null });
+
+  const dateLabel = scheduleLabel(scheduledDate, today);
+  const pStyle = urgency ? priorityStyle(urgency) : null;
+  const chip =
+    "inline-flex items-center gap-1 rounded-card border px-2 py-0.5 text-xs";
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {/* Schedule */}
+      <span ref={dateWrapRef} className="relative">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setDateOpen((v) => !v)}
+          className={`${chip} ${dateLabel ? "border-line-strong text-[var(--accent)]" : "border-line text-ink-muted hover:border-line-strong hover:text-ink"} disabled:opacity-50`}
+        >
+          {IconCalendar} {dateLabel ?? "Schedule"}
+        </button>
+        {dateOpen && (
+          <div className="absolute left-0 top-full z-20 mt-1 flex w-40 flex-col rounded-card border border-line-strong bg-surface-3 p-1 shadow-xl shadow-black/50">
+            <button type="button" onClick={() => schedule(today)} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Today</button>
+            <button type="button" onClick={() => schedule(addDaysYmd(today, 1))} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Tomorrow</button>
+            <button type="button" onClick={() => schedule(addDaysYmd(today, 7))} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Next week</button>
+            <label className="flex items-center gap-1 px-2 py-1 text-xs text-ink-subtle">
+              Pick
+              <input
+                type="date"
+                className="rounded border border-line bg-surface-1 px-1 py-0.5 text-xs text-ink [color-scheme:dark]"
+                onChange={(e) => e.target.value && schedule(e.target.value)}
+              />
+            </label>
+            {dateLabel && (
+              <button type="button" onClick={() => schedule(null)} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Clear date</button>
+            )}
+          </div>
+        )}
+      </span>
+
+      {/* Priority */}
+      <span className="relative inline-flex items-center">
+        <select
+          value={urgency ?? ""}
+          disabled={busy}
+          aria-label="Priority"
+          onChange={(e) => void patch({ urgency: e.target.value ? Number(e.target.value) : null })}
+          className={`inline-flex appearance-none items-center gap-1 rounded-card border py-0.5 pl-2 pr-6 text-xs ${pStyle ? `${pStyle.text} ${pStyle.border}` : "border-line text-ink-muted hover:border-line-strong hover:text-ink"} disabled:opacity-50`}
+        >
+          <option value="">Priority</option>
+          {PRIORITIES.map((u) => <option key={u} value={u}>P{u}</option>)}
+        </select>
+        <span className={`pointer-events-none absolute right-1.5 ${pStyle ? pStyle.text : "text-ink-subtle"}`}>{IconFlag}</span>
+      </span>
+
+      {/* Project + People */}
+      <RelatePicker itemId={id} type="project" role="project" label="Project" icon={IconHash} />
+      <RelatePicker itemId={id} type="person" label="People" icon={IconUser} />
+    </div>
+  );
+}

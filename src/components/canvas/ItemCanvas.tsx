@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ItemError, getItem } from "@/lib/items";
+import { bodyMarkdown } from "@/lib/body";
 import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
 import { canvasComponentFor } from "@/lib/module-wiring";
@@ -19,6 +20,7 @@ import { getType } from "@/lib/types";
 import { getSettings } from "@/lib/settings";
 import { tocForType } from "@/lib/toc";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
+import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
 import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import PageTrashButton from "@/components/canvas/PageTrashButton";
@@ -28,6 +30,11 @@ import TypeCue from "@/components/canvas/TypeCue";
 // Compact date for the chrome timestamps ("Jan 3, 2021").
 const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const fmtChromeDate = (d: Date) => CHROME_DATE.format(d);
+
+// Rough word count for the chrome indicator: count word-like runs so bare
+// markdown punctuation (#, -, *, link brackets) doesn't inflate the total.
+const wordCountOf = (md: string) =>
+  (md.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
 
 export default async function ItemCanvas({
   id,
@@ -83,11 +90,16 @@ export default async function ItemCanvas({
     canvasIdForType(item.type, owner.id, typeDef?.capability)
   );
 
-  // Floating table of contents (ADR-114): a per-type, owner-scoped reading
-  // preference resolved here so the outline mounts once, universally, over
-  // whatever canvas this type uses. The component self-gates on heading count.
+  // Table of contents (ADR-114): a per-type, owner-scoped reading preference
+  // resolved here so the outline mounts once, universally, over whatever canvas
+  // this type uses. The component self-gates on heading count, and picks its
+  // own presentation from the measured container (ADR-167) — no variant needed.
+  // Whether it opens PINNED is per item, not per type (settings.tocPinnedItems).
   const settings = await getSettings(owner.id);
   const toc = tocForType(settings, item.type);
+
+  // Word count for the chrome (top-right on desktop, in the ⋯ menu everywhere).
+  const wordCount = wordCountOf(bodyMarkdown(item.body));
 
   return (
     <>
@@ -99,6 +111,18 @@ export default async function ItemCanvas({
           center modal and mobile sheet are unaffected). ADR: Brandon 2026-06-17;
           extended to the modal in the side-panel refresh. */}
       <div data-toc-scope className="canvas-wide">
+        {/* The outline reads this scope's body editor (.ledgr-prose). It mounts
+            FIRST on purpose: it's a `sticky` layer, and a sticky box only pins
+            while its containing block is in view, so placed after the canvas it
+            would sit stuck at the bottom instead of tracking the scroll. Renders
+            nothing for an item with <2 headings (ADR-114/167). */}
+        {toc.enabled && (
+          <FloatingToc
+            itemId={item.id}
+            levels={toc.levels}
+            pinned={settings.tocPinnedItems.includes(item.id)}
+          />
+        )}
         {item.isTemplate &&
           (template ? (
             <TemplateBanner
@@ -152,6 +176,8 @@ export default async function ItemCanvas({
                 <span>Created {fmtChromeDate(item.createdAt)}</span>
                 <span aria-hidden>·</span>
                 <span>Updated {fmtChromeDate(item.updatedAt)}</span>
+                <span aria-hidden>·</span>
+                <span>{wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}</span>
               </span>
               {variant === "page" && !item.isTemplate && (
                 <ItemActionsMenu
@@ -162,6 +188,9 @@ export default async function ItemCanvas({
                     (item.properties as Record<string, unknown> | null)?.locked
                   )}
                   favorited={favorited}
+                  createdLabel={fmtChromeDate(item.createdAt)}
+                  updatedLabel={fmtChromeDate(item.updatedAt)}
+                  wordCount={wordCount}
                 />
               )}
             </span>
@@ -172,19 +201,16 @@ export default async function ItemCanvas({
             identity is constant across renders, so React won't remount it. */}
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
-        {/* The outline reads this scope's body editor (.ledgr-prose) and floats
-            over the canvas; it renders nothing for an item with <2 headings. */}
-        {toc.enabled && (
-          <FloatingToc
-            variant={variant}
-            levels={toc.levels}
-            navPosition={settings.navPosition}
-          />
-        )}
       </div>
       {/* One always-visible autosave indicator for the whole canvas; also owns
           the cross-device conflict banner + refresh-on-focus check (ADR-134). */}
       <SaveStatusIndicator itemId={item.id} loadedAt={item.updatedAt.toISOString()} />
+      {/* Live editing context (ADR-162): report the open item + text selection so
+          Claude can resolve "this note"/"this sentence" over MCP. Opt-in, and
+          never for a template prototype (that's authoring, not the live note). */}
+      {settings.liveContextEnabled && !item.isTemplate && (
+        <ActiveContextTracker itemId={item.id} title={item.title} />
+      )}
     </>
   );
 }

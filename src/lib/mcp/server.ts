@@ -89,11 +89,33 @@ const MEMORY_INSTRUCTIONS = [
   "when to remember.",
 ].join("\n");
 
+// Appended to INSTRUCTIONS only when the owner has Live editing context on
+// (ADR-162). Like the memory addendum, the connect-time instructions are the one
+// place every client reliably surfaces to the model, so this is what actually
+// gets the co-editing loop used. Kept short; points at the tools.
+const LIVE_CONTEXT_INSTRUCTIONS = [
+  "",
+  "LIVE EDITING CONTEXT is on. The owner may refer to \"this note\", \"this page\",",
+  "\"the draft\", \"this sentence\", \"this\", or \"it\" to mean whatever they",
+  "currently have open in Ledgr. Call get_active_context to resolve that — it",
+  "returns the open note's freshly-read body and any text they've highlighted.",
+  "Re-read it whenever they reference the note again or ask what you think of it;",
+  "they edit directly with keyboard and mouse, so don't trust a body you saw",
+  "earlier. To change the note, use edit_item_body (a surgical find-and-replace on",
+  "one spot) rather than update_item (which resends the whole body), so you never",
+  "clobber an edit they made elsewhere. Confirm before writing unless they've told",
+  "you to go ahead.",
+].join("\n");
+
 // The instructions the client sees at initialize, owner-aware: the stable base,
-// plus the memory addendum when the owner has AI Memory enabled.
+// plus the memory addendum when AI Memory is on and the live-context addendum
+// when Live editing context is on.
 export async function buildInstructions(ownerId: string): Promise<string> {
-  const { aiMemoryEnabled } = await getSettings(ownerId);
-  return aiMemoryEnabled ? `${INSTRUCTIONS}\n${MEMORY_INSTRUCTIONS}` : INSTRUCTIONS;
+  const { aiMemoryEnabled, liveContextEnabled } = await getSettings(ownerId);
+  let out = INSTRUCTIONS;
+  if (aiMemoryEnabled) out += `\n${MEMORY_INSTRUCTIONS}`;
+  if (liveContextEnabled) out += `\n${LIVE_CONTEXT_INSTRUCTIONS}`;
+  return out;
 }
 
 export async function handleMcpMessage(

@@ -383,6 +383,18 @@ body {
   max-width: 64rem;
 }
 
+/* Pinned table of contents (ADR-167). FloatingToc sets --toc-pin-w on its own
+   [data-toc-scope] while the outline is pinned open; this turns that one
+   variable into the content's right inset, so the sidebar's width and the room
+   the document makes for it are driven by the same number and can never drift.
+   Unpinned (the variable absent) the outline floats and costs no layout.
+   Deliberately NOT transitioned: easing the padding would reflow the whole
+   ProseMirror document every frame of the animation, which is expensive on a
+   long note. Pinning is a rare, deliberate click; snapping is the right cost. */
+[data-toc-scope] {
+  padding-right: var(--toc-pin-w, 0px);
+}
+
 /* Mobile kanban (BoardDnd): long-press is repurposed as drag-to-move, so the
    native long-press behaviors on a board card must be suppressed or they hijack
    the gesture — on iOS the link callout / selection magnifier fires a

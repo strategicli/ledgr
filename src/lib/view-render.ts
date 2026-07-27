@@ -59,6 +59,8 @@ function toViewItem(i: Awaited<ReturnType<typeof queryViewItems>>[number]): View
     scheduledDate: i.scheduledDate,
     urgency: i.urgency,
     meetingAt: i.meetingAt,
+    endAt: i.endAt,
+    noteDate: i.noteDate,
     url: i.url,
     properties: i.properties,
     createdAt: i.createdAt,

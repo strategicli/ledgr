@@ -15,17 +15,23 @@ import { items, types } from "@/db/schema";
 import { listColumns } from "@/lib/items";
 import { getSettings } from "@/lib/settings";
 import { ACTIVE_CATEGORIES } from "@/lib/status";
+import {
+  DEFAULT_TIMEZONE,
+  APP_TIMEZONE,
+  ymdInZone,
+  zonedMidnightUtc,
+} from "@/lib/zone";
 
-// The fallback timezone, used before an owner is known and whenever the owner
-// hasn't chosen one: the LEDGR_TIMEZONE env var, else America/New_York. The
-// server runs in UTC (Vercel), so "today" must be computed, never assumed.
-export const DEFAULT_TIMEZONE = process.env.LEDGR_TIMEZONE || "America/New_York";
-
-// Back-compat alias for the fallback. The timezone is now a per-owner setting
-// (settings.timezone); prefer getAppTimezone(ownerId) at any site that has an
-// owner. This constant stays the safe default for pure code and the parameter
-// default of the helpers below, so an un-resolved caller behaves as before.
-export const APP_TIMEZONE = DEFAULT_TIMEZONE;
+// The pure zone conversions now live in @/lib/zone (client-safe, no DB). Re-
+// exported here so today.ts's existing callers keep their import site.
+export {
+  DEFAULT_TIMEZONE,
+  APP_TIMEZONE,
+  ymdInZone,
+  zonedMidnightUtc,
+  minutesInZone,
+  zonedInstant,
+} from "@/lib/zone";
 
 // Process-cached last-resolved owner timezone. Single-user invariant: there is
 // exactly one owner per instance, so this global always holds that one owner's
@@ -66,59 +72,6 @@ export function appTimezoneSync(): string {
 // reflects the owner app-wide without a second settings read.
 export function primeAppTimezone(tz: string): void {
   cachedOwnerTimezone = tz;
-}
-
-type Ymd = { y: number; m: number; d: number };
-
-function partsInZone(instant: Date, tz: string) {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  const p: Record<string, number> = {};
-  for (const { type, value } of fmt.formatToParts(instant)) {
-    if (type !== "literal") p[type] = Number(value);
-  }
-  return p as {
-    year: number;
-    month: number;
-    day: number;
-    hour: number;
-    minute: number;
-    second: number;
-  };
-}
-
-export function ymdInZone(instant: Date, tz: string): Ymd {
-  const p = partsInZone(instant, tz);
-  return { y: p.year, m: p.month, d: p.day };
-}
-
-// The UTC instant of 00:00 on the given calendar date in tz. Guess UTC
-// midnight, then correct by the zone's displayed offset; the second pass
-// converges across DST transitions (no date math library, rule 5).
-export function zonedMidnightUtc({ y, m, d }: Ymd, tz: string): Date {
-  const target = Date.UTC(y, m - 1, d);
-  let ts = target;
-  for (let i = 0; i < 2; i++) {
-    const p = partsInZone(new Date(ts), tz);
-    const shown = Date.UTC(
-      p.year,
-      p.month - 1,
-      p.day,
-      p.hour,
-      p.minute,
-      p.second
-    );
-    ts += target - shown;
-  }
-  return new Date(ts);
 }
 
 export function todayBounds(now = new Date(), tz = APP_TIMEZONE) {

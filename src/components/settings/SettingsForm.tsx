@@ -27,6 +27,7 @@ import {
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import AiMemoryLearnMore from "@/components/settings/AiMemoryLearnMore";
+import NoteEditingPromptActions from "@/components/settings/NoteEditingPromptActions";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   top: "Top",
@@ -453,6 +454,46 @@ export default function SettingsForm({
             </span>
           </span>
         </label>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">
+          Live editing context
+        </h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Let an AI assistant see the note you currently have open (and the text
+          you’ve highlighted) so it can co-edit it live, the way Notion’s AI
+          sidebar works. Say “use my note-editing prompt,” then things like “help
+          me sharpen this” or “rework this sentence” resolve to the open note.
+          When on, the open item reports what you’re viewing to a single private
+          row and exposes two MCP tools ({" "}
+          <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+            get_active_context
+          </code>{" "}
+          and{" "}
+          <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
+            edit_item_body
+          </code>
+          ) to connected AI clients, and seeds an editable “Note Editing Partner”
+          prompt. Off by default: nothing is tracked and a plain MCP client never
+          sees these tools.
+        </p>
+        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={settings.liveContextEnabled}
+            onChange={(e) => void save({ liveContextEnabled: e.target.checked }, true)}
+            className="ledgr-check mt-0.5"
+          />
+          <span>
+            Track the note I’m viewing for AI editing
+            <span className="block text-xs text-neutral-500">
+              Reports the open item and your selection while a note is open;
+              clears when you close it. Your own single-user data.
+            </span>
+          </span>
+        </label>
+        {settings.liveContextEnabled && <NoteEditingPromptActions />}
       </section>
 
       <section>
