@@ -308,6 +308,28 @@ body {
   }
 }
 
+/* Triage deck (mobile fast-triage): a fresh card surfaces with a small rise +
+   fade so a swipe reads as "that one's gone, here's the next," not "it snapped
+   back." Keyed by item id so each new card remounts and replays it. */
+@keyframes triage-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.triage-card-in {
+  animation: triage-card-in 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .triage-card-in {
+    animation: none;
+  }
+}
+
 /* The markdown editor (Tiptap) and its @-mention chip carry their own styles
    in src/components/markdown-editor/markdown-editor.css, loaded with the lazy
    editor bundle; nothing editor-specific belongs here. */
