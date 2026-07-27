@@ -135,9 +135,10 @@ export default function TocSettingsEditor({
         </span>
       </div>
       <p className="mt-1 text-xs text-neutral-500">
-        A floating outline built from this type&apos;s headings — a hover rail on the
-        desktop reading view, a tap-to-open list on phones. It only appears on items with
-        at least two headings.
+        An outline built from this type&apos;s headings: a hover rail where there&apos;s
+        room, a tap-to-open list where there isn&apos;t. Pin it open as a sidebar from
+        the outline itself, per item. It only appears on items with at least two
+        headings.
       </p>
 
       <div className="mt-3 divide-y divide-neutral-800/70 rounded-lg border border-neutral-800">

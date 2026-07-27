@@ -165,6 +165,10 @@ export const MAX_TOOLS_CHILDREN = 20;
 export const FAVORITES_HREF = "/favorites";
 export const FAVORITES_HARD_CAP = 100;
 
+// Pinned-outline items (ADR-167). Same id-list shape as favorites, a looser cap
+// since pinning is cheap and unremarkable (you pin a note and forget about it).
+export const TOC_PINNED_HARD_CAP = 500;
+
 // --- Desk workspaces (ADR-146) --------------------------------------------
 // Named, saved Desk layouts. Synced (in this jsonb, no migration) so they
 // follow the owner across devices, unlike the live layout + Recent ring which
@@ -260,6 +264,13 @@ export type UserSettings = {
   // Per-type floating-TOC overrides (ADR-114). Keyed by type key; an absent key
   // resolves to DEFAULT_TOC (auto-on). Additive, no migration.
   tocByType: Record<string, TocConfig>;
+  // Item ids whose outline the owner has pinned open as a sidebar (ADR-167).
+  // Per ITEM, not per type: "I pinned the outline on this long note" is a fact
+  // about that note, so it follows the note to every device. Deliberately NOT
+  // items.properties — every write to `items` bumps updated_at ($onUpdate), and
+  // pinning an outline is a reading preference, not an edit to the note. Same
+  // shape and parser as `favorites`. Unordered (membership is all that matters).
+  tocPinnedItems: string[];
   // Related-panel lens choice: which of a related type's lenses structures that
   // type's group on an item's detail page. Keyed "hostType:relatedType" (so the
   // Tasks group under a Meeting can differ from Tasks under a Person), value is
@@ -379,6 +390,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   favorites: [],
   listTabs: {},
   tocByType: {},
+  tocPinnedItems: [],
   relatedLensChoices: {},
   notificationPrefs: {},
   timezone: null,
@@ -445,10 +457,10 @@ function parseNavSlots(raw: unknown, max: number, fallback: NavSlotConfig[]): Na
     .slice(0, max);
 }
 
-// Parse the stored favorites list: keep only well-formed uuid strings, dedupe
-// (first occurrence wins, preserving order), and cap the count. Anything that
-// isn't an array yields the empty list.
-function parseFavorites(raw: unknown): string[] {
+// Parse a stored list of item ids (favorites; pinned-outline items): keep only
+// well-formed uuid strings, dedupe (first occurrence wins, preserving order),
+// and cap the count. Anything that isn't an array yields the empty list.
+function parseItemIdList(raw: unknown, cap: number): string[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -456,7 +468,7 @@ function parseFavorites(raw: unknown): string[] {
     if (typeof v !== "string" || !SETTINGS_UUID_RE.test(v) || seen.has(v)) continue;
     seen.add(v);
     out.push(v);
-    if (out.length >= FAVORITES_HARD_CAP) break;
+    if (out.length >= cap) break;
   }
   return out;
 }
@@ -565,9 +577,13 @@ export function parseSettings(raw: unknown): UserSettings {
   const sectionStyle = (SECTION_STYLES as readonly string[]).includes(r.sectionStyle as string)
     ? (r.sectionStyle as SectionStyle)
     : DEFAULT_SETTINGS.sectionStyle;
-  const favorites = parseFavorites(r.favorites);
+  const favorites = parseItemIdList(r.favorites, FAVORITES_HARD_CAP);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
+  // ponytail: the whole list is rewritten on every pin toggle. Fine for the
+  // dozens of long notes worth pinning; if this ever reaches thousands, move it
+  // to its own table (or an items column) rather than growing the settings blob.
+  const tocPinnedItems = parseItemIdList(r.tocPinnedItems, TOC_PINNED_HARD_CAP);
   const relatedLensChoices = parseRelatedLensChoices(r.relatedLensChoices);
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
   const timezone =
@@ -611,6 +627,7 @@ export function parseSettings(raw: unknown): UserSettings {
     favorites,
     listTabs,
     tocByType,
+    tocPinnedItems,
     relatedLensChoices,
     notificationPrefs,
     timezone,

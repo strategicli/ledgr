@@ -46,6 +46,7 @@ import {
 } from "@/lib/desk/persist";
 import { DESK_LAYOUT_CHANGED_EVENT } from "@/lib/desk/send";
 import type { DeskWorkspace } from "@/lib/settings";
+import type { TocConfig } from "@/lib/toc";
 import { DeskProvider, type DeskActions, type MoveArmed } from "./DeskContext";
 import DeskShell from "./DeskShell";
 import DeskWorkspacesMenu from "./DeskWorkspacesMenu";
@@ -74,8 +75,15 @@ function newWorkspaceId(): string {
 
 export default function DeskClient({
   initialWorkspaces,
+  tocByType,
+  tocPinnedItems,
 }: {
   initialWorkspaces: DeskWorkspace[];
+  // Outline config from owner settings (ADR-167), passed straight through to
+  // context: the Desk is a client shell, so a panel can't resolve these itself
+  // the way the server-rendered ItemCanvas does.
+  tocByType: Record<string, TocConfig>;
+  tocPinnedItems: string[];
 }) {
   const isDesktop = useIsDesktop();
   const mounted = useMounted();
@@ -267,7 +275,14 @@ export default function DeskClient({
 
   return (
     <DeskProvider
-      value={{ layout, focusedLeaf: layout.focusedLeaf, moveArmed, actions }}
+      value={{
+        layout,
+        focusedLeaf: layout.focusedLeaf,
+        moveArmed,
+        actions,
+        tocByType,
+        tocPinnedItems,
+      }}
     >
       <div className="flex h-[100dvh] flex-col bg-surface-0">
         <DeskTopBar right={workspacesMenu} />
