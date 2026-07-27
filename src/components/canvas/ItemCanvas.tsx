@@ -90,9 +90,11 @@ export default async function ItemCanvas({
     canvasIdForType(item.type, owner.id, typeDef?.capability)
   );
 
-  // Floating table of contents (ADR-114): a per-type, owner-scoped reading
-  // preference resolved here so the outline mounts once, universally, over
-  // whatever canvas this type uses. The component self-gates on heading count.
+  // Table of contents (ADR-114): a per-type, owner-scoped reading preference
+  // resolved here so the outline mounts once, universally, over whatever canvas
+  // this type uses. The component self-gates on heading count, and picks its
+  // own presentation from the measured container (ADR-167) — no variant needed.
+  // Whether it opens PINNED is per item, not per type (settings.tocPinnedItems).
   const settings = await getSettings(owner.id);
   const toc = tocForType(settings, item.type);
 
@@ -109,6 +111,18 @@ export default async function ItemCanvas({
           center modal and mobile sheet are unaffected). ADR: Brandon 2026-06-17;
           extended to the modal in the side-panel refresh. */}
       <div data-toc-scope className="canvas-wide">
+        {/* The outline reads this scope's body editor (.ledgr-prose). It mounts
+            FIRST on purpose: it's a `sticky` layer, and a sticky box only pins
+            while its containing block is in view, so placed after the canvas it
+            would sit stuck at the bottom instead of tracking the scroll. Renders
+            nothing for an item with <2 headings (ADR-114/167). */}
+        {toc.enabled && (
+          <FloatingToc
+            itemId={item.id}
+            levels={toc.levels}
+            pinned={settings.tocPinnedItems.includes(item.id)}
+          />
+        )}
         {item.isTemplate &&
           (template ? (
             <TemplateBanner
@@ -187,15 +201,6 @@ export default async function ItemCanvas({
             identity is constant across renders, so React won't remount it. */}
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
-        {/* The outline reads this scope's body editor (.ledgr-prose) and floats
-            over the canvas; it renders nothing for an item with <2 headings. */}
-        {toc.enabled && (
-          <FloatingToc
-            variant={variant}
-            levels={toc.levels}
-            navPosition={settings.navPosition}
-          />
-        )}
       </div>
       {/* One always-visible autosave indicator for the whole canvas; also owns
           the cross-device conflict banner + refresh-on-focus check (ADR-134). */}

@@ -12,7 +12,16 @@ import RuleBuilder, { type RuleSubjectOption } from "@/components/views/RuleBuil
 import type { StatusMode } from "@/lib/status";
 import type { PropertyDef } from "@/lib/types";
 import type { WhereGroup } from "@/lib/view-where";
-import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
+import { CALENDAR_MODES, TIMELINE_ZOOMS } from "@/lib/views";
+import type { ColumnField, ViewColumn, ViewDefinition, ViewDisplay, CalendarMode, TimelineZoom } from "@/lib/views";
+
+// Friendly labels for the calendar-display controls (ADR-166). "timegrid"
+// (Multi-day) is retired from new views but kept selectable when a stored view
+// already uses it, so editing round-trips it rather than silently flipping it.
+const MODE_LABELS: Record<CalendarMode, string> = { month: "Month", timegrid: "Multi-day (legacy)", timeline: "Timeline" };
+const ZOOM_LABELS: Record<TimelineZoom, string> = {
+  hour: "Hour", day: "Day", week: "Week", month: "Month", quarter: "Quarter", year: "Year", halfDecade: "5-Year",
+};
 
 const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 // Status filter is by CATEGORY now (S2): statuses are user-defined per type, so
@@ -293,6 +302,10 @@ export default function ViewBuilder({
   const [dateProperty, setDateProperty] = useState<string>(
     pick(df0, initial?.dateProperty, df0[0])
   );
+  // Calendar display defaults (ADR-166): the mode a calendar view opens in and,
+  // for the Timeline, its initial zoom. Stored in views.display; null → defaults.
+  const [calMode, setCalMode] = useState<CalendarMode>(initial?.display?.mode ?? "month");
+  const [calZoom, setCalZoom] = useState<TimelineZoom>(initial?.display?.zoom ?? "week");
   // The AND/OR rules group (ADR-164); null = no rules. Cleared when the type
   // changes, since its conditions reference that type's properties.
   const [where, setWhere] = useState<WhereGroup | null>(initial?.filter.where ?? null);
@@ -423,6 +436,12 @@ export default function ViewBuilder({
           : null,
       columns: showsColumns(layout) && columns.length ? columns : null,
       dateProperty: needsDate ? dateProperty : null,
+      // Preserve any other display fields the view already had (dayCount, etc.)
+      // and overlay the calendar mode + timeline zoom this builder edits.
+      display:
+        layout === "calendar"
+          ? ({ ...(initial?.display ?? {}), mode: calMode, zoom: calZoom } as ViewDisplay)
+          : initial?.display ?? null,
     };
     try {
       const res = await fetch(
@@ -736,6 +755,40 @@ export default function ViewBuilder({
           >
             {dateFields.map((d) => (
               <Opt key={d} value={d} label={DATE_LABELS[d]} />
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {layout === "calendar" && (
+        <Field
+          label="Default view"
+          hint="How this calendar opens. Month is the grid; Timeline is a zoomable horizontal axis where any writable date can be dragged."
+        >
+          <select
+            value={calMode}
+            onChange={(e) => setCalMode(e.target.value as CalendarMode)}
+            className={selectClass}
+          >
+            {CALENDAR_MODES.filter((m) => m !== "timegrid" || calMode === "timegrid").map((m) => (
+              <Opt key={m} value={m} label={MODE_LABELS[m]} />
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {layout === "calendar" && calMode === "timeline" && (
+        <Field
+          label="Timeline zoom"
+          hint="The span the timeline shows at first. You can still zoom in and out inside the view."
+        >
+          <select
+            value={calZoom}
+            onChange={(e) => setCalZoom(e.target.value as TimelineZoom)}
+            className={selectClass}
+          >
+            {TIMELINE_ZOOMS.map((z) => (
+              <Opt key={z} value={z} label={ZOOM_LABELS[z]} />
             ))}
           </select>
         </Field>

@@ -10,7 +10,10 @@
 // (ADR-146) could be relaxed.
 "use client";
 
+import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
+import { tocForType } from "@/lib/toc";
+import { useDesk } from "./DeskContext";
 import ItemDetails from "./ItemDetails";
 import { publishLive, seedForEditor, useDoc, useTabsEnabled } from "./desk-doc-store";
 
@@ -33,6 +36,10 @@ export default function DeskItemPanel({
   // Canvas-tabs enablement (ADR-147 D4): drives whether the body edits as tabs.
   // Hook is called unconditionally, before the early returns below.
   const tabsEnabled = useTabsEnabled(doc?.type);
+  // Table of contents (ADR-167). Same resolution ItemCanvas does server-side,
+  // from the settings the Desk shell carried into context.
+  const { tocByType, tocPinnedItems } = useDesk();
+  const toc = tocForType({ tocByType }, doc?.type ?? "");
 
   if (!doc || doc.status === "loading") return <PanelMessage>Loading…</PanelMessage>;
   if (doc.status === "error")
@@ -45,7 +52,25 @@ export default function DeskItemPanel({
   if (!seed) return <PanelMessage>Loading…</PanelMessage>;
 
   return (
-    <div className="h-full overflow-auto">
+    // This div is both the panel's scroll container and the outline's scope, so
+    // the sticky ToC layer pins against THIS panel — which is the whole reason
+    // the outline can exist in a multi-panel Desk at all (ADR-167). --nav-pt is
+    // zeroed for the same reason Modal.tsx zeroes it: the panel is its own
+    // scroll context with no page header above it to clear.
+    <div
+      data-toc-scope
+      className="h-full overflow-auto"
+      style={{ "--nav-pt": "0px" } as React.CSSProperties}
+    >
+      {toc.enabled && (
+        // First child: a sticky box only pins while its containing block is in
+        // view, so mounting it after the editor would strand it at the bottom.
+        <FloatingToc
+          itemId={itemId}
+          levels={toc.levels}
+          pinned={tocPinnedItems.includes(itemId)}
+        />
+      )}
       <ItemEditor
         // Keyed by item, NOT by focus: the editor stays mounted as the pen moves
         // between panels, so the source↔follower flip is just a prop change — no

@@ -58,7 +58,7 @@ function describe(lens: Lens, views: ViewDefinition[] | null): string {
 function kindBadge(lens: Lens): { label: string; accent: boolean } {
   if (lens.kind === "view") return { label: "Widget", accent: true };
   if (lens.kind === "calendar") return { label: "Calendar", accent: true };
-  if (lens.kind === "timeline") return { label: "Timeline", accent: true };
+  if (lens.kind === "timeline") return { label: "Agenda", accent: true };
   return { label: "Sort", accent: false };
 }
 
@@ -139,7 +139,7 @@ export default function ListTabsEditor({
     } else if (kind === "calendar") {
       lens = { id: genId(), kind: "calendar", label: "Calendar" };
     } else if (kind === "timeline") {
-      lens = { id: genId(), kind: "timeline", label: "Timeline" };
+      lens = { id: genId(), kind: "timeline", label: "Agenda" };
     }
     if (lens) {
       setLenses((ls) => [...ls, lens as Lens]);
@@ -277,7 +277,7 @@ export default function ListTabsEditor({
           {typeKey === "event" && (
             <optgroup label="Event views">
               <option value="calendar:calendar">Calendar (events to add)</option>
-              <option value="timeline:timeline">Timeline (upcoming / past)</option>
+              <option value="timeline:timeline">Agenda (upcoming / past)</option>
             </optgroup>
           )}
           <optgroup label="Sort by field">

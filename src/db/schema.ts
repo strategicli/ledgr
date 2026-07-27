@@ -273,6 +273,16 @@ export const items = pgTable(
     scheduledDate: timestamp("scheduled_date", { withTimezone: true }),
     urgency: integer("urgency"),
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
+    // The end of a timed item, pairing with meeting_at as its start (the range
+    // rule, ADR-timeline): a real timezone-aware instant so an event can span
+    // hours or days. null = a single-anchor item (renders as a point/chip, not
+    // a bar). Custom date properties carry their own end at properties[key__end]
+    // (a UTC-midnight ISO scalar, ADR-008); this column is the built-in-field
+    // analog for events. No dedicated index — like meeting_at it is read on
+    // already-fetched rows, not window-queried (schema rule; add if that changes).
+    // ponytail: promote a task scheduled→due span here only if tasks ever need a
+    // second real instant; today a task range is its two existing day columns.
+    endAt: timestamp("end_at", { withTimezone: true }),
     // The date a NOTE was actually taken (ADR-110), distinct from created_at
     // (the row's birth) and updated_at (last edit). Defaults to the creation
     // day for notes and is user-editable in the canvas. A real column, not a

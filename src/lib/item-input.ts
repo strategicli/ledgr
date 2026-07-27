@@ -100,6 +100,9 @@ export function parseItemPayload(
   if (input.meetingAt !== undefined) {
     out.meetingAt = asNullableDate(input.meetingAt, "meetingAt");
   }
+  if (input.endAt !== undefined) {
+    out.endAt = asNullableDate(input.endAt, "endAt");
+  }
   if (input.noteDate !== undefined) {
     out.noteDate = asNullableDate(input.noteDate, "noteDate");
   }
