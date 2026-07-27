@@ -18,5 +18,16 @@ export default async function DeskPage() {
   // Named workspaces are synced (settings jsonb); the live layout + Recent ring
   // are per-device and load client-side from localStorage.
   const settings = await getSettings(owner.id);
-  return <DeskClient initialWorkspaces={settings.deskWorkspaces} />;
+  return (
+    <DeskClient
+      initialWorkspaces={settings.deskWorkspaces}
+      // Outline config (ADR-167): per-type levels/enablement and the per-item
+      // pin list, resolved here because a Desk panel is a client component.
+      tocByType={settings.tocByType}
+      tocPinnedItems={settings.tocPinnedItems}
+      // Live editing context (ADR-167a): the Desk reports the focused panel's
+      // item so Claude's get_active_context works here as it does on a canvas.
+      liveContextEnabled={settings.liveContextEnabled}
+    />
+  );
 }

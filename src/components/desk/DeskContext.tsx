@@ -8,6 +8,7 @@
 
 import { createContext, useContext } from "react";
 import type { DeskLayout, DropTarget } from "@/lib/desk/layout";
+import type { TocConfig } from "@/lib/toc";
 
 export type DeskActions = {
   focus: (leafId: string) => void;
@@ -46,6 +47,12 @@ export type DeskContextValue = {
   // Set while a tab is armed for a zone move (the DeskMoveOverlay is showing).
   moveArmed: MoveArmed | null;
   actions: DeskActions;
+  // Table-of-contents config, read from owner settings on the server and carried
+  // here so a panel can resolve its own doc's outline (ADR-167). The Desk is a
+  // client shell, so these can't be resolved per-panel the way ItemCanvas does.
+  // `tocByType` feeds tocForType(); `tocPinnedItems` is the per-item pin list.
+  tocByType: Record<string, TocConfig>;
+  tocPinnedItems: string[];
 };
 
 const DeskContext = createContext<DeskContextValue | null>(null);
