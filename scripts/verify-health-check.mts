@@ -26,6 +26,7 @@ const {
   ERROR_WINDOW_DAYS,
 } = await import("../src/lib/health-check");
 const { gatherHealth } = await import("../src/lib/health");
+const { NOTIFICATION_CENTER_ENABLED } = await import("../src/lib/notifications-enabled");
 type HealthReport = import("../src/lib/health").HealthReport;
 type PushSender = import("../src/lib/push/types").PushSender;
 type PushMessage = import("../src/lib/push/types").PushMessage;
@@ -103,9 +104,9 @@ check("a fully-green report yields zero alerts", evaluateHealth(baseReport(), 0,
 
 // --- 5. stalled vs never-ran vs fresh integrations ------------------------
 {
-  // Calendar ran before but its last clean success is 30h old (budget 24h).
+  // Calendar ran before but its last clean success is 40h old (budget 36h).
   const stale = baseReport();
-  stale.checks.lastCalendarSyncAt = iso(30);
+  stale.checks.lastCalendarSyncAt = iso(40);
   stale.checks.lastCalendarRunAt = iso(1); // still attempting, but failing partway
   check("a stalled-but-attempting calendar sync alerts", evaluateHealth(stale, 0, NOW).some((x) => x.code === "calendar"));
 
@@ -125,6 +126,58 @@ check("a fully-green report yields zero alerts", evaluateHealth(baseReport(), 0,
   const expFresh = baseReport();
   expFresh.checks.lastExportAt = iso(40);
   check("export within its 48h budget does not alert", !evaluateHealth(expFresh, 0, NOW).some((x) => x.code === "export"));
+}
+
+// --- 5b. the Monday false-alarm regression (2026-07-28) -------------------
+// Every weekly run from 2026-07-13 to 2026-07-27 pushed calendar+email+agenda
+// warnings at Brandon's phone with nothing actually wrong. Cause: commit
+// e3bc4c1 (2026-07-11) made both Graph syncs weekday-shaped, and the budgets
+// here still encoded the old round-the-clock cadences. This replays the real
+// worst-case Monday gaps the live schedules allow; it fails if anyone retimes a
+// workflow without retiming its budget.
+{
+  // Health check runs Mon ~13:00 UTC. Newest possible calendar success is
+  // Sun 13:00 UTC (the single weekend pull) = 24h back.
+  const mondayCalendar = baseReport();
+  mondayCalendar.checks.lastCalendarSyncAt = iso(24);
+  mondayCalendar.checks.lastCalendarRunAt = iso(24);
+  check(
+    "the calendar's worst legal gap (Sun→Mon, 24h) does not alert",
+    !evaluateHealth(mondayCalendar, 0, NOW).some((x) => x.code === "calendar")
+  );
+
+  // Email runs weekdays only, so the newest possible success on a Monday is
+  // Fri 22:00 UTC = 63h back. This is the one that fired with certainty.
+  const mondayEmail = baseReport();
+  mondayEmail.checks.lastEmailImportAt = iso(63);
+  mondayEmail.checks.lastEmailRunAt = iso(63);
+  check(
+    "the email import's worst legal gap (Fri→Mon, 63h) does not alert",
+    !evaluateHealth(mondayEmail, 0, NOW).some((x) => x.code === "email")
+  );
+
+  // A genuinely dead weekday sync must still be caught — the fix widened the
+  // budgets, it must not have blinded them.
+  const reallyDead = baseReport();
+  reallyDead.checks.lastEmailImportAt = iso(96);
+  reallyDead.checks.lastCalendarSyncAt = iso(96);
+  const deadAlerts = evaluateHealth(reallyDead, 0, NOW);
+  check(
+    "a truly stalled sync (96h) still alerts on both codes",
+    deadAlerts.some((x) => x.code === "email") && deadAlerts.some((x) => x.code === "calendar")
+  );
+
+  // The paused agenda push (ADR-130) froze lastAgendaNotifyAt on 2026-06-29 and
+  // alerted forever after. While the center is paused it must be silent at any
+  // age; when re-enabled, the 48h budget applies again.
+  const pausedAgenda = baseReport();
+  pausedAgenda.checks.lastAgendaNotifyAt = iso(24 * 30);
+  check(
+    NOTIFICATION_CENTER_ENABLED
+      ? "with the notification center live, a stale agenda push alerts"
+      : "a paused agenda push (ADR-130) never alerts, however stale",
+    evaluateHealth(pausedAgenda, 0, NOW).some((x) => x.code === "agenda") === NOTIFICATION_CENTER_ENABLED
+  );
 }
 
 // --- 6. severity ordering + message builder -------------------------------
