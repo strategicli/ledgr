@@ -13,8 +13,11 @@ import { beginSave, endSave } from "@/lib/save-status";
 import type { PropertyDef } from "@/lib/types";
 import InlineLabel from "./InlineLabel";
 
+// max-w-full so a fixed-width control (w-56, w-32) can't push past a narrow
+// container — the task rail scrolls on overflow-y, which makes overflow-x `auto`
+// too, so any few px of horizontal spill shows up as a scrollbar + shifted rail.
 const inputClass =
-  "rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
+  "max-w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

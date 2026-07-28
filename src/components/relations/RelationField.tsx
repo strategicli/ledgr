@@ -170,8 +170,13 @@ export default function RelationField({
     }
   }
 
+  // `relative` anchors the typeahead dropdown to the whole field, not to the
+  // input: the field is what has a known width, so the max-w-full below keeps the
+  // popover inside a narrow rail. (The task rail scrolls on overflow-y, which
+  // makes overflow-x `auto` too, so a popover spilling right showed up as a
+  // horizontal scrollbar that shifted the rail's labels out of view.)
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+    <div className="relative flex min-w-0 flex-wrap items-center gap-1.5">
       {chips.map((chip) => (
         <span
           key={chip.id}
@@ -194,7 +199,7 @@ export default function RelationField({
       ))}
 
       {open ? (
-        <span className="relative">
+        <>
           <input
             autoFocus
             value={q}
@@ -210,10 +215,10 @@ export default function RelationField({
             placeholder={
               targetTypeLabel ? `Search ${targetTypeLabel}…` : "Search items…"
             }
-            className="w-48 rounded border border-neutral-700 bg-transparent px-2 py-0.5 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none disabled:opacity-50"
+            className="w-48 max-w-full rounded border border-neutral-700 bg-transparent px-2 py-0.5 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none disabled:opacity-50"
           />
           {(hits.length > 0 || showCreate) && (
-            <ul className="absolute left-0 top-full z-10 mt-1 w-64 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50">
+            <ul className="absolute left-0 top-full z-10 mt-1 w-64 max-w-full overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50">
               {hits.map((hit, i) => (
                 <li key={hit.id}>
                   <button
@@ -261,7 +266,7 @@ export default function RelationField({
               )}
             </ul>
           )}
-        </span>
+        </>
       ) : (
         !atCapacity && (
           <button

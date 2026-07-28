@@ -354,9 +354,11 @@ export default function BodyEditor({
         // for the pill (sm:hidden — desktop rich merges it into the formatting
         // bar via viewControls). In source/preview there's no formatting bar, so
         // the row shows at every width. Sticky + opaque so it stays reachable and
-        // content scrolls cleanly under it on a long note.
+        // content scrolls cleanly under it on a long note. The sticky offset
+        // matches MarkdownEditor's `stickyTop` (nav height + the full-page item
+        // canvas's own sticky chrome row, --item-chrome-h; 0 elsewhere).
         <div
-          className={`flex items-center border-b border-line bg-surface-1 px-2 py-1.5 sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-30 ${
+          className={`flex items-center border-b border-line bg-surface-1 px-2 py-1.5 sm:sticky sm:top-[calc(var(--nav-pt,0px)_+_var(--item-chrome-h,0px))] sm:z-30 ${
             mode === "rich" ? "sm:hidden" : ""
           }`}
         >

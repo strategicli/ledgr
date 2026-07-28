@@ -80,6 +80,15 @@ function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
+// How far down the sticky layer pins, in px. Read off the layer's own resolved
+// `top` rather than by parsing --nav-pt/--item-chrome-h: those hold authored
+// tokens ("3.5rem"), so getPropertyValue + parseFloat read 3.5px. A positioned
+// element's computed `top` is a used length, so this stays right whatever the
+// class's calc() sums and whichever breakpoint applies.
+function stickyTopOf(layer: HTMLElement | null): number {
+  return layer ? parseFloat(getComputedStyle(layer).top) || 0 : 0;
+}
+
 // A heading's top relative to the scroll viewport (container top, or 0 = window).
 function topWithin(el: HTMLElement, container: HTMLElement | null): number {
   const top = el.getBoundingClientRect().top;
@@ -186,11 +195,10 @@ export default function FloatingToc({
       return;
     }
     scrollElRef.current = getScrollParent(prose);
-    // Jump offset matches where the sticky layer sits: the scope's own --nav-pt
-    // (the page's fixed header height; zeroed by the modal and by a Desk panel,
-    // which are their own scroll containers), plus a little breathing room.
-    const navPt = parseFloat(getComputedStyle(scope).getPropertyValue("--nav-pt")) || 0;
-    offsetRef.current = navPt + 16;
+    // Jump offset matches where the sticky layer sits (the page's fixed header
+    // plus the item canvas's sticky chrome row; both zeroed by the modal and by a
+    // Desk panel, which are their own scroll containers), plus breathing room.
+    offsetRef.current = stickyTopOf(rootRef.current) + 16;
     const els = Array.from(prose.querySelectorAll<HTMLElement>(selector));
     setHeadings(
       els.map((el) => ({
@@ -217,8 +225,9 @@ export default function FloatingToc({
     // makes canPin correct in every host — and it's what keeps a landscape phone
     // out (short window) while letting a portrait tablet in.
     const measure = () => {
-      const navPt = parseFloat(getComputedStyle(scope).getPropertyValue("--nav-pt")) || 0;
-      const h = scrollElRef.current?.clientHeight ?? window.innerHeight - navPt;
+      const h =
+        scrollElRef.current?.clientHeight ??
+        window.innerHeight - stickyTopOf(rootRef.current);
       setBox({ w: scope.clientWidth, h });
     };
     rescan();
@@ -385,15 +394,14 @@ export default function FloatingToc({
   // is in view, so mounting it after the content would leave it stuck at the
   // bottom. h-0 keeps it out of the layout entirely.
   //
-  // z-40, not z-30: the scope's other sticky bars (the item header row and the
-  // editor's formatting bar) are z-30, and being first child means an equal
-  // z-index loses the DOM-order tiebreak — they painted over the flyout and the
-  // pinned sidebar. One step up clears both and still sits under the app's
-  // overlays (z-50+). Don't lower it back to match them.
+  // z-40, above the scope's other sticky bars (the editor's formatting bar at
+  // z-30, the item chrome row at z-35): being first child means an equal z-index
+  // loses the DOM-order tiebreak — they painted over the flyout and the pinned
+  // sidebar. This still sits under the app's overlays (z-50+). Don't lower it.
   const layer = (children?: React.ReactNode) => (
     <div
       ref={rootRef}
-      className="pointer-events-none sticky top-[var(--nav-pt,0px)] z-40 h-0"
+      className="pointer-events-none sticky top-[var(--nav-pt,0px)] z-40 h-0 sm:top-[calc(var(--nav-pt,0px)_+_var(--item-chrome-h,0px))]"
     >
       {children}
     </div>
