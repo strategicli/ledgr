@@ -6,6 +6,15 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **🔴 FIXED IN PASSING — `main` did not build.** `scripts/verify-placement.mts` had three `check(name, ok, detail)` calls passing an `unknown` (values read back out of a `Record<string, unknown>` patch) into a `string` param, landing with the ADR-166 planner slices (`c88ad40`/`db20e89`, PR #214). `next build` runs the typecheck, so **every Vercel deploy from `main` was failing** until now. Fixed once at the shared function (`detail: unknown`, `String()` inside) rather than three call-site wrappers, on branch `feat/toc-container-relative-pin` as its own commit. Verify script still ALL PASS. **Worth a look at why this merged green** — the pre-merge check evidently didn't run `tsc`/`next build`.
 
+## ✅ Recently done — Date pickers commit on confirm (2026-07-28, ADR-169)
+
+Brandon: scheduling from the Inbox saved a date he never picked the moment he moved the browser's calendar to another month, and the popup closed on the way out. Cause: the "Pick" field wrote on the *first* change event, and a native date input fires one while the user is still navigating inside the picker.
+
+- New `src/components/ui/DateInput.tsx` keeps a **draft** and commits on "Set" (or Enter). Its Set button `preventDefault`s mousedown so focus stays on the input — a surface that exits on blur can't unmount before the click lands.
+- Swapped into every date field that wrote-and-vanished: `InboxTaskControls`, `RowMenu`, `DayField` (rail Schedule/Due), `SubtaskSchedule`, `AddTaskCard`. Today / Tomorrow / +1 wk / Clear stay one click.
+- **Use `DateInput` for any new date field inside a popup or menu.** Inline field editors that stay on screen (`FieldStrip`, `CustomProperties`, `RelatedRow`) still write on change on purpose.
+- Verified live by replaying the picker's own event (set value + dispatch `input`) on all four surfaces: no PATCH, popup stays open, Set appears; commit path confirmed end to end including the subtask relative offset.
+
 ## ✅ Recently done — Item page: sticky chrome row + one shared sticky offset (2026-07-28, ADR-168)
 
 The trash / ⋯ / word-count row is the item page's only chrome for those actions, and a long note scrolled it away. It's now `sm:sticky` at z-35, and `ItemCanvas` publishes its height as **`--item-chrome-h`** on the `[data-toc-scope]` element so the canvas's other two sticky layers (the editor's formatting bar at z-30, the ADR-167 outline at z-40) pin *under* it via `calc(var(--nav-pt) + var(--item-chrome-h))` instead of sliding over it. The variable is set only where the sticky row renders, so the modal, Desk panels, and mobile fall back to `0px` untouched.

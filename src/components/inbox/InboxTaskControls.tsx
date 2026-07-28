@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import RelatePicker from "@/components/inbox/RelatePicker";
+import DateInput from "@/components/ui/DateInput";
 import { addDaysYmd } from "@/lib/recurrence";
 import { priorityStyle, PRIORITIES, type Priority } from "@/lib/priority";
 
@@ -124,16 +125,17 @@ export default function InboxTaskControls({
           {IconCalendar} {dateLabel ?? "Schedule"}
         </button>
         {dateOpen && (
-          <div className="absolute left-0 top-full z-20 mt-1 flex w-40 flex-col rounded-card border border-line-strong bg-surface-3 p-1 shadow-xl shadow-black/50">
+          <div className="absolute left-0 top-full z-20 mt-1 flex w-52 flex-col rounded-card border border-line-strong bg-surface-3 p-1 shadow-xl shadow-black/50">
             <button type="button" onClick={() => schedule(today)} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Today</button>
             <button type="button" onClick={() => schedule(addDaysYmd(today, 1))} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Tomorrow</button>
             <button type="button" onClick={() => schedule(addDaysYmd(today, 7))} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">Next week</button>
-            <label className="flex items-center gap-1 px-2 py-1 text-xs text-ink-subtle">
+            <label className="flex flex-wrap items-center gap-1 px-2 py-1 text-xs text-ink-subtle">
               Pick
-              <input
-                type="date"
+              <DateInput
+                value={dispSched ? dispSched.toISOString().slice(0, 10) : null}
+                onCommit={schedule}
+                ariaLabel="Scheduled date"
                 className="rounded border border-line bg-surface-1 px-1 py-0.5 text-xs text-ink [color-scheme:dark]"
-                onChange={(e) => e.target.value && schedule(e.target.value)}
               />
             </label>
             {dateLabel && (
