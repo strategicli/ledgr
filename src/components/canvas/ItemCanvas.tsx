@@ -72,6 +72,20 @@ export default async function ItemCanvas({
   // a template subtask still shows its ancestor chain up to the prototype.
   const showBreadcrumb =
     (variant === "page" && !item.isTemplate) || ancestors.length > 0;
+  // On the full page this row is the item's only trash/⋯/word-count chrome, and a
+  // long item scrolled it away (Brandon, 2026-07-28), so on sm+ it pins under the
+  // nav. The modal doesn't need it: its own header already carries those actions
+  // above the scrolling body, and its panel background differs from the page's.
+  // A fixed height (= the --item-chrome-h it publishes) rather than pt: the box
+  // has to be exactly as tall as the offset the editor toolbar pins below, or a
+  // scroll-through gap opens between them. Same total height as the old pt-6 +
+  // row, so nothing shifts at scroll top. z sits between the body toolbar (30)
+  // and the nav (40), so the ⋯ menu drops over the toolbar while a nav flyout
+  // still drops over this row.
+  const stickyChrome = showBreadcrumb && variant === "page";
+  const chromeRowSticky = stickyChrome
+    ? "sm:sticky sm:top-[var(--nav-pt,0px)] sm:z-[35] sm:h-[var(--item-chrome-h)] sm:bg-surface-0 sm:pt-0"
+    : "sm:pt-6";
 
   // Star state for the actions menu (page chrome only; the modal's menu resolves
   // it separately). Skipped otherwise to avoid an extra settings read.
@@ -110,7 +124,20 @@ export default async function ItemCanvas({
           widened side peek (the block still can't exceed its panel, so the
           center modal and mobile sheet are unaffected). ADR: Brandon 2026-06-17;
           extended to the modal in the side-panel refresh. */}
-      <div data-toc-scope className="canvas-wide">
+      {/* --item-chrome-h is the height of the sticky chrome row below, published
+          on the scope so the other sticky layers in it (the body editor's
+          formatting bar, the outline) can pin *under* that row instead of
+          sliding over it. Set only when the sticky row actually renders;
+          everywhere else it falls back to 0. */}
+      <div
+        data-toc-scope
+        className="canvas-wide"
+        style={
+          stickyChrome
+            ? ({ "--item-chrome-h": "3rem" } as React.CSSProperties)
+            : undefined
+        }
+      >
         {/* The outline reads this scope's body editor (.ledgr-prose). It mounts
             FIRST on purpose: it's a `sticky` layer, and a sticky box only pins
             while its containing block is in view, so placed after the canvas it
@@ -141,7 +168,9 @@ export default async function ItemCanvas({
             </div>
           ))}
         {showBreadcrumb && (
-          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-ink-muted sm:px-8 sm:pt-6 md:px-12">
+          <div
+            className={`mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-2 pt-4 text-sm text-ink-muted sm:px-8 md:px-12 ${chromeRowSticky}`}
+          >
             <div className="flex min-w-0 items-center gap-1">
               {variant === "page" && !item.isTemplate && (
                 <PageTrashButton itemId={item.id} parentId={item.parentId ?? null} />

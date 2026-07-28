@@ -662,7 +662,11 @@ export default function MarkdownEditor({
   // The merged bar pins at the scroll container's top (its --nav-pt is 0 inside
   // the item modal; on a full page it clears the docked top nav). The mode-row
   // no longer stacks above it — the view controls ride the same row.
-  const stickyTop = "sm:top-[var(--nav-pt,0px)]";
+  // --item-chrome-h is the full-page item canvas's own sticky chrome row (trash ·
+  // type · timestamps · ⋯), published by ItemCanvas; 0 everywhere else. Adding it
+  // stacks this bar under that one instead of sliding over it.
+  const stickyTop =
+    "sm:top-[calc(var(--nav-pt,0px)_+_var(--item-chrome-h,0px))]";
   // Which color popover is open (text color / highlight), or null. Only one at a
   // time; a full-viewport backdrop closes it on an outside click.
   const [openSwatch, setOpenSwatch] = useState<null | "color" | "highlight">(null);
