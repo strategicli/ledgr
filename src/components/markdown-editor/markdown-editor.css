@@ -699,3 +699,149 @@
 .promoted-line-badge:focus-visible {
   opacity: 1;
 }
+
+/* ---------------------------------------------------------------------------
+   Body comments (ADR-170). A comment is CriticMarkup in the canonical body,
+   {==anchored text==}{>>the note<<}, expanded by renderComments() into two
+   ADJACENT SIBLING spans: .cmt around the anchored text, .cmt-note right after
+   it. Adjacency is the whole mechanism — it's what lets these rules pair the two
+   with `+` and `:has()`, so nothing here needs an id, a counter, or JavaScript.
+
+   The visual contract, and the reason comments and highlights can sit on the
+   same words without fighting: a COMMENT owns the underline channel, a HIGHLIGHT
+   (mark.hl-*) owns the fill channel. Hover borrows a soft fill for as long as
+   you hover, then gives it back. Don't give .cmt a permanent background; that's
+   what would make a commented phrase inside a yellow highlight unreadable.
+
+   Present in the read view (MarkdownPreview) and the print document when the
+   owner opts in. The editor's rich mode renders the raw CriticMarkup as text
+   until the Tiptap mark lands (ADR-170 phase 3).  */
+.ledgr-prose {
+  --cmt-line: rgba(250, 204, 21, 0.55);
+  --cmt-line-strong: rgb(250, 204, 21);
+  --cmt-fill: rgba(250, 204, 21, 0.16);
+}
+.cmt {
+  text-decoration: underline;
+  text-decoration-color: var(--cmt-line);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  border-radius: 2px;
+  transition:
+    background-color 0.12s ease-in-out,
+    text-decoration-color 0.12s ease-in-out;
+}
+/* A point comment ({>>note<<} with nothing anchored) has no text to underline,
+   so it shows only its pin. */
+.cmt-point {
+  text-decoration: none;
+}
+.cmt-note {
+  font-family: inherit;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: #d4d4d4;
+  background: var(--color-surface-1, #171717);
+  border: 1px solid var(--color-line, #262626);
+  border-radius: 10px;
+  padding: 0.5rem 0.625rem;
+  transition: border-color 0.12s ease-in-out;
+}
+
+/* Hover couples the two, in both directions, with no JS: hovering the note
+   lights up its anchor (`:has(+ …)`), hovering the anchor lights up the note. */
+.cmt:hover,
+.cmt:has(+ .cmt-note:hover) {
+  background-color: var(--cmt-fill);
+  text-decoration-color: var(--cmt-line-strong);
+}
+.cmt:hover + .cmt-note,
+.cmt-note:hover {
+  border-color: var(--cmt-line-strong);
+}
+
+/* Wide viewport: Word/Notion-style margin cards. float + clear:right stacks them
+   automatically and never overlaps, which is the whole reason to use floats here
+   instead of absolute positioning plus a JS layout pass. The gutter is only
+   reserved when the body actually has a comment, so an uncommented note keeps its
+   full width.
+
+   ponytail: a float aligns to the line it sits in, not pixel-perfectly to its
+   anchor, and a float inside a list item can clip. If that reads badly, upgrade to
+   absolute positioning with a small stacking pass. Also viewport-width, not
+   container-width: a narrow Desk panel on a wide screen still gets the gutter.
+   Wrap in @container once .ledgr-prose's host declares container-type. */
+@media (min-width: 1024px) {
+  .ledgr-prose:has(.cmt-note) {
+    padding-right: 15rem;
+  }
+  .ledgr-prose .cmt-note {
+    float: right;
+    clear: right;
+    width: 13rem;
+    margin: 0.1em -14.25rem 0.5em 1rem;
+  }
+}
+
+/* Narrow viewport: no room for a gutter, so the note collapses behind a Logos-
+   style pin on the anchor itself (a bigger tap target than a separate icon), and
+   tapping toggles it open inline. The .open class is set by the one delegated
+   click handler in MarkdownPreview. */
+@media (max-width: 1023px) {
+  .cmt-note {
+    display: none;
+  }
+  /* Opened INLINE, not as a block: a block-level note inside a paragraph splits
+     the sentence it belongs to and orphans the rest of the line into what looks
+     like a new paragraph. Brackets carry the "this is an aside" signal that the
+     card's border carries on desktop. Phase 3 replaces this with the same popover
+     the editor uses, at which point the note stops rendering in flow at all. */
+  .cmt-note.open {
+    display: inline;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-left: 0.25em;
+    font-style: italic;
+    color: #a3a3a3;
+  }
+  .cmt-note.open::before {
+    content: "[";
+  }
+  .cmt-note.open::after {
+    content: "]";
+  }
+  /* One pin per comment, on the fragment the note actually follows. In the read
+     view a comment is always a single `.cmt` span, but ProseMirror splits a mark
+     across text nodes, so an anchor containing **bold** renders as several `.cmt`
+     spans and a bare `.cmt::after` put a pin on each of them. The note (a widget
+     decoration in the editor, a real sibling in the read view) sits after the LAST
+     fragment, so keying the pin to that adjacency gives exactly one. */
+  .cmt:has(+ .cmt-note)::after {
+    content: "";
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin-left: 0.2em;
+    vertical-align: 0.05em;
+    border: 1px solid var(--cmt-line-strong);
+    border-radius: 3px;
+    background:
+      linear-gradient(
+          to bottom,
+          transparent 25%,
+          var(--cmt-line-strong) 25%,
+          var(--cmt-line-strong) 40%,
+          transparent 40%,
+          transparent 60%,
+          var(--cmt-line-strong) 60%,
+          var(--cmt-line-strong) 75%,
+          transparent 75%
+        )
+        no-repeat center / 60% 100%,
+      var(--cmt-fill);
+  }
+  .cmt {
+    cursor: pointer;
+  }
+}

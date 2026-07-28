@@ -42,7 +42,12 @@ export async function GET(
 
   // Type-aware @-mention icons unless ?icons=0 (the owner's "icons off" choice
   // for a cleaner PDF/offline copy; SaveOffline pins this exact URL).
-  const showIcons = new URL(_req.url).searchParams.get("icons") !== "0";
+  const params = new URL(_req.url).searchParams;
+  const showIcons = params.get("icons") !== "0";
+  // Body comments (ADR-170) are OFF unless asked for: this is the owner's own
+  // copy, so opting in is allowed, but a printed/pinned note reads as clean prose
+  // by default and never carries a private note to self by accident.
+  const showComments = params.get("comments") === "1";
   const mentions = showIcons
     ? await resolveMentions(
         owner.id,
@@ -52,7 +57,10 @@ export async function GET(
 
   // The same self-contained shell the share route serves (slice 31), so a
   // pinned offline copy and a public link render identically.
-  const html = renderPrintDocument(resolved.title, resolved.body, { mentions });
+  const html = renderPrintDocument(resolved.title, resolved.body, {
+    mentions,
+    comments: showComments,
+  });
 
   return new NextResponse(html, {
     headers: {

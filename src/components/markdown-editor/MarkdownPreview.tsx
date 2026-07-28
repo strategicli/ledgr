@@ -106,6 +106,15 @@ export default function MarkdownPreview({
     return (
       <div
         className="ledgr-prose ledgr-preview"
+        // Tap a comment's anchor to open its note (ADR-170). Only does anything on
+        // a narrow viewport, where the CSS collapses the margin card behind a pin;
+        // on a wide one the card is always visible and .open is inert. Delegated
+        // (one listener for the whole body) and it finds the note by adjacency, so
+        // comments need no ids and no per-comment wiring.
+        onClick={(e) => {
+          const anchor = (e.target as Element).closest?.(".cmt");
+          anchor?.nextElementSibling?.classList.toggle("open");
+        }}
         onContextMenu={(e) => {
           if (!deskSendAvailable()) return;
           const a = (e.target as Element).closest?.('a[href^="/items/"]');

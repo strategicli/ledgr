@@ -42,6 +42,25 @@ const HL_CSS = Object.entries(BLOCKNOTE_COLORS)
   )
   .join("\n");
 
+// Body comments (ADR-170), present only when the caller opted in
+// (`?comments=1`); the default render strips them, so these rules are usually
+// dead weight in the document — a few hundred bytes, versus threading a second
+// CSS variant through the shell. On paper there's no gutter (the document is a
+// centered 46rem column), so a comment reads as a bracketed inline aside right
+// after the text it annotates. The note stays INLINE deliberately: a block-level
+// note inside a paragraph splits the sentence it belongs to, orphaning the rest of
+// the line into what looks like a new paragraph. Paper has no hover either, so the
+// note has to be legible on its own, hence the brackets. The accent is the
+// palette's yellow so it stays in the same family as a yellow highlight; the
+// comment is told apart by carrying an underline instead of a fill.
+const CMT_CSS = `
+.cmt{text-decoration:underline;text-decoration-color:${BLOCKNOTE_COLORS.yellow.text};
+  text-decoration-thickness:2px;text-underline-offset:3px}
+.cmt-point{display:none}
+.cmt-note{font-style:italic;color:#a3a3a3;margin-left:.25em}
+.cmt-note::before{content:"["}
+.cmt-note::after{content:"]"}`;
+
 const DOC_CSS = `
 :root{color-scheme:dark}
 *{box-sizing:border-box;margin:0}
@@ -76,11 +95,14 @@ th{text-align:left;font-weight:600;background:#171717}
 .print-bar button{background:#262626;color:#e5e5e5;border:1px solid #404040;
   border-radius:6px;padding:.4rem .9rem;font:13px system-ui,sans-serif;cursor:pointer}
 ${HL_CSS}
+${CMT_CSS}
 @page{size:letter;margin:0.5in}
 @media print{
   :root{color-scheme:light}
   body{background:#fff;color:#111;max-width:none;padding:0;font-size:12pt}
   blockquote{border-color:#999;color:#444}
+  .cmt{text-decoration-color:#999}
+  .cmt-note{border-left-color:#999;color:#444}
   pre{background:#f5f5f5;border-color:#ddd}
   p code,li code{background:#f5f5f5}
   a,.mention{color:#1a4d8f;text-decoration:none}
@@ -102,7 +124,15 @@ ${CHART_CSS}
 export function renderPrintDocument(
   title: string,
   body: unknown,
-  opts: { footerHtml?: string; mentions?: Map<string, ResolvedMention> } = {}
+  opts: {
+    footerHtml?: string;
+    mentions?: Map<string, ResolvedMention>;
+    // Body comments (ADR-170) default to OFF here: this shell is the print, PDF,
+    // pinned-offline, and public-share document, and a comment is a private note
+    // to self. The owner opts in per render (`?comments=1`); a share link cannot
+    // opt in at all yet.
+    comments?: boolean;
+  } = {}
 ): string {
   const safeTitle = escapeHtml(title || "Untitled");
   const footer = opts.footerHtml ? `<div class="doc-footer">${opts.footerHtml}</div>` : "";
@@ -116,7 +146,9 @@ export function renderPrintDocument(
   // plain links (a share with icons turned off).
   const bodyHtml = isChordpro
     ? chordProToHtml(bodyMarkdown(body))
-    : markdownToHtml(bodyMarkdown(body), opts.mentions);
+    : markdownToHtml(bodyMarkdown(body), opts.mentions, {
+        comments: opts.comments === true,
+      });
   return `<!doctype html>
 <html lang="en">
 <head>

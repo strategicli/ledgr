@@ -27,6 +27,7 @@ import {
   SectionType,
   TextRun,
 } from "docx";
+import { stripComments } from "@/lib/editor/comment-markdown";
 import type { PaperMeta } from "@/lib/papers/types";
 
 const TNR = "Times New Roman";
@@ -316,7 +317,12 @@ export async function renderMsmDocx(
   markdownText: string,
   meta: PaperMeta & { title?: string }
 ): Promise<MsmRender> {
-  const { defs, body: cleanBody } = extractFootnoteDefs(markdownText ?? "");
+  // Body comments (ADR-170) come out before anything else: this walker would
+  // print the raw CriticMarkup braces as literal text, and a submitted paper must
+  // not carry the author's private notes to self.
+  const { defs, body: cleanBody } = extractFootnoteDefs(
+    stripComments(markdownText ?? "")
+  );
   const ctx: FootnoteCtx = { defs, footnotes: {}, counter: 0 };
   const titleChildren = buildTitlePage(meta);
   const bodyChildren = buildBody(cleanBody, ctx);
