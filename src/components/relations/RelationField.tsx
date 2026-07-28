@@ -12,8 +12,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RelationCardinality } from "@/lib/types";
+import { useAnchoredPanel } from "@/components/ui/Popover";
 import InlineTitle from "./InlineTitle";
+
+const MENU_WIDTH = 256;
 
 type Chip = { id: string; title: string };
 type Hit = { id: string; type: string; title: string };
@@ -41,6 +45,7 @@ export default function RelationField({
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const { anchorRef, coords } = useAnchoredPanel<HTMLInputElement>(open, MENU_WIDTH);
 
   const atCapacity = cardinality === "single" && chips.length >= 1;
   // Create-on-miss (ADR-067): if the field names a type, create it eagerly
@@ -170,13 +175,13 @@ export default function RelationField({
     }
   }
 
-  // `relative` anchors the typeahead dropdown to the whole field, not to the
-  // input: the field is what has a known width, so the max-w-full below keeps the
-  // popover inside a narrow rail. (The task rail scrolls on overflow-y, which
-  // makes overflow-x `auto` too, so a popover spilling right showed up as a
-  // horizontal scrollbar that shifted the rail's labels out of view.)
+  // The typeahead menu portals to <body> with fixed coords measured from the
+  // input (useAnchoredPanel, same as the rail's Popover rows). It must NOT be an
+  // in-flow `absolute` child: the canvas rail is `overflow-y-auto`, which clipped
+  // the menu's bottom rows and — since overflow-y:auto makes overflow-x `auto`
+  // too — added a stray horizontal scrollbar that shifted the rail's labels.
   return (
-    <div className="relative flex min-w-0 flex-wrap items-center gap-1.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {chips.map((chip) => (
         <span
           key={chip.id}
@@ -201,6 +206,7 @@ export default function RelationField({
       {open ? (
         <>
           <input
+            ref={anchorRef}
             autoFocus
             value={q}
             onChange={(e) => {
@@ -217,8 +223,20 @@ export default function RelationField({
             }
             className="w-48 max-w-full rounded border border-neutral-700 bg-transparent px-2 py-0.5 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none disabled:opacity-50"
           />
-          {(hits.length > 0 || showCreate) && (
-            <ul className="absolute left-0 top-full z-10 mt-1 w-64 max-w-full overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50">
+          {(hits.length > 0 || showCreate) &&
+            coords &&
+            createPortal(
+            <ul
+              style={{
+                position: "fixed",
+                left: coords.left,
+                top: coords.top,
+                bottom: coords.bottom,
+                width: Math.min(MENU_WIDTH, window.innerWidth - 16),
+                maxHeight: coords.maxHeight,
+              }}
+              className="z-[60] overflow-y-auto overflow-x-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50"
+            >
               {hits.map((hit, i) => (
                 <li key={hit.id}>
                   <button
@@ -264,7 +282,8 @@ export default function RelationField({
                   </button>
                 </li>
               )}
-            </ul>
+            </ul>,
+            document.body
           )}
         </>
       ) : (
