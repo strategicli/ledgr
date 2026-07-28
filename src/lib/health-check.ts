@@ -9,6 +9,7 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
+import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { sendToOwner, type SendTally } from "@/lib/push/notify";
 import type { PushSender } from "@/lib/push/types";
 import type { HealthReport } from "@/lib/health";
@@ -52,12 +53,52 @@ type FreshnessRule = {
   maxAgeHours: number;
 };
 
+// Budgets must be sized against the *worst-case gap the schedule allows*, not
+// the nominal cadence, and measured at the moment this check runs (Monday, the
+// worst moment of the week — see below). Getting this wrong cries wolf every
+// week, which is worse than not checking at all. The weekend gap is what bites:
+// since ADR-119-era retiming (commit e3bc4c1, 2026-07-11) both Graph syncs are
+// weekday-shaped to cut Neon compute, so a Monday reading is looking back
+// across the weekend.
+//
+//   export    Vercel cron, nightly 06:30 UTC          → worst gap 24h,  budget 48h
+//   calendar  Mon–Fri 13/18/22 UTC + Sat/Sun 13 UTC   → worst gap 24h,  budget 36h
+//   todoist   every 3h (and no-ops on the native adapter, so never stamps)
+//                                                     → worst gap  3h,  budget 24h
+//   email     Mon–Fri 13/22 UTC only                  → worst gap 63h,  budget 72h
+//
+// The two tight ones have real headroom on purpose: this workflow shares the
+// 13:00 UTC Monday slot with the very jobs it audits, GitHub's free-tier
+// scheduler routinely dispatches 2–4h late, and the order is not guaranteed. So
+// a Monday run frequently evaluates the *weekend's* canaries before Monday's
+// syncs land. Calendar's worst gap (Sun 13:00 → Mon 13:00) is exactly 24h, so a
+// 24h budget alerted on nothing but jitter; email's Fri 22:00 → Mon 13:00 gap is
+// 63h, so a 12h budget alerted with total certainty every single Monday.
+// If you retime either workflow, retime the matching budget here.
 const FRESHNESS: FreshnessRule[] = [
-  { code: "export", label: "OneDrive export", success: "lastExportAt", run: "lastExportRunAt", maxAgeHours: 48 }, // nightly
-  { code: "calendar", label: "Calendar sync", success: "lastCalendarSyncAt", run: "lastCalendarRunAt", maxAgeHours: 24 }, // 6h
-  { code: "todoist", label: "Todoist sync", success: "lastTodoistSyncAt", run: "lastTodoistRunAt", maxAgeHours: 24 }, // 3h
-  { code: "email", label: "Email import", success: "lastEmailImportAt", run: "lastEmailRunAt", maxAgeHours: 12 }, // 30min
-  { code: "agenda", label: "Morning agenda", success: "lastAgendaNotifyAt", run: "lastAgendaNotifyAt", maxAgeHours: 48 }, // daily
+  { code: "export", label: "OneDrive export", success: "lastExportAt", run: "lastExportRunAt", maxAgeHours: 48 },
+  { code: "calendar", label: "Calendar sync", success: "lastCalendarSyncAt", run: "lastCalendarRunAt", maxAgeHours: 36 },
+  { code: "todoist", label: "Todoist sync", success: "lastTodoistSyncAt", run: "lastTodoistRunAt", maxAgeHours: 24 },
+  { code: "email", label: "Email import", success: "lastEmailImportAt", run: "lastEmailRunAt", maxAgeHours: 72 },
+  // Morning agenda push — audited only while the notification center is live.
+  // ADR-130 paused the agenda cron on 2026-06-29, which froze
+  // lastAgendaNotifyAt at that date forever. The never-ran escape hatch above
+  // can't save a *paused* job: it did run once, so `run` stays truthy while
+  // `success` ages without bound, and the rule alerted on every run from
+  // 2026-07-06 onward with no way to ever clear. Gating on the same flag that
+  // paused it means the check comes back by itself when the flag flips —
+  // defer-by-hiding, not deletion.
+  ...(NOTIFICATION_CENTER_ENABLED
+    ? [
+        {
+          code: "agenda",
+          label: "Morning agenda",
+          success: "lastAgendaNotifyAt",
+          run: "lastAgendaNotifyAt",
+          maxAgeHours: 48,
+        } satisfies FreshnessRule,
+      ]
+    : []),
 ];
 
 function isStale(lastSuccess: string | null, now: Date, maxAgeHours: number): boolean {
