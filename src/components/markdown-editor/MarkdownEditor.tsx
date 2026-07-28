@@ -64,6 +64,15 @@ import {
   setPromotedRefs,
   type PromotedRefs,
 } from "./block-anchor-extension";
+import {
+  Comment,
+  CommentCards,
+  EDIT_COMMENT_EVENT,
+  commentNoteAt,
+  posInCommentSpan,
+  removeComment,
+  setComment,
+} from "./comment-mark";
 import { extractPromotable } from "@/lib/editor/block-anchor";
 import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import PromoteLinePopup, { type PromoteDraft } from "./PromoteLinePopup";
@@ -261,6 +270,16 @@ export default function MarkdownEditor({
   // The hyperlink editor's draft URL, or null when the editor is closed. Opened
   // by the toolbar's Insert-link button; applies the StarterKit Link mark.
   const [linkDraft, setLinkDraft] = useState<string | null>(null);
+  // The open comment editor (ADR-170), or null. `existing` is false when the
+  // selection is being commented for the first time, which is what decides
+  // whether the row offers Delete. Reuses the link editor's shape: a row below
+  // the toolbar rather than a floating popover, so there's no positioning to get
+  // wrong and mobile behaves identically to desktop.
+  const [commentDraft, setCommentDraft] = useState<
+    // `at` is a position inside the comment being edited (absent when creating one
+    // over the current selection); it's what Save/Delete extend from.
+    { note: string; existing: boolean; at?: number } | null
+  >(null);
   useEffect(() => {
     onChangeRef.current = onChange;
     uploadRef.current = uploadImage;
@@ -316,6 +335,13 @@ export default function MarkdownEditor({
       BlockAnchor.configure({ promote: !!promoteToMeetingId }),
       TextColor,
       Highlight,
+      // Body comments (ADR-170): the mark round-trips {==text==}{>>note<<}, and
+      // CommentCards renders each note as the same `.cmt-note` margin card the
+      // read view emits, so both surfaces share one stylesheet. Deliberately NOT
+      // in MarkdownEscapeFix's HTML_WRAPPED_MARKS — it emits CriticMarkup, not raw
+      // HTML, so its content needs the serializer's normal escaping.
+      Comment,
+      CommentCards,
       // Inline images (paste/drop → R2) and GFM tables. Both round-trip to
       // markdown via the hooks in extensions.ts.
       LedgrImage,
@@ -444,6 +470,10 @@ export default function MarkdownEditor({
       isCodeBlock: editor?.isActive("codeBlock") ?? false,
       isToggle: editor?.isActive("toggle") ?? false,
       isLink: editor?.isActive("link") ?? false,
+      isComment: editor?.isActive("comment") ?? false,
+      // A comment needs something to anchor to, so the button is disabled on an
+      // empty selection unless the caret is already inside one (then it edits).
+      hasSelection: !(editor?.state.selection.empty ?? true),
       textColor: (editor?.getAttributes("textColor").color as string) || "",
       highlight: (editor?.getAttributes("highlight").color as string) || "",
     }),
@@ -570,6 +600,44 @@ export default function MarkdownEditor({
     dom.addEventListener(OPEN_ITEM_EVENT, handler);
     return () => dom.removeEventListener(OPEN_ITEM_EVENT, handler);
   }, [editor, router]);
+
+  // Open the comment editor by clicking either half of a comment (ADR-170).
+  //
+  // Two paths, both DOM-level for the same reason: the mark is non-inclusive and
+  // the card is a widget at the run's end, so a ProseMirror position lookup there
+  // finds no mark.
+  //  - the underlined TEXT: the browser's own click places the caret inside the
+  //    comment, so Save/Delete resolve the range with extendMarkRange, and the note
+  //    comes straight off the span's data-note attribute.
+  //  - the margin CARD: it suppresses mousedown (so a click on it can't drag the
+  //    selection out of the note it belongs to), so it hands over the run's start
+  //    and we place the caret there ourselves.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const onCardClick = (e: Event) => {
+      const d = (e as CustomEvent<{ from: number; note: string }>).detail;
+      if (!d) return;
+      setCommentDraft({ note: d.note, existing: true, at: d.from + 1 });
+    };
+    const onTextClick = (e: MouseEvent) => {
+      const span = (e.target as Element).closest?.(".cmt") as HTMLElement | null;
+      if (!span) return;
+      const at = posInCommentSpan(editor, span);
+      if (at === null) return;
+      setCommentDraft({
+        note: span.getAttribute("data-note") ?? "",
+        existing: true,
+        at,
+      });
+    };
+    dom.addEventListener(EDIT_COMMENT_EVENT, onCardClick);
+    dom.addEventListener("click", onTextClick);
+    return () => {
+      dom.removeEventListener(EDIT_COMMENT_EVENT, onCardClick);
+      dom.removeEventListener("click", onTextClick);
+    };
+  }, [editor]);
 
   // Right-click a mention chip → the Send-to-Desk menu (S3b, ADR-146), with this
   // item as "current" so "Open beside" puts the host left and the mention right.
@@ -920,6 +988,26 @@ export default function MarkdownEditor({
     }
   };
 
+  // Comment on the selection, or edit the comment the caret sits in (ADR-170).
+  const openCommentEditor = () => {
+    const note = commentNoteAt(editor);
+    setCommentDraft({ note: note ?? "", existing: note !== null });
+  };
+
+  const applyComment = (note: string, at?: number) => {
+    setCommentDraft(null);
+    setComment(editor, note, at);
+    // setMark leaves the doc changed; feed the host's debounced save so the
+    // comment persists (the same reason copyLineLink does this).
+    onChangeRef.current(editor.getMarkdown());
+  };
+
+  const deleteComment = (at?: number) => {
+    setCommentDraft(null);
+    removeComment(editor, at);
+    onChangeRef.current(editor.getMarkdown());
+  };
+
   // Formatting buttons in visual groups (text · headings · lists · blocks ·
   // insert), each rendered as a cluster with a hairline between clusters, so the
   // long run of icons reads in chunks instead of one undifferentiated strip. A
@@ -966,6 +1054,7 @@ export default function MarkdownEditor({
   const hasInsert = showImage || showWeblink || showCopyLink;
   const showColor = showTb("color");
   const showHighlight = showTb("highlight");
+  const showComment = showTb("comment");
   const sep = <span className="mx-1 h-5 w-px shrink-0 bg-line" aria-hidden />;
 
   // The formatting/merged bar. Built here (not inline in the return) so the
@@ -1011,11 +1100,26 @@ export default function MarkdownEditor({
               </div>
             )}
 
-            {(showColor || showHighlight) && (
+            {(showColor || showHighlight || showComment) && (
               <div className="flex items-center gap-0.5">
                 {(visibleGroups.length > 0 || hasInsert) && sep}
                 {showColor && swatchControl("color", toolbar.textColor, setColor)}
                 {showHighlight && swatchControl("highlight", toolbar.highlight, setHighlight)}
+                {showComment && (
+                  <ToolbarButton
+                    icon={TOOLBAR_ICONS.comment}
+                    title={
+                      toolbar.isComment
+                        ? "Edit this comment"
+                        : "Comment on the selected text"
+                    }
+                    active={toolbar.isComment || commentDraft !== null}
+                    // A comment has to anchor to something, so this needs either a
+                    // selection or a caret already inside a comment to edit.
+                    disabled={!toolbar.hasSelection && !toolbar.isComment}
+                    onClick={openCommentEditor}
+                  />
+                )}
               </div>
             )}
 
@@ -1097,6 +1201,67 @@ export default function MarkdownEditor({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setLinkDraft(null)}
+            title="Cancel"
+            aria-label="Cancel"
+            className="rounded px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Comment editor (ADR-170): a textarea row below the toolbar, open while
+          commentDraft is non-null. Same shape as the hyperlink editor above rather
+          than a floating popover — nothing to position, and mobile behaves exactly
+          like desktop. ⌘/Ctrl+Enter saves, Escape cancels, Delete removes the
+          comment and keeps the text it annotated (delete IS resolve, ADR-170).
+          The note is markdown: **bold**, links, and [@Title](ledgr://item/<id>)
+          mention chips all render wherever the body renders. */}
+      {editable && commentDraft !== null && (
+        <div className="flex items-start gap-1.5 border-b border-line bg-surface-1 px-2 py-1.5">
+          <textarea
+            autoFocus
+            rows={2}
+            value={commentDraft.note}
+            placeholder="Note to self… (markdown works, @-mentions too)"
+            onChange={(e) =>
+              setCommentDraft({ ...commentDraft, note: e.target.value })
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                applyComment(commentDraft.note, commentDraft.at);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setCommentDraft(null);
+              }
+            }}
+            className="min-w-0 flex-1 resize-y rounded bg-neutral-800 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500"
+          />
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => applyComment(commentDraft.note, commentDraft.at)}
+            title="Save (⌘/Ctrl+Enter)"
+            className="rounded bg-neutral-700 px-2 py-1 text-sm font-medium text-neutral-100 hover:bg-neutral-600"
+          >
+            Save
+          </button>
+          {commentDraft.existing && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => deleteComment(commentDraft.at)}
+              title="Delete this comment (the text it points at stays)"
+              className="rounded px-2 py-1 text-sm font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              Delete
+            </button>
+          )}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setCommentDraft(null)}
             title="Cancel"
             aria-label="Cancel"
             className="rounded px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"

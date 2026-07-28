@@ -6,19 +6,17 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **🔴 FIXED IN PASSING — `main` did not build.** `scripts/verify-placement.mts` had three `check(name, ok, detail)` calls passing an `unknown` (values read back out of a `Record<string, unknown>` patch) into a `string` param, landing with the ADR-166 planner slices (`c88ad40`/`db20e89`, PR #214). `next build` runs the typecheck, so **every Vercel deploy from `main` was failing** until now. Fixed once at the shared function (`detail: unknown`, `String()` inside) rather than three call-site wrappers, on branch `feat/toc-container-relative-pin` as its own commit. Verify script still ALL PASS. **Worth a look at why this merged green** — the pre-merge check evidently didn't run `tsc`/`next build`.
 
-## 🔨 IN PROGRESS — Body comments, phase 3 (2026-07-28, branch `feat/md-comments`, ADR-170)
+## ✅ Recently done — Comments on the body (2026-07-28, branch `feat/md-comments`, ADR-170)
 
-Comments on a span of the body, as CriticMarkup **in the markdown**: `{==anchored text==}{>>note<<}` (or `{>>note<<}` alone). No table, no migration — the anchor *is* the text, so comments can't drift or orphan, and revisions / backup / OneDrive export cover them for free. Core change, Tyler cleared it.
+Select a span of a note and leave a comment. It lives **in the markdown** as CriticMarkup, `{==anchored text==}{>>note<<}` (or `{>>note<<}` alone), so it degrades legibly in any other editor and the exported `.md` keeps it. No table and no migration: the anchor *is* the text, so comments can't drift or orphan, and revisions / backup / OneDrive export cover them for free. Core change, Tyler cleared it.
 
-**Phases 1 + 2 are done and verified** (parser, read-view render, margin cards + hover + pins, print/share/docx off by default with `?comments=1` to opt a print in). `src/lib/editor/comment-markdown.ts` holds the whole parser; `scripts/verify-comment-markdown.mts` is the check (37 assertions).
-
-**Phase 3 is next, and it is not optional polish.** Preview mode is gated on `isLargeBody` (ADR-125), so an ordinary note still opens in the Tiptap rich editor, where the raw CriticMarkup shows as literal text. Until the mark lands, the feature only appears on large document notes and the print document.
-
-- Add a `comment` mark (copy the `Highlight` shape in `extensions.ts:127-206`: `renderMarkdown` + `markdownTokenizer` + `parseMarkdown` with `helpers.parseInline`), the note carried as a string attribute.
-- **The mark must stay OUT of `HTML_WRAPPED_MARKS`** — it emits CriticMarkup, not raw HTML, so its content genuinely needs the serializer's normal markdown escaping. Adding it there "for consistency" breaks bold inside commented text.
-- Comment button in the toolbar's insert cluster (gate `showTb("comment")`, `disabled` on an empty selection — the `outdent` pattern). No bubble menu.
-- One `CommentPopover` for edit + delete, click-opened on both platforms; it also replaces the narrow-viewport inline aside.
-- Deferred after that: a per-share-link "include comments" toggle (plumbing is already in), an atom node so hand-written point comments are editable as chips, timestamps.
+- **Where the logic lives:** `src/lib/editor/comment-markdown.ts` (the pure parser, both ends: expand or strip) and `src/components/markdown-editor/comment-mark.ts` (the Tiptap mark + the margin-card decoration). Check: `npx tsx scripts/verify-comment-markdown.mts`.
+- **The visual rule, don't break it:** a **comment owns the underline channel, a highlight owns the fill channel.** That's what lets a commented phrase sit inside a yellow highlight and read as two things. Never give `.cmt` a permanent background; hover borrows a fill and gives it back.
+- **Comments never reach a reader.** `markdownToHtml` renders them by default (read view + FTS), and print / PDF / pinned-offline / share / paper `.docx` all pass `comments: false`. `?comments=1` opts a print in; a share link can't opt in at all. **If you add another human-facing render path, opt it out.**
+- **The trap:** the `comment` mark must stay **OUT of `HTML_WRAPPED_MARKS`** (extensions.ts). It emits CriticMarkup, not raw HTML, so its content needs the serializer's normal escaping. Adding it there "for consistency" breaks bold inside commented text.
+- **Clicks are DOM-level on purpose.** ProseMirror's `handleClick` silently never matches: the mark is `inclusive: false` and the card is a widget at the run's end, so a position lookup there finds no mark. Edit paths carry an explicit position and do `setTextSelection(at).extendMarkRange("comment")`.
+- Verified live: 3 rich⇌source flips byte-identical with zero backslashes (including a comment inside a highlight and an anchor containing `*emphasis*`), create-from-toolbar / click-to-edit / delete all correct, print clean, margin cards stacking with no overlap.
+- **Deferred, by hiding not deleting:** a per-share-link "include comments" toggle (plumbing is already in, only the share-dialog UI is missing), an atom node so a hand-written point comment is editable as a chip rather than literal text, and timestamps (no metadata slot in-body; an optional date prefix is the upgrade path).
 
 ## ✅ Recently done — Date pickers commit on confirm (2026-07-28, ADR-169)
 

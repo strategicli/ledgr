@@ -811,7 +811,13 @@
   .cmt-note.open::after {
     content: "]";
   }
-  .cmt::after {
+  /* One pin per comment, on the fragment the note actually follows. In the read
+     view a comment is always a single `.cmt` span, but ProseMirror splits a mark
+     across text nodes, so an anchor containing **bold** renders as several `.cmt`
+     spans and a bare `.cmt::after` put a pin on each of them. The note (a widget
+     decoration in the editor, a real sibling in the read view) sits after the LAST
+     fragment, so keying the pin to that adjacency gives exactly one. */
+  .cmt:has(+ .cmt-note)::after {
     content: "";
     display: inline-block;
     width: 0.85em;
