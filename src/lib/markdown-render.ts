@@ -18,6 +18,7 @@
 import MarkdownIt from "markdown-it";
 import { stripBlockAnchors } from "@/lib/editor/block-anchor";
 import { flattenTabs } from "@/lib/editor/canvas-tabs";
+import { renderComments, stripComments } from "@/lib/editor/comment-markdown";
 import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
 import { mentionGlyphSvg } from "@/lib/mention-glyph";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -210,17 +211,28 @@ export function normalizeListIndent(markdown: string): string {
 // the plain-link behavior (the FTS path, or a share with icons turned off).
 export function markdownToHtml(
   markdown: string,
-  mentions?: Map<string, ResolvedMention>
+  mentions?: Map<string, ResolvedMention>,
+  opts: { comments?: boolean } = {}
 ): string {
   if (!markdown) return "";
-  // Block anchors (^id, ADR-090) are an editor-only back-reference mechanism;
-  // strip them so shared/printed/exported notes read as clean prose. Canvas tab
-  // markers (ADR-095) flatten to `## Title` sections so a multi-tab note reads
-  // as titled sections when shared/printed/exported.
-  return md.render(
-    normalizeListIndent(stripBlockAnchors(flattenTabs(markdown))),
-    { mentions }
-  );
+  return md.render(prepare(markdown, opts.comments !== false), { mentions });
+}
+
+// The one text-pass chain every server render shares. Block anchors (^id,
+// ADR-090) are an editor-only back-reference mechanism; strip them so
+// shared/printed/exported notes read as clean prose. Canvas tab markers
+// (ADR-095) flatten to `## Title` sections so a multi-tab note reads as titled
+// sections when shared/printed/exported.
+//
+// `comments` (ADR-170) chooses which end of the comment parser runs: true expands
+// CriticMarkup into the paired `.cmt`/`.cmt-note` spans the read view styles,
+// false removes the notes and keeps the prose. It defaults TRUE, so the in-app
+// read view and the FTS document both see comments (they're the owner's own
+// notes, and searching them is the point); the print/share/docx paths pass false
+// so a private note to self never reaches a reader.
+function prepare(markdown: string, comments: boolean): string {
+  const body = comments ? renderComments(markdown) : stripComments(markdown);
+  return normalizeListIndent(stripBlockAnchors(flattenTabs(body)));
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode
@@ -230,7 +242,7 @@ export function markdownToHtml(
 export function markdownToText(markdown: string): string {
   if (!markdown) return "";
   const text = md
-    .render(normalizeListIndent(stripBlockAnchors(flattenTabs(markdown))))
+    .render(prepare(markdown, true))
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

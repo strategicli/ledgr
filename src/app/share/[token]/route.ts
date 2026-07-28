@@ -53,6 +53,11 @@ export async function GET(
       )
     : undefined;
 
+  // Body comments (ADR-170) never reach a public link: renderPrintDocument
+  // defaults them off, and there is deliberately no per-link opt-in yet. A
+  // comment is a private note to self, and a share is cached at the edge for up
+  // to 60s, so a leak can't be taken back. If a "share with my comments" option
+  // is ever wanted, it rides the token the way showIcons does above.
   const html = renderPrintDocument(resolved.title, resolved.body, {
     footerHtml: "Shared from Ledgr · read-only",
     mentions,

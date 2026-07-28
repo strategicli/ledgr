@@ -6,6 +6,20 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **🔴 FIXED IN PASSING — `main` did not build.** `scripts/verify-placement.mts` had three `check(name, ok, detail)` calls passing an `unknown` (values read back out of a `Record<string, unknown>` patch) into a `string` param, landing with the ADR-166 planner slices (`c88ad40`/`db20e89`, PR #214). `next build` runs the typecheck, so **every Vercel deploy from `main` was failing** until now. Fixed once at the shared function (`detail: unknown`, `String()` inside) rather than three call-site wrappers, on branch `feat/toc-container-relative-pin` as its own commit. Verify script still ALL PASS. **Worth a look at why this merged green** — the pre-merge check evidently didn't run `tsc`/`next build`.
 
+## 🔨 IN PROGRESS — Body comments, phase 3 (2026-07-28, branch `feat/md-comments`, ADR-170)
+
+Comments on a span of the body, as CriticMarkup **in the markdown**: `{==anchored text==}{>>note<<}` (or `{>>note<<}` alone). No table, no migration — the anchor *is* the text, so comments can't drift or orphan, and revisions / backup / OneDrive export cover them for free. Core change, Tyler cleared it.
+
+**Phases 1 + 2 are done and verified** (parser, read-view render, margin cards + hover + pins, print/share/docx off by default with `?comments=1` to opt a print in). `src/lib/editor/comment-markdown.ts` holds the whole parser; `scripts/verify-comment-markdown.mts` is the check (37 assertions).
+
+**Phase 3 is next, and it is not optional polish.** Preview mode is gated on `isLargeBody` (ADR-125), so an ordinary note still opens in the Tiptap rich editor, where the raw CriticMarkup shows as literal text. Until the mark lands, the feature only appears on large document notes and the print document.
+
+- Add a `comment` mark (copy the `Highlight` shape in `extensions.ts:127-206`: `renderMarkdown` + `markdownTokenizer` + `parseMarkdown` with `helpers.parseInline`), the note carried as a string attribute.
+- **The mark must stay OUT of `HTML_WRAPPED_MARKS`** — it emits CriticMarkup, not raw HTML, so its content genuinely needs the serializer's normal markdown escaping. Adding it there "for consistency" breaks bold inside commented text.
+- Comment button in the toolbar's insert cluster (gate `showTb("comment")`, `disabled` on an empty selection — the `outdent` pattern). No bubble menu.
+- One `CommentPopover` for edit + delete, click-opened on both platforms; it also replaces the narrow-viewport inline aside.
+- Deferred after that: a per-share-link "include comments" toggle (plumbing is already in), an atom node so hand-written point comments are editable as chips, timestamps.
+
 ## ✅ Recently done — Date pickers commit on confirm (2026-07-28, ADR-169)
 
 Brandon: scheduling from the Inbox saved a date he never picked the moment he moved the browser's calendar to another month, and the popup closed on the way out. Cause: the "Pick" field wrote on the *first* change event, and a native date input fires one while the user is still navigating inside the picker.
