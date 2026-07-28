@@ -24,36 +24,20 @@ import { createPortal } from "react-dom";
 
 type Coords = { left: number; top?: number; bottom?: number; maxHeight: number };
 
-export default function Popover({
-  trigger,
-  triggerClassName,
-  ariaLabel,
-  panelClassName,
-  width = 288,
-  align = "right",
-  children,
-}: {
-  // The trigger's visible content (a row face) and its button styling.
-  trigger: ReactNode;
-  triggerClassName?: string;
-  ariaLabel: string;
-  // Extra classes on the floating panel (e.g. spacing); width is a px number so
-  // we can clamp it to the viewport when positioning.
-  panelClassName?: string;
-  width?: number;
-  // Which trigger edge the panel aligns to. "right" opens leftward (the default
-  // for a right-hand rail, so the panel grows into the page, not off-screen).
-  align?: "left" | "right";
-  // A node, or a render fn given a `close()` so an editor can dismiss on commit.
-  children: ReactNode | ((close: () => void) => ReactNode);
-}) {
-  const [open, setOpen] = useState(false);
+// The placement half of the above, on its own so any anchored floating panel can
+// reuse it (the relation typeahead's listbox, which clipped against the rail's
+// overflow-y before it portaled). Returns a ref to put on the anchor element and
+// fixed coords for the portaled panel; re-measures on scroll/resize while open.
+export function useAnchoredPanel<T extends HTMLElement>(
+  open: boolean,
+  width: number,
+  align: "left" | "right" = "left"
+) {
+  const anchorRef = useRef<T>(null);
   const [coords, setCoords] = useState<Coords | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   const place = useCallback(() => {
-    const el = triggerRef.current;
+    const el = anchorRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
     const margin = 8;
@@ -81,6 +65,52 @@ export default function Popover({
 
   useEffect(() => {
     if (!open) return;
+    // Capture-phase scroll catches inner scroll containers (the rail, the modal),
+    // so the panel stays glued to its anchor.
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
+
+  return { anchorRef, coords };
+}
+
+export default function Popover({
+  trigger,
+  triggerClassName,
+  ariaLabel,
+  panelClassName,
+  width = 288,
+  align = "right",
+  children,
+}: {
+  // The trigger's visible content (a row face) and its button styling.
+  trigger: ReactNode;
+  triggerClassName?: string;
+  ariaLabel: string;
+  // Extra classes on the floating panel (e.g. spacing); width is a px number so
+  // we can clamp it to the viewport when positioning.
+  panelClassName?: string;
+  width?: number;
+  // Which trigger edge the panel aligns to. "right" opens leftward (the default
+  // for a right-hand rail, so the panel grows into the page, not off-screen).
+  align?: "left" | "right";
+  // A node, or a render fn given a `close()` so an editor can dismiss on commit.
+  children: ReactNode | ((close: () => void) => ReactNode);
+}) {
+  const [open, setOpen] = useState(false);
+  const { anchorRef: triggerRef, coords } = useAnchoredPanel<HTMLButtonElement>(
+    open,
+    width,
+    align
+  );
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
     const onDocClick = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!triggerRef.current?.contains(t) && !panelRef.current?.contains(t)) {
@@ -98,19 +128,13 @@ export default function Popover({
         setOpen(false);
       }
     };
-    // Capture-phase scroll catches the modal's inner scroll container too, so the
-    // panel stays glued to its row.
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onKey, true);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
     return () => {
       document.removeEventListener("mousedown", onDocClick);
       document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
     };
-  }, [open, place]);
+  }, [open, triggerRef]);
 
   const close = useCallback(() => setOpen(false), []);
 
