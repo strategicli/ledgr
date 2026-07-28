@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/ui/ActionToast";
+import DateInput from "@/components/ui/DateInput";
 import { DeskSendItems } from "@/components/desk/DeskSendMenu";
 import { addDaysYmd } from "@/lib/recurrence";
 
@@ -229,12 +230,13 @@ export function useRowMenu(opts: RowMenuOptions) {
                   </button>
                 </>
               )}
-              <label className="flex items-center gap-1 px-2 py-1 text-xs text-ink-subtle">
+              <label className="flex flex-wrap items-center gap-1 px-2 py-1 text-xs text-ink-subtle">
                 Pick
-                <input
-                  type="date"
+                <DateInput
+                  value={null}
+                  onCommit={schedule}
+                  ariaLabel="Scheduled date"
                   className="rounded border border-line bg-surface-1 px-1 py-0.5 text-xs text-ink [color-scheme:dark]"
-                  onChange={(e) => e.target.value && schedule(e.target.value)}
                 />
               </label>
               <button type="button" onClick={() => schedule(null)} className="rounded px-2 py-1 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { beginSave, endSave } from "@/lib/save-status";
 import { describeOffset, offsetBetween } from "@/lib/relative-subtask";
+import DateInput from "@/components/ui/DateInput";
 
 const fmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -82,22 +83,25 @@ export default function SubtaskSchedule({
 
   if (editing) {
     return (
-      <span className="inline-flex shrink-0 items-center gap-1">
-        <input
-          type="date"
+      <span
+        className="inline-flex shrink-0 items-center gap-1"
+        // Clicking away leaves edit mode (it used to live on the input; the Set
+        // button holds focus deliberately, so it can't blur us out early).
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setEditing(false);
+        }}
+      >
+        <DateInput
           autoFocus
-          disabled={busy}
-          defaultValue={sched ? sched.slice(0, 10) : ""}
-          onChange={(e) => {
-            if (e.target.value) void save(e.target.value);
-          }}
-          onBlur={() => setEditing(false)}
-          aria-label="Subtask scheduled date"
+          value={sched ? sched.slice(0, 10) : null}
+          onCommit={(ymd) => void save(ymd)}
+          ariaLabel="Subtask scheduled date"
           className="rounded border border-neutral-700 bg-neutral-900 px-1 text-xs text-neutral-200 [color-scheme:dark]"
         />
         {sched && (
           <button
             type="button"
+            disabled={busy}
             onClick={() => void clear()}
             aria-label="Clear scheduled date"
             className="text-neutral-500 hover:text-neutral-200"

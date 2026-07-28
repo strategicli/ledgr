@@ -7,6 +7,7 @@
 
 import { addDaysYmd } from "@/lib/recurrence";
 import { parseNaturalDate, parseNaturalWhen } from "@/lib/nl-date";
+import DateInput from "@/components/ui/DateInput";
 
 const inputClass =
   "rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-500 [color-scheme:dark]";
@@ -32,12 +33,12 @@ export default function DayField({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <input
-        type="date"
+      <DateInput
         autoFocus={autoFocus}
         className={`${inputClass} w-full`}
-        value={valueYmd ?? ""}
-        onChange={(e) => onPick(e.target.value || null)}
+        value={valueYmd}
+        onCommit={(ymd) => onPick(ymd)}
+        ariaLabel="Date"
       />
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={chipClass} onClick={() => onPick(today)}>

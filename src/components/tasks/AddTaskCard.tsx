@@ -20,6 +20,7 @@ import {
   type MentionHit,
 } from "@/components/capture/useMentionTypeahead";
 import { LinkedChips, MentionPopup, useTypeGlyphs, type LinkedItem } from "@/components/capture/mention-ui";
+import DateInput from "@/components/ui/DateInput";
 
 function localTodayYmd(): string {
   const d = new Date();
@@ -441,13 +442,15 @@ export default function AddTaskCard({
               )}
             </button>
             {pickDate && (
-              <input
-                type="date"
-                value={due}
-                autoFocus
-                onChange={(e) => { setDue(e.target.value); setPickDate(false); setDateCleared(false); }}
-                className="absolute left-0 top-full z-10 mt-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 [color-scheme:dark]"
-              />
+              <span className="absolute left-0 top-full z-10 mt-1 flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1">
+                <DateInput
+                  value={due || null}
+                  autoFocus
+                  ariaLabel="Date"
+                  onCommit={(ymd) => { setDue(ymd); setPickDate(false); setDateCleared(false); }}
+                  className="bg-transparent text-sm text-neutral-200 outline-none [color-scheme:dark]"
+                />
+              </span>
             )}
           </span>
         )}
