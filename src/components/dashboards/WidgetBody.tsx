@@ -17,6 +17,7 @@ import { useTimezone } from "@/components/providers/TimezoneProvider";
 import ActionWidgetBody from "./ActionWidgetBody";
 import ContainerWidget from "./ContainerWidget";
 import EmbedWidget from "./EmbedWidget";
+import InlineViewAdd from "./InlineViewAdd";
 import {
   applySettings,
   type ActionWidgetSettings,
@@ -266,47 +267,62 @@ export default function WidgetBody({
   // view kind
   const settings = widget.settings as ViewWidgetSettings;
 
+  // Inline add (W2): a capture line at the bottom of the widget, automatic
+  // wherever the view's filter pins a type — nothing to configure. Hidden in
+  // edit mode (arranging is layout work, not capture) and on a read-only body
+  // (no `today` = the Desk's dashboard panel, same gate as the row menus).
+  const inlineAdd =
+    !editMode && today && data.view?.filter.type ? (
+      <InlineViewAdd filter={data.view.filter} today={today} />
+    ) : null;
+
   if (settings.renderStyle === "faithful" && data.view) {
     return (
-      <div className="h-full overflow-auto px-3 pb-3">
-        <ViewRenderer
-          view={applySettings(data.view, settings)}
-          items={data.items}
-          groupOrder={data.groupOrder}
-          propertyLabels={data.propertyLabels}
-          today={today}
-          tz={tz}
-        />
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+          <ViewRenderer
+            view={applySettings(data.view, settings)}
+            items={data.items}
+            groupOrder={data.groupOrder}
+            propertyLabels={data.propertyLabels}
+            today={today}
+            tz={tz}
+          />
+        </div>
+        {inlineAdd}
       </div>
     );
   }
 
   // compact list preview
   return (
-    <ul className="flex h-full flex-col gap-0.5 overflow-y-auto p-2">
-      {data.items.length > 0 ? (
-        data.items.map((item) => {
-          const rel = data.related?.[item.id] ?? [];
-          // Prefer a non-task association (the person/meeting/project a task is
-          // tagged to) for the chip; fall back to the first related item.
-          const assoc = rel.find((r) => r.type !== "task") ?? rel[0];
-          return (
-            <ItemRow key={item.id} item={item} assoc={assoc} related={rel} today={today} />
-          );
-        })
-      ) : (
-        <li className="px-1.5 py-1 text-sm text-neutral-600">No items match.</li>
-      )}
-      {widget.viewId && data.count > data.items.length && (
-        <li className="px-1.5 pt-1">
-          <Link
-            href={`/views/${widget.viewId}`}
-            className="cancel-drag text-xs text-neutral-500 hover:text-neutral-300"
-          >
-            +{data.count - data.items.length} more →
-          </Link>
-        </li>
-      )}
-    </ul>
+    <div className="flex h-full min-h-0 flex-col">
+      <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+        {data.items.length > 0 ? (
+          data.items.map((item) => {
+            const rel = data.related?.[item.id] ?? [];
+            // Prefer a non-task association (the person/meeting/project a task is
+            // tagged to) for the chip; fall back to the first related item.
+            const assoc = rel.find((r) => r.type !== "task") ?? rel[0];
+            return (
+              <ItemRow key={item.id} item={item} assoc={assoc} related={rel} today={today} />
+            );
+          })
+        ) : (
+          <li className="px-1.5 py-1 text-sm text-neutral-600">No items match.</li>
+        )}
+        {widget.viewId && data.count > data.items.length && (
+          <li className="px-1.5 pt-1">
+            <Link
+              href={`/views/${widget.viewId}`}
+              className="cancel-drag text-xs text-neutral-500 hover:text-neutral-300"
+            >
+              +{data.count - data.items.length} more →
+            </Link>
+          </li>
+        )}
+      </ul>
+      {inlineAdd}
+    </div>
   );
 }

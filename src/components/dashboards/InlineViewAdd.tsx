@@ -1,0 +1,126 @@
+// Inline add for a view-backed widget (W2): one quiet input line at the bottom
+// of the widget body. Type a title, press Enter, the item lands in the view and
+// you stay on the board — the whole point of a dashboard as an activity surface
+// (the action widget's quick-capture navigates away; this doesn't).
+//
+// Rendered automatically wherever the backing view's filter pins a type (zero
+// configuration, Brandon's call). What a new item inherits is DETERMINISTIC or
+// nothing (Principle 3): the pinned type always, and today's date only when the
+// filter is explicitly a today window. No status guessing, no relation
+// guessing, no model in the create path.
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { showToast } from "@/components/ui/ActionToast";
+import type { ViewFilter } from "@/lib/views";
+
+// Which date column a new item inherits from a today-window filter, or null for
+// "send no date at all". The filter names the field it windows on (dateField,
+// default "plan" = scheduled ?? due, ADR-109), so the inherited field is the
+// one that actually makes the item match:
+//   • plan / scheduledDate → scheduledDate (the plan date's primary column)
+//   • dueDate              → dueDate
+//   • meetingAt / createdAt / updatedAt → null: a timestamp, not a plain day;
+//     guessing a time of day is exactly the kind of inference we don't do.
+// focusedToday is its own today window (the Top-3 widget): it matches on the
+// focus day-stamp, so an item captured there gets the stamp — a plain date
+// wouldn't put it in the view.
+export function inheritedDate(
+  filter: ViewFilter
+): { field: "scheduledDate" | "dueDate"; focus?: true } | null {
+  if (filter.focusedToday) return { field: "scheduledDate", focus: true };
+  if (filter.due !== "today") return null;
+  const on = filter.dateField ?? "plan";
+  if (on === "plan" || on === "scheduledDate") return { field: "scheduledDate" };
+  if (on === "dueDate") return { field: "dueDate" };
+  return null;
+}
+
+export default function InlineViewAdd({
+  filter,
+  today,
+}: {
+  filter: ViewFilter;
+  // App-timezone today (YYYY-MM-DD) from the server — never recomputed from the
+  // browser clock, so a late-night capture lands on the owner's day.
+  today?: string;
+}) {
+  const type = filter.type!;
+  const router = useRouter();
+  const [text, setText] = useState("");
+  // Optimistic rows: titles posted but not yet reflected in the server data.
+  // startTransition(router.refresh) keeps isPending true until the fresh RSC
+  // payload commits, so they clear exactly when the real rows arrive (and clear
+  // even when the new item doesn't match the view — no permanent fake row).
+  const [pending, setPending] = useState<string[]>([]);
+  const [isPending, startTransition] = useTransition();
+  // Adjust-during-render (SubtaskCheckbox's idiom) rather than an effect: when
+  // the refresh transition finishes, the server rows are authoritative.
+  const [wasPending, setWasPending] = useState(false);
+  if (isPending !== wasPending) {
+    setWasPending(isPending);
+    if (!isPending) setPending([]);
+  }
+
+  const label = type.replace(/_/g, " ");
+  const article = /^[aeiou]/i.test(label) ? "an" : "a";
+
+  async function add() {
+    const title = text.trim();
+    if (!title) return;
+    setText("");
+    setPending((p) => [...p, title]);
+    try {
+      const date = inheritedDate(filter);
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          title,
+          ...(date && today
+            ? {
+                [date.field]: `${today}T00:00:00.000Z`,
+                ...(date.focus ? { properties: { focus: { date: today, order: Date.now() } } } : null),
+              }
+            : null),
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      startTransition(() => router.refresh());
+    } catch {
+      // Don't lose what was typed.
+      setPending((p) => p.filter((t) => t !== title));
+      setText((t) => t || title);
+      showToast("Couldn't add that");
+    }
+  }
+
+  return (
+    <div className="shrink-0 px-2 pb-1.5">
+      {pending.map((t, i) => (
+        <div key={`${t}-${i}`} className="truncate px-1.5 py-1 text-sm text-ink-subtle">
+          {t}
+        </div>
+      ))}
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void add();
+          } else if (e.key === "Escape") {
+            setText("");
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder={`+ Add ${article} ${label}…`}
+        aria-label={`Add ${article} ${label}`}
+        // cancel-drag: react-grid-layout must never start a drag from here.
+        className="cancel-drag w-full rounded bg-transparent px-1.5 py-1 text-sm text-ink placeholder:text-ink-faint focus:bg-surface-2 focus:outline-none"
+      />
+    </div>
+  );
+}
