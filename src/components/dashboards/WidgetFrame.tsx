@@ -34,15 +34,19 @@ function EditControls({
   onRemove,
   onSettings,
   onAppearance,
+  onViewChange,
 }: {
   data: WidgetData;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
   onAppearance: (id: string, appearance: WidgetAppearance) => void;
+  onViewChange?: (id: string, viewId: string) => void;
 }) {
   const { widget } = data;
   const [gearOpen, setGearOpen] = useState(false);
-  const { triggerRef, pos, measure } = usePopoverPosition(256);
+  // 300 = the popover's real width; a smaller measurement let the panel sit past
+  // its measured box (and off-screen) near the right viewport edge.
+  const { triggerRef, pos, measure } = usePopoverPosition(300);
   return (
     <>
       <div className="relative shrink-0">
@@ -65,6 +69,7 @@ function EditControls({
             anchorRef={triggerRef}
             onChange={(settings) => onSettings(widget.id, settings)}
             onAppearance={(appearance) => onAppearance(widget.id, appearance)}
+            onViewChange={onViewChange ? (viewId) => onViewChange(widget.id, viewId) : undefined}
             onClose={() => setGearOpen(false)}
           />
         )}
@@ -97,7 +102,9 @@ export default function WidgetFrame({
   onRemove,
   onSettings,
   onAppearance,
+  onViewChange,
   today,
+  focusItemId,
   draggable = true,
 }: {
   data: WidgetData;
@@ -105,9 +112,16 @@ export default function WidgetFrame({
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
   onAppearance: (id: string, appearance: WidgetAppearance) => void;
+  // Repoint a view-backed widget at another saved view (the gear's "Shows"
+  // picker). Optional — absent on the Desk's read-only panel and on container
+  // children, where the picker simply doesn't render.
+  onViewChange?: (id: string, viewId: string) => void;
   // App-timezone today (YYYY-MM-DD); threaded to the body so its rows can carry
   // the shared row menu (ADR-142).
   today?: string;
+  // The dashboard's focus item, if any; the body's inline add relates new items
+  // to it so they don't fall out of the focus-scoped view (W4/P4).
+  focusItemId?: string | null;
   // Container children render through this frame too, but they aren't in the RGL
   // grid, so the drag handle is suppressed for them.
   draggable?: boolean;
@@ -153,10 +167,22 @@ export default function WidgetFrame({
         {editMode && (
           <div className="absolute right-1 top-1 z-10 flex items-center gap-1.5 rounded bg-neutral-900/80 px-1.5 py-0.5 text-sm">
             {draggable && DRAG_HANDLE}
-            <EditControls data={data} onRemove={onRemove} onSettings={onSettings} onAppearance={onAppearance} />
+            <EditControls
+              data={data}
+              onRemove={onRemove}
+              onSettings={onSettings}
+              onAppearance={onAppearance}
+              onViewChange={onViewChange}
+            />
           </div>
         )}
-        <WidgetBody data={data} editMode={editMode} onSettings={onSettings} today={today} />
+        <WidgetBody
+          data={data}
+          editMode={editMode}
+          onSettings={onSettings}
+          today={today}
+          focusItemId={focusItemId}
+        />
       </div>
     );
   }
@@ -188,12 +214,24 @@ export default function WidgetFrame({
           </span>
         )}
         {editMode && (
-          <EditControls data={data} onRemove={onRemove} onSettings={onSettings} onAppearance={onAppearance} />
+          <EditControls
+            data={data}
+            onRemove={onRemove}
+            onSettings={onSettings}
+            onAppearance={onAppearance}
+            onViewChange={onViewChange}
+          />
         )}
       </header>
       {showBody && (
         <div className="min-h-0 flex-1 overflow-hidden">
-          <WidgetBody data={data} editMode={editMode} onSettings={onSettings} today={today} />
+          <WidgetBody
+            data={data}
+            editMode={editMode}
+            onSettings={onSettings}
+            today={today}
+            focusItemId={focusItemId}
+          />
         </div>
       )}
     </div>

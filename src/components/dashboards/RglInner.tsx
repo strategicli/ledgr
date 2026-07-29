@@ -60,18 +60,22 @@ export default function RglInner({
   widgets,
   editMode,
   today,
+  focusItemId,
   onLayoutChange,
   onRemove,
   onSettings,
   onAppearance,
+  onViewChange,
 }: {
   widgets: WidgetData[];
   editMode: boolean;
   today?: string;
+  focusItemId?: string | null;
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
   onAppearance: (id: string, appearance: WidgetAppearance) => void;
+  onViewChange?: (id: string, viewId: string) => void;
 }) {
   return (
     <ResponsiveGridLayout
@@ -103,9 +107,11 @@ export default function RglInner({
             data={wd}
             editMode={editMode}
             today={today}
+            focusItemId={focusItemId}
             onRemove={onRemove}
             onSettings={onSettings}
             onAppearance={onAppearance}
+            onViewChange={onViewChange}
           />
         </div>
       ))}

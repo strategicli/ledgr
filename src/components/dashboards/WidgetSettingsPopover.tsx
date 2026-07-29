@@ -96,9 +96,8 @@ export default function WidgetSettingsPopover({
   onChange: (settings: WidgetSettings) => void;
   onAppearance: (appearance: WidgetAppearance) => void;
   // Repoint a view-backed widget at a different saved view (patches viewId, which
-  // `onChange` can't carry). ponytail: still needs threading from WidgetFrame's
-  // EditControls → WidgetFrame props → DashboardClient/RglInner; until then the
-  // "Shows" picker is read-only-absent and the rest of the gear works as before.
+  // `onChange` can't carry). Optional: the "Shows" picker hides itself where no
+  // handler is threaded (container children, the Desk's read-only panel).
   onViewChange?: (viewId: string) => void;
   onClose: () => void;
 }) {
@@ -110,9 +109,8 @@ export default function WidgetSettingsPopover({
   return (
     <FloatingMenu
       pos={pos}
-      // ponytail: WidgetFrame still measures with usePopoverPosition(256), so the
-      // panel can sit ~44px right of its measured box near the viewport edge.
-      // Bump that call to 300 when the frame is next touched.
+      // Keep in step with WidgetFrame's usePopoverPosition(300) — a measurement
+      // narrower than the real width puts the panel off-screen at the right edge.
       width={300}
       anchorRef={anchorRef}
       onClose={onClose}

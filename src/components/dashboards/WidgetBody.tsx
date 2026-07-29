@@ -113,6 +113,7 @@ export default function WidgetBody({
   editMode = false,
   onSettings,
   today,
+  focusItemId,
 }: {
   data: WidgetData;
   editMode?: boolean;
@@ -120,6 +121,10 @@ export default function WidgetBody({
   // App-timezone today (YYYY-MM-DD). Set → rows are interactive (ADR-142);
   // undefined → plain rows (the Desk's read-only dashboard panel).
   today?: string;
+  // The dashboard's focus item, if any — the inline add relates new items to it
+  // (the resolver focus-scopes the QUERY only, so an unrelated new item would
+  // vanish on the next refresh).
+  focusItemId?: string | null;
 }) {
   const { widget } = data;
   const tz = useTimezone();
@@ -273,7 +278,7 @@ export default function WidgetBody({
   // (no `today` = the Desk's dashboard panel, same gate as the row menus).
   const inlineAdd =
     !editMode && today && data.view?.filter.type ? (
-      <InlineViewAdd filter={data.view.filter} today={today} />
+      <InlineViewAdd filter={data.view.filter} today={today} focusItemId={focusItemId} />
     ) : null;
 
   if (settings.renderStyle === "faithful" && data.view) {

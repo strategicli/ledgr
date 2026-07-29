@@ -26,10 +26,18 @@ type RglInnerProps = {
   // App-timezone today (YYYY-MM-DD). Set → widget rows get the row menu
   // (ADR-142); undefined (the Desk's read-only panel) → plain rows.
   today?: string;
+  // The dashboard's focus item, when it has one: a new item captured through a
+  // widget's inline add is related to it, or it would fall straight out of the
+  // focus-scoped view (W4/P4).
+  focusItemId?: string | null;
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
   onAppearance: (id: string, appearance: WidgetAppearance) => void;
+  // Repoint a view-backed widget at another saved view (the gear's "Shows"
+  // picker). Optional: the Desk's read-only panel doesn't pass it, and the
+  // picker hides itself when absent.
+  onViewChange?: (id: string, viewId: string) => void;
 };
 
 export type DashboardGridLayoutProps = RglInnerProps & {

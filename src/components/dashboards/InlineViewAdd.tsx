@@ -40,11 +40,21 @@ export function inheritedDate(
 export default function InlineViewAdd({
   filter,
   today,
+  focusItemId,
 }: {
   filter: ViewFilter;
   // App-timezone today (YYYY-MM-DD) from the server — never recomputed from the
   // browser clock, so a late-night capture lands on the owner's day.
   today?: string;
+  // The host dashboard's focus item, when it has one. The resolver applies the
+  // focus to the QUERY only, so the filter arriving here is the stored
+  // (unfocused) one: without relating the new item to the focus, it would match
+  // the type and date but not the focus scope and vanish on the next refresh.
+  // Relating it is the same deterministic create-inherits rule as ADR-028
+  // ("+ Add creates an item of the filtered type and relates it to the host").
+  // Skipped when the view pins its own `relatedTo` — applyFocus ignores the
+  // dashboard focus in exactly that case, so relating to it would be a lie.
+  focusItemId?: string | null;
 }) {
   const type = filter.type!;
   const router = useRouter();
@@ -88,6 +98,21 @@ export default function InlineViewAdd({
         }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // POST /api/items can't carry a relation, so the edge is a second call to
+      // the existing relations endpoint — the same create-then-relate pair
+      // AddRelation's create-on-miss already uses. No new endpoint.
+      const host = filter.relatedTo ? null : focusItemId;
+      if (host) {
+        const { item } = (await res.json()) as { item: { id: string } };
+        const rel = await fetch(`/api/items/${item.id}/relations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetId: host }),
+        });
+        // The item exists either way, so a failed edge is NOT the create error
+        // path (retrying would duplicate it): say what actually happened.
+        if (!rel.ok) showToast("Added, but couldn't link it to the focus");
+      }
       startTransition(() => router.refresh());
     } catch {
       // Don't lose what was typed.
