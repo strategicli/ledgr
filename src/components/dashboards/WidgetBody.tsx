@@ -277,11 +277,20 @@ export default function WidgetBody({
     ) : null;
 
   if (settings.renderStyle === "faithful" && data.view) {
+    const view = applySettings(data.view, settings);
+    // W3: a faithful BOARD widget's cards drag between columns, PATCHing the
+    // grouped property exactly as /views/[id] does (ViewRenderer owns both the
+    // mouse and touch paths). Off in edit mode so card drag and the grid's cell
+    // drag never compete, and off without `today` — the same "this dashboard is
+    // interactive" gate the row menus and inline add use, so the Desk's
+    // read-only dashboard panel stays read-only.
+    const boardDraggable = !editMode && !!today && view.layout === "board";
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
           <ViewRenderer
-            view={applySettings(data.view, settings)}
+            view={view}
+            boardDraggable={boardDraggable}
             items={data.items}
             groupOrder={data.groupOrder}
             propertyLabels={data.propertyLabels}
