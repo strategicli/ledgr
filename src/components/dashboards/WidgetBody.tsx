@@ -10,7 +10,6 @@
 "use client";
 
 import Link from "next/link";
-import { createPortal } from "react-dom";
 import { useRowMenu } from "@/components/lists/RowMenu";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import ViewRenderer, { type ViewItem } from "@/components/views/ViewRenderer";
@@ -48,11 +47,9 @@ type Assoc = { id: string; title: string; type: string };
 // Trash, each optimistic + undo toast. That's what makes a board an activity
 // surface: reschedule an overdue task without leaving it.
 //
-// useRowMenu + a portal rather than the plain <RowMenu> wrapper: an RGL cell
-// carries a `transform`, which makes it the containing block for `position:
-// fixed`, so the menu would be offset by the cell AND clipped by the widget's
-// overflow-hidden. Portaling to <body> escapes both — the same reason
-// floating-menu.tsx exists for the gear popovers.
+// useRowMenu rather than the plain <RowMenu> wrapper because this row renders
+// its own <li>. RowMenu portals the menu itself, which is what keeps it out of
+// the RGL cell's transform and the card's overflow-hidden.
 function ItemRow({
   item,
   assoc,
@@ -105,7 +102,7 @@ function ItemRow({
       <span className="shrink-0 text-xs text-ink-subtle">
         {item.dueDate ? dueFmt.format(item.dueDate) : ""}
       </span>
-      {menu && createPortal(menu, document.body)}
+      {menu}
     </li>
   );
 }
