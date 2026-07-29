@@ -80,11 +80,14 @@ export default function RglInner({
       rowHeight={ROW_HEIGHT}
       margin={GRID_MARGIN}
       containerPadding={[0, 0]}
-      // Don't paint the grid until WidthProvider has measured the container.
-      // Default (false) renders once at width:1280 → lg/12-col → items pile up
-      // and overflow the real viewport, then snap; measuring first kills that
-      // load-flash and the md right-edge clip it caused.
-      measureBeforeMount
+      // DO NOT add `measureBeforeMount` here. In RGL 1.5.3 the flag renders a
+      // placeholder div, and the measurement that swaps it for the grid changes
+      // the element type — React unmounts the placeholder, but WidthProvider's
+      // ResizeObserver stays attached to the DETACHED node, which reports 0×0.
+      // That second callback latches width:0 permanently and every widget
+      // renders at 0px (the blank-dashboard bug, live 2026-07-11 → 2026-07-29).
+      // The load-flash the flag was added for (commit 6012f81) is already solved
+      // by DashboardGridLayout's height reservation + skeleton.
       isDraggable={editMode}
       isResizable={editMode}
       draggableHandle=".widget-drag-handle"
