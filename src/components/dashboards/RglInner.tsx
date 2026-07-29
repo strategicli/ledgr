@@ -59,6 +59,7 @@ function buildLayouts(widgets: WidgetData[], editMode: boolean): Layouts {
 export default function RglInner({
   widgets,
   editMode,
+  today,
   onLayoutChange,
   onRemove,
   onSettings,
@@ -66,6 +67,7 @@ export default function RglInner({
 }: {
   widgets: WidgetData[];
   editMode: boolean;
+  today?: string;
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
@@ -100,6 +102,7 @@ export default function RglInner({
           <WidgetFrame
             data={wd}
             editMode={editMode}
+            today={today}
             onRemove={onRemove}
             onSettings={onSettings}
             onAppearance={onAppearance}

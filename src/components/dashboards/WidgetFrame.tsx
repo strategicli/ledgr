@@ -97,6 +97,7 @@ export default function WidgetFrame({
   onRemove,
   onSettings,
   onAppearance,
+  today,
   draggable = true,
 }: {
   data: WidgetData;
@@ -104,6 +105,9 @@ export default function WidgetFrame({
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
   onAppearance: (id: string, appearance: WidgetAppearance) => void;
+  // App-timezone today (YYYY-MM-DD); threaded to the body so its rows can carry
+  // the shared row menu (ADR-142).
+  today?: string;
   // Container children render through this frame too, but they aren't in the RGL
   // grid, so the drag handle is suppressed for them.
   draggable?: boolean;
@@ -152,7 +156,7 @@ export default function WidgetFrame({
             <EditControls data={data} onRemove={onRemove} onSettings={onSettings} onAppearance={onAppearance} />
           </div>
         )}
-        <WidgetBody data={data} editMode={editMode} onSettings={onSettings} />
+        <WidgetBody data={data} editMode={editMode} onSettings={onSettings} today={today} />
       </div>
     );
   }
@@ -189,7 +193,7 @@ export default function WidgetFrame({
       </header>
       {showBody && (
         <div className="min-h-0 flex-1 overflow-hidden">
-          <WidgetBody data={data} editMode={editMode} onSettings={onSettings} />
+          <WidgetBody data={data} editMode={editMode} onSettings={onSettings} today={today} />
         </div>
       )}
     </div>

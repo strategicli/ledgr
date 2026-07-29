@@ -9,7 +9,9 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import DashboardClient from "@/components/dashboards/DashboardClient";
 import { resolveDashboardData } from "@/lib/dashboard-resolve";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { getSettings } from "@/lib/settings";
+import { getAppTimezone } from "@/lib/today";
 
 // Rendered as JSX (a normal async Server Component). When the dashboard is
 // missing/unowned: render `fallback` if given (the Home/Today surfaces pass the
@@ -30,9 +32,14 @@ export default async function DashboardView({
   }
 
   const settings = await getSettings(ownerId);
+  // App-timezone "today" (YYYY-MM-DD), resolved server-side exactly as
+  // /views/[id] does, so SSR and the client's first render agree. It's what turns
+  // every widget row interactive (ADR-142: Complete / Focus / Schedule / Trash).
+  const tz = await getAppTimezone(ownerId);
 
   return (
     <DashboardClient
+      today={appTodayYmd(new Date(), tz)}
       dashboardId={resolved.id}
       name={resolved.name}
       focusItemId={resolved.focusItemId}

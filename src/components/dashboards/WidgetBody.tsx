@@ -10,6 +10,8 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
+import { useRowMenu } from "@/components/lists/RowMenu";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import ViewRenderer, { type ViewItem } from "@/components/views/ViewRenderer";
 import { useTimezone } from "@/components/providers/TimezoneProvider";
@@ -40,12 +42,43 @@ type Assoc = { id: string; title: string; type: string };
 // One item row, shared by the view-compact list and the tree's child rows: a
 // task gets a check-off circle; the title links to the item; an optional
 // "associated with" chip; a due-date stamp.
-function ItemRow({ item, assoc, related }: { item: ViewItem; assoc?: Assoc; related?: Assoc[] }) {
+//
+// With `today` set (W1) the row also carries the shared row menu (ADR-142) —
+// right-click on desktop, long-press on touch → Complete / Focus / Schedule /
+// Trash, each optimistic + undo toast. That's what makes a board an activity
+// surface: reschedule an overdue task without leaving it.
+//
+// useRowMenu + a portal rather than the plain <RowMenu> wrapper: an RGL cell
+// carries a `transform`, which makes it the containing block for `position:
+// fixed`, so the menu would be offset by the cell AND clipped by the widget's
+// overflow-hidden. Portaling to <body> escapes both — the same reason
+// floating-menu.tsx exists for the gear popovers.
+function ItemRow({
+  item,
+  assoc,
+  related,
+  today,
+}: {
+  item: ViewItem;
+  assoc?: Assoc;
+  related?: Assoc[];
+  today?: string;
+}) {
   const done = item.statusCategory === "done";
   const isTask = item.type === "task";
   const extra = related && related.length > 1 ? related.length - 1 : 0;
+  const { handlers, menu } = useRowMenu({
+    id: item.id,
+    canComplete: isTask,
+    done,
+    today,
+    label: item.title || "Untitled",
+  });
   return (
-    <li className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-surface-2">
+    <li
+      className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-surface-2"
+      {...(today ? handlers : null)}
+    >
       {isTask && (
         <span className="cancel-drag shrink-0">
           <SubtaskCheckbox id={item.id} done={done} />
@@ -72,6 +105,7 @@ function ItemRow({ item, assoc, related }: { item: ViewItem; assoc?: Assoc; rela
       <span className="shrink-0 text-xs text-ink-subtle">
         {item.dueDate ? dueFmt.format(item.dueDate) : ""}
       </span>
+      {menu && createPortal(menu, document.body)}
     </li>
   );
 }
@@ -80,10 +114,14 @@ export default function WidgetBody({
   data,
   editMode = false,
   onSettings,
+  today,
 }: {
   data: WidgetData;
   editMode?: boolean;
   onSettings?: (id: string, settings: WidgetSettings) => void;
+  // App-timezone today (YYYY-MM-DD). Set → rows are interactive (ADR-142);
+  // undefined → plain rows (the Desk's read-only dashboard panel).
+  today?: string;
 }) {
   const { widget } = data;
   const tz = useTimezone();
@@ -199,7 +237,7 @@ export default function WidgetBody({
                       {s.hideCompletedChildren ? "No open sub-items" : "No sub-items"}
                     </li>
                   ) : (
-                    kids.map((c) => <ItemRow key={c.id} item={c} />)
+                    kids.map((c) => <ItemRow key={c.id} item={c} today={today} />)
                   )}
                   {total > kids.length && (
                     <li className="px-1.5 pt-0.5">
@@ -239,6 +277,7 @@ export default function WidgetBody({
           items={data.items}
           groupOrder={data.groupOrder}
           propertyLabels={data.propertyLabels}
+          today={today}
           tz={tz}
         />
       </div>
@@ -254,7 +293,9 @@ export default function WidgetBody({
           // Prefer a non-task association (the person/meeting/project a task is
           // tagged to) for the chip; fall back to the first related item.
           const assoc = rel.find((r) => r.type !== "task") ?? rel[0];
-          return <ItemRow key={item.id} item={item} assoc={assoc} related={rel} />;
+          return (
+            <ItemRow key={item.id} item={item} assoc={assoc} related={rel} today={today} />
+          );
         })
       ) : (
         <li className="px-1.5 py-1 text-sm text-neutral-600">No items match.</li>

@@ -75,6 +75,7 @@ export default function DashboardClient({
   isHome,
   isToday,
   initialWidgets,
+  today,
 }: {
   dashboardId: string;
   name: string;
@@ -84,6 +85,9 @@ export default function DashboardClient({
   isHome: boolean;
   isToday: boolean;
   initialWidgets: WidgetData[];
+  // App-timezone today (YYYY-MM-DD), from the server. When set, widget rows carry
+  // the shared row menu (ADR-142); left undefined the rows stay plain.
+  today?: string;
 }) {
   const router = useRouter();
   const [widgets, setWidgets] = useState(initialWidgets);
@@ -461,6 +465,7 @@ export default function DashboardClient({
             <DashboardGridLayout
               widgets={widgets}
               editMode={editMode}
+              today={today}
               reservedHeight={reservedHeight}
               onLayoutChange={handleLayoutChange}
               onRemove={handleRemove}

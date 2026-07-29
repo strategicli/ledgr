@@ -23,6 +23,9 @@ import type { WidgetAppearance, WidgetData, WidgetSettings } from "@/lib/dashboa
 type RglInnerProps = {
   widgets: WidgetData[];
   editMode: boolean;
+  // App-timezone today (YYYY-MM-DD). Set → widget rows get the row menu
+  // (ADR-142); undefined (the Desk's read-only panel) → plain rows.
+  today?: string;
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
