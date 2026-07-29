@@ -12,6 +12,7 @@
 "use client";
 
 import { useState } from "react";
+import { showToast } from "@/components/ui/ActionToast";
 import {
   type ContainerWidgetSettings,
   type DashboardWidget,
@@ -40,7 +41,13 @@ export default function ContainerWidget({
   const [tab, setTab] = useState(Math.min(Math.max(s.activeTab, 0), Math.max(childData.length - 1, 0)));
 
   const setChildren = (children: DashboardWidget[]) => onContainerChange({ ...s, children });
-  const removeChild = (id: string) => setChildren(s.children.filter((c) => c.id !== id));
+  // Same undo-not-confirm posture as the top-level widget ✕ (ADR-142). `s` is this
+  // render's settings, i.e. the pre-removal children in their original order, so
+  // undo is just "put that object back" — no index bookkeeping needed.
+  const removeChild = (id: string) => {
+    setChildren(s.children.filter((c) => c.id !== id));
+    showToast("Widget removed", () => onContainerChange(s));
+  };
   const setChildSettings = (id: string, settings: WidgetSettings) =>
     setChildren(s.children.map((c) => (c.id === id ? { ...c, settings } : c)));
   const setChildAppearance = (id: string, appearance: WidgetAppearance) =>

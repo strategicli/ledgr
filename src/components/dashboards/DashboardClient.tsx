@@ -22,6 +22,7 @@ import BackgroundPanel from "./BackgroundPanel";
 import DashboardGridLayout from "./DashboardGridLayout";
 import FocusPicker from "./FocusPicker";
 import StageBackground from "./StageBackground";
+import { showToast } from "@/components/ui/ActionToast";
 import {
   buildActionWidget,
   buildContainerWidget,
@@ -220,8 +221,24 @@ export default function DashboardClient({
     [persistNow, router, cancelPersist]
   );
 
+  // Removing a widget throws away its settings, appearance AND grid placement, so
+  // it gets the ADR-142 treatment: no confirm, an undo toast instead. Undo splices
+  // the captured WidgetData back at its original index — the whole object, so the
+  // tile returns exactly where and how it was. No refetch: the captured object
+  // still carries its resolved data (view/items/count/embedItem/childData), so a
+  // router.refresh() would only buy seconds of freshness for a full RSC fan-out.
   const handleRemove = useCallback(
-    (id: string) => void commit(widgetsRef.current.filter((d) => d.widget.id !== id), false),
+    (id: string) => {
+      const idx = widgetsRef.current.findIndex((d) => d.widget.id === id);
+      if (idx < 0) return;
+      const removed = widgetsRef.current[idx];
+      void commit(widgetsRef.current.filter((d) => d.widget.id !== id), false);
+      showToast("Widget removed", () => {
+        const next = [...widgetsRef.current];
+        next.splice(idx, 0, removed);
+        void commit(next, false);
+      });
+    },
     [commit]
   );
 
