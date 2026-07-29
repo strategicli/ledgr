@@ -7,8 +7,11 @@
 //             the peek following, Enter/click a row re-navigates.
 //   - CENTER — the original center modal, used when the window is narrow or a
 //             right rail already occupies the trailing edge.
-// Close = Esc, backdrop click (center only), or ✕ — all router.back(), which
-// tears down the intercepting @modal slot and returns to the launching surface.
+// Close = Esc, backdrop click (center only), or ✕ — router.back() while the URL
+// still points at this item, which tears down the intercepting @modal slot and
+// returns to the launching surface. Once the main pane has soft-navigated on
+// (the slot stays mounted, the URL doesn't), close just unmounts the panel:
+// back() there would walk the main pane's history instead of closing.
 // Arrow-walk uses router.replace so ↑/↓ browsing the list doesn't grow history.
 // (Making a single back() always return to the list even after clicking through
 // several items inside the peek is a known rough edge, deferred to its own slice.)
@@ -17,7 +20,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import ActionGlyph from "@/components/canvas/action-icons";
@@ -112,10 +115,25 @@ export default function Modal({
   favorited?: boolean;
 }) {
   const router = useRouter();
+  // Whether the URL still points at this item. A soft nav in the main pane
+  // (clicking the nav, a list link elsewhere) leaves this slot mounted — Next
+  // preserves an unmatched parallel slot — while pushing its own history entry,
+  // so the item URL is no longer the entry back() would pop. Closing with
+  // back() there walked the main pane instead of closing the panel.
+  const pathname = usePathname();
+  const stale = pathname !== `/items/${itemId}`;
+  const [dismissed, setDismissed] = useState(false);
   // Back to the surface the peek launched from. router.back() tears down the
   // intercepting @modal slot and returns to the launching list/page. Shared by
   // Esc, the ✕, the center backdrop, sheet-dismiss, and the post-delete path.
-  const close = useCallback(() => router.back(), [router]);
+  // Once the URL has moved on there's nothing to pop — the panel is the only
+  // thing left to close, so just unmount it and leave the main pane alone.
+  const close = useCallback(() => {
+    if (stale) setDismissed(true);
+    else router.back();
+  }, [router, stale]);
+  // No reset needed: opening another item swaps loading.tsx into the slot, which
+  // remounts this component with a fresh `dismissed`.
   // sheet (mobile) / peek (wide desktop) / center — decided from the layout on
   // mount and kept current on resize. Client-only guard makes the SSR pass
   // (never hit in practice — the @modal slot only fills on a client nav) fall
@@ -301,6 +319,10 @@ export default function Modal({
   useEffect(() => {
     return () => router.refresh();
   }, [router]);
+
+  // Closed while stale: the slot stays mounted until another item replaces it,
+  // so render nothing rather than pushing the main pane around.
+  if (dismissed && stale) return null;
 
   // The shared header (Trash · type cue · actions · Expand · Close) and the
   // scrolling canvas body, kept separate so the sheet can make ONLY the header
