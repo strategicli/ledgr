@@ -129,6 +129,43 @@ export default function DashboardClient({
     appearanceRef.current = appearance;
   }, [appearance]);
 
+  // Freshness: the server resolves "today" and every date window at request
+  // time, so a board left open in the installed PWA overnight keeps showing
+  // yesterday. Refresh when the tab comes back to the foreground — event-driven
+  // only, never a polling loop. Keep BOTH guards:
+  //   • the 60s throttle, because these routes are force-dynamic and each view
+  //     widget costs several DB round trips (repeated alt-tabbing would be rude);
+  //   • the edit-mode / pending-write skip, because a refresh adopts fresh
+  //     `initialWidgets` during render, which would stomp an in-progress
+  //     arrangement or race a debounced layout/settings PATCH.
+  const lastRefresh = useRef(0);
+  useEffect(() => {
+    // Mount counts as a refresh, so a focus right after load doesn't refetch.
+    if (!lastRefresh.current) lastRefresh.current = Date.now();
+    const maybeRefresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (editMode || timer.current || settingsTimer.current) return;
+      if (Date.now() - lastRefresh.current < 60_000) return;
+      lastRefresh.current = Date.now();
+      router.refresh();
+    };
+    document.addEventListener("visibilitychange", maybeRefresh);
+    window.addEventListener("focus", maybeRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", maybeRefresh);
+      window.removeEventListener("focus", maybeRefresh);
+    };
+  }, [editMode, router]);
+
+  // Cancel a pending debounced layout persist. Nulls the ref as well as clearing
+  // the timeout: the freshness effect above reads a non-null `timer.current` as
+  // "a write is in flight", so a cleared-but-still-non-null handle would disable
+  // the refresh for the rest of the page's life after the first add or remove.
+  const cancelPersist = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+
   const persistNow = useCallback(
     (next: WidgetData[]) => {
       const body = {
@@ -147,9 +184,16 @@ export default function DashboardClient({
   );
 
   const schedulePersist = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void persistNow(widgetsRef.current), 600);
-  }, [persistNow]);
+    cancelPersist();
+    // Stays non-null until the PATCH resolves, so the freshness effect above can
+    // tell a write is still in flight and skip its refresh.
+    timer.current = setTimeout(() => {
+      const t = timer.current;
+      void persistNow(widgetsRef.current).then(() => {
+        if (timer.current === t) timer.current = null;
+      });
+    }, 600);
+  }, [persistNow, cancelPersist]);
 
   // RGL fires onLayoutChange on mount too; ignoring it in view mode avoids both
   // a spurious write and any update loop.
@@ -167,13 +211,13 @@ export default function DashboardClient({
   // Commit a change to the widget array immediately, then optionally refetch.
   const commit = useCallback(
     async (next: WidgetData[], refetch: boolean) => {
-      if (timer.current) clearTimeout(timer.current);
+      cancelPersist();
       widgetsRef.current = next;
       setWidgets(next);
       await persistNow(next);
       if (refetch) router.refresh();
     },
-    [persistNow, router]
+    [persistNow, router, cancelPersist]
   );
 
   const handleRemove = useCallback(
@@ -197,7 +241,9 @@ export default function DashboardClient({
       const refetch = REFETCH_KINDS.has(kind);
       if (settingsTimer.current) clearTimeout(settingsTimer.current);
       settingsTimer.current = setTimeout(() => {
+        const t = settingsTimer.current;
         void persistNow(widgetsRef.current).then(() => {
+          if (settingsTimer.current === t) settingsTimer.current = null;
           if (refetch) router.refresh();
         });
       }, 450);
@@ -311,7 +357,7 @@ export default function DashboardClient({
     (next: DashboardAppearance | null) => {
       setAppearance(next);
       appearanceRef.current = next;
-      if (timer.current) clearTimeout(timer.current);
+      cancelPersist();
       void fetch(`/api/dashboards/${dashboardId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -323,7 +369,7 @@ export default function DashboardClient({
         }),
       }).catch(() => {});
     },
-    [dashboardId, name, nameProp, focusItemId]
+    [dashboardId, name, nameProp, focusItemId, cancelPersist]
   );
 
   // Assign (or clear) this dashboard as the Home (/) or Today surface.
@@ -344,7 +390,7 @@ export default function DashboardClient({
   // PATCHes the new focus (explicit, not the stale prop) then refetches.
   const handleSetFocus = useCallback(
     (newFocusId: string | null) => {
-      if (timer.current) clearTimeout(timer.current);
+      cancelPersist();
       void fetch(`/api/dashboards/${dashboardId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -358,7 +404,7 @@ export default function DashboardClient({
         .then(() => router.refresh())
         .catch(() => {});
     },
-    [dashboardId, name, nameProp, router]
+    [dashboardId, name, nameProp, router, cancelPersist]
   );
 
   const density = appearance?.density ?? "comfortable";
