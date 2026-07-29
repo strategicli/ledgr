@@ -289,7 +289,17 @@ export default function WidgetBody({
     // drag never compete, and off without `today` — the same "this dashboard is
     // interactive" gate the row menus and inline add use, so the Desk's
     // read-only dashboard panel stays read-only.
-    const boardDraggable = !editMode && !!today && view.layout === "board";
+    // Reproduce /views/[id]'s drag guard exactly, not a looser version of it.
+    // boardDropPatch writes a SCALAR, so only a status/urgency field grouping or
+    // a single-select property is safe: a multi_select would be corrupted into a
+    // string. The resolver now carries groupPropKind for that check, and the
+    // type's real statuses as groupOrder so a status board's columns are the ones
+    // the type actually defines (otherwise a drop writes an undefined status).
+    const g = view.grouping;
+    const fieldGroup = !g || "field" in g ? (g?.field ?? "status") : null;
+    const safeToDrag =
+      fieldGroup === "status" || fieldGroup === "urgency" || data.groupPropKind === "select";
+    const boardDraggable = !editMode && !!today && view.layout === "board" && safeToDrag;
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
@@ -299,6 +309,7 @@ export default function WidgetBody({
             items={data.items}
             groupOrder={data.groupOrder}
             propertyLabels={data.propertyLabels}
+            statuses={data.statuses}
             today={today}
             tz={tz}
           />
