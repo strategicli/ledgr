@@ -107,9 +107,11 @@ export default function AddWidgetMenu({
           }
           setOpen((v) => !v);
         }}
-        className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-300 hover:border-neutral-600"
+        className="rounded-md border border-line-strong px-3 py-1 text-sm text-ink-muted hover:border-neutral-600 hover:text-ink"
       >
-        + Add widget
+        {/* "+ Add" on a phone: at 375px the full label pushed Done onto a third
+            row of the edit header. Desktop keeps the explicit wording. */}
+        + Add<span className="hidden sm:inline"> widget</span>
       </button>
       {open && (
         <FloatingMenu
