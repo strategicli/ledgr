@@ -10,14 +10,14 @@ import { Responsive, WidthProvider, type Layout, type Layouts } from "react-grid
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import {
-  effectiveAppearance,
   GRID_BREAKPOINTS,
+  widgetFolded,
   type GridBreakpoint,
   type WidgetAppearance,
   type WidgetData,
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
-import { defaultCell, GRID_MARGIN, ROW_HEIGHT } from "@/lib/dashboard-grid";
+import { defaultCell, defaultH, GRID_MARGIN, ROW_HEIGHT, smOrder } from "@/lib/dashboard-grid";
 import WidgetFrame from "./WidgetFrame";
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
@@ -37,44 +37,92 @@ function minFor(kind: Kind) {
   return { minW: 3, minH: 4 };
 }
 
-// editMode is needed so a collapsed widget folds to one row in VIEW mode only —
-// the forced height never persists (handleLayoutChange ignores view mode), so
-// the stored expanded height survives and restores on expand.
-function buildLayouts(widgets: WidgetData[], editMode: boolean): Layouts {
+// A folded widget (collapsed, or empty in view mode — widgetFolded owns the rule)
+// renders one row tall in BOTH modes now, so what you arrange in edit mode is
+// what view mode shows. The forced h:1 is presentation only: it's stripped back
+// out of the layout RGL reports (keepStoredHeights, below) before the change goes
+// up to be persisted. A folded tile is also NOT resizable — the chevron expands
+// it first, which is honest, and it means no drag-resize can be silently thrown
+// away by that restore.
+function buildLayouts(widgets: WidgetData[], editMode: boolean, today?: string): Layouts {
   const out: Layouts = { lg: [], md: [], sm: [] };
+  const smRank = smOrder(widgets);
   widgets.forEach((wd, i) => {
     const kind = wd.widget.kind;
-    const collapsed = !editMode && effectiveAppearance(wd.widget).collapsed;
+    const folded = widgetFolded(wd, editMode, today);
     const min = minFor(kind);
     for (const bp of GRID_BREAKPOINTS) {
-      const base = wd.widget.layout[bp] ?? defaultCell(bp, i, kind);
-      const cell = collapsed ? { ...base, h: 1 } : base;
-      const m = collapsed ? { minW: min.minW, minH: 1 } : min;
-      (out[bp] as Layout[]).push({ i: wd.widget.id, ...cell, ...m });
+      // On sm, an un-placed widget falls in DESKTOP reading order, not creation
+      // order (R3/5); a stored sm cell still wins.
+      const base = wd.widget.layout[bp] ?? defaultCell(bp, bp === "sm" ? smRank[i] : i, kind);
+      (out[bp] as Layout[]).push({
+        i: wd.widget.id,
+        ...(folded ? { ...base, h: 1 } : base),
+        minW: min.minW,
+        minH: folded ? 1 : min.minH,
+        ...(folded ? { isResizable: false } : null),
+      });
     }
   });
+  return out;
+}
+
+// The other half of honest collapse. handleLayoutChange upstream persists
+// whatever RGL reports, and RGL reports the h:1 we just forced — so a folded
+// widget would have its stored expanded height overwritten with 1 the moment
+// anything in the grid moved, and expanding it later would give back a one-row
+// tile. Rewrite each folded widget's h back to its STORED height on the way up.
+// x / y / w still come from RGL: those ARE what was just arranged, and they're
+// arranged against the folded tile the user can see.
+function keepStoredHeights(
+  widgets: WidgetData[],
+  all: Layouts,
+  editMode: boolean,
+  today?: string
+): Layouts {
+  const folded = new Map<string, WidgetData>();
+  for (const wd of widgets) {
+    if (widgetFolded(wd, editMode, today)) folded.set(wd.widget.id, wd);
+  }
+  if (folded.size === 0) return all;
+  const out: Layouts = {};
+  for (const [bp, cells] of Object.entries(all)) {
+    out[bp] = cells.map((c) => {
+      const wd = folded.get(c.i);
+      if (!wd) return c;
+      // No stored cell for this breakpoint yet → the kind's default height, so
+      // expanding gives a usable tile rather than the folded sliver.
+      return { ...c, h: wd.widget.layout[bp as GridBreakpoint]?.h ?? defaultH(wd.widget.kind) };
+    });
+  }
   return out;
 }
 
 export default function RglInner({
   widgets,
   editMode,
+  today,
+  focusItemId,
   onLayoutChange,
   onRemove,
   onSettings,
   onAppearance,
+  onViewChange,
 }: {
   widgets: WidgetData[];
   editMode: boolean;
+  today?: string;
+  focusItemId?: string | null;
   onLayoutChange: (layouts: Layouts) => void;
   onRemove: (id: string) => void;
   onSettings: (id: string, settings: WidgetSettings) => void;
   onAppearance: (id: string, appearance: WidgetAppearance) => void;
+  onViewChange?: (id: string, viewId: string) => void;
 }) {
   return (
     <ResponsiveGridLayout
       className={editMode ? "layout dash-edit" : "layout"}
-      layouts={buildLayouts(widgets, editMode)}
+      layouts={buildLayouts(widgets, editMode, today)}
       breakpoints={BREAKPOINT_PX}
       cols={COLS}
       rowHeight={ROW_HEIGHT}
@@ -93,16 +141,21 @@ export default function RglInner({
       draggableHandle=".widget-drag-handle"
       draggableCancel=".cancel-drag"
       compactType="vertical"
-      onLayoutChange={(_current, all) => onLayoutChange(all)}
+      onLayoutChange={(_current, all) =>
+        onLayoutChange(keepStoredHeights(widgets, all, editMode, today))
+      }
     >
       {widgets.map((wd) => (
         <div key={wd.widget.id}>
           <WidgetFrame
             data={wd}
             editMode={editMode}
+            today={today}
+            focusItemId={focusItemId}
             onRemove={onRemove}
             onSettings={onSettings}
             onAppearance={onAppearance}
+            onViewChange={onViewChange}
           />
         </div>
       ))}

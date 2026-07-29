@@ -78,6 +78,9 @@ const EXPECTED = [
   "move_item_type", // ADR-132
   "list_types", "relate_items", "unrelate_items", "list_views", "run_view",
   "list_templates", "apply_template",
+  "link_to_line", // ADR-148
+  // attachments (ADR-150)
+  "attach_file", "create_upload_url", "embed_attachment",
   // workspace shaping (ADR-102)
   "describe_workspace", "create_type", "update_type", "create_view",
   "update_view", "create_dashboard", "add_widget", "update_nav",
@@ -341,6 +344,53 @@ try {
   const descAfter = await callJson(ownerId, "describe_workspace", {});
   check("describe_workspace reports the dashboard + its widget", (descAfter.dashboards as Json[]).some((d) => d.id === createdDash.id && d.widgetCount === 1));
   await expectErr("add_widget rejects a view widget with no viewId", ownerId, "add_widget", { dashboardId: createdDash.id as string, kind: "view" });
+
+  // MCP widget parity (ADR-171): all 8 widget kinds are on the machine contract,
+  // so an agent can assemble a whole activity board. dashView only surfaces
+  // id/kind/viewId/label, so the fields it omits (embed's itemId, a container's
+  // children) are asserted against the stored jsonb.
+  const withTree = await callJson(ownerId, "add_widget", {
+    dashboardId: createdDash.id as string,
+    kind: "tree",
+    viewId: createdView.id as string,
+    settings: { titleOverride: "Outline", childSource: "children", childLimit: 3 },
+  });
+  check("add_widget places a tree widget backed by the view", (withTree.widgets as Json[]).some((w) => w.kind === "tree" && w.viewId === createdView.id));
+  await callJson(ownerId, "add_widget", {
+    dashboardId: createdDash.id as string,
+    kind: "embed",
+    itemId: note.id as string,
+    settings: { showBody: true },
+  });
+  await callJson(ownerId, "add_widget", {
+    dashboardId: createdDash.id as string,
+    kind: "container",
+    settings: {
+      mode: "tabs",
+      title: "Both",
+      children: [
+        { kind: "view", viewId: createdView.id as string },
+        { kind: "text", settings: { heading: "Notes" } },
+      ],
+    },
+  });
+  const withImage = await callJson(ownerId, "add_widget", {
+    dashboardId: createdDash.id as string,
+    kind: "image",
+    settings: { url: "https://example.invalid/banner.png", alt: "Banner", fit: "contain" },
+  });
+  check("add_widget placed all eight kinds' new arrivals (tree/embed/container/image)", ["tree", "embed", "container", "image"].every((k) => (withImage.widgets as Json[]).some((w) => w.kind === k)));
+  const [dashRow] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, createdDash.id as string));
+  const storedWidgets = (dashRow?.widgets ?? []) as Json[];
+  const embedStored = storedWidgets.find((w) => w.kind === "embed");
+  check("the stored embed widget names the item", embedStored?.itemId === note.id);
+  const containerStored = storedWidgets.find((w) => w.kind === "container");
+  const containerChildren = ((containerStored?.settings as Json)?.children ?? []) as Json[];
+  check("the stored container carries its two non-container children", containerChildren.length === 2 && containerChildren.every((c) => c.kind !== "container"));
+  const imageStored = storedWidgets.find((w) => w.kind === "image");
+  check("the stored image widget kept its url + fit", (imageStored?.settings as Json)?.url === "https://example.invalid/banner.png" && (imageStored?.settings as Json)?.fit === "contain");
+  await expectErr("add_widget rejects an embed widget with no itemId", ownerId, "add_widget", { dashboardId: createdDash.id as string, kind: "embed" });
+  await expectErr("add_widget rejects an embed widget with a bogus itemId", ownerId, "add_widget", { dashboardId: createdDash.id as string, kind: "embed", itemId: "not-a-uuid" });
 
   // update_nav — set the middle slots + a layout knob, read them back.
   const navOut = await callJson(ownerId, "update_nav", {

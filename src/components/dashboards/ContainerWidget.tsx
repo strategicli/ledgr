@@ -7,11 +7,14 @@
 // not in the RGL grid), so each keeps its own appearance/gear/collapse. All child
 // mutations (add / remove / settings / appearance) produce a new children array
 // and flow up through onContainerChange → the dashboard's single PATCH path,
-// which refetches so a newly-added view child gets its data. Tab selection is
-// local (view-mode ephemeral), so switching tabs never triggers a refetch.
+// which refetches so a newly-added view child gets its data. Tab selection now
+// persists too (the stored activeTab used to be dead weight): the click renders
+// from local state and ALSO flows up, and DashboardClient recognises an
+// activeTab-only change and skips the refetch, so switching tabs stays free.
 "use client";
 
 import { useState } from "react";
+import { showToast } from "@/components/ui/ActionToast";
 import {
   type ContainerWidgetSettings,
   type DashboardWidget,
@@ -29,18 +32,39 @@ import { widgetTitle } from "./widget-title";
 export default function ContainerWidget({
   data,
   editMode,
+  today,
+  focusItemId,
   onContainerChange,
 }: {
   data: WidgetData;
   editMode: boolean;
+  // Threaded to the children so a nested widget's rows are as interactive as the
+  // same widget would be at the top level (row menus, inline add).
+  today?: string;
+  focusItemId?: string | null;
   onContainerChange: (settings: ContainerWidgetSettings) => void;
 }) {
   const s = data.widget.settings as ContainerWidgetSettings;
   const childData = data.childData ?? [];
   const [tab, setTab] = useState(Math.min(Math.max(s.activeTab, 0), Math.max(childData.length - 1, 0)));
 
+  // Local state stays the RENDERED truth (so tabs still work where the callback
+  // is a no-op — the Desk's read-only dashboard panel), and the click also
+  // persists, so a tab group reopens on the tab you left it on instead of
+  // always snapping back to the first one.
+  const selectTab = (i: number) => {
+    setTab(i);
+    onContainerChange({ ...s, activeTab: i });
+  };
+
   const setChildren = (children: DashboardWidget[]) => onContainerChange({ ...s, children });
-  const removeChild = (id: string) => setChildren(s.children.filter((c) => c.id !== id));
+  // Same undo-not-confirm posture as the top-level widget ✕ (ADR-142). `s` is this
+  // render's settings, i.e. the pre-removal children in their original order, so
+  // undo is just "put that object back" — no index bookkeeping needed.
+  const removeChild = (id: string) => {
+    setChildren(s.children.filter((c) => c.id !== id));
+    showToast("Widget removed", () => onContainerChange(s));
+  };
   const setChildSettings = (id: string, settings: WidgetSettings) =>
     setChildren(s.children.map((c) => (c.id === id ? { ...c, settings } : c)));
   const setChildAppearance = (id: string, appearance: WidgetAppearance) =>
@@ -78,6 +102,8 @@ export default function ContainerWidget({
       key={cd.widget.id}
       data={cd}
       editMode={editMode}
+      today={today}
+      focusItemId={focusItemId}
       draggable={false}
       onRemove={removeChild}
       onSettings={setChildSettings}
@@ -104,7 +130,7 @@ export default function ContainerWidget({
           {childData.map((cd, i) => (
             <button
               key={cd.widget.id}
-              onClick={() => setTab(i)}
+              onClick={() => selectTab(i)}
               className={`cancel-drag shrink-0 truncate rounded px-2 py-0.5 text-xs ${
                 i === Math.min(tab, childData.length - 1)
                   ? "bg-neutral-800 text-neutral-100"

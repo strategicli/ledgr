@@ -134,14 +134,43 @@ status, a due/scheduled/meeting date window, a related item, or a custom
 A dashboard is a named grid of **widgets**. Widget kinds:
 
 - \`view\` — a live list/board/etc. from a saved view (needs a real \`viewId\`).
+  Settings: \`titleOverride\`, \`itemLimit\`, \`sortOverride\`, \`renderStyle\`
+  (\`compact\` | \`faithful\`).
 - \`stat\` — a single count from a view's filter (needs a real \`viewId\`).
-- \`action\` — a button: quick-capture, new-from-template, or a link.
-- \`text\` — a heading/note for grouping the grid.
+  Settings: \`label\`.
+- \`action\` — a button. Settings: \`action\`
+  (\`quick-capture\` | \`new-from-template\` | \`link\`), \`label\`, \`icon\`,
+  \`targetType\`, \`templateId\`, \`href\`.
+- \`text\` — a heading/note for grouping the grid. Settings: \`heading\`,
+  \`body\`.
+- \`tree\` — a two-level parent → children outline over a view (needs a real
+  \`viewId\`). Settings: \`titleOverride\`, \`parentLimit\`, \`childLimit\`,
+  \`childSource\` (\`children\` | \`relation\`), \`relationRole\`,
+  \`childType\`, \`hideCompletedChildren\`.
+- \`embed\` — another item rendered inline (needs a real \`itemId\`). Settings:
+  \`showBody\`.
+- \`container\` — widgets grouped inside one tile. Settings: \`mode\`
+  (\`tabs\` | \`stack\` | \`section\`), \`title\`, \`children\` (an array of
+  widgets, **one level deep** — a nested container is dropped).
+- \`image\` — a picture tile. Settings: \`url\`, \`alt\`, \`fit\`
+  (\`cover\` | \`contain\`), \`link\`.
 
-Because view/stat widgets reference a saved view, **create the view first**, then
-add the widget pointing at its id. Widgets auto-place on the grid when you don't
-specify a layout. Create the dashboard (optionally with widgets inline), then
-\`add_widget\` to append more.
+Because view/stat/tree widgets reference a saved view, **create the view first**,
+then add the widget pointing at its id. Widgets auto-place on the grid when you
+don't specify a layout. Create the dashboard (optionally with widgets inline),
+then \`add_widget\` to append more.
+
+Worked example — a "Home" activity board:
+
+1. \`create_view\` "Tasks Today" (layout \`list\`, filter
+   \`{ type: "task", statusCategory: "active", due: "today" }\`).
+2. \`create_view\` "Events This Week" (layout \`agenda\`, filter
+   \`{ type: "event", dateField: "meetingAt", due: "week" }\`).
+3. \`create_dashboard\` \`{ name: "Home" }\`.
+4. \`add_widget\` \`{ kind: "view", viewId: <Tasks Today> }\` — the list to work.
+5. \`add_widget\` \`{ kind: "stat", viewId: <Tasks Today>, settings: { label: "Due today" } }\`.
+6. \`add_widget\` \`{ kind: "view", viewId: <Events This Week> }\`.
+7. \`add_widget\` \`{ kind: "action", settings: { action: "quick-capture", label: "Capture", targetType: "task" } }\`.
 
 ## Navigation (\`update_nav\`)
 

@@ -5,6 +5,7 @@
 // safe in the "use client" bundle. The DB CRUD + tolerant parsers live in
 // dashboards.ts and import the shapes from here.
 import type { ViewItem } from "@/components/views/ViewRenderer";
+import type { StatusDef } from "@/lib/status";
 import type { ListSort, ViewDefinition, ViewFilter } from "@/lib/views";
 
 // --- Widget kinds & settings ---------------------------------------------
@@ -292,10 +293,21 @@ export type WidgetData = {
   view: ViewDefinition | null;
   items: ViewItem[]; // view kind (capped); empty for stat/action
   count: number; // view/stat total
-  // For a faithful board grouped by a custom property: column order + labels
-  // (resolved from the view's type), mirroring the /views/[id] page.
+  // For a faithful board: column order + labels (resolved from the view's type),
+  // mirroring the /views/[id] page. groupOrder covers a custom-property grouping
+  // AND a status grouping (the type's real statuses) — without the latter a board
+  // widget falls back to the built-in open/done/archived columns, and a drop into
+  // one of those spurious columns would write a status the type never defined.
   groupOrder?: string[];
   propertyLabels?: Record<string, string>;
+  // The type's resolved statuses, so a faithful board/list renders real status
+  // chips instead of raw keys.
+  statuses?: StatusDef[];
+  // The `kind` of the grouped custom property, so a board widget can reproduce
+  // the view page's deliberate drag guard: boardDropPatch writes a SCALAR, so
+  // only a single-select property is safe to drag (a multi_select would be
+  // corrupted into a string).
+  groupPropKind?: string | null;
   // Per-item confirmed related items (the compact list's "associated with" chip).
   related?: Record<string, { id: string; title: string; type: string }[]>;
   // tree kind: the parent rows, plus each parent's (capped) child rows and the
@@ -319,6 +331,54 @@ export type WidgetData = {
 export function applyFocus(filter: ViewFilter, focusItemId: string | null): ViewFilter {
   if (!focusItemId || filter.relatedTo) return filter;
   return { ...filter, relatedTo: focusItemId };
+}
+
+// --- Honest rendering (R3): truths the grid and the frame must agree on ----
+
+// Does this widget render the inline capture row (W2)? A view widget whose
+// backing filter pins a type, in view mode, on an interactive board. WidgetBody
+// gates the row on exactly this; the fold check below reads it so an empty
+// capture surface is never folded shut.
+export function hasInlineAdd(d: WidgetData, editMode: boolean, today?: string): boolean {
+  return d.widget.kind === "view" && !editMode && !!today && !!d.view?.filter.type;
+}
+
+// A list-backed widget that resolved to nothing at all: no rows AND no "+N more"
+// overflow link, so its body is one grey sentence in a 400px void.
+function emptyList(d: WidgetData): boolean {
+  if (d.widget.kind === "view") return d.items.length === 0 && d.count === 0;
+  if (d.widget.kind === "tree") return (d.parents ?? []).length === 0 && d.count === 0;
+  return false;
+}
+
+// Should this widget render FOLDED — its header bar only, one grid row tall?
+// Two reasons, ONE mechanism: RglInner forces h:1 and WidgetFrame drops the body,
+// and those two must never disagree, which is why the rule lives here.
+//   • collapsed — the owner folded it. True in BOTH modes now: edit mode used to
+//     expand every collapsed widget, so you arranged and sized a board that
+//     looked nothing like the one view mode showed. RglInner keeps the stored
+//     (expanded) height out of what gets persisted.
+//   • empty, view mode only — a board of empty list widgets was a wall of voids.
+//     Not in edit mode (you can't size a tile you can't see), and never while the
+//     widget carries the inline add row: folding an empty "Tasks Today" shut
+//     would cost you the one thing it's still good for.
+// Folding needs a header bar to fold INTO, so a chrome-free widget never folds.
+export function widgetFolded(d: WidgetData, editMode: boolean, today?: string): boolean {
+  const ap = effectiveAppearance(d.widget);
+  if (!ap.showHeader && !ap.collapsible) return false;
+  if (ap.collapsed) return true;
+  if (editMode) return false;
+  return emptyList(d) && !hasInlineAdd(d, editMode, today);
+}
+
+// True when a widget's body holds nothing clickable, so the frame may cover the
+// whole tile with the widget's own link (a chrome-free widget has no header to
+// click). A stat is a bare number; an empty list is a bare sentence. Every other
+// body — rows, the embed editor, container tabs, an image's own link, the inline
+// add — keeps its own clicks, since an <a> wrapped around them would hijack them.
+export function widgetBodyInert(d: WidgetData, editMode: boolean, today?: string): boolean {
+  if (d.widget.kind === "stat") return true;
+  return emptyList(d) && !hasInlineAdd(d, editMode, today);
 }
 
 // The effective view for a layout-faithful (or compact) render: the stored view

@@ -16,6 +16,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/ui/ActionToast";
 import DateInput from "@/components/ui/DateInput";
@@ -176,8 +177,16 @@ export function useRowMenu(opts: RowMenuOptions) {
     },
   };
 
+  // Portaled to <body> on purpose. The menu is `position: fixed` at viewport
+  // coords (clientX/clientY), and a `transform`ed ancestor becomes the
+  // containing block for a fixed child, so inside a react-grid-layout cell (the
+  // dashboard widgets, the ADR-069 item canvas) an in-flow menu would be offset
+  // by the cell's translate AND clipped by the card's overflow-hidden. The
+  // portal escapes both. Safe everywhere: close-on-outside tests
+  // `closest("[data-row-menu]")`, Escape/scroll are document/window level, and a
+  // portal keeps React context (router, Desk send) intact.
   const menu = pos ? (
-    <div
+    createPortal(<div
       data-row-menu
       role="menu"
       className="fixed z-[70] min-w-[11rem] rounded-card border border-line-strong bg-surface-3 p-1 shadow-2xl shadow-black/50"
@@ -256,7 +265,7 @@ export function useRowMenu(opts: RowMenuOptions) {
       >
         🗑 Move to Trash
       </button>
-    </div>
+    </div>, document.body)
   ) : null;
 
   // `open`/`complete` are exposed so SwipeRow (S5) can drive the same menu from a

@@ -20,8 +20,9 @@ import type { Layouts } from "react-grid-layout";
 import AddWidgetMenu from "./AddWidgetMenu";
 import BackgroundPanel from "./BackgroundPanel";
 import DashboardGridLayout from "./DashboardGridLayout";
-import FocusPicker from "./FocusPicker";
 import StageBackground from "./StageBackground";
+import { FloatingMenu, usePopoverPosition } from "./floating-menu";
+import { showToast } from "@/components/ui/ActionToast";
 import {
   buildActionWidget,
   buildContainerWidget,
@@ -49,6 +50,19 @@ import type { ViewDefinition } from "@/lib/views";
 // Widget kinds whose data changes when their settings change → refetch on save.
 const REFETCH_KINDS = new Set(["view", "tree", "container"]);
 
+// The one exception to that rule: a container tab click changes activeTab and
+// nothing else. It has to PERSIST (so a tab group reopens where you left it),
+// but it must not refetch — "container" is in REFETCH_KINDS, so routing tab
+// clicks through the normal settings path would re-run the whole dashboard's
+// server fan-out on every click. Compared field-by-field rather than trusting the
+// caller, and it fails toward the refetch, so a real settings change can't sneak
+// through as a tab click.
+function tabOnlyChange(prev: WidgetSettings | undefined, next: WidgetSettings): boolean {
+  if (!prev || !("activeTab" in prev) || !("activeTab" in next)) return false;
+  if (prev.activeTab === next.activeTab) return false;
+  return JSON.stringify({ ...prev, activeTab: 0 }) === JSON.stringify({ ...next, activeTab: 0 });
+}
+
 function cellFrom(all: Layouts, bp: keyof Layouts, id: string) {
   const item = (all[bp] ?? []).find((l) => l.i === id);
   return item ? { x: item.x, y: item.y, w: item.w, h: item.h } : undefined;
@@ -75,6 +89,7 @@ export default function DashboardClient({
   isHome,
   isToday,
   initialWidgets,
+  today,
 }: {
   dashboardId: string;
   name: string;
@@ -84,6 +99,9 @@ export default function DashboardClient({
   isHome: boolean;
   isToday: boolean;
   initialWidgets: WidgetData[];
+  // App-timezone today (YYYY-MM-DD), from the server. When set, widget rows carry
+  // the shared row menu (ADR-142); left undefined the rows stay plain.
+  today?: string;
 }) {
   const router = useRouter();
   const [widgets, setWidgets] = useState(initialWidgets);
@@ -125,6 +143,43 @@ export default function DashboardClient({
     appearanceRef.current = appearance;
   }, [appearance]);
 
+  // Freshness: the server resolves "today" and every date window at request
+  // time, so a board left open in the installed PWA overnight keeps showing
+  // yesterday. Refresh when the tab comes back to the foreground — event-driven
+  // only, never a polling loop. Keep BOTH guards:
+  //   • the 60s throttle, because these routes are force-dynamic and each view
+  //     widget costs several DB round trips (repeated alt-tabbing would be rude);
+  //   • the edit-mode / pending-write skip, because a refresh adopts fresh
+  //     `initialWidgets` during render, which would stomp an in-progress
+  //     arrangement or race a debounced layout/settings PATCH.
+  const lastRefresh = useRef(0);
+  useEffect(() => {
+    // Mount counts as a refresh, so a focus right after load doesn't refetch.
+    if (!lastRefresh.current) lastRefresh.current = Date.now();
+    const maybeRefresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (editMode || timer.current || settingsTimer.current) return;
+      if (Date.now() - lastRefresh.current < 60_000) return;
+      lastRefresh.current = Date.now();
+      router.refresh();
+    };
+    document.addEventListener("visibilitychange", maybeRefresh);
+    window.addEventListener("focus", maybeRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", maybeRefresh);
+      window.removeEventListener("focus", maybeRefresh);
+    };
+  }, [editMode, router]);
+
+  // Cancel a pending debounced layout persist. Nulls the ref as well as clearing
+  // the timeout: the freshness effect above reads a non-null `timer.current` as
+  // "a write is in flight", so a cleared-but-still-non-null handle would disable
+  // the refresh for the rest of the page's life after the first add or remove.
+  const cancelPersist = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+
   const persistNow = useCallback(
     (next: WidgetData[]) => {
       const body = {
@@ -143,9 +198,16 @@ export default function DashboardClient({
   );
 
   const schedulePersist = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void persistNow(widgetsRef.current), 600);
-  }, [persistNow]);
+    cancelPersist();
+    // Stays non-null until the PATCH resolves, so the freshness effect above can
+    // tell a write is still in flight and skip its refresh.
+    timer.current = setTimeout(() => {
+      const t = timer.current;
+      void persistNow(widgetsRef.current).then(() => {
+        if (timer.current === t) timer.current = null;
+      });
+    }, 600);
+  }, [persistNow, cancelPersist]);
 
   // RGL fires onLayoutChange on mount too; ignoring it in view mode avoids both
   // a spurious write and any update loop.
@@ -163,17 +225,33 @@ export default function DashboardClient({
   // Commit a change to the widget array immediately, then optionally refetch.
   const commit = useCallback(
     async (next: WidgetData[], refetch: boolean) => {
-      if (timer.current) clearTimeout(timer.current);
+      cancelPersist();
       widgetsRef.current = next;
       setWidgets(next);
       await persistNow(next);
       if (refetch) router.refresh();
     },
-    [persistNow, router]
+    [persistNow, router, cancelPersist]
   );
 
+  // Removing a widget throws away its settings, appearance AND grid placement, so
+  // it gets the ADR-142 treatment: no confirm, an undo toast instead. Undo splices
+  // the captured WidgetData back at its original index — the whole object, so the
+  // tile returns exactly where and how it was. No refetch: the captured object
+  // still carries its resolved data (view/items/count/embedItem/childData), so a
+  // router.refresh() would only buy seconds of freshness for a full RSC fan-out.
   const handleRemove = useCallback(
-    (id: string) => void commit(widgetsRef.current.filter((d) => d.widget.id !== id), false),
+    (id: string) => {
+      const idx = widgetsRef.current.findIndex((d) => d.widget.id === id);
+      if (idx < 0) return;
+      const removed = widgetsRef.current[idx];
+      void commit(widgetsRef.current.filter((d) => d.widget.id !== id), false);
+      showToast("Widget removed", () => {
+        const next = [...widgetsRef.current];
+        next.splice(idx, 0, removed);
+        void commit(next, false);
+      });
+    },
     [commit]
   );
 
@@ -184,16 +262,19 @@ export default function DashboardClient({
   // input and blank it (the relation-role glitch). One refresh after typing stops.
   const handleSettings = useCallback(
     (id: string, settings: WidgetSettings) => {
+      const prev = widgetsRef.current.find((d) => d.widget.id === id)?.widget;
       const next = widgetsRef.current.map((d) =>
         d.widget.id === id ? { ...d, widget: { ...d.widget, settings } } : d
       );
       widgetsRef.current = next;
       setWidgets(next);
       const kind = next.find((d) => d.widget.id === id)?.widget.kind ?? "";
-      const refetch = REFETCH_KINDS.has(kind);
+      const refetch = REFETCH_KINDS.has(kind) && !tabOnlyChange(prev?.settings, settings);
       if (settingsTimer.current) clearTimeout(settingsTimer.current);
       settingsTimer.current = setTimeout(() => {
+        const t = settingsTimer.current;
         void persistNow(widgetsRef.current).then(() => {
+          if (settingsTimer.current === t) settingsTimer.current = null;
           if (refetch) router.refresh();
         });
       }, 450);
@@ -203,6 +284,21 @@ export default function DashboardClient({
 
   // Per-widget chrome (header/border/background/accent/collapse). Display-only —
   // never changes which data shows, so no refetch.
+  // Repoint a view-backed widget at a different saved view (the gear's "Shows"
+  // picker, R2). viewId is a TOP-LEVEL widget field, so it can't ride
+  // handleSettings (which debounces on `settings` and would never see it). The
+  // refetch is UNCONDITIONAL, unlike handleSettings: REFETCH_KINDS omits "stat",
+  // so a repointed Count widget would otherwise keep showing its stale number.
+  const handleViewChange = useCallback(
+    (id: string, viewId: string) => {
+      const next = widgetsRef.current.map((d) =>
+        d.widget.id === id ? { ...d, widget: { ...d.widget, viewId } } : d
+      );
+      void commit(next, true);
+    },
+    [commit]
+  );
+
   const handleAppearance = useCallback(
     (id: string, ap: WidgetAppearance) => {
       const next = widgetsRef.current.map((d) =>
@@ -307,7 +403,7 @@ export default function DashboardClient({
     (next: DashboardAppearance | null) => {
       setAppearance(next);
       appearanceRef.current = next;
-      if (timer.current) clearTimeout(timer.current);
+      cancelPersist();
       void fetch(`/api/dashboards/${dashboardId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -319,7 +415,7 @@ export default function DashboardClient({
         }),
       }).catch(() => {});
     },
-    [dashboardId, name, nameProp, focusItemId]
+    [dashboardId, name, nameProp, focusItemId, cancelPersist]
   );
 
   // Assign (or clear) this dashboard as the Home (/) or Today surface.
@@ -338,9 +434,17 @@ export default function DashboardClient({
 
   // Setting/clearing the dashboard focus re-scopes every view/stat widget, so it
   // PATCHes the new focus (explicit, not the stale prop) then refetches.
+  //
+  // DO NOT restore <FocusPicker> to the edit header (W4, defer-by-hiding). The
+  // dashboard-level focus is a fossil of a superseded model: the need is served
+  // by opening the item itself (a person's page lists their tasks and notes), so
+  // Brandon decided to hide the way to SET one. Everything else stays wired and
+  // working — FocusPicker.tsx, applyFocus, dashboards.focus_item_id, the parser,
+  // the resolver — and a dashboard that already has a focus still shows its pill
+  // above, whose ✕ calls this. Only the picker is gone.
   const handleSetFocus = useCallback(
     (newFocusId: string | null) => {
-      if (timer.current) clearTimeout(timer.current);
+      cancelPersist();
       void fetch(`/api/dashboards/${dashboardId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -354,7 +458,7 @@ export default function DashboardClient({
         .then(() => router.refresh())
         .catch(() => {});
     },
-    [dashboardId, name, nameProp, router]
+    [dashboardId, name, nameProp, router, cancelPersist]
   );
 
   const density = appearance?.density ?? "comfortable";
@@ -370,7 +474,12 @@ export default function DashboardClient({
     <main className="relative min-h-screen">
       <StageBackground appearance={appearance} />
       <div className={`relative z-10 mx-auto w-full max-w-6xl px-6 ${contentPad} sm:px-12`}>
-        <div className="flex items-baseline justify-between gap-2">
+        {/* Two calm rows (W4). Row 1 is the NAME ALONE: sharing a row with the
+            controls let seven of them wrap onto three lines and squeezed the
+            flex-1 edit input to an unusable ~10px sliver at 375px. `pt-10
+            sm:pt-0` clears the shell's floating mobile "Build" pill (fixed
+            left-3 top-3, Build chrome per isBuildPath), which sat on the title. */}
+        <div className="pt-10 sm:pt-0">
           {editMode ? (
             <input
               type="text"
@@ -385,53 +494,37 @@ export default function DashboardClient({
                 if (e.key === "Enter") e.currentTarget.blur();
               }}
               aria-label="Dashboard name"
-              className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-2xl font-bold tracking-tight text-neutral-100"
+              className="ui-title w-full rounded-card border border-line bg-surface-1 px-2 py-1"
             />
           ) : showTitle ? (
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-100">{name}</h1>
-          ) : (
-            <span className="min-w-0 flex-1" />
+            <h1 className="ui-title">{name}</h1>
+          ) : null}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-sm">
+          {focusTitle && (
+            /* The focus PILL shows in BOTH modes now: setting a focus is hidden
+               (see EditMenu), so its ✕ is the only way to clear an existing one. */
+            <span className="mr-auto inline-flex items-center gap-1 rounded-full border border-[var(--accent)] px-2 py-0.5 text-xs text-[var(--accent)]">
+              Focus: {focusTitle}
+              <button
+                onClick={() => handleSetFocus(null)}
+                className="hover:opacity-70"
+                aria-label="Clear focus"
+                title="Clear focus"
+              >
+                ✕
+              </button>
+            </span>
           )}
-          <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
-            {!editMode && focusTitle && (
-              <span className="inline-flex items-center rounded-full border border-[var(--accent)] px-2 py-0.5 text-xs text-[var(--accent)]">
-                Focus: {focusTitle}
-              </span>
-            )}
-            <Link href="/dashboards" className="text-neutral-500 hover:text-neutral-300">
+          {!editMode && (
+            <Link href="/dashboards" className="text-ink-subtle hover:text-ink">
               All dashboards
             </Link>
-            {editMode && (
-              <button
-                onClick={() => setRole("homeDashboardId", !isHome)}
-                className={`rounded-md border px-2 py-1 text-xs ${
-                  isHome
-                    ? "border-[var(--accent)] text-[var(--accent)]"
-                    : "border-neutral-700 text-neutral-400 hover:border-neutral-600"
-                }`}
-                title="Use this dashboard as your Home (/) surface"
-              >
-                {isHome ? "✓ Home" : "Set as Home"}
-              </button>
-            )}
-            {editMode && (
-              <button
-                onClick={() => setRole("todayDashboardId", !isToday)}
-                className={`rounded-md border px-2 py-1 text-xs ${
-                  isToday
-                    ? "border-[var(--accent)] text-[var(--accent)]"
-                    : "border-neutral-700 text-neutral-400 hover:border-neutral-600"
-                }`}
-                title="Use this dashboard as your Today surface"
-              >
-                {isToday ? "✓ Today" : "Set as Today"}
-              </button>
-            )}
-            {editMode && <FocusPicker focusTitle={focusTitle} onChange={handleSetFocus} />}
-            {editMode && (
+          )}
+          {editMode && (
+            <>
+              <EditMenu isHome={isHome} isToday={isToday} onSetRole={setRole} />
               <BackgroundPanel appearance={appearance} onChange={handleSetStageAppearance} />
-            )}
-            {editMode && (
               <AddWidgetMenu
                 onAdd={handleAdd}
                 onAddStarter={handleAddStarter}
@@ -442,18 +535,18 @@ export default function DashboardClient({
                 onAddContainer={handleAddContainer}
                 onAddImage={handleAddImage}
               />
-            )}
-            <button
-              onClick={() => setEditMode((v) => !v)}
-              className={`rounded-md border px-3 py-1 ${
-                editMode
-                  ? "border-[var(--accent)] text-[var(--accent)]"
-                  : "border-neutral-700 text-neutral-300 hover:border-neutral-600"
-              }`}
-            >
-              {editMode ? "Done" : "Edit"}
-            </button>
-          </div>
+            </>
+          )}
+          <button
+            onClick={() => setEditMode((v) => !v)}
+            className={`rounded-card border px-3 py-1 ${
+              editMode
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-line-strong text-ink-muted hover:text-ink"
+            }`}
+          >
+            {editMode ? "Done" : "Edit"}
+          </button>
         </div>
 
         {widgets.length > 0 ? (
@@ -461,11 +554,14 @@ export default function DashboardClient({
             <DashboardGridLayout
               widgets={widgets}
               editMode={editMode}
+              today={today}
+              focusItemId={focusItemId}
               reservedHeight={reservedHeight}
               onLayoutChange={handleLayoutChange}
               onRemove={handleRemove}
               onSettings={handleSettings}
               onAppearance={handleAppearance}
+              onViewChange={handleViewChange}
             />
           </div>
         ) : (
@@ -476,5 +572,76 @@ export default function DashboardClient({
         )}
       </div>
     </main>
+  );
+}
+
+// The edit header's ⋯ popover (W4): the two surface-role toggles, which are rare
+// and were eating the header row. Same popover primitive as every other
+// dashboard menu (portal + flip + Esc/outside-click).
+//
+// Background is NOT in here: BackgroundPanel owns its own trigger + FloatingMenu,
+// and a second portal popover nested inside this one is dismissed by this menu's
+// outside-click handler the moment you touch it (the click lands in a sibling
+// portal, so `ref.contains` misses, this menu closes, and the panel unmounts
+// mid-interaction). It stays a labeled sibling button in the row instead — one
+// click, one background UI, nothing duplicated.
+function EditMenu({
+  isHome,
+  isToday,
+  onSetRole,
+}: {
+  isHome: boolean;
+  isToday: boolean;
+  onSetRole: (role: "homeDashboardId" | "todayDashboardId", on: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { triggerRef, pos, measure } = usePopoverPosition(220);
+  const row =
+    "w-full rounded px-2 py-1.5 text-left text-sm text-ink-muted hover:bg-surface-2 hover:text-ink";
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={() => {
+          if (!open) measure();
+          setOpen((v) => !v);
+        }}
+        className="rounded-card border border-line-strong px-2.5 py-1 text-ink-muted hover:text-ink"
+        title="Dashboard options"
+        aria-label="Dashboard options"
+      >
+        ⋯
+      </button>
+      {open && (
+        <FloatingMenu
+          pos={pos}
+          width={220}
+          anchorRef={triggerRef}
+          onClose={() => setOpen(false)}
+          className="rounded-card border border-line bg-surface-1 p-1 shadow-xl"
+        >
+          <button
+            className={row}
+            title="Use this dashboard as your Home (/) surface"
+            onClick={() => {
+              onSetRole("homeDashboardId", !isHome);
+              setOpen(false);
+            }}
+          >
+            {isHome ? "✓ Home surface" : "Set as Home"}
+          </button>
+          <button
+            className={row}
+            title="Use this dashboard as your Today surface"
+            onClick={() => {
+              onSetRole("todayDashboardId", !isToday);
+              setOpen(false);
+            }}
+          >
+            {isToday ? "✓ Today surface" : "Set as Today"}
+          </button>
+        </FloatingMenu>
+      )}
+    </>
   );
 }

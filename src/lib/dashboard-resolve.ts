@@ -22,21 +22,36 @@ import {
 } from "@/lib/dashboard-tree";
 import { getItem, ItemError, type ItemListRow } from "@/lib/items";
 import { relatedSummaryFor } from "@/lib/relations";
+import { resolveStatusSchema } from "@/lib/status";
 import { getType } from "@/lib/types";
 import { countViewItems, getView, queryViewItems, type ViewDefinition } from "@/lib/views";
 
 const PREVIEW = 8;
 
+// What a faithful render needs beyond the rows, resolved from the view's type.
+// Mirrors /views/[id] deliberately: a board widget is "the view rendered at card
+// scale", so it must carry the same column vocabulary and the same information
+// the view page uses to decide whether a card may be dragged.
 async function groupingFor(view: ViewDefinition) {
   const type = view.filter.type ? await getType(view.filter.type).catch(() => null) : null;
+  const statuses = resolveStatusSchema(type?.statusSchema ?? null);
   let groupOrder: string[] | undefined;
+  let groupPropKind: string | null = null;
   const g = view.grouping;
   if (g && "propertyKey" in g) {
-    groupOrder = type?.propertySchema.find((p) => p.key === g.propertyKey)?.options;
+    const prop = type?.propertySchema.find((p) => p.key === g.propertyKey);
+    groupOrder = prop?.options;
+    groupPropKind = prop?.kind ?? null;
+  } else if (!g || g.field === "status") {
+    // A status board's columns MUST be the type's real statuses. Without this,
+    // BoardDnd falls back to the built-in open/done/archived, and on a type with
+    // custom statuses a drop into one of those spurious columns would write a
+    // status the type never defined (the payload parser only slug-checks it).
+    groupOrder = statuses.map((s) => s.key);
   }
   const propertyLabels: Record<string, string> = {};
   for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
-  return { groupOrder, propertyLabels };
+  return { groupOrder, propertyLabels, statuses, groupPropKind };
 }
 
 function toViewItem(i: ItemListRow): ViewItem {
@@ -165,6 +180,8 @@ export async function resolveWidget(
       count,
       groupOrder: grouping?.groupOrder,
       propertyLabels: grouping?.propertyLabels,
+      statuses: grouping?.statuses,
+      groupPropKind: grouping?.groupPropKind,
       related,
     };
   } catch (err) {

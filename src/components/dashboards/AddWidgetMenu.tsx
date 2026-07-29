@@ -2,8 +2,10 @@
 //   • Structure — a text/heading block, and a container (tabs/stack/section).
 //   • Embed — embed an existing item (search), or create + embed a new note.
 //   • Actions — non-data buttons (quick capture, new-from-template, link).
-//   • Prebuilt — ready-made starter widgets (Tasks Due Today, …).
+//   • Prebuilt — ready-made starter widgets (Tasks Due Today, …), minus any whose
+//     backing view already exists (it's listed under From Views instead).
 //   • From Views — the owner's existing saved views.
+// A filter input at the top narrows the Prebuilt + From Views lists.
 // View/Prebuilt/View add as a List, a Count, or a Nested list (parents + their
 // children). The Embed/Container sections only appear when their handlers are
 // passed (the top-level menu), so the container's own child menu omits them.
@@ -18,11 +20,27 @@ import type { ViewWidgetKind } from "./widget-defaults";
 
 type Hit = { id: string; type: string; title: string };
 
+// Wide enough that "Transcripts awaiting review" reads in one line.
+const MENU_WIDTH = 380;
+
 const ACTION_ITEMS: { action: ActionKind; label: string; description: string }[] = [
   { action: "new-from-template", label: "New from template", description: "Create an item from a template in one click" },
   { action: "quick-capture", label: "Quick capture", description: "Create a blank item of a type and open it" },
   { action: "link", label: "Link", description: "A button that navigates to a page or URL" },
 ];
+
+// Does this saved view already *contain* the starter? Name alone was the old
+// (fragile) test — it would silently reuse an unrelated view that happened to
+// share the name. Requiring the filter's type and the sort field to agree too
+// keeps it shallow (no key-order/normalization traps of a deep compare) while
+// making a false match harmless: such a view really is the same widget.
+function matchesStarter(v: ViewDefinition, s: StarterWidget) {
+  return (
+    v.name === s.view.name &&
+    v.filter?.type === s.view.filter?.type &&
+    v.sort?.field === s.view.sort?.field
+  );
+}
 
 export default function AddWidgetMenu({
   onAdd,
@@ -45,8 +63,9 @@ export default function AddWidgetMenu({
   onAddImage?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
   const [views, setViews] = useState<ViewDefinition[] | null>(null);
-  const { triggerRef, pos, measure } = usePopoverPosition(320);
+  const { triggerRef, pos, measure } = usePopoverPosition(MENU_WIDTH);
 
   useEffect(() => {
     if (!open || views) return;
@@ -56,35 +75,60 @@ export default function AddWidgetMenu({
       .catch(() => setViews([]));
   }, [open, views]);
 
-  // A prebuilt pick: reuse a same-named view if one already exists (so repeat
-  // picks don't pile up duplicate views), else create it.
+  // A prebuilt pick: reuse the matching view if one already exists (so repeat
+  // picks don't pile up duplicate views), else create it. Prebuilts whose view
+  // exists are hidden below (they'd otherwise be listed twice), so this branch
+  // is the guard for a pick made while the views are still loading.
   function pickStarter(s: StarterWidget, kind: ViewWidgetKind) {
-    const existing = views?.find((v) => v.name === s.label);
+    const existing = views?.find((v) => matchesStarter(v, s));
     if (existing) onAdd(existing, kind);
     else onAddStarter(s, kind);
     setOpen(false);
   }
+
+  const needle = q.trim().toLowerCase();
+  const hit = (...text: string[]) =>
+    !needle || text.some((t) => t.toLowerCase().includes(needle));
+  // A prebuilt already saved as a view is dropped: it appears under From Views
+  // with the same three buttons, so listing it twice was pure duplication.
+  const starters = STARTER_WIDGETS.filter(
+    (s) => !views?.some((v) => matchesStarter(v, s)) && hit(s.label, s.description)
+  );
+  const shownViews = views?.filter((v) => hit(v.name)) ?? null;
 
   return (
     <>
       <button
         ref={triggerRef}
         onClick={() => {
-          if (!open) measure();
+          if (!open) {
+            measure();
+            setQ("");
+          }
           setOpen((v) => !v);
         }}
-        className="rounded-md border border-neutral-700 px-3 py-1 text-sm text-neutral-300 hover:border-neutral-600"
+        className="rounded-md border border-line-strong px-3 py-1 text-sm text-ink-muted hover:border-neutral-600 hover:text-ink"
       >
-        + Add widget
+        {/* "+ Add" on a phone: at 375px the full label pushed Done onto a third
+            row of the edit header. Desktop keeps the explicit wording. */}
+        + Add<span className="hidden sm:inline"> widget</span>
       </button>
       {open && (
         <FloatingMenu
           pos={pos}
-          width={320}
+          width={MENU_WIDTH}
           anchorRef={triggerRef}
           onClose={() => setOpen(false)}
-          className="rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-xl"
+          className="rounded-card border border-line bg-surface-1 p-1 shadow-xl"
         >
+          <div className="px-2 pb-1 pt-2">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filter prebuilt + views…"
+              className="w-full rounded border border-line bg-surface-0 px-2 py-1 text-sm text-ink placeholder:text-ink-faint focus:border-line-strong focus:outline-none"
+            />
+          </div>
           <SectionLabel>Structure</SectionLabel>
           <MenuItem
             title="Text / Heading"
@@ -154,36 +198,42 @@ export default function AddWidgetMenu({
             />
           ))}
 
-          <Divider />
-          <SectionLabel>Prebuilt</SectionLabel>
-          {STARTER_WIDGETS.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800/60"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-neutral-200">{s.label}</span>
-                <span className="block truncate text-xs text-neutral-600">{s.description}</span>
-              </span>
-              <KindButtons onPick={(k) => pickStarter(s, k)} />
-            </div>
-          ))}
+          {starters.length > 0 && (
+            <>
+              <Divider />
+              <SectionLabel>Prebuilt</SectionLabel>
+              {starters.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-surface-2"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-ink">{s.label}</span>
+                    <span className="block text-xs text-ink-faint">{s.description}</span>
+                  </span>
+                  <KindButtons onPick={(k) => pickStarter(s, k)} />
+                </div>
+              ))}
+            </>
+          )}
 
           <Divider />
           <SectionLabel>From Views</SectionLabel>
-          {views === null ? (
-            <p className="px-3 py-2 text-sm text-neutral-500">Loading views…</p>
-          ) : views.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-neutral-500">
-              No saved views yet. Create one in Build → Views.
+          {shownViews === null ? (
+            <p className="px-3 py-2 text-sm text-ink-subtle">Loading views…</p>
+          ) : shownViews.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-ink-subtle">
+              {needle
+                ? "No matches."
+                : "No saved views yet. Create one in Build → Views."}
             </p>
           ) : (
-            views.map((v) => (
+            shownViews.map((v) => (
               <div
                 key={v.id}
-                className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800/60"
+                className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-surface-2"
               >
-                <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">{v.name}</span>
+                <span className="min-w-0 flex-1 text-sm text-ink">{v.name}</span>
                 <KindButtons
                   onPick={(k) => {
                     onAdd(v, k);
@@ -226,8 +276,8 @@ function MenuItem({
       className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-neutral-800/60"
     >
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-neutral-200">{title}</span>
-        <span className="block truncate text-xs text-neutral-600">{description}</span>
+        <span className="block text-sm text-ink">{title}</span>
+        <span className="block text-xs text-ink-faint">{description}</span>
       </span>
     </button>
   );
