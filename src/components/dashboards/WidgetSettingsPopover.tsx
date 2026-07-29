@@ -1,9 +1,10 @@
 // Per-widget settings (the gear, edit mode only). A small popover anchored to
 // the gear button — matches the ConfirmButton chrome (dark panel, outside-click
-// / Esc close). Two parts: the per-kind data/display fields (onChange → the full
-// new settings), and a cross-cutting Appearance section (onAppearance → the full
-// new appearance: header/border/background/accent/collapse). Neither mutates the
-// backing view; the parent persists + refetches where the change affects data.
+// / Esc close). Split into two tabs: Data (the per-kind fields, onChange → the
+// full new settings, plus the "Shows" view picker for the view-backed kinds →
+// onViewChange) and Appearance (onAppearance → the full new appearance:
+// header/border/background/accent/collapse). Nothing here mutates the backing
+// view; the parent persists + refetches where the change affects data.
 "use client";
 
 import { useEffect, useState, type RefObject } from "react";
@@ -30,13 +31,34 @@ import {
   type WidgetAccent,
   type WidgetAppearance,
   type WidgetBackground,
+  type WidgetKind,
   type WidgetSettings,
 } from "@/lib/dashboard-widgets";
 import { SWATCH_DOT } from "./appearance-styles";
 import { FloatingMenu, type PopoverPos } from "./floating-menu";
 
-// Client-safe copy of the view sort fields (views.ts is server-only).
+// Client-safe copy of the view sort fields (views.ts is server-only). The stored
+// values are the wire format — only the labels are human.
 const SORT_FIELD_OPTS = ["updatedAt", "createdAt", "dueDate", "meetingAt", "title"] as const;
+const SORT_FIELD_LABELS: Record<(typeof SORT_FIELD_OPTS)[number], string> = {
+  updatedAt: "Updated",
+  createdAt: "Created",
+  dueDate: "Due date",
+  meetingAt: "Event date",
+  title: "Title",
+};
+// The kinds backed by a saved view (widget.viewId) → they get the "Shows" picker.
+const VIEW_BACKED = new Set<WidgetKind>(["view", "stat", "tree"]);
+const KIND_LABELS: Record<WidgetKind, string> = {
+  view: "List",
+  stat: "Count",
+  tree: "Nested list",
+  embed: "Embedded item",
+  image: "Image",
+  container: "Container",
+  text: "Text",
+  action: "Action",
+};
 const ITEM_LIMIT_OPTS = [5, 10, 15, 20, 50] as const;
 const PARENT_LIMIT_OPTS = [3, 5, 8, 10] as const;
 const CHILD_LIMIT_OPTS = [3, 5, 10, 20] as const;
@@ -65,6 +87,7 @@ export default function WidgetSettingsPopover({
   anchorRef,
   onChange,
   onAppearance,
+  onViewChange,
   onClose,
 }: {
   widget: DashboardWidget;
@@ -72,20 +95,101 @@ export default function WidgetSettingsPopover({
   anchorRef: RefObject<HTMLElement | null>;
   onChange: (settings: WidgetSettings) => void;
   onAppearance: (appearance: WidgetAppearance) => void;
+  // Repoint a view-backed widget at a different saved view (patches viewId, which
+  // `onChange` can't carry). ponytail: still needs threading from WidgetFrame's
+  // EditControls → WidgetFrame props → DashboardClient/RglInner; until then the
+  // "Shows" picker is read-only-absent and the rest of the gear works as before.
+  onViewChange?: (viewId: string) => void;
   onClose: () => void;
 }) {
+  const viewBacked = VIEW_BACKED.has(widget.kind);
+  const views = useOwnerViews(viewBacked);
+  const [tab, setTab] = useState<"data" | "appearance">("data");
+  const viewName = views?.find((v) => v.id === widget.viewId)?.name;
+
   return (
     <FloatingMenu
       pos={pos}
-      width={256}
+      // ponytail: WidgetFrame still measures with usePopoverPosition(256), so the
+      // panel can sit ~44px right of its measured box near the viewport edge.
+      // Bump that call to 300 when the frame is next touched.
+      width={300}
       anchorRef={anchorRef}
       onClose={onClose}
-      className="cancel-drag rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl"
+      className="cancel-drag rounded-card border border-line bg-surface-1 p-3 shadow-xl"
     >
-      <div className="flex flex-col gap-2">{renderFields(widget, onChange)}</div>
-      <AppearanceSection widget={widget} onAppearance={onAppearance} />
+      <div className="flex items-baseline gap-2 pb-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          {KIND_LABELS[widget.kind]}
+        </span>
+        {viewName && <span className="min-w-0 truncate text-xs text-ink-muted">{viewName}</span>}
+      </div>
+      <div className="mb-2 flex gap-1 rounded-card bg-surface-2 p-0.5">
+        {(["data", "appearance"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`flex-1 rounded px-2 py-1 text-xs ${
+              tab === t ? "bg-surface-3 text-ink" : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            {t === "data" ? "Data" : "Appearance"}
+          </button>
+        ))}
+      </div>
+      {tab === "data" ? (
+        <div className="flex flex-col gap-2">
+          {viewBacked && onViewChange && (
+            <label className={field}>
+              Shows
+              <select
+                value={widget.viewId ?? ""}
+                onChange={(e) => e.target.value && onViewChange(e.target.value)}
+                className={input}
+              >
+                <option value="">{views === null ? "Loading views…" : "Select a view…"}</option>
+                {/* Keep a missing/stale current view selectable so it isn't lost. */}
+                {widget.viewId && !views?.some((v) => v.id === widget.viewId) && (
+                  <option value={widget.viewId}>(current view)</option>
+                )}
+                {views?.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {renderFields(widget, onChange)}
+        </div>
+      ) : (
+        <AppearanceSection widget={widget} onAppearance={onAppearance} />
+      )}
     </FloatingMenu>
   );
+}
+
+// The owner's saved views (id + name), for the "Shows" picker and the header's
+// view name. Fetched only for the view-backed kinds.
+function useOwnerViews(enabled: boolean) {
+  const [views, setViews] = useState<{ id: string; name: string }[] | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    void fetch("/api/views")
+      .then((r) => r.json())
+      .then((d: { views: { id: string; name: string }[] }) => {
+        if (alive) setViews(d.views);
+      })
+      .catch(() => {
+        if (alive) setViews([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return views;
 }
 
 function renderFields(widget: DashboardWidget, onChange: (s: WidgetSettings) => void) {
@@ -317,7 +421,7 @@ function SortField({
           <option value="">View default</option>
           {SORT_FIELD_OPTS.map((f) => (
             <option key={f} value={f}>
-              {f}
+              {SORT_FIELD_LABELS[f]}
             </option>
           ))}
         </select>
@@ -494,9 +598,9 @@ function TreeFields({
   );
 }
 
-// Cross-cutting appearance (DC1): header/border/collapsible toggles + background
-// and accent swatch rows. Seeds from the widget's effective appearance and always
-// emits the full object.
+// Cross-cutting appearance (DC1), the Appearance tab: header/border/collapsible
+// toggles + background and accent swatch rows. Seeds from the widget's effective
+// appearance and always emits the full object.
 function AppearanceSection({
   widget,
   onAppearance,
@@ -509,52 +613,47 @@ function AppearanceSection({
   const toggle = "flex items-center gap-2 text-xs text-neutral-400";
 
   return (
-    <div className="mt-3 border-t border-neutral-800 pt-2">
-      <p className="pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-        Appearance
-      </p>
-      <div className="flex flex-col gap-1.5">
-        <label className={toggle}>
-          <input type="checkbox" checked={ap.showHeader} onChange={(e) => set({ showHeader: e.target.checked })} />
-          Header
-        </label>
-        <label className={toggle}>
-          <input type="checkbox" checked={ap.showBorder} onChange={(e) => set({ showBorder: e.target.checked })} />
-          Border
-        </label>
-        <label className={toggle}>
-          <input
-            type="checkbox"
-            checked={ap.collapsible}
-            onChange={(e) => set({ collapsible: e.target.checked })}
-          />
-          Collapsible
-        </label>
-        <div className={field}>
-          Background
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {WIDGET_BACKGROUNDS.map((b) => (
-              <Swatch
-                key={b}
-                token={b}
-                selected={ap.background === b}
-                onClick={() => set({ background: b as WidgetBackground })}
-              />
-            ))}
-          </div>
+    <div className="flex flex-col gap-1.5">
+      <label className={toggle}>
+        <input type="checkbox" checked={ap.showHeader} onChange={(e) => set({ showHeader: e.target.checked })} />
+        Header
+      </label>
+      <label className={toggle}>
+        <input type="checkbox" checked={ap.showBorder} onChange={(e) => set({ showBorder: e.target.checked })} />
+        Border
+      </label>
+      <label className={toggle}>
+        <input
+          type="checkbox"
+          checked={ap.collapsible}
+          onChange={(e) => set({ collapsible: e.target.checked })}
+        />
+        Collapsible
+      </label>
+      <div className={field}>
+        Background
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {WIDGET_BACKGROUNDS.map((b) => (
+            <Swatch
+              key={b}
+              token={b}
+              selected={ap.background === b}
+              onClick={() => set({ background: b as WidgetBackground })}
+            />
+          ))}
         </div>
-        <div className={field}>
-          Accent
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {WIDGET_ACCENTS.map((a) => (
-              <Swatch
-                key={a}
-                token={a}
-                selected={ap.accent === a}
-                onClick={() => set({ accent: a as WidgetAccent })}
-              />
-            ))}
-          </div>
+      </div>
+      <div className={field}>
+        Accent
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {WIDGET_ACCENTS.map((a) => (
+            <Swatch
+              key={a}
+              token={a}
+              selected={ap.accent === a}
+              onClick={() => set({ accent: a as WidgetAccent })}
+            />
+          ))}
         </div>
       </div>
     </div>
