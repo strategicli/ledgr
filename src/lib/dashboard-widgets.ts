@@ -5,6 +5,7 @@
 // safe in the "use client" bundle. The DB CRUD + tolerant parsers live in
 // dashboards.ts and import the shapes from here.
 import type { ViewItem } from "@/components/views/ViewRenderer";
+import type { StatusDef } from "@/lib/status";
 import type { ListSort, ViewDefinition, ViewFilter } from "@/lib/views";
 
 // --- Widget kinds & settings ---------------------------------------------
@@ -292,10 +293,21 @@ export type WidgetData = {
   view: ViewDefinition | null;
   items: ViewItem[]; // view kind (capped); empty for stat/action
   count: number; // view/stat total
-  // For a faithful board grouped by a custom property: column order + labels
-  // (resolved from the view's type), mirroring the /views/[id] page.
+  // For a faithful board: column order + labels (resolved from the view's type),
+  // mirroring the /views/[id] page. groupOrder covers a custom-property grouping
+  // AND a status grouping (the type's real statuses) — without the latter a board
+  // widget falls back to the built-in open/done/archived columns, and a drop into
+  // one of those spurious columns would write a status the type never defined.
   groupOrder?: string[];
   propertyLabels?: Record<string, string>;
+  // The type's resolved statuses, so a faithful board/list renders real status
+  // chips instead of raw keys.
+  statuses?: StatusDef[];
+  // The `kind` of the grouped custom property, so a board widget can reproduce
+  // the view page's deliberate drag guard: boardDropPatch writes a SCALAR, so
+  // only a single-select property is safe to drag (a multi_select would be
+  // corrupted into a string).
+  groupPropKind?: string | null;
   // Per-item confirmed related items (the compact list's "associated with" chip).
   related?: Record<string, { id: string; title: string; type: string }[]>;
   // tree kind: the parent rows, plus each parent's (capped) child rows and the
