@@ -40,6 +40,24 @@ export function defaultCell(bp: GridBreakpoint, i: number, kind: Kind) {
   return { x: (i % 2) * 6, y: Math.floor(i / 2) * 8, w: 6, h };
 }
 
+// Vertical order for the phone (sm) stack when a widget has NO stored sm cell:
+// the desktop reading order (lg y, then x) instead of the widget's array index,
+// which is creation order — so a carefully arranged desktop board no longer
+// renders on a phone in the order tiles happened to be added. Returns
+// arrayIndex → rank; feed the rank to defaultCell in place of the index. A
+// stored sm cell still wins (buildLayouts prefers it), so a hand-arranged phone
+// layout is never overridden. Pure: no React, no react-grid-layout.
+export function smOrder(widgets: WidgetData[]): number[] {
+  const ranked = widgets
+    .map((wd, i) => ({ i, cell: wd.widget.layout.lg ?? defaultCell("lg", i, wd.widget.kind) }))
+    .sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x || a.i - b.i);
+  const rank: number[] = [];
+  ranked.forEach((e, r) => {
+    rank[e.i] = r;
+  });
+  return rank;
+}
+
 // Estimate the grid's pixel height at a breakpoint (default lg = desktop), so the
 // load skeleton can reserve that space and widgets don't pile up diagonally
 // before RGL measures its width and snaps them into place. Mirrors RGL's own

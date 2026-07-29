@@ -20,6 +20,7 @@ import EmbedWidget from "./EmbedWidget";
 import InlineViewAdd from "./InlineViewAdd";
 import {
   applySettings,
+  hasInlineAdd,
   type ActionWidgetSettings,
   type EmbedWidgetSettings,
   type ImageWidgetSettings,
@@ -177,10 +178,15 @@ export default function WidgetBody({
   }
 
   if (widget.kind === "container") {
+    // today/focusItemId ride down to the children: a nested widget renders
+    // through the same WidgetFrame, so without them its rows lost the row menu
+    // and the inline add that the same widget has at the top level (R3/6b).
     return (
       <ContainerWidget
         data={data}
         editMode={editMode}
+        today={today}
+        focusItemId={focusItemId}
         onContainerChange={(settings) => onSettings?.(widget.id, settings)}
       />
     );
@@ -276,9 +282,12 @@ export default function WidgetBody({
   // wherever the view's filter pins a type — nothing to configure. Hidden in
   // edit mode (arranging is layout work, not capture) and on a read-only body
   // (no `today` = the Desk's dashboard panel, same gate as the row menus).
+  // hasInlineAdd is that same rule, shared: WidgetFrame reads it to keep an empty
+  // capture widget from folding shut (R3/2), so the two can't drift apart.
+  const addFilter = hasInlineAdd(data, editMode, today) ? data.view?.filter : null;
   const inlineAdd =
-    !editMode && today && data.view?.filter.type ? (
-      <InlineViewAdd filter={data.view.filter} today={today} focusItemId={focusItemId} />
+    addFilter && today ? (
+      <InlineViewAdd filter={addFilter} today={today} focusItemId={focusItemId} />
     ) : null;
 
   if (settings.renderStyle === "faithful" && data.view) {

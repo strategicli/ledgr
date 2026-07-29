@@ -17,6 +17,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import ActionGlyph from "@/components/canvas/action-icons";
 import { showToast } from "@/components/ui/ActionToast";
 import type {
   ContainerWidgetSettings,
@@ -51,7 +52,57 @@ function freshIds(widgets: DashboardWidget[]): DashboardWidget[] {
 }
 
 const iconBtn =
-  "shrink-0 rounded px-1.5 py-1 text-ink-faint hover:bg-surface-2 hover:text-ink";
+  "inline-flex shrink-0 rounded px-1.5 py-1 text-ink-faint hover:bg-surface-2 hover:text-ink";
+
+// Row chrome as SVG, not text characters (R3/3): the app's house idiom, a 24-box
+// stroke glyph at currentColor, no icon dependency (Principle 5). Delete reuses
+// the shared ACTION_ICONS trash via ActionGlyph; grip / pencil / copy aren't in
+// that set, so they're inline here (RemoveSection's pattern) rather than growing
+// a second icon library.
+const GRIP = (
+  <Svg>
+    <g fill="currentColor" stroke="none">
+      {[6, 12, 18].map((y) => (
+        <g key={y}>
+          <circle cx="9" cy={y} r="1.35" />
+          <circle cx="15" cy={y} r="1.35" />
+        </g>
+      ))}
+    </g>
+  </Svg>
+);
+const PENCIL = (
+  <Svg>
+    <path d="M4 20h4L18.6 9.4a2.1 2.1 0 0 0-3-3L5 17v3z" />
+    <path d="M14.5 5.5l3 3" />
+  </Svg>
+);
+const COPY = (
+  <Svg>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M15 6.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1.5" />
+  </Svg>
+);
+
+function Svg({ children }: { children: React.ReactNode }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+      aria-hidden
+      focusable={false}
+    >
+      {children}
+    </svg>
+  );
+}
 
 export default function DashboardIndexList({
   dashboards,
@@ -175,10 +226,10 @@ export default function DashboardIndexList({
             draggable
             onDragStart={() => setDragIndex(i)}
             title="Drag to reorder"
-            className="shrink-0 cursor-grab select-none px-1 text-ink-faint"
+            className="inline-flex shrink-0 cursor-grab select-none px-1 text-ink-faint"
             aria-hidden
           >
-            ⠿
+            {GRIP}
           </span>
 
           {editingId === d.id ? (
@@ -229,7 +280,7 @@ export default function DashboardIndexList({
             title="Rename"
             className={iconBtn}
           >
-            ✎
+            {PENCIL}
           </button>
           <button
             type="button"
@@ -238,7 +289,7 @@ export default function DashboardIndexList({
             title="Duplicate"
             className={iconBtn}
           >
-            ⧉
+            {COPY}
           </button>
           <button
             type="button"
@@ -247,7 +298,7 @@ export default function DashboardIndexList({
             title="Delete"
             className={`${iconBtn} hover:text-red-400`}
           >
-            ✕
+            <ActionGlyph icon="trash" size={15} />
           </button>
         </li>
       ))}

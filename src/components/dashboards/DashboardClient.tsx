@@ -50,6 +50,19 @@ import type { ViewDefinition } from "@/lib/views";
 // Widget kinds whose data changes when their settings change → refetch on save.
 const REFETCH_KINDS = new Set(["view", "tree", "container"]);
 
+// The one exception to that rule: a container tab click changes activeTab and
+// nothing else. It has to PERSIST (so a tab group reopens where you left it),
+// but it must not refetch — "container" is in REFETCH_KINDS, so routing tab
+// clicks through the normal settings path would re-run the whole dashboard's
+// server fan-out on every click. Compared field-by-field rather than trusting the
+// caller, and it fails toward the refetch, so a real settings change can't sneak
+// through as a tab click.
+function tabOnlyChange(prev: WidgetSettings | undefined, next: WidgetSettings): boolean {
+  if (!prev || !("activeTab" in prev) || !("activeTab" in next)) return false;
+  if (prev.activeTab === next.activeTab) return false;
+  return JSON.stringify({ ...prev, activeTab: 0 }) === JSON.stringify({ ...next, activeTab: 0 });
+}
+
 function cellFrom(all: Layouts, bp: keyof Layouts, id: string) {
   const item = (all[bp] ?? []).find((l) => l.i === id);
   return item ? { x: item.x, y: item.y, w: item.w, h: item.h } : undefined;
@@ -249,13 +262,14 @@ export default function DashboardClient({
   // input and blank it (the relation-role glitch). One refresh after typing stops.
   const handleSettings = useCallback(
     (id: string, settings: WidgetSettings) => {
+      const prev = widgetsRef.current.find((d) => d.widget.id === id)?.widget;
       const next = widgetsRef.current.map((d) =>
         d.widget.id === id ? { ...d, widget: { ...d.widget, settings } } : d
       );
       widgetsRef.current = next;
       setWidgets(next);
       const kind = next.find((d) => d.widget.id === id)?.widget.kind ?? "";
-      const refetch = REFETCH_KINDS.has(kind);
+      const refetch = REFETCH_KINDS.has(kind) && !tabOnlyChange(prev?.settings, settings);
       if (settingsTimer.current) clearTimeout(settingsTimer.current);
       settingsTimer.current = setTimeout(() => {
         const t = settingsTimer.current;
