@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
+import { bodyMarkdown, makeMarkdownBody, wordCountOf } from "@/lib/body";
 import { useItemAutosave } from "@/components/chord-editor/useItemAutosave";
 import { buildOutlineHtml } from "@/lib/papers/outline-html";
 import type { OutlineSection, PaperMeta as Meta, QuoteEntry } from "@/lib/papers/types";
@@ -214,7 +214,10 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
     ["outline", "Outline"],
     ["draft", "Draft"],
   ];
-  const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
+  // The shared prose count (body.ts), not a whitespace split: a draft's markup —
+  // headings, citation links, footnote markers — isn't part of the word count a
+  // paper is judged by, and the canvas chrome counts the same way.
+  const wordCount = useMemo(() => wordCountOf(draft), [draft]);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-6 pt-6">

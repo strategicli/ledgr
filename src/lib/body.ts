@@ -7,6 +7,10 @@
 // Pure shape helpers only: no markdown parsing here (that lives in
 // markdown-render.ts, which is server-only), so this module is safe to import
 // from both the client editor host and server code.
+//
+// (visible-text.ts is pure and dependency-free too — the markup-stripping the
+// word count needs, with no parser dragged in here.)
+import { visibleTextOf } from "@/lib/editor/visible-text";
 
 export const MARKDOWN_FORMAT = "markdown";
 
@@ -119,10 +123,15 @@ export function bodyMarkdown(body: unknown): string {
   return "";
 }
 
-// Rough word count for the canvas chrome: count word-like runs so bare markdown
-// punctuation (#, -, *, link brackets) doesn't inflate the total. Lives here
-// because both sides need it — the server renders the count at load, and the
-// client's live recount (word-count.ts) reruns it as you type.
+// Word count for the canvas chrome. It counts what the author wrote and the
+// reader sees, so the markup holding it up doesn't inflate the total:
+// visibleTextOf drops link and image destinations, inline HTML, comment notes,
+// tokens, and list/footnote markers first (visible-text.ts owns that list, and
+// deliberately KEEPS code), and then this counts word-like runs so bare
+// punctuation (#, -, *, brackets) doesn't count either. Lives here because both
+// sides need it — the server renders the count at load, and the client's live
+// recount (word-count.ts) reruns it as you type.
 export function wordCountOf(md: string): number {
-  return (md.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
+  const visible = visibleTextOf(md);
+  return (visible.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
 }
