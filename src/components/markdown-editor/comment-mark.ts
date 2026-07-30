@@ -23,13 +23,16 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
 
-// Fired on the editor root when the user clicks a comment's margin card. The host
-// (MarkdownEditor) puts the caret inside that comment's range and opens its editor
-// row on `note`. Carries the note and the run's start rather than asking the host
-// to look the mark up: the card is a widget sitting at the run's END, and this mark
-// is non-inclusive, so a position lookup there finds no mark. A click on the
-// comment's underlined TEXT needs no event — it places the caret itself, and the
-// host reads the note straight off the span's data-note attribute.
+// Fired on the editor root when the user clicks a comment's margin card (its
+// speech-bubble icon on a narrow viewport, which is the same element). The host
+// (MarkdownEditor) puts the caret inside that comment's range and opens the
+// comment popover on `note`. Carries the note and the run's start rather than
+// asking the host to look the mark up: the card is a widget sitting at the run's
+// END, and this mark is non-inclusive, so a position lookup there finds no mark.
+//
+// The card is the ONLY way to open the editor by pointer. A click on the
+// underlined text is left alone deliberately — it has to stay an ordinary click
+// that places the caret, or commented text can't be edited (Brandon, 2026-07-30).
 export const EDIT_COMMENT_EVENT = "ledgr-edit-comment"; // {from, note}
 
 // The mark. Only the RANGED form is claimed here: a point comment ({>>note<<}
@@ -195,12 +198,11 @@ export function commentNoteAt(editor: Editor): string | null {
 
 // Apply (or update) a comment.
 //
-// `at` is a position known to be INSIDE an existing comment (the editing paths
-// supply it: the card carries its run's start, and a click on the underlined text
-// resolves the span's own position). Passing it and then extending to the mark's
-// range is what makes an edit rewrite the whole comment rather than a fragment of
-// it — the caret alone is not enough to rely on, because this mark is
-// non-inclusive and focus has moved to the note's textarea in between.
+// `at` is a position known to be INSIDE an existing comment (the card carries its
+// run's start). Passing it and then extending to the mark's range is what makes an
+// edit rewrite the whole comment rather than a fragment of it — the caret alone is
+// not enough to rely on, because this mark is non-inclusive and focus has moved to
+// the note's textarea in between.
 //
 // Without `at` this is the create path, and the current (non-empty) selection is
 // the range being commented.
@@ -215,13 +217,4 @@ export function removeComment(editor: Editor, at?: number): void {
   const chain = editor.chain().focus();
   if (at !== undefined) chain.setTextSelection(at);
   chain.extendMarkRange("comment").unsetMark("comment").run();
-}
-
-// The document position just inside a rendered `.cmt` span, for the click paths.
-export function posInCommentSpan(editor: Editor, span: HTMLElement): number | null {
-  try {
-    return editor.view.posAtDOM(span, 0) + 1;
-  } catch {
-    return null;
-  }
 }

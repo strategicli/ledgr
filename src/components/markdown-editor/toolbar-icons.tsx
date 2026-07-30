@@ -22,6 +22,12 @@ function Svg({ children }: { children: ReactNode }) {
   );
 }
 
+// The speech-bubble geometry, shared by the toolbar button and the outline's
+// comment list. `markdown-editor.css` carries its own copy in --cmt-bubble
+// because CSS can't import; keep those two in step.
+export const COMMENT_BUBBLE_PATH =
+  "M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6l-5 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z";
+
 export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   bold: <Svg><path d="M6 4h7a4 4 0 0 1 0 8H6z" /><path d="M6 12h8a4 4 0 0 1 0 8H6z" /></Svg>,
   italic: <Svg><line x1="19" y1="4" x2="10" y2="4" /><line x1="14" y1="20" x2="5" y2="20" /><line x1="15" y1="4" x2="9" y2="20" /></Svg>,
@@ -47,10 +53,16 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   indent: <Svg><line x1="21" y1="6" x2="9" y2="6" /><line x1="21" y1="12" x2="13" y2="12" /><line x1="21" y1="18" x2="9" y2="18" /><path d="M4 9l3 3-3 3" /></Svg>,
   // toggle: a disclosure triangle beside lines — inserts a collapsible block.
   toggle: <Svg><path d="M8 5l4 4-4 4" /><line x1="14" y1="7" x2="20" y2="7" /><line x1="14" y1="12" x2="20" y2="12" /><line x1="8" y1="19" x2="20" y2="19" /></Svg>,
-  // comment: the conventional speech bubble (ADR-170), for a note anchored to the
+  // comment: the conventional speech bubble (ADR-170), from COMMENT_BUBBLE_PATH
+  // below — the outline's comment list draws the same glyph, so it's a named
+  // export rather than a third copy. For a note anchored to the
   // selected text. Distinct from the highlight marker, which fills rather than
-  // annotates.
-  comment: <Svg><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.5-4.5A8 8 0 1 1 21 12z" /></Svg>,
+  // annotates. A rounded rectangle with a tail, not the round "chat blob" this
+  // replaced: the blob's tail was a thin spike off a circle, which reads as a
+  // smudge at 16px and worse as a filled glyph at 14px (Brandon, 2026-07-30 — "a
+  // little wonky"). Same geometry as the --cmt-bubble mask in
+  // markdown-editor.css; keep the two in step.
+  comment: <Svg><path d={COMMENT_BUBBLE_PATH} /></Svg>,
 };
 
 // The toolbar items in display order (id → label), for the configurable-toolbar

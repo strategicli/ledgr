@@ -28,11 +28,20 @@
 // two headings of the enabled levels, it renders nothing. Heading nodes are
 // never mutated (ProseMirror owns that DOM); we re-query live by document order
 // and key the list by index.
+//
+// The open presentations also list the body's COMMENTS (ADR-170) below the
+// headings, from the same DOM read, so every comment in a note is in one place.
+// The collapsed rail stays headings-only, and the two-heading gate is unchanged
+// (Brandon, 2026-07-30): a note too short for an outline keeps its comments in
+// the margin and on their inline icons.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { COMMENT_BUBBLE_PATH } from "@/components/markdown-editor/toolbar-icons";
+import { badgeCount } from "@/lib/format-count";
 
 type Heading = { text: string; level: number };
+type CommentRow = { note: string; anchor: string };
 
 const MIN_HEADINGS = 2;
 
@@ -150,6 +159,7 @@ export default function FloatingToc({
   const offsetRef = useRef(16);
 
   const [headings, setHeadings] = useState<Heading[]>([]);
+  const [comments, setComments] = useState<CommentRow[]>([]);
   const [active, setActive] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   // Click/tap-held flyout. Hover alone is a pure-CSS affordance that touch can
@@ -182,6 +192,14 @@ export default function FloatingToc({
     return Array.from(prose.querySelectorAll<HTMLElement>(selector));
   }, [selector]);
 
+  // Same discipline for the comment cards: re-query live, never cache. In the
+  // editor these are ProseMirror widget decorations, which it replaces freely.
+  const liveNoteEls = useCallback((): HTMLElement[] => {
+    const prose = proseRef.current;
+    if (!prose) return [];
+    return Array.from(prose.querySelectorAll<HTMLElement>(".cmt-note"));
+  }, []);
+
   // Rebuild the outline from the current DOM. Finds the body editor within this
   // canvas's own scope (critical: several scopes can be mounted at once — the
   // page canvas behind an open modal, or four Desk panels — so we must read THIS
@@ -192,6 +210,7 @@ export default function FloatingToc({
     proseRef.current = prose;
     if (!prose || !selector) {
       setHeadings([]);
+      setComments([]);
       return;
     }
     scrollElRef.current = getScrollParent(prose);
@@ -205,6 +224,34 @@ export default function FloatingToc({
         text: (el.textContent || "").trim() || "Untitled",
         level: Number(el.tagName.slice(1)) || 1,
       }))
+    );
+    // Comments (ADR-170) come from the SAME live DOM read as the headings: each
+    // `.cmt-note` is a comment, and the `.cmt` span(s) immediately before it are
+    // the text it's anchored to. Reading the rendered DOM rather than the
+    // markdown is what makes the list track edits as you type, exactly like the
+    // heading list. Only the strings go into state — the nodes are re-queried at
+    // click time (liveNoteEls), since ProseMirror owns and replaces them.
+    setComments(
+      Array.from(prose.querySelectorAll<HTMLElement>(".cmt-note")).map((el) => {
+        // A mark splits across text nodes, so an anchor containing **bold**
+        // renders as several `.cmt` spans with the card after the LAST one. Walk
+        // back over the run to rebuild the whole anchored phrase. An element
+        // that merely CONTAINS a `.cmt` counts: a nested mark inverts the
+        // nesting (`<strong><span class="cmt">bold</span></strong>`), and
+        // testing only the sibling's own class stopped the walk there and
+        // returned the tail fragment. The run is self-bounding — an earlier
+        // comment's `.cmt-note` sits between, and holds no `.cmt`.
+        const parts: string[] = [];
+        let p = el.previousElementSibling;
+        while (p && (p.matches(".cmt") || p.querySelector(".cmt"))) {
+          parts.unshift(p.textContent || "");
+          p = p.previousElementSibling;
+        }
+        return {
+          note: (el.textContent || "").trim() || "Empty comment",
+          anchor: parts.join("").trim(), // "" for a point comment (.cmt-point)
+        };
+      })
     );
   }, [selector]);
 
@@ -321,6 +368,18 @@ export default function FloatingToc({
       if (el) scrollToEl(el, scrollElRef.current, offsetRef.current);
     },
     [liveEls]
+  );
+
+  const jumpToComment = useCallback(
+    (i: number) => {
+      const el = liveNoteEls()[i];
+      // Prefer the anchored text over the card: on a wide screen the card floats
+      // out in the margin and can sit a line or two off from what it points at.
+      const prev = el?.previousElementSibling as HTMLElement | null;
+      const target = prev?.classList.contains("cmt") ? prev : el;
+      if (target) scrollToEl(target, scrollElRef.current, offsetRef.current);
+    },
+    [liveNoteEls]
   );
 
   // Persist the pin to owner settings (per item, so it follows the note across
@@ -460,6 +519,60 @@ export default function FloatingToc({
     </ul>
   );
 
+  // The comment list (ADR-170 follow-on): every comment in the note in one
+  // place, click to scroll to it. Two lines per row — the note, then the text
+  // it's anchored to — because "tighten this" on its own doesn't say where it
+  // points (Brandon, 2026-07-30). Renders in all three OPEN presentations, and
+  // deliberately NOT on the collapsed marks rail, which stays headings-only.
+  //
+  // No active tracking here: highlighting "the comment nearest the viewport"
+  // would fight the heading highlight for attention, and the list is short.
+  const commentSection = comments.length > 0 && (
+    <>
+      <div className="my-2 border-t border-line" />
+      <p className="ui-section-label px-2 pb-1 text-ink-faint">
+        Comments · {badgeCount(comments.length)}
+      </p>
+      <ul className="space-y-0.5">
+        {comments.map((c, i) => (
+          <li key={i}>
+            <button
+              type="button"
+              onClick={() => {
+                jumpToComment(i);
+                setSheetOpen(false);
+                setOpen(false);
+              }}
+              className="group flex w-full items-start gap-1.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-surface-2"
+            >
+              {/* --cmt-line-strong is declared on .ledgr-prose and this renders
+                  outside it, so the fallback is load-bearing. If that bothers a
+                  future reader, promote the --cmt-* vars to a shared scope —
+                  don't invent a second yellow. */}
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                aria-hidden
+                className="mt-0.5 shrink-0 text-[var(--cmt-line-strong,#facc15)]"
+              >
+                <path fill="currentColor" d={COMMENT_BUBBLE_PATH} />
+              </svg>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-ink-muted group-hover:text-ink">
+                  {c.note}
+                </span>
+                {c.anchor && (
+                  <span className="ui-meta block truncate text-ink-faint">{c.anchor}</span>
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+
   // --- Pinned: a docked, resizable column the content makes room for ---------
   if (isPinned) {
     return layer(
@@ -493,6 +606,7 @@ export default function FloatingToc({
         <div className="overflow-y-auto p-2 pt-3">
           {listHeader}
           {labelList}
+          {commentSection}
         </div>
       </aside>
     );
@@ -531,6 +645,7 @@ export default function FloatingToc({
         >
           {listHeader}
           {labelList}
+          {commentSection}
         </div>
       </nav>
     );
@@ -578,6 +693,7 @@ export default function FloatingToc({
             <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong" />
             {listHeader}
             {labelList}
+            {commentSection}
           </div>
         </div>
       )}
