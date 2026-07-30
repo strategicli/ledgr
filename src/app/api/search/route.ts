@@ -119,7 +119,12 @@ export async function GET(request: Request) {
         if (!UUID_RE.test(value)) {
           return NextResponse.json({ error: "person must be a UUID" }, { status: 400 });
         }
-        criteria.push({ kind: "relation", value, confidence });
+        // role= narrows to one typed relation field (a relation-kind property
+        // stores its value as edges whose `role` is the field key). Absent, the
+        // criterion matches a link in either direction through any field, which
+        // is what person= has always meant.
+        const role = params.get("role")?.trim();
+        criteria.push({ kind: "relation", value, confidence, ...(role ? { role } : {}) });
       }
 
       for (const raw of tagParams) {

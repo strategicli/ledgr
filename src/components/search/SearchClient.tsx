@@ -48,6 +48,8 @@ const STOP_LABEL: Record<Stop, string> = {
 };
 
 type TermRow = { id: number; value: string; stop: Stop };
+// A tag criterion: which select field, which of its values, how sure.
+type TagRow = { id: number; key: string; value: string; stop: Stop };
 
 function Snippet({ text }: { text: string }) {
   const parts = text.split(/\[\[(.*?)\]\]/g);
@@ -115,6 +117,8 @@ export default function SearchClient({
   types,
   people,
   dateProps = [],
+  tagProps = [],
+  roleProps = [],
   initialQuery = "",
 }: {
   types: Option[];
@@ -122,6 +126,12 @@ export default function SearchClient({
   // Date-kind custom fields, offered as "which date" the When criterion measures
   // (ADR-172). `value` is the properties key, sent as whensrc=prop:<key>.
   dateProps?: Option[];
+  // select / multi_select fields, with their options, for tag criteria
+  // ("I remember it was tagged X"). Sent as tag=<key>:<value>~<confidence>.
+  tagProps?: (Option & { options: string[] })[];
+  // relation-kind fields, for narrowing a person criterion to one typed link
+  // ("linked as Author" rather than "linked anywhere"). Sent as role=<key>.
+  roleProps?: Option[];
   // Prefill from ?q= (the Discover panel's "Search everything about this"
   // handoff, ADR-127): the effect below fetches on mount when q is non-empty.
   initialQuery?: string;
@@ -145,6 +155,10 @@ export default function SearchClient({
   const [whenSrc, setWhenSrc] = useState("updated");
   const [typeStop, setTypeStop] = useState<Stop>("sure");
   const [personStop, setPersonStop] = useState<Stop>("sure");
+  // "" = a link in either direction, any field (what person= has always meant).
+  const [personRole, setPersonRole] = useState("");
+  const [tags, setTags] = useState<TagRow[]>([]);
+  const [nextTagId, setNextTagId] = useState(1);
 
   // A leading "/type" token in the box narrows to one type ("/note budget");
   // it overrides the Type dropdown and the remaining text is the query. Resolved
@@ -176,10 +190,21 @@ export default function SearchClient({
     [terms]
   );
 
+  const activeTags = useMemo(
+    () => tags.filter((t) => t.key && t.value),
+    [tags]
+  );
+
   // Fuzzy mode engages only when the panel is open AND something in it is set.
   // Otherwise the request is byte-identical to the pre-ADR-172 exact search.
   const fuzzy =
-    tuning && (activeTerms.length > 0 || whenParsed !== null || typeStop !== "sure" || personStop !== "sure");
+    tuning &&
+    (activeTerms.length > 0 ||
+      activeTags.length > 0 ||
+      whenParsed !== null ||
+      typeStop !== "sure" ||
+      personStop !== "sure" ||
+      personRole !== "");
 
   // The query string, and the criteria order the server will score in — the
   // result rows' `contribs` array lines up with this, so it doubles as the
@@ -202,7 +227,14 @@ export default function SearchClient({
       }
       if (person) {
         p.set("person", `${person}~${personStop}`);
-        order.push(people.find((x) => x.value === person)?.label ?? "person");
+        if (personRole) p.set("role", personRole);
+        const who = people.find((x) => x.value === person)?.label ?? "person";
+        const asRole = roleProps.find((r) => r.value === personRole)?.label;
+        order.push(asRole ? `${who} (${asRole})` : who);
+      }
+      for (const t of activeTags) {
+        p.append("tag", `${t.key}:${t.value}~${t.stop}`);
+        order.push(t.value);
       }
       if (whenParsed) {
         p.set("when", `${whenPhrase.trim()}~${whenStop}`);
@@ -230,12 +262,15 @@ export default function SearchClient({
     return { search: p.toString(), legend: order };
   }, [
     apiQ, apiType, person, from, to, fuzzy, activeTerms, whenParsed, whenPhrase,
-    whenStop, whenSrc, typeStop, personStop, types, people, dateProps,
+    whenStop, whenSrc, typeStop, personStop, personRole, activeTags,
+    types, people, dateProps, roleProps,
   ]);
 
   // In fuzzy mode a search can stand on criteria alone (a date and a type, no
   // words at all); in exact mode it still needs query text.
-  const canSearch = fuzzy ? activeTerms.length > 0 || apiQ.length > 0 || whenParsed !== null : apiQ.length > 0;
+  const canSearch = fuzzy
+    ? activeTerms.length > 0 || activeTags.length > 0 || apiQ.length > 0 || whenParsed !== null
+    : apiQ.length > 0;
 
   // State changes happen only inside the debounced callback (the React
   // compiler rejects synchronous setState in an effect body); the blank-
@@ -275,6 +310,17 @@ export default function SearchClient({
   };
   const setTerm = (id: number, patch: Partial<TermRow>) =>
     setTerms((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  // A new tag row preselects the only sensible default: the first field, no value
+  // yet (the value select shows a placeholder until picked).
+  const addTag = () => {
+    setTags((prev) => [
+      ...prev,
+      { id: nextTagId, key: tagProps[0]?.value ?? "", value: "", stop: "might" },
+    ]);
+    setNextTagId((n) => n + 1);
+  };
+  const setTag = (id: number, patch: Partial<TagRow>) =>
+    setTags((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   return (
     <div>
@@ -328,6 +374,22 @@ export default function SearchClient({
             ))}
           </select>
         </label>
+        {tuning && person && roleProps.length > 0 && (
+          <select
+            value={personRole}
+            onChange={(e) => setPersonRole(e.target.value)}
+            aria-label="Linked as"
+            title="Narrow to one kind of link, or match a link of any kind"
+            className={selectClass}
+          >
+            <option value="">linked anywhere</option>
+            {roleProps.map((r) => (
+              <option key={r.value} value={r.value}>
+                linked as {r.label}
+              </option>
+            ))}
+          </select>
+        )}
         {tuning && person && (
           <StopPicker
             value={personStop}
@@ -465,6 +527,74 @@ export default function SearchClient({
                 </span>
               )}
             </p>
+          )}
+
+          {/* Tag criteria: any select / multi_select field on any type. Rendered
+              only when some type actually declares one with options, so a fresh
+              instance shows no dead control. */}
+          {tagProps.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {tags.map((t) => {
+                const field = tagProps.find((p) => p.value === t.key);
+                return (
+                  <div key={t.id} className="flex flex-wrap items-center gap-2">
+                    <span className="ui-meta w-14 shrink-0 text-ink-subtle">
+                      {t.id === tags[0]?.id ? "Tagged" : ""}
+                    </span>
+                    <select
+                      value={t.key}
+                      onChange={(e) => setTag(t.id, { key: e.target.value, value: "" })}
+                      aria-label="Which field"
+                      className={selectClass}
+                    >
+                      {tagProps.map((p) => (
+                        <option key={p.value} value={p.value}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={t.value}
+                      onChange={(e) => setTag(t.id, { value: e.target.value })}
+                      aria-label="Which value"
+                      className={`${selectClass} min-w-0 flex-1`}
+                    >
+                      <option value="">pick a value…</option>
+                      {(field?.options ?? []).map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                    <StopPicker
+                      value={t.stop}
+                      onChange={(stop) => setTag(t.id, { stop })}
+                      hint="How sure are you about this tag? Sure filters to it; the lower stops only rank it higher, so a wrong guess never hides the real item."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setTags((prev) => prev.filter((x) => x.id !== t.id))}
+                      aria-label="Remove this tag"
+                      className="rounded px-1.5 text-ink-faint hover:bg-surface-2 hover:text-ink-muted"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+              <div className="flex items-center gap-2">
+                <span className="ui-meta w-14 shrink-0 text-ink-subtle">
+                  {tags.length === 0 ? "Tagged" : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={addTag}
+                  className="rounded border border-dashed border-line px-2 py-1 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
+                >
+                  + add a tag
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

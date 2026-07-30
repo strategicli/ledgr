@@ -31,16 +31,36 @@ export default async function Search({
   ]);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
 
-  // Date-kind custom fields, offered alongcreated/updated as the "which date" a
-  // fuzzy When criterion measures (ADR-172): an event's own date or a sermon's
-  // preach date is often the thing you half-remember, not when you last touched
-  // the row. Deduped by key across types, since two types can share a field name
-  // and the criterion targets items.properties[key] regardless of type.
+  // Custom fields a fuzzy criterion can target (ADR-172). All three lists are
+  // keyed by the PROPERTY KEY and deduped across types, because a criterion
+  // matches items.properties[key] (or a relation `role`) regardless of which type
+  // declares it — two types sharing a "campus" field should offer one row, with
+  // the union of their options.
+  //
+  //   dateProps  — date-kind: which date a When criterion measures.
+  //   tagProps   — select / multi_select: "I remember it was tagged X".
+  //   roleProps  — relation-kind: narrows a person criterion to one typed field
+  //                (linked as Author, vs linked anywhere).
   const dateProps = new Map<string, string>();
+  const tagProps = new Map<string, { label: string; options: Set<string> }>();
+  const roleProps = new Map<string, string>();
   for (const t of typeRows) {
-    for (const p of (t.propertySchema ?? []) as { key: string; label: string; kind: string }[]) {
-      if (p.kind === "date" && p.key && !dateProps.has(p.key)) {
-        dateProps.set(p.key, p.label || p.key);
+    for (const p of (t.propertySchema ?? []) as {
+      key: string;
+      label: string;
+      kind: string;
+      options?: string[];
+    }[]) {
+      if (!p.key) continue;
+      const label = p.label || p.key;
+      if (p.kind === "date") {
+        if (!dateProps.has(p.key)) dateProps.set(p.key, label);
+      } else if (p.kind === "select" || p.kind === "multi_select") {
+        const existing = tagProps.get(p.key) ?? { label, options: new Set<string>() };
+        for (const o of p.options ?? []) if (o) existing.options.add(o);
+        tagProps.set(p.key, existing);
+      } else if (p.kind === "relation") {
+        if (!roleProps.has(p.key)) roleProps.set(p.key, label);
       }
     }
   }
@@ -63,6 +83,16 @@ export default async function Search({
               label: p.title || "Untitled",
             }))}
             dateProps={[...dateProps].map(([value, label]) => ({ value, label }))}
+            // Only fields that actually have options are offerable: a select with
+            // none has nothing to pick, so the row would be a dead end.
+            tagProps={[...tagProps]
+              .filter(([, v]) => v.options.size > 0)
+              .map(([key, v]) => ({
+                value: key,
+                label: v.label,
+                options: [...v.options].sort(),
+              }))}
+            roleProps={[...roleProps].map(([value, label]) => ({ value, label }))}
           />
         </div>
       </div>
