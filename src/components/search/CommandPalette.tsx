@@ -157,6 +157,16 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
     // action results are not produced yet (the populate-later seam).
   };
 
+  // Hand off to the full search page, carrying whatever is typed. The page reads
+  // ?q= as a prefill (the same handoff the Discover panel uses, ADR-127), so the
+  // query survives the jump. One function behind both doors: the footer button
+  // and Enter-with-no-results.
+  const goAdvanced = () => {
+    onClose();
+    const query = q.trim();
+    router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
+  };
+
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.stopPropagation();
@@ -170,10 +180,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (flat[activeIndex]) openResult(flat[activeIndex]);
-      else if (q.trim()) {
-        onClose();
-        router.push(`/search?q=${encodeURIComponent(q.trim())}`);
-      }
+      else if (q.trim()) goAdvanced();
     }
   };
 
@@ -250,10 +257,32 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
         )}
 
         {q.trim() && grouped.length === 0 && (
-          <p className="px-4 py-3 text-sm text-neutral-600">
-            No matches. Enter to search all content.
-          </p>
+          <p className="px-4 py-3 text-sm text-neutral-600">No matches here.</p>
         )}
+
+        {/* The escape hatch out of quick search and into the tuned page
+            (ADR-172). Always present, not just on an empty result set: "I can't
+            find it" is the exact moment you want stacked criteria, and the
+            handoff carries whatever you already typed via ?q= so you never
+            retype it. This replaces the palette's old hidden behavior, where
+            Enter-with-zero-results silently did the same navigation — the path
+            existed, nothing advertised it. */}
+        <button
+          type="button"
+          onClick={goAdvanced}
+          className="flex w-full items-center gap-2 border-t border-neutral-800 px-4 py-2 text-left text-xs text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"
+        >
+          <NavGlyph icon="search" size={14} className="shrink-0 text-neutral-500" />
+          <span className="min-w-0 flex-1 truncate">
+            {q.trim() ? (
+              <>
+                Advanced search for <span className="text-neutral-200">{q.trim()}</span>
+              </>
+            ) : (
+              "Advanced search: stack up words, a rough date, a type"
+            )}
+          </span>
+        </button>
 
         <div className="border-t border-neutral-800 px-4 py-1.5 text-xs text-neutral-600">
           ↑↓ to move · Enter to open · Esc to close

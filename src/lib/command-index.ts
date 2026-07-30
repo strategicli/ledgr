@@ -51,11 +51,11 @@ export type CommandResult =
 export type DestinationResult = Extract<CommandResult, { kind: "destination" }>;
 
 // Built-in Work pages worth jumping to. These exist as routes, so none dead-links.
-// "Advanced search" IS listed even though this is the palette: /search is a
-// different tool (stacked criteria with per-criterion confidence, ADR-172), and
-// jumping to it from here is the natural move when a quick search didn't find it.
+// Advanced search is deliberately NOT a row here: the palette carries a permanent
+// footer button for it instead (CommandPalette), which is always visible and
+// carries the typed query across via ?q=. A row would be a second, worse door to
+// the same place — it would compete for the arrow-key selection and lose the query.
 const BUILTIN_PAGES: { label: string; href: string; icon: string }[] = [
-  { label: "Advanced search", href: "/search", icon: "search" },
   { label: "Inbox", href: "/inbox", icon: "inbox" },
   { label: "Tasks", href: "/tasks", icon: "tasks" },
   { label: "Dashboards", href: "/dashboards", icon: "dashboard" },
