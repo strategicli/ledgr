@@ -36,7 +36,7 @@ type SetField =
 
 export default function BulkActionBar(config: BulkActionConfig) {
   const router = useRouter();
-  const { count, selected, clear } = useSelection();
+  const { count, selected, clear, selectAll, allSelected, total } = useSelection();
   const [menu, setMenu] = useState<null | "set" | "move">(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +192,15 @@ export default function BulkActionBar(config: BulkActionConfig) {
         />
 
         <span className="mx-1 h-5 w-px bg-neutral-700" aria-hidden />
+        {!allSelected && total > count && (
+          <button
+            type="button"
+            onClick={selectAll}
+            className="rounded-md px-2 py-1 text-sm text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+          >
+            All · {total}
+          </button>
+        )}
         <button
           type="button"
           onClick={clear}

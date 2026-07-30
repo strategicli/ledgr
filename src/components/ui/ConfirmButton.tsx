@@ -37,6 +37,10 @@ export default function ConfirmButton({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // Which way the popover opens. Measured from the trigger when it opens so a
+  // trigger near the bottom of the viewport (the bottom-fixed BulkActionBar)
+  // flips upward instead of rendering off-screen.
+  const [side, setSide] = useState<"bottom" | "top">("bottom");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -95,7 +99,15 @@ export default function ConfirmButton({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={triggerLabel}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) {
+            const r = wrapRef.current?.getBoundingClientRect();
+            // ponytail: fixed 220px estimate of the panel's height rather than
+            // measuring it post-render; good enough for a w-64 confirm box.
+            setSide(r && window.innerHeight - r.bottom < 220 ? "top" : "bottom");
+          }
+          setOpen((o) => !o);
+        }}
         className={triggerClassName}
       >
         {trigger}
@@ -104,9 +116,9 @@ export default function ConfirmButton({
         <div
           role="dialog"
           aria-label={title}
-          className={`absolute z-50 mt-2 w-64 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl shadow-black/50 ${
+          className={`absolute z-50 w-64 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl shadow-black/50 ${
             align === "right" ? "right-0" : "left-0"
-          }`}
+          } ${side === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}
         >
           <p className="text-sm font-medium text-neutral-100">{title}</p>
           {description && (

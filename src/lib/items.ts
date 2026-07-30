@@ -128,8 +128,16 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   // Escape ILIKE wildcards once: reused by the substring filter and the
   // prefix-match ordering term below.
   const escapedQ = opts.q?.replace(/[\\%_]/g, "\\$&");
-  if (opts.q) {
-    where.push(ilike(items.title, `%${escapedQ}%`));
+  if (opts.q && escapedQ) {
+    // Every whitespace-separated word must appear somewhere in the title, in
+    // any order. A single `%q%` on the whole string is punctuation- and
+    // order-sensitive: typing "ask seek knock" missed the note actually titled
+    // "Ask, Seek, Knock" because of the commas. FTS (lib/search.ts) never had
+    // this problem, but these pickers deliberately match titles only, so they
+    // tokenize here rather than switch to the body-inclusive search.
+    for (const word of escapedQ.split(/\s+/).filter(Boolean)) {
+      where.push(ilike(items.title, `%${word}%`));
+    }
   }
 
   // Recency alone (updated_at desc) structurally buries short, rarely-edited

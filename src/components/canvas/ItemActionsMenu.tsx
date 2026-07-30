@@ -15,6 +15,7 @@ import SaveAsTemplateButton from "./SaveAsTemplateButton";
 import ApplyTemplateButton from "./ApplyTemplateButton";
 import ChangeTypeDialog from "./ChangeTypeDialog";
 import ActionGlyph from "./action-icons";
+import WordCount from "./WordCount";
 import MoveUnderMenu from "@/components/items/MoveUnderMenu";
 
 const rowClass =
@@ -177,7 +178,7 @@ export default function ItemActionsMenu({
                 {updatedLabel && <div>Updated {updatedLabel}</div>}
                 {wordCount !== undefined && (
                   <div>
-                    {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}
+                    <WordCount itemId={itemId} initial={wordCount} />
                   </div>
                 )}
               </div>

@@ -18,6 +18,7 @@ import {
   reportConflict,
   setKnownVersion,
 } from "@/lib/save-status";
+import { publishBodyMarkdown } from "@/lib/word-count";
 import BodyEditor from "./BodyEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
 import { useTokenAutocomplete } from "./useTokenAutocomplete";
@@ -420,6 +421,10 @@ export default function ItemEditor({
   const onBodyChange = (markdown: string) => {
     if (markdown === savedBodyText.current) return;
     savedBodyText.current = markdown;
+    // Keep the canvas chrome's word count current as you type (it's otherwise
+    // only as fresh as the last page load). Recount is debounced inside; this
+    // never touches the save path.
+    publishBodyMarkdown(item.id, markdown);
     pending.current.body = makeMarkdownBody(markdown);
     onLiveChange?.({ markdown });
     schedule();

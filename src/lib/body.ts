@@ -118,3 +118,11 @@ export function bodyMarkdown(body: unknown): string {
   if (typeof body === "string") return body;
   return "";
 }
+
+// Rough word count for the canvas chrome: count word-like runs so bare markdown
+// punctuation (#, -, *, link brackets) doesn't inflate the total. Lives here
+// because both sides need it — the server renders the count at load, and the
+// client's live recount (word-count.ts) reruns it as you type.
+export function wordCountOf(md: string): number {
+  return (md.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
+}
