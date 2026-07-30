@@ -1018,7 +1018,16 @@ export default function MarkdownEditor({
     } catch {
       /* no resolvable coords (an empty doc): fall back to the popup form */
     }
-    setCommentDraft({ note: note ?? "", existing: note !== null, pos });
+    setCommentDraft({
+      note: note ?? "",
+      existing: note !== null,
+      // Editing: carry the caret as the position Save/Delete extend from, exactly
+      // like the card path does. Without it, a caret (empty selection) inside a
+      // comment would set a stored mark instead of rewriting the run — and on a
+      // comment that bridges blocks, only the caret's own block would be rewritten.
+      at: note !== null ? editor.state.selection.from : undefined,
+      pos,
+    });
   };
 
   const applyComment = (note: string, at?: number) => {

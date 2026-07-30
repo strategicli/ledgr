@@ -766,14 +766,22 @@
 }
 
 /* Hover couples the two, in both directions, with no JS: hovering the note
-   lights up its anchor (`:has(+ …)`), hovering the anchor lights up the note. */
+   lights up its anchor (`:has(+ …)`), hovering the anchor lights up the note.
+
+   .cmt-lit is the same lit state applied by class, for the one case adjacency
+   can't express: a comment that BRIDGES blocks is several .cmt spans in several
+   paragraphs or list items, and hovering one must light them all (comment-hover.ts
+   toggles the class on everything sharing the comment's data-note). The :hover
+   rules stay as the no-JS baseline — print, and the frame before hydration. */
 .cmt:hover,
-.cmt:has(+ .cmt-note:hover) {
+.cmt:has(+ .cmt-note:hover),
+.cmt.cmt-lit {
   background-color: var(--cmt-fill);
   text-decoration-color: var(--cmt-line-strong);
 }
 .cmt:hover + .cmt-note,
-.cmt-note:hover {
+.cmt-note:hover,
+.cmt-note.cmt-lit {
   border-color: var(--cmt-line-strong);
 }
 
