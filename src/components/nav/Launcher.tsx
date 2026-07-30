@@ -50,15 +50,12 @@ export default function Launcher({
   open,
   onOpenChange,
   tiles,
-  onSearch,
   barRow,
   onDragClaim,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tiles: LauncherTile[];
-  // A tile with href "/search" opens the command palette instead of navigating.
-  onSearch: () => void;
   // The bar slots row, rendered by NavShell: the drawer's always-visible first row.
   barRow: ReactNode;
   // Fires the moment a real drag is claimed (not a tap), so NavShell can close
@@ -273,21 +270,7 @@ export default function Launcher({
         >
           <div className="ui-section-label px-4 pb-1 pt-1">Go to</div>
           <div className="grid grid-cols-5 gap-1 px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-            {tiles.map((t) =>
-              t.href === "/search" ? (
-                <button
-                  key={t.href}
-                  type="button"
-                  onClick={() => {
-                    onOpenChange(false);
-                    onSearch();
-                  }}
-                  className="flex flex-col items-center gap-1.5 rounded-card px-0.5 py-2.5 text-ink-muted hover:bg-surface-2 hover:text-ink"
-                >
-                  <Icon icon={t.icon} />
-                  <span className="w-full truncate text-center text-[10px]">{t.label}</span>
-                </button>
-              ) : (
+            {tiles.map((t) => (
                 <Link
                   key={t.href}
                   href={t.href}
@@ -307,8 +290,7 @@ export default function Launcher({
                   </span>
                   <span className="w-full truncate text-center text-[10px]">{t.label}</span>
                 </Link>
-              )
-            )}
+            ))}
           </div>
         </div>
       </div>

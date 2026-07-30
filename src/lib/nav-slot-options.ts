@@ -41,7 +41,11 @@ export const BUILTIN_DESTS: DestOption[] = [
   // opt-in posture); it's not a default slot.
   { group: "Built-in", kind: "builtin", href: "/desk", label: "Desk", icon: "grid", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/favorites", label: "Favorites", icon: "starred", badgeEligible: false },
-  { group: "Built-in", kind: "builtin", href: "/search", label: "Search", icon: "search", badgeEligible: false },
+  // "Advanced search" distinguishes the PAGE (stacked criteria with per-criterion
+  // confidence, ADR-172) from the ⌘K palette that every layout already carries a
+  // permanent button for. Two different tools; the label is what tells them apart
+  // in a bar that shows both.
+  { group: "Built-in", kind: "builtin", href: "/search", label: "Advanced search", icon: "search", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/dashboards", label: "Dashboards", icon: "dashboard", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/items", label: "Items", icon: "items", badgeEligible: false },
   { group: "Built-in", kind: "builtin", href: "/views", label: "Views", icon: "views", badgeEligible: false },

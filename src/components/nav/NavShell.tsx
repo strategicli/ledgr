@@ -12,8 +12,9 @@
 //
 // Middle slots come from settings.navSlots (resolved server-side by Nav.tsx into
 // ShellSlot[]). A slot is either a single `destination` or a `tools` group that
-// opens a popover of child destinations. A destination pointing at /search opens
-// the command palette instead of navigating (parity with the old Search slot).
+// opens a popover of child destinations. Every destination navigates, including
+// /search (the full search page); the command palette is reached by ⌘K or the
+// permanent Search button each layout carries.
 // Build has a global shortcut (Ctrl/Cmd+Shift+B) and a glowing entry in More.
 "use client";
 
@@ -78,8 +79,14 @@ const HOME_SLOT: ShellSlot = {
   count: null,
 };
 
-// A destination at /search opens the command palette rather than navigating.
-const isSearchHref = (href: string) => href === "/search";
+// NOTE (ADR-172 follow-up): there is deliberately NO /search special-case here.
+// A configurable slot pointing at /search navigates to the full search page, like
+// any other destination. The command palette has its own doors that no nav
+// configuration can remove: the global ⌘K handler below, plus a permanent Search
+// button hardcoded into all four layouts (pillTrailingControls,
+// mobileTrailingControls, the top bar and the side rail). Hijacking the slot made
+// the palette reachable five ways and the search PAGE reachable none, which is
+// why it went.
 
 // A destination at /favorites opens the favorites flyout rather than navigating.
 const isFavoritesHref = (href: string) => href === FAVORITES_HREF;
@@ -237,8 +244,8 @@ export default function NavShell({
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const slotActive = (slot: ShellSlot): boolean =>
     slot.kind === "tools"
-      ? slot.children.some((c) => !isSearchHref(c.href) && isActive(c.href))
-      : !isSearchHref(slot.href) && isActive(slot.href);
+      ? slot.children.some((c) => isActive(c.href))
+      : isActive(slot.href);
 
   const move = async (pos: NavPosition) => {
     setMenuOpen(false);
@@ -294,9 +301,11 @@ export default function NavShell({
   // tools group expands to its children) plus the built-in extras — EXCEPT the
   // ones already visible on the bar row, because the bar IS the drawer's first
   // row now (ADR-143): opening reveals the rest, it doesn't repeat the bar.
-  // Search is deduped too (the bar row always carries its own Search button).
+  // The permanent Search button on the bar opens the command palette, which is a
+  // DIFFERENT tool from the /search page, so /search is no longer seeded here —
+  // a Search-page slot earns its own drawer tile. The generic dedupe below still
+  // removes it if the owner put it on the bar row itself.
   const visibleBarHrefs = new Set([
-    "/search",
     ...mobileBarSlots
       .slice(0, RECOMMENDED_MOBILE_NAV_SLOTS)
       .flatMap(({ slot }) => (slot.kind === "destination" ? [slot.href] : [])),
@@ -349,7 +358,7 @@ export default function NavShell({
 
   // A child row inside a tools popover (always icon + label + inline badge).
   function renderToolsChild(child: ShellDest, key: string) {
-    const active = !isSearchHref(child.href) && isActive(child.href);
+    const active = isActive(child.href);
     const cls = `flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm ${itemColors(active)}`;
     const inner = (
       <>
@@ -358,21 +367,6 @@ export default function NavShell({
         <InlineBadge count={child.count} />
       </>
     );
-    if (isSearchHref(child.href)) {
-      return (
-        <button
-          key={key}
-          role="menuitem"
-          onClick={() => {
-            setOpenTools(null);
-            setSearchOpen(true);
-          }}
-          className={cls}
-        >
-          {inner}
-        </button>
-      );
-    }
     return (
       <Link
         key={key}
@@ -530,22 +524,6 @@ export default function NavShell({
       );
     }
 
-    if (isSearchHref(slot.href)) {
-      return (
-        <button
-          key={id}
-          onClick={() => {
-            if (mobileBar) setLauncherOpen(false);
-            setSearchOpen(true);
-          }}
-          aria-label={slot.label}
-          title={`${slot.label} (⌘K)`}
-          className={className}
-        >
-          {inner}
-        </button>
-      );
-    }
     return (
       <Link
         key={id}
@@ -819,7 +797,6 @@ export default function NavShell({
             open={launcherOpen}
             onOpenChange={setLauncherOpen}
             tiles={launcherTiles}
-            onSearch={() => setSearchOpen(true)}
             barRow={mobileBarRow}
             onDragClaim={() => setOpenTools(null)}
           />
