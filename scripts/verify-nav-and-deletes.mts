@@ -101,7 +101,10 @@ const tools = parseSettings({
       type: "tools",
       label: "Library",
       icon: "folder",
-      children: Array.from({ length: 10 }, () => dest()),
+      // Deliberately OVER the cap: feeding 10 and asserting the length equals 20
+      // could never pass, since a cap means "at most". Feed cap + 5 so the
+      // assertion actually exercises the slice.
+      children: Array.from({ length: MAX_TOOLS_CHILDREN + 5 }, () => dest()),
     },
   ],
 });

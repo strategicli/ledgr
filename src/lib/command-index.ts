@@ -50,9 +50,12 @@ export type CommandResult =
 // variant is the populate-later seam), so they return the narrowed type.
 export type DestinationResult = Extract<CommandResult, { kind: "destination" }>;
 
-// Built-in Work pages worth jumping to. Search is intentionally absent — it *is*
-// the palette. These exist as routes, so none dead-links.
+// Built-in Work pages worth jumping to. These exist as routes, so none dead-links.
+// "Advanced search" IS listed even though this is the palette: /search is a
+// different tool (stacked criteria with per-criterion confidence, ADR-172), and
+// jumping to it from here is the natural move when a quick search didn't find it.
 const BUILTIN_PAGES: { label: string; href: string; icon: string }[] = [
+  { label: "Advanced search", href: "/search", icon: "search" },
   { label: "Inbox", href: "/inbox", icon: "inbox" },
   { label: "Tasks", href: "/tasks", icon: "tasks" },
   { label: "Dashboards", href: "/dashboards", icon: "dashboard" },
