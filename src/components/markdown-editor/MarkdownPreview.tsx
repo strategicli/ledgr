@@ -24,6 +24,7 @@
 import { useEffect, useState } from "react";
 import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import CommentPopover from "./CommentPopover";
+import { litComment } from "./comment-hover";
 import { useMediaQuery } from "./useIsDesktop";
 
 // Rendered-HTML cache shared across every MarkdownPreview instance, keyed by the
@@ -129,6 +130,12 @@ export default function MarkdownPreview({
           if (!note) return;
           setNotePop({ html: note.innerHTML });
         }}
+        // A comment that bridges blocks is several underlined spans and one card;
+        // hovering any of them lights the whole group (comment-hover.ts). CSS gets
+        // the single-block case on its own, so this only has to cover the hop
+        // between blocks, and it stays a no-op on a body with no comments.
+        onMouseOver={(e) => litComment(e.currentTarget, e.target)}
+        onMouseLeave={(e) => litComment(e.currentTarget, null)}
         onContextMenu={(e) => {
           if (!deskSendAvailable()) return;
           const a = (e.target as Element).closest?.('a[href^="/items/"]');

@@ -98,6 +98,13 @@ function stickyTopOf(layer: HTMLElement | null): number {
   return layer ? parseFloat(getComputedStyle(layer).top) || 0 : 0;
 }
 
+// The block a comment segment sits in — how the outline tells "one phrase split by
+// a nested mark" (same block) from "a comment bridging two paragraphs" (different
+// blocks) when it rebuilds the anchor preview.
+function blockOf(el: HTMLElement): Element | null {
+  return el.closest("p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th,pre,figcaption");
+}
+
 // A heading's top relative to the scroll viewport (container top, or 0 = window).
 function topWithin(el: HTMLElement, container: HTMLElement | null): number {
   const top = el.getBoundingClientRect().top;
@@ -231,25 +238,31 @@ export default function FloatingToc({
     // markdown is what makes the list track edits as you type, exactly like the
     // heading list. Only the strings go into state — the nodes are re-queried at
     // click time (liveNoteEls), since ProseMirror owns and replaces them.
+    // Each comment carries its note as `data-note` on the card AND on every span
+    // of the text it annotates — the attribute that makes a comment BRIDGING
+    // several blocks one comment (comment-markdown.ts). One card per comment means
+    // one row here even when the anchor runs across three paragraphs, and matching
+    // on that attribute rebuilds the whole anchored phrase: across the blocks it
+    // bridges, and across the text-node splits a nested **bold** causes.
+    const segments = Array.from(prose.querySelectorAll<HTMLElement>("[data-note]")).filter(
+      (el) => !el.classList.contains("cmt-note")
+    );
     setComments(
       Array.from(prose.querySelectorAll<HTMLElement>(".cmt-note")).map((el) => {
-        // A mark splits across text nodes, so an anchor containing **bold**
-        // renders as several `.cmt` spans with the card after the LAST one. Walk
-        // back over the run to rebuild the whole anchored phrase. An element
-        // that merely CONTAINS a `.cmt` counts: a nested mark inverts the
-        // nesting (`<strong><span class="cmt">bold</span></strong>`), and
-        // testing only the sibling's own class stopped the walk there and
-        // returned the tail fragment. The run is self-bounding — an earlier
-        // comment's `.cmt-note` sits between, and holds no `.cmt`.
-        const parts: string[] = [];
-        let p = el.previousElementSibling;
-        while (p && (p.matches(".cmt") || p.querySelector(".cmt"))) {
-          parts.unshift(p.textContent || "");
-          p = p.previousElementSibling;
-        }
+        const key = el.dataset.note;
+        const mine = segments.filter((s) => s.dataset.note === key);
+        // Joined with nothing WITHIN a block (a **bold** word splits one phrase
+        // into several spans and must read as one), with a space between blocks
+        // (paragraph one's tail and paragraph two's head are separate sentences).
+        const anchor = mine
+          .map((s, i) => {
+            const gap = i > 0 && blockOf(s) !== blockOf(mine[i - 1]) ? " " : "";
+            return gap + (s.textContent || "");
+          })
+          .join("");
         return {
           note: (el.textContent || "").trim() || "Empty comment",
-          anchor: parts.join("").trim(), // "" for a point comment (.cmt-point)
+          anchor: anchor.trim(), // "" for a point comment (.cmt-point)
         };
       })
     );

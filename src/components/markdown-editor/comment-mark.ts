@@ -22,6 +22,7 @@ import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
+import { litComment } from "./comment-hover";
 
 // Fired on the editor root when the user clicks a comment's margin card (its
 // speech-bubble icon on a narrow viewport, which is the same element). The host
@@ -111,6 +112,10 @@ export const Comment = Mark.create({
 function noteCard(note: string, from: number): HTMLElement {
   const el = document.createElement("span");
   el.className = "cmt-note";
+  // The same identity attribute the mark renders on the anchored text, so the
+  // card is part of its comment's hover group (comment-hover.ts) and the outline
+  // can find every segment the card speaks for.
+  el.dataset.note = note;
   el.textContent = note || "Empty comment";
   el.contentEditable = "false";
   el.title = "Click to edit this comment";
@@ -128,61 +133,105 @@ function noteCard(note: string, from: number): HTMLElement {
   return el;
 }
 
-// One widget per comment-marked run, placed at the run's END so the card lands as
-// the anchor's next sibling in the DOM — which is what the `+` / `:has(+ …)` CSS
-// pairing depends on. Adjacent text nodes carrying the SAME mark instance are one
-// run (a comment split by a bold word inside it would otherwise get two cards).
-function buildDecorations(doc: PMNode): DecorationSet {
-  const decos: Decoration[] = [];
-  let open: { mark: PMMark; from: number; end: number } | null = null;
-  const flush = () => {
-    if (!open) return;
-    const { mark, from, end } = open;
-    const note = String(mark.attrs.note ?? "");
-    decos.push(
-      Decoration.widget(end, () => noteCard(note, from), {
-        side: 1,
-        ignoreSelection: true,
-        key: `cmt-${from}-${end}`,
-      })
-    );
-    open = null;
-  };
+// One logical comment: `from`/`to` cover every segment of it, `cardAt` is where
+// its single margin card goes.
+type CommentRun = { note: string; from: number; to: number; cardAt: number };
+
+// Every comment in the doc, in document order, ONE entry per logical comment.
+//
+// BRIDGING (Brandon, 2026-07-30): a comment must be able to run past the end of a
+// line without becoming several comments. Block structure and hard breaks
+// therefore do NOT end a run — only inline content that carries a different note
+// (or none) does. That's the editor half of the rule comment-markdown.ts states in
+// full: the note text IS the comment's identity, and the markdown underneath is
+// one CriticMarkup pair per line because an inline pair can't cross a block
+// boundary.
+//
+// `cardAt` freezes at the end of the run's FIRST LINE, so a bridged comment's card
+// hangs off the line it starts on (and the read view, which emits its card after
+// the first pair, agrees). Within a single line the card still lands after the
+// whole phrase, so a comment split by a **bold** word keeps one card at its end.
+function commentRuns(doc: PMNode): CommentRun[] {
+  const runs: CommentRun[] = [];
+  let open: CommentRun | null = null;
+  let sealed = false; // the first line of `open` has ended
   doc.descendants((node, pos) => {
-    if (!node.isText) {
-      // A non-text node (image, mention chip, or a block boundary) ends the run.
-      flush();
+    if (node.isBlock || node.type.name === "hardBreak") {
+      // Structure, not content: it's exactly what a bridged comment spans. The
+      // card stops following the run here.
+      if (open) sealed = true;
       return true;
     }
-    const mark = node.marks.find((m) => m.type.name === "comment");
+    const mark: PMMark | undefined = node.marks.find((m) => m.type.name === "comment");
     if (!mark) {
-      flush();
+      open = null;
       return false;
     }
-    if (open && open.mark.eq(mark)) {
-      open.end = pos + node.nodeSize; // same comment continues
+    const note = String(mark.attrs.note ?? "");
+    const end = pos + node.nodeSize;
+    if (open && open.note === note) {
+      open.to = end;
+      if (!sealed) open.cardAt = end;
     } else {
-      flush();
-      open = { mark, from: pos, end: pos + node.nodeSize };
+      open = { note, from: pos, to: end, cardAt: end };
+      sealed = false;
+      runs.push(open);
     }
     return false;
   });
-  flush();
+  return runs;
+}
+
+// The comment containing `at`, or null. Used to extend an edit or a delete over
+// EVERY segment of a bridged comment: Tiptap's own extendMarkRange is bounded to
+// one textblock (getMarkRange walks $pos.parent), so it would rewrite the
+// paragraph the caret is in and leave the rest of the comment behind with the old
+// note.
+export function commentRangeAt(doc: PMNode, at: number): { from: number; to: number } | null {
+  const run = commentRuns(doc).find((r) => at >= r.from && at <= r.to);
+  return run ? { from: run.from, to: run.to } : null;
+}
+
+// One widget per comment, placed so the card lands as an anchor's next sibling in
+// the DOM — which is what the `+` / `:has(+ …)` CSS pairing depends on.
+function buildDecorations(doc: PMNode): DecorationSet {
+  const decos = commentRuns(doc).map((run) =>
+    Decoration.widget(run.cardAt, () => noteCard(run.note, run.from), {
+      side: 1,
+      ignoreSelection: true,
+      key: `cmt-${run.from}-${run.cardAt}`,
+    })
+  );
   return DecorationSet.create(doc, decos);
 }
 
 const commentKey = new PluginKey("commentCards");
 
-// Registered alongside the mark. Decorations only: clicks are handled at the DOM
-// level by the host, because a ProseMirror position lookup at a run boundary finds
-// no non-inclusive mark and the card is a widget sitting exactly there.
+// Registered alongside the mark. Decorations plus hover: clicks are handled at the
+// DOM level by the host, because a ProseMirror position lookup at a run boundary
+// finds no non-inclusive mark and the card is a widget sitting exactly there.
 export const CommentCards = Extension.create({
   name: "commentCards",
   addProseMirrorPlugins() {
     return [
       new Plugin({
         key: commentKey,
-        props: { decorations: (state) => buildDecorations(state.doc) },
+        props: {
+          decorations: (state) => buildDecorations(state.doc),
+          // Hovering any segment of a bridged comment lights up all of them and
+          // its card. Read-only handlers (always return false) — they touch
+          // classes, never the document.
+          handleDOMEvents: {
+            mouseover: (view, event) => {
+              litComment(view.dom, event.target);
+              return false;
+            },
+            mouseleave: (view) => {
+              litComment(view.dom, null);
+              return false;
+            },
+          },
+        },
       }),
     ];
   },
@@ -196,25 +245,33 @@ export function commentNoteAt(editor: Editor): string | null {
   return String(editor.getAttributes("comment").note ?? "");
 }
 
-// Apply (or update) a comment.
+// The range one edit or delete applies to: every segment of the comment at `at`,
+// falling back to Tiptap's textblock-bounded extendMarkRange when `at` isn't
+// inside a comment after all.
 //
 // `at` is a position known to be INSIDE an existing comment (the card carries its
-// run's start). Passing it and then extending to the mark's range is what makes an
-// edit rewrite the whole comment rather than a fragment of it — the caret alone is
-// not enough to rely on, because this mark is non-inclusive and focus has moved to
-// the note's textarea in between.
-//
-// Without `at` this is the create path, and the current (non-empty) selection is
-// the range being commented.
-export function setComment(editor: Editor, note: string, at?: number): void {
+// run's start). Passing it and extending from there is what makes an edit rewrite
+// the whole comment rather than a fragment of it — the caret alone is not enough to
+// rely on, because this mark is non-inclusive and focus has moved to the note's
+// textarea in between.
+function selectComment(editor: Editor, at: number) {
+  const range = commentRangeAt(editor.state.doc, at);
   const chain = editor.chain().focus();
-  if (at !== undefined) chain.setTextSelection(at).extendMarkRange("comment");
+  return range ? chain.setTextSelection(range) : chain.setTextSelection(at).extendMarkRange("comment");
+}
+
+// Apply (or update) a comment. Without `at` this is the create path, and the
+// current (non-empty) selection is the range being commented — a selection that
+// spans blocks is fine and becomes ONE bridged comment, since every block it
+// covers gets the same note.
+export function setComment(editor: Editor, note: string, at?: number): void {
+  const chain = at !== undefined ? selectComment(editor, at) : editor.chain().focus();
   chain.setMark("comment", { note }).run();
 }
 
 // Remove the comment, keeping the text it annotated (delete IS resolve, ADR-170).
 export function removeComment(editor: Editor, at?: number): void {
-  const chain = editor.chain().focus();
-  if (at !== undefined) chain.setTextSelection(at);
-  chain.extendMarkRange("comment").unsetMark("comment").run();
+  const chain =
+    at !== undefined ? selectComment(editor, at) : editor.chain().focus().extendMarkRange("comment");
+  chain.unsetMark("comment").run();
 }
