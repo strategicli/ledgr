@@ -20,9 +20,9 @@
 
 import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
-import { litComment } from "./comment-hover";
+import { LIT_CLASS } from "./comment-hover";
 
 // Fired on the editor root when the user clicks a comment's margin card (its
 // speech-bubble icon on a narrow viewport, which is the same element). The host
@@ -193,19 +193,64 @@ export function commentRangeAt(doc: PMNode, at: number): { from: number; to: num
 }
 
 // One widget per comment, placed so the card lands as an anchor's next sibling in
-// the DOM — which is what the `+` / `:has(+ …)` CSS pairing depends on.
-function buildDecorations(doc: PMNode): DecorationSet {
-  const decos = commentRuns(doc).map((run) =>
-    Decoration.widget(run.cardAt, () => noteCard(run.note, run.from), {
-      side: 1,
-      ignoreSelection: true,
-      key: `cmt-${run.from}-${run.cardAt}`,
-    })
-  );
+// the DOM — which is what the `+` / `:has(+ …)` CSS pairing depends on. Plus, for
+// the comment being hovered, ONE inline decoration over its whole range, which is
+// how a comment that bridges blocks lights up all of its lines at once.
+//
+// The widget key deliberately does NOT include the hover state: rebuilding the
+// card on hover would replace the element between mousedown and mouseup on a TAP
+// (touch has no hover frame before the press), and the tap would be swallowed.
+// The card's own lit class is toggled on its DOM instead — see setLit.
+function buildDecorations(doc: PMNode, lit: string | null): DecorationSet {
+  const decos: Decoration[] = [];
+  for (const run of commentRuns(doc)) {
+    decos.push(
+      Decoration.widget(run.cardAt, () => noteCard(run.note, run.from), {
+        side: 1,
+        ignoreSelection: true,
+        key: `cmt-${run.from}-${run.cardAt}`,
+      })
+    );
+    if (lit !== null && run.note === lit) {
+      decos.push(Decoration.inline(run.from, run.to, { class: LIT_CLASS }));
+    }
+  }
   return DecorationSet.create(doc, decos);
 }
 
-const commentKey = new PluginKey("commentCards");
+// Which comment is hovered, by note text (null = none).
+const commentKey = new PluginKey<string | null>("commentCards");
+
+// The note of the comment `target` sits in, or null.
+function noteAt(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null;
+  return target.closest<HTMLElement>("[data-note]")?.dataset.note ?? null;
+}
+
+// Light one comment and unlight the rest.
+//
+// WHY THIS GOES THROUGH A TRANSACTION AND A DECORATION, and must never go back to
+// setting a class on the anchored text (Brandon, 2026-07-30): a comment's anchor
+// is ProseMirror's own DOM. A class added to a mark span is a foreign mutation —
+// PM's DOMObserver reports it, re-reads that range, and redraws the span. The
+// redraw replaces the element under the pointer, the browser fires mouseover on
+// the new one, and the whole thing loops at frame rate (measured: ~60 redraws a
+// second while the pointer rested on a commented word). That thrash swallowed the
+// highlight, the card's click, AND click-to-place-caret inside commented text.
+//
+// The early return is what makes a loop impossible: PM's own redraw re-fires
+// mouseover, and a repeat for the same comment must be a no-op.
+//
+// The CARD is the exception, and keeps a direct class toggle: widget decorations
+// ignore mutations (WidgetViewDesc.ignoreMutation), so its class is invisible to
+// the observer and the element is never rebuilt.
+function setLit(view: EditorView, note: string | null): void {
+  if (commentKey.getState(view.state) === note) return;
+  view.dispatch(view.state.tr.setMeta(commentKey, note));
+  for (const card of view.dom.querySelectorAll<HTMLElement>(".cmt-note")) {
+    card.classList.toggle(LIT_CLASS, note !== null && card.dataset.note === note);
+  }
+}
 
 // Registered alongside the mark. Decorations plus hover: clicks are handled at the
 // DOM level by the host, because a ProseMirror position lookup at a run boundary
@@ -214,20 +259,30 @@ export const CommentCards = Extension.create({
   name: "commentCards",
   addProseMirrorPlugins() {
     return [
-      new Plugin({
+      new Plugin<string | null>({
         key: commentKey,
+        // Hover state, carried as plugin state so the highlight can be a
+        // decoration. A meta-only transaction changes neither doc nor selection,
+        // so it doesn't reach onUpdate (no save) and leaves useEditorState's
+        // derived toolbar values identical (no React re-render).
+        state: {
+          init: () => null,
+          apply: (tr, prev) => {
+            const next = tr.getMeta(commentKey);
+            return next === undefined ? prev : (next as string | null);
+          },
+        },
         props: {
-          decorations: (state) => buildDecorations(state.doc),
-          // Hovering any segment of a bridged comment lights up all of them and
-          // its card. Read-only handlers (always return false) — they touch
-          // classes, never the document.
+          decorations: (state) => buildDecorations(state.doc, commentKey.getState(state) ?? null),
+          // Hovering any segment of a bridged comment lights all of them and its
+          // card. Always returns false: this only ever sets hover state.
           handleDOMEvents: {
             mouseover: (view, event) => {
-              litComment(view.dom, event.target);
+              setLit(view, noteAt(event.target));
               return false;
             },
             mouseleave: (view) => {
-              litComment(view.dom, null);
+              setLit(view, null);
               return false;
             },
           },

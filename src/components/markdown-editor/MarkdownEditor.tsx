@@ -301,6 +301,22 @@ export default function MarkdownEditor({
       pos: { top: number; left: number } | null;
     } | null
   >(null);
+  // The card currently hidden behind its open editor, so it can be restored
+  // however the panel closes (save, delete, cancel, click-away). Toggling a class
+  // on the card is safe where the same trick on anchored text is not: the card is
+  // a widget decoration, and widgets are exempt from ProseMirror's mutation
+  // observer (see comment-mark.ts, setLit).
+  const editingCardRef = useRef<HTMLElement | null>(null);
+  const hideEditingCard = (el: HTMLElement | null) => {
+    editingCardRef.current?.classList.remove("cmt-note-editing");
+    editingCardRef.current = el;
+    el?.classList.add("cmt-note-editing");
+  };
+  const closeCommentDraft = () => {
+    hideEditingCard(null);
+    setCommentDraft(null);
+  };
+
   // The editor's own wrapper, the offset parent the comment panel positions
   // against — so the panel scrolls with the document instead of detaching.
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -645,7 +661,13 @@ export default function MarkdownEditor({
     const onCardClick = (e: Event) => {
       const d = (e as CustomEvent<{ from: number; note: string }>).detail;
       if (!d) return;
-      const card = (e.target as HTMLElement | null)?.getBoundingClientRect?.();
+      const el = e.target as HTMLElement | null;
+      const card = el?.getBoundingClientRect?.();
+      // The card steps aside while its own note is open: the panel opens at the
+      // card's box, so hiding it is what makes the note read as becoming an
+      // editable field rather than getting covered by one. The rect is captured
+      // first, and `visibility: hidden` keeps the box, so the position stays true.
+      hideEditingCard(el ?? null);
       setCommentDraft({
         note: d.note,
         existing: true,
@@ -1031,7 +1053,7 @@ export default function MarkdownEditor({
   };
 
   const applyComment = (note: string, at?: number) => {
-    setCommentDraft(null);
+    closeCommentDraft();
     setComment(editor, note, at);
     // setMark leaves the doc changed; feed the host's debounced save so the
     // comment persists (the same reason copyLineLink does this).
@@ -1039,7 +1061,7 @@ export default function MarkdownEditor({
   };
 
   const deleteComment = (at?: number) => {
-    setCommentDraft(null);
+    closeCommentDraft();
     removeComment(editor, at);
     onChangeRef.current(editor.getMarkdown());
   };
@@ -1265,14 +1287,14 @@ export default function MarkdownEditor({
           onChange={(note) => setCommentDraft({ ...commentDraft, note })}
           onSave={() => applyComment(commentDraft.note, commentDraft.at)}
           onDelete={() => deleteComment(commentDraft.at)}
-          onClose={() => setCommentDraft(null)}
+          onClose={closeCommentDraft}
           // Clicking away keeps what you typed (the panel floats over a document
           // you're meant to keep working in); an empty draft just closes, so a
           // stray click can't leave behind an empty comment.
           onDismiss={() =>
             commentDraft.note.trim()
               ? applyComment(commentDraft.note, commentDraft.at)
-              : setCommentDraft(null)
+              : closeCommentDraft()
           }
         />
       )}
