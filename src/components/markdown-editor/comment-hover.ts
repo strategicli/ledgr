@@ -8,9 +8,12 @@
 //
 // The key is `data-note`, the attribute the editor's mark already renders and
 // renderComments now emits too: the same string that makes two runs one comment.
-// One helper serves both surfaces (the read view's delegated handlers and the
-// editor's ProseMirror plugin), so there is exactly one definition of "the same
-// comment".
+//
+// READ VIEW ONLY. The editor does the same job with a ProseMirror decoration
+// (comment-mark.ts, setLit) and must keep doing it that way: a class set on a mark
+// span is a foreign mutation to PM, which redraws the span, replaces the element
+// under the pointer, re-fires mouseover, and loops at frame rate. MarkdownPreview
+// renders plain HTML with no PM in it, so here a class is exactly right.
 "use client";
 
 export const LIT_CLASS = "cmt-lit";

@@ -770,19 +770,41 @@
 
    .cmt-lit is the same lit state applied by class, for the one case adjacency
    can't express: a comment that BRIDGES blocks is several .cmt spans in several
-   paragraphs or list items, and hovering one must light them all (comment-hover.ts
-   toggles the class on everything sharing the comment's data-note). The :hover
-   rules stay as the no-JS baseline — print, and the frame before hydration. */
+   paragraphs or list items, and hovering one must light them all. The :hover
+   rules stay as the no-JS baseline — print, and the frame before hydration.
+
+   THREE selectors because the two surfaces genuinely produce different DOM, and
+   both are correct. The read view (renderComments) puts both classes on ONE span.
+   The editor cannot: a class on a mark span is a foreign mutation that sends
+   ProseMirror into a redraw loop (comment-mark.ts, setLit), so the state arrives
+   as an inline DECORATION and PM wraps the text in its own span, INSIDE the mark's
+   span. That nested case re-declares the underline rather than recoloring the
+   parent's, painting a strong line over the parent's translucent one at the same
+   offset. Don't collapse these into one selector. */
 .cmt:hover,
 .cmt:has(+ .cmt-note:hover),
-.cmt.cmt-lit {
+.cmt.cmt-lit,
+.cmt .cmt-lit,
+.cmt-lit .cmt {
   background-color: var(--cmt-fill);
+  text-decoration: underline;
   text-decoration-color: var(--cmt-line-strong);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
 .cmt:hover + .cmt-note,
 .cmt-note:hover,
 .cmt-note.cmt-lit {
   border-color: var(--cmt-line-strong);
+}
+
+/* While its note is open for editing, the card STEPS ASIDE. CommentPopover opens
+   at exactly the card's box, so hiding the card is what makes the note read as
+   having become an editable field, instead of a panel landing on top of it
+   (Brandon, 2026-07-30). visibility, not display: the float keeps its space, so
+   the gutter stays put and the prose doesn't reflow under the open editor. */
+.cmt-note.cmt-note-editing {
+  visibility: hidden;
 }
 
 /* Wide viewport: Word/Notion-style margin cards. float + clear:right stacks them
