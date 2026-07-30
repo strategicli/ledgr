@@ -465,3 +465,190 @@ function formatChipDate(ymd: string): string {
   const [, m, d] = ymd.split("-").map(Number);
   return `${MONTH_ABBR[m - 1]} ${d}`;
 }
+
+// ===========================================================================
+// BACKWARD-LOOKING FUZZY dates for search (ADR-172). parseNaturalDate above is
+// forward-looking and point-shaped on purpose — its job is putting a task on one
+// future day. Searching for a half-remembered item is the opposite: the phrases
+// look backward ("about a month ago"), and some of them are RANGES rather than
+// points ("within the last week" means everything from a week ago until now).
+//
+// So this returns a range plus a softness, never a single day. Three phrase
+// shapes all collapse into that one return type, which is why the scorer needs
+// only one formula:
+//
+//   "within the last week"   -> [today-7, today]      a recent range
+//   "about a month ago"      -> [target-15, target+15] centered, half-span wide
+//   "at least 6 months ago"  -> [null, today-180]      open-ended backward
+//
+// The score is then 1/(1 + (days_outside_range / softDays)^sharpness), where the
+// SHARPNESS comes from the owner's confidence dial, not from here (lib/
+// search-deep.ts). This function answers "where and how wide"; the dial answers
+// "how hard are the edges". A date criterion is never a hard filter at any
+// confidence, so nothing here is a cutoff — `from`/`to` bound a plateau, not a
+// WHERE clause.
+//
+// Same discipline as the rest of this file: a small explicit grammar, null when
+// it doesn't understand (the caller keeps its plain date inputs), no NLP model.
+
+export type FuzzyWhen = {
+  // The plateau: inside it, an item scores ~1.0. null = open-ended on that side
+  // ("at least a year ago" has no lower bound).
+  from: string | null; // YYYY-MM-DD inclusive
+  to: string | null; // YYYY-MM-DD inclusive
+  // Decay scale in days for dates OUTSIDE the plateau. Derived as half the stated
+  // distance, so a vaguer phrase self-fuzzes: "6 months ago" gets ±90 days of
+  // plateau and a 90-day decay scale, "3 days ago" gets ±1.5.
+  softDays: number;
+  // Human echo for the UI chip ("around Jun 29 · ± 2 weeks"), so the owner can
+  // see what was understood before trusting it.
+  label: string;
+};
+
+// Spelled-out counts that show up in date phrases ("two weeks ago"). Deliberately
+// a local 1-12 map rather than importing lib/synonyms.ts: that module pulls in a
+// ~1.8MB WordNet JSON, and this file is client-safe and shipped with task capture.
+const SMALL_NUMBERS: Record<string, number> = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  couple: 2, few: 3, several: 4,
+};
+
+const UNIT_DAYS: Record<string, number> = { day: 1, week: 7, month: 30, year: 365 };
+
+// "two" | "2" -> 2. null when it's neither.
+function countOf(token: string): number | null {
+  if (/^\d{1,4}$/.test(token)) return Number(token);
+  return SMALL_NUMBERS[token] ?? null;
+}
+
+// 15 -> "2 weeks", 90 -> "3 months", 2 -> "2 days". Keeps the chip readable.
+function humanizeDays(days: number): string {
+  const round = (n: number) => Math.max(1, Math.round(n));
+  if (days >= 60) return `${round(days / 30)} months`;
+  if (days >= 14) return `${round(days / 7)} weeks`;
+  return `${round(days)} day${round(days) === 1 ? "" : "s"}`;
+}
+
+/**
+ * Parse a backward-looking, deliberately vague date phrase into a scored range.
+ * Returns null when the phrase isn't understood, so the caller can fall back to
+ * explicit date inputs rather than searching a window the owner never asked for.
+ *
+ * Understood shapes (all case-insensitive):
+ *   within/in the last N days|weeks|months   ·  past N weeks  ·  last few days
+ *   N weeks|months|years ago  ·  about/around/roughly a month ago  ·  last month
+ *   at least|more than|over N months ago  ·  older than a year  ·  before <date>
+ */
+export function parseFuzzyWhen(input: string, todayYmd: string): FuzzyWhen | null {
+  if (!isYmd(todayYmd)) return null;
+  const raw = input.trim().toLowerCase().replace(/\s+/g, " ").replace(/[~?]/g, "").trim();
+  if (!raw) return null;
+
+  const unitAlt = "days?|weeks?|months?|years?";
+  const countAlt = `\\d{1,4}|${Object.keys(SMALL_NUMBERS).join("|")}`;
+  const spanOf = (countTok: string, unitTok: string): number | null => {
+    const n = countOf(countTok);
+    const unit = UNIT_DAYS[unitTok.replace(/s$/, "")];
+    return n && unit ? n * unit : null;
+  };
+
+  // --- "at least / more than / over / older than N units [ago]" -> open backward.
+  {
+    const m = raw.match(
+      new RegExp(`^(?:at least|more than|over|older than|before) (${countAlt}) (${unitAlt})(?: ago)?$`)
+    );
+    if (m) {
+      const span = spanOf(m[1], m[2]);
+      if (span) {
+        const cutoff = addDaysYmd(todayYmd, -span);
+        return {
+          from: null,
+          to: cutoff,
+          softDays: Math.max(1, span / 2),
+          label: `before ${formatChipDate(cutoff)}`,
+        };
+      }
+    }
+  }
+
+  // --- "before <any date phrase>" -> open backward from that day.
+  {
+    const m = raw.match(/^before (.+)$/);
+    if (m) {
+      const cutoff = parseNaturalDate(m[1], todayYmd);
+      if (cutoff) {
+        return { from: null, to: cutoff, softDays: 30, label: `before ${formatChipDate(cutoff)}` };
+      }
+    }
+  }
+
+  // --- A recent range ending today: "within the last week", "past few weeks",
+  // "last month sometime", "sometime last month", "previous 2 weeks". The count is
+  // optional ("last week" = the past one week), and "sometime" is accepted on
+  // either end since both readings get typed.
+  //
+  // "last month" is deliberately read as "the past ~30 days" rather than the
+  // strict calendar month: someone hunting a half-remembered item means the
+  // former, and a calendar-month reading would exclude an item from three days ago.
+  {
+    const m = raw.match(
+      new RegExp(
+        `^(?:sometime )?(?:within |in |over )?(?:the )?(?:last|past|previous) ` +
+          `(?:(${countAlt}) )?(${unitAlt})(?: sometime)?$`
+      )
+    );
+    if (m) {
+      const span = spanOf(m[1] ?? "1", m[2]);
+      if (span) {
+        const from = addDaysYmd(todayYmd, -span);
+        return {
+          from,
+          to: todayYmd,
+          softDays: Math.max(1, span / 2),
+          label: `${formatChipDate(from)} – ${formatChipDate(todayYmd)}`,
+        };
+      }
+    }
+  }
+
+  // --- "N units ago", with optional vagueness words -> centered on that point.
+  // "last month" / "last week" land here too (count defaults to 1): treated as
+  // "about a month ago" rather than the strict calendar month, which is what a
+  // person searching for a half-remembered item actually means.
+  {
+    const m = raw.match(
+      new RegExp(
+        `^(?:about|around|roughly|approximately|sometime|maybe )?\\s*` +
+          `(?:(${countAlt}) )?(${unitAlt})(?: ago| back)?(?: sometime)?$`
+      )
+    );
+    if (m) {
+      const span = spanOf(m[1] ?? "1", m[2]);
+      if (span) {
+        const target = addDaysYmd(todayYmd, -span);
+        const soft = Math.max(1, span / 2);
+        const from = addDaysYmd(target, -Math.round(soft));
+        const to = addDaysYmd(target, Math.round(soft));
+        return {
+          from,
+          // Never claim a plateau that runs into the future.
+          to: to > todayYmd ? todayYmd : to,
+          softDays: soft,
+          label: `around ${formatChipDate(target)} · ± ${humanizeDays(soft)}`,
+        };
+      }
+    }
+  }
+
+  // --- A plain date or forward-grammar phrase ("jun 20", "2026-06-01") -> a tight
+  // plateau on that day. Lets the same box accept an exact date without a mode switch.
+  {
+    const exact = parseNaturalDate(raw, todayYmd);
+    if (exact) {
+      return { from: exact, to: exact, softDays: 3, label: formatChipDate(exact) };
+    }
+  }
+
+  return null;
+}

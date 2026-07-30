@@ -24,10 +24,26 @@ export default async function Search({
   const initialQuery = (await searchParams).q ?? "";
 
   const [typeRows, people] = await Promise.all([
-    getDb().select({ key: types.key, label: types.label }).from(types),
+    getDb()
+      .select({ key: types.key, label: types.label, propertySchema: types.propertySchema })
+      .from(types),
     listPersonOptions(owner.id),
   ]);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
+
+  // Date-kind custom fields, offered alongcreated/updated as the "which date" a
+  // fuzzy When criterion measures (ADR-172): an event's own date or a sermon's
+  // preach date is often the thing you half-remember, not when you last touched
+  // the row. Deduped by key across types, since two types can share a field name
+  // and the criterion targets items.properties[key] regardless of type.
+  const dateProps = new Map<string, string>();
+  for (const t of typeRows) {
+    for (const p of (t.propertySchema ?? []) as { key: string; label: string; kind: string }[]) {
+      if (p.kind === "date" && p.key && !dateProps.has(p.key)) {
+        dateProps.set(p.key, p.label || p.key);
+      }
+    }
+  }
 
   return (
     <main className="min-h-screen">
@@ -46,6 +62,7 @@ export default async function Search({
               value: p.id,
               label: p.title || "Untitled",
             }))}
+            dateProps={[...dateProps].map(([value, label]) => ({ value, label }))}
           />
         </div>
       </div>
