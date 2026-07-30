@@ -23,6 +23,8 @@
 
 import { useEffect, useState } from "react";
 import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
+import CommentPopover from "./CommentPopover";
+import { useMediaQuery } from "./useIsDesktop";
 
 // Rendered-HTML cache shared across every MarkdownPreview instance, keyed by the
 // (itemId, text) the server rendered for — so opening the same body in a second
@@ -67,6 +69,13 @@ export default function MarkdownPreview({
   // synchronously in the effect — per the module rule.
   const [rendered, setRendered] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  // A tapped comment's note, shown as a popup. Narrow viewports only (see the
+  // click handler); holds the note's already-rendered HTML so bold, links, and
+  // mention chips read exactly as they do in the margin card.
+  const [notePop, setNotePop] = useState<{ html: string } | null>(null);
+  // Matches the gutter breakpoint in markdown-editor.css: at or above it the
+  // margin card is visible and there's nothing to pop up.
+  const narrow = !useMediaQuery("(min-width: 1024px)");
 
   useEffect(() => {
     if (!text.trim()) return; // empty body is handled in render, no fetch
@@ -104,16 +113,21 @@ export default function MarkdownPreview({
   const html = HTML_CACHE.get(cacheKey(itemId, text)) ?? rendered;
   if (html != null) {
     return (
+      <>
       <div
         className="ledgr-prose ledgr-preview"
-        // Tap a comment's anchor to open its note (ADR-170). Only does anything on
-        // a narrow viewport, where the CSS collapses the margin card behind a pin;
-        // on a wide one the card is always visible and .open is inert. Delegated
-        // (one listener for the whole body) and it finds the note by adjacency, so
-        // comments need no ids and no per-comment wiring.
+        // Tap a comment's speech-bubble icon to read its note (ADR-170). Narrow
+        // viewports only: that's where the CSS collapses the margin card into the
+        // icon, and on a wide one the card is already fully visible so a popup
+        // would only cover it. Delegated (one listener for the whole body) and it
+        // reads the note's own rendered HTML, so comments need no ids and no
+        // per-comment wiring. The anchored TEXT is not a target — see
+        // comment-mark.ts on why a click there stays an ordinary click.
         onClick={(e) => {
-          const anchor = (e.target as Element).closest?.(".cmt");
-          anchor?.nextElementSibling?.classList.toggle("open");
+          if (!narrow) return;
+          const note = (e.target as Element).closest?.(".cmt-note");
+          if (!note) return;
+          setNotePop({ html: note.innerHTML });
         }}
         onContextMenu={(e) => {
           if (!deskSendAvailable()) return;
@@ -130,6 +144,16 @@ export default function MarkdownPreview({
         }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
+      {notePop && (
+        <CommentPopover
+          editable={false}
+          value=""
+          html={notePop.html}
+          at={null}
+          onClose={() => setNotePop(null)}
+        />
+      )}
+      </>
     );
   }
   if (failed === text) {

@@ -49,8 +49,12 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   toggle: <Svg><path d="M8 5l4 4-4 4" /><line x1="14" y1="7" x2="20" y2="7" /><line x1="14" y1="12" x2="20" y2="12" /><line x1="8" y1="19" x2="20" y2="19" /></Svg>,
   // comment: the conventional speech bubble (ADR-170), for a note anchored to the
   // selected text. Distinct from the highlight marker, which fills rather than
-  // annotates.
-  comment: <Svg><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.5-4.5A8 8 0 1 1 21 12z" /></Svg>,
+  // annotates. A rounded rectangle with a tail, not the round "chat blob" this
+  // replaced: the blob's tail was a thin spike off a circle, which reads as a
+  // smudge at 16px and worse as a filled glyph at 14px (Brandon, 2026-07-30 — "a
+  // little wonky"). Same geometry as the --cmt-bubble mask in
+  // markdown-editor.css; keep the two in step.
+  comment: <Svg><path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6l-5 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></Svg>,
 };
 
 // The toolbar items in display order (id → label), for the configurable-toolbar

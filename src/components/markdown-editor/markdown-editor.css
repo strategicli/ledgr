@@ -713,13 +713,18 @@
    you hover, then gives it back. Don't give .cmt a permanent background; that's
    what would make a commented phrase inside a yellow highlight unreadable.
 
-   Present in the read view (MarkdownPreview) and the print document when the
-   owner opts in. The editor's rich mode renders the raw CriticMarkup as text
-   until the Tiptap mark lands (ADR-170 phase 3).  */
+   Present in the read view (MarkdownPreview), the editor (as a widget
+   decoration), and the print document when the owner opts in.  */
 .ledgr-prose {
   --cmt-line: rgba(250, 204, 21, 0.55);
   --cmt-line-strong: rgb(250, 204, 21);
   --cmt-fill: rgba(250, 204, 21, 0.16);
+  /* The speech bubble the note collapses to on a narrow viewport. Drawn as a
+     MASK (not a background image) so it takes its color from
+     background-color and stays in the comment's yellow family. Filled, not
+     stroked: a 1px-ish stroke on a 14px glyph goes muddy. Same geometry as
+     TOOLBAR_ICONS.comment (toolbar-icons.tsx) — keep the two in step. */
+  --cmt-bubble: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6l-5 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z'/></svg>");
 }
 .cmt {
   text-decoration: underline;
@@ -732,17 +737,29 @@
     text-decoration-color 0.12s ease-in-out;
 }
 /* A point comment ({>>note<<} with nothing anchored) has no text to underline,
-   so it shows only its pin. */
+   so it shows only its bubble. */
 .cmt-point {
   text-decoration: none;
 }
+/* The margin card. Every inherited text property is RESET here, not left to
+   cascade: the card sits inside the run it annotates, so a comment on a heading
+   inherited that heading's size, weight, and letter-spacing and rendered as a
+   second headline (Brandon, 2026-07-30). Sizes are rem, not em, so a note reads
+   the same whether it hangs off an h2 or a list item.
+   Surface-2 (a step up from the page) is what sets the card off from the prose. */
 .cmt-note {
   font-family: inherit;
-  font-size: 0.85em;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  font-style: normal;
   line-height: 1.45;
-  color: #d4d4d4;
-  background: var(--color-surface-1, #171717);
-  border: 1px solid var(--color-line, #262626);
+  letter-spacing: normal;
+  text-align: left;
+  text-decoration: none;
+  text-transform: none;
+  color: var(--color-neutral-300, #d4d4d4);
+  background: var(--color-surface-2, #262626);
+  border: 1px solid var(--color-line-strong, #404040);
   border-radius: 10px;
   padding: 0.5rem 0.625rem;
   transition: border-color 0.12s ease-in-out;
@@ -783,65 +800,34 @@
   }
 }
 
-/* Narrow viewport: no room for a gutter, so the note collapses behind a Logos-
-   style pin on the anchor itself (a bigger tap target than a separate icon), and
-   tapping toggles it open inline. The .open class is set by the one delegated
-   click handler in MarkdownPreview. */
+/* Narrow viewport: no room for a gutter, so the note itself COLLAPSES INTO a
+   speech-bubble icon, and tapping it opens the note as a popup (CommentPopover)
+   over the text.
+   Collapsing the real element is what makes the icon tappable: the pin this
+   replaced was a ::after on the anchor, which can't be hit-tested, so the whole
+   commented phrase had to be the tap target — and that stole every tap on text
+   you were trying to put the caret in (Brandon, 2026-07-30). The note element is
+   already adjacent, already carries the note, and in the editor already fires
+   EDIT_COMMENT_EVENT on click, so one CSS change serves both surfaces.
+   The note's text is still in the DOM (clipped by the fixed box) so search,
+   copy, and the popup all read it from the same place. */
 @media (max-width: 1023px) {
   .cmt-note {
-    display: none;
-  }
-  /* Opened INLINE, not as a block: a block-level note inside a paragraph splits
-     the sentence it belongs to and orphans the rest of the line into what looks
-     like a new paragraph. Brackets carry the "this is an aside" signal that the
-     card's border carries on desktop. Phase 3 replaces this with the same popover
-     the editor uses, at which point the note stops rendering in flow at all. */
-  .cmt-note.open {
-    display: inline;
-    background: none;
-    border: 0;
-    padding: 0;
-    margin-left: 0.25em;
-    font-style: italic;
-    color: #a3a3a3;
-  }
-  .cmt-note.open::before {
-    content: "[";
-  }
-  .cmt-note.open::after {
-    content: "]";
-  }
-  /* One pin per comment, on the fragment the note actually follows. In the read
-     view a comment is always a single `.cmt` span, but ProseMirror splits a mark
-     across text nodes, so an anchor containing **bold** renders as several `.cmt`
-     spans and a bare `.cmt::after` put a pin on each of them. The note (a widget
-     decoration in the editor, a real sibling in the read view) sits after the LAST
-     fragment, so keying the pin to that adjacency gives exactly one. */
-  .cmt:has(+ .cmt-note)::after {
-    content: "";
     display: inline-block;
-    width: 0.85em;
-    height: 0.85em;
-    margin-left: 0.2em;
-    vertical-align: 0.05em;
-    border: 1px solid var(--cmt-line-strong);
-    border-radius: 3px;
-    background:
-      linear-gradient(
-          to bottom,
-          transparent 25%,
-          var(--cmt-line-strong) 25%,
-          var(--cmt-line-strong) 40%,
-          transparent 40%,
-          transparent 60%,
-          var(--cmt-line-strong) 60%,
-          var(--cmt-line-strong) 75%,
-          transparent 75%
-        )
-        no-repeat center / 60% 100%,
-      var(--cmt-fill);
-  }
-  .cmt {
+    /* Box is the tap target (~22×18px); the bubble is drawn 0.9rem centered in
+       it, so the extra area is invisible but still touchable. */
+    width: 1.4rem;
+    height: 1.15rem;
+    vertical-align: -0.2em;
+    margin: 0 0.05rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    font-size: 0;
+    overflow: hidden;
     cursor: pointer;
+    background: var(--cmt-line-strong);
+    -webkit-mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
+    mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
   }
 }
