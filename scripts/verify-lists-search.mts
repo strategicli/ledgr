@@ -300,6 +300,26 @@ try {
       .join(" | ")
   );
 
+  // 7b. Picker q= is word-wise, not one substring: punctuation between the
+  // words and a different word order both still match.
+  const punct = await createItem(ownerId, { type: "note", title: "V13 Ask, Seek, Knock" });
+  created.push(punct.id);
+  const acrossPunct = await listItems(ownerId, { q: "ask seek knock" });
+  check(
+    "words match across punctuation in the title",
+    acrossPunct.some((r) => r.id === punct.id)
+  );
+  const outOfOrder = await listItems(ownerId, { q: "knock ask" });
+  check(
+    "words match out of order",
+    outOfOrder.some((r) => r.id === punct.id)
+  );
+  const missingWord = await listItems(ownerId, { q: "ask seek shout" });
+  check(
+    "a word that isn't in the title excludes the item",
+    !missingWord.some((r) => r.id === punct.id)
+  );
+
   // 8. "/type" token parser (pure; synthetic registry to pin ambiguity).
   const tokTypes = [
     { key: "person", label: "Person", icon: null },

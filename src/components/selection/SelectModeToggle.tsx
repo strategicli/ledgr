@@ -13,11 +13,23 @@
 import { useSelection } from "@/components/selection/SelectionProvider";
 
 export default function SelectModeToggle() {
-  const { selectMode, setSelectMode, total, count } = useSelection();
+  const { selectMode, setSelectMode, total, count, selectAll, clear, allSelected } =
+    useSelection();
   if (total === 0) return null;
 
   return (
-    <div className="mt-4 flex justify-end">
+    <div className="mt-4 flex items-center justify-end gap-1">
+      {/* One-click select all / none. Lives here (not only in the action bar) so
+          it's reachable the moment select mode turns on, with nothing selected. */}
+      {selectMode && (
+        <button
+          type="button"
+          onClick={() => (allSelected ? clear() : selectAll())}
+          className="rounded px-2 py-0.5 text-sm text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+        >
+          {allSelected ? "Select none" : `Select all · ${total}`}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setSelectMode(!selectMode)}
