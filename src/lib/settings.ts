@@ -320,6 +320,14 @@ export type UserSettings = {
   // Named, saved Desk layouts (ADR-146), synced across devices. The live layout
   // and the Recent auto-snapshot ring stay per-device in localStorage.
   deskWorkspaces: DeskWorkspace[];
+  // The owner's personal search dictionary (ADR-172): word -> extra synonyms that
+  // fuzzy search should treat as matches. Layered ON TOP of the committed WordNet
+  // map (src/data/synonyms.json) and winning over it, because WordNet knows English
+  // but not this owner's vocabulary ("message" meaning sermon, campus
+  // abbreviations, staff nicknames). Starts empty and is meant to grow one line at
+  // a time, only when a search actually misses. Same no-migration posture as
+  // listTabs/tocByType.
+  searchSynonyms: Record<string, string[]>;
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -400,6 +408,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   collapsibleHeadingsEnabled: true,
   toggleBlocksEnabled: true,
   deskWorkspaces: [],
+  searchSynonyms: {},
 };
 
 const SETTINGS_UUID_RE =
@@ -512,6 +521,33 @@ function parseDeskWorkspaces(raw: unknown): DeskWorkspace[] {
   return out;
 }
 
+// Parse the owner's search dictionary (ADR-172): word -> extra synonyms. Tolerant
+// like parseListTabs — a malformed row is dropped rather than throwing, so a
+// hand-edited blob still yields a usable dictionary. Keys and values are
+// lowercased and trimmed here so lookups in lib/synonyms.ts need no normalizing,
+// and both are bounded: a runaway entry would bloat every tsquery it touches.
+export const SEARCH_SYNONYM_WORD_CAP = 200; // distinct words the owner can define
+export const SEARCH_SYNONYM_VALUE_CAP = 12; // synonyms per word
+function parseSearchSynonyms(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string[]> = {};
+  let words = 0;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (words >= SEARCH_SYNONYM_WORD_CAP) break;
+    const word = key.trim().toLowerCase().slice(0, 60);
+    if (!word || !Array.isArray(value)) continue;
+    const synonyms = value
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim().toLowerCase().slice(0, 60))
+      .filter((v, i, all) => v.length > 0 && v !== word && all.indexOf(v) === i)
+      .slice(0, SEARCH_SYNONYM_VALUE_CAP);
+    if (synonyms.length === 0) continue; // a word with no synonyms is a no-op
+    out[word] = synonyms;
+    words += 1;
+  }
+  return out;
+}
+
 export function parseSettings(raw: unknown): UserSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const highlightColor =
@@ -604,6 +640,7 @@ export function parseSettings(raw: unknown): UserSettings {
       ? r.toggleBlocksEnabled
       : DEFAULT_SETTINGS.toggleBlocksEnabled;
   const deskWorkspaces = parseDeskWorkspaces(r.deskWorkspaces);
+  const searchSynonyms = parseSearchSynonyms(r.searchSynonyms);
   return {
     highlightColor,
     highlightGradient,
@@ -637,6 +674,7 @@ export function parseSettings(raw: unknown): UserSettings {
     collapsibleHeadingsEnabled,
     toggleBlocksEnabled,
     deskWorkspaces,
+    searchSynonyms,
   };
 }
 

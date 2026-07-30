@@ -83,6 +83,33 @@ export default function SettingsForm({
   const [saved, setSaved] = useState(false);
   const router = useRouter();
 
+  // The search dictionary (ADR-172) is stored as word -> [synonyms], but edited as
+  // rows of text so the word itself stays editable without key-collision
+  // weirdness mid-keystroke. Serialized back to the record on commit, where
+  // blank/synonym-less rows simply drop out (parseSearchSynonyms would drop them
+  // anyway; doing it here keeps the saved blob clean).
+  const [dictRows, setDictRows] = useState<{ word: string; synonyms: string }[]>(() =>
+    Object.entries(initial.searchSynonyms).map(([word, syns]) => ({
+      word,
+      synonyms: syns.join(", "),
+    }))
+  );
+  const commitDict = (rows: { word: string; synonyms: string }[]) => {
+    const next: Record<string, string[]> = {};
+    for (const row of rows) {
+      const word = row.word.trim().toLowerCase();
+      const synonyms = row.synonyms
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (word && synonyms.length > 0) next[word] = synonyms;
+    }
+    void save({ searchSynonyms: next });
+  };
+  const setDictRow = (i: number, patch: Partial<{ word: string; synonyms: string }>) =>
+    setDictRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const saveDict = () => commitDict(dictRows);
+
   // Timezone drives every "today" boundary and the wall-clock of every displayed
   // time. Server surfaces render it, so a change router.refresh()es to take hold.
   const setTimezone = (tz: string | null) => {
@@ -641,6 +668,65 @@ export default function SettingsForm({
           </div>
         </section>
       )}
+
+      {/* The owner's personal search dictionary (ADR-172). Fuzzy search already
+          expands a word through WordNet, which knows English but not Edgewood —
+          it will not connect "teaching" to "preaching", or know that "message"
+          means a sermon here. This is the fix, and it's meant to stay small:
+          add a line only when a search actually misses. */}
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Search dictionary</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Extra words fuzzy search should treat as matches for each other. General
+          English synonyms are already built in, so this is for your own
+          vocabulary. Add one when a search misses something you knew was there.
+        </p>
+        <div className="mt-2 flex flex-col gap-1.5">
+          {dictRows.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                type="text"
+                maxLength={60}
+                placeholder="teaching"
+                aria-label="Word"
+                value={row.word}
+                onChange={(e) => setDictRow(i, { word: e.target.value })}
+                onBlur={saveDict}
+                className="w-32 shrink-0 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <span className="shrink-0 text-xs text-neutral-600">also matches</span>
+              <input
+                type="text"
+                placeholder="preaching, message, lesson"
+                aria-label="Synonyms, comma separated"
+                value={row.synonyms}
+                onChange={(e) => setDictRow(i, { synonyms: e.target.value })}
+                onBlur={saveDict}
+                className="min-w-0 flex-1 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <button
+                type="button"
+                aria-label="Remove this entry"
+                onClick={() => {
+                  const next = dictRows.filter((_, j) => j !== i);
+                  setDictRows(next);
+                  commitDict(next);
+                }}
+                className="rounded px-1.5 text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setDictRows((prev) => [...prev, { word: "", synonyms: "" }])}
+            className="w-fit rounded border border-dashed border-neutral-800 px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          >
+            + add a word
+          </button>
+        </div>
+      </section>
 
       {/* Floating, not inline: the form is long and controls live throughout it,
           so an inline confirmation at the bottom is invisible when you change a
