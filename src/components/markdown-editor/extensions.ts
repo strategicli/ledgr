@@ -205,6 +205,70 @@ export const Highlight = Mark.create({
   },
 });
 
+// Slide mark (ADR-176) → <ins class="slide">…</ins>. "Put this span on the screen":
+// the marker the presentation export reads (src/lib/editor/booth-export.ts).
+//
+// WHY `<ins>` AND NOT A span OR A mark — three constraints, one tag that satisfies
+// all of them. Don't "simplify" this to a span.
+//   1. A slide almost always wraps colored text (a red Scripture span), and
+//      `<span class="slide"><span style="color:…">…</span></span>` is same-tag
+//      nesting: the non-greedy regex the export and the tokenizer both use would
+//      close on the INNER </span> and capture a broken fragment.
+//   2. `<mark class="slide">` would be claimed by the Highlight mark above, whose
+//      tokenizer takes any <mark> and parses an unrecognized class as a bare
+//      highlight. Guarding that means surgery on a shared extension.
+//   3. `<ins>` is claimed by nothing here (CriticMarkup's {++ins++} is deliberately
+//      NOT implemented, see comment-markdown.ts), and it degrades legibly as
+//      underlined text in any other markdown reader.
+//
+// It carries NO attributes: unlike the two marks above it has exactly one state,
+// so there is no color to round-trip. The visual (a blue rule bracketing each end
+// of the span, NOT an underline and NOT a fill) is pure CSS — see the .slide block
+// in markdown-editor.css and print-html.ts. That choice is load-bearing: comments
+// own the underline channel and highlights own the fill channel, so a slide has to
+// live in a third channel or it fights one of them on the same words.
+export const SlideMark = Mark.create({
+  name: "slide",
+
+  parseHTML() {
+    return [{ tag: "ins.slide" }];
+  },
+
+  renderHTML() {
+    return ["ins", mergeAttributes({ class: "slide" }), 0];
+  },
+
+  renderMarkdown(node, helpers) {
+    return `<ins class="slide">${helpers.renderChildren(node)}</ins>`;
+  },
+
+  // Reclaim <ins class="slide">…</ins> at the inline level, same reason as the two
+  // marks above: the default inline-HTML path merges the opening tag with the raw
+  // text up to the closing one and re-parses the blob as literal HTML, which
+  // flattens the **bold** and the color span inside a slide to literal text.
+  markdownTokenizer: {
+    name: "slide",
+    level: "inline",
+    start: (src: string) => {
+      const i = src.indexOf("<ins");
+      return i < 0 ? src.length : i;
+    },
+    tokenize: (src: string) => {
+      const m = /^<ins\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[^>]*>([\s\S]*?)<\/ins>/i.exec(
+        src
+      );
+      if (!m) return undefined;
+      return { type: "slide", raw: m[0], inner: m[1] };
+    },
+  },
+
+  parseMarkdown(token, helpers) {
+    // tokenizeInline is always present at runtime; the type marks it optional.
+    const inner = helpers.parseInline(helpers.tokenizeInline?.(token.inner) ?? []);
+    return helpers.applyMark("slide", inner);
+  },
+});
+
 // @tiptap/markdown 3.26 backslash-escapes markdown-significant characters
 // (* _ [ ] ` ~ \) in every non-code text node on serialize, so a literal `*`
 // in text can't be misread as an emphasis delimiter when the output is parsed
@@ -218,7 +282,10 @@ export const Highlight = Mark.create({
 // restoring the raw-content shape the export/render pipeline has always
 // expected. Patches the one manager method the library exposes no hook for;
 // added to the editor's extension list alongside the marks it protects.
-const HTML_WRAPPED_MARKS = new Set(["textColor", "highlight"]);
+// "slide" belongs here for exactly the reason above: it emits its content inside
+// raw inline HTML too, so without it every rich⇄source flip re-escapes the escapes
+// inside a slide (** → \*\* → \\\*\\\* …) and eventually eats the bold.
+const HTML_WRAPPED_MARKS = new Set(["textColor", "highlight", "slide"]);
 export const MarkdownEscapeFix = Extension.create({
   name: "markdownEscapeFix",
   // onBeforeCreate (not onCreate): the Markdown extension sets `editor.markdown`

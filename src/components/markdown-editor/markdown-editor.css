@@ -719,6 +719,13 @@
   --cmt-line: rgba(250, 204, 21, 0.55);
   --cmt-line-strong: rgb(250, 204, 21);
   --cmt-fill: rgba(250, 204, 21, 0.16);
+  /* Slide mark (ADR-176). The blue is the palette's own blue text stop
+     (BLOCKNOTE_COLORS.blue.text, colors.ts) so the mark reads as part of the
+     app's vocabulary rather than a new accent. Declared here beside the comment's
+     tokens because the two marks are deliberately styled as a matched pair in
+     different channels — see the .slide block below. */
+  --slide-rule: #60a5fa;
+  --slide-tint: rgba(96, 165, 250, 0.08);
   /* The speech bubble the note collapses to on a narrow viewport. Drawn as a
      MASK (not a background image) so it takes its color from
      background-color and stays in the comment's yellow family. Filled, not
@@ -726,6 +733,34 @@
      TOOLBAR_ICONS.comment (toolbar-icons.tsx) — keep the two in step. */
   --cmt-bubble: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6l-5 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z'/></svg>");
 }
+/* Slide mark (ADR-176). <ins class="slide">…</ins> = "put this span on the screen";
+   the presentation export gathers these into the slides document and drops a
+   [SLIDE N] cue at each one.
+
+   THE VISUAL CONTRACT, and why this is not an underline. The comment above states
+   it: a COMMENT owns the underline channel, a HIGHLIGHT owns the fill channel. A
+   slide is a THIRD mark that routinely sits on the same words as both, so it gets
+   a third channel — a rule bracketing each END of the span. That also makes the
+   signal a SHAPE rather than a color, which is what lets it read on top of any of
+   the five text colors a manuscript uses (a blue underline under blue insight text
+   was invisible; Brandon, 2026-07-31).
+
+   Two details that are load-bearing, not polish:
+   - `text-decoration: none` kills the UA underline <ins> carries by default.
+     Without it the mark lands right back in the comment's channel.
+   - box-decoration-break stays at its default `slice`, so a slide that wraps
+     across lines draws its left rule at the true start and its right rule at the
+     true end, instead of bracketing every line fragment.
+   Horizontal padding only: vertical padding on an inline element overflows the
+   line box and makes the prose jitter line to line. */
+.slide {
+  text-decoration: none;
+  border-left: 3px solid var(--slide-rule, #60a5fa);
+  border-right: 3px solid var(--slide-rule, #60a5fa);
+  background: var(--slide-tint, rgba(96, 165, 250, 0.08));
+  padding: 0 0.375rem;
+}
+
 .cmt {
   text-decoration: underline;
   text-decoration-color: var(--cmt-line);

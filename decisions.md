@@ -2462,7 +2462,7 @@ It is now a **permanent footer button in the palette**: "Advanced search for <qu
 
 **Affects:** drizzle/0049_person_edges_generic.sql (new), src/components/relations/PeopleRow.tsx (new), src/components/relations/RelationField.tsx, src/components/relations/RelatedPanel.tsx, src/components/canvas/TaskCanvas.tsx, src/lib/relations.ts, src/components/inbox/RelatePicker.tsx, src/components/inbox/InboxTaskControls.tsx, src/components/inbox/TriageDeck.tsx, src/app/inbox/page.tsx, src/app/inbox/triage/page.tsx.
 
-## ADR-176: A BLUE highlight means "put this on the screen" — the presentation export reads one color of the mark channel
+## ADR-176: A slide mark means "put this on the screen" — its own channel, not a color
 
 **Date:** 2026-07-31 · **Status:** Accepted · **Branch:** `sermon-presentation-export`
 
@@ -2487,3 +2487,26 @@ It is now a **permanent footer button in the palette**: "Advanced search for <qu
 **Known ceiling:** `SLIDE_COLOR` is one constant, so there is exactly one on-screen channel. A second kind of slide (say passage vs. quote, rendered differently) would mean a second color and a `kind` on `Slide`. Also: the button lives on the shared `ItemUtilitiesFooter`, so every type gets it, not just `sermon` — a type gate is the cheaper change if it turns out to be noise on tasks.
 
 **Affects:** src/lib/editor/booth-export.ts (new), scripts/verify-booth-export.mts (new), src/app/api/items/[id]/slides/route.ts (new), src/components/canvas/PresentationExport.tsx (new), src/app/items/[id]/print/route.ts, src/lib/print-html.ts, src/app/globals.css, src/components/canvas/ItemUtilitiesFooter.tsx.
+
+### ADR-176 addendum (2026-07-31): the marker is a slide MARK, not a highlight
+
+**Status:** accepted (Brandon + Tyler, 2026-07-31). 🟢 **CORE**, unlike ADR-176 itself: the original read a primitive the body format already had, whereas this ADDS an element to the canonical body dialect (`<ins class="slide">`), the same category as ADR-145's `<details>` block. Tyler agreed before merge. Recorded in CLAUDE.md's dialect sentence, which is the contract. Additive and back-compat: a body with no slide mark is byte-identical, no schema change, no migration, no new dependency.
+
+Brandon, after using the shipped blue-highlight version: *"In practice, the blue on top of the colored text is painful."*
+
+**The blue highlight was the wrong channel, and the reason generalizes.** It encoded the marker in a COLOR, layered on text that already carries color meaning. Two failures followed: a blue wash under red Scripture is genuinely hard to read, and a blue marker on the palette's blue insight text has almost no contrast against it. Brandon's own next instinct, a thick blue underline, has the same defect plus a worse one: `markdown-editor.css` already states the visual contract in as many words, *a COMMENT owns the underline channel, a HIGHLIGHT owns the fill channel*, so an underline would have been the third tenant of a channel already shared by comments and `++underline++` emphasis, and a slide overlapping a comment would stack two underlines in the same three pixels.
+
+**The decision: a dedicated mark in a THIRD channel, signalled by shape.** `<ins class="slide">…</ins>`, rendered as a blue rule bracketing each END of the span, with a very faint tint. Chosen from a side-by-side mockup of the three candidates over Brandon's actual manuscript colors. Because the signal is a shape rather than a color, it reads on top of all five text colors, and it coexists with a comment's underline and a highlight's fill on the same words without any of the three fighting.
+
+- **`<ins>` and not a `span`, for three reasons that all have to hold.** (1) A slide almost always wraps a colored span, and `<span class="slide"><span style="color:…">…</span></span>` is same-tag nesting: the non-greedy regex both the export and the markdown tokenizer use would close on the inner `</span>` and capture a broken fragment. (2) `<mark class="slide">` would be claimed by the existing Highlight mark, whose tokenizer takes any `<mark>` and reads an unrecognized class as a bare highlight, so using it means surgery on a shared extension. (3) `<ins>` is claimed by nothing here (CriticMarkup's `{++ins++}` is deliberately not implemented, ADR-170) and degrades legibly as underlined text in any other markdown reader.
+- **The mark carries no attributes.** Unlike the color and highlight marks it has exactly one state, so there is nothing to round-trip; the entire visual is CSS, in two places (`markdown-editor.css` for the app, `print-html.ts` for the self-contained document). `text-decoration: none` is load-bearing there: `<ins>` is underlined by the UA stylesheet, which would drop it straight back into the comment's channel.
+- **A toolbar button immediately left of the comment bubble** (a screen-on-a-stand glyph), because the two are the same gesture for different audiences: a comment is for you, a slide is for the room. It toggles like bold. With a caret inside an existing slide it extends to the whole mark first, so the toggle clears the span instead of setting a stored mark at the cursor, which is the trap the comment toolbar path hit in ADR-174.
+- **`"slide"` joins `HTML_WRAPPED_MARKS`.** It emits its content inside raw inline HTML, so without that entry every rich-to-source flip re-escapes the escapes inside a slide and eventually eats the bold.
+- **Highlights went back to being highlights**, in all nine colors, and are flattened out of the booth copy like any other formatting it doesn't need. Clean swap, no back-compat path and no migration: the blue-highlight build was live for roughly half an hour and nothing in the data used it.
+- **`mark { color: inherit }` stays.** It was found while the marker rode the highlight channel, but it fixes a real bug on its own terms: highlighting colored text should never repaint the text.
+
+**Unchanged:** the booth copy, the `[SLIDE N]` cues, bridging, the strip list, the slides child note, and the PDF leg. The export just reads a different marker.
+
+**Known ceiling:** one mark, one meaning. A second kind of slide (passage versus quote, rendered differently) would need a second mark or an attribute on this one, at which point the attribute-less simplicity above goes away.
+
+**Affects:** src/components/markdown-editor/extensions.ts, src/components/markdown-editor/MarkdownEditor.tsx, src/components/markdown-editor/toolbar-icons.tsx, src/components/markdown-editor/markdown-editor.css, src/lib/editor/booth-export.ts, src/lib/print-html.ts, scripts/verify-booth-export.mts.

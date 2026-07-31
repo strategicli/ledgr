@@ -31,6 +31,7 @@ import {
   LedgrPassage,
   LedgrTable,
   MarkdownEscapeFix,
+  SlideMark,
   TableCell,
   TableHeader,
   TableRow,
@@ -375,6 +376,10 @@ export default function MarkdownEditor({
       BlockAnchor.configure({ promote: !!promoteToMeetingId }),
       TextColor,
       Highlight,
+      // Slide mark (ADR-176): <ins class="slide">, "put this span on the screen."
+      // Sits with the other two HTML-wrapped marks because it shares their
+      // serialization hazard (see HTML_WRAPPED_MARKS in extensions.ts).
+      SlideMark,
       // Body comments (ADR-170): the mark round-trips {==text==}{>>note<<}, and
       // CommentCards renders each note as the same `.cmt-note` margin card the
       // read view emits, so both surfaces share one stylesheet. Deliberately NOT
@@ -511,6 +516,7 @@ export default function MarkdownEditor({
       isToggle: editor?.isActive("toggle") ?? false,
       isLink: editor?.isActive("link") ?? false,
       isComment: editor?.isActive("comment") ?? false,
+      isSlide: editor?.isActive("slide") ?? false,
       // A comment needs something to anchor to, so the button is disabled on an
       // empty selection unless the caret is already inside one (then it edits).
       hasSelection: !(editor?.state.selection.empty ?? true),
@@ -824,6 +830,19 @@ export default function MarkdownEditor({
     else chain.unsetMark("highlight").run();
   };
 
+  // Slide mark (ADR-176). A plain toggle, unlike the two controls above: the mark
+  // has one state and no attributes, so there's nothing to pick. With a caret
+  // (empty selection) inside an existing slide, extend to the whole mark first so
+  // the toggle clears the entire span instead of setting a stored mark at the
+  // cursor — the same trap the comment toolbar path hit (ADR-174).
+  const toggleSlide = () => {
+    const chain = editor.chain().focus();
+    if (editor.isActive("slide") && editor.state.selection.empty) {
+      chain.extendMarkRange("slide");
+    }
+    chain.toggleMark("slide").run();
+  };
+
   // The two color controls (text color, highlight): a ghost button showing a
   // swatch of the current value that opens a popover of the 9 Notion colors
   // (ADR-155). Replaces the OS-native <select>s, which read as foreign chrome
@@ -1112,6 +1131,7 @@ export default function MarkdownEditor({
   const hasInsert = showImage || showWeblink || showCopyLink;
   const showColor = showTb("color");
   const showHighlight = showTb("highlight");
+  const showSlide = showTb("slide");
   const showComment = showTb("comment");
   const sep = <span className="mx-1 h-5 w-px shrink-0 bg-line" aria-hidden />;
 
@@ -1158,11 +1178,27 @@ export default function MarkdownEditor({
               </div>
             )}
 
-            {(showColor || showHighlight || showComment) && (
+            {(showColor || showHighlight || showSlide || showComment) && (
               <div className="flex items-center gap-0.5">
                 {(visibleGroups.length > 0 || hasInsert) && sep}
                 {showColor && swatchControl("color", toolbar.textColor, setColor)}
                 {showHighlight && swatchControl("highlight", toolbar.highlight, setHighlight)}
+                {showSlide && (
+                  <ToolbarButton
+                    icon={TOOLBAR_ICONS.slide}
+                    title={
+                      toolbar.isSlide
+                        ? "Remove from the slides (Presentation Export)"
+                        : "Put this on the screen — adds it to the slides (Presentation Export)"
+                    }
+                    active={toolbar.isSlide}
+                    // Like a comment, a slide has to anchor to something. Unlike a
+                    // comment it has no editor to reopen, so a caret inside one is
+                    // enough to toggle it back off.
+                    disabled={!toolbar.hasSelection && !toolbar.isSlide}
+                    onClick={toggleSlide}
+                  />
+                )}
                 {showComment && (
                   <ToolbarButton
                     icon={TOOLBAR_ICONS.comment}

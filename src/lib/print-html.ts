@@ -38,10 +38,11 @@ export function escapeHtml(text: string): string {
 // `color:inherit` is load-bearing, not tidying. The UA stylesheet gives <mark> its
 // own `color` (black), which BEATS an inherited color from an ancestor — so
 // `<span style="color:red"><mark>verse</mark></span>` rendered a black verse, and
-// a highlight silently cost the text its color. That breaks the booth export
-// (booth-export.ts), where a highlight means "put this on the screen" and must
-// layer OVER the color that means "this is Scripture". Marks compose in the
-// markdown either way round; the CSS has to let them.
+// a highlight silently cost the text its color. Highlighting a red Scripture span
+// should leave it red: a highlight owns the FILL channel and has no business
+// touching the foreground. Marks compose in the markdown either way round; the CSS
+// has to let them. (Found while building the slide mark, which briefly rode the
+// highlight channel — see ADR-176 — but the fix stands on its own.)
 const HL_CSS = Object.entries(BLOCKNOTE_COLORS)
   .map(
     ([name, c]) =>
@@ -67,6 +68,22 @@ const CMT_CSS = `
 .cmt-note{font-style:italic;color:#a3a3a3;margin-left:.25em}
 .cmt-note::before{content:"["}
 .cmt-note::after{content:"]"}`;
+
+// Slide mark (ADR-176), on the preacher's own copy. A rule bracketing each end of
+// the span, deliberately NOT an underline (comments own that channel) and NOT a
+// fill (highlights own that one), so a slide can sit on the same words as either
+// without a fight — and so the signal is a shape, which survives on top of any of
+// the palette's text colors. `text-decoration:none` kills the UA underline <ins>
+// carries by default; box-decoration-break stays `slice` so a wrapped slide
+// brackets the whole span rather than every line fragment.
+//
+// The PRESENTATION copy never sees this: booth-export.ts strips the tag and leaves
+// a [SLIDE N] cue, so the sound booth gets plain prose.
+const SLIDE_CSS = `
+ins.slide{text-decoration:none;padding:0 .375rem;
+  border-left:3px solid ${BLOCKNOTE_COLORS.blue.text};
+  border-right:3px solid ${BLOCKNOTE_COLORS.blue.text};
+  background:rgba(96,165,250,0.08)}`;
 
 const DOC_CSS = `
 :root{color-scheme:dark}
@@ -103,12 +120,14 @@ th{text-align:left;font-weight:600;background:#171717}
   border-radius:6px;padding:.4rem .9rem;font:13px system-ui,sans-serif;cursor:pointer}
 ${HL_CSS}
 ${CMT_CSS}
+${SLIDE_CSS}
 @page{size:letter;margin:0.5in}
 @media print{
   :root{color-scheme:light}
   body{background:#fff;color:#111;max-width:none;padding:0;font-size:12pt}
   blockquote{border-color:#999;color:#444}
   .cmt{text-decoration-color:#999}
+  ins.slide{border-left-color:#666;border-right-color:#666;background:transparent}
   .cmt-note{border-left-color:#999;color:#444}
   pre{background:#f5f5f5;border-color:#ddd}
   p code,li code{background:#f5f5f5}
