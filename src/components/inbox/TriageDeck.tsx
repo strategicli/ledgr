@@ -29,6 +29,8 @@ export type TriageItem = {
   createdAt: Date;
   scheduledDate: Date | null;
   urgency: number | null;
+  // Persons already connected (any confirmed edge, ADR-175) for the People chip.
+  people: { id: string; title: string }[];
 };
 
 type ExitDir = "left" | "right" | "down";
@@ -301,10 +303,14 @@ export default function TriageDeck({
               {current.type === "task" && (
                 <div data-no-swipe className="mt-auto pt-4">
                   <InboxTaskControls
+                    // Keyed so a card change remounts the controls' local
+                    // optimistic state (people) for the new item.
+                    key={current.id}
                     id={current.id}
                     today={today}
                     scheduledDate={current.scheduledDate}
                     urgency={current.urgency as Priority | null}
+                    people={current.people}
                     autoRefresh={false}
                     onEdited={(patch) => patchLocal(patch)}
                   />

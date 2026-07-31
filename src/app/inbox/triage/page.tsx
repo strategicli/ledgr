@@ -7,6 +7,7 @@ import { getDb } from "@/db";
 import { types } from "@/db/schema";
 import TriageDeck, { type TriageItem } from "@/components/inbox/TriageDeck";
 import { listItems } from "@/lib/items";
+import { relatedSummaryFor } from "@/lib/relations";
 import { resolveOwner } from "@/lib/owner";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
@@ -28,6 +29,11 @@ export default async function TriagePage() {
   // Oldest first — the same queue order as the Inbox list.
   inboxItems.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
+  // Persons connected to each task (any confirmed edge, ADR-175) for the
+  // People chip — same batched read as the Inbox list.
+  const taskIds = inboxItems.filter((i) => i.type === "task").map((i) => i.id);
+  const peopleByTask = await relatedSummaryFor(owner.id, taskIds, { type: "person" });
+
   const cards: TriageItem[] = inboxItems.map((it) => ({
     id: it.id,
     title: it.title,
@@ -35,6 +41,7 @@ export default async function TriagePage() {
     createdAt: it.createdAt,
     scheduledDate: it.scheduledDate,
     urgency: it.urgency,
+    people: peopleByTask.get(it.id) ?? [],
   }));
 
   return (

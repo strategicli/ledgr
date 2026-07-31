@@ -97,15 +97,24 @@ export async function listRelatedItems(
 // queries (not N+1) — for the dashboard's compact list, which shows a small
 // "associated with" chip per row. Either direction, owner-scoped, live-only,
 // self-edges and the anchor itself excluded; deduped per anchor, capped small.
+// opts.type narrows to related items of one type (the Inbox People chip wants
+// persons only, filtered in SQL so the cap can't crowd them out).
 export async function relatedSummaryFor(
   ownerId: string,
-  itemIds: string[]
+  itemIds: string[],
+  opts: { type?: string } = {}
 ): Promise<Map<string, { id: string; title: string; type: string }[]>> {
   const out = new Map<string, { id: string; title: string; type: string }[]>();
   if (itemIds.length === 0) return out;
   const db = getDb();
   const anchors = new Set(itemIds);
   const cols = { id: items.id, title: items.title, type: items.type };
+  const itemFilter = [
+    eq(items.ownerId, ownerId),
+    isNull(items.deletedAt),
+    eq(items.isTemplate, false),
+    ...(opts.type ? [eq(items.type, opts.type)] : []),
+  ];
   // Two passes: anchor is the source (related = target), then anchor is the
   // target (related = source). Confirmed edges only.
   const [asSource, asTarget] = await Promise.all([
@@ -117,9 +126,7 @@ export async function relatedSummaryFor(
         and(
           inArray(relations.sourceId, itemIds),
           eq(relations.matchState, "confirmed"),
-          eq(items.ownerId, ownerId),
-          isNull(items.deletedAt),
-          eq(items.isTemplate, false)
+          ...itemFilter
         )
       ),
     db
@@ -130,9 +137,7 @@ export async function relatedSummaryFor(
         and(
           inArray(relations.targetId, itemIds),
           eq(relations.matchState, "confirmed"),
-          eq(items.ownerId, ownerId),
-          isNull(items.deletedAt),
-          eq(items.isTemplate, false)
+          ...itemFilter
         )
       ),
   ]);

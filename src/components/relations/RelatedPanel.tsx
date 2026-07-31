@@ -50,10 +50,16 @@ export default async function RelatedPanel({
   // Rendered as a grid card (ADR-069): drop the CanvasSection card chrome and the
   // centered column so the grid's own card wraps it.
   bare = false,
+  // The host canvas renders its own People surface (the task rail's PeopleRow,
+  // ADR-175), so confirmed persons are claimed there and don't repeat here.
+  // Prop-driven (not host-type-driven) because only the bespoke task canvas has
+  // the row — the ADR-069 grid layout for the same type does not.
+  claimPersons = false,
 }: {
   ownerId: string;
   itemId: string;
   bare?: boolean;
+  claimPersons?: boolean;
 }) {
   const [related, typeRows, hostRows, settings, passages] = await Promise.all([
     listRelatedItems(ownerId, itemId),
@@ -108,6 +114,13 @@ export default async function RelatedPanel({
   if (hostType === "event") {
     for (const r of related) {
       if (r.type === "person" || r.type === "group") claimed.add(r.id);
+    }
+  }
+  // The task canvas's People row (ADR-175) owns confirmed persons the same way.
+  // Suggested person edges stay below — confirm/reject lives in this panel.
+  if (claimPersons) {
+    for (const r of related) {
+      if (r.type === "person" && r.matchState !== "suggested") claimed.add(r.id);
     }
   }
 

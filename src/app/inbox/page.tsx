@@ -18,6 +18,7 @@ import InboxTaskControls from "@/components/inbox/InboxTaskControls";
 import RowMenu from "@/components/lists/RowMenu";
 import QuickCapture from "@/components/today/QuickCapture";
 import { listItems } from "@/lib/items";
+import { relatedSummaryFor } from "@/lib/relations";
 import { resolveOwner } from "@/lib/owner";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
@@ -47,6 +48,11 @@ export default async function Inbox() {
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
   // Oldest first: the Inbox is a queue, and the back of it is the debt.
   inboxItems.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  // Persons connected to each task row (any confirmed edge, ADR-175), so the
+  // People chip can show who's attached. One batched pair of queries.
+  const taskIds = inboxItems.filter((i) => i.type === "task").map((i) => i.id);
+  const peopleByTask = await relatedSummaryFor(owner.id, taskIds, { type: "person" });
 
   return (
     <main className="min-h-screen">
@@ -115,6 +121,7 @@ export default async function Inbox() {
                         today={today}
                         scheduledDate={item.scheduledDate}
                         urgency={item.urgency as Priority | null}
+                        people={peopleByTask.get(item.id) ?? []}
                       />
                     )}
                     <TriageControls
