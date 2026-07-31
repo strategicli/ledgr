@@ -2490,6 +2490,8 @@ It is now a **permanent footer button in the palette**: "Advanced search for <qu
 
 ### ADR-176 addendum (2026-07-31): the marker is a slide MARK, not a highlight
 
+**Status:** accepted (Brandon + Tyler, 2026-07-31). 🟢 **CORE**, unlike ADR-176 itself: the original read a primitive the body format already had, whereas this ADDS an element to the canonical body dialect (`<ins class="slide">`), the same category as ADR-145's `<details>` block. Tyler agreed before merge. Recorded in CLAUDE.md's dialect sentence, which is the contract. Additive and back-compat: a body with no slide mark is byte-identical, no schema change, no migration, no new dependency.
+
 Brandon, after using the shipped blue-highlight version: *"In practice, the blue on top of the colored text is painful."*
 
 **The blue highlight was the wrong channel, and the reason generalizes.** It encoded the marker in a COLOR, layered on text that already carries color meaning. Two failures followed: a blue wash under red Scripture is genuinely hard to read, and a blue marker on the palette's blue insight text has almost no contrast against it. Brandon's own next instinct, a thick blue underline, has the same defect plus a worse one: `markdown-editor.css` already states the visual contract in as many words, *a COMMENT owns the underline channel, a HIGHLIGHT owns the fill channel*, so an underline would have been the third tenant of a channel already shared by comments and `++underline++` emphasis, and a slide overlapping a comment would stack two underlines in the same three pixels.
