@@ -5,11 +5,11 @@
 import assert from "node:assert/strict";
 import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 
-// --- highlight → slide, and the cue that matches it ------------------------
+// --- BLUE highlight → slide, and the cue that matches it -------------------
 {
   const { manuscript, slides } = boothExport(
     `Turn to <span style="color:#f23a4a">Matthew 6</span>.\n\n` +
-      `<mark class="hl-yellow" style="background-color:rgba(234,179,8,0.45)">` +
+      `<mark class="hl-blue" style="background-color:rgba(59,130,246,0.42)">` +
       `<span style="color:#f23a4a">25 Do not be anxious.</span></mark>`
   );
   assert.equal(slides.length, 1);
@@ -19,6 +19,34 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
   assert.ok(!manuscript.includes("#f23a4a"), "no color hex survives");
   // The un-highlighted red reference keeps its words, loses its color.
   assert.match(manuscript, /Turn to Matthew 6\./);
+}
+
+// --- ONLY blue is a slide; every other highlight just flattens away ---------
+{
+  const md =
+    `<mark class="hl-yellow" style="background-color:rgba(234,179,8,0.45)">noticed for me</mark>\n\n` +
+    `<mark class="hl-blue" style="background-color:rgba(59,130,246,0.42)">on the screen</mark>\n\n` +
+    `<mark>a bare mark</mark>`;
+  const { manuscript, slides } = boothExport(md);
+  assert.equal(slides.length, 1, "only the blue highlight is a slide");
+  assert.equal(slides[0].text, "on the screen");
+  // The non-slide highlights keep their WORDS and lose their markup — the booth
+  // copy carries no highlights at all.
+  assert.match(manuscript, /noticed for me/);
+  assert.match(manuscript, /a bare mark/);
+  assert.ok(!manuscript.includes("<mark"), "no highlight markup reaches the booth");
+  assert.ok(!manuscript.includes("hl-yellow"));
+  // Exactly one cue, on the blue one.
+  assert.equal(manuscript.match(/\[SLIDE \d+\]/g)?.length, 1);
+  assert.match(manuscript, /\*\*\[SLIDE 1\]\*\* on the screen/);
+}
+// The color may arrive as a background style with the class stripped (colors.ts
+// keeps that fallback), and it still counts.
+{
+  const { slides } = boothExport(
+    `<mark style="background-color:rgba(59,130,246,0.42)">on the screen</mark>`
+  );
+  assert.equal(slides.length, 1, "blue by background value, class stripped");
 }
 
 // --- a highlight layers OVER a text color, in EITHER nesting order ----------
@@ -42,7 +70,7 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
   // The editor closes and reopens the mark per block, so this is what a
   // three-bullet highlight actually serializes to.
   const { slides } = boothExport(
-    `- <mark class="hl-yellow">one</mark>\n- <mark class="hl-yellow">two</mark>\n- <mark class="hl-yellow">three</mark>`
+    `- <mark class="hl-blue">one</mark>\n- <mark class="hl-blue">two</mark>\n- <mark class="hl-blue">three</mark>`
   );
   assert.equal(slides.length, 1, "adjacent marks bridge into one slide");
   assert.equal(slides[0].text, "one\ntwo\nthree");
@@ -50,13 +78,23 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 {
   // Real prose between two highlights means two separate slides.
   const { slides } = boothExport(
-    `<mark>first</mark>\n\nHe goes on to say:\n\n<mark>second</mark>`
+    `<mark class="hl-blue">first</mark>\n\nHe goes on to say:\n\n<mark class="hl-blue">second</mark>`
   );
   assert.equal(slides.length, 2, "prose between highlights breaks the run");
   assert.deepEqual(
     slides.map((s) => s.n),
     [1, 2]
   );
+}
+{
+  // A highlight in another color between two blue ones is not part of either
+  // slide, so it breaks the run rather than being swallowed into slide 1.
+  const { slides } = boothExport(
+    `- <mark class="hl-blue">one</mark>\n- <mark class="hl-yellow">mine</mark>\n- <mark class="hl-blue">two</mark>`
+  );
+  assert.equal(slides.length, 2, "a non-blue highlight breaks a bridged run");
+  assert.equal(slides[0].text, "one");
+  assert.equal(slides[1].text, "two");
 }
 
 // --- struck-through material leaves entirely; ++underline++ unwraps ---------
@@ -86,7 +124,7 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 // --- private notes to self never reach the booth ---------------------------
 {
   const { manuscript, slides } = boothExport(
-    `## {==Practice==}{>>needs reworking<<}\n\n<mark>on screen{>>check this<<}</mark>`
+    `## {==Practice==}{>>needs reworking<<}\n\n<mark class="hl-blue">on screen{>>check this<<}</mark>`
   );
   assert.ok(!manuscript.includes("needs reworking"), "comment note stripped");
   assert.match(manuscript, /## Practice/, "commented text itself survives");
@@ -96,10 +134,10 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 // --- fenced code is left alone --------------------------------------------
 {
   const { slides, manuscript } = boothExport(
-    "```\n<mark>not a slide</mark>\n```"
+    '```\n<mark class="hl-blue">not a slide</mark>\n```'
   );
   assert.equal(slides.length, 0, "a mark inside a fence is literal text");
-  assert.match(manuscript, /<mark>not a slide<\/mark>/);
+  assert.match(manuscript, /<mark class="hl-blue">not a slide<\/mark>/);
 }
 
 // --- empty in, empty out --------------------------------------------------
