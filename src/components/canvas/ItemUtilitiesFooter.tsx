@@ -12,6 +12,7 @@
 // does NOT use this footer; every non-arranged canvas does.
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
+import PresentationExport from "@/components/canvas/PresentationExport";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 
 export default function ItemUtilitiesFooter({
@@ -32,6 +33,7 @@ export default function ItemUtilitiesFooter({
           <div className="mt-2 flex flex-col gap-2">
             <SaveOffline itemId={itemId} bare />
             <ShareLink itemId={itemId} bare />
+            <PresentationExport itemId={itemId} bare />
           </div>
         </details>
       </div>

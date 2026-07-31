@@ -35,10 +35,17 @@ export function escapeHtml(text: string): string {
 // leg. Because it carries its own styles it renders identically when pinned
 // offline or served from a public CDN with no app context. The hl-* rules
 // mirror the highlight colors the body markup carries inline.
+// `color:inherit` is load-bearing, not tidying. The UA stylesheet gives <mark> its
+// own `color` (black), which BEATS an inherited color from an ancestor — so
+// `<span style="color:red"><mark>verse</mark></span>` rendered a black verse, and
+// a highlight silently cost the text its color. That breaks the booth export
+// (booth-export.ts), where a highlight means "put this on the screen" and must
+// layer OVER the color that means "this is Scripture". Marks compose in the
+// markdown either way round; the CSS has to let them.
 const HL_CSS = Object.entries(BLOCKNOTE_COLORS)
   .map(
     ([name, c]) =>
-      `mark.hl-${name}{background-color:${c.background};color:#1a1a1a}`
+      `mark.hl-${name}{background-color:${c.background};color:inherit}`
   )
   .join("\n");
 
