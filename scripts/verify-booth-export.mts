@@ -5,12 +5,15 @@
 import assert from "node:assert/strict";
 import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 
-// --- BLUE highlight → slide, and the cue that matches it -------------------
+// The slide mark as the editor serializes it (extensions.ts SlideMark).
+const S = (text: string) => `<ins class="slide">${text}</ins>`;
+
+// --- slide mark → slide, and the cue that matches it -----------------------
 {
   const { manuscript, slides } = boothExport(
     `Turn to <span style="color:#f23a4a">Matthew 6</span>.\n\n` +
-      `<mark class="hl-blue" style="background-color:rgba(59,130,246,0.42)">` +
-      `<span style="color:#f23a4a">25 Do not be anxious.</span></mark>`
+      `<ins class="slide">` +
+      `<span style="color:#f23a4a">25 Do not be anxious.</span></ins>`
   );
   assert.equal(slides.length, 1);
   assert.equal(slides[0].text, "25 Do not be anxious.", "slide text is flattened");
@@ -21,46 +24,56 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
   assert.match(manuscript, /Turn to Matthew 6\./);
 }
 
-// --- ONLY blue is a slide; every other highlight just flattens away ---------
+// --- a HIGHLIGHT is no longer a slide; it is ordinary highlighting ----------
+// The slide mark is its own channel now, so all nine highlight colors went back to
+// meaning nothing but "I highlighted this."
 {
   const md =
+    `<mark class="hl-blue" style="background-color:rgba(59,130,246,0.42)">was a slide before</mark>\n\n` +
     `<mark class="hl-yellow" style="background-color:rgba(234,179,8,0.45)">noticed for me</mark>\n\n` +
-    `<mark class="hl-blue" style="background-color:rgba(59,130,246,0.42)">on the screen</mark>\n\n` +
-    `<mark>a bare mark</mark>`;
+    `<ins class="slide">on the screen</ins>`;
   const { manuscript, slides } = boothExport(md);
-  assert.equal(slides.length, 1, "only the blue highlight is a slide");
+  assert.equal(slides.length, 1, "only the slide mark is a slide");
   assert.equal(slides[0].text, "on the screen");
-  // The non-slide highlights keep their WORDS and lose their markup — the booth
-  // copy carries no highlights at all.
+  // Every highlight keeps its WORDS and loses its markup: the booth copy carries
+  // no highlights and no slide tags at all, only the cue.
+  assert.match(manuscript, /was a slide before/);
   assert.match(manuscript, /noticed for me/);
-  assert.match(manuscript, /a bare mark/);
   assert.ok(!manuscript.includes("<mark"), "no highlight markup reaches the booth");
-  assert.ok(!manuscript.includes("hl-yellow"));
-  // Exactly one cue, on the blue one.
-  assert.equal(manuscript.match(/\[SLIDE \d+\]/g)?.length, 1);
+  assert.ok(!manuscript.includes("<ins"), "no slide markup reaches the booth");
+  assert.equal(manuscript.match(/\[SLIDE \d+\]/g)?.length, 1, "exactly one cue");
   assert.match(manuscript, /\*\*\[SLIDE 1\]\*\* on the screen/);
 }
-// The color may arrive as a background style with the class stripped (colors.ts
-// keeps that fallback), and it still counts.
+// The mark survives extra attributes and attribute order (a paste path, a future
+// data- attribute), since the class is matched inside the tag rather than assumed
+// to be the whole of it.
 {
   const { slides } = boothExport(
-    `<mark style="background-color:rgba(59,130,246,0.42)">on the screen</mark>`
+    `<ins data-x="1" class="foo slide">on the screen</ins>`
   );
-  assert.equal(slides.length, 1, "blue by background value, class stripped");
+  assert.equal(slides.length, 1, "class matched among others, attrs in any order");
+}
+// A plain <ins> that is NOT ours is left alone entirely.
+{
+  const { slides, manuscript } = boothExport(`<ins>inserted text</ins>`);
+  assert.equal(slides.length, 0, "a bare <ins> is not a slide");
+  assert.match(manuscript, /inserted text/);
 }
 
-// --- a highlight layers OVER a text color, in EITHER nesting order ----------
+// --- a slide layers OVER a text color, in EITHER nesting order --------------
 // This is the property the whole design rests on: marking a verse for the screen
-// must not cost it its "this is Scripture" color in the preacher's own copy.
+// must not cost it its "this is Scripture" color in the preacher's own copy. The
+// OUTER case is also the one a span-based mark could not parse (same-tag nesting),
+// which is why the tag is <ins> — see extensions.ts.
 {
   const outer = boothExport(
-    `<mark class="hl-blue"><span style="color:#f23a4a">verse</span></mark>`
+    `<ins class="slide"><span style="color:#f23a4a">verse</span></ins>`
   );
   const inner = boothExport(
-    `<span style="color:#f23a4a"><mark class="hl-blue">verse</mark></span>`
+    `<span style="color:#f23a4a"><ins class="slide">verse</ins></span>`
   );
-  assert.equal(outer.slides.length, 1, "highlight outside color is a slide");
-  assert.equal(inner.slides.length, 1, "color outside highlight is a slide");
+  assert.equal(outer.slides.length, 1, "slide outside color is a slide");
+  assert.equal(inner.slides.length, 1, "color outside slide is a slide");
   assert.equal(outer.slides[0].text, "verse");
   assert.equal(inner.slides[0].text, "verse");
 }
@@ -70,7 +83,7 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
   // The editor closes and reopens the mark per block, so this is what a
   // three-bullet highlight actually serializes to.
   const { slides } = boothExport(
-    `- <mark class="hl-blue">one</mark>\n- <mark class="hl-blue">two</mark>\n- <mark class="hl-blue">three</mark>`
+    `- ${S("one")}\n- ${S("two")}\n- ${S("three")}`
   );
   assert.equal(slides.length, 1, "adjacent marks bridge into one slide");
   assert.equal(slides[0].text, "one\ntwo\nthree");
@@ -78,7 +91,7 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 {
   // Real prose between two highlights means two separate slides.
   const { slides } = boothExport(
-    `<mark class="hl-blue">first</mark>\n\nHe goes on to say:\n\n<mark class="hl-blue">second</mark>`
+    `${S("first")}\n\nHe goes on to say:\n\n${S("second")}`
   );
   assert.equal(slides.length, 2, "prose between highlights breaks the run");
   assert.deepEqual(
@@ -87,12 +100,12 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
   );
 }
 {
-  // A highlight in another color between two blue ones is not part of either
-  // slide, so it breaks the run rather than being swallowed into slide 1.
+  // A highlighted (not slid) line between two slides is text neither slide covers,
+  // so it breaks the run rather than being swallowed into slide 1.
   const { slides } = boothExport(
-    `- <mark class="hl-blue">one</mark>\n- <mark class="hl-yellow">mine</mark>\n- <mark class="hl-blue">two</mark>`
+    `- ${S("one")}\n- <mark class="hl-yellow">mine</mark>\n- ${S("two")}`
   );
-  assert.equal(slides.length, 2, "a non-blue highlight breaks a bridged run");
+  assert.equal(slides.length, 2, "a highlighted line breaks a bridged run");
   assert.equal(slides[0].text, "one");
   assert.equal(slides[1].text, "two");
 }
@@ -124,7 +137,7 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 // --- private notes to self never reach the booth ---------------------------
 {
   const { manuscript, slides } = boothExport(
-    `## {==Practice==}{>>needs reworking<<}\n\n<mark class="hl-blue">on screen{>>check this<<}</mark>`
+    `## {==Practice==}{>>needs reworking<<}\n\n<ins class="slide">on screen{>>check this<<}</ins>`
   );
   assert.ok(!manuscript.includes("needs reworking"), "comment note stripped");
   assert.match(manuscript, /## Practice/, "commented text itself survives");
@@ -134,10 +147,10 @@ import { boothExport, slidesMarkdown } from "@/lib/editor/booth-export";
 // --- fenced code is left alone --------------------------------------------
 {
   const { slides, manuscript } = boothExport(
-    '```\n<mark class="hl-blue">not a slide</mark>\n```'
+    '```\n<ins class="slide">not a slide</ins>\n```'
   );
   assert.equal(slides.length, 0, "a mark inside a fence is literal text");
-  assert.match(manuscript, /<mark class="hl-blue">not a slide<\/mark>/);
+  assert.match(manuscript, /<ins class="slide">not a slide<\/ins>/);
 }
 
 // --- empty in, empty out --------------------------------------------------

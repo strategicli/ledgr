@@ -5,24 +5,24 @@
 // running slides needs the opposite: plain black-and-white prose, no private
 // notes, and a cue telling them WHEN to advance the screen.
 //
-// The marker for "this goes on the screen" is a BLUE HIGHLIGHT (`<mark
-// class="hl-blue">`, colors.ts). That choice is deliberate and worth defending:
-//   - Background and foreground are ORTHOGONAL marks in the editor and in the
-//     markdown, so highlighting a red Scripture span leaves it red. No other
-//     channel has that property: reusing a text color would force "on screen"
-//     and "is a verse" to compete for the same slot, and only some verses go on
-//     the screen.
-//   - The editor control, the `hl-*` serializer, the parse side, and the print
-//     CSS all already exist. This file adds no syntax and no editor code.
-//   - ONE color, not any highlight (Brandon, 2026-07-31): the marker-pen channel
-//     keeps its other eight colors free for ordinary highlighting, so marking a
-//     slide can never be confused with marking something for yourself.
-// Don't re-home this onto a text color or a bespoke syntax without re-reading
-// that reasoning.
+// The marker for "this goes on the screen" is the SLIDE MARK, `<ins class="slide">`
+// (the toolbar's screen button, left of the comment bubble; extensions.ts owns the
+// round-trip). That choice is deliberate and worth defending:
+//   - It is its OWN channel. A comment owns the underline channel and a highlight
+//     owns the fill channel, and a slide routinely sits on the same words as
+//     either, so it gets a third: a rule bracketing each end of the span.
+//   - The signal is therefore a SHAPE, not a color, which is what lets it read on
+//     top of all five text colors a manuscript uses. This replaced a blue
+//     highlight, which was the first build and which Brandon rejected in practice
+//     (2026-07-31): a blue wash under red Scripture was painful to read, and a
+//     blue rule under blue insight text was invisible.
+//   - A text color could never have worked: only SOME verses go on the screen, so
+//     "on screen" and "is a verse" must not compete for one slot.
+// Don't re-home this onto a color, a highlight, or a bespoke syntax without
+// re-reading that reasoning.
 //
-// Every OTHER highlight color is still flattened out of the booth copy — it just
-// doesn't become a slide. The booth copy carries no highlights at all; the cue is
-// how a slide announces itself there.
+// Highlights are now ordinary highlighting again, in all nine colors, and are
+// flattened out of the booth copy like any other formatting it doesn't need.
 //
 // ONE pass produces BOTH outputs, because they have to agree: slide N in the
 // slides document is the same slide as the `[SLIDE N]` cue in the manuscript.
@@ -30,31 +30,22 @@
 //
 // Pure and dependency-free (server + client safe), same posture as
 // block-anchor.ts and comment-markdown.ts.
-import { highlightColorName, textColorName } from "@/lib/colors";
+import { textColorName } from "@/lib/colors";
 import { stripComments } from "@/lib/editor/comment-markdown";
 
-// The one highlight color that means "put this on the screen". Every other
-// highlight is ordinary highlighting: still flattened out of the booth copy,
-// never a slide.
-const SLIDE_COLOR = "blue";
-
-// A highlight, per line, with its attributes captured so the color can be read.
-// Marks never span lines: Tiptap closes and reopens an inline mark at every block
-// boundary and hard break, exactly as it does for comments, so a highlight dragged
-// across three paragraphs serializes as three marks (see the bridging block below).
-const MARK = /<mark\b([^>]*)>(.*?)<\/mark>/g;
-// `class` / `style` out of a captured attribute string, for highlightColorName.
-// The serializer writes both (colors.ts), and the class is the primary hook; a
-// bare `<mark>` carries neither and so is never the slide color.
-const ATTR = (attrs: string, name: string): string | null =>
-  attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1] ?? null;
-
-function isSlideMark(attrs: string): boolean {
-  return (
-    highlightColorName(ATTR(attrs, "class"), ATTR(attrs, "style")) ===
-    SLIDE_COLOR
-  );
-}
+// A slide mark, per line. Marks never span lines: Tiptap closes and reopens an
+// inline mark at every block boundary and hard break, exactly as it does for
+// comments, so a slide dragged across three paragraphs serializes as three marks
+// (see the bridging block below).
+//
+// `<ins>` rather than a span is what makes this regex safe: a slide almost always
+// wraps a colored span, and matching `<span class="slide">…</span>` non-greedily
+// would close on the INNER `</span>`. See the SlideMark comment in extensions.ts.
+const SLIDE = /<ins\b[^>]*\bclass\s*=\s*"[^"]*\bslide\b[^"]*"[^>]*>(.*?)<\/ins>/g;
+// Highlight markup, unwrapped in the booth copy: the words stay, the marker pen
+// doesn't. Nine colors, all ordinary highlighting now that the slide mark is its
+// own channel.
+const HIGHLIGHT = /<\/?mark\b[^>]*>/g;
 // A styled span. Only a recognized palette color is ours to unwrap — a span
 // carrying anything else (a mention's markup, a stray paste) is left alone.
 const STYLED_SPAN = /<span style="([^"]*)">(.*?)<\/span>/g;
@@ -87,6 +78,7 @@ export type BoothExport = { manuscript: string; slides: Slide[] };
 function flatten(md: string): string {
   return stripComments(md)
     .replace(STRIKE, "")
+    .replace(HIGHLIGHT, "")
     .replace(STYLED_SPAN, (raw, style: string, inner: string) =>
       textColorName(style) ? inner : raw
     )
@@ -94,10 +86,8 @@ function flatten(md: string): string {
 }
 
 // Markdown in → the booth manuscript plus its slide list, numbered in document
-// order. Only BLUE highlights are slides (SLIDE_COLOR); other highlight colors
-// flatten away like any other formatting. Duplicates are kept on purpose: a sticky
-// statement highlighted six times is six trips to the screen, and the booth needs
-// a cue for each.
+// order. Duplicates are kept on purpose: a sticky statement marked six times is six
+// trips to the screen, and the booth needs a cue for each.
 export function boothExport(markdown: string): BoothExport {
   const slides: Slide[] = [];
   if (!markdown) return { manuscript: "", slides };
@@ -136,31 +126,23 @@ export function boothExport(markdown: string): BoothExport {
 
     let cued = "";
     let last = 0;
-    MARK.lastIndex = 0;
-    for (let m = MARK.exec(line); m; m = MARK.exec(line)) {
-      const [raw, attrs, inner] = m;
+    SLIDE.lastIndex = 0;
+    for (let m = SLIDE.exec(line); m; m = SLIDE.exec(line)) {
+      const [raw, inner] = m;
       const before = line.slice(last, m.index);
       cued += before;
       gap += before;
-      if (isSlideMark(attrs)) {
-        const text = flatten(inner).trim();
-        const continues = seen && SCAFFOLD_ONLY.test(gap);
-        if (continues && slides.length > 0) {
-          // Same slide, another line of it: one cue, one slide, several lines.
-          slides[slides.length - 1].text += "\n" + text;
-        } else {
-          slides.push({ n: slides.length + 1, text });
-          cued += `**[SLIDE ${slides.length}]** `;
-        }
-        seen = true;
-        gap = "";
+      const text = flatten(inner).trim();
+      const continues = seen && SCAFFOLD_ONLY.test(gap);
+      if (continues && slides.length > 0) {
+        // Same slide, another line of it: one cue, one slide, several lines.
+        slides[slides.length - 1].text += "\n" + text;
       } else {
-        // An ordinary highlight. The mark is unwrapped like any other formatting
-        // the booth doesn't need, and its words count as prose — so a highlight in
-        // another color sitting between two blue ones BREAKS the bridged run,
-        // which is right: that text isn't part of either slide.
-        gap += inner;
+        slides.push({ n: slides.length + 1, text });
+        cued += `**[SLIDE ${slides.length}]** `;
       }
+      seen = true;
+      gap = "";
       cued += inner;
       last = m.index + raw.length;
     }

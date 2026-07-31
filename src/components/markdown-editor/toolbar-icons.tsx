@@ -63,6 +63,10 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   // little wonky"). Same geometry as the --cmt-bubble mask in
   // markdown-editor.css; keep the two in step.
   comment: <Svg><path d={COMMENT_BUBBLE_PATH} /></Svg>,
+  // slide (ADR-176): a screen on a stand — "put this on the screen." Sits directly
+  // left of the comment bubble, since the two are the same gesture (mark a span)
+  // for different audiences: a comment is for you, a slide is for the room.
+  slide: <Svg><rect x="3" y="4" width="18" height="12" rx="1" /><line x1="12" y1="16" x2="12" y2="20" /><line x1="9" y1="20" x2="15" y2="20" /></Svg>,
 };
 
 // The toolbar items in display order (id → label), for the configurable-toolbar
@@ -87,6 +91,7 @@ export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
   { id: "link", label: "Copy line link" },
   { id: "color", label: "Text color" },
   { id: "highlight", label: "Highlight" },
+  { id: "slide", label: "Slide (on screen)" },
   { id: "comment", label: "Comment" },
   { id: "mention", label: "@ mention hint" },
 ];
