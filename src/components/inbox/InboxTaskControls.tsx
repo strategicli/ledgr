@@ -46,6 +46,7 @@ export default function InboxTaskControls({
   today,
   scheduledDate,
   urgency,
+  people = [],
   autoRefresh = true,
   onEdited,
 }: {
@@ -53,6 +54,9 @@ export default function InboxTaskControls({
   today: string;
   scheduledDate: Date | null;
   urgency: Priority | null;
+  // Persons already connected to this task (any confirmed edge, ADR-175), so
+  // the People chip shows who's attached instead of pretending nothing is.
+  people?: { id: string; title: string }[];
   // The Inbox list refreshes the server render after an edit so the list stays
   // in sync (default). The triage deck sets this false: it owns a stable local
   // snapshot, so a refresh there would reshuffle the deck under the current
@@ -69,8 +73,10 @@ export default function InboxTaskControls({
   // purely prop-driven (its router.refresh re-renders with fresh props).
   const [localSched, setLocalSched] = useState<Date | null>(scheduledDate);
   const [localPrio, setLocalPrio] = useState<Priority | null>(urgency);
+  const [localPeople, setLocalPeople] = useState(people);
   const dispSched = autoRefresh ? scheduledDate : localSched;
   const dispPrio = autoRefresh ? urgency : localPrio;
+  const dispPeople = autoRefresh ? people : localPeople;
 
   useEffect(() => {
     if (!dateOpen) return;
@@ -166,9 +172,24 @@ export default function InboxTaskControls({
         <span className={`pointer-events-none absolute right-1.5 ${pStyle ? pStyle.text : "text-ink-subtle"}`}>{IconFlag}</span>
       </span>
 
-      {/* Project + People */}
+      {/* Project + People. The People chip names who's already connected (first
+          names, any confirmed person edge — ADR-175) and stays a picker for
+          adding more; removal lives on the canvas. */}
       <RelatePicker itemId={id} type="project" role="project" label="Project" icon={IconHash} autoRefresh={autoRefresh} />
-      <RelatePicker itemId={id} type="person" label="People" icon={IconUser} autoRefresh={autoRefresh} />
+      <RelatePicker
+        itemId={id}
+        type="person"
+        label={
+          dispPeople.length > 0
+            ? dispPeople.map((p) => p.title.trim().split(/\s+/)[0] || "?").join(", ")
+            : "People"
+        }
+        icon={IconUser}
+        autoRefresh={autoRefresh}
+        filled={dispPeople.length > 0}
+        excludeIds={dispPeople.map((p) => p.id)}
+        onRelated={(hit) => setLocalPeople((prev) => [...prev, hit])}
+      />
     </div>
   );
 }

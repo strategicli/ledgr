@@ -10,6 +10,7 @@ import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import Subtasks from "@/components/subtasks/Subtasks";
 import TaskTitle from "@/components/canvas/TaskTitle";
 import RelationProperties from "@/components/relations/RelationProperties";
+import PeopleRow from "@/components/relations/PeopleRow";
 import CustomProperties from "@/components/build/CustomProperties";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import CanvasTwoPane from "@/components/canvas/CanvasTwoPane";
@@ -146,17 +147,18 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
 
           {/* Properties: scalar + relation fields under one header (the canvas
               redesign), bare so the compact rail stays a divided list, not a card
-              (Brandon, 2026-06-27). Relations are marked with a link glyph. */}
-          {propertySchema.length > 0 && (
-            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
-              <CanvasSection bare icon="properties" title="Properties">
-                <div className="flex flex-col gap-2">
-                  <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
-                  <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} hideHeading bare />
-                </div>
-              </CanvasSection>
-            </div>
-          )}
+              (Brandon, 2026-06-27). Relations are marked with a link glyph.
+              People is a bespoke row, not a typed field (ADR-175): it shows every
+              confirmed person edge whoever wrote it, so it always renders. */}
+          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+            <CanvasSection bare icon="properties" title="Properties">
+              <div className="flex flex-col gap-2">
+                <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
+                <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} hideHeading bare />
+                <PeopleRow ownerId={ownerId} itemId={item.id} />
+              </div>
+            </CanvasSection>
+          </div>
 
           {/* Focus today: a one-tap star, kept in plain sight (not behind a
               popover) since it's a frequent daily action. */}
@@ -170,7 +172,9 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
         }
       />
 
-      <RelatedPanel ownerId={ownerId} itemId={item.id} />
+      {/* The rail's People row owns confirmed persons (ADR-175), so the panel
+          doesn't repeat them. */}
+      <RelatedPanel ownerId={ownerId} itemId={item.id} claimPersons />
       <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
     </div>
   );

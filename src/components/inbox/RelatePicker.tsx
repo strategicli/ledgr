@@ -19,6 +19,9 @@ export default function RelatePicker({
   label,
   icon,
   autoRefresh = true,
+  filled = false,
+  excludeIds,
+  onRelated,
 }: {
   itemId: string;
   type: string;
@@ -29,6 +32,14 @@ export default function RelatePicker({
   // The triage deck sets this false — it owns a stable snapshot and must not
   // re-fetch (which would reshuffle the deck under the current card).
   autoRefresh?: boolean;
+  // Something is already attached: style the chip like the other set chips
+  // (Schedule with a date) so triage answers "is anything linked?" at a glance.
+  filled?: boolean;
+  // Already-linked ids, kept out of the typeahead.
+  excludeIds?: string[];
+  // Reports a successful add so the caller can update its own optimistic state
+  // (the deck path, which never router.refresh()es).
+  onRelated?: (hit: { id: string; title: string }) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -92,14 +103,23 @@ export default function RelatePicker({
       setHits([]);
       setOpen(false);
       setState("idle");
+      onRelated?.({ id: hit.id, title: hit.title });
       if (autoRefresh) router.refresh();
     } catch {
       setState("error");
     }
   }
 
-  const chip =
-    "inline-flex items-center gap-1 rounded-card border border-line px-2 py-0.5 text-xs text-ink-muted hover:border-line-strong hover:text-ink";
+  // Already-linked items stay out of the typeahead (filtered at render so the
+  // fetch effect's deps stay primitive).
+  const linked = new Set(excludeIds ?? []);
+  const shown = hits.filter((h) => !linked.has(h.id));
+
+  const chip = `inline-flex items-center gap-1 rounded-card border px-2 py-0.5 text-xs ${
+    filled
+      ? "border-line-strong text-[var(--accent)]"
+      : "border-line text-ink-muted hover:border-line-strong hover:text-ink"
+  }`;
 
   if (!open) {
     return (
@@ -118,12 +138,12 @@ export default function RelatePicker({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            setActive((a) => Math.min(a + 1, hits.length - 1));
+            setActive((a) => Math.min(a + 1, shown.length - 1));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setActive((a) => Math.max(a - 1, 0));
           } else if (e.key === "Enter") {
-            if (hits[active]) void relate(hits[active]);
+            if (shown[active]) void relate(shown[active]);
           }
         }}
         disabled={state === "busy"}
@@ -133,9 +153,9 @@ export default function RelatePicker({
       {state === "error" && (
         <span className="ml-1 text-xs text-red-400">Failed</span>
       )}
-      {hits.length > 0 && (
+      {shown.length > 0 && (
         <ul className="absolute left-0 top-full z-20 mt-1 max-h-56 w-56 overflow-y-auto rounded-card border border-line-strong bg-surface-3 py-1 shadow-xl shadow-black/50">
-          {hits.map((hit, i) => (
+          {shown.map((hit, i) => (
             <li key={hit.id}>
               <button
                 // mousedown, not click: a click blurs the input first and the

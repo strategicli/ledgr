@@ -6,6 +6,16 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 > **🔴 FIXED IN PASSING — `main` did not build.** `scripts/verify-placement.mts` had three `check(name, ok, detail)` calls passing an `unknown` (values read back out of a `Record<string, unknown>` patch) into a `string` param, landing with the ADR-166 planner slices (`c88ad40`/`db20e89`, PR #214). `next build` runs the typecheck, so **every Vercel deploy from `main` was failing** until now. Fixed once at the shared function (`detail: unknown`, `String()` inside) rather than three call-site wrappers, on branch `feat/toc-container-relative-pin` as its own commit. Verify script still ALL PASS. **Worth a look at why this merged green** — the pre-merge check evidently didn't run `tsc`/`next build`.
 
+## ✅ Recently done — Person connections unified on the generic edge (2026-07-30, branch `claude/person-connection-inconsistency-81387e`, ADR-175)
+
+Brandon's screenshot showed a task with Kent and Roger in Linked Here while the PROPERTIES "People" row sat empty. Root cause: the user-created `people` typed field read only role=`people` edges, while every automatic writer (inbox chip, MCP `relateTo`, promoted action items) writes the default `related`. Fixed by making the odd surface conform: "is a person connected?" = any confirmed person edge, either direction, any role.
+
+- **Migration `0049`** folds role=`people` edges into `related` and drops the field from the task type schema (idempotent; no-op for an instance without the field). **Run `db:migrate` before deploying the code.**
+- **`PeopleRow`** (new, task rail): role-blind read, edits via `RelationField`'s new null-role mode (add = default `related` edge, remove = role-blind), mention-only persons as read-only `@` chips.
+- **`RelatedPanel claimPersons`**: the rail's row owns confirmed persons so they don't repeat below (same claiming events do); suggested person edges stay in the panel for confirm/reject.
+- **Inbox/Triage People chip** now shows linked first names in the filled style (`relatedSummaryFor` grew a SQL-side `type` filter); still add-only.
+- Not touched: event `attending`, group `members`, hiring `reference`, and the `relation` property kind itself.
+
 ## ✅ Recently done — Comment hover fixed, and the card is edited in place (2026-07-30, branch `claude/comment-hover-inplace-edit`, ADR-174a)
 
 Three symptoms Brandon hit on the ADR-174 build, one cause: **the hover highlight set a class on ProseMirror's own DOM.** PM's DOMObserver treats an attribute change on a mark span as a foreign mutation, re-reads the range and redraws the span; the redraw replaces the element under the pointer, `mouseover` fires on the new one, and it loops. Measured at ~60 redraws a second while the pointer just rested on a commented word. That thrash swallowed the highlight, the card's click, and click-to-place-caret inside commented text (arrow keys still worked, which was the tell that only the pointer path was broken).

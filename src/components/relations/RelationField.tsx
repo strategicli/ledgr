@@ -31,7 +31,10 @@ export default function RelationField({
   initial,
 }: {
   itemId: string;
-  role: string; // the field key — the edge role
+  // The field key — the edge role. null = a generic connection (ADR-175): adds
+  // write the default 'related' edge and removes are role-blind, so the box
+  // reflects edges no matter which writer created them.
+  role: string | null;
   targetType: string | null; // null = any type (no typeahead filter, no create)
   targetTypeLabel: string | null;
   cardinality: RelationCardinality;
@@ -80,23 +83,25 @@ export default function RelationField({
     };
   }, [trimmed, open, itemId, targetType, chips]);
 
+  // A typed field scopes removal to its own role; a generic (null-role) box
+  // removes every non-mention edge between the pair, whoever wrote them.
+  const removeUrl = (targetId: string) =>
+    `/api/items/${itemId}/relations?targetId=${targetId}${
+      role ? `&role=${encodeURIComponent(role)}` : ""
+    }`;
+
   // Low-level: relate this item -> target with the field's role. For a single
   // field, the existing edge(s) are cleared first (role-scoped) so it holds one.
   async function relateTarget(target: Chip) {
     if (cardinality === "single" && chips.length > 0) {
       await Promise.all(
-        chips.map((c) =>
-          fetch(
-            `/api/items/${itemId}/relations?targetId=${c.id}&role=${encodeURIComponent(role)}`,
-            { method: "DELETE" }
-          )
-        )
+        chips.map((c) => fetch(removeUrl(c.id), { method: "DELETE" }))
       );
     }
     const res = await fetch(`/api/items/${itemId}/relations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetId: target.id, role }),
+      body: JSON.stringify(role ? { targetId: target.id, role } : { targetId: target.id }),
     });
     if (!res.ok) throw new Error(String(res.status));
     setChips((prev) => (cardinality === "single" ? [target] : [...prev, target]));
@@ -149,10 +154,7 @@ export default function RelationField({
 
   const onRemove = (chip: Chip) =>
     guard(async () => {
-      const res = await fetch(
-        `/api/items/${itemId}/relations?targetId=${chip.id}&role=${encodeURIComponent(role)}`,
-        { method: "DELETE" }
-      );
+      const res = await fetch(removeUrl(chip.id), { method: "DELETE" });
       if (!res.ok) throw new Error(String(res.status));
       setChips((prev) => prev.filter((c) => c.id !== chip.id));
     });
