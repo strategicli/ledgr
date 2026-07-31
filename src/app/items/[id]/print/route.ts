@@ -10,7 +10,8 @@ import { ItemError, getItem } from "@/lib/items";
 import { renderPrintDocument } from "@/lib/print-html";
 import { resolveOwner } from "@/lib/owner";
 import { resolveMentions } from "@/lib/mentions";
-import { bodyMarkdown } from "@/lib/body";
+import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
+import { boothExport } from "@/lib/editor/booth-export";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 
@@ -48,19 +49,31 @@ export async function GET(
   // copy, so opting in is allowed, but a printed/pinned note reads as clean prose
   // by default and never carries a private note to self by accident.
   const showComments = params.get("comments") === "1";
+  // The booth copy (?booth=1): the same document, stripped to what someone
+  // running slides needs — colors flattened, cut material gone, and a
+  // **[SLIDE N]** cue at each highlight so they know when to advance. The cue
+  // numbers match the slides document POST /api/items/[id]/slides writes, because
+  // both come from the one boothExport pass.
+  const booth = params.get("booth") === "1";
+  const printBody = booth
+    ? makeMarkdownBody(boothExport(bodyMarkdown(resolved.body)).manuscript)
+    : resolved.body;
   const mentions = showIcons
     ? await resolveMentions(
         owner.id,
-        collectMentionIdsFromMarkdown(bodyMarkdown(resolved.body))
+        collectMentionIdsFromMarkdown(bodyMarkdown(printBody))
       )
     : undefined;
 
   // The same self-contained shell the share route serves (slice 31), so a
   // pinned offline copy and a public link render identically.
-  const html = renderPrintDocument(resolved.title, resolved.body, {
-    mentions,
-    comments: showComments,
-  });
+  // The booth copy says so on the page: whoever is holding it should be able to
+  // tell at a glance that it isn't the preacher's own annotated manuscript.
+  const html = renderPrintDocument(
+    booth ? `${resolved.title} — Presentation Copy` : resolved.title,
+    printBody,
+    { mentions, comments: showComments }
+  );
 
   return new NextResponse(html, {
     headers: {

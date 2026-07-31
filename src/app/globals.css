@@ -226,6 +226,22 @@ body {
   }
 }
 
+/* A highlight is a BACKGROUND mark; it must never claim the foreground. The UA
+   stylesheet gives <mark> its own `color` (black), and an element's own color
+   beats one inherited from an ancestor — so a highlight applied over colored text
+   (`<span style="color:red"><mark>verse</mark></span>`) silently turned that text
+   black. The editor emits only `background-color` on a mark (extensions.ts), so
+   this one rule is all that stood between "highlight layers over color" and
+   "highlight destroys color".
+
+   Load-bearing for the booth export (src/lib/editor/booth-export.ts), where a
+   highlight means "put this on the screen" and has to coexist with the text color
+   that means "this is Scripture". Same fix lives in print-html.ts's HL_CSS, which
+   is a separate self-contained stylesheet. Don't drop either one. */
+mark {
+  color: inherit;
+}
+
 /* Circular checkbox used across the app — task done-toggles and Build/config
    form checkboxes alike. Dark-mode friendly: a gray ring on a dark fill that
    turns the highlight accent with a white check when ticked. Mirrors the
