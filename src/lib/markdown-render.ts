@@ -19,6 +19,7 @@ import MarkdownIt from "markdown-it";
 import { stripBlockAnchors } from "@/lib/editor/block-anchor";
 import { flattenTabs } from "@/lib/editor/canvas-tabs";
 import { renderComments, stripComments } from "@/lib/editor/comment-markdown";
+import { spaceEmptyListItems } from "@/lib/editor/list-markdown";
 import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
 import { mentionGlyphSvg } from "@/lib/mention-glyph";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -232,7 +233,13 @@ export function markdownToHtml(
 // so a private note to self never reaches a reader.
 function prepare(markdown: string, comments: boolean): string {
   const body = comments ? renderComments(markdown) : stripComments(markdown);
-  return normalizeListIndent(stripBlockAnchors(flattenTabs(body)));
+  // spaceEmptyListItems: a body written before the editor learned to separate
+  // them still carries `- ` flush under a paragraph, which CommonMark reads as a
+  // setext heading. Heal it here too, so an old note prints/shares/exports as
+  // the bullets it was meant to be rather than a giant heading.
+  return normalizeListIndent(
+    spaceEmptyListItems(stripBlockAnchors(flattenTabs(body)))
+  );
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode

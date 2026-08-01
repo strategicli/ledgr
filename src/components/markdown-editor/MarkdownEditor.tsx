@@ -25,11 +25,13 @@ import {
   type BlockNoteColor,
 } from "@/lib/colors";
 import {
+  EmptyListItemFix,
   Highlight,
   LedgrImage,
   LedgrMention,
   LedgrPassage,
   LedgrTable,
+  ListBackspaceJoin,
   MarkdownEscapeFix,
   SlideMark,
   TableCell,
@@ -358,6 +360,10 @@ export default function MarkdownEditor({
       // backslash-escaped, which otherwise compounded on every rich⇄source flip.
       // See MarkdownEscapeFix in extensions.ts.
       MarkdownEscapeFix,
+      // Also right after Markdown (same manager-patching discipline): keeps an
+      // empty bullet from being read as a setext heading underline, in both
+      // directions. See EmptyListItemFix / spaceEmptyListItems.
+      EmptyListItemFix,
       // Empty-state hint: a quiet prompt while the body is empty, the first
       // impression of every new note. First-party (@tiptap/extensions), styled
       // via the is-editor-empty class in markdown-editor.css. The "/" hint points
@@ -368,6 +374,10 @@ export default function MarkdownEditor({
       // checklist item hold a sub-checklist.
       TaskList,
       TaskItem.configure({ nested: true }),
+      // Backspace at the start of a bullet deletes the line break instead of
+      // outdenting (see ListBackspaceJoin). After the list extensions, but the
+      // extension's own priority is what actually beats ListKeymap.
+      ListBackspaceJoin,
       // Block anchors (ADR-090): dim trailing ^id markers + the jump-to/ensure
       // primitives the action-item → task promotion rides on. The per-line
       // "→ task" widget shows only when a meeting wired the promote path; a
@@ -520,6 +530,11 @@ export default function MarkdownEditor({
       // A comment needs something to anchor to, so the button is disabled on an
       // empty selection unless the caret is already inside one (then it edits).
       hasSelection: !(editor?.state.selection.empty ?? true),
+      // Undo/redo depth comes from StarterKit's UndoRedo (prosemirror-history,
+      // ~100 grouped steps back) — well past the "10 or 20" the toolbar buttons
+      // need. can() tells us when the stack is empty so the button greys out.
+      canUndo: editor?.can().undo() ?? false,
+      canRedo: editor?.can().redo() ?? false,
       textColor: (editor?.getAttributes("textColor").color as string) || "",
       highlight: (editor?.getAttributes("highlight").color as string) || "",
     }),
@@ -1092,6 +1107,13 @@ export default function MarkdownEditor({
   // out, and its separator with it.
   type Btn = { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; when?: boolean; run: () => void };
   const groups: Btn[][] = [
+    // Undo/redo lead the bar: leftmost is the one spot that stays visible on a
+    // phone, where the bar scrolls sideways and there is no Ctrl+Z. One settings
+    // id ("undo") hides the pair.
+    [
+      { id: "undo", title: "Undo", icon: TOOLBAR_ICONS.undo, disabled: !toolbar.canUndo, run: () => editor.chain().focus().undo().run() },
+      { id: "undo", title: "Redo", icon: TOOLBAR_ICONS.redo, disabled: !toolbar.canRedo, run: () => editor.chain().focus().redo().run() },
+    ],
     [
       { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
       { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
@@ -1157,8 +1179,10 @@ export default function MarkdownEditor({
             {visibleGroups.map((g, gi) => (
               <div key={g[0].id} className="flex items-center gap-0.5">
                 {gi > 0 && sep}
+                {/* keyed by title, not id: undo/redo deliberately share one id
+                    (one settings toggle hides the pair), so ids aren't unique. */}
                 {g.map((b) => (
-                  <ToolbarButton key={b.id} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
+                  <ToolbarButton key={b.title} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
                 ))}
               </div>
             ))}
