@@ -29,6 +29,10 @@ export const COMMENT_BUBBLE_PATH =
   "M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6l-5 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z";
 
 export const TOOLBAR_ICONS: Record<string, ReactNode> = {
+  // undo/redo: the conventional curved arrow over a baseline. Mobile has no
+  // Ctrl+Z, so these are the only way to walk an edit back on a phone.
+  undo: <Svg><path d="M4 8h10a5 5 0 0 1 0 10h-6" /><polyline points="8 4 4 8 8 12" /></Svg>,
+  redo: <Svg><path d="M20 8H10a5 5 0 0 0 0 10h6" /><polyline points="16 4 20 8 16 12" /></Svg>,
   bold: <Svg><path d="M6 4h7a4 4 0 0 1 0 8H6z" /><path d="M6 12h8a4 4 0 0 1 0 8H6z" /></Svg>,
   italic: <Svg><line x1="19" y1="4" x2="10" y2="4" /><line x1="14" y1="20" x2="5" y2="20" /><line x1="15" y1="4" x2="9" y2="20" /></Svg>,
   strike: <Svg><path d="M17 7a4 4 0 0 0-4-3H10a3 3 0 0 0-1 5.8" /><path d="M7 17a4 4 0 0 0 4 3h2a3 3 0 0 0 1-5.8" /><line x1="4" y1="12" x2="20" y2="12" /></Svg>,
@@ -72,6 +76,7 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
 // The toolbar items in display order (id → label), for the configurable-toolbar
 // settings UI. Ids match the gating in MarkdownEditor.
 export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
+  { id: "undo", label: "Undo / Redo" },
   { id: "bold", label: "Bold" },
   { id: "italic", label: "Italic" },
   { id: "strike", label: "Strikethrough" },

@@ -7,8 +7,17 @@
 // (ADR-037), so every renderMarkdown here is part of the canonical contract.
 "use client";
 
-import { Extension, Mark, Node, mergeAttributes, type JSONContent } from "@tiptap/core";
+import {
+  Extension,
+  Mark,
+  Node,
+  isAtStartOfNode,
+  mergeAttributes,
+  type JSONContent,
+} from "@tiptap/core";
 import Mention from "@tiptap/extension-mention";
+import { NodeRange } from "@tiptap/pm/model";
+import { liftTarget } from "@tiptap/pm/transform";
 import Image from "@tiptap/extension-image";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import {
@@ -28,6 +37,11 @@ import {
   imageToMarkdown,
   type ImageToken,
 } from "@/lib/editor/image-markdown";
+import {
+  hydrateEmptyListItems,
+  spaceEmptyListItems,
+  stripSentinelText,
+} from "@/lib/editor/list-markdown";
 import {
   formatPassageRef,
   parsePassageSlug,
@@ -305,6 +319,116 @@ export const MarkdownEscapeFix = Extension.create({
         HTML_WRAPPED_MARKS.has(typeof m === "string" ? m : (m as { type?: string })?.type ?? "")
       );
       return inHtmlMark ? encoded.replace(/\\([\\`*_[\]~])/g, "$1") : encoded;
+    };
+  },
+});
+
+// Empty list items round-trip safely (Brandon, 2026-08-01). See list-markdown.ts
+// for the setext trap this closes; both ends of the manager are patched because
+// both ends need it:
+//  - parse:     an empty bullet loads as a bullet (marked needs the sentinel to
+//               see one at all), so a body stored before this fix heals on open
+//               instead of showing a giant fake heading.
+//  - serialize: what we store (and export, and print) is never ambiguous again.
+// Same onBeforeCreate discipline as MarkdownEscapeFix above — register after
+// Markdown. getMarkdown()/setContent/insertContent all route through these two
+// methods, so patching here covers every caller.
+export const EmptyListItemFix = Extension.create({
+  name: "emptyListItemFix",
+  onBeforeCreate() {
+    const mgr = (this.editor as unknown as { markdown?: Record<string, unknown> }).markdown;
+    if (!mgr) return;
+    const parse = mgr.parse;
+    if (typeof parse === "function") {
+      const bound = (parse as (md: string) => unknown).bind(mgr);
+      mgr.parse = (markdown: string) =>
+        typeof markdown === "string"
+          ? stripSentinelText(bound(hydrateEmptyListItems(markdown)))
+          : bound(markdown);
+    }
+    const serialize = mgr.serialize;
+    if (typeof serialize === "function") {
+      const bound = (serialize as (doc: unknown) => string).bind(mgr);
+      mgr.serialize = (doc: unknown) => spaceEmptyListItems(bound(doc));
+    }
+  },
+});
+
+// Backspace at the start of a bullet DELETES the line break, it does not outdent
+// (Brandon, 2026-08-01).
+//
+// Tiptap's ListKeymap binds Backspace-at-start-of-item to liftListItem: the
+// bullet un-nests a level, then un-nests again, then finally merges — so
+// removing one line out of a list takes three presses, and every press drags
+// that line's sub-bullets a level left with it. Deleting a line is the common
+// edit when you're reshaping an outline, and it shouldn't reorganize the outline
+// to do it.
+//
+// So at the start of a list item, Backspace joins backward — the plain
+// text-editor behavior: the line merges into the line above, and the line's own
+// sub-bullets come up into the gap it left. Outdenting keeps its own gestures
+// (Shift+Tab and the toolbar's outdent button), which is where it belongs.
+//
+// TWO commands, one keypress (so one undo step, and the intermediate state is
+// never painted):
+//  1. Promote this item's sub-bullets one level, but ONLY when it is the FIRST
+//     item of its list. That is exactly the case where the line above lives
+//     outside this list — the parent's line, or the paragraph before the list —
+//     so joining leaves a gap the children have to move into. Without it the
+//     item's shell stays behind as an empty bullet holding children that are now
+//     a level too deep (Brandon, 2026-08-01: "if the line is empty it should go
+//     away and drag the sub bullets over"). With a preceding sibling there is no
+//     gap, so nothing is promoted and the children keep the depth they had.
+//  2. joinTextblockBackward, not joinBackward: the plain join pulls the item up
+//     as a SECOND PARAGRAPH inside the bullet above (still two lines, one
+//     marker) and needs another press to merge the text. This one merges the
+//     line into the line above in a single press, which is what "delete the line
+//     break" means.
+//
+// Deliberately narrow, so everything else keeps working: with a selection we
+// return false (Backspace deletes the highlighted bullets, the normal path), and
+// undoInputRule still runs first so backspacing right after "- " undoes the
+// bullet you just typed. Priority beats ListKeymap's (100) so this handler wins.
+const LIST_ITEM_NAMES = new Set(["listItem", "taskItem"]);
+const LIST_NAMES = new Set(["bulletList", "orderedList", "taskList"]);
+export const ListBackspaceJoin = Extension.create({
+  name: "listBackspaceJoin",
+  priority: 1000,
+  addKeyboardShortcuts() {
+    return {
+      Backspace: ({ editor }) => {
+        if (!editor.state.selection.empty) return false;
+        if (!editor.isActive("listItem") && !editor.isActive("taskItem")) return false;
+        if (!isAtStartOfNode(editor.state)) return false;
+        if (editor.commands.undoInputRule()) return true;
+        const { $from } = editor.state.selection;
+        // The enclosing list item.
+        let depth = $from.depth;
+        while (depth > 0 && !LIST_ITEM_NAMES.has($from.node(depth).type.name)) depth -= 1;
+        const item = depth > 0 ? $from.node(depth) : null;
+        const sub = item?.lastChild;
+        const chain = editor.chain();
+        // First item of its list, and it has sub-bullets: promote them a level so
+        // they land as this item's siblings, which is where they belong once this
+        // line is gone. (Lifting the ITEM instead would work when the list is
+        // nested, but at the top level that un-lists it and flattens the lot.)
+        if (item && sub && LIST_NAMES.has(sub.type.name) && $from.index(depth - 1) === 0) {
+          const subEnd = $from.after(depth) - 1;
+          const subStart = subEnd - sub.nodeSize;
+          chain.command(({ tr, dispatch }) => {
+            const range = new NodeRange(
+              tr.doc.resolve(subStart + 1),
+              tr.doc.resolve(subEnd - 1),
+              tr.doc.resolve(subStart + 1).depth
+            );
+            const target = liftTarget(range);
+            // No legal home for them: leave the sub-list alone and just join.
+            if (target !== null && dispatch) tr.lift(range, target);
+            return true;
+          });
+        }
+        return chain.joinTextblockBackward().run();
+      },
     };
   },
 });

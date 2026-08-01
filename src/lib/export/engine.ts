@@ -11,6 +11,7 @@ import { attachments, items, jobState } from "@/db/schema";
 import { bodyMarkdown } from "@/lib/body";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { normalizeListIndent } from "@/lib/markdown-render";
+import { spaceEmptyListItems } from "@/lib/editor/list-markdown";
 import { getStorage } from "@/lib/storage";
 import { getAppTimezone } from "@/lib/today";
 import type { ExportTarget } from "./target";
@@ -271,9 +272,10 @@ export async function runExport(
       // normalizeListIndent: re-indent nested lists to CommonMark widths so the
       // exported .md nests correctly in any reader (Obsidian, GitHub, pandoc),
       // matching the in-app editor and print/share render. Legacy import content
-      // nested at 2 spaces would otherwise flatten. (Same pass markdown-render
-      // applies; see its rationale.)
-      const content = `${buildFrontmatter(exportItem, people, atts.paths)}\n\n${normalizeListIndent(bodyMarkdown(exportItem.body))}\n`;
+      // nested at 2 spaces would otherwise flatten. spaceEmptyListItems: an empty
+      // bullet flush under a paragraph is a setext heading to those same readers
+      // (see list-markdown.ts). (Both passes markdown-render applies; see there.)
+      const content = `${buildFrontmatter(exportItem, people, atts.paths)}\n\n${normalizeListIndent(spaceEmptyListItems(bodyMarkdown(exportItem.body)))}\n`;
       await target.putFile(desired, content);
       // A rename, retype, or live<->archive move leaves a stale file at the
       // old path; the put above already wrote the replacement.
