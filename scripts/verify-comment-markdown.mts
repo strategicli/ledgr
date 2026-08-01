@@ -6,6 +6,7 @@
 import {
   hasComments,
   renderComments,
+  sanitizeNote,
   stripComments,
 } from "../src/lib/editor/comment-markdown";
 import { markdownToHtml, markdownToText } from "../src/lib/markdown-render";
@@ -170,6 +171,29 @@ check("hasComments: none", hasComments("plain text") === false);
 check("hasComments: unclosed is not a comment", hasComments("a {>>open") === false);
 check("hasComments: inside a fence doesn't count", hasComments("```\n{>>x<<}\n```") === false);
 
+// --- sanitizeNote: a note is single-line by contract ----------------------
+// A newline in the note used to serialize a pair nothing could read back, and the
+// NEXT save then entity-encoded its own markers into the body (`{&gt;&gt;…&lt;&lt;}`).
+// The write side folds instead, so whatever the textarea takes still round-trips.
+check(
+  "sanitizeNote: a newline folds to a space",
+  sanitizeNote("Could cut this\n\nwhole section") === "Could cut this whole section",
+  sanitizeNote("Could cut this\n\nwhole section")
+);
+check("sanitizeNote: CRLF folds too", sanitizeNote("one\r\ntwo") === "one two");
+check("sanitizeNote: a closing marker can't end the note early", sanitizeNote("a <<} b") === "a << } b");
+check("sanitizeNote: a plain note is untouched", sanitizeNote("too vague") === "too vague");
+// The point of all of it: what the write side emits, the read side parses.
+{
+  const folded = sanitizeNote("Could cut this\nwhole section");
+  const roundTrip = `The {==problem==}{>>${folded}<<} here.`;
+  check(
+    "a folded note round-trips through the parser",
+    hasComments(roundTrip) && stripComments(roundTrip) === "The problem here.",
+    stripComments(roundTrip)
+  );
+}
+
 // --- the render chain: visible reading, searchable, gone on print --------
 const body = "The {==hiring timeline==}{>>too vague, tighten **before** Sunday<<} needs work.";
 const html = markdownToHtml(body);
@@ -200,6 +224,24 @@ check("FTS text carries no markup", !text.includes("<span") && !text.includes("{
     "../src/components/markdown-editor/comment-mark"
   );
   const schema = getSchema([StarterKit, Comment] as never);
+
+  // The exact line the corruption came out of: the mark's own serializer, called
+  // with a note that carries a newline. It must emit a pair the parser can read
+  // back, not one that degrades to literal text on the next load.
+  const renderMarkdown = (Comment as unknown as {
+    config: { renderMarkdown: (node: unknown, helpers: unknown) => string };
+  }).config.renderMarkdown;
+  const emitted = renderMarkdown(
+    { attrs: { note: "Could cut this whole section\n\n" } },
+    { renderChildren: () => "The problem" }
+  );
+  check(
+    "the mark serializes a multi-line note as a readable pair",
+    emitted === "{==The problem==}{>>Could cut this whole section<<}",
+    emitted
+  );
+  check("…and the parser reads that pair back", hasComments(emitted));
+
   // "tighten" on both paragraphs; positions: para 1 text = 1..11, para 2 = 13..24.
   const para = (text: string, note?: string) => ({
     type: "paragraph",

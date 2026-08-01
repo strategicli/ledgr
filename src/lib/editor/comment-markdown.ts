@@ -71,6 +71,32 @@ function mayHaveComments(markdown: string): boolean {
   return !!markdown && markdown.includes("{>>");
 }
 
+// A note as it is safe to WRITE between `{>>` and `<<}`.
+//
+// The note half is single-line by contract — COMMENT above and the editor's
+// tokenizer both match it with [^\n]*?, for the runaway reason stated there. But
+// the note is authored in a textarea, and nothing stopped a newline from riding
+// the mark's `note` attribute straight into the markdown. That is not a comment
+// that merely fails to render, it is UNRECOVERABLE IN PLACE (hit live, Brandon's
+// "Don't Worry" manuscript, 2026-08-01):
+//
+//   1. the pair serializes with a raw newline in it, so nothing can read it back;
+//   2. on the next load the run parses as literal text, not a comment mark;
+//   3. on the next save @tiptap/markdown encodes that text node's entities, so
+//      `{>>…<<}` is rewritten into the body as `{&gt;&gt;…&lt;&lt;}` — no longer
+//      even the syntax it started as, on every line the comment bridged.
+//
+// So the guard belongs on the WRITE side, at every path that puts a note into the
+// markdown, and it folds rather than rejects: a note to self should never be
+// refused for containing a line break. `<<}` folds for the same reason from the
+// other end — it would close the note early and strand the rest as literal text.
+export function sanitizeNote(note: string): string {
+  return note
+    .replace(/\s*[\r\n]+\s*/g, " ")
+    .replace(/<<\}/g, "<< }")
+    .trim();
+}
+
 // Apply `fn` to every line, telling it whether the line is inside (or is a
 // delimiter of) a fenced code region. Every caller leaves fenced lines alone; they
 // still SEE them because grouping is stateful — a fence sitting between two

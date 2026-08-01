@@ -23,6 +23,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
 import { LIT_CLASS } from "./comment-hover";
+import { sanitizeNote } from "@/lib/editor/comment-markdown";
 
 // Fired on the editor root when the user clicks a comment's margin card (its
 // speech-bubble icon on a narrow viewport, which is the same element). The host
@@ -68,7 +69,11 @@ export const Comment = Mark.create({
 
   renderMarkdown(node, helpers) {
     const content = helpers.renderChildren(node);
-    const note = String(node.attrs?.note ?? "");
+    // The last gate before a note becomes canonical markdown. setComment already
+    // folds what the user types; this covers every other way an attribute can
+    // arrive (parseHTML off a pasted `data-note`, a doc built in code) — see
+    // sanitizeNote for what an unfolded newline does to the body.
+    const note = sanitizeNote(String(node.attrs?.note ?? ""));
     return `{==${content}==}{>>${note}<<}`;
   },
 
@@ -319,9 +324,12 @@ function selectComment(editor: Editor, at: number) {
 // current (non-empty) selection is the range being commented — a selection that
 // spans blocks is fine and becomes ONE bridged comment, since every block it
 // covers gets the same note.
+// Folded on the way IN, not just on the way out, so the margin card shows the
+// same single line the body will hold — a note that silently reflowed on the next
+// reload would read as the editor losing the edit.
 export function setComment(editor: Editor, note: string, at?: number): void {
   const chain = at !== undefined ? selectComment(editor, at) : editor.chain().focus();
-  chain.setMark("comment", { note }).run();
+  chain.setMark("comment", { note: sanitizeNote(note) }).run();
 }
 
 // Remove the comment, keeping the text it annotated (delete IS resolve, ADR-170).
