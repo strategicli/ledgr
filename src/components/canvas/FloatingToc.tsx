@@ -285,9 +285,15 @@ export default function FloatingToc({
     // makes canPin correct in every host — and it's what keeps a landscape phone
     // out (short window) while letting a portrait tablet in.
     const measure = () => {
+      // In the window case the visible bottom is above the docked nav, not at
+      // innerHeight — read it off body's used padding-bottom (globals.css sets it
+      // from --nav-pb), same trick as stickyTopOf. A scroll container's own box
+      // already excludes it.
       const h =
         scrollElRef.current?.clientHeight ??
-        window.innerHeight - stickyTopOf(rootRef.current);
+        window.innerHeight -
+          stickyTopOf(rootRef.current) -
+          (parseFloat(getComputedStyle(document.body).paddingBottom) || 0);
       setBox({ w: scope.clientWidth, h });
     };
     rescan();
@@ -672,7 +678,13 @@ export default function FloatingToc({
         aria-label="Table of contents"
         aria-expanded={sheetOpen}
         onClick={() => setSheetOpen(true)}
-        className="pointer-events-auto absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-2/95 text-ink-muted shadow-lg backdrop-blur transition-colors hover:bg-surface-3 hover:text-ink"
+        // Bottom of the visible box, not the top: at top-4 it landed on the item
+        // chrome row's kebab on a phone (Brandon, 2026-07-31). box.h is the scroll
+        // viewport's height, so this stays container-relative (ADR-167) — bottom
+        // of the panel in a Desk, bottom of the screen on a page — and 3.75rem
+        // clears the button's own height plus a gap.
+        style={{ top: `calc(${box.h}px - 3.75rem)` }}
+        className="pointer-events-auto absolute right-4 flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-2/95 text-ink-muted shadow-lg backdrop-blur transition-colors hover:bg-surface-3 hover:text-ink"
       >
         <svg
           width="20"
