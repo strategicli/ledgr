@@ -24,6 +24,12 @@ check("h6 clamps at <h6>, no overflow to <h7>", markdownToHtml("###### Deep").in
 check("bold", markdownToHtml("**b**").includes("<strong>b</strong>"));
 check("italic", markdownToHtml("*i*").includes("<em>i</em>"));
 check("strikethrough", markdownToHtml("~~x~~").includes("<s>x</s>"));
+// The underline mark serializes to ++text++; markdown-it has no ins rule of its
+// own, so markdown-render adds one (otherwise the plus signs print literally).
+check("underline", markdownToHtml("++u++").includes("<u>u</u>"));
+check("underline keeps nested formatting", markdownToHtml("++a **b**++").includes("<u>a <strong>b</strong></u>"));
+check("lone ++ is left alone", markdownToHtml("2 ++ 2").includes("2 ++ 2"));
+check("++ inside code is left alone", markdownToHtml("`a++b++c`").includes("a++b++c"));
 
 // --- mention renders as a tappable /items/<id> anchor ----------------------
 const id = "9f8c2b14-0000-4abc-8def-112233445566";

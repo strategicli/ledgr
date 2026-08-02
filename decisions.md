@@ -2539,3 +2539,23 @@ Brandon, after using the shipped blue-highlight version: *"In practice, the blue
 **Known ceiling:** the sentinel is a per-parser workaround, so if @tiptap/markdown ever swaps marked for a CommonMark parser, `hydrateEmptyListItems`/`stripSentinelText` can go and the blank-line pass alone will do.
 
 **Affects:** src/lib/editor/list-markdown.ts (new), scripts/verify-list-markdown.mts (new), src/components/markdown-editor/extensions.ts, src/components/markdown-editor/MarkdownEditor.tsx, src/components/markdown-editor/toolbar-icons.tsx, src/lib/markdown-render.ts, src/lib/export/engine.ts.
+
+## ADR-178: Underline gets a toolbar button, and `++text++` finally renders outside the editor
+
+**Status:** accepted (Brandon, 2026-08-02).
+
+**Not core.** No schema change, no syntax change, no change to the `{format, text}` contract. This is a *consumer* of a mark the format already had, exactly the posture ADR-176 took before its addendum (which was core precisely because it ADDED `<ins class="slide">`). Nothing new enters the dialect here. Worth a word to Tyler anyway, since it touches the shared renderer.
+
+**Context:** Brandon asked for an underline button on the formatting toolbar. The mark turned out to already exist: `@tiptap/extension-underline` ships inside StarterKit and is registered unconditionally, so Cmd+U has always worked and has always written `++text++` into bodies. The ADR-176 addendum names `++underline++` as a sitting tenant of the underline channel, and ADR-161 tuned how it inherits text color. What was missing was a button, a settings row, and a renderer.
+
+**The real defect the button exposed:** markdown-it has no `ins` rule, so every server-side surface (Save Offline, share, print, the OneDrive export's HTML, and the FTS document) rendered `++text++` as literal plus signs. That gap predates this change; adding a discoverable button would have made it common. Fixed at the root rather than at the button.
+
+**The decision:** a minimal inline rule in `markdown-render.ts` mapping `++text++` to `<u>`, registered before `emphasis` so the plus signs never reach the emphasis machinery. Inner content is re-parsed inline, so bold, italic, and color spans inside an underline survive. `markdown-it-ins` was declined: roughly 90 lines of dependency for one delimiter, against Principle 5.
+
+**Known ceiling:** the rule matches the nearest closing `++` instead of doing markdown-it's nesting-aware delimiter pairing, so `++a ++b++ c++` pairs shallowly. A mark cannot nest inside itself, so the editor cannot produce that, and neither can a person who means it. Upgrade path if it ever bites: port markdown-it-ins's tokenize/postProcess pair.
+
+**Also:** `++underline++` is now named in CLAUDE.md's dialect sentence. That is documenting an element that was already there and is now fully rendered, not adding one.
+
+**Verification:** `verify-print` covers the render, nested formatting inside an underline, and the two things that must stay untouched (`2 ++ 2` and `++` inside a code span). `verify-booth-export`, `verify-comment-markdown`, `verify-body-modes`, `verify-list-markdown` green. tsc and eslint clean. StarterKit's unconditional Underline registration confirmed in the installed 3.26 dist. **In-browser eyeball still pending:** the dev-auth preview never got past the app shell's loading state this session, so the button has not been clicked in a real browser.
+
+**Affects:** src/lib/markdown-render.ts, src/components/markdown-editor/toolbar-icons.tsx, src/components/markdown-editor/MarkdownEditor.tsx, scripts/verify-print.mts, CLAUDE.md.
