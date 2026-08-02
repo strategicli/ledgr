@@ -142,6 +142,43 @@ md.core.ruler.after("inline", "task_lists", (state) => {
   }
 });
 
+// `++text++` → <u>text</u>. That is what the editor's underline mark serializes
+// to (@tiptap/extension-underline, via StarterKit — it owns both ends of the
+// round-trip, so this is not a new dialect element, just the render side of one
+// that was already reaching the body). markdown-it has no `ins` rule and
+// markdown-it-ins is a whole dependency for one delimiter (Principle 5), so this
+// is a minimal inline rule instead. Runs before `emphasis` so the `+`s never
+// reach the emphasis machinery.
+//
+// ponytail: matches the NEAREST closing `++` rather than doing markdown-it's
+// nesting-aware delimiter pairing, so `++a ++b++ c++` pairs shallowly. The
+// editor can't produce that (a mark doesn't nest inside itself) and neither can
+// a person who means it. Upgrade path if it ever bites: port markdown-it-ins's
+// tokenize/postProcess pair. Inner content is re-parsed inline, so **bold** and
+// colors inside an underline survive.
+md.inline.ruler.before("emphasis", "ledgr_underline", (state, silent) => {
+  const start = state.pos;
+  if (state.src.charCodeAt(start) !== 0x2b || state.src.charCodeAt(start + 1) !== 0x2b) {
+    return false;
+  }
+  const close = state.src.indexOf("++", start + 2);
+  // Nothing between the delimiters, or the pair straddles the end of this inline
+  // run: not ours.
+  if (close < 0 || close === start + 2 || close + 2 > state.posMax) return false;
+  if (!silent) {
+    state.push("u_open", "u", 1);
+    state.md.inline.parse(
+      state.src.slice(start + 2, close),
+      state.md,
+      state.env,
+      state.tokens
+    );
+    state.push("u_close", "u", -1);
+  }
+  state.pos = close + 2;
+  return true;
+});
+
 // Re-indent indentation-nested lists to CommonMark-correct widths so this
 // renderer nests them the same way the editor shows them. (Don't undo this
 // without re-checking the editor's serializer.)

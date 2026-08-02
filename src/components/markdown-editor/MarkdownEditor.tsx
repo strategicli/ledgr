@@ -515,6 +515,7 @@ export default function MarkdownEditor({
     selector: ({ editor }) => ({
       isBold: editor?.isActive("bold") ?? false,
       isItalic: editor?.isActive("italic") ?? false,
+      isUnderline: editor?.isActive("underline") ?? false,
       isStrike: editor?.isActive("strike") ?? false,
       isH1: editor?.isActive("heading", { level: 1 }) ?? false,
       isH2: editor?.isActive("heading", { level: 2 }) ?? false,
@@ -1117,6 +1118,7 @@ export default function MarkdownEditor({
     [
       { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
       { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
+      { id: "underline", title: "Underline", icon: TOOLBAR_ICONS.underline, active: toolbar.isUnderline, run: () => editor.chain().focus().toggleUnderline().run() },
       { id: "strike", title: "Strikethrough", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
     ],
     [
