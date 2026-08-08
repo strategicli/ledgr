@@ -95,18 +95,20 @@ export const BUILD_ENTRIES: BuildEntry[] = BUILD_NAV.flatMap((g) => g.entries);
 
 // True for any route that renders within the Build surface (so NavShell shows
 // the Build sidebar). Model Overview is `/build` exactly; everything else is a
-// `/build/...` child. Dashboards (`/dashboards*`) are an INTERFACE-building
-// surface reached from the Build sidebar, so they keep the Build chrome too —
-// you manage/build a dashboard in Build. (A dashboard *assigned* as the Home or
-// Today surface renders at `/` or `/today`, which stay Work chrome — that's the
-// "using it" context, not the "building it" one.) `/settings` is reachable from
-// both sides, so it is NOT treated as Build chrome (it keeps the Work nav when
-// reached from the Work kebab); the sidebar's User Settings entry links to it.
+// `/build/...` child. The dashboards INDEX (`/dashboards`, the management
+// surface: rename/duplicate/delete/reorder + Home/Today assignment) is Build
+// chrome; an INDIVIDUAL dashboard (`/dashboards/<id>`) is the "using it"
+// context and keeps Work chrome — the destination picker offers dashboards as
+// Work-nav slots, and Home/Today already render the same grid under Work
+// chrome. (Claiming `/dashboards/...` as Build here is what once made Build
+// mode the only way to view an unassigned dashboard.) `/settings` is reachable
+// from both sides, so it is NOT treated as Build chrome (it keeps the Work nav
+// when reached from the Work kebab); the sidebar's User Settings entry links
+// to it.
 export function isBuildPath(pathname: string): boolean {
   return (
     pathname === "/build" ||
     pathname.startsWith("/build/") ||
-    pathname === "/dashboards" ||
-    pathname.startsWith("/dashboards/")
+    pathname === "/dashboards"
   );
 }
