@@ -10,6 +10,7 @@ import {
   NAV_POSITIONS,
   RAIL_ANCHORS,
   RAIL_SIZES,
+  SEARCH_MODES,
   getSettings,
   updateSettings,
   type NavSlotConfig,
@@ -78,7 +79,9 @@ export const workspaceTools: McpTool[] = [
       "configurable middle slots; a locked Home/New/More are added " +
       "automatically) and/or the layout knobs `position` (top|bottom|left|right), " +
       "`railSize` (fat|thin|hidden), `density` (spread|compact), `railAnchor` " +
-      "(top|bottom|center). A slot is either { type:'destination', kind, href, " +
+      "(top|bottom|center), `searchMode` (what the Search icon opens: palette = " +
+      "the quick ⌘K popup, page = the full search page). A slot is either " +
+      "{ type:'destination', kind, href, " +
       "label, icon } (kind builtin|view|type|dashboard; href like /tasks, " +
       "/views/<id>, /list/<key>) or { type:'tools', label, icon, " +
       "children:[destinations] }. `mobileNavSlots` is a separate phone list (null " +
@@ -94,6 +97,7 @@ export const workspaceTools: McpTool[] = [
         railSize: { type: "string", enum: [...RAIL_SIZES], description: "Side-rail width: fat | thin | hidden." },
         density: { type: "string", enum: [...NAV_DENSITIES], description: "Packing: spread | compact." },
         railAnchor: { type: "string", enum: [...RAIL_ANCHORS], description: "Cluster anchor for a compact rail/top bar: top | bottom | center." },
+        searchMode: { type: "string", enum: [...SEARCH_MODES], description: "What the nav's one Search icon opens: palette (the quick ⌘K popup) | page (the full search page). ⌘K opens the popup either way." },
       },
       additionalProperties: false,
     },
@@ -120,6 +124,8 @@ export const workspaceTools: McpTool[] = [
       if (density) patch.navDensity = density;
       const railAnchor = optEnum(args, "railAnchor", RAIL_ANCHORS);
       if (railAnchor) patch.railAnchor = railAnchor;
+      const searchMode = optEnum(args, "searchMode", SEARCH_MODES);
+      if (searchMode) patch.searchMode = searchMode;
       if (Object.keys(patch).length === 0) {
         throw new ItemError("bad_request", "pass at least one nav field to change");
       }

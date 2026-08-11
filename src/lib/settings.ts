@@ -109,6 +109,17 @@ export type SectionStyle = (typeof SECTION_STYLES)[number];
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
+// The Search slot's href, and what tapping it does (ADR-182). Ledgr has TWO
+// search surfaces — the ⌘K command palette and the full /search page (stacked
+// criteria with per-criterion confidence, ADR-172) — and both used to appear at
+// once: the page as a default nav slot, the palette as a hardcoded button every
+// layout carried. One search icon in the nav, one owner choice about what it
+// opens. ⌘K still opens the palette either way; that's a keyboard shortcut, not
+// an icon, so it costs no space and stays available.
+export const SEARCH_HREF = "/search";
+export const SEARCH_MODES = ["palette", "page"] as const;
+export type SearchMode = (typeof SEARCH_MODES)[number];
+
 // Width of the left/right side rail. Only meaningful when navPosition is
 // left or right: "fat" shows icons + names, "thin" is an icon-only rail,
 // "hidden" rolls it up to a sliver tab at the screen edge. The nav's collapse
@@ -223,6 +234,9 @@ export type UserSettings = {
   railSize: RailSize;
   navDensity: NavDensity;
   railAnchor: RailAnchor;
+  // What the nav's Search slot opens (ADR-182): the ⌘K command palette, or the
+  // full /search page. One icon, one choice; ⌘K reaches the palette regardless.
+  searchMode: SearchMode;
   // The configurable middle nav slots (Home/New/More are added at render time).
   navSlots: NavSlotConfig[];
   // Mobile override: null mirrors the desktop slots; an array is a distinct
@@ -385,6 +399,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   railSize: "fat",
   navDensity: "spread",
   railAnchor: "top",
+  searchMode: "palette",
   navSlots: DEFAULT_NAV_SLOTS,
   mobileNavSlots: null,
   displayName: "",
@@ -567,6 +582,9 @@ export function parseSettings(raw: unknown): UserSettings {
   const railSize = (RAIL_SIZES as readonly string[]).includes(r.railSize as string)
     ? (r.railSize as RailSize)
     : DEFAULT_SETTINGS.railSize;
+  const searchMode = (SEARCH_MODES as readonly string[]).includes(r.searchMode as string)
+    ? (r.searchMode as SearchMode)
+    : DEFAULT_SETTINGS.searchMode;
   const navDensity = (NAV_DENSITIES as readonly string[]).includes(r.navDensity as string)
     ? (r.navDensity as NavDensity)
     : DEFAULT_SETTINGS.navDensity;
@@ -648,6 +666,7 @@ export function parseSettings(raw: unknown): UserSettings {
     quickAddHidden,
     trashRetentionDays: days,
     navPosition,
+    searchMode,
     railSize,
     navDensity,
     railAnchor,
