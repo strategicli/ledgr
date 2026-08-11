@@ -5,6 +5,7 @@
 import { asUuid } from "@/lib/api";
 import { makeMarkdownBody } from "@/lib/body";
 import { ItemError } from "@/lib/items";
+import { isYmd } from "@/lib/recurrence";
 
 export function optString(args: Record<string, unknown>, key: string): string | undefined {
   const v = args[key];
@@ -59,6 +60,53 @@ export function optStringRecord(
   return Object.keys(out).length ? out : undefined;
 }
 
+// A calendar day (YYYY-MM-DD) — the shape recurrence rules speak (ADR-076).
+// Rejects a datetime so a caller can't smuggle a zone into a date-only field.
+export function optYmd(args: Record<string, unknown>, key: string): string | undefined {
+  const v = optString(args, key);
+  if (v === undefined) return undefined;
+  if (!isYmd(v)) throw new ItemError("bad_request", `${key} must be a calendar date, YYYY-MM-DD`);
+  return v;
+}
+
+// An array of values from a fixed set (e.g. byDay weekdays). Undefined for a
+// missing key; an EMPTY array is preserved (it means "clear this part").
+export function optEnumArray<T extends string>(
+  args: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[]
+): T[] | undefined {
+  const v = args[key];
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) throw new ItemError("bad_request", `${key} must be an array`);
+  return v.map((x) => {
+    const s = typeof x === "string" ? x.trim().toUpperCase() : "";
+    if (!(allowed as readonly string[]).includes(s)) {
+      throw new ItemError("bad_request", `${key} entries must be one of: ${allowed.join(", ")}`);
+    }
+    return s as T;
+  });
+}
+
+// An array of integers within an inclusive range (e.g. byMonthDay 1..31, -1).
+export function optIntArray(
+  args: Record<string, unknown>,
+  key: string,
+  allow: (n: number) => boolean,
+  hint: string
+): number[] | undefined {
+  const v = args[key];
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) throw new ItemError("bad_request", `${key} must be an array`);
+  return v.map((x) => {
+    const n = Number(x);
+    if (!Number.isInteger(n) || !allow(n)) {
+      throw new ItemError("bad_request", `${key} entries must be ${hint}`);
+    }
+    return n;
+  });
+}
+
 export function optUuidArray(args: Record<string, unknown>, key: string): string[] {
   const v = args[key];
   if (v === undefined || v === null) return [];
@@ -73,11 +121,13 @@ const WRITE_FIELDS = [
   "status",
   "urgency",
   "dueDate",
+  "scheduledDate",
   "meetingAt",
   "url",
   "kind",
   "properties",
   "inbox",
+  "parentId",
 ] as const;
 
 // Builds the ItemInput/ItemPatch raw object for parseItemPayload from MCP args.

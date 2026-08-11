@@ -29,6 +29,7 @@ import {
 } from "@/lib/views";
 import { buildWriteRaw, optEnum, optInt, optString, optUuidArray, reqString } from "./args";
 import { rowView } from "./serializers";
+import { recurrenceView } from "./tasks";
 import type { McpTool } from "./wire";
 
 export const itemTools: McpTool[] = [
@@ -191,8 +192,9 @@ export const itemTools: McpTool[] = [
       // A normal-size body (and no explicit paging) returns whole and byte-for-
       // byte unchanged — the body contract is untouched. Only a large body, or a
       // caller that explicitly pages, takes the windowed path below.
+      const recurrence = recurrenceView(item.properties);
       if (!isLargeBody(fullText) && !paging) {
-        return { ...rowView(item), body: fullText, related: relatedView };
+        return { ...rowView(item), body: fullText, ...recurrence, related: relatedView };
       }
 
       const win = windowBody(fullText, { offset: bodyOffset, limit: bodyLimit });
@@ -206,6 +208,7 @@ export const itemTools: McpTool[] = [
       return {
         ...rowView(item),
         body,
+        ...recurrence,
         bodyInfo: {
           totalChars: win.totalChars,
           offset: win.offset,
@@ -331,7 +334,9 @@ export const itemTools: McpTool[] = [
       "(bodyMarkdown). Use relateTo to link the new item to existing items by id " +
       "(e.g. relate a task to a person). Items default to filed (not in " +
       "the inbox); set inbox=true to capture for later triage. Call list_types " +
-      "first if unsure which type or custom properties exist.",
+      "first if unsure which type or custom properties exist. Pass parentId to " +
+      "file it as a SUBTASK under another item. For a task that REPEATS, create " +
+      "it first, then call set_recurrence on the new id.",
     inputSchema: {
       type: "object",
       properties: {
@@ -339,7 +344,16 @@ export const itemTools: McpTool[] = [
         title: { type: "string", description: "Item title." },
         bodyMarkdown: { type: "string", description: "Body as markdown. To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
-        dueDate: { type: "string", description: "Due date, ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
+        dueDate: { type: "string", description: "Due date (the deadline), ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
+        scheduledDate: { type: "string", description: "Planned date — the day you intend to WORK on it, as opposed to dueDate (the deadline). ISO 8601. This is what Today/Planner and a recurring series read." },
+        parentId: {
+          type: "string",
+          description:
+            "File this item as a SUBTASK (child) of that item id. Any type can " +
+            "nest under any other; a task under a task is the checklist case. " +
+            "The parent's 'n of m done' rollup counts task-type children. To " +
+            "add several children at once use add_subtasks instead.",
+        },
         meetingAt: { type: "string", description: "Event start time, ISO 8601 date-time. Events only." },
         urgency: { type: "number", enum: [...URGENCIES], description: "Priority 1–6 (tasks; 1 highest)." },
         url: { type: "string", description: "URL (links)." },
@@ -369,7 +383,10 @@ export const itemTools: McpTool[] = [
       "Update fields on an existing item by id: title, status (e.g. mark a task " +
       "done), due date, urgency, body (bodyMarkdown replaces the whole body), " +
       "custom properties, etc. Only the fields you pass change. To change an " +
-      "item's relations use the relations on create_item, not this tool.",
+      "item's relations use the relations on create_item, not this tool. Marking " +
+      "a RECURRING task done here is the right way to complete its current " +
+      "occurrence: the series advances to the next date instead of closing. To " +
+      "change the repeat rule itself, use set_recurrence, not properties.",
     inputSchema: {
       type: "object",
       properties: {
@@ -377,7 +394,16 @@ export const itemTools: McpTool[] = [
         title: { type: "string", description: "New title." },
         bodyMarkdown: { type: "string", description: "New body markdown (replaces the entire body). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "New status." },
-        dueDate: { type: "string", description: "New due date (ISO 8601), or null to clear." },
+        dueDate: { type: "string", description: "New due date / deadline (ISO 8601), or null to clear." },
+        scheduledDate: { type: "string", description: "New planned date — the day you intend to work on it (ISO 8601), or null to clear. On a recurring task this is the next occurrence, so prefer letting status=done advance it." },
+        parentId: {
+          type: "string",
+          description:
+            "Re-parent this item: the id of the item it should become a SUBTASK " +
+            "of, or null to lift it back to the top level. Its own children " +
+            "travel with it. A cycle (making an item its own descendant) is " +
+            "rejected.",
+        },
         meetingAt: { type: "string", description: "New meeting time (ISO 8601), or null to clear." },
         urgency: { type: "number", enum: [...URGENCIES], description: "New priority 1–6, or null to clear." },
         url: { type: "string", description: "New URL, or null to clear." },
