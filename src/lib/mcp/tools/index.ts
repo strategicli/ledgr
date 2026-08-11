@@ -21,6 +21,7 @@ import { dashboardTools } from "./dashboards";
 import { itemTools } from "./items";
 import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
 import { relationTools } from "./relations";
+import { taskTools } from "./tasks";
 import { templateTools } from "./templates";
 import { typeTools } from "./types";
 import { viewTools } from "./views";
@@ -32,6 +33,7 @@ export { MEMORY_TOOL_NAMES };
 
 const TOOLS: McpTool[] = [
   ...itemTools,
+  ...taskTools,
   ...attachmentTools,
   ...typeTools,
   ...relationTools,

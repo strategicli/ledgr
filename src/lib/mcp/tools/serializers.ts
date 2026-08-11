@@ -16,6 +16,10 @@ export function rowView(r: {
   status: string;
   urgency: number | null;
   dueDate: Date | null;
+  // The planned date (ADR-073/076) — distinct from the dueDate deadline, and
+  // the field a recurring series advances. Optional here only because the FTS
+  // row shape (search.ts) doesn't select it; every other source does.
+  scheduledDate?: Date | null;
   meetingAt: Date | null;
   url: string | null;
   parentId: string | null;
@@ -31,6 +35,7 @@ export function rowView(r: {
     status: r.status,
     urgency: r.urgency,
     dueDate: r.dueDate,
+    ...(r.scheduledDate !== undefined ? { scheduledDate: r.scheduledDate } : {}),
     meetingAt: r.meetingAt,
     url: r.url,
     parentId: r.parentId,
