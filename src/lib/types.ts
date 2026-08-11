@@ -17,6 +17,7 @@ import { eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { parseCanvasLayout, type CanvasLayout } from "@/lib/canvas-layout";
+import { parseComposition, type Composition } from "@/lib/composition";
 import {
   isStatusMode,
   parseStatusSchema,
@@ -494,6 +495,38 @@ export async function setTypeCanvasLayout(
   const rows = await getDb()
     .update(types)
     .set({ canvasLayout: value })
+    .where(eq(types.key, key))
+    .returning();
+  return rowToDefinition(rows[0]);
+}
+
+// Save a type's DEFAULT WIDGET SET — Layer 2 of the composition model
+// (ADR-111/PJ3): which sections every record of this type shows before any
+// individual record diverges. `types.default_widgets` has been read on the render
+// path since PJ3 (resolveComposition overlays record → type → generated) but had
+// no writer anywhere in the app until ADR-181; the only editable layer was the
+// per-record one. A focused setter like setTypeCanvasLayout / setTypeStatusConfig.
+//
+// null clears it, which is not the same as an empty widget list: cleared means
+// "fall back to the generated default for this type" (the Project/Pursuit/generic
+// starting sets), while an empty list means "this type shows no sections." Both
+// are legal and different, so the caller's null-vs-[] is preserved exactly.
+export async function setTypeDefaultWidgets(
+  key: string,
+  rawComposition: unknown
+): Promise<TypeDefinition> {
+  await getType(key); // existence (throws not_found)
+  let value: Composition | null = null;
+  if (rawComposition != null) {
+    value = parseComposition(rawComposition);
+    // parseComposition is tolerant by design (bad shape → null) because it runs
+    // on the render path; a WRITE must not silently store nothing, so a shape it
+    // rejects is an error here rather than a quiet clear.
+    if (!value) bad("invalid widget composition (expected { version: 1, widgets: [...] })");
+  }
+  const rows = await getDb()
+    .update(types)
+    .set({ defaultWidgets: value })
     .where(eq(types.key, key))
     .returning();
   return rowToDefinition(rows[0]);

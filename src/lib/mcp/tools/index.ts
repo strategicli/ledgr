@@ -20,6 +20,7 @@ import { contextTools, LIVE_CONTEXT_TOOL_NAMES } from "./context";
 import { dashboardTools } from "./dashboards";
 import { itemTools } from "./items";
 import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
+import { recordTools } from "./records";
 import { relationTools } from "./relations";
 import { taskTools } from "./tasks";
 import { templateTools } from "./templates";
@@ -34,6 +35,7 @@ export { MEMORY_TOOL_NAMES };
 const TOOLS: McpTool[] = [
   ...itemTools,
   ...taskTools,
+  ...recordTools,
   ...attachmentTools,
   ...typeTools,
   ...relationTools,
