@@ -132,6 +132,8 @@ export function navView(s: UserSettings) {
     railSize: s.railSize,
     density: s.navDensity,
     railAnchor: s.railAnchor,
+    // What the one Search slot opens (ADR-182): palette | page.
+    searchMode: s.searchMode,
     homeDashboardId: s.homeDashboardId,
     todayDashboardId: s.todayDashboardId,
     slots: s.navSlots.map(slotView),

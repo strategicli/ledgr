@@ -84,6 +84,11 @@ const EXPECTED = [
   // workspace shaping (ADR-102)
   "describe_workspace", "create_type", "update_type", "create_view",
   "update_view", "create_dashboard", "add_widget", "update_nav",
+  // subtasks + recurrence (ADR-180)
+  "list_subtasks", "add_subtasks", "set_recurrence", "update_occurrence",
+  // record/project shaping (ADR-181)
+  "get_record_layout", "set_record_layout", "set_type_layout", "add_to_record",
+  "set_type_statuses",
 ];
 // The always-on tool set (AI Memory tools are gated off for the dummy owner —
 // asserted separately below), so tools/list here is exactly EXPECTED.
@@ -93,8 +98,8 @@ check(
 );
 check("every tool has an object inputSchema", toolList.every((t) => t.inputSchema?.type === "object" && !!t.inputSchema.properties));
 check("every tool has a non-empty description", toolList.every((t) => typeof t.description === "string" && t.description.length > 0));
-check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates", "describe_workspace"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
-check("write tools are not readOnly", ["create_item", "update_item", "relate_items", "unrelate_items", "apply_template", "create_type", "update_type", "create_view", "update_view", "create_dashboard", "add_widget", "update_nav"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
+check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates", "describe_workspace", "list_subtasks", "get_record_layout"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
+check("write tools are not readOnly", ["create_item", "update_item", "relate_items", "unrelate_items", "apply_template", "create_type", "update_type", "create_view", "update_view", "create_dashboard", "add_widget", "update_nav", "add_subtasks", "set_recurrence", "update_occurrence", "set_record_layout", "set_type_layout", "add_to_record", "set_type_statuses"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === false));
 const bareDefs = await listToolDefs(DUMMY);
 check("listToolDefs strips the handler", bareDefs.every((d) => !("handler" in (d as Record<string, unknown>))));
 // AI Memory (ADR-137) is off for the dummy owner (no settings row → default

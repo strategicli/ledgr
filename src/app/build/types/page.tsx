@@ -12,9 +12,22 @@ import { attachableCapabilities } from "@/lib/modules";
 // hint card below (same import the catalog page uses).
 import "@/lib/modules/register";
 import { resolveOwner } from "@/lib/owner";
+import { resolveStatusSchema, type StatusMode } from "@/lib/status";
 import { listTypes } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+// A one-glance summary of how a type tracks completion, so the row advertises
+// that its status TERMS are editable behind it (ADR-181 — the panel existed since
+// ADR-106/082 but nothing pointed at it from the index). Named stages read as
+// their count, since the labels themselves are too long for a row badge; a
+// checkbox type says so; a type with no status shows nothing.
+function statusHint(t: { statusMode: StatusMode; statusSchema: unknown }): string | null {
+  if (t.statusMode === "none") return null;
+  if (t.statusMode === "checkbox") return "done checkbox";
+  const n = resolveStatusSchema(t.statusSchema as never).length;
+  return `${n} status${n === 1 ? "" : "es"}`;
+}
 
 export default async function BuildTypes() {
   const owner = await resolveOwner();
@@ -89,6 +102,18 @@ export default async function BuildTypes() {
                   {count > 0 && (
                     <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
                       {count} field{count === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {/* The status terms live behind this row (the "Completion
+                      tracking" panel on the edit page). Nothing used to hint at
+                      that, so "where do I rename my project stages?" had no
+                      visible answer from here — ADR-181. */}
+                  {statusHint(t) && (
+                    <span
+                      className="hidden shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400 sm:inline"
+                      title="Edit this type's status terms in Completion tracking"
+                    >
+                      {statusHint(t)}
                     </span>
                   )}
                   {t.isSystem && (

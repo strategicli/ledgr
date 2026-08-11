@@ -12,9 +12,10 @@
 //
 // Middle slots come from settings.navSlots (resolved server-side by Nav.tsx into
 // ShellSlot[]). A slot is either a single `destination` or a `tools` group that
-// opens a popover of child destinations. Every destination navigates, including
-// /search (the full search page); the command palette is reached by ⌘K or the
-// permanent Search button each layout carries.
+// opens a popover of child destinations. Destinations navigate, with two
+// href-identified exceptions that open an overlay in place: /favorites (the
+// flyout) and /search when the owner's searchMode is "palette" (ADR-182). ⌘K
+// always opens the palette regardless of that setting.
 // Build has a global shortcut (Ctrl/Cmd+Shift+B) and a glowing entry in More.
 "use client";
 
@@ -45,10 +46,12 @@ import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
 import {
   FAVORITES_HREF,
   RECOMMENDED_MOBILE_NAV_SLOTS,
+  SEARCH_HREF,
   type NavDensity,
   type NavPosition,
   type RailAnchor,
   type RailSize,
+  type SearchMode,
 } from "@/lib/settings";
 
 // A single nav destination, resolved for render (icon key + any badge count).
@@ -79,17 +82,24 @@ const HOME_SLOT: ShellSlot = {
   count: null,
 };
 
-// NOTE (ADR-172 follow-up): there is deliberately NO /search special-case here.
-// A configurable slot pointing at /search navigates to the full search page, like
-// any other destination. The command palette has its own doors that no nav
-// configuration can remove: the global ⌘K handler below, plus a permanent Search
-// button hardcoded into all four layouts (pillTrailingControls,
-// mobileTrailingControls, the top bar and the side rail). Hijacking the slot made
-// the palette reachable five ways and the search PAGE reachable none, which is
-// why it went.
+// SEARCH (ADR-182, supersedes the ADR-172 follow-up note that used to sit here).
+// Ledgr has two search surfaces — the ⌘K palette and the /search page — and the
+// old arrangement showed BOTH by default: /search as a seeded nav slot, plus a
+// permanent palette button hardcoded into all four layouts beside New/More. So a
+// default nav carried two search icons, only one of which the owner could
+// configure, and the hardcoded one used its own dimmer color than the slots
+// beside it. Now there is ONE Search slot, and `searchMode` decides what it
+// opens. The earlier note's concern — that hijacking the slot left the PAGE
+// unreachable — is answered by the setting rather than by two icons.
+// ⌘K keeps working in both modes: a shortcut costs no space, so the palette is
+// never truly unreachable.
 
 // A destination at /favorites opens the favorites flyout rather than navigating.
 const isFavoritesHref = (href: string) => href === FAVORITES_HREF;
+// The Search slot (ADR-182). Like Favorites, this is a destination whose href
+// identifies it rather than being followed blindly: in "palette" mode the slot
+// opens the ⌘K overlay instead of navigating to the page.
+const isSearchHref = (href: string) => href === SEARCH_HREF;
 
 const POSITIONS: { value: NavPosition; label: string }[] = [
   { value: "top", label: "Top" },
@@ -117,6 +127,7 @@ export default function NavShell({
   railSize: railSizeProp,
   navDensity: navDensityProp,
   railAnchor: railAnchorProp,
+  searchMode,
 }: {
   slots: ShellSlot[];
   mobileSlots: ShellSlot[];
@@ -131,6 +142,8 @@ export default function NavShell({
   railSize: RailSize;
   navDensity: NavDensity;
   railAnchor: RailAnchor;
+  // What the Search slot opens (ADR-182): the ⌘K palette, or the /search page.
+  searchMode: SearchMode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -321,7 +334,17 @@ export default function NavShell({
     { label: "Settings", href: "/settings", icon: "bolt" },
     { label: "Changelog", href: "/changelog", icon: "book" },
     { label: "Trash", href: "/trash", icon: "archive" },
-  ].filter((t) => !visibleBarHrefs.has(t.href));
+  ]
+    .filter((t) => !visibleBarHrefs.has(t.href))
+    // The Search tile follows the same rule as the Search slot (ADR-182): in
+    // "palette" mode it opens the overlay instead of navigating to the page.
+    // Without this, an owner whose Search slot overflowed out of the bar would
+    // get a tile that quietly did the OTHER thing.
+    .map((t) =>
+      isSearchHref(t.href) && searchMode === "palette"
+        ? { ...t, onSelect: () => setSearchOpen(true) }
+        : t
+    );
 
   const itemColors = (active: boolean) =>
     active
@@ -478,6 +501,29 @@ export default function NavShell({
               ? mountMobilePopover(toolsPopover(slot, id, "", true))
               : toolsPopover(slot, id, toolsPos))}
         </div>
+      );
+    }
+
+    // Search in "palette" mode: a destination that opens the ⌘K overlay instead
+    // of navigating (ADR-182). Rendering it as a slot — rather than the permanent
+    // hardcoded button each layout used to carry beside New/More — is what makes
+    // it configurable AND fixes its color: it now takes `className` from the same
+    // per-layout builder every other icon uses, instead of its own dimmer
+    // neutral-500. In "page" mode it falls through to the plain Link below.
+    if (isSearchHref(slot.href) && searchMode === "palette") {
+      return (
+        <button
+          key={id}
+          onClick={() => {
+            if (mobileBar) setLauncherOpen(false);
+            setSearchOpen(true);
+          }}
+          aria-label={slot.label}
+          title={`${slot.label} (⌘K)`}
+          className={className}
+        >
+          {inner}
+        </button>
       );
     }
 
@@ -648,19 +694,6 @@ export default function NavShell({
   // below (Search + New, icon-only; More retired into the Launcher — Q7).
   const pillTrailingControls = (
     <>
-      {/* Search slot (ui-refresh S2): a permanent, visible entry to the ⌘K
-          palette — the audit found search had zero affordance and was
-          unreachable on a phone. Rides the trailing controls so it renders in
-          whatever position the owner docked the nav. */}
-      <button
-        onClick={() => setSearchOpen(true)}
-        title="Search (⌘K)"
-        aria-label="Search"
-        className="flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
-      >
-        <Icon icon="search" />
-        Search
-      </button>
       <button
         onClick={() => setCaptureOpen(true)}
         title="Quick capture (q)"
@@ -685,22 +718,13 @@ export default function NavShell({
     </>
   );
 
-  // The mobile fixed bar's trailing controls (Q7): Search + New, icon-only to
-  // save width. More is gone from the mobile bar — its contents live in the
-  // Launcher (Build/Settings/Trash/Edit-nav/Changelog tiles) and User Settings.
+  // The mobile fixed bar's trailing controls (Q7): + New, icon-only to save
+  // width. More is gone from the mobile bar — its contents live in the Launcher
+  // (Build/Settings/Trash/Edit-nav/Changelog tiles) and User Settings. Search is
+  // no longer here either: it's a configurable slot now (ADR-182), so it sits in
+  // the slot row with the other icons instead of being pinned beside New.
   const mobileTrailingControls = (
     <>
-      <button
-        onClick={() => {
-          setLauncherOpen(false);
-          setSearchOpen(true);
-        }}
-        title="Search (⌘K)"
-        aria-label="Search"
-        className="flex shrink-0 items-center rounded-xl p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
-      >
-        <Icon icon="search" />
-      </button>
       <button
         onClick={() => {
           setLauncherOpen(false);
@@ -835,14 +859,6 @@ export default function NavShell({
             )}
             <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
               <button
-                onClick={() => setSearchOpen(true)}
-                title="Search (⌘K)"
-                aria-label="Search"
-                className="flex items-center rounded-lg p-2 text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300"
-              >
-                <Icon icon="search" />
-              </button>
-              <button
                 onClick={() => setCaptureOpen(true)}
                 title="Quick capture (q)"
                 className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--accent)] hover:bg-neutral-800/60"
@@ -944,17 +960,6 @@ export default function NavShell({
 
           {/* Search + New + More. */}
           <div className="flex flex-col gap-1">
-            <button
-              onClick={() => setSearchOpen(true)}
-              title="Search (⌘K)"
-              aria-label="Search"
-              className={`flex items-center text-neutral-500 hover:bg-neutral-800/60 hover:text-neutral-300 ${
-                railSize === "fat" ? "gap-3 rounded-lg px-3 py-2 text-sm" : "justify-center rounded-lg p-2.5"
-              }`}
-            >
-              <Icon icon="search" />
-              {railSize === "fat" && "Search"}
-            </button>
             <button
               onClick={() => setCaptureOpen(true)}
               title="Quick capture (q)"

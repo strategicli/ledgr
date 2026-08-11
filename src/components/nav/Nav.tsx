@@ -107,6 +107,7 @@ export default async function Nav() {
       railSize={settings.railSize}
       navDensity={settings.navDensity}
       railAnchor={settings.railAnchor}
+      searchMode={settings.searchMode}
     />
   );
 }
