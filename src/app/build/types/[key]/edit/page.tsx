@@ -4,10 +4,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
 import StatusSchemaEditor from "@/components/build/StatusSchemaEditor";
+import TypeSectionsEditor from "@/components/build/TypeSectionsEditor";
 import ListTabsEditor from "@/components/build/ListTabsEditor";
 import TocSettingsEditor from "@/components/build/TocSettingsEditor";
+import { parseComposition, resolveComposition } from "@/lib/composition";
 import { lensesForType, lensPropertyOptions } from "@/lib/list-lenses";
 import { capabilityById } from "@/lib/modules";
+import { isWidgetAvailable, widgetsForScope } from "@/lib/widgets";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { tocForType } from "@/lib/toc";
@@ -47,6 +50,25 @@ export default async function EditType({
   const settings = await getSettings(owner.id);
   const propertyOptions = lensPropertyOptions(type.propertySchema);
 
+  // Layer 2 (ADR-181): the sections every record of this type shows. `effective`
+  // is what records show right now — the stored default if the type has one,
+  // else the built-in starting set — so the editor opens on current behavior
+  // rather than an empty list. Collection/relation cards preview N rows, so only
+  // those get a count control.
+  const sectionCatalog = widgetsForScope("record")
+    .filter(isWidgetAvailable)
+    .map((w) => ({
+      id: w.id,
+      label: w.label,
+      capped: w.kind === "collection" || w.kind === "relation",
+    }));
+  const storedDefault = parseComposition(type.defaultWidgets);
+  const { composition: effectiveSections } = resolveComposition(
+    null,
+    type.defaultWidgets,
+    key
+  );
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
@@ -71,6 +93,13 @@ export default async function EditType({
           typeKey={key}
           initialMode={type.statusMode}
           initial={type.statusSchema}
+        />
+        <TypeSectionsEditor
+          typeKey={key}
+          typeLabel={type.label}
+          catalog={sectionCatalog}
+          initial={storedDefault}
+          effective={effectiveSections}
         />
         <ListTabsEditor
           typeKey={key}
