@@ -17,6 +17,17 @@ next-env.d.ts
 # Production
 /dist
 
+# Desktop build output (the Electron/PGlite branch, feat/desktop-electron-pglite).
+# The entries above are root-anchored, so desktop's copies weren't covered and a
+# build left ~19k untracked files (1.2GB) sitting in the working tree after a
+# branch switch. Artifact paths only, never the whole /desktop dir, so real
+# source on that branch still shows up as untracked when it should.
+/desktop/node_modules/
+/desktop/dist/
+/desktop/release/
+/desktop/web/.next/
+/desktop/web/out/
+
 # Environment / secrets (NEVER commit real values; keep .env.example tracked)
 .env
 .env.local

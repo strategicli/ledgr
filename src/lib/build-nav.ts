@@ -76,6 +76,12 @@ export const BUILD_NAV: BuildGroup[] = [
       // (any MCP-speaking AI can connect), so the surface name stays generic
       // even though Claude is the reference client. Route slug stays /claude.
       { label: "AI & MCP", href: "/build/claude", icon: "bolt" },
+      // API Tokens (ADR-179): tokens for non-AI callers — an external app that
+      // pushes data in over /api/machine/*. Its own entry rather than a section
+      // on AI & MCP, because "give my app an API token" doesn't read as an AI
+      // task; the previous home (User Settings → Save from the web) was
+      // effectively undiscoverable for that.
+      { label: "API Tokens", href: "/build/api", icon: "tools" },
       // AI Memory (ADR-137): the durable memory an AI reads over MCP. Gated —
       // the sidebar shows it only when the owner has turned AI Memory on in
       // Settings; the page itself also gates, so it's discoverable-but-off until
