@@ -632,6 +632,12 @@ export default function NavShell({
       <Link href="/changelog" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
         Changelog
       </Link>
+      {/* User Guide (ADR-189). It lives in Build, but it's listed here on the
+          Work side too: the guide exists because people don't know a feature
+          exists, and making them enter Build to find that out defeats it. */}
+      <Link href="/build/guide" role="menuitem" onClick={() => setMenuOpen(false)} className={menuItem}>
+        User Guide
+      </Link>
       <div className="my-1 border-t border-neutral-800" />
       <p className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-600">Move menu</p>
       <div className="grid grid-cols-2 gap-1 p-1">
