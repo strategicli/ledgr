@@ -157,11 +157,37 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
+// The owner row. This used to hardcode Brandon's address, which made seeding ANY
+// other instance quietly wrong: it created an owner nobody signs in as, and then
+// `resolveOwner()` found no row for the real identity and every page rendered its
+// null-owner state (the "new-user dead end" — ADR-184 gave that state a voice, but
+// this is one of the ways you land in it).
+//
+// `SEED_OWNER_EMAIL` wins; `DEV_USER_EMAIL` is next, since a local instance
+// already sets it as the identity the keyless dev path resolves — so a correctly
+// configured dev environment needs no new variable. Brandon's address remains the
+// final fallback so his existing seeds behave exactly as before.
+const ownerEmail =
+  process.env.SEED_OWNER_EMAIL ||
+  process.env.DEV_USER_EMAIL ||
+  "brandoncollins@edgewoodcommunity.org";
+
+// A typo here is expensive precisely because the failure is silent, so refuse
+// something that plainly isn't an address rather than seeding an unusable owner.
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+  console.error(
+    `Seed aborted: "${ownerEmail}" is not a valid email address.\n` +
+      `Set SEED_OWNER_EMAIL (or DEV_USER_EMAIL) to the address you sign in with.`
+  );
+  process.exit(1);
+}
+
 await sql`
   INSERT INTO users (email)
-  VALUES ('brandoncollins@edgewoodcommunity.org')
+  VALUES (${ownerEmail})
   ON CONFLICT (email) DO NOTHING
 `;
+console.log(`owner: ${ownerEmail}`);
 
 const typeRows = await sql`SELECT key FROM types ORDER BY key`;
 const userRows = await sql`SELECT email FROM users`;

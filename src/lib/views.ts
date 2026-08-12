@@ -506,9 +506,17 @@ export type ViewLayout = (typeof VIEW_LAYOUTS)[number];
 // date-window labels (overdue/today/this week/later/no date).
 export const GROUP_FIELDS = ["status", "urgency", "type", "plan", "due", "scheduled"] as const;
 export type GroupField = (typeof GROUP_FIELDS)[number];
-// A board groups by a built-in field, or by a custom select/multi_select
-// property (a workflow's "Stage", slice 35) named by its property_schema key.
-export type ViewGrouping = { field: GroupField } | { propertyKey: string } | null;
+// A board groups by a built-in field, by a custom select/multi_select property (a
+// workflow's "Stage", slice 35) named by its property_schema key, or by a RELATION
+// field's role — group by Tags (Tyler, 2026-08-12). The relation variant is the
+// only multi-valued one that FANS OUT: a task with two tags shows in both columns
+// (see groupValuesFor). Its values are `relations` edges, so unlike the other two
+// they aren't on the row and the renderer must batch-fetch them.
+export type ViewGrouping =
+  | { field: GroupField }
+  | { propertyKey: string }
+  | { relationRole: string }
+  | null;
 
 // Which date a calendar/agenda places an item on, and which date a list/board
 // window filters/groups by. "plan" = the effective plan date (scheduled ?? due,
@@ -784,6 +792,16 @@ function parseGrouping(raw: unknown): ViewGrouping {
   if (raw == null) return null;
   if (typeof raw !== "object" || Array.isArray(raw)) bad("grouping must be an object or null");
   const r = raw as Record<string, unknown>;
+  // A relation grouping (group by Tags) is checked FIRST: for a typed relation
+  // field the role IS the property_schema key, so a stored grouping that carried
+  // both keys would otherwise be read as a scalar property grouping and silently
+  // read items.properties — where a relation field never stores anything, giving
+  // one big "None" column instead of tag columns.
+  if (r.relationRole != null && r.relationRole !== "") {
+    const role = String(r.relationRole).trim();
+    if (!role || role.length > 40) bad("grouping.relationRole invalid");
+    return { relationRole: role };
+  }
   // A property grouping wins when present (a board by a custom select field).
   if (r.propertyKey != null && r.propertyKey !== "") {
     const key = String(r.propertyKey).trim();

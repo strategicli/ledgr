@@ -70,12 +70,39 @@ check("StorageProvider interface exists", existsSync("src/lib/storage/types.ts")
 // scheduler swappable: Vercel cron / GitHub Actions / a local cron all call
 // the same authenticated URL. A new unauthenticated machine route would both
 // be a security hole and break the local-cron swap.
+//
+// There are TWO machine-token helpers, and this guard only knew one: the original
+// `verifyMachineToken()`, and `verifyApiToken()` + `resolveMachineOwner` (the
+// ADR-117 OAuth shim, added in db6ae4b). Four routes — attachments, capture,
+// items, relations — use the second and were reported as unauthenticated for
+// months. They are gated (each handler verifies a token and 401s; confirmed by
+// reading all four), so this was a false alarm, and a security guard that cries
+// wolf on every run is one people learn to ignore. Accept either helper.
+//
+// Checked PER EXPORTED HANDLER rather than per file, which is stricter than
+// before: the old file-level grep would pass a file whose GET was gated and whose
+// newly-added POST was not. Segmenting on `export async function` is enough
+// because each machine handler authenticates inline, at its top.
+const AUTH_HELPER = /verifyMachineToken\s*\(|verifyApiToken\s*\(/;
 const machineRoutes = files.filter((p) => /^src\/app\/api\/machine\/.*\/route\.ts$/.test(p));
-const unauthed = machineRoutes.filter((p) => !/verifyMachineToken\s*\(/.test(read(p)));
+const unauthedHandlers: string[] = [];
+let handlerCount = 0;
+for (const p of machineRoutes) {
+  const src = read(p);
+  // [0] is the imports/preamble before the first handler — not a handler itself.
+  const segments = src.split(/export\s+async\s+function\s+/).slice(1);
+  for (const seg of segments) {
+    const verb = /^([A-Z]+)/.exec(seg)?.[1] ?? "?";
+    handlerCount++;
+    if (!AUTH_HELPER.test(seg)) unauthedHandlers.push(`${p}:${verb}`);
+  }
+}
 check(
-  "every /api/machine endpoint verifies a machine token",
-  machineRoutes.length > 0 && unauthed.length === 0,
-  unauthed.length ? `missing: ${unauthed.join(", ")}` : `${machineRoutes.length} endpoints`
+  "every /api/machine handler verifies a machine token",
+  machineRoutes.length > 0 && handlerCount > 0 && unauthedHandlers.length === 0,
+  unauthedHandlers.length
+    ? `missing: ${unauthedHandlers.join(", ")}`
+    : `${handlerCount} handlers across ${machineRoutes.length} routes`
 );
 
 // The scheduled jobs all point at machine endpoints (the scheduler interface).

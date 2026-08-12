@@ -14,12 +14,26 @@ import { priorityStyle, type Priority } from "@/lib/priority";
 import { enqueueCapture } from "@/lib/outbox";
 import { scheduleListRefresh } from "@/lib/list-refresh";
 import {
+  TAG_TYPE,
+  TAGS_ROLE,
+  parseProjectToken,
+  parseTagTokens,
+  stripConsumedTokens,
+} from "@/lib/tags";
+import {
   consumeMentionText,
   detectMentionToken,
   useMentionTypeahead,
   type MentionHit,
 } from "@/components/capture/useMentionTypeahead";
 import { LinkedChips, MentionPopup, useTypeGlyphs, type LinkedItem } from "@/components/capture/mention-ui";
+import {
+  createMentionTarget,
+  createTargets,
+  type CreateTarget,
+} from "@/lib/mention-create";
+import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
 
 function localTodayYmd(): string {
@@ -70,7 +84,11 @@ const IconCanvas = <I d="M4 14c2 0 2-6 4-6s2 8 4 8 2-10 4-10 2 6 4 6" />;
 const IconChevron = <I d="M6 9l6 6 6-6" />;
 const IconX = <I d="M6 6l12 12M18 6L6 18" />;
 const IconRepeat = <I d="M17 2l4 4-4 4" extra={<><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></>} />;
+// The hash glyph now marks a TAG (the "#" sigil). Kept for the tag chips below.
 const IconHash = <I d="M4 9h16M4 15h15M10 3L8 21M16 3l-2 18" />;
+// The project-destination indicator. A plus, matching the "+project" sigil you
+// type — it used to be IconHash, which now means something else entirely.
+const IconPlus = <I d="M12 5v14M5 12h14" />;
 const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />;
 
 let quickAddPromise: Promise<string[]> | null = null;
@@ -100,6 +118,7 @@ export default function AddTaskCard({
   onDone,
   onCancel,
   onOptimisticAdd,
+  onOptimisticSettle,
 }: {
   defaultDueYmd?: string;
   // The item the task is added FROM (a project card, a note, …): the task
@@ -117,6 +136,11 @@ export default function AddTaskCard({
   // it, and a coalesced refresh reconciles the real row in. Absent (modal /
   // related panel) keeps the original await-then-refresh-then-close flow.
   onOptimisticAdd?: (task: OptimisticTask) => void;
+  // Fires when the POST lands, with the provisional id and the REAL item id. The
+  // gap matters: the row is provisional for ~150ms (the POST) but the coalesced
+  // refresh is ~900ms out, and the old row spent that whole second looking
+  // unfinished. Optional, so a host can ignore it and keep the old behavior.
+  onOptimisticSettle?: (tmpId: string, realId: string) => void;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -131,6 +155,9 @@ export default function AddTaskCard({
   const [urgency, setUrgency] = useState<Priority | null>(null);
   const [dest, setDest] = useState<string>(host?.id ?? "inbox");
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
+  // Existing tags, for resolving "#name" tokens (ADR: sigils, 2026-08-12). Same
+  // shape as projects — id + title is all a match needs.
+  const [tags, setTags] = useState<ProjectOpt[]>([]);
   const [qaHidden, setQaHidden] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pickDate, setPickDate] = useState(false);
@@ -145,10 +172,12 @@ export default function AddTaskCard({
 
   // "@"-mention linking (unified with the universal capture card): typing "@"
   // links this task to any existing item as a `related` edge (create-on-miss
-  // included). `#project` below stays the destination shortcut; that's a
-  // different concept, not an association. (The old "@name = assignee" shortcut
-  // was retired here — a dedicated assignee picker can hang off the Assignee
-  // chip later.)
+  // included). The three sigils are deliberately one-concept-each (2026-08-12):
+  //   "@" links to ANY existing item (an association)
+  //   "#" tags        — tags only, creating the tag when it's new
+  //   "+" project     — the destination, i.e. where the task is filed
+  // (The old "@name = assignee" shortcut was retired here — a dedicated assignee
+  // picker can hang off the Assignee chip later.)
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const { glyph, typeLabel } = useTypeGlyphs();
   const [caret, setCaret] = useState(0);
@@ -156,12 +185,20 @@ export default function AddTaskCard({
   const [creatingLink, setCreatingLink] = useState(false);
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
   const [linked, setLinked] = useState<LinkedItem[]>([]);
+  // The type registry, for the create-on-miss rows (which types a bare unmatched
+  // name can be created as). Memoized in type-token — one shared fetch.
+  const [mTypes, setMTypes] = useState<TypeMeta[]>([]);
 
   useEffect(() => {
+    void loadTypes().then(setMTypes);
     loadQuickAddHidden().then((ids) => setQaHidden(new Set(ids)));
     fetch("/api/items?type=project&limit=50")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setProjects(Array.isArray(d?.items) ? d.items : []))
+      .catch(() => {});
+    fetch(`/api/items?type=${TAG_TYPE}&limit=200`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setTags(Array.isArray(d?.items) ? d.items : []))
       .catch(() => {});
   }, []);
 
@@ -171,28 +208,52 @@ export default function AddTaskCard({
   const visibleHits = hits.filter((h) => !alreadyLinked(h.id));
   const showCreate =
     mQuery !== "" && !hits.some((h) => h.title.trim().toLowerCase() === mQuery.toLowerCase());
-  const mRowCount = visibleHits.length + (showCreate ? 1 : 0);
+  // One create row per type the name could be (lib/mention-create.ts); a scoped
+  // "@/person Jane" yields exactly one, i.e. the pre-picker behavior.
+  const mTargets = useMemo(
+    () => (showCreate ? createTargets(mTypes, typeFilter) : []),
+    [showCreate, mTypes, typeFilter]
+  );
+  const mRowCount = visibleHits.length + mTargets.length;
   const mDismissed = mention != null && dismissedQuery === mention.rawQuery;
   const mOpen = mention != null && !mDismissed && mRowCount > 0;
   const mSel = Math.min(selected, Math.max(0, mRowCount - 1));
 
+  // Close any other open floating panel when this typeahead appears (open
+  // transition only, so it doesn't re-fire per keystroke).
+  useEffect(() => {
+    if (mOpen) announceFloatingOpen("task-mention");
+  }, [mOpen]);
+
   const preview = useMemo(() => (title.trim() ? parseTaskTitle(title, localTodayYmd()) : null), [title]);
-  // #project-name → attach to a matching project (create-on-miss is a follow-up).
-  const projectMatch = useMemo(() => {
-    const m = title.match(/#([\w-]+)/);
-    if (!m) return null;
-    const q = m[1].replace(/-/g, " ").toLowerCase();
-    const project = projects.find((pr) => (pr.title || "").toLowerCase().includes(q)) ?? null;
-    return { token: m[0], project };
-  }, [title, projects]);
+  // +project-name → file the task under a matching project (Tyler, 2026-08-12).
+  // This used to be "#project", but "#" now belongs to tags and only tags: a
+  // hash reads as a tag to everyone outside Todoist, and one sigil can't mean two
+  // things. Project keeps a typing shortcut on "+" alongside the destination
+  // picker, which is unchanged.
+  const projectMatch = useMemo(
+    () => parseProjectToken(title, projects),
+    [title, projects]
+  );
+  // #tag-name → tag the task. EVERY "#" token counts (a task can wear several),
+  // and one that matches nothing is a tag to CREATE rather than a silent no-op —
+  // the old behavior stripped an unmatched "#foo" out of the title and did
+  // nothing, so typing "#outreach" quietly deleted the word (Tyler found this).
+  // Matching is case-insensitive and exact-after-dash-expansion, unlike the
+  // project's substring match: creating "outreach" when "Outreach 2026" exists
+  // would be a duplicate the user didn't ask for.
+  const tagMatches = useMemo(() => parseTagTokens(title, tags), [title, tags]);
   // @-mention tokens aren't highlighted in the mirror: they're consumed into
   // chips the instant you pick, so no persistent "@word" lingers in the text.
   const segments = useMemo(
     () => buildSegments(title, [
       ...(preview?.detections ?? []),
       ...(projectMatch ? [{ source: projectMatch.token }] : []),
+      // Highlight every "#tag" token, matched or not — an about-to-be-created tag
+      // should look as live as an existing one, since both act on submit.
+      ...tagMatches.map((t) => ({ source: t.token })),
     ]),
-    [title, preview, projectMatch]
+    [title, preview, projectMatch, tagMatches]
   );
 
   // Effective dates: an explicit pick wins, then what was parsed from the title,
@@ -219,16 +280,23 @@ export default function AddTaskCard({
   // Priority shown reflects a manual pick first, otherwise what was parsed from the title.
   const effUrgency = (urgency ?? preview?.urgency ?? null) as Priority | null;
   const pStyle = effUrgency ? priorityStyle(effUrgency) : null;
-  // A "#project" in the title drives the destination directly; otherwise the manual pick.
+  // A "+project" in the title drives the destination directly; otherwise the manual pick.
   const effDest = projectMatch?.project?.id ?? dest;
 
   async function create() {
     const raw = title.trim();
     if (!raw || busy) return;
     const p = parseTaskTitle(raw, localTodayYmd());
-    // Strip only the "#project" token: "@" mentions are already consumed into
-    // chips, and a literal unmatched "@" the user never picked stays as text.
-    const finalTitle = (p.title || raw).replace(/#[\w-]+/g, "").replace(/\s+/g, " ").trim();
+    // Strip the sigil tokens that became structure — "#tag" and "+project" — since
+    // each is now carried as a real relation rather than as words in the title.
+    // "@" mentions are already consumed into chips, and a literal unmatched "@" the
+    // user never picked stays as text.
+    //
+    // A "+project" that matched NOTHING keeps its text: stripping it would delete a
+    // word and do nothing in its place, which is the exact silent-no-op bug this
+    // change fixes. Unmatched "#tag" tokens are safe to strip because they DO act —
+    // they create the tag below.
+    const finalTitle = stripConsumedTokens(p.title || raw, tagMatches, projectMatch);
     const destId = lockDestination && host ? host.id : (projectMatch?.project?.id ?? dest);
     const dueDay = effDue || effDefault;
     const sched = effScheduled;
@@ -245,16 +313,20 @@ export default function AddTaskCard({
     if (description.trim()) body.body = { format: "markdown", text: description.trim() };
 
     // POST the task and wire up its destination/@-linked relations. Shared by
-    // both paths below.
-    const persist = async () => {
+    // both paths below. Returns the created id so the optimistic path can settle
+    // its provisional row into a real one (see onOptimisticSettle).
+    const persist = async (): Promise<string> => {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
-      if (destId !== "inbox" || linked.length > 0) {
-        const { item } = (await res.json()) as { item: { id: string } };
+      // Read the body unconditionally: it used to be parsed only when there were
+      // relations to write, but the id is now always wanted, and a response body
+      // can only be consumed once.
+      const { item } = (await res.json()) as { item: { id: string } };
+      if (destId !== "inbox" || linked.length > 0 || tagMatches.length > 0) {
         const rel = (targetId: string, role: string) =>
           fetch(`/api/items/${item.id}/relations`, {
             method: "POST",
@@ -264,7 +336,27 @@ export default function AddTaskCard({
         if (destId !== "inbox") await rel(destId, destId === host?.id ? host.role ?? "related" : "project");
         // "@"-linked items → plain `related` edges (the universal related list).
         await Promise.all(linked.map((l) => rel(l.id, "related")));
+        // "#tag" tokens → `tags` edges, creating the tag when it's new. Tags are
+        // created WITHOUT inbox:true (unlike the "@" create-on-miss stub): a tag
+        // isn't an untriaged capture, it's a finished thing the moment it's named.
+        // Sequential rather than parallel so two "#" tokens naming the same new tag
+        // in one submit can't race into two duplicate tag items.
+        for (const t of tagMatches) {
+          let tagId = t.tag?.id ?? null;
+          if (!tagId) {
+            const tr = await fetch("/api/items", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: TAG_TYPE, title: t.name }),
+            }).catch(() => null);
+            if (!tr || !tr.ok) continue;
+            const created = (await tr.json()) as { item?: { id?: string } };
+            tagId = created.item?.id ?? null;
+          }
+          if (tagId) await rel(tagId, TAGS_ROLE);
+        }
       }
+      return item.id;
     };
 
     if (onOptimisticAdd) {
@@ -274,14 +366,18 @@ export default function AddTaskCard({
       // busy guards against a re-entrant submit (rapid double-Enter) in the tick
       // before onDone unmounts the card.
       setBusy(true);
-      onOptimisticAdd({
-        id: `tmp-${Date.now()}`,
-        title: finalTitle,
-        scheduleLabel,
-      });
+      const tmpId = `tmp-${Date.now()}`;
+      onOptimisticAdd({ id: tmpId, title: finalTitle, scheduleLabel });
       onDone();
       void persist()
-        .then(() => scheduleListRefresh(() => router.refresh()))
+        .then((realId) => {
+          // The task is real NOW, ~150ms in — long before the coalesced refresh
+          // brings the server row ~900ms later. Tell the host so the row stops
+          // looking pending and picks up a working check circle; the refresh
+          // then swaps in the server row invisibly instead of ending a wait.
+          onOptimisticSettle?.(tmpId, realId);
+          scheduleListRefresh(() => router.refresh());
+        })
         .catch(() => {
           enqueueCapture(body);
           window.dispatchEvent(new Event("ledgr:outbox"));
@@ -320,27 +416,21 @@ export default function AddTaskCard({
       if (el) { el.focus(); el.setSelectionRange(nextCaret, nextCaret); setCaret(nextCaret); }
     });
   }
-  async function createAndLink() {
+  // Create as the picked type, then link it like any other hit. A null return
+  // means the POST failed: the "@query" text stays so it isn't lost.
+  async function createAndLink(target: CreateTarget) {
     if (creatingLink || !mQuery) return;
     setCreatingLink(true);
-    try {
-      const res = await fetch("/api/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: typeFilter?.key ?? "unmarked", title: mQuery, inbox: true }),
-      });
-      if (!res.ok) return;
-      const { item } = (await res.json()) as { item: { id: string; title?: string; type?: string | null } };
-      linkItem({ id: item.id, title: item.title || mQuery, type: item.type ?? typeFilter?.key ?? null });
-    } catch {
-      // offline / transient: leave the "@query" text so it isn't lost
-    } finally {
-      setCreatingLink(false);
-    }
+    const made = await createMentionTarget(mQuery, target);
+    setCreatingLink(false);
+    if (made) linkItem({ id: made.id, title: made.title, type: made.type });
   }
   function pickSelected() {
     if (mSel < visibleHits.length) linkItem(visibleHits[mSel]);
-    else if (showCreate) void createAndLink();
+    else {
+      const target = mTargets[mSel - visibleHits.length];
+      if (target) void createAndLink(target);
+    }
   }
   function onTitleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (mOpen) {
@@ -398,13 +488,13 @@ export default function AddTaskCard({
             <MentionPopup
               hits={visibleHits}
               selected={mSel}
-              showCreate={showCreate}
+              createTargets={mTargets}
               creating={creatingLink}
               query={mQuery}
               typeFilter={typeFilter}
               onHover={setSelected}
               onPick={linkItem}
-              onCreate={() => void createAndLink()}
+              onCreate={(target) => void createAndLink(target)}
               glyph={glyph}
               typeLabel={typeLabel}
             />
@@ -430,6 +520,27 @@ export default function AddTaskCard({
 
       {/* "@"-linked items → become `related` relations on save */}
       <LinkedChips linked={linked} onRemove={(id) => setLinked(linked.filter((l) => l.id !== id))} glyph={glyph} />
+
+      {/* Pending "#tag" tokens, shown as chips so the typed sigil has a visible
+          consequence before you submit — and so a NEW tag announces itself as new
+          rather than silently appearing in your tag list afterwards. This is the
+          legibility half of the fix: the old "#" ate the word with no feedback at
+          all. Read-only chips (edit the text to change them). */}
+      {tagMatches.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {tagMatches.map((t) => (
+            <span
+              key={t.token}
+              className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs text-ink-muted"
+              title={t.tag ? `Existing tag "${t.name}"` : `Creates a new tag "${t.name}"`}
+            >
+              <span className="text-ink-faint">{IconHash}</span>
+              {t.name}
+              {!t.tag && <span className="text-[var(--accent)]">new</span>}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* SVG chip row — detected date/recurrence/priority/project fill these in */}
       <div className="mt-2 flex flex-wrap items-center gap-2 border-b border-neutral-800 pb-3">
@@ -488,7 +599,7 @@ export default function AddTaskCard({
       <div className={`mt-3 flex items-center gap-2 ${lockDestination ? "justify-end" : "justify-between"}`}>
         {!lockDestination && (
           <span className="relative inline-flex items-center text-sm text-neutral-300">
-            <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconHash : IconInbox}</span>
+            <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconPlus : IconInbox}</span>
             <select
               value={effDest}
               onChange={(e) => setDest(e.target.value)}

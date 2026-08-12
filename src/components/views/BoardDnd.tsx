@@ -41,6 +41,9 @@ function moveCard(card: BoardCard, grouping: ViewGrouping, col: string): BoardCa
     props[grouping.propertyKey] = col === NONE_GROUP ? null : col;
     return { ...card, properties: props };
   }
+  // A relation grouping (Tags) isn't droppable — boardDropPatch returns null for
+  // it, so no write is issued and the optimistic card must not move either.
+  if (grouping && "relationRole" in grouping) return card;
   const field = grouping?.field ?? "status";
   if (field === "status") return { ...card, status: col };
   if (field === "urgency") return { ...card, urgency: col === NONE_GROUP ? null : Number(col) };
@@ -81,7 +84,7 @@ export default function BoardDnd({
   const statusBoard =
     !grouping || ("field" in grouping && grouping.field === "status");
   const fullKnown: string[] =
-    grouping && "propertyKey" in grouping
+    grouping && ("propertyKey" in grouping || "relationRole" in grouping)
       ? [...(groupOrder ?? []), NONE_GROUP]
       : (grouping?.field ?? "status") === "urgency"
         ? [...URGENCIES.map(String), NONE_GROUP]

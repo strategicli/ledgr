@@ -16,7 +16,7 @@ import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import type { Progress } from "@/lib/subtasks";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
-import { groupValueFor, orderedGroups } from "@/lib/view-grouping";
+import { groupValuesFor, orderedGroups, type GroupEdges } from "@/lib/view-grouping";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
@@ -496,6 +496,7 @@ function BoardLayout({
   draggable,
   statuses,
   tz,
+  groupEdges,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -503,6 +504,10 @@ function BoardLayout({
   draggable?: boolean;
   statuses?: StatusDef[];
   tz: string;
+  // Edges for a relation grouping (group by Tags), batch-fetched by the page and
+  // keyed by source item id. Undefined for every other grouping, which reads its
+  // values straight off the row.
+  groupEdges?: GroupEdges;
 }) {
   const now = new Date();
   // A status board colors its column headers with the status colors (S2).
@@ -526,13 +531,19 @@ function BoardLayout({
     }));
     return <BoardDnd cards={cards} grouping={view.grouping} groupOrder={groupOrder} statuses={statuses} />;
   }
-  const present = new Set(items.map((i) => groupValueFor(i, view.grouping, now)));
+  // flatMap, not map: a multi-valued grouping (Tags, multi_select) puts a row in
+  // EVERY one of its values, so the set of present columns is the union of all of
+  // them. Column totals therefore sum to more than the row count — by design, a
+  // task tagged Work and Urgent really is in both.
+  const present = new Set(
+    items.flatMap((i) => groupValuesFor(i, view.grouping, now, groupEdges))
+  );
   const columns = orderedGroups(view.grouping, present, groupOrder);
   return (
     <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
       {columns.map((col) => {
-        const colItems = items.filter(
-          (i) => groupValueFor(i, view.grouping, now) === col
+        const colItems = items.filter((i) =>
+          groupValuesFor(i, view.grouping, now, groupEdges).includes(col)
         );
         return (
           <div
@@ -832,9 +843,13 @@ export default function ViewRenderer({
   rollups,
   today,
   tz = DEFAULT_TIMEZONE,
+  groupEdges,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
+  // Relation-grouping edges (group by Tags), batch-fetched by the page. Only a
+  // board grouped by a relation role reads it; everything else ignores it.
+  groupEdges?: GroupEdges;
   // The view type's resolved statuses (S2): status chips + board column labels/
   // colors render from these. Resolved by the page from the type's schema.
   statuses?: StatusDef[];
@@ -905,6 +920,7 @@ export default function ViewRenderer({
     case "board":
       return (
         <BoardLayout
+          groupEdges={groupEdges}
           items={items}
           view={view}
           groupOrder={groupOrder}

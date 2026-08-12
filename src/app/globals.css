@@ -96,6 +96,34 @@
 
   /* One unified card radius (10px) so panels, rows, and menus agree. */
   --radius-card-px: 0.625rem;
+
+  /* --- Tier 3: the LAYER SCALE (2026-08-12) -------------------------------
+     Named stacking tiers, because ad-hoc z- values had already collided in
+     production: the "@" typeahead and the item "⋯" kebab were BOTH at 50, one
+     portaled to <body> and one in-page, so which painted on top came down to
+     stacking-context accident and their text bled through each other.
+
+     Five tiers, matching what the app already does — this documents and fixes
+     the ties, it doesn't renumber the world:
+
+       --z-sticky   30  in-flow sticky chrome (editor toolbar, planner gutter)
+       --z-chrome   40  app furniture (nav, rail, modal backdrop, bulk bar)
+       --z-modal    50  modals, and menus that live INSIDE the page flow
+       --z-float    60  anchored floating panels PORTALED to <body>
+                        (Popover, every typeahead/listbox, comment popover)
+       --z-top      70  transient over-everything (row context menu, toasts)
+
+     The rule that prevents the next tie: **a panel portaled to <body> belongs
+     at --z-float or above, never at --z-modal.** An in-page menu at 50 and a
+     body-level panel at 50 are not comparable — same number, different
+     stacking context, undefined winner. Reach for a tier, not a number.
+     (Paired with src/lib/floating.ts, which closes the OTHER open panel when
+     one opens, so the layering rarely has to arbitrate at all.) */
+  --z-sticky: 30;
+  --z-chrome: 40;
+  --z-modal: 50;
+  --z-float: 60;
+  --z-top: 70;
 }
 
 /* Light-mode PROOF (S1 mechanism only — the theme itself is a later slice).

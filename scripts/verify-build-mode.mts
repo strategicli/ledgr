@@ -43,10 +43,19 @@ check("isBuildPath false for / (home)", !isBuildPath("/"));
 check("isBuildPath false for /views (now Work-side)", !isBuildPath("/views"));
 check("isBuildPath false for /settings (both-places)", !isBuildPath("/settings"));
 check("isBuildPath false for a /buildfoo lookalike", !isBuildPath("/buildfoo"));
-// Dashboards keep Build chrome (an INTERFACE-building surface); a dashboard
-// assigned as Home/Today renders at / or /today, which stay Work chrome.
-check("isBuildPath true for /dashboards", isBuildPath("/dashboards"));
-check("isBuildPath true for /dashboards/[id]", isBuildPath("/dashboards/abc"));
+// The dashboards INDEX keeps Build chrome — managing dashboards is
+// INTERFACE-building. An INDIVIDUAL dashboard does NOT: `/dashboards/<id>` is the
+// "using it" context and keeps Work chrome (see the comment on isBuildPath).
+//
+// This line used to assert the opposite and had been failing silently, because
+// nothing ran it. Do not "fix" the code to match the old expectation: claiming
+// `/dashboards/...` as Build is what once made Build mode the ONLY way to view an
+// unassigned dashboard. The narrower rule is the deliberate one.
+check("isBuildPath true for /dashboards (the index)", isBuildPath("/dashboards"));
+check(
+  "isBuildPath FALSE for /dashboards/[id] (using one is Work)",
+  !isBuildPath("/dashboards/abc")
+);
 check("isBuildPath false for /today (Work surface)", !isBuildPath("/today"));
 check("isBuildPath false for a /dashboardsfoo lookalike", !isBuildPath("/dashboardsfoo"));
 

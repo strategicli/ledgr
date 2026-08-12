@@ -167,11 +167,23 @@ export default function ViewBuilder({
   // A type's select/multi_select properties, as group-by options encoded
   // "prop:<key>" so they share the one Group-by control with the built-in
   // fields. A board grouped by one of these reads as a workflow board.
-  function groupPropsFor(typeKey: string): { value: string; label: string }[] {
+  function groupPropsFor(
+    typeKey: string
+  ): { value: string; label: string; suffix: string }[] {
     const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
-    return schema
-      .filter((p) => p.kind === "select" || p.kind === "multi_select")
-      .map((p) => ({ value: `prop:${p.key}`, label: p.label }));
+    return [
+      ...schema
+        .filter((p) => p.kind === "select" || p.kind === "multi_select")
+        .map((p) => ({ value: `prop:${p.key}`, label: p.label, suffix: "field" })),
+      // Relation fields (Tags, and any other the owner declares) encoded
+      // "rel:<role>" — this is how "group my tasks by tag" becomes a saved view
+      // (Tyler, 2026-08-12). A relation grouping FANS OUT, so a task with two tags
+      // shows in both columns, and the board is read-only (a tag column can't be
+      // dropped into — moving edges isn't the PATCH a drop writes).
+      ...schema
+        .filter((p) => p.kind === "relation")
+        .map((p) => ({ value: `rel:${p.key}`, label: p.label, suffix: "links" })),
+    ];
   }
   // The type's custom properties, offered as property columns.
   function propColumnsFor(typeKey: string): { key: string; label: string }[] {
@@ -242,7 +254,13 @@ export default function ViewBuilder({
   // The stored grouping is {field} or {propertyKey}; collapse to the control's
   // string form ("status" | "prop:stage").
   const groupingToValue = (g: ViewDefinition["grouping"] | undefined): string =>
-    g ? ("propertyKey" in g ? `prop:${g.propertyKey}` : g.field) : "";
+    g
+      ? "propertyKey" in g
+        ? `prop:${g.propertyKey}`
+        : "relationRole" in g
+          ? `rel:${g.relationRole}`
+          : g.field
+      : "";
   const router = useRouter();
   // Clamp anything the stored definition holds that's no longer valid for its
   // type (e.g. a legacy meeting calendar saved with date field "due date"):
@@ -432,7 +450,9 @@ export default function ViewBuilder({
         canGroup && groupField
           ? groupField.startsWith("prop:")
             ? { propertyKey: groupField.slice(5) }
-            : { field: groupField }
+            : groupField.startsWith("rel:")
+              ? { relationRole: groupField.slice(4) }
+              : { field: groupField }
           : null,
       columns: showsColumns(layout) && columns.length ? columns : null,
       dateProperty: needsDate ? dateProperty : null,
@@ -694,7 +714,7 @@ export default function ViewBuilder({
               <Opt key={g} value={g} label={GROUP_LABELS[g]} />
             ))}
             {groupPropsFor(type).map((o) => (
-              <Opt key={o.value} value={o.value} label={`${o.label} (field)`} />
+              <Opt key={o.value} value={o.value} label={`${o.label} (${o.suffix})`} />
             ))}
           </select>
         </Field>

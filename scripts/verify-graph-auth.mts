@@ -55,12 +55,24 @@ globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeo
 
 try {
   // --- config detection ---------------------------------------------------
-  check("getGraphCredentials() populated when env set", getGraphCredentials() !== null);
+  // Config detection cuts BOTH ways, and these two used to assert only the
+  // configured half unconditionally — so the script could pass only on a machine
+  // holding real GRAPH_* secrets, and failed everywhere else (including CI, and
+  // any instance that doesn't use Microsoft). It had been failing silently because
+  // nothing ran it. Assert the branch that actually applies: populated when the
+  // env is set, and cleanly null when it isn't. Both are real behavior worth
+  // holding, and neither needs a secret to check.
+  if (haveCreds) {
+    check("getGraphCredentials() populated when env set", getGraphCredentials() !== null);
+    check("export getGraphConfig() populated when env set", getGraphConfig() !== null);
+  } else {
+    check("getGraphCredentials() is null when env is unset", getGraphCredentials() === null);
+    check("export getGraphConfig() is null when env is unset", getGraphConfig() === null);
+  }
   check(
     "getGraphMailboxUpn() falls back to ONEDRIVE_EXPORT_UPN",
     getGraphMailboxUpn() === (process.env.GRAPH_MAILBOX_UPN || process.env.ONEDRIVE_EXPORT_UPN || null)
   );
-  check("export getGraphConfig() populated when env set", getGraphConfig() !== null);
 
   if (!haveCreds) {
     info("GRAPH_* not configured locally — skipping live token checks.");

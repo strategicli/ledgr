@@ -17,6 +17,7 @@ import ChangeTypeDialog from "./ChangeTypeDialog";
 import ActionGlyph from "./action-icons";
 import WordCount from "./WordCount";
 import MoveUnderMenu from "@/components/items/MoveUnderMenu";
+import { announceFloatingOpen, onOtherFloatingOpen } from "@/lib/floating";
 
 const rowClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800";
@@ -52,6 +53,20 @@ export default function ItemActionsMenu({
   // is the source of truth and a refresh re-syncs it.
   const [fav, setFav] = useState(favorited);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Announce this menu when it opens, and stand down when another floating panel
+  // opens. The case that needed it: the "@" typeahead opens from a KEYSTROKE, so
+  // the outside-click listener below never fires and both stayed open, overlapping
+  // (Tyler's screenshot). Sub-popovers inside this menu don't announce, so "Save
+  // as template" still opens without closing its own parent.
+  useEffect(() => {
+    if (!open && !moveOpen) return;
+    announceFloatingOpen("item-actions");
+    return onOtherFloatingOpen("item-actions", () => {
+      setOpen(false);
+      setMoveOpen(false);
+    });
+  }, [open, moveOpen]);
 
   useEffect(() => {
     if (!open && !moveOpen) return;
@@ -219,6 +234,15 @@ export default function ItemActionsMenu({
           <a role="menuitem" href={`/items/${itemId}/explore`} className={rowClass}>
             <ActionGlyph icon="network" />
             Explore related
+          </a>
+          {/* The canonical body as plain markdown, with a copy button (Tyler,
+              2026-08-12). Reachable on EVERY type, not just bespoke ones: the
+              need is sharpest on a song (the chord canvas shows a rendering, not
+              the text) but "let me see and take the whole thing" is universal.
+              Hard nav so it escapes the intercept modal, like Customize layout. */}
+          <a role="menuitem" href={`/items/${itemId}/markdown`} className={rowClass}>
+            <ActionGlyph icon="markdown" />
+            View full markdown
           </a>
           <button
             type="button"

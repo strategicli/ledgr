@@ -30,6 +30,10 @@ export const ACTION_ICONS = {
   swap: '<path d="M4 9h12"/><path d="M13 6l3 3-3 3"/><path d="M20 15H8"/><path d="M11 12l-3 3 3 3"/>',
   // Make subtask of — an arrow turning down into an indented child row.
   subtask: '<path d="M6 5v7a3 3 0 0 0 3 3h9"/><path d="M15 12l3 3-3 3"/>',
+  // View full markdown — angle brackets over a slash, the conventional "source"
+  // glyph. Reads as "the underlying text," distinct from `grid` (arrange) and
+  // `network` (relations) beside it in the menu.
+  markdown: '<path d="M8.5 8.5 5 12l3.5 3.5"/><path d="M15.5 8.5 19 12l-3.5 3.5"/><path d="M13.5 5.5l-3 13"/>',
   // Template pair: a page with a + badge (save) or a ✓ badge (apply).
   templateSave:
     '<rect x="3" y="3" width="11" height="16" rx="2"/><path d="M3 8h11"/><path d="M6 12h5M6 15h3"/><path d="M18.5 14v6M15.5 17h6"/>',

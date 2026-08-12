@@ -11,10 +11,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { RelationCardinality } from "@/lib/types";
 import { useAnchoredPanel } from "@/components/ui/Popover";
+import {
+  createMentionTarget,
+  createTargets,
+  needsTriage,
+  type CreateTarget,
+} from "@/lib/mention-create";
+import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { announceFloatingOpen } from "@/lib/floating";
 import InlineTitle from "./InlineTitle";
 
 const MENU_WIDTH = 256;
@@ -48,17 +56,40 @@ export default function RelationField({
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  // The registry, only for a GENERIC field's create rows (a typed field already
+  // knows its answer). Loaded when the box opens; memoized in type-token.
+  const [types, setTypes] = useState<TypeMeta[]>([]);
   const { anchorRef, coords } = useAnchoredPanel<HTMLInputElement>(open, MENU_WIDTH);
 
+  useEffect(() => {
+    if (open && !targetType && types.length === 0) void loadTypes().then(setTypes);
+  }, [open, targetType, types.length]);
+
+  // Close any other open floating panel when this box opens (src/lib/floating.ts).
+  useEffect(() => {
+    if (open) announceFloatingOpen("relation-field");
+  }, [open]);
+
   const atCapacity = cardinality === "single" && chips.length >= 1;
-  // Create-on-miss (ADR-067): if the field names a type, create it eagerly
-  // (typed, no Inbox); otherwise create an `unmarked` item that lands in the
-  // Inbox for triage. Either way it links without leaving the page.
+  // Create-on-miss: if the field names a type there's nothing to ask, so it stays
+  // one row and creates that type eagerly (no Inbox). A GENERIC field (role null /
+  // targetType null, ADR-175) can't know what a bare name is, so it offers the
+  // same typed create rows the "@" pickers do (lib/mention-create.ts) instead of
+  // silently minting an `unmarked` stub. Either way it links without leaving.
   const trimmed = q.trim();
   const showCreate =
     trimmed !== "" &&
     !hits.some((h) => h.title.trim().toLowerCase() === trimmed.toLowerCase());
-  const rowCount = hits.length + (showCreate ? 1 : 0);
+  const targets = useMemo(() => {
+    if (!showCreate) return [];
+    // A declared targetType IS the answer; it isn't in the fetched registry list
+    // shape, so hand it through as a single target with the field's own label.
+    if (targetType) {
+      return [{ key: targetType, label: targetTypeLabel ?? targetType, icon: null }];
+    }
+    return createTargets(types, null);
+  }, [showCreate, targetType, targetTypeLabel, types]);
+  const rowCount = hits.length + targets.length;
 
   useEffect(() => {
     if (!open || !trimmed) return;
@@ -129,26 +160,15 @@ export default function RelationField({
   const onPick = (hit: Hit) =>
     guard(() => relateTarget({ id: hit.id, title: hit.title || "Untitled" }));
 
-  const onCreate = () => {
+  // Create as the picked type, then link it. Only the "Unsorted" catch-all still
+  // lands in the Inbox (needsTriage, in the shared creator) — a named type with a
+  // title and a fresh edge has nothing left for triage to decide.
+  const onCreate = (target: CreateTarget) => {
     if (!trimmed) return;
-    // Typed field -> create that type (resolved, no Inbox). Untyped field ->
-    // an `unmarked` item flagged for the Inbox (triage = retype later).
-    const createType = targetType ?? "unmarked";
     return guard(async () => {
-      const res = await fetch(`/api/items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: createType,
-          title: trimmed,
-          inbox: !targetType,
-        }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const { item } = (await res.json()) as {
-        item: { id: string; title: string };
-      };
-      await relateTarget({ id: item.id, title: item.title || trimmed });
+      const made = await createMentionTarget(trimmed, target);
+      if (!made) throw new Error("create failed");
+      await relateTarget({ id: made.id, title: made.title });
     });
   };
 
@@ -169,7 +189,10 @@ export default function RelationField({
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (active < hits.length) void onPick(hits[active]);
-      else if (showCreate) void onCreate();
+      else {
+        const target = targets[active - hits.length];
+        if (target) void onCreate(target);
+      }
     } else if (e.key === "Escape") {
       setQ("");
       setHits([]);
@@ -260,30 +283,31 @@ export default function RelationField({
                   </button>
                 </li>
               ))}
-              {showCreate && (
-                <li>
+              {/* Create-on-miss. A typed field yields one row (its own type); a
+                  generic one yields a row per type the name could be, so the
+                  question is asked instead of answered with a stub. */}
+              {targets.map((target, n) => (
+                <li key={target.key}>
                   <button
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      void onCreate();
+                      void onCreate(target);
                     }}
-                    onMouseEnter={() => setActive(hits.length)}
+                    onMouseEnter={() => setActive(hits.length + n)}
                     className={`flex w-full items-center gap-1 px-2 py-1 text-left text-sm ${
-                      active === hits.length ? "bg-neutral-800" : ""
+                      active === hits.length + n ? "bg-neutral-800" : ""
                     }`}
                   >
                     <span className="text-neutral-400">Create</span>
                     <span className="min-w-0 flex-1 truncate text-neutral-100">
                       “{trimmed}”
                     </span>
-                    {targetTypeLabel && (
-                      <span className="shrink-0 text-xs text-neutral-500">
-                        new {targetTypeLabel}
-                      </span>
-                    )}
+                    <span className="shrink-0 text-xs text-neutral-500">
+                      {needsTriage(target) ? `${target.label} · to Inbox` : `new ${target.label}`}
+                    </span>
                   </button>
                 </li>
-              )}
+              ))}
             </ul>,
             document.body
           )}
