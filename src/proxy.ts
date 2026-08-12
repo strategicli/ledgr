@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { isClerkConfigured, keylessAllowed } from "@/lib/auth/keyless";
 
 // Route protection (next_steps.md step 3): every route requires a signed-in
 // user except the public set below. Falls through when no Clerk key is
@@ -40,13 +41,49 @@ const isPublicRoute = createRouteMatcher([
   "/api/ics(.*)",
 ]);
 
-const handler = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+// No Clerk key on a DEPLOYED environment is a misconfiguration, not a mode.
+// Without this branch the fallback below runs instead and protects nothing, while
+// the server-side provider reports every caller as signed out — the door open and
+// the app convinced it's empty (see src/lib/auth/keyless.ts, ADR-184). Fail closed.
+//
+// Public routes still pass: /api/machine/*, /api/mcp, the Todoist webhook, /share
+// and /api/ics all authenticate themselves with a scoped token, HMAC, or an
+// unguessable URL, and never depended on Clerk. Keeping them reachable means a
+// missing key doesn't also silently break cron, the MCP server, and the ICS feed.
+// /health sits outside the matcher entirely, so it stays up as the diagnostic.
+//
+// One JSON log line per blocked request, in the shape src/lib/log.ts emits — but
+// written inline, because importing that module pulls the DB client into the
+// middleware bundle for a line of text.
+function failClosed(request: NextRequest): NextResponse {
+  if (isPublicRoute(request)) return NextResponse.next();
+  console.error(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      level: "error",
+      source: "middleware.auth",
+      correlationId: crypto.randomUUID(),
+      message:
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY missing on a deployed environment; refusing the request",
+      path: request.nextUrl.pathname,
+      vercelEnv: process.env.VERCEL_ENV ?? null,
+    })
+  );
+  return new NextResponse(
+    "Authentication is not configured on this deployment. See /health.",
+    { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }
+  );
+}
+
+const handler = isClerkConfigured()
   ? clerkMiddleware(async (auth, request) => {
       if (!isPublicRoute(request)) {
         await auth.protect();
       }
     })
-  : () => NextResponse.next();
+  : keylessAllowed()
+    ? () => NextResponse.next()
+    : failClosed;
 
 export default handler;
 

@@ -10,7 +10,7 @@ import FocusStar from "@/components/today/FocusStar";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import { FOCUS_SOFT_CAP, focusOrder, isFocusedOn } from "@/lib/focus";
 import { listItems } from "@/lib/items";
-import { resolveOwner } from "@/lib/owner";
+import { resolveOwner, resolveOwnerState } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getAppTimezone, getTodayData } from "@/lib/today";
 
@@ -141,8 +141,33 @@ export default async function Home() {
 }
 
 export async function TodayHome() {
-  const owner = await resolveOwner();
-  if (!owner) {
+  const state = await resolveOwnerState();
+  // Signed in, but this Ledgr has no account for that identity (ADR-184). Say so
+  // instead of rendering the anonymous hero: the two states used to look
+  // identical, and since `Nav.tsx` also renders nothing without an owner, the
+  // whole symptom was "my user menu vanished" — a UI bug to look at, rather than
+  // the auth failure it actually was. No redirect to /sign-in here on purpose:
+  // the session is valid, so Clerk would send it straight back and loop.
+  if (state.kind === "unrecognized") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-8 text-center">
+        <h1 className="ui-title">Signed in, but not recognized</h1>
+        <p className="text-sm text-ink-muted">
+          {state.email
+            ? `This Ledgr has no account for ${state.email}.`
+            : "This Ledgr has no account for the signed-in identity."}
+        </p>
+        <p className="text-sm text-ink-subtle">
+          Nothing is wrong with your data. The session just isn&rsquo;t linked to
+          the owner record, so every page will render empty until it is.
+        </p>
+        <Link href="/sign-in" className="text-sm text-[var(--accent)] hover:underline">
+          Sign in as a different user
+        </Link>
+      </main>
+    );
+  }
+  if (state.kind === "signed-out") {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-2 p-8">
         <h1 className="text-3xl font-semibold tracking-tight">Ledgr</h1>
@@ -152,6 +177,7 @@ export async function TodayHome() {
       </main>
     );
   }
+  const owner = state.owner;
 
   const { bounds, meetings, dueTasks, recent, focusTasks, todayYmd, typeLabels } =
     await getTodayData(owner.id);

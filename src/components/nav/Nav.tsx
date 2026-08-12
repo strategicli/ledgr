@@ -23,6 +23,15 @@ import { compareTypeKeys } from "@/lib/type-order";
 import { listTypes } from "@/lib/types";
 
 export default async function Nav() {
+  // No owner, no nav — correct for the signed-out hero and /sign-in, since this
+  // renders from the root layout on every route. But note what it costs when the
+  // owner fails to resolve for a BAD reason (ADR-184): the bar/rail disappears
+  // whole, kebab and user menu with it, and the page body still renders — so the
+  // symptom reads as "the user menu vanished," not "auth is broken." Two things
+  // make that diagnosable now, and neither belongs here: resolveOwnerState logs
+  // the unrecognized-session case (src/lib/owner.ts), and the middleware refuses
+  // to serve a deployment with no auth configured (src/proxy.ts). If you are
+  // looking at a nav-less page, check those two before suspecting the nav.
   const owner = await resolveOwner();
   if (!owner) return null;
 
