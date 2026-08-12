@@ -120,6 +120,26 @@ export const SEARCH_HREF = "/search";
 export const SEARCH_MODES = ["palette", "page"] as const;
 export type SearchMode = (typeof SEARCH_MODES)[number];
 
+// Where an item opens when you click it from a list (Tyler, 2026-08-12). The
+// shape used to be inferred purely from measured width — ≥1280px of content and
+// no right rail meant a docked side panel, otherwise a center popup — so an owner
+// on a wide screen had no way to ask for the popup, and no say in which edge the
+// panel took. It's a reading preference, not a fact about the viewport, so it's a
+// setting now.
+//
+//   auto   — the measured behavior above (the default; nothing changes for anyone
+//            who never touches this)
+//   left   — always a docked panel on the leading edge
+//   right  — always a docked panel on the trailing edge
+//   center — always the center popup, at any width
+//
+// A phone is always the bottom sheet regardless: below the `sm` breakpoint there
+// is no room for a side panel, so the setting is a desktop preference only. A
+// docked side is also skipped when the nav's own rail already occupies that edge,
+// since two panels can't share it — that guard lives in Modal.computeMode.
+export const ITEM_OPEN_MODES = ["auto", "left", "right", "center"] as const;
+export type ItemOpenMode = (typeof ITEM_OPEN_MODES)[number];
+
 // Width of the left/right side rail. Only meaningful when navPosition is
 // left or right: "fat" shows icons + names, "thin" is an icon-only rail,
 // "hidden" rolls it up to a sliver tab at the screen edge. The nav's collapse
@@ -231,6 +251,9 @@ export type UserSettings = {
   highlightGradient: string | null;
   trashRetentionDays: number; // 1..365
   navPosition: NavPosition;
+  // Where a clicked item opens: docked panel (left/right), center popup, or the
+  // measured default. Desktop only; a phone is always the bottom sheet.
+  itemOpenMode: ItemOpenMode;
   railSize: RailSize;
   navDensity: NavDensity;
   railAnchor: RailAnchor;
@@ -396,6 +419,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   highlightGradient: null,
   trashRetentionDays: 30,
   navPosition: "bottom",
+  // "auto" reproduces the pre-setting behavior exactly, so an owner who never
+  // opens this control sees no change.
+  itemOpenMode: "auto",
   railSize: "fat",
   navDensity: "spread",
   railAnchor: "top",
@@ -579,6 +605,11 @@ export function parseSettings(raw: unknown): UserSettings {
   const navPosition = (NAV_POSITIONS as readonly string[]).includes(r.navPosition as string)
     ? (r.navPosition as NavPosition)
     : DEFAULT_SETTINGS.navPosition;
+  const itemOpenMode = (ITEM_OPEN_MODES as readonly string[]).includes(
+    r.itemOpenMode as string
+  )
+    ? (r.itemOpenMode as ItemOpenMode)
+    : DEFAULT_SETTINGS.itemOpenMode;
   const railSize = (RAIL_SIZES as readonly string[]).includes(r.railSize as string)
     ? (r.railSize as RailSize)
     : DEFAULT_SETTINGS.railSize;
@@ -666,6 +697,7 @@ export function parseSettings(raw: unknown): UserSettings {
     quickAddHidden,
     trashRetentionDays: days,
     navPosition,
+    itemOpenMode,
     searchMode,
     railSize,
     navDensity,

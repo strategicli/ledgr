@@ -11,6 +11,7 @@ import { useState } from "react";
 import {
   HIGHLIGHT_COLORS,
   HIGHLIGHT_GRADIENTS,
+  ITEM_OPEN_MODES,
   NAV_POSITIONS,
   NOTIFICATION_KINDS,
   notificationEnabled,
@@ -34,6 +35,15 @@ const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   bottom: "Bottom",
   left: "Left",
   right: "Right",
+};
+
+// Where a clicked item opens. "Automatic" names the measured behavior rather than
+// hiding it, so the default is a visible choice instead of an unexplained one.
+const ITEM_OPEN_LABELS: Record<UserSettings["itemOpenMode"], string> = {
+  auto: "Automatic",
+  left: "Panel, left",
+  right: "Panel, right",
+  center: "Popup",
 };
 
 const UI_DENSITY_LABELS: Record<UiDensity, string> = {
@@ -633,6 +643,38 @@ export default function SettingsForm({
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Where an item opens when you click it from a list. Sits right after the
+          nav position because the two interact: a docked rail owns its edge, so a
+          left rail plus a left panel falls back to the free edge (or the popup). */}
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Opening an item</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Where an item opens when you click it from a list. Automatic docks a
+          panel on wide screens and uses the popup otherwise. A phone always uses
+          the bottom sheet.
+        </p>
+        <div className="mt-2 grid w-48 grid-cols-2 gap-1">
+          {ITEM_OPEN_MODES.map((m) => (
+            <button
+              key={m}
+              onClick={() => void save({ itemOpenMode: m }, true)}
+              className={segBtn(settings.itemOpenMode === m)}
+            >
+              {ITEM_OPEN_LABELS[m]}
+            </button>
+          ))}
+        </div>
+        {/* Name the collision rather than letting it look like the setting was
+            ignored — the exact "invisible behavior" trap ADR-179 came from. */}
+        {(settings.itemOpenMode === "left" || settings.itemOpenMode === "right") &&
+          settings.navPosition === settings.itemOpenMode && (
+            <p className="mt-1.5 text-xs text-amber-400/80">
+              Your nav rail is docked {settings.itemOpenMode}, so the panel opens on
+              the opposite edge instead.
+            </p>
+          )}
       </section>
 
       {/* Spacing mirrors the More menu: how the slots pack into the bar/rail.
