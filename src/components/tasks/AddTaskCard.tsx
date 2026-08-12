@@ -118,6 +118,7 @@ export default function AddTaskCard({
   onDone,
   onCancel,
   onOptimisticAdd,
+  onOptimisticSettle,
 }: {
   defaultDueYmd?: string;
   // The item the task is added FROM (a project card, a note, …): the task
@@ -135,6 +136,11 @@ export default function AddTaskCard({
   // it, and a coalesced refresh reconciles the real row in. Absent (modal /
   // related panel) keeps the original await-then-refresh-then-close flow.
   onOptimisticAdd?: (task: OptimisticTask) => void;
+  // Fires when the POST lands, with the provisional id and the REAL item id. The
+  // gap matters: the row is provisional for ~150ms (the POST) but the coalesced
+  // refresh is ~900ms out, and the old row spent that whole second looking
+  // unfinished. Optional, so a host can ignore it and keep the old behavior.
+  onOptimisticSettle?: (tmpId: string, realId: string) => void;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -307,16 +313,20 @@ export default function AddTaskCard({
     if (description.trim()) body.body = { format: "markdown", text: description.trim() };
 
     // POST the task and wire up its destination/@-linked relations. Shared by
-    // both paths below.
-    const persist = async () => {
+    // both paths below. Returns the created id so the optimistic path can settle
+    // its provisional row into a real one (see onOptimisticSettle).
+    const persist = async (): Promise<string> => {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // Read the body unconditionally: it used to be parsed only when there were
+      // relations to write, but the id is now always wanted, and a response body
+      // can only be consumed once.
+      const { item } = (await res.json()) as { item: { id: string } };
       if (destId !== "inbox" || linked.length > 0 || tagMatches.length > 0) {
-        const { item } = (await res.json()) as { item: { id: string } };
         const rel = (targetId: string, role: string) =>
           fetch(`/api/items/${item.id}/relations`, {
             method: "POST",
@@ -346,6 +356,7 @@ export default function AddTaskCard({
           if (tagId) await rel(tagId, TAGS_ROLE);
         }
       }
+      return item.id;
     };
 
     if (onOptimisticAdd) {
@@ -355,14 +366,18 @@ export default function AddTaskCard({
       // busy guards against a re-entrant submit (rapid double-Enter) in the tick
       // before onDone unmounts the card.
       setBusy(true);
-      onOptimisticAdd({
-        id: `tmp-${Date.now()}`,
-        title: finalTitle,
-        scheduleLabel,
-      });
+      const tmpId = `tmp-${Date.now()}`;
+      onOptimisticAdd({ id: tmpId, title: finalTitle, scheduleLabel });
       onDone();
       void persist()
-        .then(() => scheduleListRefresh(() => router.refresh()))
+        .then((realId) => {
+          // The task is real NOW, ~150ms in — long before the coalesced refresh
+          // brings the server row ~900ms later. Tell the host so the row stops
+          // looking pending and picks up a working check circle; the refresh
+          // then swaps in the server row invisibly instead of ending a wait.
+          onOptimisticSettle?.(tmpId, realId);
+          scheduleListRefresh(() => router.refresh());
+        })
         .catch(() => {
           enqueueCapture(body);
           window.dispatchEvent(new Event("ledgr:outbox"));
