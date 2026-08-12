@@ -19,6 +19,7 @@ import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
+import { outgoingRelationsBySource } from "@/lib/relations";
 import { childRollups } from "@/lib/subtasks";
 import { listCalendarEventsForRange } from "@/lib/calendar/feed";
 import { overlayWindow } from "@/lib/calendar/overlay";
@@ -112,6 +113,18 @@ export default async function ViewPage({ params, searchParams }: Context) {
   const propertyLabels: Record<string, string> = {};
   for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
 
+  // Group-by-Tags: the column values are `relations` edges, not row data, so they
+  // need their own batched read. Fetched ONLY for a relation grouping — every other
+  // grouping reads the row it already has, and this would be a wasted query.
+  const groupEdges =
+    grouping && "relationRole" in grouping
+      ? await outgoingRelationsBySource(
+          owner.id,
+          items.map((i) => i.id),
+          grouping.relationRole
+        )
+      : undefined;
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-12">
@@ -163,6 +176,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
             <ViewRenderer
               view={view}
               items={items}
+              groupEdges={groupEdges}
               groupOrder={groupOrder}
               propertyLabels={propertyLabels}
               boardDraggable={boardDraggable}

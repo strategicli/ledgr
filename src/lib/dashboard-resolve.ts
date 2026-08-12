@@ -38,7 +38,13 @@ async function groupingFor(view: ViewDefinition) {
   let groupOrder: string[] | undefined;
   let groupPropKind: string | null = null;
   const g = view.grouping;
-  if (g && "propertyKey" in g) {
+  if (g && "relationRole" in g) {
+    // Group by a relation field (Tags): the columns are tag TITLES discovered from
+    // the rows, so there's no canonical order to supply — orderedGroups sorts them
+    // alphabetically with "None" last. groupPropKind stays "relation" so the view
+    // page knows this board is read-only (a tag column can't be dropped into).
+    groupPropKind = "relation";
+  } else if (g && "propertyKey" in g) {
     const prop = type?.propertySchema.find((p) => p.key === g.propertyKey);
     groupOrder = prop?.options;
     groupPropKind = prop?.kind ?? null;

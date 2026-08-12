@@ -10,7 +10,7 @@
 // from @-mentions on every save (src/lib/mentions.ts), so the write path
 // refuses to create or delete them — a manually deleted mention edge would
 // silently resurrect on the next body save.
-import { and, desc, eq, inArray, ne, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, isNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
@@ -187,6 +187,53 @@ export async function outgoingRelationsByRole(
     .orderBy(desc(items.updatedAt));
   for (const row of rows) {
     out.get(row.role)?.push({ id: row.id, title: row.title, type: row.type });
+  }
+  return out;
+}
+
+// The list-surface counterpart of outgoingRelationsByRole: the same edges for
+// MANY source items in ONE query, bucketed by source id (Tyler, 2026-08-12 —
+// tag chips on task rows, and grouping a list by tag). Doing this per row would
+// be an N+1 against a list that already loads in one query, which the perf rules
+// rule out; a list of 200 tasks costs one extra round trip here.
+//
+// Same shape and same guarantees as the single-item version — body-free,
+// owner-scoped on the targets, live non-template items only — so a caller can
+// swap between them. A source id with no edges is present with an empty array,
+// so callers never have to distinguish "no tags" from "not fetched".
+export async function outgoingRelationsBySource(
+  ownerId: string,
+  itemIds: string[],
+  role: string
+): Promise<Map<string, { id: string; title: string; type: string }[]>> {
+  const out = new Map<string, { id: string; title: string; type: string }[]>();
+  for (const id of itemIds) out.set(id, []);
+  if (itemIds.length === 0) return out;
+  const rows = await getDb()
+    .select({
+      sourceId: relations.sourceId,
+      id: items.id,
+      title: items.title,
+      type: items.type,
+    })
+    .from(relations)
+    .innerJoin(items, eq(items.id, relations.targetId))
+    .where(
+      and(
+        inArray(relations.sourceId, itemIds),
+        eq(relations.role, role),
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt),
+        eq(items.isTemplate, false)
+      )
+    )
+    // Alphabetical, not by updatedAt: a row's chips and a list's tag groups are
+    // read as a set, and a set that reorders itself when an unrelated tag is
+    // renamed looks like a bug. The single-item version sorts by recency because
+    // an editable field's newest link belongs on top; a read-only chip doesn't.
+    .orderBy(asc(items.title));
+  for (const row of rows) {
+    out.get(row.sourceId)?.push({ id: row.id, title: row.title, type: row.type });
   }
   return out;
 }

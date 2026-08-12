@@ -18,6 +18,9 @@ import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
+import TagChips, { type TagRef } from "@/components/relations/TagChips";
+import { outgoingRelationsBySource } from "@/lib/relations";
+import { TAGS_ROLE } from "@/lib/tags";
 import { childRollups } from "@/lib/subtasks";
 import type { Progress } from "@/lib/subtasks";
 import { bulkConfigForType } from "@/lib/bulk-config";
@@ -58,7 +61,7 @@ function effDate(t: ListedItem): Date | null {
 
 const TASK_ROW_CLASS = "group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
 
-function TaskRow({ task, dueToday, statuses, rollup, today }: { task: ListedItem; dueToday: Date; statuses: StatusDef[]; rollup?: Progress; today: string }) {
+function TaskRow({ task, dueToday, statuses, rollup, today, tags }: { task: ListedItem; dueToday: Date; statuses: StatusDef[]; rollup?: Progress; today: string; tags?: TagRef[] }) {
   const done = task.statusCategory === "done";
   const sdef = statuses.find((s) => s.key === task.status);
   const date = effDate(task);
@@ -68,6 +71,12 @@ function TaskRow({ task, dueToday, statuses, rollup, today }: { task: ListedItem
     <>
       <SelectCheckbox id={task.id} />
       <SubtaskCheckbox id={task.id} done={done} />
+      {/* Tags at the leading edge, before the title (Tyler: "show on the task to
+          the left of it somewhere"). Read-only here; the Tags field on the canvas
+          is where they're edited. If the ragged left edge this gives the title
+          column reads worse than the Todoist placement (chips AFTER the title),
+          moving this one line below the Link is the whole change. */}
+      <TagChips tags={tags ?? []} />
       <Link
         href={`/items/${task.id}`}
         className={`min-w-0 flex-1 truncate text-sm ${task.title ? "text-neutral-200" : "text-neutral-500"} ${done ? "line-through opacity-60" : ""}`}
@@ -116,11 +125,11 @@ function TaskRow({ task, dueToday, statuses, rollup, today }: { task: ListedItem
   );
 }
 
-function TaskList({ tasks, dueToday, statuses, rollups, today }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[]; rollups?: Map<string, Progress>; today: string }) {
+function TaskList({ tasks, dueToday, statuses, rollups, today, tagsBySource }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[]; rollups?: Map<string, Progress>; today: string; tagsBySource?: Map<string, TagRef[]> }) {
   return (
     <ul className="mt-1">
       {tasks.map((t) => (
-        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} today={today} />
+        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} today={today} tags={tagsBySource?.get(t.id)} />
       ))}
     </ul>
   );
@@ -203,6 +212,10 @@ export default async function Tasks({
       ...ordered.flatMap(([, items]) => items.map((t) => t.id)),
     ];
     const rollups = await childRollups(owner.id, selectableIds);
+    // Tag chips for the rows about to render. One batched query keyed on the
+    // ids already computed for selection, so it costs a single extra round trip
+    // per page rather than one per row (the no-N+1 perf rule).
+    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
     body =
       onPlate.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
@@ -213,7 +226,7 @@ export default async function Tasks({
               <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">
                 Overdue
               </h3>
-              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
+              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
             </div>
           )}
           {ordered.map(([k, items]) => {
@@ -223,7 +236,7 @@ export default async function Tasks({
                 <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
                   {k === 6 ? "No priority" : `Priority ${k}`}
                 </h3>
-                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
               </div>
             );
           })}
@@ -233,11 +246,15 @@ export default async function Tasks({
     const inbox = await queryViewItems(owner.id, { type: "task", inbox: true, statusCategory: "active" }, { field: "createdAt", dir: "desc" });
     selectableIds = inbox.map((t) => t.id);
     const rollups = await childRollups(owner.id, selectableIds);
+    // Tag chips for the rows about to render. One batched query keyed on the
+    // ids already computed for selection, so it costs a single extra round trip
+    // per page rather than one per row (the no-N+1 perf rule).
+    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
     body =
       inbox.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
       ) : (
-        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
+        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
       );
   } else if (tab === "upcoming") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
@@ -254,6 +271,10 @@ export default async function Tasks({
     const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
     selectableIds = days.flatMap((d) => (byDay.get(dayKey(d)) ?? []).map((t) => t.id));
     const rollups = await childRollups(owner.id, selectableIds);
+    // Tag chips for the rows about to render. One batched query keyed on the
+    // ids already computed for selection, so it costs a single extra round trip
+    // per page rather than one per row (the no-N+1 perf rule).
+    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
     body = (
       <div className="mt-4">
         {/* week nav + day-jump chips */}
@@ -287,7 +308,7 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />}
                 <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
@@ -332,6 +353,9 @@ export default async function Tasks({
     );
     selectableIds = cards.flatMap(({ tasks }) => tasks.map((t) => t.id));
     const rollups = await childRollups(owner.id, selectableIds);
+    // Same batched tag read as the other tabs — one query for every task across
+    // every project card, not one per card.
+    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
     body =
       cards.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">No projects yet. Create one to gather its tasks, notes, and events.</p>
@@ -353,7 +377,7 @@ export default async function Tasks({
                   )}
                 </div>
                 {tasks.length > 0 ? (
-                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} />
+                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
                 ) : (
                   <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
                 )}
