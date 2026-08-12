@@ -220,6 +220,15 @@ export default function ItemActionsMenu({
             <ActionGlyph icon="network" />
             Explore related
           </a>
+          {/* The canonical body as plain markdown, with a copy button (Tyler,
+              2026-08-12). Reachable on EVERY type, not just bespoke ones: the
+              need is sharpest on a song (the chord canvas shows a rendering, not
+              the text) but "let me see and take the whole thing" is universal.
+              Hard nav so it escapes the intercept modal, like Customize layout. */}
+          <a role="menuitem" href={`/items/${itemId}/markdown`} className={rowClass}>
+            <ActionGlyph icon="markdown" />
+            View full markdown
+          </a>
           <button
             type="button"
             role="menuitem"
