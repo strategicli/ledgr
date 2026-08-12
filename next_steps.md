@@ -976,7 +976,7 @@ A fresh session re-grounded a stale-branch handoff against current `origin/main`
 
 **Read this before anything below.** After a long Brandon↔Tyler conversation, two foundational decisions changed and Ledgr became a two-builder project:
 
-1. **Canonical body format is now Markdown** (extended dialect: GFM + Pandoc footnotes/superscripts/citations + inline HTML for sermon colors + ChordPro per type), not BlockNote JSON. Markdown is the source of truth; Word/PDF/chord-chart/slides all render *from* it.
+1. **Canonical body format is now Markdown** (extended dialect: GFM + inline HTML for sermon colors + ChordPro per type), not BlockNote JSON. *(As written in 2026-06-13 this also claimed Pandoc footnotes/superscripts/citations; none were ever built outside Papers, and ADR-186 removed them from the dialect. See CLAUDE.md for the current contract.)* Markdown is the source of truth; Word/PDF/chord-chart/slides all render *from* it.
 2. **Bespoke-first with per-type canvases** (a type may declare its own canvas), not "Notion-default / one editor canvas." One customizable catch-all type for the tail, with a promotion path.
 3. **Two builders** (Brandon + Tyler), shared codebase, separate single-tenant deploys. Core changes need both-agree + an ADR (see CLAUDE.md "Building together"); `COLLAB.md` holds rotating plans.
 
