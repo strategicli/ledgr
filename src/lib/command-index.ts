@@ -35,6 +35,11 @@ export type CommandResult =
       sublabel?: string;
       href: string;
       icon: string;
+      // Extra words that should find this entry, for the case where the thing
+      // someone types is not what the entry is called (ADR-189: "help" and
+      // "docs" must reach the User Guide). Matched exactly like the label, and
+      // scored the same — a keyword hit is not a weaker hit.
+      keywords?: string[];
     }
   | {
       kind: "action";
@@ -93,6 +98,7 @@ export function staticCommandEntries(): DestinationResult[] {
     sublabel: "Build",
     href: e.href,
     icon: e.icon,
+    keywords: e.keywords,
   }));
   const settings: DestinationResult[] = SETTINGS_ENTRIES.map((s) => ({
     kind: "destination",
@@ -214,9 +220,16 @@ export function rankCommands(
   if (!query) return entries;
   return entries
     .map((e) => {
-      const base = matchScore(e.label, query);
-      if (base == null) return null;
-      return { e, score: base + groupWeight(e.group, mode) };
+      // Best of the label and any keyword aliases, so "help" reaches an entry
+      // labelled "User Guide" without a second row pointing at the same route.
+      const scores = [
+        matchScore(e.label, query),
+        ...(e.kind === "destination" && e.keywords
+          ? e.keywords.map((k) => matchScore(k, query))
+          : []),
+      ].filter((s): s is number => s != null);
+      if (scores.length === 0) return null;
+      return { e, score: Math.max(...scores) + groupWeight(e.group, mode) };
     })
     .filter((x): x is { e: CommandResult; score: number } => x !== null)
     .sort((a, b) => b.score - a.score || a.e.label.localeCompare(b.e.label))

@@ -34,6 +34,9 @@ export type BuildEntry = {
   // the picker/palette/describe_workspace still know it) — only the sidebar
   // doorway is hidden while the feature is off.
   gatedBy?: BuildEntryFlag;
+  // Extra search words for the command palette, when what a person types isn't
+  // what the entry is called ("help" → User Guide). Sidebar ignores these.
+  keywords?: string[];
 };
 
 export type BuildGroup = {
@@ -67,6 +70,17 @@ export const BUILD_NAV: BuildGroup[] = [
     entries: [
       // Model Overview is the /build home — the bird's-eye view you land on.
       { label: "Model Overview", href: "/build", icon: "compass" },
+      // User Guide (ADR-189): what Ledgr can do and where each feature lives.
+      // Sits next to Model Overview because the pair answers the two "what have
+      // I got" questions — that one for your data, this one for the tool. Also
+      // linked from the Work "More" menu and findable in the command palette,
+      // since the problem it solves is not knowing a feature exists at all.
+      {
+        label: "User Guide",
+        href: "/build/guide",
+        icon: "book",
+        keywords: ["help", "docs", "documentation", "manual", "how to"],
+      },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
       // Loose Ends (ADR-127 Phase 3): under-connected items + their top
       // suggested links — the relatedness engine inverted across the corpus.
