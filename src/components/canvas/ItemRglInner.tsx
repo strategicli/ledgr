@@ -463,6 +463,16 @@ export default function ItemRglInner({
       rowHeight={GRID_ROW_HEIGHT}
       margin={GRID_MARGIN}
       containerPadding={[0, 0]}
+      // Transforms ONLY while arranging. RGL's default (cssTransforms) positions
+      // every cell with `transform: translate(...)`, and a transformed ancestor
+      // re-bases the coordinate system of any `position: sticky` descendant — so
+      // the body editor's formatting bar tracked its own grid cell instead of
+      // pinning to the scroll container, reading as "the style bar is frozen
+      // partway down the note" (Tyler, 2026-08-12). Notes are the only type with
+      // a saved canvas_layout, which is why it looked note-specific. At rest
+      // there is no drag to animate, so left/top costs nothing; while arranging
+      // transforms come back for a smooth drag, where no sticky bar is in play.
+      useCSSTransforms={arrange}
       isDraggable={arrange}
       isResizable={arrange}
       draggableHandle=".canvas-drag"
