@@ -39,11 +39,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      # Node 24 (current LTS). Local dev is on 25 and Next 16 supports 20.9+, so
+      # this is comfortably inside the supported band; deliberately NOT pinned via
+      # .nvmrc, which would change which version a collaborator's `nvm use` picks.
+      # Worth confirming against the Vercel project's runtime if they ever diverge.
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       # `ci` not `install`: respect the lockfile exactly, and fail if it and
