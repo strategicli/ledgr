@@ -7,10 +7,15 @@
 // The toggle command is gated by the user's toggleBlocksEnabled setting: the
 // host calls setSlashToggleEnabled once settings load. It's a module-level flag
 // (app-wide, one editor focused at a time), matching the memoized settings
-// pattern in MarkdownEditor. Headings are core and always offered.
+// pattern in MarkdownEditor. Headings and lists are core and always offered.
 "use client";
 
-import { Extension, type Editor, type Range } from "@tiptap/core";
+import {
+  Extension,
+  type ChainedCommands,
+  type Editor,
+  type Range,
+} from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 import { insertToggle, wrapSelectionInToggle } from "./toggle-extension";
@@ -42,6 +47,19 @@ const setHeading =
     editor.chain().focus().deleteRange(range).setNode("heading", { level }).run();
   };
 
+// Every list/block command below is one Tiptap chain applied after the "/query"
+// range is deleted, which is what makes them convert the block the caret is in
+// (usually the empty paragraph the user just typed "/" into) rather than insert a
+// second one. Taking the chain step as a callback keeps each command one readable
+// line and stays type-safe, where indexing the chain by a union of method names
+// would not. These are the same commands the toolbar buttons run
+// (MarkdownEditor.tsx groups), so the two surfaces can't drift.
+const block =
+  (apply: (chain: ChainedCommands) => ChainedCommands) =>
+  (editor: Editor, range: Range) => {
+    apply(editor.chain().focus().deleteRange(range)).run();
+  };
+
 const COMMANDS: SlashCommand[] = [
   {
     id: "h1",
@@ -63,6 +81,57 @@ const COMMANDS: SlashCommand[] = [
     hint: "Small section heading",
     keywords: ["h3", "heading"],
     run: setHeading(3),
+  },
+  {
+    id: "bulletList",
+    label: "Bulleted list",
+    hint: "Simple bulleted list",
+    keywords: ["bullet", "list", "ul", "unordered", "dash"],
+    run: block((c) => c.toggleBulletList()),
+  },
+  {
+    id: "orderedList",
+    label: "Numbered list",
+    hint: "List with numbered steps",
+    keywords: ["number", "numbered", "list", "ol", "ordered", "step"],
+    run: block((c) => c.toggleOrderedList()),
+  },
+  {
+    id: "taskList",
+    label: "Checklist",
+    hint: "Checkbox list you can tick off",
+    keywords: ["check", "checkbox", "checklist", "task", "todo", "to-do", "box"],
+    run: block((c) => c.toggleTaskList()),
+  },
+  {
+    id: "quote",
+    label: "Quote",
+    hint: "Indented quotation block",
+    keywords: ["quote", "blockquote", "citation", "excerpt"],
+    run: block((c) => c.toggleBlockquote()),
+  },
+  {
+    id: "codeBlock",
+    label: "Code block",
+    hint: "Monospaced, unformatted block",
+    keywords: ["code", "codeblock", "pre", "snippet", "monospace"],
+    run: block((c) => c.toggleCodeBlock()),
+  },
+  {
+    id: "table",
+    label: "Table",
+    hint: "3×3 table with a header row",
+    keywords: ["table", "grid", "rows", "columns", "spreadsheet"],
+    // Same shape as the toolbar's Insert table button. insertTable replaces the
+    // empty paragraph the caret is in, so no stray blank line is left above it.
+    run: block((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true })),
+  },
+  {
+    id: "divider",
+    label: "Divider",
+    hint: "Horizontal rule between sections",
+    keywords: ["divider", "rule", "hr", "line", "separator", "break"],
+    run: block((c) => c.setHorizontalRule()),
   },
   {
     id: "toggle",
@@ -163,6 +232,11 @@ function suggestionConfig(editor: Editor) {
             cmd?.(it);
           });
           popup!.appendChild(row);
+          // The command list is taller than the popup's max-height, so arrowing
+          // down past the visible rows would move the selection off-screen. Keep
+          // the selected row scrolled into view (nearest = no jump when it's
+          // already visible). Only meaningful once the list overflows.
+          if (i === selected) row.scrollIntoView({ block: "nearest" });
         });
       };
 
