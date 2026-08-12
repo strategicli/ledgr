@@ -27,6 +27,12 @@ import {
   type MentionHit,
 } from "@/components/capture/useMentionTypeahead";
 import { LinkedChips, MentionPopup, useTypeGlyphs, type LinkedItem } from "@/components/capture/mention-ui";
+import {
+  createMentionTarget,
+  createTargets,
+  type CreateTarget,
+} from "@/lib/mention-create";
+import { loadTypes, type TypeMeta } from "@/components/search/type-token";
 import DateInput from "@/components/ui/DateInput";
 
 function localTodayYmd(): string {
@@ -172,8 +178,12 @@ export default function AddTaskCard({
   const [creatingLink, setCreatingLink] = useState(false);
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
   const [linked, setLinked] = useState<LinkedItem[]>([]);
+  // The type registry, for the create-on-miss rows (which types a bare unmatched
+  // name can be created as). Memoized in type-token — one shared fetch.
+  const [mTypes, setMTypes] = useState<TypeMeta[]>([]);
 
   useEffect(() => {
+    void loadTypes().then(setMTypes);
     loadQuickAddHidden().then((ids) => setQaHidden(new Set(ids)));
     fetch("/api/items?type=project&limit=50")
       .then((r) => (r.ok ? r.json() : null))
@@ -191,7 +201,13 @@ export default function AddTaskCard({
   const visibleHits = hits.filter((h) => !alreadyLinked(h.id));
   const showCreate =
     mQuery !== "" && !hits.some((h) => h.title.trim().toLowerCase() === mQuery.toLowerCase());
-  const mRowCount = visibleHits.length + (showCreate ? 1 : 0);
+  // One create row per type the name could be (lib/mention-create.ts); a scoped
+  // "@/person Jane" yields exactly one, i.e. the pre-picker behavior.
+  const mTargets = useMemo(
+    () => (showCreate ? createTargets(mTypes, typeFilter) : []),
+    [showCreate, mTypes, typeFilter]
+  );
+  const mRowCount = visibleHits.length + mTargets.length;
   const mDismissed = mention != null && dismissedQuery === mention.rawQuery;
   const mOpen = mention != null && !mDismissed && mRowCount > 0;
   const mSel = Math.min(selected, Math.max(0, mRowCount - 1));
@@ -378,27 +394,21 @@ export default function AddTaskCard({
       if (el) { el.focus(); el.setSelectionRange(nextCaret, nextCaret); setCaret(nextCaret); }
     });
   }
-  async function createAndLink() {
+  // Create as the picked type, then link it like any other hit. A null return
+  // means the POST failed: the "@query" text stays so it isn't lost.
+  async function createAndLink(target: CreateTarget) {
     if (creatingLink || !mQuery) return;
     setCreatingLink(true);
-    try {
-      const res = await fetch("/api/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: typeFilter?.key ?? "unmarked", title: mQuery, inbox: true }),
-      });
-      if (!res.ok) return;
-      const { item } = (await res.json()) as { item: { id: string; title?: string; type?: string | null } };
-      linkItem({ id: item.id, title: item.title || mQuery, type: item.type ?? typeFilter?.key ?? null });
-    } catch {
-      // offline / transient: leave the "@query" text so it isn't lost
-    } finally {
-      setCreatingLink(false);
-    }
+    const made = await createMentionTarget(mQuery, target);
+    setCreatingLink(false);
+    if (made) linkItem({ id: made.id, title: made.title, type: made.type });
   }
   function pickSelected() {
     if (mSel < visibleHits.length) linkItem(visibleHits[mSel]);
-    else if (showCreate) void createAndLink();
+    else {
+      const target = mTargets[mSel - visibleHits.length];
+      if (target) void createAndLink(target);
+    }
   }
   function onTitleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (mOpen) {
@@ -456,13 +466,13 @@ export default function AddTaskCard({
             <MentionPopup
               hits={visibleHits}
               selected={mSel}
-              showCreate={showCreate}
+              createTargets={mTargets}
               creating={creatingLink}
               query={mQuery}
               typeFilter={typeFilter}
               onHover={setSelected}
               onPick={linkItem}
-              onCreate={() => void createAndLink()}
+              onCreate={(target) => void createAndLink(target)}
               glyph={glyph}
               typeLabel={typeLabel}
             />
