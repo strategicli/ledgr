@@ -30,6 +30,11 @@ check("…and the other two guides still resolve",
 check("an unknown guide URI is still null", readGuideResource("ledgr://guide/nope") === null);
 check("the three guide URIs are distinct",
   new Set([GUIDE_RESOURCE.uri, MEMORY_PROTOCOL_RESOURCE.uri, USER_GUIDE_URI]).size === 3);
+// The descriptor is what resources/list advertises; if its uri drifts from the
+// one readGuideResource answers to, the resource lists but can't be read.
+check("the descriptor points at the URI the reader serves",
+  USER_GUIDE_RESOURCE.uri === USER_GUIDE_URI);
+check("…and advertises markdown", USER_GUIDE_RESOURCE.mimeType === "text/markdown");
 
 // --- doorway 2: the in-app page --------------------------------------------
 // The page can't be imported here (it's a React server component), so check the
