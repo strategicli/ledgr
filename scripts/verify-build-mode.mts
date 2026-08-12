@@ -100,6 +100,14 @@ const build = dynamicCommandEntries({ types: [{ key: "note", label: "Note", icon
 check("dynamic type href is the item list in Work", work[0].kind === "destination" && work[0].href === "/list/note");
 check("dynamic type href is the edit page in Build", build[0].kind === "destination" && build[0].href === "/build/types/note/edit");
 
+// A template has no builder route of its own; it opens its prototype item's
+// canvas (the templates index links the same way). Guards the 404 regression.
+const tmpl = dynamicCommandEntries(
+  { types: [], views: [], templates: [{ id: "t1", name: "Weekly note", type: "note", prototypeItemId: "i9" }] },
+  "build"
+);
+check("dynamic template href is the prototype item's canvas", tmpl[0].kind === "destination" && tmpl[0].href === "/items/i9");
+
 check("groupOrder: Items first in Work", groupOrder("work")[0] === "Items");
 check("groupOrder: Build & Settings first in Build", groupOrder("build")[0] === "Build & Settings");
 
