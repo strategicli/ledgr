@@ -1,15 +1,14 @@
-// Storage verification (R2 server-side write path). Guards the email-in
-// attachment upload: putObject must store bytes that read back at the exact
-// uploaded length. The production bug this pins (R2 411 MissingContentLength)
-// only manifests on Vercel's Node runtime — local Node infers the length — so
-// the durable guard here is the live round-trip: put → signed GET → assert the
-// stored Content-Length matches → delete. Gated on R2_* env (live only, the
-// same posture as the email/calendar verifies). Run: npx tsx scripts/verify-storage-r2.mts
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
-for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+// .env.local is gitignored, so it is present locally and ABSENT in CI. A bare
+// readFileSync here used to throw ENOENT, which is why this script passed on a
+// developer machine and failed on CI's first run. The load is optional — the
+// checks below assert whichever branch the env puts them in.
+if (existsSync(".env.local")) {
+  for (const line of readFileSync(".env.local", "utf8").replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
 }
 
 let failures = 0;

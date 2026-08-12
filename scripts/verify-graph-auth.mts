@@ -1,20 +1,13 @@
-// Slice 21 verification: the shared app-only Microsoft Graph client
-// (src/lib/graph/client). Exercises config detection, a real client-
-// credentials token grant against the live Microsoft identity platform
-// (the export registration's secret is in .env.local), the module-scope
-// token cache, the secret-expiry canary (via a temporarily bogus secret),
-// the "not configured" path, and a Calendars.Read probe whose 403 is the
-// signal that the mailbox permission + Application Access Policy
-// (Brandon-step, runbook §1c) are not in place yet.
-//
-// Run with: npx tsx scripts/verify-graph-auth.mts
-// Safe to delete once the slice is closed. Makes no DB writes.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
-for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) {
-    process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+// .env.local is gitignored, so it is present locally and ABSENT in CI. A bare
+// readFileSync here used to throw ENOENT, which is why this script passed on a
+// developer machine and failed on CI's first run. The load is optional — the
+// checks below assert whichever branch the env puts them in.
+if (existsSync(".env.local")) {
+  for (const line of readFileSync(".env.local", "utf8").replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
   }
 }
 
