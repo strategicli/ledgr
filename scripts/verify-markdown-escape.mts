@@ -36,6 +36,15 @@ const StarterKit = (await import("@tiptap/starter-kit")).default;
 const { Markdown } = await import("@tiptap/markdown");
 const { TextColor, Highlight, MarkdownEscapeFix } =
   await import("../src/components/markdown-editor/extensions");
+// The palette is the source of truth for the hex a colored span carries. Taken
+// from it rather than hardcoded: this test used to spell red "#e03e3e" (the
+// BlockNote/Notion red, from before the current palette) which `textColorName`
+// does not recognize, so the tokenizer correctly declined the span, it fell
+// through to marked's generic inline-HTML path, and the doc came out EMPTY. The
+// test had been failing silently because nothing ran it. Deriving the value means
+// a future palette change can't re-break it.
+const { BLOCKNOTE_COLORS } = await import("../src/lib/colors");
+const RED_HEX = BLOCKNOTE_COLORS.red.text;
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -102,7 +111,7 @@ function hasBoldTextIn(doc: any, markType: string): boolean {
 }
 
 for (const [mark, md] of [
-  ["textColor", `<span style="color:#e03e3e">**8** For by grace</span>`],
+  ["textColor", `<span style="color:${RED_HEX}">**8** For by grace</span>`],
   ["highlight", `<mark class="hl-yellow" style="background-color:#fbf3db">**8** For by grace</mark>`],
 ] as const) {
   const ed = editorFor(true);
