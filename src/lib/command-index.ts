@@ -36,7 +36,7 @@ export type CommandResult =
       href: string;
       icon: string;
       // Extra words that should find this entry, for the case where the thing
-      // someone types is not what the entry is called (ADR-185: "help" and
+      // someone types is not what the entry is called (ADR-189: "help" and
       // "docs" must reach the User Guide). Matched exactly like the label, and
       // scored the same — a keyword hit is not a weaker hit.
       keywords?: string[];

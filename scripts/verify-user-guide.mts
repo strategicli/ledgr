@@ -1,4 +1,4 @@
-// ADR-185 verification: the user guide is served, reachable, and findable.
+// ADR-189 verification: the user guide is served, reachable, and findable.
 // Pure functions only (no DB, no browser) — the three doorways all read from
 // static modules, so all three are checkable here.
 //   npx tsx scripts/verify-user-guide.mts

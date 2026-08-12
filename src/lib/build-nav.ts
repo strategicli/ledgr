@@ -70,7 +70,7 @@ export const BUILD_NAV: BuildGroup[] = [
     entries: [
       // Model Overview is the /build home — the bird's-eye view you land on.
       { label: "Model Overview", href: "/build", icon: "compass" },
-      // User Guide (ADR-185): what Ledgr can do and where each feature lives.
+      // User Guide (ADR-189): what Ledgr can do and where each feature lives.
       // Sits next to Model Overview because the pair answers the two "what have
       // I got" questions — that one for your data, this one for the tool. Also
       // linked from the Work "More" menu and findable in the command palette,

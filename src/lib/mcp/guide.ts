@@ -11,7 +11,7 @@
 // (any MCP-speaking AI may read it) and free of church-specific jargon, like the
 // rest of the tool surface.
 
-// The third guide — "Using Ledgr" (ADR-185) — lives in its own file because its
+// The third guide — "Using Ledgr" (ADR-189) — lives in its own file because its
 // body is long and it is owner-facing rather than model-facing. It is wired in
 // here (readGuideResource) and in server.ts (resources/list) like the other two.
 import { USER_GUIDE_URI, USING_LEDGR_GUIDE } from "./user-guide";

@@ -1,4 +1,4 @@
-// User Guide (ADR-185) — the in-app doorway onto the "Using Ledgr" guide.
+// User Guide (ADR-189) — the in-app doorway onto the "Using Ledgr" guide.
 //
 // The markdown is NOT written here. It lives once in src/lib/mcp/user-guide.ts
 // and is served three ways: this page, the MCP resource ledgr://guide/using-ledgr,

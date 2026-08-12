@@ -19,7 +19,7 @@
 // actual types, views, or data. For "what do *I* have," the guide points a
 // reading AI at describe_workspace / list_types, which are per-owner and live.
 //
-// KEEPING IT CURRENT is a process rule, not automation (ADR-185): a slice that
+// KEEPING IT CURRENT is a process rule, not automation (ADR-189): a slice that
 // changes what the owner can do updates this file in the same PR. The /ship
 // pre-merge gate asks. Nothing generates this from code — a generated index
 // would be worse prose than a maintained one, and the reminder sits in the two

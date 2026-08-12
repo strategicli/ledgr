@@ -166,7 +166,7 @@ export async function handleMcpMessage(
     case "resources/list": {
       // The stable workspace-shaping and user guides, plus the AI Memory
       // protocol when the owner has AI Memory on (ADR-137) — so a vanilla client
-      // never sees it. The user guide (ADR-185) is ungated: "what can Ledgr do"
+      // never sees it. The user guide (ADR-189) is ungated: "what can Ledgr do"
       // is useful to every client, and it holds no owner data.
       const { aiMemoryEnabled } = await getSettings(ownerId);
       const resources = aiMemoryEnabled
