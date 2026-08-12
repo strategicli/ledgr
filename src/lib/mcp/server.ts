@@ -20,6 +20,7 @@ import {
   MEMORY_PROTOCOL_URI,
   readGuideResource,
 } from "@/lib/mcp/guide";
+import { USER_GUIDE_RESOURCE } from "@/lib/mcp/user-guide";
 import { getSettings } from "@/lib/settings";
 
 // Free-form version string for clients to display; tracks the PRD epoch
@@ -163,12 +164,14 @@ export async function handleMcpMessage(
       return rpcResult(id, { tools: await listToolDefs(ownerId) });
 
     case "resources/list": {
-      // The stable workspace-shaping guide, plus the AI Memory protocol when the
-      // owner has AI Memory on (ADR-137) — so a vanilla client never sees it.
+      // The stable workspace-shaping and user guides, plus the AI Memory
+      // protocol when the owner has AI Memory on (ADR-137) — so a vanilla client
+      // never sees it. The user guide (ADR-185) is ungated: "what can Ledgr do"
+      // is useful to every client, and it holds no owner data.
       const { aiMemoryEnabled } = await getSettings(ownerId);
       const resources = aiMemoryEnabled
-        ? [GUIDE_RESOURCE, MEMORY_PROTOCOL_RESOURCE]
-        : [GUIDE_RESOURCE];
+        ? [GUIDE_RESOURCE, USER_GUIDE_RESOURCE, MEMORY_PROTOCOL_RESOURCE]
+        : [GUIDE_RESOURCE, USER_GUIDE_RESOURCE];
       return rpcResult(id, { resources });
     }
 

@@ -11,6 +11,11 @@
 // (any MCP-speaking AI may read it) and free of church-specific jargon, like the
 // rest of the tool surface.
 
+// The third guide — "Using Ledgr" (ADR-185) — lives in its own file because its
+// body is long and it is owner-facing rather than model-facing. It is wired in
+// here (readGuideResource) and in server.ts (resources/list) like the other two.
+import { USER_GUIDE_URI, USING_LEDGR_GUIDE } from "./user-guide";
+
 // A stable, opaque URI for the one guide resource. `ledgr://` keeps it clearly
 // ours; the path names the topic so a future second guide is an additive sibling.
 export const GUIDE_URI = "ledgr://guide/workspace-shaping";
@@ -313,6 +318,9 @@ export function readGuideResource(
   }
   if (uri === MEMORY_PROTOCOL_URI) {
     return { uri: MEMORY_PROTOCOL_URI, mimeType: "text/markdown", text: MEMORY_PROTOCOL_GUIDE };
+  }
+  if (uri === USER_GUIDE_URI) {
+    return { uri: USER_GUIDE_URI, mimeType: "text/markdown", text: USING_LEDGR_GUIDE };
   }
   return null;
 }
