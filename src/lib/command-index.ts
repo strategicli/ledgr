@@ -108,13 +108,19 @@ export function staticCommandEntries(): DestinationResult[] {
 
 // The dynamic entries from owner data. A type jumps to *editing* it in Build,
 // or to its item list in Work (mode-aware href — the spec's "a type name jumps
-// to editing it" in Build, content elsewhere). Views open to run; templates open
-// in their builder.
+// to editing it" in Build, content elsewhere). Views open to run; a template
+// opens its prototype item's canvas — the same target the templates index links
+// to (ADR-093), since a template *is* a real item and has no separate editor.
 export function dynamicCommandEntries(
   data: {
     types: { key: string; label: string; icon: string | null }[];
     views: { id: string; name: string }[];
-    templates: { id: string; name: string; type: string }[];
+    templates: {
+      id: string;
+      name: string;
+      type: string;
+      prototypeItemId: string;
+    }[];
   },
   mode: CommandMode
 ): DestinationResult[] {
@@ -141,7 +147,7 @@ export function dynamicCommandEntries(
     group: "Build & Settings",
     label: t.name,
     sublabel: `Template · ${t.type}`,
-    href: `/build/templates/${t.id}/edit`,
+    href: `/items/${t.prototypeItemId}`,
     icon: "document",
   }));
   return [...types, ...views, ...templates];
