@@ -24,6 +24,7 @@ import {
   type CreateTarget,
 } from "@/lib/mention-create";
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { announceFloatingOpen } from "@/lib/floating";
 
 export type { LinkedItem };
 
@@ -81,6 +82,12 @@ export default function MentionTitleField({
   const dismissed = active != null && dismissedQuery === active.rawQuery;
   const open = active != null && !dismissed && rowCount > 0;
   const sel = Math.min(selected, Math.max(0, rowCount - 1));
+
+  // Close any other open floating panel when this typeahead appears. Announced on
+  // the OPEN transition only, so it doesn't re-fire per keystroke.
+  useEffect(() => {
+    if (open) announceFloatingOpen("capture-mention");
+  }, [open]);
 
   // A latest-state ref for the once-registered Escape listener below, kept fresh
   // in an effect (never written during render).

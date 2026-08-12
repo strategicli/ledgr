@@ -22,6 +22,7 @@ import {
   type CreateTarget,
 } from "@/lib/mention-create";
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { announceFloatingOpen } from "@/lib/floating";
 import InlineTitle from "./InlineTitle";
 
 const MENU_WIDTH = 256;
@@ -63,6 +64,11 @@ export default function RelationField({
   useEffect(() => {
     if (open && !targetType && types.length === 0) void loadTypes().then(setTypes);
   }, [open, targetType, types.length]);
+
+  // Close any other open floating panel when this box opens (src/lib/floating.ts).
+  useEffect(() => {
+    if (open) announceFloatingOpen("relation-field");
+  }, [open]);
 
   const atCapacity = cardinality === "single" && chips.length >= 1;
   // Create-on-miss: if the field names a type there's nothing to ask, so it stays

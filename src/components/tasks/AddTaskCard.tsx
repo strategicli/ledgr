@@ -33,6 +33,7 @@ import {
   type CreateTarget,
 } from "@/lib/mention-create";
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
 
 function localTodayYmd(): string {
@@ -211,6 +212,12 @@ export default function AddTaskCard({
   const mDismissed = mention != null && dismissedQuery === mention.rawQuery;
   const mOpen = mention != null && !mDismissed && mRowCount > 0;
   const mSel = Math.min(selected, Math.max(0, mRowCount - 1));
+
+  // Close any other open floating panel when this typeahead appears (open
+  // transition only, so it doesn't re-fire per keystroke).
+  useEffect(() => {
+    if (mOpen) announceFloatingOpen("task-mention");
+  }, [mOpen]);
 
   const preview = useMemo(() => (title.trim() ? parseTaskTitle(title, localTodayYmd()) : null), [title]);
   // +project-name → file the task under a matching project (Tyler, 2026-08-12).

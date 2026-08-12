@@ -28,6 +28,7 @@ import {
   createTargets,
   type CreateTarget,
 } from "@/lib/mention-create";
+import { announceFloatingOpen } from "@/lib/floating";
 
 // `type` is the target's type key; it rides onto the inserted mention node's
 // attrs so the chip is glyphed instantly (the default Mention command copies the
@@ -322,6 +323,11 @@ export function createMentionSuggestion(
         popup = document.createElement("div");
         popup.className = "ledgr-mention-popup";
         document.body.appendChild(popup);
+        // Close any other open floating panel (the item "⋯" kebab was the one
+        // that overlapped this in practice). Announced on MOUNT, not on every
+        // update: this popup opens from a keystroke, so nothing else's
+        // outside-click listener would ever fire to dismiss it.
+        announceFloatingOpen("editor-mention");
         // Clicking anywhere outside the popup dismisses it (capture phase so we
         // see the click before it's swallowed; row mousedowns live inside).
         onDocPointer = (e: MouseEvent) => {

@@ -21,6 +21,7 @@ import {
   needsTriage,
   type CreateTarget,
 } from "@/lib/mention-create";
+import { announceFloatingOpen } from "@/lib/floating";
 
 type Hit = { id: string; type: string; title: string };
 
@@ -37,6 +38,11 @@ export default function AddRelation({ itemId }: { itemId: string }) {
   useEffect(() => {
     if (open && types.length === 0) void loadTypes().then(setTypes);
   }, [open, types.length]);
+
+  // Close any other open floating panel when this box opens (src/lib/floating.ts).
+  useEffect(() => {
+    if (open) announceFloatingOpen("add-relation");
+  }, [open]);
 
   // A leading "/type" token ("/person jane") narrows to one type; the rest is
   // the title query, and "/person" alone browses recent people.

@@ -68,7 +68,10 @@ export function MentionPopup({
   typeLabel: (type: string | null) => string | null;
 }) {
   return (
-    <ul className="absolute left-0 top-full z-20 mt-1 w-72 max-w-[90vw] overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50">
+    // z-[60] is the floating-panel tier (globals.css layer scale). It was z-20,
+    // which lost to page chrome at 40 and to menus at 50 — a typeahead the user is
+    // actively typing into must win over anything it can overlap.
+    <ul className="absolute left-0 top-full z-[60] mt-1 w-72 max-w-[90vw] overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-xl shadow-black/50">
       {typeFilter && (
         <li className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-neutral-400">
           <span aria-hidden dangerouslySetInnerHTML={{ __html: glyph(typeFilter.key) }} />
