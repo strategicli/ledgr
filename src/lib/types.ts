@@ -37,18 +37,30 @@ import { capabilityById } from "@/lib/modules";
 import "@/lib/modules/register";
 
 // The core property kinds (schema.md "Property kinds"). text/number/date/
-// checkbox/url are scalar; select/multi_select carry an options list. `relation`
-// is a typed item-to-item link the user adds in the builder (ADR-067, un-deferred
-// from ADR-044/055): unlike the scalar kinds it stores no value in
+// checkbox/url/phone/email are scalar; select/multi_select carry an options list.
+// `relation` is a typed item-to-item link the user adds in the builder (ADR-067,
+// un-deferred from ADR-044/055): unlike the scalar kinds it stores no value in
 // items.properties — its value lives as `relations` edges whose `role` is the
 // field's `key` (an "Author" field => edges with role 'author'). It carries a
 // targetType (which type the links accept; null = any) and a cardinality.
+//
+// `phone` and `email` (ADR-192) are `text` with a declared intent: they store the
+// string EXACTLY as typed and differ only in how they render — a `tel:`/`mailto:`
+// link, and the matching on-screen keyboard. They exist because the intent was
+// previously guessed from the field's key ("phone", "mobile", "cell"), which
+// worked or silently didn't depending on what the field was named. Nothing
+// validates or reformats the value: a field that refuses a valid phone number is
+// worse than one that renders an odd one, and phone formats are a swamp
+// (extensions, country codes, "x203", letters). Normalization happens only when
+// building the href — see telHref in lib/contact-links.ts.
 export const PROPERTY_KINDS = [
   "text",
   "number",
   "date",
   "checkbox",
   "url",
+  "phone",
+  "email",
   "select",
   "multi_select",
   "relation",

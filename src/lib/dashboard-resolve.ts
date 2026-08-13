@@ -56,8 +56,12 @@ async function groupingFor(view: ViewDefinition) {
     groupOrder = statuses.map((s) => s.key);
   }
   const propertyLabels: Record<string, string> = {};
-  for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
-  return { groupOrder, propertyLabels, statuses, groupPropKind };
+  const propertyKinds: Record<string, string> = {};
+  for (const p of type?.propertySchema ?? []) {
+    propertyLabels[p.key] = p.label;
+    propertyKinds[p.key] = p.kind;
+  }
+  return { groupOrder, propertyLabels, propertyKinds, statuses, groupPropKind };
 }
 
 function toViewItem(i: ItemListRow): ViewItem {
@@ -186,6 +190,7 @@ export async function resolveWidget(
       count,
       groupOrder: grouping?.groupOrder,
       propertyLabels: grouping?.propertyLabels,
+      propertyKinds: grouping?.propertyKinds,
       statuses: grouping?.statuses,
       groupPropKind: grouping?.groupPropKind,
       related,

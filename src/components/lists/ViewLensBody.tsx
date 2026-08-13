@@ -59,6 +59,7 @@ export default async function ViewLensBody({
         items={data.items}
         groupOrder={data.groupOrder}
         propertyLabels={data.propertyLabels}
+        propertyKinds={data.propertyKinds}
         selectable={bulkConfig != null}
         rowActions={rowActions}
         rollups={rollups}

@@ -70,6 +70,12 @@ export function opsForKind(kind: string): WhereOp[] {
   switch (kind) {
     case "text":
     case "url":
+    // phone/email filter as text (ADR-192): they store the string as typed, so
+    // `contains` over the raw value is the honest operator — a stored
+    // "(309) 555-0142" does not match a "3095550142" search, and pretending
+    // otherwise would need a normalized shadow value nothing writes.
+    case "phone":
+    case "email":
       return ["contains", "eq", "neq", "set", "empty"];
     case "number":
       return ["eq", "neq", "gt", "lt", "gte", "lte", "set", "empty"];

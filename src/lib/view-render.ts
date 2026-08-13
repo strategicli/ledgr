@@ -22,6 +22,7 @@ export type ViewLensData = {
   count: number;
   groupOrder?: string[];
   propertyLabels?: Record<string, string>;
+  propertyKinds?: Record<string, string>;
 };
 
 // Scope a view's filter to the current type, mirroring applyFocus: set the type
@@ -44,8 +45,12 @@ async function groupingFor(view: ViewDefinition) {
     groupOrder = type?.propertySchema.find((p) => p.key === g.propertyKey)?.options;
   }
   const propertyLabels: Record<string, string> = {};
-  for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
-  return { groupOrder, propertyLabels };
+  const propertyKinds: Record<string, string> = {};
+  for (const p of type?.propertySchema ?? []) {
+    propertyLabels[p.key] = p.label;
+    propertyKinds[p.key] = p.kind;
+  }
+  return { groupOrder, propertyLabels, propertyKinds };
 }
 
 function toViewItem(i: Awaited<ReturnType<typeof queryViewItems>>[number]): ViewItem {
@@ -96,5 +101,6 @@ export async function resolveViewLens(
     count,
     groupOrder: grouping.groupOrder,
     propertyLabels: grouping.propertyLabels,
+    propertyKinds: grouping.propertyKinds,
   };
 }

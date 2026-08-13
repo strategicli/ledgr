@@ -304,8 +304,12 @@ and to that exact line. The line then shows a **✓ task** badge that opens it.
 
 Build your own kinds of item at \`/build/types\`.
 
-- **Properties** can be text, number, date, checkbox, URL, select, multi-select,
-  or a relation to another type.
+- **Properties** can be text, number, date, checkbox, URL, phone, email, select,
+  multi-select, or a relation to another type.
+- **Phone and email fields are tappable.** Pick the Phone or Email kind and the
+  value becomes a tap-to-call or tap-to-mail link, on the record and in a table
+  view, with the right keyboard on a phone. Type the number however you like —
+  it is stored exactly as you enter it, extension and all.
 - **Statuses are yours per type.** Name your own stages and colours. Or choose no
   status at all, or a plain done/undone checkbox.
 - **Hide a type you do not use.** It disappears from capture, "+ New", tabs and

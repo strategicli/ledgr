@@ -111,7 +111,12 @@ export default async function ViewPage({ params, searchParams }: Context) {
   // key → label for the type's custom properties, so a property column reads
   // "Stage", not "stage".
   const propertyLabels: Record<string, string> = {};
-  for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
+  // key → kind alongside it, so a phone/email column renders dialable (ADR-192).
+  const propertyKinds: Record<string, string> = {};
+  for (const p of type?.propertySchema ?? []) {
+    propertyLabels[p.key] = p.label;
+    propertyKinds[p.key] = p.kind;
+  }
 
   // Group-by-Tags: the column values are `relations` edges, not row data, so they
   // need their own batched read. Fetched ONLY for a relation grouping — every other
@@ -179,6 +184,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
               groupEdges={groupEdges}
               groupOrder={groupOrder}
               propertyLabels={propertyLabels}
+              propertyKinds={propertyKinds}
               boardDraggable={boardDraggable}
               statuses={statuses}
               month={month}

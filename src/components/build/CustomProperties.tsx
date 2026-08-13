@@ -9,6 +9,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { contactInputType, contactLink } from "@/lib/contact-links";
 import { beginSave, endSave } from "@/lib/save-status";
 import type { PropertyDef } from "@/lib/types";
 import InlineLabel from "./InlineLabel";
@@ -19,13 +20,11 @@ import InlineLabel from "./InlineLabel";
 const inputClass =
   "max-w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 // Box-like kinds whose empty control reads as visual noise (the row of blank
 // inputs on a sparse Person). When empty they collapse into a "+ label" add-chip
 // cluster. The others always render as rows: checkbox IS its control, select
 // shows a compact "—", and multi_select must show its options to be usable.
-const RECEDE_KINDS = new Set(["text", "url", "number", "date"]);
+const RECEDE_KINDS = new Set(["text", "url", "phone", "email", "number", "date"]);
 
 // A value worth showing as a filled row (and offering an explicit clear for).
 // Checkbox has no "empty" state — the toggle is the control — so it's excluded.
@@ -39,47 +38,21 @@ function isFilled(v: unknown, kind: string): boolean {
 }
 
 // A clickable target derived from a filled scalar value, so a Person's email /
-// phone / website property isn't a dead text box. A `url` field links out; a
-// `text` field keyed or shaped like an email opens a mailto, one keyed like a
-// phone opens a tel. Returns null when nothing sensible applies (most fields),
-// so only the fields that earn an affordance get one. No schema change: this is
-// a display heuristic over the existing kinds, not a new property kind.
-function openTarget(
-  prop: PropertyDef,
-  value: unknown
-): { href: string; title: string; external: boolean } | null {
-  if (typeof value !== "string") return null;
-  const v = value.trim();
-  if (!v) return null;
-  if (prop.kind === "url") {
-    const href = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
-    return { href, title: "Open link", external: true };
-  }
-  if (prop.kind === "text") {
-    const key = prop.key.toLowerCase();
-    if ((/e-?mail/.test(key) || EMAIL_RE.test(v)) && EMAIL_RE.test(v)) {
-      return { href: `mailto:${v}`, title: "Send email", external: false };
-    }
-    if (/phone|mobile|\btel\b|cell/.test(key) && /\d/.test(v)) {
-      return { href: `tel:${v.replace(/[^\d+]/g, "")}`, title: "Call", external: false };
-    }
-  }
-  return null;
+// phone / website property isn't a dead text box. The `phone`/`email`/`url` kinds
+// declare the intent outright (ADR-192); a legacy `text` field keyed or shaped
+// like one still gets the same affordance, so imported data keeps working.
+// Shared with the list's table layout — lib/contact-links.ts owns the rules.
+function openTarget(prop: PropertyDef, value: unknown) {
+  return contactLink(prop.kind, prop.key, value);
 }
 
 type Values = Record<string, unknown>;
 
-// A `text` field keyed like an email or phone renders as a single-line typed
-// input (right on-screen keyboard on mobile, format hint) instead of the default
-// wrapping textarea. Returns null for ordinary text, which keeps the textarea.
-function textInputType(
-  prop: PropertyDef
-): { type: "email" | "tel"; inputMode: "email" | "tel" } | null {
-  if (prop.kind !== "text") return null;
-  const key = prop.key.toLowerCase();
-  if (/e-?mail/.test(key)) return { type: "email", inputMode: "email" };
-  if (/phone|mobile|\btel\b|cell/.test(key)) return { type: "tel", inputMode: "tel" };
-  return null;
+// A `phone`/`email` field, or a legacy `text` field keyed like one, renders as a
+// single-line typed input (right on-screen keyboard on mobile, format hint)
+// instead of the default wrapping textarea. Null keeps the textarea.
+function textInputType(prop: PropertyDef) {
+  return contactInputType(prop.kind, prop.key);
 }
 
 // An uncontrolled textarea whose height tracks its content, for the wrapping
@@ -190,6 +163,12 @@ export default function CustomProperties({
   function control(prop: PropertyDef, autoFocus = false) {
     const v = values[prop.key];
     switch (prop.kind) {
+      // phone/email share this branch (ADR-192): textInputType always returns a
+      // typed input for them, so they take the single-line path below and need no
+      // control of their own. No placeholder on purpose — a sample number would
+      // imply a required format, and any format is accepted.
+      case "phone":
+      case "email":
       case "text": {
         const typed = textInputType(prop);
         // Email/phone-keyed text is a single-line typed input; everything else is

@@ -14,6 +14,7 @@ import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectTableCell";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
+import { contactLink } from "@/lib/contact-links";
 import type { Progress } from "@/lib/subtasks";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { groupValuesFor, orderedGroups, type GroupEdges } from "@/lib/view-grouping";
@@ -192,6 +193,36 @@ function formatPropValue(v: unknown): string {
   if (Array.isArray(v)) return v.map((x) => String(x)).join(", ");
   if (typeof v === "boolean") return v ? "Yes" : "No";
   return String(v);
+}
+
+// A table cell's contents: the column's text, wrapped in a tel:/mailto: link
+// when the column is a `phone`/`email` property (ADR-192), so a directory-style
+// list is dialable without opening each record. Table layout ONLY, deliberately:
+// the compact row layout wraps the whole row in a Link to the item, and nesting
+// an anchor inside an anchor is invalid HTML that would also steal the row tap.
+// `stopPropagation` keeps a tap on the link from bubbling into any row handler.
+function columnCell(
+  item: ViewItem,
+  col: ViewColumn,
+  tz: string,
+  propertyKinds: Record<string, string>
+) {
+  const text = columnText(item, col, tz);
+  if (!text || col.source !== "property") return text;
+  const kind = propertyKinds[col.key];
+  if (kind !== "phone" && kind !== "email") return text;
+  const link = contactLink(kind, col.key, text);
+  if (!link) return text;
+  return (
+    <a
+      href={link.href}
+      title={link.title}
+      onClick={(e) => e.stopPropagation()}
+      className="hover:text-neutral-100 hover:underline"
+    >
+      {text}
+    </a>
+  );
 }
 
 // The display text for a column on a row. Dates format in the same calendars
@@ -409,12 +440,14 @@ function TableLayout({
   items,
   view,
   propertyLabels,
+  propertyKinds,
   selectable,
   tz,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
   propertyLabels: Record<string, string>;
+  propertyKinds: Record<string, string>;
   selectable?: boolean;
   tz: string;
 }) {
@@ -478,7 +511,7 @@ function TableLayout({
                   key={`${col.source}:${col.key}`}
                   className="py-1.5 pr-3 text-neutral-400"
                 >
-                  {columnText(item, col, tz)}
+                  {columnCell(item, col, tz, propertyKinds)}
                 </td>
               ))}
             </tr>
@@ -833,6 +866,7 @@ export default function ViewRenderer({
   items,
   groupOrder,
   propertyLabels = {},
+  propertyKinds = {},
   boardDraggable = false,
   statuses,
   month,
@@ -859,6 +893,11 @@ export default function ViewRenderer({
   // Labels for the type's custom properties, so a property column shows its
   // label rather than its key. Resolved by the page from the type's schema.
   propertyLabels?: Record<string, string>;
+  // Kinds for the type's custom properties, keyed the same way (ADR-192).
+  // Only the table layout reads it, and only for `phone`/`email`, to make a
+  // contact column dialable. Optional and defaulted, so a caller that hasn't
+  // resolved it renders exactly as before.
+  propertyKinds?: Record<string, string>;
   // Whether a board's cards can be dragged between columns to set their group
   // value. The page decides (only safe for status/urgency/single-select);
   // dashboards leave it false, so a board widget stays read-only.
@@ -913,6 +952,7 @@ export default function ViewRenderer({
           items={items}
           view={view}
           propertyLabels={propertyLabels}
+          propertyKinds={propertyKinds}
           selectable={selectable}
           tz={tz}
         />

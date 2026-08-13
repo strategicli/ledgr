@@ -62,8 +62,12 @@ async function groupingFor(typeKey: string, view: ViewDefinition) {
     groupOrder = type?.propertySchema.find((p) => p.key === g.propertyKey)?.options;
   }
   const propertyLabels: Record<string, string> = {};
-  for (const p of type?.propertySchema ?? []) propertyLabels[p.key] = p.label;
-  return { groupOrder, propertyLabels };
+  const propertyKinds: Record<string, string> = {};
+  for (const p of type?.propertySchema ?? []) {
+    propertyLabels[p.key] = p.label;
+    propertyKinds[p.key] = p.kind;
+  }
+  return { groupOrder, propertyLabels, propertyKinds };
 }
 
 // --- Provided-rows path (rule-pulled groups) ------------------------------
@@ -159,6 +163,7 @@ export async function resolveProvidedGroup(
     count: items.length,
     groupOrder: grouping.groupOrder,
     propertyLabels: grouping.propertyLabels,
+    propertyKinds: grouping.propertyKinds,
   };
 }
 
@@ -205,6 +210,7 @@ export async function resolveRelatedGroup(
       count: hideCompleted ? visible.length : count,
       groupOrder: grouping.groupOrder,
       propertyLabels: grouping.propertyLabels,
+      propertyKinds: grouping.propertyKinds,
     };
   }
 
@@ -244,5 +250,6 @@ export async function resolveRelatedGroup(
     count: hideCompleted ? visible.length : count,
     groupOrder: grouping.groupOrder,
     propertyLabels: grouping.propertyLabels,
+    propertyKinds: grouping.propertyKinds,
   };
 }
