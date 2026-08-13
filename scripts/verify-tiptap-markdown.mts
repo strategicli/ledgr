@@ -40,8 +40,22 @@ for (const c of colors) {
   check(`highlight ${c} decodes from style alone`, highlightColorName(null, hlStyle) === c);
 }
 
+// --- clipboard spelling: CSSOM normalizes hex → rgb() on copy/paste --------
+check("red decodes from rgb() with spaces", textColorName("color: rgb(242, 58, 74)") === "red");
+check("red decodes from rgb() without spaces", textColorName("color:rgb(242,58,74)") === "red");
+check("mixed-case RGB() decodes", textColorName("COLOR: RGB(242, 58, 74)") === "red");
+check(
+  "background-color rgba alone is no text color",
+  textColorName("background-color: rgba(242,58,74,0.42)") === null
+);
+check(
+  "bg rgba + real color both present → color wins",
+  textColorName("background-color: rgba(234,179,8,0.45); color: rgb(96, 165, 250)") === "blue"
+);
+
 // --- non-matches degrade to null, never a wrong color ----------------------
 check("foreign text color → null", textColorName("color:#123456") === null);
+check("foreign rgb() text color → null", textColorName("color: rgb(1, 2, 3)") === null);
 check("no class, no style → null", highlightColorName(null, null) === null);
 check("foreign highlight bg → null", highlightColorName("hl-chartreuse", "background-color:#123456") === null);
 
