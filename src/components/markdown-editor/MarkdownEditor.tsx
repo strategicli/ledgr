@@ -33,6 +33,7 @@ import {
   LedgrTable,
   ListBackspaceJoin,
   MarkdownEscapeFix,
+  OrderedListTextFix,
   SlideMark,
   TableCell,
   TableHeader,
@@ -384,6 +385,10 @@ export default function MarkdownEditor({
       // outdenting (see ListBackspaceJoin). After the list extensions, but the
       // extension's own priority is what actually beats ListKeymap.
       ListBackspaceJoin,
+      // Inline HTML dialect marks (span/mark/ins.slide) survive inside an ORDERED
+      // list item, matching a bullet item (see OrderedListTextFix in extensions.ts
+      // for the upstream @tiptap/extension-list bug this works around).
+      OrderedListTextFix,
       // Block anchors (ADR-090): dim trailing ^id markers + the jump-to/ensure
       // primitives the action-item → task promotion rides on. The per-line
       // "→ task" widget shows only when a meeting wired the promote path; a

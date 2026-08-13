@@ -354,6 +354,51 @@ export const EmptyListItemFix = Extension.create({
   },
 });
 
+// Inline HTML dialect elements (<span style=color>, <mark>, <ins class="slide">)
+// survive inside an ORDERED list item exactly as they do inside a bullet (Brandon,
+// 2026-08-13 — confirmed from a sermon note corrupted twice: a colored span nested
+// under an ordered sub-list came back as literal `&lt;span style="color:…"&gt;` text
+// after a save round-trip; the identical span one line down, under an unordered
+// sub-list, was untouched).
+//
+// Root cause lives in @tiptap/extension-list's OrderedList.parseMarkdown
+// (parseListItems, ordered-list/utils.ts — can't patch it, it's in node_modules).
+// A tight list item's content arrives from marked as a "text" token carrying BOTH
+// a flattened raw string (`.text`, HTML and all, un-parsed) and the properly
+// inline-tokenized breakdown (`.tokens` — the same span split into html-open/
+// text/html-close, or, once the color/highlight/slide extensions below claim it,
+// a dedicated textColor/highlight/slide token). BulletList's item handling
+// (ListItem.parseMarkdown, shared by every non-ordered list) reads `.tokens` via
+// `helpers.parseInline(firstToken.tokens)` — correct. OrderedList's own
+// `parseListItems` instead calls `helpers.parseChildren([itemToken])`, which
+// dispatches by token TYPE through the generic per-tokenName registry and lands on
+// @tiptap/extension-text's built-in Text.parseMarkdown — which ignores `.tokens`
+// and returns `.text` verbatim. The doc ends up with a literal `<span…>` substring
+// inside a plain text node, which the markdown serializer then HTML-entity-escapes
+// on save like any other literal `<` in plain text — the `&lt;span` corruption.
+//
+// Fix: register our OWN parseMarkdown for the SAME "text" markdownTokenName, at a
+// priority above the built-in Text node's (100) so MarkdownManager.parseToken's
+// per-tokenName handler list (populated in extension REGISTRATION order, tried
+// first-to-last) tries ours first. When the token carries `.tokens` (marked always
+// populates it for a tight list item, empty only for the rare token with none),
+// inline-parse those — reclaiming any dialect mark exactly the way a bullet item
+// would — instead of the flattened string. A token with no `.tokens` returns `[]`,
+// which MarkdownManager treats as "no match" and falls through to the built-in
+// Text handler unchanged, so plain text is untouched. Not special-cased to spans:
+// this fixes the shared dispatch bug, so every HTML-wrapped mark (and any future
+// one) survives an ordered list the same way it survives a bullet.
+export const OrderedListTextFix = Extension.create({
+  name: "orderedListTextFix",
+  priority: 200,
+  markdownTokenName: "text",
+  parseMarkdown(token, helpers) {
+    const tokens = (token as { tokens?: unknown[] }).tokens;
+    if (!tokens || tokens.length === 0) return [];
+    return helpers.parseInline(tokens as Parameters<typeof helpers.parseInline>[0]);
+  },
+});
+
 // Backspace at the start of a bullet DELETES the line break, it does not outdent
 // (Brandon, 2026-08-01).
 //
