@@ -39,6 +39,16 @@ const isPublicRoute = createRouteMatcher([
   // token-management route (/api/ics/token) still gates itself with
   // requireOwner, which 401s an anonymous caller, so this is safe.
   "/api/ics(.*)",
+  // PWA share target POST (ADR-191): a cold Android share arrives after the
+  // 60s Clerk session JWT has expired. Clerk heals an expired token via a
+  // redirect "handshake", but its SDK only allows that for GET
+  // (isRequestEligibleForHandshake in @clerk/backend) — a POST with a stale
+  // token reads as signed out and auth.protect() would 307 it to /sign-in,
+  // which 500s on a POST. So the route itself authenticates (resolveOwner)
+  // and, when auth is stale, 303s the payload to the GET claim route below,
+  // which CAN handshake. EXACT path only (no wildcard): this must not also
+  // match /capture/share/claim, which stays Clerk-protected.
+  "/capture/share",
 ]);
 
 // No Clerk key on a DEPLOYED environment is a misconfiguration, not a mode.
