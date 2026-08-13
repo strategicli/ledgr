@@ -177,8 +177,10 @@ A very large note opens in Preview on purpose, with "Edit as text" as the way in
 
 ## Formatting
 
-Everything below has a toolbar button. Every button can be hidden individually
-in **User Settings → Editor toolbar**.
+Everything below has a toolbar button. Hover any button and its tooltip names it
+and shows its shortcut for the keyboard you're on (⌘/⌥ on a Mac, Ctrl/Alt on
+Windows). Every button can be hidden individually in **User Settings → Editor
+toolbar**.
 
 | What | Type this | Or press |
 |---|---|---|
@@ -190,7 +192,7 @@ in **User Settings → Editor toolbar**.
 | Heading | \`#\`, \`##\`, \`###\` then a space | Ctrl/⌘+Alt+1…6 |
 | Bulleted list | \`-\` then a space | Ctrl/⌘+Shift+8 |
 | Numbered list | \`1.\` then a space | Ctrl/⌘+Shift+7 |
-| Checklist | \`[]\` then a space | — |
+| Checklist | \`[]\` then a space | Ctrl/⌘+Shift+9 |
 | Quote | \`>\` then a space | Ctrl/⌘+Shift+B |
 | Divider | \`---\` | — |
 
