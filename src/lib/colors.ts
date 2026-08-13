@@ -14,7 +14,10 @@
 //     table. (Text colors can't do that; a light mode would need a second text
 //     table.) Highlights round-trip via the hl-* class, not the value, so the
 //     background may be any CSS color without breaking parse (see
-//     highlightColorName below). Text colors still round-trip via exact hex.
+//     highlightColorName below). Text colors round-trip via a value lookup
+//     that accepts the exact hex AND its rgb() spelling — the browser's CSSOM
+//     normalizes hex to rgb() the moment the style hits the DOM, so clipboard
+//     HTML (copy/paste within the editor) arrives in rgb() form.
 // The names are the stable contract; changing a value means migrating stored
 // bodies (scripts/backfill-editor-colors.mts) so old inline hexes still map back.
 
@@ -62,14 +65,24 @@ export function highlightTag(color: BlockNoteColor): {
 
 // Reverse lookups — the way back IN (markdown → editor). The serializer above
 // owns the way out; these own the parse side so the round-trip is symmetric
-// off the one table. Hex matching is case-insensitive and tolerant of
-// shorthand spacing ("color: #abc"); the hl-* class is the primary,
-// unambiguous hook for highlights.
-const TEXT_HEX_TO_COLOR: Record<string, BlockNoteColor> = Object.fromEntries(
-  (Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[]).map((c) => [
-    BLOCKNOTE_COLORS[c].text.toLowerCase(),
-    c,
-  ])
+// off the one table. Matching is case-insensitive and tolerant of spacing;
+// the hl-* class is the primary, unambiguous hook for highlights.
+//
+// Each text color is keyed by both its hex (the stored markdown, read raw by
+// the tokenizer) and its rgb() spelling (what CSSOM hands back once the style
+// has been through the DOM — i.e. every clipboard/paste path).
+const hexToRgb = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255})`;
+};
+const TEXT_VALUE_TO_COLOR: Record<string, BlockNoteColor> = Object.fromEntries(
+  (Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[]).flatMap((c) => {
+    const hex = BLOCKNOTE_COLORS[c].text.toLowerCase();
+    return [
+      [hex, c],
+      [hexToRgb(hex), c],
+    ];
+  })
 ) as Record<string, BlockNoteColor>;
 
 // Highlight backgrounds are now rgba() (not hex), so match on the whole color
@@ -85,22 +98,19 @@ const BG_VALUE_TO_COLOR: Record<string, BlockNoteColor> = Object.fromEntries(
   ])
 ) as Record<string, BlockNoteColor>;
 
-function hexInStyle(style: string): string | null {
-  const m = style.match(/#[0-9a-fA-F]{3,8}/);
-  return m ? m[0].toLowerCase() : null;
-}
-
 // The background(-color) value out of a style string, normalized for lookup.
 function bgValueInStyle(style: string): string | null {
   const m = style.match(/background(?:-color)?\s*:\s*([^;]+)/i);
   return m ? normColor(m[1]) : null;
 }
 
-// A CSS color value (e.g. from a span's `color:`) back to its palette name,
-// or null if it isn't one of ours.
+// A style string's `color:` property back to its palette name, or null if it
+// isn't one of ours. Anchored to the `color` property itself (start or `;`),
+// so a `background-color: rgba(...)` in the same style can't false-match.
 export function textColorName(style: string): BlockNoteColor | null {
-  const hex = hexInStyle(style);
-  return hex && hex in TEXT_HEX_TO_COLOR ? TEXT_HEX_TO_COLOR[hex] : null;
+  const m = style.match(/(?:^|;)\s*color\s*:\s*([^;]+)/i);
+  const v = m ? normColor(m[1]) : null;
+  return v && v in TEXT_VALUE_TO_COLOR ? TEXT_VALUE_TO_COLOR[v] : null;
 }
 
 // A <mark>'s class ("hl-yellow") or background style back to its palette name.
