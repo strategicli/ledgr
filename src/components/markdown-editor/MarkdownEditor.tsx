@@ -76,6 +76,7 @@ import {
   setComment,
 } from "./comment-mark";
 import { extractPromotable } from "@/lib/editor/block-anchor";
+import { withShortcut } from "@/lib/editor/shortcuts";
 import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import CommentPopover from "./CommentPopover";
 import PromoteLinePopup, { type PromoteDraft } from "./PromoteLinePopup";
@@ -227,6 +228,7 @@ function ToolbarButton({
   disabled,
   onClick,
   title,
+  keys,
 }: {
   label?: string;
   icon?: ReactNode;
@@ -234,11 +236,15 @@ function ToolbarButton({
   disabled?: boolean;
   onClick: () => void;
   title: string;
+  // A Tiptap shortcut spec ("Mod-b"); appended to the tooltip as "Bold (⌘B)"
+  // in the notation of the keyboard you're on. aria-label keeps the plain
+  // label — a screen reader shouldn't read out "open paren command B".
+  keys?: string;
 }) {
   return (
     <button
       type="button"
-      title={title}
+      title={withShortcut(title, keys)}
       aria-label={title}
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
@@ -1106,35 +1112,38 @@ export default function MarkdownEditor({
   // long run of icons reads in chunks instead of one undifferentiated strip. A
   // group with every button hidden (per-button visibility / feature gates) drops
   // out, and its separator with it.
-  type Btn = { id: string; title: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; when?: boolean; run: () => void };
+  // `keys` is the button's Tiptap keyboard shortcut, shown in its tooltip
+  // (see @/lib/editor/shortcuts). It is display only: the binding itself lives
+  // in the extension, so a button without one simply shows no shortcut.
+  type Btn = { id: string; title: string; keys?: string; icon?: ReactNode; label?: string; active?: boolean; disabled?: boolean; when?: boolean; run: () => void };
   const groups: Btn[][] = [
     // Undo/redo lead the bar: leftmost is the one spot that stays visible on a
     // phone, where the bar scrolls sideways and there is no Ctrl+Z. One settings
     // id ("undo") hides the pair.
     [
-      { id: "undo", title: "Undo", icon: TOOLBAR_ICONS.undo, disabled: !toolbar.canUndo, run: () => editor.chain().focus().undo().run() },
-      { id: "undo", title: "Redo", icon: TOOLBAR_ICONS.redo, disabled: !toolbar.canRedo, run: () => editor.chain().focus().redo().run() },
+      { id: "undo", title: "Undo", keys: "Mod-z", icon: TOOLBAR_ICONS.undo, disabled: !toolbar.canUndo, run: () => editor.chain().focus().undo().run() },
+      { id: "undo", title: "Redo", keys: "Shift-Mod-z", icon: TOOLBAR_ICONS.redo, disabled: !toolbar.canRedo, run: () => editor.chain().focus().redo().run() },
     ],
     [
-      { id: "bold", title: "Bold", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
-      { id: "italic", title: "Italic", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
-      { id: "underline", title: "Underline", icon: TOOLBAR_ICONS.underline, active: toolbar.isUnderline, run: () => editor.chain().focus().toggleUnderline().run() },
-      { id: "strike", title: "Strikethrough", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
+      { id: "bold", title: "Bold", keys: "Mod-b", icon: TOOLBAR_ICONS.bold, active: toolbar.isBold, run: () => editor.chain().focus().toggleBold().run() },
+      { id: "italic", title: "Italic", keys: "Mod-i", icon: TOOLBAR_ICONS.italic, active: toolbar.isItalic, run: () => editor.chain().focus().toggleItalic().run() },
+      { id: "underline", title: "Underline", keys: "Mod-u", icon: TOOLBAR_ICONS.underline, active: toolbar.isUnderline, run: () => editor.chain().focus().toggleUnderline().run() },
+      { id: "strike", title: "Strikethrough", keys: "Mod-Shift-s", icon: TOOLBAR_ICONS.strike, active: toolbar.isStrike, run: () => editor.chain().focus().toggleStrike().run() },
     ],
     [
-      { id: "h1", title: "Heading 1", label: "H1", active: toolbar.isH1, run: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
-      { id: "h2", title: "Heading 2", label: "H2", active: toolbar.isH2, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+      { id: "h1", title: "Heading 1", keys: "Mod-Alt-1", label: "H1", active: toolbar.isH1, run: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+      { id: "h2", title: "Heading 2", keys: "Mod-Alt-2", label: "H2", active: toolbar.isH2, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
     ],
     [
-      { id: "bulletList", title: "Bullet list", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
-      { id: "orderedList", title: "Numbered list", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
-      { id: "tasks", title: "Checklist (- [ ])", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
-      { id: "outdent", title: "Outdent (un-nest list item)", icon: TOOLBAR_ICONS.outdent, disabled: !inList, run: outdent },
-      { id: "indent", title: "Indent (nest list item)", icon: TOOLBAR_ICONS.indent, disabled: !inList, run: indent },
+      { id: "bulletList", title: "Bullet list", keys: "Mod-Shift-8", icon: TOOLBAR_ICONS.bulletList, active: toolbar.isBulletList, run: () => editor.chain().focus().toggleBulletList().run() },
+      { id: "orderedList", title: "Numbered list", keys: "Mod-Shift-7", icon: TOOLBAR_ICONS.orderedList, active: toolbar.isOrderedList, run: () => editor.chain().focus().toggleOrderedList().run() },
+      { id: "tasks", title: "Checklist (- [ ])", keys: "Mod-Shift-9", icon: TOOLBAR_ICONS.tasks, active: toolbar.isTaskList, run: () => editor.chain().focus().toggleTaskList().run() },
+      { id: "outdent", title: "Outdent (un-nest list item)", keys: "Shift-Tab", icon: TOOLBAR_ICONS.outdent, disabled: !inList, run: outdent },
+      { id: "indent", title: "Indent (nest list item)", keys: "Tab", icon: TOOLBAR_ICONS.indent, disabled: !inList, run: indent },
     ],
     [
-      { id: "quote", title: "Quote", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
-      { id: "code", title: "Code block", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
+      { id: "quote", title: "Quote", keys: "Mod-Shift-b", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
+      { id: "code", title: "Code block", keys: "Mod-Alt-c", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
       { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
       { id: "toggle", title: "Toggle (collapsible block; wraps the selection)", icon: TOOLBAR_ICONS.toggle, when: toggleBlocksOn, active: toolbar.isToggle, run: () => {
         const sel = editor.state.selection;
@@ -1184,7 +1193,7 @@ export default function MarkdownEditor({
                 {/* keyed by title, not id: undo/redo deliberately share one id
                     (one settings toggle hides the pair), so ids aren't unique. */}
                 {g.map((b) => (
-                  <ToolbarButton key={b.title} icon={b.icon} label={b.label} title={b.title} active={b.active} disabled={b.disabled} onClick={b.run} />
+                  <ToolbarButton key={b.title} icon={b.icon} label={b.label} title={b.title} keys={b.keys} active={b.active} disabled={b.disabled} onClick={b.run} />
                 ))}
               </div>
             ))}
