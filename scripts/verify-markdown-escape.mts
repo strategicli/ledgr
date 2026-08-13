@@ -34,7 +34,7 @@ try { Object.defineProperty(globalThis, "navigator", { value: { userAgent: "node
 const { Editor } = await import("@tiptap/core");
 const StarterKit = (await import("@tiptap/starter-kit")).default;
 const { Markdown } = await import("@tiptap/markdown");
-const { TextColor, Highlight, MarkdownEscapeFix } =
+const { TextColor, Highlight, MarkdownEscapeFix, OrderedListTextFix } =
   await import("../src/components/markdown-editor/extensions");
 // The palette is the source of truth for the hex a colored span carries. Taken
 // from it rather than hardcoded: this test used to spell red "#e03e3e" (the
@@ -52,11 +52,12 @@ function check(name: string, ok: boolean, detail = "") {
   if (!ok) failures += 1;
 }
 
-function editorFor(withFix: boolean) {
+function editorFor(withFix: boolean, withOrderedListFix = true) {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const exts: unknown[] = [StarterKit, Markdown.configure({ indentation: { style: "space", size: 4 } }), TextColor, Highlight];
   if (withFix) exts.push(MarkdownEscapeFix);
+  if (withOrderedListFix) exts.push(OrderedListTextFix);
   return new Editor({ element: el as any, extensions: exts as any, content: "", contentType: "markdown" } as any);
 }
 
@@ -121,6 +122,68 @@ for (const [mark, md] of [
   const out = ed.getMarkdown();
   check(`${mark}: bold round-trips back to **8** (not flattened)`, out.includes("**8**"), out);
 }
+
+// Regression: inline HTML dialect marks inside an ORDERED list item survive a
+// round-trip exactly as they do inside a bullet (Brandon, 2026-08-13 — corrupted
+// twice in production: a colored span nested under an ordered sub-list came back
+// as literal `&lt;span style="color:…"&gt;` text after saving; the identical span
+// one line down, under an UNORDERED sub-list, was untouched). Root cause is
+// upstream in @tiptap/extension-list's OrderedList.parseMarkdown, which routes a
+// list item's marked "text" token through the generic per-token-type dispatch
+// instead of inline-parsing its `.tokens` — landing on @tiptap/extension-text's
+// built-in handler, which ignores `.tokens` and returns the raw (HTML-and-all)
+// `.text` string. See OrderedListTextFix in extensions.ts for the full trace.
+const orderedNested = [
+  "- There are two stories in the Gospels where Jesus heals a man who is blind:",
+  `    1. In one, a blind man named Bartimaeus calls out from the side of the road, and Jesus heals him with a single sentence: <span style="color:${RED_HEX}">"Go your way; your faith has made you well." (Mark 10:52)</span>`,
+  `    2. But in another (<span style="color:${RED_HEX}">John 9</span>), Jesus spits on the ground, makes mud, smears it on the man's eyes, and sends him across town to wash in a pool before he can see anything.`,
+].join("\n");
+const unorderedNested = [
+  "- It's the same with leprosy:",
+  `    - One leper he heals instantly, with a touch and a word: <span style="color:${RED_HEX}">"I will; be clean." (Mark 1:41)</span>`,
+].join("\n");
+const orderedTopLevel = [
+  `1. First item with a span: <span style="color:${RED_HEX}">colored text</span>`,
+  "2. Second item plain.",
+].join("\n");
+
+// Without OrderedListTextFix, the bug reproduces: the span comes back HTML-entity-
+// escaped. (Nesting is required to trigger it — see the top-level check below.)
+const orderedBefore = editorFor(true, false);
+orderedBefore.commands.setContent(orderedNested, { emitUpdate: false, contentType: "markdown" } as any);
+check(
+  "repro: nested ordered list without the fix DOES escape the span",
+  orderedBefore.getMarkdown().includes("&lt;span")
+);
+
+// With the fix, the nested ordered list matches the nested bullet list: the span
+// (and anything else marked already inline-tokenized) survives unescaped.
+const orderedAfter = editorFor(true, true);
+orderedAfter.commands.setContent(orderedNested, { emitUpdate: false, contentType: "markdown" } as any);
+const orderedOut = orderedAfter.getMarkdown();
+check("nested ordered list: span survives, not escaped", !orderedOut.includes("&lt;span"), orderedOut);
+check(
+  "nested ordered list: span markup round-trips byte-for-byte",
+  orderedOut.trim() === orderedNested.trim(),
+  orderedOut
+);
+
+const unorderedAfter = editorFor(true, true);
+unorderedAfter.commands.setContent(unorderedNested, { emitUpdate: false, contentType: "markdown" } as any);
+check(
+  "contrast: nested unordered list still survives (was never broken)",
+  unorderedAfter.getMarkdown().trim() === unorderedNested.trim()
+);
+
+// Top-level (unnested) ordered lists take a different upstream code path
+// (OrderedList's own tokenizer, not marked's native fallback) and were never
+// affected — kept as a sanity check so a future regression there gets caught too.
+const topLevelAfter = editorFor(true, true);
+topLevelAfter.commands.setContent(orderedTopLevel, { emitUpdate: false, contentType: "markdown" } as any);
+check(
+  "sanity: top-level ordered list with a span was already fine",
+  topLevelAfter.getMarkdown().trim() === orderedTopLevel.trim()
+);
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);
