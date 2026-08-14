@@ -496,6 +496,12 @@ things in one press:
   opens with no network. It checks the pin actually landed before it says saved.
 3. **Makes that copy print-ready**, so your browser's print-to-PDF is the PDF.
 
+**Opening the app with no connection lists what you saved.** You get a page of
+everything pinned on that device, newest first, with the date you saved each one,
+so you can find Sunday's sermon without remembering its address. Tap a row and it
+opens from the saved copy. The same page is at \`/offline.html\` when you *do* have
+a connection, which is how you check on Saturday night that your pins landed.
+
 This is the fallback path. Nothing you need on a Sunday should depend on the app
 being up.
 

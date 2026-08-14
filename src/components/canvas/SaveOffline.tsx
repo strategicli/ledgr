@@ -61,7 +61,15 @@ async function pinLeg(itemId: string): Promise<LegState> {
     const res = await fetch(printUrl, { cache: "no-store" });
     if (!res.ok) return { phase: "fail", detail: `fetch failed (${res.status})` };
     const html = await res.text();
-    const headers = { "Content-Type": "text/html; charset=utf-8" };
+    // Date is stamped so public/offline.html can say "saved Aug 10" per row —
+    // a hand-built Response carries no Date of its own. The offline directory
+    // filters pins on the /items/{id}/print pathname, so changing what this
+    // function pins (a query param, a different route) silently empties that
+    // list; scripts/verify-offline-landing.mts guards the pair.
+    const headers = {
+      "Content-Type": "text/html; charset=utf-8",
+      Date: new Date().toUTCString(),
+    };
     const cache = await caches.open(PIN_CACHE);
     await cache.put(printUrl, new Response(html, { headers }));
     await cache.put(`/items/${itemId}`, new Response(html, { headers }));
