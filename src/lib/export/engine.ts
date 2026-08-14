@@ -26,6 +26,19 @@ import type { ExportTarget } from "./target";
 // if daily throughput ever falls behind the edit rate.
 const DEFAULT_BATCH = 30;
 
+// Wall-clock guard (2026-08-14). The item cap alone can't bound a run: an
+// attachment-heavy stretch of the queue makes each item far more expensive
+// than a plain .md PUT, so 30 items overran the 60s lambda and EVERY caller
+// 504'd (nightly cron, the export-drain loop, and Save Offline). A killed run
+// never writes job_state, so `remaining` froze and the drain loop bailed on
+// its 8-consecutive-failure guard even though per-item progress was real.
+// Stopping at the budget turns that timeout into a clean 200 with an honest
+// `remaining`, which every caller already knows how to resume from.
+// ponytail: the check is between items, so one pathological item (a huge
+// attachment) can still overrun on its own; that's the export-drain
+// workflow's "8 in a row" case. Add a per-item timeout if it ever shows up.
+const RUN_BUDGET_MS = 45_000;
+
 export const EXPORT_JOB_KEY = "onedrive_export";
 
 export type ExportRunResult = {
@@ -218,6 +231,9 @@ export async function runExport(
   target: ExportTarget,
   opts: {
     batch?: number;
+    // Overridable so the verify script can trip the guard without burning the
+    // real budget; callers in the app leave it at the default.
+    budgetMs?: number;
     onError?: (itemId: string, err: unknown) => void;
     onAttachmentError?: (itemId: string, failures: AttachmentFailure[]) => void;
   } = {}
@@ -242,7 +258,11 @@ export async function runExport(
     remaining: 0,
   };
 
+  const deadline = Date.now() + (opts.budgetMs ?? RUN_BUDGET_MS);
   for (const item of candidates) {
+    // Stop cleanly rather than being killed mid-PUT: the items not reached
+    // are still unexported, so the recount below rolls them into `remaining`.
+    if (Date.now() > deadline) break;
     try {
       const inArchive = item.deletedAt !== null || item.statusCategory === "archived";
       const year = yearInZone(item.createdAt, tz);

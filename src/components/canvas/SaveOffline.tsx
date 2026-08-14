@@ -28,14 +28,25 @@ async function exportLeg(): Promise<LegState> {
       };
     }
     if (!res.ok) return { phase: "fail", detail: `export failed (${res.status})` };
+    // errors/remaining are counts, not arrays (ExportRunResult). This read used
+    // to be `errors.length` on a number, so the failure branch never fired.
     const result = (await res.json()) as {
       exported?: number;
-      errors?: unknown[];
+      errors?: number;
+      remaining?: number;
     };
-    if (result.errors && result.errors.length > 0) {
-      return { phase: "fail", detail: `export ran with ${result.errors.length} error(s)` };
+    if (result.errors && result.errors > 0) {
+      return { phase: "fail", detail: `export ran with ${result.errors} error(s)` };
     }
-    return { phase: "ok", detail: `exported to OneDrive ✓ (${result.exported ?? 0} item(s))` };
+    // A run stops at its time budget, so a large backlog finishes over several
+    // runs. Say so rather than implying OneDrive is fully caught up.
+    const queued = result.remaining
+      ? `, ${result.remaining} still queued`
+      : "";
+    return {
+      phase: "ok",
+      detail: `exported to OneDrive ✓ (${result.exported ?? 0} item(s)${queued})`,
+    };
   } catch {
     return { phase: "fail", detail: "export unreachable (offline?)" };
   }
