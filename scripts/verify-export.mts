@@ -147,6 +147,26 @@ try {
   const run2 = await runExport(ownerId, target);
   check("run 2 is a no-op", run2.exported === 0 && run2.remaining === 0, JSON.stringify(run2));
 
+  // --- run budget stops cleanly instead of overrunning the lambda ---------
+  // An attachment-heavy stretch used to blow the 60s ceiling, and a killed run
+  // records nothing, so `remaining` froze and every caller 504'd (2026-08-14).
+  // A negative budget puts the deadline in the past, so the guard trips before
+  // the first item: deterministic, no sleeping.
+  await db
+    .update(items)
+    .set({ updatedAt: new Date() })
+    .where(eq(items.ownerId, ownerId));
+  const pending = (await runExport(ownerId, target, { budgetMs: -1 }));
+  check("budget-stopped run exports nothing and reports what's left",
+    pending.exported === 0 && pending.remaining > 0, JSON.stringify(pending));
+  check("budget-stopped run is not an error path", pending.errors === 0);
+  const budgetState = await getExportState();
+  check("budget-stopped run records the attempt but not a clean success",
+    !!budgetState && budgetState.lastResult.remaining > 0,
+    JSON.stringify(budgetState?.lastResult));
+  // Drain it back so the later assertions start from an exported baseline.
+  await runExport(ownerId, target);
+
   // --- rename relocates ---------------------------------------------------
   await db.update(items).set({ title: "Renamed task", updatedAt: new Date() }).where(eq(items.id, task.id));
   const run3 = await runExport(ownerId, target);
