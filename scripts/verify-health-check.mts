@@ -51,6 +51,7 @@ function baseReport(): HealthReport {
       database: { ok: true, latencyMs: 5 },
       lastExportAt: iso(6),
       lastExportRunAt: iso(6),
+      lastExportRemaining: 0,
       lastCalendarSyncAt: iso(3),
       lastCalendarRunAt: iso(3),
       tasksAdapter: "native",

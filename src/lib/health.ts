@@ -38,6 +38,7 @@ export type HealthReport = {
     database: DatabaseCheck;
     lastExportAt: string | null;
     lastExportRunAt: string | null;
+    lastExportRemaining: number | null;
     lastCalendarSyncAt: string | null;
     lastCalendarRunAt: string | null;
     // The active tasks adapter (ADR-081): "native" (default — Ledgr owns tasks,
@@ -117,6 +118,7 @@ export async function gatherHealth(): Promise<HealthReport> {
 
   let lastExportAt: string | null = null;
   let lastExportRunAt: string | null = null;
+  let lastExportRemaining: number | null = null;
   let lastCalendarSyncAt: string | null = null;
   let lastCalendarRunAt: string | null = null;
   let lastTodoistSyncAt: string | null = null;
@@ -134,6 +136,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       const state = await getExportState();
       lastExportAt = state?.lastSuccessAt ?? null;
       lastExportRunAt = state?.lastRunAt ?? null;
+      lastExportRemaining = state?.lastResult?.remaining ?? null;
     } catch {
       // job_state being unreadable while select 1 works is strange enough
       // to surface as nulls rather than fail the whole check.
@@ -214,6 +217,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       database,
       lastExportAt,
       lastExportRunAt,
+      lastExportRemaining,
       lastCalendarSyncAt,
       lastCalendarRunAt,
       tasksAdapter: tasksAdapter(),
