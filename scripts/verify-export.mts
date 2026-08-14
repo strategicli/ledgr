@@ -229,6 +229,56 @@ try {
     check("orphan item stamped exported; attachment stamp stays null",
       (await db.select().from(items).where(eq(items.id, orphan.id)))[0].exportedAt !== null &&
         (await db.select().from(attachments).where(eq(attachments.parentItemId, orphan.id)))[0].exportedAt === null);
+
+    // The upload leg gets the same guarantee as the read leg above. A Graph
+    // failure writing the image (409s were observed on attachment paths,
+    // 2026-08-14) used to escape exportAttachments into the item's catch, so
+    // the item errored and its markdown never reached OneDrive — and since
+    // nothing about the item changed, it failed again every single run.
+    // Imported here, not at the top: getStorage reads the R2 creds this block
+    // just put on process.env.
+    const { getStorage } = await import("../src/lib/storage");
+    const storage = getStorage()!;
+    const liveKey = `${ownerId}/verify-upload-fail/live.png`;
+    await storage.putObject(liveKey, new Uint8Array([1, 2, 3, 4]), "image/png");
+    const upFail = await mkItem({
+      type: "note",
+      title: "Upload fail note",
+      body: makeMarkdownBody("body survives a failing image upload"),
+    });
+    await db.insert(attachments).values({
+      ownerId,
+      parentItemId: upFail.id,
+      filename: "live.png",
+      contentType: "image/png",
+      sizeBytes: 4,
+      storageKey: liveKey,
+    });
+    // Reject only the attachment write, so the .md write still has to succeed.
+    // Delegates explicitly rather than spreading `target`: it's a class
+    // instance, so a spread would drop its prototype methods.
+    const flakyTarget = {
+      putFile: async (p: string, c: Uint8Array | string) => {
+        if (p.startsWith("_attachments/")) throw new Error("Graph upload failed (409)");
+        return target.putFile(p, c);
+      },
+      deleteFile: (p: string) => target.deleteFile(p),
+    };
+    let upFailSeen: { storageKey: string; status: number }[] = [];
+    const runUp = await runExport(ownerId, flakyTarget, {
+      onAttachmentError: (_id, f) => {
+        upFailSeen = f;
+      },
+    });
+    const upPath = `note/${year}/upload-fail-note-${id8(upFail.id)}.md`;
+    check("failed attachment upload does not error the item", runUp.errors === 0, JSON.stringify(runUp));
+    check("failed upload counted as failed and surfaced",
+      runUp.attachmentsFailed === 1 && upFailSeen.length === 1);
+    check("item body still exported despite the failed upload", onDisk(upPath));
+    check("upload-failed item is stamped, attachment stamp stays null (retried later)",
+      (await db.select().from(items).where(eq(items.id, upFail.id)))[0].exportedAt !== null &&
+        (await db.select().from(attachments).where(eq(attachments.parentItemId, upFail.id)))[0].exportedAt === null);
+    await storage.deleteObject(liveKey);
   } else {
     check("R2 creds available to test 404-skip (no creds: section skipped)", true);
   }
