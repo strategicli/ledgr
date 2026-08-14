@@ -195,7 +195,20 @@ async function exportAttachments(
       failed.push({ storageKey: att.storageKey, status: res.status });
       continue;
     }
-    await target.putFile(path, new Uint8Array(await res.arrayBuffer()));
+    // The write is guarded for the same reason as the read above: a Graph
+    // failure here (409s show up on attachment paths) used to escape this
+    // function and land in the item's catch, failing the WHOLE item, so the
+    // markdown never reached OneDrive over one image. That is exactly what the
+    // comment above forbids, and the item then failed every run forever since
+    // nothing about it changed. Record it and move on.
+    // status 0 = the upload leg failed, as opposed to a real HTTP status from
+    // the R2 read above.
+    try {
+      await target.putFile(path, new Uint8Array(await res.arrayBuffer()));
+    } catch {
+      failed.push({ storageKey: att.storageKey, status: 0 });
+      continue;
+    }
     await db
       .update(attachments)
       .set({ exportedAt: new Date() })
