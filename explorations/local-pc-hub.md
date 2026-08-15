@@ -52,6 +52,7 @@ Everything below was asserted in the conversation from general knowledge, not me
 - **Clerk auth through a Funnel hostname** for the phone PWA (allowed origins/redirects). Probably fine, unverified.
 - **Windows-box uptime in practice** (how often the tunnel or app fails to come back after an update reboot).
 - **HLC behavior across devices with drifting clocks.** Standard technique, untested here.
+- **Fresh-dir build + keep-last-good swap on Windows** under real file locks (the local apply strategy's safety property).
 
 ## Extra work vs. today
 
@@ -66,10 +67,27 @@ Today's ops story: push to a branch, merge, `release:prod`, done. Vercel and Neo
 | Re-point MCP, webhooks, email-in, crons at the PC | Small-medium | GitHub Actions can hit the Funnel hostname, or become local cron on the PC |
 | Blob store off R2: local FS provider + tiering + OneDrive backup job | Medium | Storage provider interface already exists |
 | Migration + app-version skew protocol across peers | Small but permanent | Peers refuse to sync across version mismatch; owner upgrades all devices |
-| Per-machine updates forever | Recurring | `git pull && npm run build` per device, vs. push-once today |
+| Per-machine updates forever | Recurring, softened | The ADR-194 `/build/updates` card + a local apply strategy makes each update one button press per device (see "Updating the box in the closet"), vs. push-once today |
+| Local apply strategy (supervisor + keep-last-good swap) | Small-medium | Reuses the entire ADR-194 surface; only the apply step is new |
 | Uptime hardening on the PC | Small | Auto-start services, scheduled updates, optional UPS |
 
 And the permanent cost: **sync correctness is yours forever.** Single-user makes conflicts rare, but rare merge bugs are the worst kind (silent, found weeks later). Revisions plus backups are the net; it is still a standing maintenance surface, which cuts against Principle 5.
+
+## Updating the box in the closet (explored 2026-08-15, same session)
+
+The question: how does a local peer get new code, when today "deploy" means Vercel notices a push and rebuilds? Three options were weighed: full auto (the box polls GitHub and rebuilds itself on every prod update, Vercel-style), manual from the web interface ("update ready, update now?"), and a hybrid.
+
+**Most of this is already built.** ADR-194 (PR #258, merged 2026-08-14) added `/build/updates`: every instance reports whether it is current on two independent axes, **code** (its running sha vs. upstream, with a list of what changed and an "Update now" button) and **schema** (the migration journal bundled in the running code vs. what its own database has applied, no network needed). `LEDGR_SELF_UPDATE` gates the button and fails closed; "safe" mode refuses updates that carry migrations. It was built for Vercel satellites, where apply = GitHub's merge-upstream API and Vercel does the rebuild. A local peer reuses the whole surface (the report, the gate, the button, the changed-commits list) and swaps only the **apply strategy**.
+
+**The recommended shape: prompted everywhere, via the existing card.**
+
+- **The button, not a new surface.** A local peer's `/build/updates` shows the same "update ready" card; pressing it signals a **sidecar supervisor**, not the app itself, because a running Next server cannot rebuild and restart itself in place. The supervisor is the launcher script/service the box needs anyway (auto-start was already on the work list): on signal it runs `git pull` → `npm ci` if the lockfile changed → build into a **fresh directory** → migrate → swap and restart. On any failure it keeps serving the last good build. That keep-last-good swap is the local equivalent of the property that makes ADR-194's "on" mode safe on Vercel (a failed build leaves the previous deploy live), and it must exist before any auto mode does.
+- **Ordering with sync: hub first.** An update carrying a migration applies to the hub first; the hub migrates its own DB. Every other peer's sync version-gate then reports "hub is newer," which lights up *their* update card; each updates and migrates its own local DB, and sync resumes. The version gate turns update skew from a hazard into a visible prompt, and the update card is exactly the right place for that prompt to land.
+- **Auto is a config flag on the supervisor, deferred.** A nightly unattended window on the hub is attractive (it is headless, and it must stay current for the phone and MCP), and with keep-last-good the failure mode of a bad 2am build is "still on yesterday's version," not "down." But Brandon's instinct is the prompt, and prompted-everywhere is the safe start; decide auto-for-the-hub during the probes, not now.
+
+**New work beyond ADR-194:** the local apply strategy (supervisor + fresh-dir build + keep-last-good swap + the signal from the button), stamping `LEDGR_BUILD_SHA` at local build time (the env fallback already exists in `getInstanceIdentity`), and one Windows-specific check: swapping build directories while a process serves from them runs into Windows file locking, which is part of why "build fresh, restart into it" beats "rebuild in place."
+
+Added to "assumed but not tested": that the fresh-dir build + swap works cleanly on Windows under real file locks.
 
 ## Multi-user someday
 
@@ -78,7 +96,7 @@ Brandon's read: the PC is powerful enough to serve many users before load matter
 ## Not yet weighed (flagged during compilation, no analysis yet)
 
 - **Two builders, two instances.** Tyler's instance can stay pure cloud (deployment is per-instance), but the sync machinery lands in shared code and touches provider seams: core, both-agree + ADR.
-- **Dev workflow.** What the dev DB and preview story look like when prod is a box in Brandon's house; what `release:prod` and "verify the deploy" even mean.
+- **Dev workflow.** What the dev DB and preview story look like when prod is a box in Brandon's house. The deploy half is now sketched ("Updating the box in the closet" above); the dev/preview half is still open.
 - **Security posture.** Funnel TLS + Clerk + the scoped machine tokens all carry over, but the public endpoint is now a residential machine you patch yourself.
 - **App-version skew** between peers (distinct from schema skew): two peers on different builds writing ops the other doesn't expect.
 - **Sunday-proof gets its strongest form ever** (the sermon sits in a local DB on the preaching laptop, app included), worth stating as a win, not just risks.
