@@ -81,6 +81,17 @@ export const BUILD_NAV: BuildGroup[] = [
         icon: "book",
         keywords: ["help", "docs", "documentation", "manual", "how to"],
       },
+      // Updates: is this instance running the latest Ledgr, and has its database
+      // caught up with the code it's running? Lives in MAINTAIN because it is
+      // care-and-feeding, not construction. It earns a doorway of its own rather
+      // than a corner of the Changelog: the Changelog answers "what changed",
+      // this answers "am I behind", and only the second one has a button.
+      {
+        label: "Updates",
+        href: "/build/updates",
+        icon: "repeat",
+        keywords: ["update", "upgrade", "version", "sync", "migrate", "latest"],
+      },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
       // Loose Ends (ADR-127 Phase 3): under-connected items + their top
       // suggested links — the relatedness engine inverted across the corpus.

@@ -38,7 +38,10 @@ export default function AddSubtask({ parentId }: { parentId: string }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300"
+        // Bright, not faint (Tyler, 2026-08-14): this is the primary way to
+        // break a task down, so it reads as an offered action rather than
+        // chrome you have to hunt for.
+        className="rounded px-2 py-1 text-sm text-ink hover:bg-surface-2"
       >
         + Add subtask
       </button>

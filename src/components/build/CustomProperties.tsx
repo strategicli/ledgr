@@ -316,8 +316,15 @@ export default function CustomProperties({
   function renderRow(prop: PropertyDef, filled: boolean, isEditing: boolean) {
     const isSaving = saving.has(prop.key);
     return (
-      <div key={prop.key} className="group flex items-center gap-3 text-sm">
-        <dt className="w-32 shrink-0 text-neutral-500">
+      // In the narrow rail (bare) the label stacks ABOVE its value (Tyler,
+      // 2026-08-14): a fixed 128px label column ate most of a 280px rail and
+      // squeezed every value into a truncated sliver. The wide canvas keeps the
+      // side-by-side column, where it lines up and there's room for both.
+      <div
+        key={prop.key}
+        className={`group text-sm ${bare ? "flex flex-col gap-0.5" : "flex items-center gap-3"}`}
+      >
+        <dt className={bare ? "text-neutral-500" : "w-32 shrink-0 text-neutral-500"}>
           <InlineLabel typeKey={typeKey} propertyKey={prop.key} label={prop.label} />
         </dt>
         <dd className="flex min-w-0 items-center gap-1">

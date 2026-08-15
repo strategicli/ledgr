@@ -15,9 +15,13 @@ import RelationField from "./RelationField";
 export default async function PeopleRow({
   ownerId,
   itemId,
+  bare = false,
 }: {
   ownerId: string;
   itemId: string;
+  // Stack the label above its value instead of holding a fixed 128px label
+  // column — the narrow-rail layout its sibling property rows use.
+  bare?: boolean;
 }) {
   const related = await listRelatedItems(ownerId, itemId);
   const people = related.filter(
@@ -31,8 +35,8 @@ export default async function PeopleRow({
   // Own <dl> wrapper: this renders as a sibling of RelationProperties' list,
   // and a bare <dt>/<dd> outside a <dl> is invalid markup.
   return (
-    <dl className="flex items-start gap-3 text-sm">
-      <dt className="w-32 shrink-0 pt-1 text-neutral-500">
+    <dl className={`text-sm ${bare ? "flex flex-col gap-0.5" : "flex items-start gap-3"}`}>
+      <dt className={bare ? "text-neutral-500" : "w-32 shrink-0 pt-1 text-neutral-500"}>
         <span className="inline-flex items-center gap-1.5">
           <NavGlyph
             icon="person"

@@ -81,7 +81,10 @@ function SubtaskRow({
         )}
       </div>
       {node.children.length > 0 && (
-        <ul className="ml-4 border-l border-neutral-800 pl-3">
+        // A gentle nesting step (Tyler, 2026-08-14) — enough to read as nested,
+        // not the deep ml-4/pl-3 stair the section used to take.
+        <ul className="ml-2 border-l border-neutral-800 pl-2.5">
+
           {node.children.map((child) => (
             // A child's parent (for its relative offset) is THIS node.
             <SubtaskRow key={child.id} node={child} parentScheduled={node.scheduledDate} />
@@ -96,14 +99,47 @@ export default async function Subtasks({
   ownerId,
   itemId,
   parentScheduled = null,
+  bare = false,
 }: {
   ownerId: string;
   itemId: string;
   // The parent item's scheduled date — the anchor a relative subtask's offset
   // is measured from (S5, ADR-085). null when the parent isn't dated.
   parentScheduled?: Date | null;
+  // Drop the CanvasSection frame: no "SUBTASKS" header, no section divider
+  // rule, and none of the section wrapper's reading-column padding (Tyler,
+  // 2026-08-14). The bespoke task canvas uses this so subtasks sit directly
+  // under the description the way the rest of the pane reads; the stacked
+  // default canvas (MarkdownCanvas) keeps the labeled section, where a header
+  // earns its place among many sibling panels.
+  bare?: boolean;
 }) {
   const { children, progress } = await listSubtree(ownerId, itemId);
+
+  if (bare) {
+    return (
+      <div>
+        {children.length > 0 && (
+          <ul className="mb-0.5">
+            {children.map((node) => (
+              <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} />
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap items-center gap-1">
+          <AddSubtask parentId={itemId} />
+          <AddExistingSubtask parentId={itemId} />
+          {/* The rollup lived on the section header; with the header gone it
+              rides the add row so the "n of m done" count isn't lost. */}
+          {progress && (
+            <span className="ml-auto pr-2">
+              <ProgressBadge {...progress} />
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // No children yet: a labeled section with both capture affordances, so the
   // feature is discoverable rather than a lone faint button.
