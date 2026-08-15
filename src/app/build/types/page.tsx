@@ -5,6 +5,7 @@
 // type" affordance and a pointer to the bespoke-tool catalog.
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import TypeListenToggle from "@/components/build/TypeListenToggle";
 import TypeQuickCaptureToggle from "@/components/build/TypeQuickCaptureToggle";
 import TypeVisibilityToggle from "@/components/build/TypeVisibilityToggle";
 import { attachableCapabilities } from "@/lib/modules";
@@ -76,6 +77,20 @@ export default async function BuildTypes() {
               to keep it out of that menu.
             </span>
           </span>
+          {/* Hover tooltip explaining the column (CSS group-hover, no JS). */}
+          <span className="group relative flex w-16 cursor-help items-center justify-center text-center">
+            <span className="underline decoration-dotted decoration-neutral-600 underline-offset-2">
+              Listen
+            </span>
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-60 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-left text-xs font-normal normal-case leading-snug tracking-normal text-neutral-300 opacity-0 shadow-xl shadow-black/50 transition-opacity duration-150 group-hover:opacity-100"
+            >
+              Adds a Listen (read-aloud) control to this type&rsquo;s items. The
+              second checkbox (only enabled once Listen is on) sends Listen to
+              Microsoft Edge instead of playing locally, for better voices.
+            </span>
+          </span>
           <span className="w-10 text-center">Show</span>
         </div>
 
@@ -131,6 +146,13 @@ export default async function BuildTypes() {
                   <TypeQuickCaptureToggle
                     typeKey={t.key}
                     showInQuickCapture={t.showInQuickCapture}
+                  />
+                </span>
+                <span className="flex w-16 justify-center">
+                  <TypeListenToggle
+                    typeKey={t.key}
+                    listenEnabled={t.listenEnabled}
+                    listenOpenInEdge={t.listenOpenInEdge}
                   />
                 </span>
                 <span className="flex w-10 justify-center">

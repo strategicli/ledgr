@@ -194,6 +194,15 @@ export const types = pgTable("types", {
   // capturable; the builder toggles it so a "data only" custom type can stay
   // out of the curated dropdown.
   showInQuickCapture: boolean("show_in_quick_capture").notNull().default(true),
+  // Whether this type's items get a Listen (read-aloud) control on the canvas.
+  // Default false — opt-in per type from Build → Types. Off = MarkdownCanvas
+  // never mounts ListenBar for this type's items.
+  listenEnabled: boolean("listen_enabled").notNull().default(false),
+  // Nested under listenEnabled (only meaningful when it's on): when true, the
+  // Listen button redirects to Microsoft Edge (better free voices) instead of
+  // playing locally via speechSynthesis, unless already in Edge or on a
+  // platform with no redirect (iOS). Default false.
+  listenOpenInEdge: boolean("listen_open_in_edge").notNull().default(false),
   // Hidden from everyday surfaces (ADR-059): a hidden type still exists and its
   // items still work, but it drops out of quick capture, the +New menus, the
   // list tabs, and the nav destination options. Lets the user turn off built-in
