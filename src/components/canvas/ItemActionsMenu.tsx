@@ -31,6 +31,7 @@ export default function ItemActionsMenu({
   createdLabel,
   updatedLabel,
   wordCount,
+  listen = false,
 }: {
   itemId: string;
   type: string;
@@ -43,6 +44,10 @@ export default function ItemActionsMenu({
   createdLabel?: string;
   updatedLabel?: string;
   wordCount?: number;
+  // Whether this item's type has Listen (read-aloud) turned on (Build → Types).
+  // The menu stays dumb: a click just dispatches a window event; ListenBar
+  // (mounted once per item in ItemCanvas) owns the Edge-redirect-or-play logic.
+  listen?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -244,6 +249,20 @@ export default function ItemActionsMenu({
             <ActionGlyph icon="markdown" />
             View full markdown
           </a>
+          {listen && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("ledgr:listen"));
+                setOpen(false);
+              }}
+              className={rowClass}
+            >
+              <ActionGlyph icon="speaker" />
+              Listen
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

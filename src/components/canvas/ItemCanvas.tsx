@@ -24,9 +24,11 @@ import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
 import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
 import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
+import ListenBar from "@/components/canvas/ListenBar";
 import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 import TypeCue from "@/components/canvas/TypeCue";
+import { speechTextFor } from "@/lib/markdown-render";
 
 // Compact date for the chrome timestamps ("Jan 3, 2021").
 const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -113,6 +115,14 @@ export default async function ItemCanvas({
   // This is the count at load; the <WordCount> island keeps it current as the
   // body editor is typed in.
   const wordCount = wordCountOf(bodyMarkdown(item.body));
+
+  // Listen (read-aloud), per-type opt-in (Build → Types "Listen" column).
+  // Computed here, not in the per-type canvas, so it works identically on
+  // EVERY canvas (default markdown, tabs, two-pane, module canvases) — the
+  // entry point is the kebab menu, not a canvas-specific bar.
+  const listenText = typeDef?.listenEnabled
+    ? speechTextFor(bodyMarkdown(item.body))
+    : "";
 
   return (
     <>
@@ -219,6 +229,7 @@ export default async function ItemCanvas({
                   createdLabel={fmtChromeDate(item.createdAt)}
                   updatedLabel={fmtChromeDate(item.updatedAt)}
                   wordCount={wordCount}
+                  listen={Boolean(listenText)}
                 />
               )}
             </span>
@@ -229,6 +240,12 @@ export default async function ItemCanvas({
             identity is constant across renders, so React won't remount it. */}
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
+        {/* Mounted here, not in the per-type canvas, so it works on every canvas
+            (tabs, two-pane, module canvases included) — the bug a bespoke canvas
+            exposed. Renders nothing until armed (kebab click or ?listen=1). */}
+        {listenText && (
+          <ListenBar text={listenText} listenOpenInEdge={typeDef?.listenOpenInEdge ?? false} />
+        )}
       </div>
       {/* One always-visible autosave indicator for the whole canvas; also owns
           the cross-device conflict banner + refresh-on-focus check (ADR-134). */}
