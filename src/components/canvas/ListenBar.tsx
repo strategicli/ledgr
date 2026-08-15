@@ -25,9 +25,40 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const RATE_OPTIONS = [0.8, 1, 1.2, 1.5] as const;
+// Up to 3x: speechSynthesis caps rate at 10, but voices vary in how gracefully
+// they hold together past ~2x, so the ceiling here is "still intelligible for
+// skimming," not the API limit.
+const RATE_OPTIONS = [0.8, 1, 1.2, 1.5, 2, 2.5, 3] as const;
 const RATE_STORAGE_KEY = "ledgr.listen.rate";
+const VOICE_STORAGE_KEY = "ledgr.listen.voice";
 const MAX_CHUNK_CHARS = 250;
+
+// Picking a voice is the whole point of the Edge trip, and it has to be
+// explicit: an utterance with no `voice` set gets the platform default, which
+// on Windows is a legacy SAPI voice (the "Microsoft Sam" experience) even in a
+// browser that also offers far better ones. Edge exposes Microsoft's neural
+// voices to the same Web Speech API for free, named "… Online (Natural)".
+// Higher score wins; ties keep the browser's own order.
+function voiceScore(v: SpeechSynthesisVoice): number {
+  let score = 0;
+  if (/natural/i.test(v.name)) score += 8; // Edge's neural voices
+  if (/online/i.test(v.name)) score += 4; // server-side, better than local SAPI
+  if (!v.localService) score += 2;
+  if (/google/i.test(v.name)) score += 3; // Chrome/Android's better-than-default set
+  if (/^Microsoft (Sam|David|Mark|Zira|Hazel)\b/i.test(v.name)) score -= 4; // legacy SAPI
+  if (v.default) score += 1;
+  return score;
+}
+
+// Same language family as the page, so a US reader never lands on a French
+// voice reading English. Falls back to every voice if nothing matches.
+function pickableVoices(all: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
+  const lang = (typeof document !== "undefined" && document.documentElement.lang) || "en";
+  const base = lang.split("-")[0].toLowerCase();
+  const matching = all.filter((v) => v.lang.split("-")[0].toLowerCase() === base);
+  const pool = matching.length > 0 ? matching : all;
+  return [...pool].sort((a, b) => voiceScore(b) - voiceScore(a));
+}
 
 function chunkText(text: string, maxLen = MAX_CHUNK_CHARS): string[] {
   const sentences = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text];
@@ -88,6 +119,8 @@ export default function ListenBar({
   const [status, setStatus] = useState<Status>("idle");
   const [rate, setRate] = useState<number>(1);
   const [supported, setSupported] = useState<boolean | null>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceURI, setVoiceURI] = useState<string>("");
 
   const chunksRef = useRef<string[]>(chunkText(text));
   const idxRef = useRef(0);
@@ -97,6 +130,8 @@ export default function ListenBar({
   rateRef.current = rate;
   const statusRef = useRef<Status>(status);
   statusRef.current = status;
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  voiceRef.current = voices.find((v) => v.voiceURI === voiceURI) ?? null;
 
   useEffect(() => {
     chunksRef.current = chunkText(text);
@@ -130,6 +165,11 @@ export default function ListenBar({
     idxRef.current = i;
     const u = new SpeechSynthesisUtterance(chunks[i]);
     u.rate = rateRef.current;
+    // Without this the platform default speaks, however good the alternatives.
+    if (voiceRef.current) {
+      u.voice = voiceRef.current;
+      u.lang = voiceRef.current.lang;
+    }
     const advance = () => {
       if (!cancelledRef.current) speakFrom(i + 1);
     };
@@ -172,6 +212,52 @@ export default function ListenBar({
       // Best-effort persistence only.
     }
   }
+  function changeVoice(uri: string) {
+    setVoiceURI(uri);
+    try {
+      localStorage.setItem(VOICE_STORAGE_KEY, uri);
+    } catch {
+      // Best-effort persistence only.
+    }
+    // Re-speak the current chunk in the new voice, so the choice is audible
+    // immediately rather than at the next sentence boundary.
+    if (statusRef.current === "speaking") {
+      cancelledRef.current = true;
+      window.speechSynthesis.cancel();
+      const resumeAt = idxRef.current;
+      const v = voices.find((x) => x.voiceURI === uri) ?? null;
+      voiceRef.current = v;
+      setTimeout(() => speakFrom(resumeAt), 0);
+    }
+  }
+
+  // Voices arrive asynchronously (getVoices() is commonly empty on first call,
+  // and Edge's online set lands later still), so this listens for
+  // `voiceschanged` as well as reading once. The saved choice wins if it's
+  // still present; otherwise the best-ranked voice is selected for the user,
+  // which is what makes the Edge trip pay off without them hunting a menu.
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    let saved = "";
+    try {
+      saved = localStorage.getItem(VOICE_STORAGE_KEY) ?? "";
+    } catch {
+      // Ignore; the auto-pick below covers it.
+    }
+    function load() {
+      const ranked = pickableVoices(window.speechSynthesis.getVoices());
+      if (ranked.length === 0) return;
+      setVoices(ranked);
+      setVoiceURI((current) => {
+        if (current && ranked.some((v) => v.voiceURI === current)) return current;
+        if (saved && ranked.some((v) => v.voiceURI === saved)) return saved;
+        return ranked[0].voiceURI;
+      });
+    }
+    load();
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
 
   // Client-only feature/UA detection, the `ledgr:listen` listener (the ⋯ menu
   // click's target), and ?listen=1 auto-arm (show the player, never
@@ -268,6 +354,23 @@ export default function ListenBar({
           <Icon d={STOP_PATH} />
           Stop
         </button>
+        {voices.length > 1 && (
+          <label className="flex min-w-0 items-center gap-1.5 text-ink-subtle">
+            Voice
+            <select
+              value={voiceURI}
+              onChange={(e) => changeVoice(e.target.value)}
+              className="max-w-[11rem] truncate rounded-card border border-line-strong bg-surface-2 px-1.5 py-0.5 text-ink-muted"
+              title="Voices come from your browser. Edge offers Microsoft's Natural voices; Chrome and Android offer the Google set."
+            >
+              {voices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name.replace(/^Microsoft /, "").replace(/ - .*$/, "")}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="ml-auto flex items-center gap-1.5 text-ink-subtle">
           Rate
           <select
