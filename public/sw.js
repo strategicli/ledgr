@@ -39,7 +39,13 @@
 // worker explicitly owns that POST via respondWith(fetch(...)), which keeps it
 // alive across the request. The request's manual redirect mode yields an
 // opaqueredirect the browser follows to the 303 target (/items/… etc.).
-const VERSION = "v8";
+// v9: no behavior change here — the bump exists to REPLACE the precached
+// offline.html, which is now a live directory of what Save Offline has pinned on
+// this device (ADR-193). offline.html is served cache-first out of SHELL_CACHE,
+// so editing that file without bumping VERSION leaves every installed device on
+// the old copy, silently and with nothing to debug. Any future edit to
+// offline.html (or anything else in PRECACHE) needs this same bump.
+const VERSION = "v9";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
