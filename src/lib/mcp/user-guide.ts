@@ -654,6 +654,28 @@ at \`/build/navigation\`, Home and Today at \`/dashboards\`, type visibility at
 - **The database is backed up** weekly, with daily snapshots.
 - **\`/health\`** reports whether everything is running.
 
+# Staying up to date
+
+**Updates** (\`/build/updates\`) answers whether this instance is running the
+latest Ledgr, and whether its database has caught up with the version it is
+running. Those are two separate things, and the page reports them separately.
+
+- **Ledgr version.** Ledgr is one shared codebase running as a separate instance
+  per person. If yours is set up as its own copy, new versions wait until you
+  take them, and the page lists what changed and offers **Update now**. Pressing
+  it pulls the latest version and rebuilds, which takes a minute or two. If your
+  instance instead runs directly from the shared codebase, it already receives
+  every change automatically and the page tells you so.
+- **Database.** Some updates change the database structure. When the code has
+  moved ahead of the database, the page names the changes still to apply. That
+  gap is the usual reason pages start failing right after an update.
+
+Whether the Update button appears at all is a setting on the instance, because
+an update that changes the database needs the database migrated as part of
+applying it. When it is not available, the page says why.
+
+The **Changelog** (\`/changelog\`) has the full history behind each version.
+
 # Not here yet
 
 Listed so you do not go looking.

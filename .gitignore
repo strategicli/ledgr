@@ -36,6 +36,10 @@ next-env.d.ts
 .env.test.local
 .env.production.local
 
+# Satellite-instance roster: holds other people's connection strings.
+# instances.example.json is the tracked template.
+instances.local.json
+
 # Vercel
 .vercel
 

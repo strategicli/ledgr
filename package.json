@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:satellite": "node scripts/migrate.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -16,6 +17,8 @@
     "db:migrate:prod": "node --env-file=.env.production.local scripts/migrate.mjs",
     "release:prod": "node scripts/release-prod.mjs",
     "db:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed.mjs",
+    "instance:new": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/new-instance.mjs",
+    "instances:sync": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/sync-instances.mjs",
     "db:seed-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-test-data.mjs"
   },
   "dependencies": {

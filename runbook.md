@@ -222,6 +222,31 @@ Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `
 
 ---
 
+## 1k. Satellite instances: standing one up, and keeping it updated (ADR-194)
+
+A **satellite** is another person's instance of this codebase (Michelle, Miles): their GitHub **fork**, their Vercel project, their Neon database, their Clerk app. Brandon's and Tyler's instances are **source** instances, deploying from `strategicli/ledgr` itself. The fork route exists because Tyler has `push` but **not `admin`** on the repo (verified via the API), so he cannot add collaborators; only an org owner can. The repo is public, so anyone can fork it without permission from anybody.
+
+**Standing one up.** Order matters, and skipping a step produces a broken instance that reads as a bug rather than a missing step:
+
+1. **They fork** `strategicli/ledgr` from their own account (a fork lands in whoever initiates it, so you cannot do it for them).
+2. **Their Vercel connects to their fork**, not to `strategicli/ledgr`.
+3. **`npm run instance:new -- <name>`** against their Neon URL. One command: migrates, seeds the system types, creates the owner row for the address they **sign in with**, then verifies and prints what is still needed. Doing this by hand is where instances break: an empty database behind deployed code 500s, and a missing owner row is the ADR-184 "Signed in, but not recognized" screen with no nav.
+4. **Set the env vars it prints** on their Vercel project. `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_SIGN_IN_URL` are the boot set. **Their own Clerk app**, never a shared one, or they land in someone else's user pool. Since ADR-184 a missing Clerk key on a deployed instance is a hard **503**, not a partial app. Everything else degrades quietly; the one they will notice is **no R2 means uploads and attachments silently do not work**.
+5. **Then they sign in.**
+
+The roster lives in **`instances.local.json`** (gitignored, holds connection strings); `instances.example.json` is the tracked template.
+
+**Keeping them updated.** Code propagates when their fork is synced; **schema does not travel with it** (there is no migrate-on-deploy). Two routes:
+
+- **They update themselves** at **Build → Updates** (`/build/updates`). The page compares their running commit to upstream and offers a button that pulls the latest and rebuilds. Governed by **`LEDGR_SELF_UPDATE`** on their instance: unset/`off` is status-only, `safe` allows updates that do not touch `drizzle/`, `on` allows any update. **`on` is only correct when their Vercel Build Command is `npm run build:satellite`** (`node scripts/migrate.mjs && next build`), which migrates before building, so a bad migration fails the build and Vercel keeps the previous working deploy live. This is the normal path, and the reason it exists is that a non-builder should not need a terminal to take an update.
+- **You push it for them** with **`npm run instances:sync`**, which for each instance migrates the database **first** and syncs the fork **second**, and refuses to sync a fork whose migration failed. Use it for a migration-carrying change, or to update several at once. `--dry-run` reports without touching anything; `--only <name>` narrows; `--check` polls each `/health` afterwards. It needs push access on their fork, which they grant by adding you as a collaborator on **their** repo.
+
+**The order is the whole safety property.** Syncing a fork pushes to its deploy branch, which triggers that Vercel build immediately. Migrate first, or the instance serves code its schema cannot answer.
+
+**Checking any instance's state:** `/build/updates` reports both axes (code and schema) for whatever instance you are looking at. The schema axis matters on **source** instances too: a push carrying a migration reaches the code automatically while the database stays put, which is the recurring COLLAB.md failure. `npx tsx scripts/verify-updates-live.mts` answers the same question from a terminal.
+
+---
+
 ## 2. Health and monitoring
 - **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome), `lastExportRemaining` (items still awaiting export as of that run — the backlog gauge; watch it with `scripts/watch-export-drain.sh`), `graph` (app-only Graph token grant; see below), and `errors.last24h` (count of `error_log` rows captured in the last 24 hours; should be 0). The Todoist API check joins once that integration exists.
 - **`checks.graph`** (slice 21, ADR-022) is the canary for every unattended Graph job (export, calendar, email-in): `{configured:false}` until the registration is set (§1b), `{configured:true, ok:true}` when an app-only token grant succeeds (proving the client secret is valid and unexpired), `{configured:true, ok:false, detail}` when it fails — the **secret-expiry / revoked-consent alarm**. It is a token grant only, not a resource call, so it stays green even before the calendar permission is granted (§1c); it never changes overall `/health` status (Graph down must not make the app look unhealthy — the DB is what "healthy" means).
