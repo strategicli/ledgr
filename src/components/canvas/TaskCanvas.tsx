@@ -87,7 +87,10 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
       <CanvasTwoPane
         storageKey="task"
         resizable={false}
-        defaultWidth={340}
+        // 280, not 340 (Tyler, 2026-08-14): the rail carries short rows, so the
+        // extra 60px only stole reading width from the title/body/subtask pane.
+        // Its rows now stack label-over-value, so they read fine this narrow.
+        defaultWidth={280}
         main={
           <div className="min-w-0">
             <TaskTitle
@@ -105,7 +108,12 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               />
             </div>
             <div className="mt-4">
-              <Subtasks ownerId={ownerId} itemId={item.id} parentScheduled={item.scheduledDate ?? null} />
+              <Subtasks
+                ownerId={ownerId}
+                itemId={item.id}
+                parentScheduled={item.scheduledDate ?? null}
+                bare
+              />
             </div>
           </div>
         }
@@ -155,7 +163,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               <div className="flex flex-col gap-2">
                 <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
                 <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} hideHeading bare />
-                <PeopleRow ownerId={ownerId} itemId={item.id} />
+                <PeopleRow ownerId={ownerId} itemId={item.id} bare />
               </div>
             </CanvasSection>
           </div>

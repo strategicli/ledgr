@@ -54,8 +54,13 @@ export default async function RelationProperties({
       )}
       <dl className="flex flex-col gap-2">
         {relationProps.map((prop) => (
-          <div key={prop.key} className="flex items-start gap-3 text-sm">
-            <dt className="w-32 shrink-0 pt-1 text-neutral-500">
+          // Stacked label in the narrow rail, side-by-side column on the wide
+          // canvas — see the note in CustomProperties.renderRow.
+          <div
+            key={prop.key}
+            className={`text-sm ${bare ? "flex flex-col gap-0.5" : "flex items-start gap-3"}`}
+          >
+            <dt className={bare ? "text-neutral-500" : "w-32 shrink-0 pt-1 text-neutral-500"}>
               {/* A link glyph marks this as a relational property — a field whose
                   value points at other items — distinct from scalar properties
                   in the same Properties panel (the canvas redesign). The Tags

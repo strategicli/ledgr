@@ -1276,7 +1276,10 @@ export default function MarkdownEditor({
 
   return (
     // relative: the offset parent the comment popover positions against.
-    <div ref={wrapRef} className="relative border-b border-line">
+    // The closing rule is chrome for a full-height document body; a compact body
+    // (task canvas, widget, dashboard embed) sits inline above other content, so
+    // the rule just stacks another hairline into the pane (Tyler, 2026-08-14).
+    <div ref={wrapRef} className={`relative${compact ? "" : " border-b border-line"}`}>
       {/* The formatting bar is hidden on a locked item (nothing here can act on a
           read-only document). On desktop it merges with the body's view-mode
           controls (viewControls, right-aligned) into one bar; when the collapse
