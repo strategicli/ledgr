@@ -211,6 +211,12 @@ function WidgetInner({
             id: i.id,
             title: i.title,
             dueDate: i.dueDate ? i.dueDate.toISOString() : null,
+            // Completion resolved server-side (ADR-196); fall back to the row's
+            // own status if the milestone info is somehow missing.
+            done: i.milestone?.done ?? i.statusCategory === "done",
+            via: i.milestone?.via ?? (i.statusCategory === "done" ? "manual" : null),
+            taskTitle: i.milestone?.taskTitle ?? null,
+            pct: i.milestone?.pct ?? 0,
           }))}
         />
       );

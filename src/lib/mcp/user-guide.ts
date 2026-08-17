@@ -382,7 +382,18 @@ A project is a hub page composed of widget sections: the things that live in it,
 an activity log, a next action, progress, milestones, a timeline, a mindmap.
 
 Choose which sections show, and in what order, on the type's edit page under
-**Record sections** — or per record, from the record itself.
+**Record sections** — or per record, from the record itself. Each collection
+card's hover gear sets how many rows it previews (3–50, or **All**); the Tasks
+card lists open tasks only — completed ones move off the card and stay on its
+full collection page.
+
+**Milestones are completable.** Check one off directly, link it to a task with
+its **Completes with task** field (the milestone completes when that task does),
+or give it a date — a dated milestone with no linked task counts as passed once
+the date arrives. Dates are optional; a work milestone without one simply shows
+none. Set **Points (% of project)** on a milestone to make it worth that share
+of the project's progress bar, however many tasks it has; milestones without
+points share the bar's remainder with the tasks and meetings.
 
 # Finding and seeing
 

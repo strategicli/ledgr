@@ -24,7 +24,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Composition, RecordWidget } from "@/lib/composition";
-import { WIDGET_LIMIT_DEFAULT, WIDGET_LIMIT_MAX, widgetLimit } from "@/lib/composition";
+import { WIDGET_LIMIT_ALL, WIDGET_LIMIT_DEFAULT, WIDGET_LIMIT_MAX, widgetLimit } from "@/lib/composition";
 
 // One row of the editor: a catalog section plus whether this type shows it.
 type Row = {
@@ -131,7 +131,11 @@ export default function TypeSectionsEditor({
     const widgets: RecordWidget[] = rows.map((r) => {
       const w: RecordWidget = { instanceId: r.id, defId: r.id };
       if (!r.shown) w.hidden = true;
-      if (r.capped && r.limit !== WIDGET_LIMIT_DEFAULT) w.options = { limit: r.limit };
+      // "All" reads as Infinity (widgetLimit) but persists as the literal "all"
+      // — Infinity doesn't survive JSON.
+      if (r.capped && r.limit !== WIDGET_LIMIT_DEFAULT) {
+        w.options = { limit: Number.isFinite(r.limit) ? r.limit : WIDGET_LIMIT_ALL };
+      }
       return w;
     });
     void send({
@@ -194,26 +198,42 @@ export default function TypeSectionsEditor({
             </label>
 
             {r.capped && r.shown && (
-              <label className="flex shrink-0 items-center gap-1 ui-meta text-ink-subtle">
+              <span className="flex shrink-0 items-center gap-1 ui-meta text-ink-subtle">
                 show
-                <input
-                  type="number"
-                  min={1}
-                  max={WIDGET_LIMIT_MAX}
-                  value={r.limit}
-                  onChange={(e) =>
-                    update(r.id, {
-                      limit: Math.min(
-                        Math.max(Math.round(Number(e.target.value) || WIDGET_LIMIT_DEFAULT), 1),
-                        WIDGET_LIMIT_MAX
-                      ),
-                    })
-                  }
-                  className="w-14 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-right ui-meta text-ink outline-none focus:border-line-strong"
-                  aria-label={`${r.label}: rows to preview`}
-                />
+                {Number.isFinite(r.limit) && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={WIDGET_LIMIT_MAX}
+                    value={r.limit}
+                    onChange={(e) =>
+                      update(r.id, {
+                        limit: Math.min(
+                          Math.max(Math.round(Number(e.target.value) || WIDGET_LIMIT_DEFAULT), 1),
+                          WIDGET_LIMIT_MAX
+                        ),
+                      })
+                    }
+                    className="w-14 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-right ui-meta text-ink outline-none focus:border-line-strong"
+                    aria-label={`${r.label}: rows to preview`}
+                  />
+                )}
                 rows
-              </label>
+                <label className="ml-1 flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="ledgr-check ledgr-check-sm"
+                    checked={!Number.isFinite(r.limit)}
+                    onChange={(e) =>
+                      update(r.id, {
+                        limit: e.target.checked ? Number.POSITIVE_INFINITY : WIDGET_LIMIT_DEFAULT,
+                      })
+                    }
+                    aria-label={`${r.label}: show all rows`}
+                  />
+                  all
+                </label>
+              </span>
             )}
 
             <span className="flex shrink-0 items-center">

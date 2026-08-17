@@ -10,12 +10,13 @@ import { widgetLimit, type Composition, type RecordWidget } from "@/lib/composit
 import { getItem } from "@/lib/items";
 import { describeRule, parseRecurrence } from "@/lib/recurrence";
 import {
+  applyMilestoneShares,
   combineProgress,
   meetingPoints,
-  milestonePoints,
   taskPoints,
   type PointProgress,
 } from "@/lib/project-progress";
+import { milestoneProgressParts, milestoneStates } from "@/lib/milestones";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import { listRelatedItems } from "@/lib/relations";
 import { widgetById, type WidgetDefinition } from "@/lib/widgets";
@@ -40,6 +41,8 @@ export type WidgetItemRow = {
   // A human recurrence label (e.g. "Weekly on Mon") when the item repeats, else
   // null. Surfaced so a task row can show its recurrence inline with the title.
   recurrence: string | null;
+  // Milestone rows only (ADR-196): resolved completion state + explicit share.
+  milestone?: { done: boolean; via: "manual" | "task" | "date" | null; taskTitle: string | null; pct: number };
 };
 
 export type RecordWidgetData = {
@@ -81,16 +84,12 @@ function rootFraction(rootCategory: string, children: SubtaskNode[]): number {
 }
 
 // A record's OWN weighted-points progress (Tyler, 2026-07-01): tasks (worth more
-// with subtasks, partial credit by subtree completion), milestones (complete
-// once their date has passed), and meetings (complete once in the past), summed
-// into completed-points ÷ total-points (src/lib/project-progress.ts). Extracted
-// so a Pursuit can roll up its projects' progress (PJ9). `done`/`total` are
-// POINTS here, not item counts.
-function todayUtcMs(): number {
-  const d = new Date();
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
-
+// with subtasks, partial credit by subtree completion), milestones (completable
+// — checkbox / linked task / date, ADR-196; ones with an explicit `points`
+// percent overlay the bar as shares), and meetings (complete once in the past),
+// summed into completed-points ÷ total-points (src/lib/project-progress.ts).
+// Extracted so a Pursuit can roll up its projects' progress (PJ9). `done`/
+// `total` are POINTS here, not item counts.
 async function recordPointProgress(ownerId: string, recordId: string): Promise<PointProgress> {
   const [tasks, milestones, meetings] = await Promise.all([
     // Count everything associated with the record (any relation), matching what
@@ -100,7 +99,6 @@ async function recordPointProgress(ownerId: string, recordId: string): Promise<P
     queryViewItems(ownerId, { type: "event", relatedTo: recordId }, { field: "meetingAt", dir: "asc" }, 500),
   ]);
   const now = Date.now();
-  const today = todayUtcMs();
   const DEEP = 200; // beyond this, treat a task as a leaf (no subtree probe) — bound the fan-out.
   const taskParts = await Promise.all(
     tasks.map(async (t, i) => {
@@ -111,12 +109,14 @@ async function recordPointProgress(ownerId: string, recordId: string): Promise<P
       return taskPoints(rootFraction(t.statusCategory, kids), subtaskCount);
     })
   );
-  const msParts = milestones.map((m) => milestonePoints(m.dueDate ? m.dueDate.getTime() < today : false));
+  // Milestones complete by checkbox / linked task / date (ADR-196, milestones.ts).
+  // Ones carrying an explicit `points` percent overlay the pooled bar as shares.
+  const { pool: msParts, shares } = await milestoneProgressParts(ownerId, milestones);
   const mtParts = meetings.map((e) => {
     const when = e.meetingAt ?? e.scheduledDate ?? e.dueDate;
     return meetingPoints(when ? when.getTime() < now : false);
   });
-  return combineProgress([...taskParts, ...msParts, ...mtParts]);
+  return applyMilestoneShares(combineProgress([...taskParts, ...msParts, ...mtParts]), shares);
 }
 
 // The tracked container records this record CONTAINS (home edges) — a Pursuit's
@@ -303,10 +303,13 @@ async function dataForWidget(
 
   if (def.id === "timeline") {
     // Read-only overlay of the record's Meetings + Milestones by date (PRD §6) —
-    // the two collections shown together without merging their data.
+    // the two collections shown together without merging their data. Same
+    // home-agnostic association the Meetings/Milestones boxes use (boundFilter):
+    // home-only scoping left milestones that were related-but-not-contained off
+    // the timeline while showing in their box (bug, Tyler 2026-08-17).
     const [events, milestones] = await Promise.all([
-      queryViewItems(ownerId, { type: "event", relatedTo: record.id, relatedHome: true }, { field: "meetingAt", dir: "asc" }, 50),
-      queryViewItems(ownerId, { type: "milestone", relatedTo: record.id, relatedHome: true }, { field: "dueDate", dir: "asc" }, 50),
+      queryViewItems(ownerId, { type: "event", relatedTo: record.id }, { field: "meetingAt", dir: "asc" }, 50),
+      queryViewItems(ownerId, { type: "milestone", relatedTo: record.id }, { field: "dueDate", dir: "asc" }, 50),
     ]);
     const entries = [
       ...events.map((e) => ({ id: e.id, title: e.title, kind: "meeting" as const, date: e.meetingAt ?? e.scheduledDate ?? e.dueDate })),
@@ -325,13 +328,31 @@ async function dataForWidget(
   // sort can run over more than just the previewed rows.
   const filter = boundFilter(def, record.id);
   if (filter) {
+    // Done tasks disappear from the card, count included (Tyler, 2026-08-17) —
+    // the box previews what's left to do. The full set stays one click away on
+    // the collection drill-down page, which builds its own unfiltered query.
+    if (def.recordQuery?.collectionType === "task") filter.statusCategory = "active";
     const limit = def.id === "people" ? COLLECTION_LIMIT : widgetLimit(instance);
+    // The gear's "All" reads as limit = Infinity; widen the fetch window (still
+    // bounded) instead of the usual 50-row headroom.
+    const fetchLimit = Number.isFinite(limit) ? COLLECTION_LIMIT : 500;
     const [rows, count] = await Promise.all([
-      queryViewItems(ownerId, filter, { field: "updatedAt", dir: "desc" }, COLLECTION_LIMIT),
+      queryViewItems(ownerId, filter, { field: "updatedAt", dir: "desc" }, fetchLimit),
       countViewItems(ownerId, filter),
     ]);
     let mapped = rows.map(row);
     if (def.recordQuery?.collectionType === "task") mapped = sortTasksDoneLast(mapped);
+    if (def.recordQuery?.collectionType === "milestone") {
+      // Resolve each milestone's completion (manual / linked task / date) and
+      // its explicit share, so the widget renders state without re-querying.
+      const states = await milestoneStates(ownerId, rows);
+      mapped = mapped.map((m) => {
+        const s = states.get(m.id);
+        return s
+          ? { ...m, milestone: { done: s.done, via: s.via, taskTitle: s.task?.title ?? null, pct: s.pct } }
+          : m;
+      });
+    }
     return { ...base, items: mapped.slice(0, limit), count };
   }
 
