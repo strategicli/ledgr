@@ -1,8 +1,8 @@
 # Project review timeline — the everything-timeline of a record
 
-**Status:** parked idea (Tyler, 2026-08-17). Not intent, not a decision. Module-level UI over existing data — no new tables expected, so likely NOT core, buildable solo when its time comes.
+**Status:** BUILT (2026-08-17, ADR-198 — same day as raised). The center-spine page below is live at `/items/[id]/timeline` (`src/lib/project-timeline.ts` gathers, the page renders), alongside its two siblings from the same session: the Timeline card preview and the ADR-197 markdown document's Timeline section. The task `completed_at` gap closed via ADR-197's stamp. Kept for the record and for the still-open ideas: "key findings" as a first-class signal, virtualization if year-old projects drown the spine, and status-change entries from the activity log.
 
-> **Pivot, same day:** Tyler's follow-up direction is that the timeline (and milestones, tasks with added/completed dates, meetings, links, people) **lives in the project's markdown file** rather than needing a bespoke visual page first — see `explorations/project-markdown-file.md`, which absorbs this doc's data questions (the task `completed_at` gap especially). The vertical center-spine page below stays parked as the possible visual twin.
+> **Pivot, same day (for the record):** Tyler first redirected this toward the timeline **living in the project's markdown file** (`explorations/project-markdown-file.md`, ADR-197), then greenlit this visual page as its interactive twin once the markdown shipped.
 
 ## The idea (Tyler's words, lightly compressed)
 

@@ -408,8 +408,10 @@ share the bar's remainder with the tasks and meetings.
 **The Timeline card** previews the meetings and milestones nearest today, with
 open undated milestones in an **Upcoming** tail (rename that group per type
 under Build → the type's **Tools**) — completing one moves it onto the axis at
-the day it finished. Its "Showing N of M" opens the record's full
-month-by-month timeline page.
+the day it finished. Its "Showing N of M" opens the **review timeline**: the
+whole project's history on one vertical line — meetings and milestones large,
+task completions, notes, and links as small ticks between them, month markers
+and a Today line down the spine. Scroll it to re-live the project.
 
 **The whole project as one markdown file:** ⋯ → **Markdown** on a project
 renders it as a single readable document — summary, people, milestones,
