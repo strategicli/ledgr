@@ -29,6 +29,7 @@ import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 import TypeCue from "@/components/canvas/TypeCue";
 import { speechTextFor } from "@/lib/markdown-render";
+import { buildProjectMarkdown } from "@/lib/project-markdown";
 
 // Compact date for the chrome timestamps ("Jan 3, 2021").
 const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -99,9 +100,8 @@ export default async function ItemCanvas({
   // borrow a module's canvas; an unregistered type with no capability falls back
   // to the default markdown canvas, so this load is best-effort.
   const typeDef = await getType(item.type).catch(() => null);
-  const Canvas = canvasComponentFor(
-    canvasIdForType(item.type, owner.id, typeDef?.capability)
-  );
+  const canvasId = canvasIdForType(item.type, owner.id, typeDef?.capability);
+  const Canvas = canvasComponentFor(canvasId);
 
   // Table of contents (ADR-114): a per-type, owner-scoped reading preference
   // resolved here so the outline mounts once, universally, over whatever canvas
@@ -112,9 +112,16 @@ export default async function ItemCanvas({
   const toc = tocForType(settings, item.type);
 
   // Word count for the chrome (top-right on desktop, in the ⋯ menu everywhere).
-  // This is the count at load; the <WordCount> island keeps it current as the
-  // body editor is typed in.
-  const wordCount = wordCountOf(bodyMarkdown(item.body));
+  // A widget-home record (project/pursuit/custom hub) counts its COMPOSED
+  // markdown document (ADR-197) — the same text ⋯ → Markdown shows — because
+  // its own body is just the Overview and "0 words" over a full project read as
+  // wrong (Tyler, 2026-08-17). That count is a load-time snapshot (`live:
+  // false` below keeps the Overview editor from overwriting it with
+  // overview-only numbers); every other type keeps the live body count.
+  const composed = canvasId === "widgets";
+  const wordCount = wordCountOf(
+    composed ? await buildProjectMarkdown(owner.id, item) : bodyMarkdown(item.body)
+  );
 
   // Listen (read-aloud), per-type opt-in (Build → Types "Listen" column).
   // Computed here, not in the per-type canvas, so it works identically on
@@ -215,7 +222,7 @@ export default async function ItemCanvas({
                 <span aria-hidden>·</span>
                 <span>Updated {fmtChromeDate(item.updatedAt)}</span>
                 <span aria-hidden>·</span>
-                <span><WordCount itemId={item.id} initial={wordCount} /></span>
+                <span><WordCount itemId={item.id} initial={wordCount} live={!composed} /></span>
               </span>
               {variant === "page" && !item.isTemplate && (
                 <ItemActionsMenu
@@ -229,6 +236,7 @@ export default async function ItemCanvas({
                   createdLabel={fmtChromeDate(item.createdAt)}
                   updatedLabel={fmtChromeDate(item.updatedAt)}
                   wordCount={wordCount}
+                  wordCountLive={!composed}
                   listen={Boolean(listenText)}
                 />
               )}

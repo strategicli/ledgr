@@ -31,6 +31,7 @@ export default function ItemActionsMenu({
   createdLabel,
   updatedLabel,
   wordCount,
+  wordCountLive = true,
   listen = false,
 }: {
   itemId: string;
@@ -44,6 +45,9 @@ export default function ItemActionsMenu({
   createdLabel?: string;
   updatedLabel?: string;
   wordCount?: number;
+  // false = the count is a composed-document snapshot (widget-home records),
+  // not the live body — see WordCount's `live` prop.
+  wordCountLive?: boolean;
   // Whether this item's type has Listen (read-aloud) turned on (Build → Types).
   // The menu stays dumb: a click just dispatches a window event; ListenBar
   // (mounted once per item in ItemCanvas) owns the Edge-redirect-or-play logic.
@@ -198,7 +202,7 @@ export default function ItemActionsMenu({
                 {updatedLabel && <div>Updated {updatedLabel}</div>}
                 {wordCount !== undefined && (
                   <div>
-                    <WordCount itemId={itemId} initial={wordCount} />
+                    <WordCount itemId={itemId} initial={wordCount} live={wordCountLive} />
                   </div>
                 )}
               </div>
