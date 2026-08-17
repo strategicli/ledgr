@@ -50,11 +50,39 @@ const DOT: Record<TimelineEntry["kind"], string> = {
   created: "bg-[var(--accent)]",
 };
 
-const CHIP: Record<"meeting" | "milestone" | "milestoneDone", string> = {
+const CHIP: Record<"meeting" | "milestone" | "milestoneDone" | "created", string> = {
   meeting: "bg-sky-950/50 text-sky-300",
   milestone: "bg-amber-950/50 text-amber-300",
   milestoneDone: "bg-emerald-950/50 text-emerald-300",
+  created: "border border-[var(--accent)] bg-surface-1 text-[var(--accent)]",
 };
+
+// House-style glyphs (SVG, never emoji) for the small ticks, so a reader
+// scanning for "that note" or "that link" finds it by shape (Tyler).
+const TICK_ICON: Record<"task" | "note" | "link", string> = {
+  task: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M8.5 12.5l2.5 2.5 4.5-5",
+  note: "M7 3h8l4 4v14H7z M15 3v4h4 M10.5 12h6M10.5 16h6",
+  link: "M10 14a4.5 4.5 0 0 0 6.36 0l2.5-2.5a4.5 4.5 0 0 0-6.36-6.36l-1.3 1.3 M14 10a4.5 4.5 0 0 0-6.36 0l-2.5 2.5a4.5 4.5 0 0 0 6.36 6.36l1.3-1.3",
+};
+
+function TickGlyph({ kind }: { kind: "task" | "note" | "link" }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="shrink-0"
+    >
+      <path d={TICK_ICON[kind]} />
+    </svg>
+  );
+}
 
 function dayLabel(e: TimelineEntry, tz: string): string {
   return e.date.toLocaleDateString("en-US", {
@@ -85,10 +113,30 @@ function monthLabel(e: TimelineEntry, tz: string): string {
 function SpineEntry({ e, side, tz }: { e: TimelineEntry; side: "left" | "right"; tz: string }) {
   const big = e.tier === "big";
   const chip =
-    e.kind === "meeting" ? CHIP.meeting : e.done ? CHIP.milestoneDone : CHIP.milestone;
+    e.kind === "created"
+      ? CHIP.created
+      : e.kind === "meeting"
+        ? CHIP.meeting
+        : e.done
+          ? CHIP.milestoneDone
+          : CHIP.milestone;
   const date = dayLabel(e, tz);
   const time = timeLabel(e, tz);
   const dateText = time ? `${date} · ${time}` : date;
+  // A link tick's title opens the URL itself (the Links-card rule); everything
+  // else opens its item. Titles read as links — ink, underline on hover.
+  const href = e.kind === "link" && e.url ? e.url : `/items/${e.itemId}`;
+  const external = e.kind === "link" && Boolean(e.url);
+  const titleLink = (cls: string) =>
+    external ? (
+      <a href={href} target="_blank" rel="noreferrer" className={cls}>
+        {e.title || "Untitled"}
+      </a>
+    ) : (
+      <Link href={href} className={cls}>
+        {e.title || "Untitled"}
+      </Link>
+    );
 
   const content = big ? (
     <div className={side === "left" ? "sm:text-right" : ""}>
@@ -96,32 +144,35 @@ function SpineEntry({ e, side, tz }: { e: TimelineEntry; side: "left" | "right";
         {e.label}
       </span>
       <h3 className={`mt-1 text-base font-medium leading-snug sm:text-lg ${e.done ? "text-ink-muted" : "text-ink"}`}>
-        <Link href={`/items/${e.itemId}`} className="hover:text-ink hover:underline decoration-neutral-600 underline-offset-4">
-          {e.title || "Untitled"}
-        </Link>
+        {titleLink("hover:text-ink hover:underline decoration-neutral-600 underline-offset-4")}
       </h3>
       <p className="mt-0.5 text-xs text-ink-subtle sm:hidden">{dateText}</p>
     </div>
   ) : (
-    <p className={`text-sm text-ink-muted ${side === "left" ? "sm:text-right" : ""}`}>
-      <span className="text-ink-subtle">{e.label}: </span>
-      <Link href={`/items/${e.itemId}`} className="hover:text-ink">
-        {e.title || "Untitled"}
-      </Link>
-      <span className="text-ink-faint sm:hidden"> · {dateText}</span>
+    <p
+      className={`flex flex-wrap items-center gap-x-1.5 text-sm text-ink-subtle ${
+        side === "left" ? "sm:justify-end" : ""
+      }`}
+    >
+      {(e.kind === "task" || e.kind === "note" || e.kind === "link") && <TickGlyph kind={e.kind} />}
+      <span>{e.label}:</span>
+      {titleLink("text-ink underline decoration-dotted decoration-neutral-600 underline-offset-2 hover:text-ink hover:decoration-[var(--accent)]")}
+      <span className="text-ink-faint sm:hidden">· {dateText}</span>
     </p>
   );
 
   return (
     <li className={`relative ${big ? "py-3" : "py-1.5"}`}>
-      {/* The dot, on the spine. */}
+      {/* The dot, on the spine — vertically centered on the entry (Tyler,
+          2026-08-17: top-aligned read as belonging to nothing). */}
       <span
-        className={`absolute left-4 top-2.5 -translate-x-1/2 rounded-full ${DOT[e.kind]} ${big ? "h-2.5 w-2.5" : "h-1.5 w-1.5"} sm:left-1/2`}
+        className={`absolute left-4 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${DOT[e.kind]} ${big ? "h-2.5 w-2.5" : "h-1.5 w-1.5"} sm:left-1/2`}
         aria-hidden
       />
-      {/* The date, opposite the content (desktop only — inline on phones). */}
+      {/* The date, opposite the content, centered like the dot (desktop only —
+          inline on phones). */}
       <span
-        className={`absolute top-2 hidden text-xs text-ink-subtle sm:block ${
+        className={`absolute top-1/2 hidden -translate-y-1/2 text-xs text-ink-subtle sm:block ${
           side === "left" ? "left-[calc(50%+2rem)]" : "right-[calc(50%+2rem)] text-right"
         }`}
       >

@@ -3,9 +3,9 @@
 // a record, merged into one ascending history. Two tiers, decided here so the
 // page renders without policy:
 //
-//   BIG   — meetings, and milestones (due or completed): the h2s of the scroll.
-//   SMALL — task completions, notes made, links added, and the record's own
-//           creation: the ticks between them.
+//   BIG   — meetings, milestones (due or completed), and the record's own
+//           creation (the story's opening line): the h2s of the scroll.
+//   SMALL — task completions, notes made, links added: the ticks between them.
 //
 // Same source rules as the Timeline card and the project markdown document
 // (project-markdown.ts): home-agnostic association, a milestone plots at its
@@ -37,6 +37,9 @@ export type TimelineEntry = {
   // a late-evening stamp in UTC would shift it forward one.
   calendarDay: boolean;
   done?: boolean;
+  // Link entries only: the outbound URL. The tick's title opens it directly
+  // (same rule as the Links card, where the title IS the outbound link).
+  url?: string | null;
 };
 
 export type ProjectTimeline = {
@@ -78,7 +81,7 @@ export async function gatherProjectTimeline(
       id: `created-${record.id}`,
       itemId: record.id,
       date: record.createdAt,
-      tier: "small",
+      tier: "big",
       kind: "created",
       label: "Project created",
       title: record.title,
@@ -168,6 +171,7 @@ export async function gatherProjectTimeline(
       title: l.title,
       hasTime: false,
       calendarDay: false,
+      url: l.url ?? null,
     });
   }
 

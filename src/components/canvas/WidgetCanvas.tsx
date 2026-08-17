@@ -176,6 +176,16 @@ function CardBody(props: { data: RecordWidgetData; recordId: string; projectTitl
       {(isBucketWidget(data) || isTimeline) && total > shown && (
         <CardOverflowLink recordId={recordId} defId={data.def.id} shown={shown} total={total} />
       )}
+      {/* The review timeline is reachable even when nothing overflows (Tyler,
+          2026-08-17 — a gear set to "All" used to eat the only link to it). */}
+      {isTimeline && total > 0 && total <= shown && (
+        <Link
+          href={`/items/${recordId}/timeline`}
+          className="mt-2 inline-block text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+        >
+          Open timeline →
+        </Link>
+      )}
     </>
   );
 }
