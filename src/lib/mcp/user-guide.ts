@@ -401,10 +401,17 @@ in place, and each subtask completion becomes a tick on the review timeline.
 of M" used to land on a bare list; now each full collection page renders the
 same rows as its card, plus the card's add box pre-bound to the record. Tasks:
 complete in place, swipe or use the row menu, expand subtasks under their
-parent, and a **Hide completed / Show completed** toggle beside the count for
-when the done tail gets long. Milestones: the same mode-aware circles, badges,
-and points chips. Meetings, docs, links, mindmaps: the same rows and "+ Add"
-as their cards. Select mode and bulk actions stay on all of them.
+parent. Milestones: the same mode-aware circles, badges, and points chips.
+Meetings, docs, links, mindmaps: the same rows and "+ Add" as their cards.
+Select mode and bulk actions stay on all of them.
+
+**Completed tasks fold away, and milestones flag their tasks.** Done tasks
+leave both the Tasks card and its full list; a quiet **"N tasks completed"**
+line at the bottom of each opens them when you want the history. And a task
+that completes a milestone ("Completes with task") wears a small flag chip
+naming that milestone on the project's task surfaces — milestones are the
+natural grouping for a project's tasks, so the membership is visible where the
+tasks are.
 
 **Milestones complete three ways**, decided by what you give one when you add
 it (the "+ Milestone" box takes a title, an optional date, optional points, and

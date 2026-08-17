@@ -45,6 +45,10 @@ export type WidgetItemRow = {
   // children, so the Tasks card can fold subtasks out beneath their parent
   // (the same expandable pill the list surfaces use). Absent = no subtasks.
   subtasks?: { done: number; total: number };
+  // Task rows only (2026-08-17): the milestone this task completes ("Completes
+  // with task", ADR-196), so a task row can wear a subtle flag naming which
+  // milestone it belongs to. Absent = not linked to a milestone.
+  completesMilestone?: { id: string; title: string };
   // Milestone rows only (ADR-196): resolved completion state + explicit share.
   milestone?: {
     mode: "task" | "date" | "manual";
@@ -63,6 +67,10 @@ export type RecordWidgetData = {
   // collection / relation widgets
   items?: WidgetItemRow[];
   count?: number;
+  // Tasks widget only (2026-08-17): how many of the record's tasks are done —
+  // the card drops them from its rows, so this backs the "N tasks completed"
+  // link into the full collection page.
+  doneCount?: number;
   // overview (markdown body is read from the item directly by the canvas)
   // status
   status?: { key: string; category: string };
@@ -184,6 +192,32 @@ export function sortTasksDoneLast<T extends { statusCategory: string; scheduledD
     if (ad !== bd) return ad - bd; // open (0) before done (1)
     return when(a) - when(b);
   });
+}
+
+// taskId → the milestone that task completes, over a record's milestones
+// (ADR-196 "Completes with task"). Read from the milestone side (one bounded
+// fetch + one states read), so the task surfaces in a record's context —
+// the Tasks card and the full task list — can flag which milestone a task
+// belongs to (Tyler, 2026-08-17: milestones ARE the task grouping; make the
+// membership visible, subtly).
+export async function milestoneFlagsFor(
+  ownerId: string,
+  recordId: string
+): Promise<Map<string, { id: string; title: string }>> {
+  const milestones = await queryViewItems(
+    ownerId,
+    { type: "milestone", relatedTo: recordId },
+    { field: "dueDate", dir: "asc" },
+    500
+  );
+  const flags = new Map<string, { id: string; title: string }>();
+  if (milestones.length === 0) return flags;
+  const states = await milestoneStates(ownerId, milestones);
+  for (const m of milestones) {
+    const taskId = states.get(m.id)?.task?.id;
+    if (taskId && !flags.has(taskId)) flags.set(taskId, { id: m.id, title: m.title });
+  }
+  return flags;
 }
 
 // The bound filter for a collection/relation widget: items related to this
@@ -418,17 +452,35 @@ async function dataForWidget(
       });
     }
     let preview = mapped.slice(0, limit);
-    if (def.recordQuery?.collectionType === "task" && preview.length > 0) {
-      // Subtask rollups for the previewed rows only (one grouped query), so the
-      // card can render the expandable "n/m" pill without paying for rows it
-      // doesn't show.
-      const rollups = await childRollups(ownerId, preview.map((r) => r.id));
-      preview = preview.map((r) => {
-        const p = rollups.get(r.id);
-        return p ? { ...r, subtasks: p } : r;
-      });
+    let doneCount: number | undefined;
+    if (def.recordQuery?.collectionType === "task") {
+      if (preview.length > 0) {
+        // Subtask rollups for the previewed rows only (one grouped query), so
+        // the card can render the expandable "n/m" pill without paying for rows
+        // it doesn't show.
+        const rollups = await childRollups(ownerId, preview.map((r) => r.id));
+        preview = preview.map((r) => {
+          const p = rollups.get(r.id);
+          return p ? { ...r, subtasks: p } : r;
+        });
+        // The milestone each previewed task completes (ADR-196 link), so a row
+        // can wear its subtle milestone flag. One bounded fetch + one states
+        // read, shared with what the Milestones card fetches anyway.
+        const flags = await milestoneFlagsFor(ownerId, record.id);
+        preview = preview.map((r) => {
+          const m = flags.get(r.id);
+          return m ? { ...r, completesMilestone: m } : r;
+        });
+      }
+      // Done tasks left the card's rows (statusCategory: "active" above); this
+      // is their count, backing the "N tasks completed" link.
+      const doneFilter = boundFilter(def, record.id);
+      if (doneFilter) {
+        doneFilter.statusCategory = "done";
+        doneCount = await countViewItems(ownerId, doneFilter);
+      }
     }
-    return { ...base, items: preview, count };
+    return { ...base, items: preview, count, ...(doneCount !== undefined ? { doneCount } : {}) };
   }
 
   // timeline + any unmapped derived: leave for PJ6/PJ11; render an empty state.

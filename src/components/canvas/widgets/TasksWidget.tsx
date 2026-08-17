@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
 import TaskCheckCircle from "@/components/tasks/TaskCheckCircle";
+import MilestoneFlag from "@/components/milestones/MilestoneFlag";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { onListRefreshFlush } from "@/lib/list-refresh";
 
@@ -23,16 +24,23 @@ type Row = {
   // ride along with their parent (Tyler, 2026-08-17): they don't clutter the
   // card as top-level rows, they fold out beneath it via the shared pill.
   subtasks: { done: number; total: number } | null;
+  // The milestone this task completes (ADR-196); a subtle flag chip names it,
+  // so it's clear which tasks go with a milestone (Tyler, 2026-08-17).
+  milestone: { id: string; title: string } | null;
 };
 
 export default function TasksWidget({
   recordId,
   projectTitle,
   items,
+  doneCount = 0,
 }: {
   recordId: string;
   projectTitle: string;
   items: Row[];
+  // How many of the record's tasks are done — they leave the card's rows, so
+  // the card offers "N tasks completed" into the full list showing them.
+  doneCount?: number;
 }) {
   // Optimistic done state, mirrored from each row's circle so the TITLE strikes
   // through the instant the circle fills. The server prop stays the source of
@@ -68,6 +76,9 @@ export default function TasksWidget({
                   <span className="text-[var(--accent)]"> {t.recurrence}</span>
                 )}
               </Link>
+              {t.milestone && !done && (
+                <MilestoneFlag id={t.milestone.id} title={t.milestone.title} />
+              )}
             </>
           );
           // A task with subtasks gets the expandable "n/m" pill (same component
@@ -92,6 +103,17 @@ export default function TasksWidget({
           );
         })}
       </ul>
+      {/* Done tasks leave the card (it previews what's left to do); their count
+          stays reachable — "N tasks completed" opens the full list with the
+          completed tail expanded (Tyler, 2026-08-17). */}
+      {doneCount > 0 && (
+        <Link
+          href={`/items/${recordId}/collection/tasks?done=1`}
+          className="text-xs text-neutral-500 hover:text-neutral-300"
+        >
+          {doneCount} task{doneCount === 1 ? "" : "s"} completed ›
+        </Link>
+      )}
       <div className="mt-0.5">
         <InlineAddTask
           host={{ id: recordId, label: projectTitle || "This project", role: "project" }}

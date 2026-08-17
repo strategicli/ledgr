@@ -33,7 +33,7 @@ import { childRollups } from "@/lib/subtasks";
 import { TAGS_ROLE } from "@/lib/tags";
 import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
-import { boundFilter, sortTasksDoneLast } from "@/lib/record-widgets";
+import { boundFilter, milestoneFlagsFor, sortTasksDoneLast } from "@/lib/record-widgets";
 import { widgetById } from "@/lib/widgets";
 import { countViewItems, queryViewItems, VIEW_MAX, type ViewSort } from "@/lib/views";
 
@@ -96,13 +96,13 @@ export default async function CollectionPage({
   const baseFilter = boundFilter(def, id);
   if (!baseFilter) notFound();
 
-  // Task collections can hide their completed tail (Tyler, 2026-08-17): this
-  // page deliberately keeps done tasks (the card drops them, the full list is
-  // the archive), but a long-lived project accretes enough of them to get in
-  // the way. ?done=0 narrows the QUERY (statusCategory: "active"), not just the
-  // render, so the count and the "showing first N" window stay honest. Default
-  // is show — the page's whole job is the full set.
-  const hideDone = collectionType === "task" && sp.done === "0";
+  // Task collections tuck their completed tail behind an "N tasks completed"
+  // line at the bottom (Tyler, 2026-08-17: "have a '3 Tasks Completed' and the
+  // user can click that to see them"). Hidden is the DEFAULT; ?done=1 shows
+  // them. Hiding narrows the QUERY (statusCategory: "active"), not just the
+  // render, so the count and the "showing first N" window stay honest.
+  const showDone = sp.done === "1";
+  const hideDone = collectionType === "task" && !showDone;
   const filter = hideDone ? { ...baseFilter, statusCategory: "active" } : baseFilter;
 
   const sort: ViewSort =
@@ -131,16 +131,18 @@ export default async function CollectionPage({
   // beneath it — the subtasks ride along with their parent rather than
   // cluttering the top level. Two extra batched queries, same as /tasks.
   const isTaskList = collectionType === "task";
-  const [taskRollups, taskTags, tz, doneCount] = await Promise.all([
+  const [taskRollups, taskTags, tz, doneCount, milestoneFlags] = await Promise.all([
     isTaskList ? childRollups(owner.id, rows.map((r) => r.id)) : undefined,
     isTaskList
       ? outgoingRelationsBySource(owner.id, rows.map((r) => r.id), TAGS_ROLE)
       : undefined,
     isTaskList ? getAppTimezone(owner.id) : undefined,
-    // The completed tail's size, for the "Show completed (n)" label while hidden.
+    // The completed tail's size, for the "N tasks completed" line at the bottom.
     isTaskList
       ? countViewItems(owner.id, { ...baseFilter, statusCategory: "done" })
       : 0,
+    // taskId → the milestone it completes, for the subtle flag chip on rows.
+    isTaskList ? milestoneFlagsFor(owner.id, id) : undefined,
   ]);
   const taskStatuses = isTaskList ? resolveStatusSchema(typeDef?.statusSchema ?? null) : [];
   const { dueToday } = isTaskList && tz ? todayBounds(new Date(), tz) : { dueToday: new Date() };
@@ -208,16 +210,6 @@ export default async function CollectionPage({
         <h1 className="mb-4 text-lg font-medium text-neutral-100">
           {label}
           <span className="ml-2 text-sm font-normal text-neutral-500">{total}</span>
-          {/* Hide/show the completed tail (task lists only). A query-narrowing
-              link, not a client toggle, so the count above stays honest. */}
-          {isTaskList && (hideDone || doneCount > 0) && (
-            <Link
-              href={`/items/${id}/collection/${key}${hideDone ? "" : "?done=0"}`}
-              className="ml-3 text-sm font-normal text-neutral-500 hover:text-neutral-300"
-            >
-              {hideDone ? `Show completed (${doneCount})` : "Hide completed"}
-            </Link>
-          )}
         </h1>
 
         {rows.length === 0 && !upgraded ? (
@@ -235,6 +227,7 @@ export default async function CollectionPage({
                 rollups={taskRollups}
                 today={todayYmd}
                 tagsBySource={taskTags}
+                milestonesByTask={milestoneFlags}
               />
             ) : isMilestoneList ? (
               <div className="mt-3">
@@ -255,6 +248,21 @@ export default async function CollectionPage({
             ) : (
               <div className="mt-3">
                 <MindmapList items={mindmapRows} selectable />
+              </div>
+            )}
+            {/* The completed tail, folded behind its count at the bottom of the
+                list — where the done rows would sit. Query-narrowing links, so
+                the header count stays honest either way. */}
+            {isTaskList && doneCount > 0 && (
+              <div className="mt-2 px-2">
+                <Link
+                  href={`/items/${id}/collection/${key}${showDone ? "" : "?done=1"}`}
+                  className="text-sm text-neutral-500 hover:text-neutral-300"
+                >
+                  {showDone
+                    ? "Hide completed"
+                    : `${doneCount} task${doneCount === 1 ? "" : "s"} completed ›`}
+                </Link>
               </div>
             )}
             {/* Add in place, pre-bound to this record — the same affordance as

@@ -7,6 +7,7 @@
 // client children it composes.
 import Link from "next/link";
 import SwipeRow from "@/components/lists/SwipeRow";
+import MilestoneFlag from "@/components/milestones/MilestoneFlag";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
@@ -52,6 +53,7 @@ export function TaskRow({
   rollup,
   today,
   tags,
+  milestone,
 }: {
   task: TaskRowItem;
   dueToday: Date;
@@ -59,6 +61,9 @@ export function TaskRow({
   rollup?: Progress;
   today: string;
   tags?: TagRef[];
+  // The milestone this task completes (record-context surfaces pass it via
+  // milestoneFlagsFor); renders as a subtle flag chip after the title.
+  milestone?: { id: string; title: string };
 }) {
   const done = task.statusCategory === "done";
   const sdef = statuses.find((s) => s.key === task.status);
@@ -81,6 +86,7 @@ export function TaskRow({
       >
         {task.title || "Untitled"}
       </Link>
+      {milestone && <MilestoneFlag id={milestone.id} title={milestone.title} />}
       {pri != null && pri <= 5 && (
         <span className={`shrink-0 rounded border px-1.5 text-xs ${priorityStyle(pri).text} ${priorityStyle(pri).border}`}>
           P{pri}
@@ -130,6 +136,7 @@ export default function TaskList({
   rollups,
   today,
   tagsBySource,
+  milestonesByTask,
 }: {
   tasks: TaskRowItem[];
   dueToday: Date;
@@ -137,11 +144,23 @@ export default function TaskList({
   rollups?: Map<string, Progress>;
   today: string;
   tagsBySource?: Map<string, TagRef[]>;
+  // taskId → the milestone it completes (milestoneFlagsFor); record-context
+  // surfaces pass it, the global Tasks tabs leave it undefined.
+  milestonesByTask?: Map<string, { id: string; title: string }>;
 }) {
   return (
     <ul className="mt-1">
       {tasks.map((t) => (
-        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} today={today} tags={tagsBySource?.get(t.id)} />
+        <TaskRow
+          key={t.id}
+          task={t}
+          dueToday={dueToday}
+          statuses={statuses}
+          rollup={rollups?.get(t.id)}
+          today={today}
+          tags={tagsBySource?.get(t.id)}
+          milestone={milestonesByTask?.get(t.id)}
+        />
       ))}
     </ul>
   );
