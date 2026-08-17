@@ -14,8 +14,16 @@ import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import RowAction from "@/components/home/RowAction";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
+import AddContainedItemButton from "@/components/canvas/widgets/AddContainedItemButton";
+import InlineContainAdd from "@/components/canvas/widgets/InlineContainAdd";
+import LinkList, { type LinkRow } from "@/components/links/LinkList";
+import MeetingList, { type MeetingRow } from "@/components/meetings/MeetingList";
+import MindmapList, { type MindmapRow } from "@/components/mindmaps/MindmapList";
+import NoteList, { type NoteRow } from "@/components/notes/NoteList";
+import MilestoneList, { type MilestoneRow } from "@/components/milestones/MilestoneList";
 import TaskList from "@/components/tasks/TaskListRow";
 import { bulkConfigForType } from "@/lib/bulk-config";
+import { milestoneStates } from "@/lib/milestones";
 import { getItem } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { appTodayYmd } from "@/lib/recurrence-service";
@@ -62,10 +70,13 @@ export async function generateMetadata({
 
 export default async function CollectionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; key: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id, key } = await params;
+  const sp = await searchParams;
   const owner = await resolveOwner();
   if (!owner) notFound();
 
@@ -82,8 +93,17 @@ export default async function CollectionPage({
     notFound();
   }
 
-  const filter = boundFilter(def, id);
-  if (!filter) notFound();
+  const baseFilter = boundFilter(def, id);
+  if (!baseFilter) notFound();
+
+  // Task collections can hide their completed tail (Tyler, 2026-08-17): this
+  // page deliberately keeps done tasks (the card drops them, the full list is
+  // the archive), but a long-lived project accretes enough of them to get in
+  // the way. ?done=0 narrows the QUERY (statusCategory: "active"), not just the
+  // render, so the count and the "showing first N" window stay honest. Default
+  // is show — the page's whole job is the full set.
+  const hideDone = collectionType === "task" && sp.done === "0";
+  const filter = hideDone ? { ...baseFilter, statusCategory: "active" } : baseFilter;
 
   const sort: ViewSort =
     collectionType === "event"
@@ -111,16 +131,69 @@ export default async function CollectionPage({
   // beneath it — the subtasks ride along with their parent rather than
   // cluttering the top level. Two extra batched queries, same as /tasks.
   const isTaskList = collectionType === "task";
-  const [taskRollups, taskTags, tz] = await Promise.all([
+  const [taskRollups, taskTags, tz, doneCount] = await Promise.all([
     isTaskList ? childRollups(owner.id, rows.map((r) => r.id)) : undefined,
     isTaskList
       ? outgoingRelationsBySource(owner.id, rows.map((r) => r.id), TAGS_ROLE)
       : undefined,
     isTaskList ? getAppTimezone(owner.id) : undefined,
+    // The completed tail's size, for the "Show completed (n)" label while hidden.
+    isTaskList
+      ? countViewItems(owner.id, { ...baseFilter, statusCategory: "done" })
+      : 0,
   ]);
   const taskStatuses = isTaskList ? resolveStatusSchema(typeDef?.statusSchema ?? null) : [];
   const { dueToday } = isTaskList && tz ? todayBounds(new Date(), tz) : { dueToday: new Date() };
   const todayYmd = isTaskList && tz ? appTodayYmd(new Date(), tz) : "";
+
+  // Milestone and meeting collections render the SAME rows as their cards
+  // (Tyler, 2026-08-17: "copy the rules we have on the tool to the full page"):
+  // the shared MilestoneList (mode-dependent circles, badges, points chips,
+  // done-sink sort) and MeetingList (tz-aware date labels), plus the tool's
+  // "+ Milestone" / "+ Meeting" add box — with selection on top (ADR-118).
+  const isMilestoneList = collectionType === "milestone";
+  const isMeetingList = collectionType === "event";
+  let milestoneRows: MilestoneRow[] = [];
+  if (isMilestoneList) {
+    // Same state resolution + row mapping as the card's fan-out (WidgetCanvas).
+    const states = await milestoneStates(owner.id, rows);
+    milestoneRows = rows.map((m) => {
+      const s = states.get(m.id);
+      return {
+        id: m.id,
+        title: m.title,
+        dueDate: m.dueDate ? m.dueDate.toISOString() : null,
+        mode: s?.mode ?? (m.dueDate ? ("date" as const) : ("manual" as const)),
+        done: s?.done ?? m.statusCategory === "done",
+        via: s?.via ?? (m.statusCategory === "done" ? ("manual" as const) : null),
+        taskId: s?.task?.id ?? null,
+        taskTitle: s?.task?.title ?? null,
+        taskDone: s?.task?.done ?? false,
+        pct: s?.pct ?? 0,
+      };
+    });
+  }
+  const meetingRows: MeetingRow[] = isMeetingList
+    ? rows.map((m) => ({
+        id: m.id,
+        title: m.title,
+        when: (m.meetingAt ?? m.scheduledDate ?? m.dueDate)?.toISOString() ?? null,
+      }))
+    : [];
+  const isNoteList = collectionType === "note";
+  const isLinkList = collectionType === "link";
+  const isMindmapList = collectionType === "mindmap";
+  const noteRows: NoteRow[] = isNoteList ? rows.map((n) => ({ id: n.id, title: n.title })) : [];
+  const linkRows: LinkRow[] = isLinkList
+    ? rows.map((l) => ({ id: l.id, title: l.title, url: l.url ?? null }))
+    : [];
+  const mindmapRows: MindmapRow[] = isMindmapList
+    ? rows.map((m) => ({ id: m.id, title: m.title }))
+    : [];
+  // Every typed collection with a card now renders the card's own rows + add
+  // affordance; only the mixed Related Records (and people) keep the generic list.
+  const upgraded =
+    isTaskList || isMilestoneList || isMeetingList || isNoteList || isLinkList || isMindmapList;
 
   return (
     <main className="min-h-screen">
@@ -135,16 +208,26 @@ export default async function CollectionPage({
         <h1 className="mb-4 text-lg font-medium text-neutral-100">
           {label}
           <span className="ml-2 text-sm font-normal text-neutral-500">{total}</span>
+          {/* Hide/show the completed tail (task lists only). A query-narrowing
+              link, not a client toggle, so the count above stays honest. */}
+          {isTaskList && (hideDone || doneCount > 0) && (
+            <Link
+              href={`/items/${id}/collection/${key}${hideDone ? "" : "?done=0"}`}
+              className="ml-3 text-sm font-normal text-neutral-500 hover:text-neutral-300"
+            >
+              {hideDone ? `Show completed (${doneCount})` : "Hide completed"}
+            </Link>
+          )}
         </h1>
 
-        {rows.length === 0 && !isTaskList ? (
+        {rows.length === 0 && !upgraded ? (
           <p className="mt-6 px-2 text-sm text-neutral-600">Nothing here yet.</p>
-        ) : isTaskList ? (
+        ) : upgraded ? (
           <SelectionProvider ids={rows.map((r) => r.id)}>
             <SelectModeToggle />
             {rows.length === 0 ? (
               <p className="mt-4 px-2 text-sm text-neutral-600">Nothing here yet.</p>
-            ) : (
+            ) : isTaskList ? (
               <TaskList
                 tasks={rows}
                 dueToday={dueToday}
@@ -153,18 +236,50 @@ export default async function CollectionPage({
                 today={todayYmd}
                 tagsBySource={taskTags}
               />
+            ) : isMilestoneList ? (
+              <div className="mt-3">
+                <MilestoneList items={milestoneRows} selectable />
+              </div>
+            ) : isMeetingList ? (
+              <div className="mt-3">
+                <MeetingList items={meetingRows} selectable />
+              </div>
+            ) : isNoteList ? (
+              <div className="mt-3">
+                <NoteList items={noteRows} selectable />
+              </div>
+            ) : isLinkList ? (
+              <div className="mt-3">
+                <LinkList items={linkRows} selectable />
+              </div>
+            ) : (
+              <div className="mt-3">
+                <MindmapList items={mindmapRows} selectable />
+              </div>
             )}
-            {/* Add in place, pre-bound to this record — same affordance as the
-                record's Tasks card. */}
-            <div className="mt-2 px-2">
-              <InlineAddTask
-                host={{
-                  id,
-                  label: record.title || "This record",
-                  role: def.recordQuery?.role ?? "project",
-                }}
-                lockDestination
-              />
+            {/* Add in place, pre-bound to this record — the same affordance as
+                the record's card ("copy the rules we have on the tool"). */}
+            <div className="mt-3 px-2">
+              {isTaskList ? (
+                <InlineAddTask
+                  host={{
+                    id,
+                    label: record.title || "This record",
+                    role: def.recordQuery?.role ?? "project",
+                  }}
+                  lockDestination
+                />
+              ) : isMilestoneList ? (
+                <InlineContainAdd recordId={id} type="milestone" label="Milestone" />
+              ) : isMeetingList ? (
+                <InlineContainAdd recordId={id} type="event" label="Meeting" withTime />
+              ) : isNoteList ? (
+                <AddContainedItemButton recordId={id} type="note" label="Add note" />
+              ) : isLinkList ? (
+                <AddContainedItemButton recordId={id} type="link" label="Add link" />
+              ) : (
+                <AddContainedItemButton recordId={id} type="mindmap" label="Add mindmap" />
+              )}
             </div>
             {rows.length < total && (
               <p className="mt-4 px-2 text-xs text-neutral-600">

@@ -397,10 +397,14 @@ subtasks come too, without cluttering the surface: on the Tasks card and the
 full task list, a task with subtasks wears an **n/m pill** that folds them out
 in place, and each subtask completion becomes a tick on the review timeline.
 
-**The full task list** (the Tasks card's "Showing N of M") works like the Tasks
-page now: complete tasks in place with the checkbox, swipe or use the row menu,
-expand subtasks under their parent, and add a task at the bottom already bound
-to the project.
+**Every tool's full page carries the tool's own powers.** A card's "Showing N
+of M" used to land on a bare list; now each full collection page renders the
+same rows as its card, plus the card's add box pre-bound to the record. Tasks:
+complete in place, swipe or use the row menu, expand subtasks under their
+parent, and a **Hide completed / Show completed** toggle beside the count for
+when the done tail gets long. Milestones: the same mode-aware circles, badges,
+and points chips. Meetings, docs, links, mindmaps: the same rows and "+ Add"
+as their cards. Select mode and bulk actions stay on all of them.
 
 **Milestones complete three ways**, decided by what you give one when you add
 it (the "+ Milestone" box takes a title, an optional date, optional points, and
