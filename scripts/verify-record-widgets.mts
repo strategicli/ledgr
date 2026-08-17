@@ -121,6 +121,13 @@ console.log("\n# Next Action pin + auto-advance");
   await updateItem(ownerId, project.id, { nextActionTaskId: t1.id });
 
   await toggleItemDone(ownerId, t1.id); // complete the pinned task
+  // The completion stamp widened to tasks (ADR-197) — the project markdown
+  // document reports when each task finished.
+  const t1Fresh = await getItem(ownerId, t1.id);
+  check(
+    "completing a task stamps properties.completed_at (ADR-197)",
+    typeof (t1Fresh.properties as Record<string, unknown> | null)?.completed_at === "string"
+  );
   let p = await getItem(ownerId, project.id);
   check("completing the pinned task auto-advances to the next open task", p.nextActionTaskId === t2.id, String(p.nextActionTaskId));
 

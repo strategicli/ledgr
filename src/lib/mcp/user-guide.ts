@@ -411,6 +411,12 @@ under Build → the type's **Tools**) — completing one moves it onto the axis 
 the day it finished. Its "Showing N of M" opens the record's full
 month-by-month timeline page.
 
+**The whole project as one markdown file:** ⋯ → **Markdown** on a project
+renders it as a single readable document — summary, people, milestones,
+meetings, clickable links, tasks with added/completed dates, and the timeline —
+composed live from the project's current state, with Copy and **Download .md**.
+Hand the file to anyone; it reads without Ledgr.
+
 # Finding and seeing
 
 ## Search

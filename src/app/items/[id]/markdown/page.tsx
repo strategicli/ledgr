@@ -10,14 +10,24 @@
 // The `format` is displayed rather than assumed — a type may declare a
 // markdown-family format such as `chordpro`, and knowing which you're looking at
 // is the whole point on a song.
+//
+// For a WIDGET-HOME record (a project, a pursuit, a custom hub type) this view
+// shows the COMPOSED project document instead of the bare body (ADR-197): the
+// whole project as one markdown file — summary, people, milestones, meetings,
+// links, tasks with added/completed dates, timeline — rendered on demand from
+// current state (the body alone is just the Overview, which lands inside it as
+// the Summary). Same DB-canonical posture as every other rendering.
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getItem } from "@/lib/items";
+import { canvasIdForType } from "@/lib/modules";
+import { buildProjectMarkdown } from "@/lib/project-markdown";
 import { resolveOwner } from "@/lib/owner";
 import { getType } from "@/lib/types";
 import { bodyMarkdown, wordCountOf } from "@/lib/body";
 import CopyMarkdownButton from "@/components/canvas/CopyMarkdownButton";
+import DownloadMarkdownButton from "@/components/canvas/DownloadMarkdownButton";
 import BackButton from "@/components/ui/BackButton";
 
 export const dynamic = "force-dynamic";
@@ -50,15 +60,21 @@ export default async function ItemMarkdownPage({
   const item = await getItem(owner.id, id).catch(() => null);
   if (!item || item.deletedAt) notFound();
 
-  const text = bodyMarkdown(item.body);
+  const typeDef = await getType(item.type).catch(() => null);
+  // A widget-home record (canvas id "widgets": Project, Pursuit, custom hub
+  // types) gets the composed project document (ADR-197); every other type shows
+  // its canonical body verbatim.
+  const composed = canvasIdForType(item.type, owner.id, typeDef?.capability) === "widgets";
+  const text = composed ? await buildProjectMarkdown(owner.id, item) : bodyMarkdown(item.body);
   // The declared body format, so a chordpro song says so instead of implying it's
   // plain markdown. Falls back to the schema default rather than guessing.
-  const format =
-    item.body && typeof item.body === "object" && "format" in item.body
+  const format = composed
+    ? "markdown (composed)"
+    : item.body && typeof item.body === "object" && "format" in item.body
       ? String((item.body as { format?: unknown }).format ?? "markdown")
       : "markdown";
-  const typeDef = await getType(item.type).catch(() => null);
   const words = wordCountOf(text);
+  const filename = `${(item.title || "untitled").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.md`;
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8">
@@ -77,6 +93,7 @@ export default async function ItemMarkdownPage({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <CopyMarkdownButton text={text} />
+          {composed && <DownloadMarkdownButton text={text} filename={filename} />}
           <Link
             href={`/items/${item.id}`}
             className="rounded-card border border-line px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink"

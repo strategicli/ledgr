@@ -1,6 +1,8 @@
 # The project markdown file — a whole project as one readable document
 
-**Status:** designed in conversation, awaiting Tyler's finalize (2026-08-17). Not built. Touches Principle 1 (DB canonical, markdown one-way) and sits beside `storage-organization.md` (how types lay out as exported MD — core, both-agree), so settle the mechanism question below before building.
+**Status:** FINALIZED and BUILT same day (Tyler, 2026-08-17 — ADR-197). Derived projection, Tyler's section order (Summary → People → Milestones → Meetings → Links → Tasks → Timeline), both surfaces kept (`/items/[id]/markdown` composed view + the interactive `/items/[id]/timeline` page). This doc stays for the parked follow-ups: **OneDrive export integration** (blocked on the staleness question below), and Tyler's "maybe a button the user can click to make edits" — an edit affordance over a generated document needs a real design (annotations that survive re-render?) before it's more than a note.
+
+> **Export staleness, the follow-up's first question:** the OneDrive export is incremental on `items.updated_at`, but this document changes when the project's CHILDREN change, without touching the project row. Exporting it naïvely would serve stale documents from the Sunday-proof path. Options: recompose all widget-home records every export run (projects are few — cheap), or bump the parent on child change (touches write paths broadly). Decide when export integration is wanted.
 
 ## The idea (Tyler, 2026-08-17, assembled from the brainstorm)
 
