@@ -17,7 +17,7 @@ import {
   type PointProgress,
 } from "@/lib/project-progress";
 import { milestoneProgressParts, milestoneStates } from "@/lib/milestones";
-import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
+import { childRollups, listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import { listRelatedItems } from "@/lib/relations";
 import { widgetById, type WidgetDefinition } from "@/lib/widgets";
 import { countViewItems, queryViewItems, type ViewFilter } from "@/lib/views";
@@ -41,6 +41,10 @@ export type WidgetItemRow = {
   // A human recurrence label (e.g. "Weekly on Mon") when the item repeats, else
   // null. Surfaced so a task row can show its recurrence inline with the title.
   recurrence: string | null;
+  // Task rows only (2026-08-17): the "n/m done" rollup over direct task
+  // children, so the Tasks card can fold subtasks out beneath their parent
+  // (the same expandable pill the list surfaces use). Absent = no subtasks.
+  subtasks?: { done: number; total: number };
   // Milestone rows only (ADR-196): resolved completion state + explicit share.
   milestone?: {
     mode: "task" | "date" | "manual";
@@ -413,7 +417,18 @@ async function dataForWidget(
           : m;
       });
     }
-    return { ...base, items: mapped.slice(0, limit), count };
+    let preview = mapped.slice(0, limit);
+    if (def.recordQuery?.collectionType === "task" && preview.length > 0) {
+      // Subtask rollups for the previewed rows only (one grouped query), so the
+      // card can render the expandable "n/m" pill without paying for rows it
+      // doesn't show.
+      const rollups = await childRollups(ownerId, preview.map((r) => r.id));
+      preview = preview.map((r) => {
+        const p = rollups.get(r.id);
+        return p ? { ...r, subtasks: p } : r;
+      });
+    }
+    return { ...base, items: preview, count };
   }
 
   // timeline + any unmapped derived: leave for PJ6/PJ11; render an empty state.

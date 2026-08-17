@@ -22,6 +22,7 @@ import type { BulkActionConfig } from "@/lib/bulk-config";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { DEFAULT_TIMEZONE, getAppTimezone } from "@/lib/today";
 import { childRollups } from "@/lib/subtasks";
+import { projectCardsForView } from "@/lib/project-cards";
 import type { ViewLensData } from "@/lib/view-render";
 
 export default async function ViewLensBody({
@@ -45,6 +46,14 @@ export default async function ViewLensBody({
   // but not when the related panel is driving this body (it passes rowActions —
   // its own relation controls are the row's interaction there; defer by hiding).
   const today = rowActions ? undefined : appTodayYmd(new Date(), tz);
+  // Rich project cards (2026-08-17): a project-scoped list/board lens renders
+  // the configured card everywhere the owner puts one — Tyler's "Projects
+  // Board" kanban shows the same card as the Recent grid. Skipped when the
+  // related panel drives this body (its rows carry relation controls).
+  const projectCards =
+    ownerId && !rowActions
+      ? await projectCardsForView(ownerId, data.view, data.items)
+      : null;
   // Anchor "Open beside" to this saved view — but only on an interactive lens
   // (`today` set). When the related panel drives this body (rowActions), the
   // rows carry no send menu, and the view isn't the reading context, so no host.
@@ -65,6 +74,7 @@ export default async function ViewLensBody({
         rollups={rollups}
         today={today}
         tz={tz}
+        projectCards={projectCards ?? undefined}
       />
     </DeskHostProvider>
   );
@@ -75,8 +85,9 @@ export default async function ViewLensBody({
 
   return (
     <SelectionProvider ids={data.items.map((item) => item.id)}>
-      {/* Board/calendar render no row checkboxes (ADR-118), so no toggle. */}
-      {data.view.layout !== "board" && data.view.layout !== "calendar" && (
+      {/* Board/calendar render no row checkboxes (ADR-118), so no toggle —
+          nor does the project-card grid (a gallery layout, same exception). */}
+      {data.view.layout !== "board" && data.view.layout !== "calendar" && !projectCards && (
         <SelectModeToggle />
       )}
       <div className="mt-4">{renderer}</div>

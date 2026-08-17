@@ -13,9 +13,17 @@ import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import RowAction from "@/components/home/RowAction";
+import InlineAddTask from "@/components/tasks/InlineAddTask";
+import TaskList from "@/components/tasks/TaskListRow";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { getItem } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
+import { appTodayYmd } from "@/lib/recurrence-service";
+import { outgoingRelationsBySource } from "@/lib/relations";
+import { resolveStatusSchema } from "@/lib/status";
+import { childRollups } from "@/lib/subtasks";
+import { TAGS_ROLE } from "@/lib/tags";
+import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { boundFilter, sortTasksDoneLast } from "@/lib/record-widgets";
 import { widgetById } from "@/lib/widgets";
@@ -97,6 +105,23 @@ export default async function CollectionPage({
   const typeDef = collectionType ? await getType(collectionType).catch(() => null) : null;
   const bulkConfig = typeDef ? bulkConfigForType(typeDef) : {};
 
+  // A task collection renders the SAME rows as the Tasks tabs (TaskListRow,
+  // 2026-08-17): completable in place (SubtaskCheckbox), swipe + row menu, tag
+  // chips, and the expandable "n/m" pill that folds a task's subtasks out
+  // beneath it — the subtasks ride along with their parent rather than
+  // cluttering the top level. Two extra batched queries, same as /tasks.
+  const isTaskList = collectionType === "task";
+  const [taskRollups, taskTags, tz] = await Promise.all([
+    isTaskList ? childRollups(owner.id, rows.map((r) => r.id)) : undefined,
+    isTaskList
+      ? outgoingRelationsBySource(owner.id, rows.map((r) => r.id), TAGS_ROLE)
+      : undefined,
+    isTaskList ? getAppTimezone(owner.id) : undefined,
+  ]);
+  const taskStatuses = isTaskList ? resolveStatusSchema(typeDef?.statusSchema ?? null) : [];
+  const { dueToday } = isTaskList && tz ? todayBounds(new Date(), tz) : { dueToday: new Date() };
+  const todayYmd = isTaskList && tz ? appTodayYmd(new Date(), tz) : "";
+
   return (
     <main className="min-h-screen">
       <div className="mx-auto w-full max-w-3xl px-2 pb-24 pt-4 sm:px-8 md:px-12">
@@ -112,8 +137,42 @@ export default async function CollectionPage({
           <span className="ml-2 text-sm font-normal text-neutral-500">{total}</span>
         </h1>
 
-        {rows.length === 0 ? (
+        {rows.length === 0 && !isTaskList ? (
           <p className="mt-6 px-2 text-sm text-neutral-600">Nothing here yet.</p>
+        ) : isTaskList ? (
+          <SelectionProvider ids={rows.map((r) => r.id)}>
+            <SelectModeToggle />
+            {rows.length === 0 ? (
+              <p className="mt-4 px-2 text-sm text-neutral-600">Nothing here yet.</p>
+            ) : (
+              <TaskList
+                tasks={rows}
+                dueToday={dueToday}
+                statuses={taskStatuses}
+                rollups={taskRollups}
+                today={todayYmd}
+                tagsBySource={taskTags}
+              />
+            )}
+            {/* Add in place, pre-bound to this record — same affordance as the
+                record's Tasks card. */}
+            <div className="mt-2 px-2">
+              <InlineAddTask
+                host={{
+                  id,
+                  label: record.title || "This record",
+                  role: def.recordQuery?.role ?? "project",
+                }}
+                lockDestination
+              />
+            </div>
+            {rows.length < total && (
+              <p className="mt-4 px-2 text-xs text-neutral-600">
+                Showing the first {rows.length} of {total}.
+              </p>
+            )}
+            <BulkActionBar {...bulkConfig} />
+          </SelectionProvider>
         ) : (
           <SelectionProvider ids={rows.map((r) => r.id)}>
             <SelectModeToggle />

@@ -9,6 +9,7 @@ import { users } from "@/db/schema";
 import { isIconRef, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 import { parseListTabs, type Lens } from "@/lib/list-lenses";
 import { parseTocByType, type TocConfig } from "@/lib/toc";
+import { parseCardsByType, type ProjectCardConfig } from "@/lib/project-card-config";
 import { sanitizeLayout, type DeskLayout } from "@/lib/desk/layout";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
@@ -301,6 +302,11 @@ export type UserSettings = {
   // Per-type floating-TOC overrides (ADR-114). Keyed by type key; an absent key
   // resolves to DEFAULT_TOC (auto-on). Additive, no migration.
   tocByType: Record<string, TocConfig>;
+  // Per-type project-card element overrides (2026-08-17): which tools a project
+  // card shows wherever cards render (the grid, view lenses, boards). Keyed by
+  // type key ("project" today); an absent key = DEFAULT_PROJECT_CARD. A saved
+  // view can further override via views.display.card. Additive, no migration.
+  cardsByType: Record<string, ProjectCardConfig>;
   // Item ids whose outline the owner has pinned open as a sidebar (ADR-167).
   // Per ITEM, not per type: "I pinned the outline on this long note" is a fact
   // about that note, so it follows the note to every device. Deliberately NOT
@@ -439,6 +445,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   favorites: [],
   listTabs: {},
   tocByType: {},
+  cardsByType: {},
   tocPinnedItems: [],
   relatedLensChoices: {},
   notificationPrefs: {},
@@ -665,6 +672,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const favorites = parseItemIdList(r.favorites, FAVORITES_HARD_CAP);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
+  const cardsByType = parseCardsByType(r.cardsByType);
   // ponytail: the whole list is rewritten on every pin toggle. Fine for the
   // dozens of long notes worth pinning; if this ever reaches thousands, move it
   // to its own table (or an items column) rather than growing the settings blob.
@@ -715,6 +723,7 @@ export function parseSettings(raw: unknown): UserSettings {
     favorites,
     listTabs,
     tocByType,
+    cardsByType,
     tocPinnedItems,
     relatedLensChoices,
     notificationPrefs,

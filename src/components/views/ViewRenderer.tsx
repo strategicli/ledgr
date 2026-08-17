@@ -7,6 +7,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
+import ProjectCardGrid, { ProjectCardBody } from "@/components/projects/ProjectCardGrid";
+import type { ViewProjectCards } from "@/lib/project-cards";
 import PlannerCalendar from "@/components/planner/PlannerCalendar";
 import RowMenu from "@/components/lists/RowMenu";
 import SwipeRow from "@/components/lists/SwipeRow";
@@ -522,6 +524,19 @@ function TableLayout({
   );
 }
 
+// A board card carrying the rich project-card body (2026-08-17): the same
+// element set as the grid, in the board column's compact width. Shared by the
+// read-only server board and (as a prebuilt node) the draggable client board.
+function boardProjectCard(item: ViewItem, projectCards: ViewProjectCards): ReactNode | null {
+  const card = projectCards.byId[item.id];
+  if (!card) return null;
+  return (
+    <div className="relative rounded border border-neutral-800 bg-neutral-900 p-2.5 hover:border-neutral-700">
+      <ProjectCardBody card={card} config={projectCards.config} compact />
+    </div>
+  );
+}
+
 function BoardLayout({
   items,
   view,
@@ -530,6 +545,7 @@ function BoardLayout({
   statuses,
   tz,
   groupEdges,
+  projectCards,
 }: {
   items: ViewItem[];
   view: ViewDefinition;
@@ -541,6 +557,10 @@ function BoardLayout({
   // keyed by source item id. Undefined for every other grouping, which reads its
   // values straight off the row.
   groupEdges?: GroupEdges;
+  // Rich project-card data + element config (2026-08-17), resolved by the page
+  // for a project-scoped board. Undefined everywhere else → the classic
+  // title+date card.
+  projectCards?: ViewProjectCards;
 }) {
   const now = new Date();
   // A status board colors its column headers with the status colors (S2).
@@ -562,7 +582,25 @@ function BoardLayout({
       properties: i.properties,
       dateLabel: rowDate(i, view.dateProperty, tz),
     }));
-    return <BoardDnd cards={cards} grouping={view.grouping} groupOrder={groupOrder} statuses={statuses} />;
+    // Rich project cards are prebuilt server nodes keyed by id — the client
+    // board renders them verbatim inside its draggable <li>s.
+    let cardBodies: Record<string, ReactNode> | undefined;
+    if (projectCards) {
+      cardBodies = {};
+      for (const i of items) {
+        const body = boardProjectCard(i, projectCards);
+        if (body) cardBodies[i.id] = body;
+      }
+    }
+    return (
+      <BoardDnd
+        cards={cards}
+        grouping={view.grouping}
+        groupOrder={groupOrder}
+        statuses={statuses}
+        cardBodies={cardBodies}
+      />
+    );
   }
   // flatMap, not map: a multi-valued grouping (Tags, multi_select) puts a row in
   // EVERY one of its values, so the set of present columns is the union of all of
@@ -602,25 +640,29 @@ function BoardLayout({
               <span className="text-neutral-600">{colItems.length}</span>
             </div>
             <ul className="flex flex-col gap-1.5 p-2">
-              {colItems.map((item) => (
-                <li key={item.id}>
-                  <Link
-                    href={`/items/${item.id}`}
-                    className={`block rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm hover:border-neutral-700 ${
-                      item.title ? "text-neutral-200" : "text-neutral-500"
-                    } ${item.statusCategory === "done" ? "line-through opacity-60" : ""}`}
-                  >
-                    <span className="block truncate">
-                      {item.title || "Untitled"}
-                    </span>
-                    {rowDate(item, view.dateProperty, tz) && (
-                      <span className="mt-0.5 block text-xs text-neutral-600">
-                        {rowDate(item, view.dateProperty, tz)}
+              {colItems.map((item) => {
+                const rich = projectCards ? boardProjectCard(item, projectCards) : null;
+                if (rich) return <li key={item.id}>{rich}</li>;
+                return (
+                  <li key={item.id}>
+                    <Link
+                      href={`/items/${item.id}`}
+                      className={`block rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm hover:border-neutral-700 ${
+                        item.title ? "text-neutral-200" : "text-neutral-500"
+                      } ${item.statusCategory === "done" ? "line-through opacity-60" : ""}`}
+                    >
+                      <span className="block truncate">
+                        {item.title || "Untitled"}
                       </span>
-                    )}
-                  </Link>
-                </li>
-              ))}
+                      {rowDate(item, view.dateProperty, tz) && (
+                        <span className="mt-0.5 block text-xs text-neutral-600">
+                          {rowDate(item, view.dateProperty, tz)}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         );
@@ -878,9 +920,15 @@ export default function ViewRenderer({
   today,
   tz = DEFAULT_TIMEZONE,
   groupEdges,
+  projectCards,
 }: {
   view: ViewDefinition;
   items: ViewItem[];
+  // Rich project cards (2026-08-17): card data + element config, resolved by
+  // the page via projectCardsForView for a project-scoped list/board view.
+  // When set, the list layout renders the card grid instead of rows and board
+  // cards carry the full card body; undefined leaves every layout unchanged.
+  projectCards?: ViewProjectCards;
   // Relation-grouping edges (group by Tags), batch-fetched by the page. Only a
   // board grouped by a relation role reads it; everything else ignores it.
   groupEdges?: GroupEdges;
@@ -967,6 +1015,7 @@ export default function ViewRenderer({
           draggable={boardDraggable}
           statuses={statuses}
           tz={tz}
+          projectCards={projectCards}
         />
       );
     case "calendar": {
@@ -1041,6 +1090,14 @@ export default function ViewRenderer({
         />
       );
     default:
+      // A project-scoped list view renders the rich card grid (2026-08-17) —
+      // the "Recent look" on any tab — in the view's own row order.
+      if (projectCards) {
+        const cards = items
+          .map((i) => projectCards.byId[i.id])
+          .filter((c): c is NonNullable<typeof c> => c != null);
+        return <ProjectCardGrid cards={cards} config={projectCards.config} />;
+      }
       return (
         <ListLayout
           items={items}

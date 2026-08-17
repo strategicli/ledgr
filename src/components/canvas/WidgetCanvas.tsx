@@ -207,7 +207,7 @@ function WidgetInner({
         <TasksWidget
           recordId={recordId}
           projectTitle={projectTitle}
-          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, statusCategory: i.statusCategory, urgency: i.urgency, recurrence: i.recurrence }))}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, statusCategory: i.statusCategory, urgency: i.urgency, recurrence: i.recurrence, subtasks: i.subtasks ?? null }))}
         />
       );
     case "notes":

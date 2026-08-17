@@ -1,12 +1,14 @@
-// Card data for the all-projects grid (Tyler, 2026-07-01): given the project
-// rows already queried by the list page, produce each card's status, progress,
-// people, and collection counts. Server-only.
+// Card data for project cards (Tyler, 2026-07-01; configurable elements
+// 2026-08-17): given project rows already queried by a list surface, produce
+// each card's status, progress, people, collection counts, and — when the
+// resolved element config asks for them — key links. Server-only.
 //
 // Progress here is a *flat* pass of the weighted-points model — tasks count as
 // done/not-done without the per-task subtree probe the record canvas does — so a
 // grid of many projects stays cheap (a card is a glance; the open project shows
-// the precise bar). Perf note: this runs ~4 bounded queries per project; if the
-// project count grows large, batch these into grouped queries (see next_steps).
+// the precise bar). Perf note: this runs ~4 bounded queries per project (5 with
+// the links element on); if the project count grows large, batch these into
+// grouped queries (see next_steps).
 import {
   applyMilestoneShares,
   combineProgress,
@@ -15,8 +17,14 @@ import {
   type PointProgress,
 } from "@/lib/project-progress";
 import { milestoneProgressParts } from "@/lib/milestones";
+import {
+  cardShows,
+  resolveProjectCardConfig,
+  type ProjectCardConfig,
+} from "@/lib/project-card-config";
+import { getSettings } from "@/lib/settings";
 import { statusSchemaForType } from "@/lib/status-schema";
-import { queryViewItems } from "@/lib/views";
+import { queryViewItems, type ViewDefinition } from "@/lib/views";
 
 export type ProjectCard = {
   id: string;
@@ -25,22 +33,32 @@ export type ProjectCard = {
   progress: PointProgress;
   people: { id: string; title: string }[];
   counts: { tasks: number; milestones: number; meetings: number };
+  // Key links (the "links" card element): the record's most recent link items.
+  // Empty when the element is off (not fetched) or the project has none.
+  links: { id: string; title: string; url: string | null }[];
 };
 
 type ProjectRow = { id: string; title: string; status: string; statusCategory: string };
 
+// How many key-link chips a card carries; the card is a glance, not the Links box.
+const CARD_LINKS_LIMIT = 3;
+
 async function cardData(
   ownerId: string,
   project: ProjectRow,
-  statusColor: (key: string) => { label: string; color: string; category: string } | null
+  statusColor: (key: string) => { label: string; color: string; category: string } | null,
+  withLinks: boolean
 ): Promise<ProjectCard> {
-  const [tasks, milestones, meetings, people] = await Promise.all([
+  const [tasks, milestones, meetings, people, links] = await Promise.all([
     // Everything associated with the project (any relation) — matches the canvas
     // boxes (boundFilter): all tasks/milestones/meetings/people connected to it.
     queryViewItems(ownerId, { type: "task", relatedTo: project.id }, { field: "createdAt", dir: "asc" }, 500),
     queryViewItems(ownerId, { type: "milestone", relatedTo: project.id }, { field: "dueDate", dir: "asc" }, 500),
     queryViewItems(ownerId, { type: "event", relatedTo: project.id }, { field: "meetingAt", dir: "asc" }, 500),
     queryViewItems(ownerId, { type: "person", relatedTo: project.id }, { field: "updatedAt", dir: "desc" }, 12),
+    withLinks
+      ? queryViewItems(ownerId, { type: "link", relatedTo: project.id }, { field: "updatedAt", dir: "desc" }, CARD_LINKS_LIMIT)
+      : Promise.resolve([]),
   ]);
   const now = Date.now();
   // Milestones complete by checkbox / linked task / date (ADR-196); explicit
@@ -65,14 +83,62 @@ async function cardData(
     progress,
     people: people.map((p) => ({ id: p.id, title: p.title })),
     counts: { tasks: tasks.length, milestones: milestones.length, meetings: meetings.length },
+    links: links.map((l) => ({ id: l.id, title: l.title, url: l.url ?? null })),
   };
 }
 
-export async function listProjectCardData(ownerId: string, projects: ProjectRow[]): Promise<ProjectCard[]> {
+export async function listProjectCardData(
+  ownerId: string,
+  projects: ProjectRow[],
+  config?: ProjectCardConfig
+): Promise<ProjectCard[]> {
   const schema = await statusSchemaForType("project");
   const statusColor = (key: string) => {
     const def = schema.find((s) => s.key === key);
     return def ? { label: def.label, color: def.color, category: def.category } : null;
   };
-  return Promise.all(projects.map((p) => cardData(ownerId, p, statusColor)));
+  const withLinks = config ? cardShows(config, "links") : false;
+  return Promise.all(projects.map((p) => cardData(ownerId, p, statusColor, withLinks)));
+}
+
+// The owner's type-default card config for the project type (Build → Types →
+// Project → "Card elements"), used wherever a view's display.card doesn't
+// override it.
+export async function projectCardTypeDefault(
+  ownerId: string
+): Promise<ProjectCardConfig | undefined> {
+  const settings = await getSettings(ownerId);
+  return settings.cardsByType["project"];
+}
+
+export type ViewProjectCards = {
+  config: ProjectCardConfig;
+  byId: Record<string, ProjectCard>;
+};
+
+// Whether a saved view renders project cards at all: scoped to projects, on a
+// card-capable layout. Client-safe callers gate the select toggle on the same
+// rule via layout alone; this is the server-side decision point.
+export function viewRendersProjectCards(view: ViewDefinition): boolean {
+  return (
+    view.filter.type === "project" &&
+    (view.layout === "list" || view.layout === "board")
+  );
+}
+
+// Resolve everything a view surface needs to render rich project cards, or null
+// when the view isn't a project-card surface. One settings read + the per-card
+// fan-out above.
+export async function projectCardsForView(
+  ownerId: string,
+  view: ViewDefinition,
+  items: ProjectRow[]
+): Promise<ViewProjectCards | null> {
+  if (!viewRendersProjectCards(view)) return null;
+  const typeDefault = await projectCardTypeDefault(ownerId);
+  const config = resolveProjectCardConfig(view.display?.card, typeDefault);
+  const cards = await listProjectCardData(ownerId, items, config);
+  const byId: Record<string, ProjectCard> = {};
+  for (const c of cards) byId[c.id] = c;
+  return { config, byId };
 }

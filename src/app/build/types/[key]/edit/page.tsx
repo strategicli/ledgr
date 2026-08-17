@@ -5,8 +5,10 @@ import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
 import StatusSchemaEditor from "@/components/build/StatusSchemaEditor";
 import TypeSectionsEditor from "@/components/build/TypeSectionsEditor";
+import CardElementsEditor from "@/components/build/CardElementsEditor";
 import ListTabsEditor from "@/components/build/ListTabsEditor";
 import TocSettingsEditor from "@/components/build/TocSettingsEditor";
+import { resolveProjectCardConfig } from "@/lib/project-card-config";
 import { parseComposition, resolveComposition } from "@/lib/composition";
 import { lensesForType, lensPropertyOptions } from "@/lib/list-lenses";
 import { capabilityById } from "@/lib/modules";
@@ -103,6 +105,16 @@ export default async function EditType({
           initial={storedDefault}
           effective={effectiveSections}
         />
+        {/* Project cards carry a configurable element set (2026-08-17). Only the
+            project type renders cards today; widen this gate when another type
+            grows a card (pursuit is the likely next). */}
+        {key === "project" && (
+          <CardElementsEditor
+            typeKey={key}
+            initial={resolveProjectCardConfig(null, settings.cardsByType[key])}
+            customized={Boolean(settings.cardsByType[key])}
+          />
+        )}
         <ListTabsEditor
           typeKey={key}
           propertyOptions={propertyOptions}

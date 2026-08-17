@@ -39,6 +39,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
 import { listProjectCardData } from "@/lib/project-cards";
+import { resolveProjectCardConfig } from "@/lib/project-card-config";
 import { resolveViewLens } from "@/lib/view-render";
 import {
   countViewItems,
@@ -130,10 +131,14 @@ export default async function TypeList({
   }
 
   // The Projects list renders as a card grid (Tyler, 2026-07-01) on the default
-  // sort path; a saved view lens still renders via ViewRenderer.
+  // sort path; a saved view lens still renders via ViewRenderer (which resolves
+  // its own project cards for a project-scoped list/board lens). The card's
+  // element set is the owner's type default (Build → Types → Project → "Card
+  // elements"), falling back to the classic card.
+  const cardConfig = resolveProjectCardConfig(null, settings.cardsByType["project"]);
   const projectCards =
     type === "project" && !viewData && items.length > 0
-      ? await listProjectCardData(owner.id, items)
+      ? await listProjectCardData(owner.id, items, cardConfig)
       : [];
 
   // Subtask "n/m" rollups + a linked-item summary for the in-view rows (empty
@@ -212,7 +217,7 @@ export default async function TypeList({
           )}
           {items.length > 0 && type === "project" ? (
             <>
-              <ProjectCardGrid cards={projectCards} />
+              <ProjectCardGrid cards={projectCards} config={cardConfig} />
               <LoadMore shown={items.length} total={count} basePath={`/list/${type}`} params={sp} />
             </>
           ) : items.length > 0 ? (

@@ -10,9 +10,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
 import TaskCheckCircle from "@/components/tasks/TaskCheckCircle";
+import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { onListRefreshFlush } from "@/lib/list-refresh";
 
-type Row = { id: string; title: string; statusCategory: string; urgency: number | null; recurrence: string | null };
+type Row = {
+  id: string;
+  title: string;
+  statusCategory: string;
+  urgency: number | null;
+  recurrence: string | null;
+  // "n/m done" over the task's direct subtasks; null = no subtasks. Subtasks
+  // ride along with their parent (Tyler, 2026-08-17): they don't clutter the
+  // card as top-level rows, they fold out beneath it via the shared pill.
+  subtasks: { done: number; total: number } | null;
+};
 
 export default function TasksWidget({
   recordId,
@@ -36,8 +47,8 @@ export default function TasksWidget({
       <ul className="flex flex-col gap-1.5">
         {items.map((t) => {
           const done = doneOverride[t.id] ?? t.statusCategory === "done";
-          return (
-            <li key={t.id} className="flex items-center gap-2.5 text-sm">
+          const inner = (
+            <>
               <TaskCheckCircle
                 itemId={t.id}
                 done={done}
@@ -57,6 +68,26 @@ export default function TasksWidget({
                   <span className="text-[var(--accent)]"> {t.recurrence}</span>
                 )}
               </Link>
+            </>
+          );
+          // A task with subtasks gets the expandable "n/m" pill (same component
+          // as the list surfaces); its subtasks fold out beneath it in place.
+          if (t.subtasks && t.subtasks.total > 0) {
+            return (
+              <SubtaskExpandableRow
+                key={t.id}
+                id={t.id}
+                done={t.subtasks.done}
+                total={t.subtasks.total}
+                liClassName="flex items-center gap-2.5 text-sm"
+              >
+                {inner}
+              </SubtaskExpandableRow>
+            );
+          }
+          return (
+            <li key={t.id} className="flex items-center gap-2.5 text-sm">
+              {inner}
             </li>
           );
         })}

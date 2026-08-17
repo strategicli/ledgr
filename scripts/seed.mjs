@@ -58,13 +58,15 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
-// The `tag` type (ADR-094 E2): an ordinary, non-privileged grouping type
-// (is_system=false, not in quick capture). Tagging is a relations edge pointed
-// at a tag item; the `tags` relation field below makes it ergonomic. Mirrors
-// drizzle/0028_tag_type_and_tags_field.sql for fresh databases.
+// The `tag` type (ADR-094 E2): the grouping type behind the tags field. BUILT-IN
+// as of 2026-08-17 (is_system=true, mirrors migration 0052): every install ships
+// tagging, extendable but not deletable — an owner can still add their own
+// classifier types (a "category" type, etc.) alongside it. Tagging is a
+// relations edge pointed at a tag item; the `tags` relation field below makes
+// it ergonomic. Mirrors drizzle/0028 + 0052 for fresh databases.
 await sql`
   INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden)
-  VALUES ('tag', 'Tag', 'tag', false, false, false)
+  VALUES ('tag', 'Tag', 'tag', true, false, false)
   ON CONFLICT (key) DO NOTHING
 `;
 
@@ -86,10 +88,13 @@ await sql`
 // Existing instances keep their own buckets — migration 0035 only adopts this
 // default where the project type is unused, else fixes the category mapping.
 // Configurable per instance via the type's status editor (ADR-082).
+// BUILT-IN as of 2026-08-17 (is_system=true, mirrors migration 0052): projects
+// ship with every install alongside task and milestone — extendable, not
+// deletable.
 await sql`
   INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, status_schema, property_schema, capability)
   VALUES (
-    'project', 'Project', 'project', false, true, false, 'select',
+    'project', 'Project', 'project', true, true, false, 'select',
     '[{"key":"planning","label":"Planning","category":"not_started","color":"#64748b","isDefault":true},{"key":"active","label":"Active","category":"in_progress","color":"#d97706"},{"key":"on_hold","label":"On Hold","category":"not_started","color":"#6b7280"},{"key":"done","label":"Done","category":"done","color":"#16a34a","isDefault":true}]'::jsonb,
     '[{"key":"repo","label":"Repo URL","kind":"url"},{"key":"liveurl","label":"Live URL","kind":"url"},{"key":"stack","label":"Stack","kind":"text"}]'::jsonb,
     'widget-home'
@@ -102,6 +107,9 @@ await sql`UPDATE types SET capability = 'widget-home' WHERE key = 'project' AND 
 // Give the project type its own glyph (2026-07-01). Only replaces the old
 // 'folder' default so a hand-picked icon is never clobbered.
 await sql`UPDATE types SET icon = 'project' WHERE key = 'project' AND icon = 'folder'`;
+// project + tag are built-in (2026-08-17). Idempotent for instances seeded
+// before the flip (mirrors migration 0052).
+await sql`UPDATE types SET is_system = true WHERE key IN ('project', 'tag') AND is_system = false`;
 
 // The milestone type (ADR-111/PJ5): a polymorphic collection item with no
 // done-state; date = due_date, upcoming/passed derived. Hidden, out of quick

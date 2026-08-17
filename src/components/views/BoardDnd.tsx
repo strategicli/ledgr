@@ -9,7 +9,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ITEM_STATUSES, URGENCIES } from "@/lib/item-enums";
 import { boardDropPatch, groupValueFor, NONE_GROUP, orderedGroups } from "@/lib/view-grouping";
 import type { ViewGrouping } from "@/lib/views";
@@ -55,12 +55,18 @@ export default function BoardDnd({
   grouping,
   groupOrder,
   statuses,
+  cardBodies,
 }: {
   cards: BoardCard[];
   grouping: ViewGrouping;
   groupOrder?: string[];
   // The type's resolved statuses (S2): a status board colors its columns.
   statuses?: StatusDef[];
+  // Rich card bodies keyed by item id (project boards, 2026-08-17): prebuilt
+  // server nodes rendered verbatim inside the draggable <li> instead of the
+  // default title+date card. Their internal anchors set draggable={false}, so
+  // the row's drag still wins.
+  cardBodies?: Record<string, ReactNode>;
 }) {
   const router = useRouter();
   const [items, setItems] = useState(cards);
@@ -190,24 +196,28 @@ export default function BoardDnd({
                     setDragId(null);
                     setOverCol(null);
                   }}
-                  className={dragId === item.id ? "opacity-40" : ""}
+                  className={`${dragId === item.id ? "opacity-40 " : ""}${
+                    cardBodies?.[item.id] ? "cursor-grab active:cursor-grabbing" : ""
+                  }`}
                 >
-                  <Link
-                    href={`/items/${item.id}`}
-                    // Suppress the anchor's native drag so the <li>'s drag wins;
-                    // a plain click still navigates to the item.
-                    draggable={false}
-                    className={`block cursor-grab rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm hover:border-neutral-700 active:cursor-grabbing ${
-                      item.title ? "text-neutral-200" : "text-neutral-500"
-                    } ${item.status === "done" ? "line-through opacity-60" : ""}`}
-                  >
-                    <span className="block truncate">{item.title || "Untitled"}</span>
-                    {item.dateLabel && (
-                      <span className="mt-0.5 block text-xs text-neutral-600">
-                        {item.dateLabel}
-                      </span>
-                    )}
-                  </Link>
+                  {cardBodies?.[item.id] ?? (
+                    <Link
+                      href={`/items/${item.id}`}
+                      // Suppress the anchor's native drag so the <li>'s drag wins;
+                      // a plain click still navigates to the item.
+                      draggable={false}
+                      className={`block cursor-grab rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-sm hover:border-neutral-700 active:cursor-grabbing ${
+                        item.title ? "text-neutral-200" : "text-neutral-500"
+                      } ${item.status === "done" ? "line-through opacity-60" : ""}`}
+                    >
+                      <span className="block truncate">{item.title || "Untitled"}</span>
+                      {item.dateLabel && (
+                        <span className="mt-0.5 block text-xs text-neutral-600">
+                          {item.dateLabel}
+                        </span>
+                      )}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
