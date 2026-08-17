@@ -42,7 +42,15 @@ export type WidgetItemRow = {
   // null. Surfaced so a task row can show its recurrence inline with the title.
   recurrence: string | null;
   // Milestone rows only (ADR-196): resolved completion state + explicit share.
-  milestone?: { done: boolean; via: "manual" | "task" | "date" | null; taskTitle: string | null; pct: number };
+  milestone?: {
+    mode: "task" | "date" | "manual";
+    done: boolean;
+    via: "manual" | "task" | "date" | null;
+    taskId: string | null;
+    taskTitle: string | null;
+    taskDone: boolean;
+    pct: number;
+  };
 };
 
 export type RecordWidgetData = {
@@ -60,8 +68,11 @@ export type RecordWidgetData = {
   progress?: { done: number; total: number; fraction: number | null };
   // recentActivity
   activity?: { id: string; kind: string; summary: string; occurredAt: Date }[];
-  // timeline (meetings + milestones overlaid by date, read-only)
-  timeline?: { id: string; title: string; kind: "meeting" | "milestone"; date: Date }[];
+  // timeline (meetings + milestones overlaid by date; done marks milestones) +
+  // the "Uncompleted" tail: open milestones with no date to plot (Tyler,
+  // 2026-08-17 — a finished one gets stamped and joins the axis).
+  timeline?: { id: string; title: string; kind: "meeting" | "milestone"; date: Date; done?: boolean }[];
+  timelineUndated?: { id: string; title: string }[];
 };
 
 type LoadedRecord = Awaited<ReturnType<typeof getItem>>;
@@ -307,17 +318,54 @@ async function dataForWidget(
     // home-agnostic association the Meetings/Milestones boxes use (boundFilter):
     // home-only scoping left milestones that were related-but-not-contained off
     // the timeline while showing in their box (bug, Tyler 2026-08-17).
+    //
+    // A milestone plots at its due date, or — undated but finished — at its
+    // completion stamp, so completing an undated milestone moves it from the
+    // "Uncompleted" tail onto the axis (Tyler, 2026-08-17). The card previews a
+    // window around today (upcoming first, backfilled with the most recent
+    // past), capped by the hover gear's limit; the full set lives at
+    // /items/[id]/timeline.
     const [events, milestones] = await Promise.all([
-      queryViewItems(ownerId, { type: "event", relatedTo: record.id }, { field: "meetingAt", dir: "asc" }, 50),
-      queryViewItems(ownerId, { type: "milestone", relatedTo: record.id }, { field: "dueDate", dir: "asc" }, 50),
+      queryViewItems(ownerId, { type: "event", relatedTo: record.id }, { field: "meetingAt", dir: "asc" }, 200),
+      queryViewItems(ownerId, { type: "milestone", relatedTo: record.id }, { field: "dueDate", dir: "asc" }, 200),
     ]);
-    const entries = [
-      ...events.map((e) => ({ id: e.id, title: e.title, kind: "meeting" as const, date: e.meetingAt ?? e.scheduledDate ?? e.dueDate })),
-      ...milestones.map((m) => ({ id: m.id, title: m.title, kind: "milestone" as const, date: m.dueDate })),
-    ]
-      .filter((x): x is { id: string; title: string; kind: "meeting" | "milestone"; date: Date } => x.date != null)
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
-    return { ...base, timeline: entries };
+    const states = await milestoneStates(ownerId, milestones);
+    const dated = [
+      ...events
+        .map((e) => ({ id: e.id, title: e.title, kind: "meeting" as const, date: e.meetingAt ?? e.scheduledDate ?? e.dueDate }))
+        .filter((x): x is { id: string; title: string; kind: "meeting"; date: Date } => x.date != null),
+      ...milestones
+        .map((m) => {
+          const s = states.get(m.id);
+          const date = m.dueDate ?? s?.completedAt ?? null;
+          return date ? { id: m.id, title: m.title, kind: "milestone" as const, date, done: s?.done ?? false } : null;
+        })
+        .filter((x): x is { id: string; title: string; kind: "milestone"; date: Date; done: boolean } => x != null),
+    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const undated = milestones
+      .filter((m) => {
+        const s = states.get(m.id);
+        return !m.dueDate && !(s?.done && s.completedAt);
+      })
+      .map((m) => ({ id: m.id, title: m.title }));
+
+    const limit = widgetLimit(instance);
+    let shown = dated;
+    if (Number.isFinite(limit) && dated.length > limit) {
+      const now = Date.now();
+      const futureStart = dated.findIndex((e) => e.date.getTime() >= now);
+      const split = futureStart === -1 ? dated.length : futureStart;
+      const takeFuture = Math.min(dated.length - split, limit);
+      const takePast = Math.min(split, limit - takeFuture);
+      shown = dated.slice(split - takePast, split + takeFuture);
+    }
+    const undatedShown = Number.isFinite(limit) ? undated.slice(0, limit) : undated;
+    return {
+      ...base,
+      timeline: shown,
+      timelineUndated: undatedShown,
+      count: dated.length + undated.length,
+    };
   }
 
   // Collection + people widgets: a bound query. The card shows only a PREVIEW —
@@ -343,13 +391,25 @@ async function dataForWidget(
     let mapped = rows.map(row);
     if (def.recordQuery?.collectionType === "task") mapped = sortTasksDoneLast(mapped);
     if (def.recordQuery?.collectionType === "milestone") {
-      // Resolve each milestone's completion (manual / linked task / date) and
-      // its explicit share, so the widget renders state without re-querying.
+      // Resolve each milestone's mode + completion (manual / linked task /
+      // date) and its explicit share, so the widget renders the right
+      // affordance without re-querying.
       const states = await milestoneStates(ownerId, rows);
       mapped = mapped.map((m) => {
         const s = states.get(m.id);
         return s
-          ? { ...m, milestone: { done: s.done, via: s.via, taskTitle: s.task?.title ?? null, pct: s.pct } }
+          ? {
+              ...m,
+              milestone: {
+                mode: s.mode,
+                done: s.done,
+                via: s.via,
+                taskId: s.task?.id ?? null,
+                taskTitle: s.task?.title ?? null,
+                taskDone: s.task?.done ?? false,
+                pct: s.pct,
+              },
+            }
           : m;
       });
     }

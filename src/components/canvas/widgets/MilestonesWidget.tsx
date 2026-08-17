@@ -1,15 +1,20 @@
 "use client";
 
-// Milestones widget body (Project Type). Milestones are COMPLETABLE (ADR-196,
-// reversing the original no-done-state semantic): each row carries the same
-// completion circle as tasks (manual check), and the server also derives done
-// from a linked task ("Completes with task") or — for dated milestones with no
-// task link — from the date passing ("arrives whether you act or not", the
-// surviving PRD §6 case, shown as "passed" rather than "done"). Dates are
-// optional (Tyler, 2026-08-17): a work milestone without one simply shows no
-// date. A milestone carrying an explicit `points` percent shows it as a chip —
-// its share of the project bar. Adding is a "+ Milestone" that expands a
-// compact title + optional date box (InlineContainAdd), Add/Cancel or Enter.
+// Milestones widget body (Project Type). A milestone's MODE falls out of what
+// it carries (ADR-196, refined 2026-08-17 after Tyler's first use):
+//
+//   - task-linked ("Completes with task"): the row's circle acts on the TASK —
+//     one gesture completes both, reopening the task reopens the milestone. A
+//     date on it is a target, never a trigger.
+//   - dated, no task: date-driven, the original PRD §6 "arrives whether you
+//     act or not". NO circle; upcoming/passed derive from the date.
+//   - undated, no task: a manual work milestone with a checkbox circle.
+//
+// Dates are optional; an undated milestone just shows no date. A milestone
+// carrying an explicit `points` percent shows it as a chip — its share of the
+// project bar. Adding is a "+ Milestone" that expands a compact box with
+// title, optional date, optional points %, and an optional completes-with
+// task picker (InlineContainAdd).
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import InlineContainAdd from "@/components/canvas/widgets/InlineContainAdd";
@@ -20,9 +25,12 @@ type Row = {
   id: string;
   title: string;
   dueDate: string | null;
+  mode: "task" | "date" | "manual";
   done: boolean;
   via: "manual" | "task" | "date" | null;
+  taskId: string | null;
   taskTitle: string | null;
+  taskDone: boolean;
   pct: number;
 };
 
@@ -63,22 +71,35 @@ export default function MilestonesWidget({
       <ul className="flex flex-col gap-1.5 empty:hidden">
         {sorted.map((m) => {
           const done = doneOverride[m.id] ?? m.done;
-          // "passed" = date-derived completion (it arrived); a checked-off or
-          // task-completed milestone reads "done"; anything else is upcoming.
+          // "passed" = date-derived (it arrived); a checked-off or
+          // task-completed milestone reads "done"; otherwise upcoming/open.
           const badge = done
             ? m.via === "date" && doneOverride[m.id] === undefined
               ? { text: "passed", cls: "bg-neutral-800 text-neutral-500" }
               : { text: "done", cls: "bg-emerald-950/50 text-emerald-300" }
-            : { text: "upcoming", cls: "bg-amber-950/50 text-amber-300" };
+            : { text: m.dueDate ? "upcoming" : "open", cls: "bg-amber-950/50 text-amber-300" };
           return (
             <li key={m.id} className="flex items-center gap-2 text-sm">
-              <TaskCheckCircle
-                itemId={m.id}
-                done={doneOverride[m.id] ?? m.via === "manual"}
-                onOptimisticChange={(next) =>
-                  setDoneOverride((cur) => ({ ...cur, [m.id]: next }))
-                }
-              />
+              {/* The circle's target depends on mode: a task-linked milestone's
+                  circle completes the TASK; a manual one completes itself; a
+                  date-driven one has no circle (the date decides). */}
+              {m.mode === "task" && m.taskId ? (
+                <TaskCheckCircle
+                  itemId={m.taskId}
+                  done={doneOverride[m.id] ?? m.taskDone}
+                  onOptimisticChange={(next) =>
+                    setDoneOverride((cur) => ({ ...cur, [m.id]: next }))
+                  }
+                />
+              ) : m.mode === "manual" ? (
+                <TaskCheckCircle
+                  itemId={m.id}
+                  done={doneOverride[m.id] ?? m.via === "manual"}
+                  onOptimisticChange={(next) =>
+                    setDoneOverride((cur) => ({ ...cur, [m.id]: next }))
+                  }
+                />
+              ) : null}
               <span
                 className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${badge.cls}`}
                 title={m.taskTitle ? `Completes with task: ${m.taskTitle}` : undefined}
@@ -90,6 +111,9 @@ export default function MilestonesWidget({
                 className={`min-w-0 flex-1 truncate hover:text-neutral-100 ${done ? "text-neutral-500 line-through" : "text-neutral-200"}`}
               >
                 {m.title || "Untitled"}
+                {m.taskTitle && !done && (
+                  <span className="text-xs text-neutral-500"> ↳ {m.taskTitle}</span>
+                )}
               </Link>
               {m.pct > 0 && (
                 <span

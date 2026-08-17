@@ -1,15 +1,24 @@
-// Milestone completion + progress parts (ADR-196). A milestone used to have NO
-// done-state (0044: upcoming/passed derived from its date). Now it completes
-// three ways, resolved here in one place so the Milestones widget, the record
-// progress bar, and the project cards all agree:
+// Milestone completion + progress parts (ADR-196, refined same-day after
+// Tyler's first real use). A milestone's MODE falls out of what it carries —
+// no toggle to configure:
 //
-//   1. manual — its own status is in the done category (the checkbox);
-//   2. task — its "Completes with task" relation field (edges with role 'task')
-//      points at a task whose status is done. Derived at read time, never
-//      written back, so reopening the task reopens the milestone for free;
-//   3. date — a DATED milestone with NO task link still "arrives whether you
-//      act or not" (the original PRD §6 semantic): its date passing completes
-//      it. A task-linked milestone's date is a target, not a trigger.
+//   - task   — it has a "Completes with task" link (edges with role 'task').
+//              The linked task's completion completes it; the widget's circle
+//              acts on the TASK, so there's one gesture and no dual state. A
+//              date on it is a TARGET (places it on the Timeline), never a
+//              trigger. Derived at read time, never written back, so reopening
+//              the task reopens the milestone for free.
+//   - date   — dated, no task link: the original PRD §6 semantic ("arrives
+//              whether you act or not"). No checkbox; passed/upcoming derive
+//              from the date.
+//   - manual — undated, no task link: a work milestone with a checkbox.
+//
+// A milestone whose own status is done counts done regardless of mode (the
+// item page's checkbox still exists), and completion is STAMPED: updateItem
+// writes properties.completed_at when a milestone enters done (cleared on
+// reopen), so the Timeline can place a finished undated milestone at the date
+// it actually finished. Task-mode completions derive their date from the
+// task's updated_at (an approximation — the task row has no completion stamp).
 //
 // Server-only (one batched relations query per widget/card load — never per
 // milestone).
@@ -28,15 +37,25 @@ export type MilestoneListRow = {
   statusCategory: string;
   dueDate: Date | null;
   properties: unknown;
+  // Fallback completion date for a done milestone with no stamp (done before
+  // stamping existed): its last write was the completing one, near enough.
+  updatedAt?: Date | null;
 };
 
+export type MilestoneMode = "task" | "date" | "manual";
+
 export type MilestoneState = {
+  mode: MilestoneMode;
   done: boolean;
-  // How it completed (null = not complete). "date" also drives the widget's
+  // How it completed (null = not complete). "date" drives the widget's
   // "passed" badge vs the checked-off "done" ones.
   via: "manual" | "task" | "date" | null;
-  // The linked task, when the relation field is set (for the widget's context).
+  // The linked task, when the relation field is set. The widget's circle
+  // targets task.id in task mode.
   task: { id: string; title: string; done: boolean } | null;
+  // When it completed (stamp > task write > own last write), or null. The
+  // Timeline places a finished undated milestone here.
+  completedAt: Date | null;
   // Explicit share of the project bar (percent, 0 = pooled default weight).
   pct: number;
 };
@@ -44,6 +63,13 @@ export type MilestoneState = {
 function todayUtcMs(): number {
   const d = new Date();
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function stampedCompletedAt(properties: unknown): Date | null {
+  const raw = (properties as Record<string, unknown> | null)?.completed_at;
+  if (typeof raw !== "string") return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 // Resolve every milestone's completion state in one pass: one query fetches all
@@ -55,13 +81,14 @@ export async function milestoneStates(
 ): Promise<Map<string, MilestoneState>> {
   const out = new Map<string, MilestoneState>();
   if (rows.length === 0) return out;
-  const linked = new Map<string, { id: string; title: string; done: boolean }>();
+  const linked = new Map<string, { id: string; title: string; done: boolean; updatedAt: Date }>();
   const edges = await getDb()
     .select({
       sourceId: relations.sourceId,
       id: items.id,
       title: items.title,
       statusCategory: items.statusCategory,
+      updatedAt: items.updatedAt,
     })
     .from(relations)
     .innerJoin(items, eq(items.id, relations.targetId))
@@ -77,21 +104,37 @@ export async function milestoneStates(
   for (const e of edges) {
     // cardinality is single; if extra edges exist, first one wins.
     if (!linked.has(e.sourceId)) {
-      linked.set(e.sourceId, { id: e.id, title: e.title, done: e.statusCategory === "done" });
+      linked.set(e.sourceId, {
+        id: e.id,
+        title: e.title,
+        done: e.statusCategory === "done",
+        updatedAt: e.updatedAt,
+      });
     }
   }
   const today = todayUtcMs();
   for (const m of rows) {
     const task = linked.get(m.id) ?? null;
+    const mode: MilestoneMode = task ? "task" : m.dueDate ? "date" : "manual";
     const via: MilestoneState["via"] =
       m.statusCategory === "done"
         ? "manual"
         : task?.done
           ? "task"
-          : !task && m.dueDate && m.dueDate.getTime() < today
+          : mode === "date" && m.dueDate && m.dueDate.getTime() < today
             ? "date"
             : null;
-    out.set(m.id, { done: via !== null, via, task, pct: milestoneSharePct(m.properties) });
+    const done = via !== null;
+    const completedAt = !done
+      ? null
+      : via === "date"
+        ? m.dueDate
+        : (stampedCompletedAt(m.properties) ??
+          (via === "task" ? (task?.updatedAt ?? null) : null) ??
+          m.updatedAt ??
+          null);
+    const taskOut = task ? { id: task.id, title: task.title, done: task.done } : null;
+    out.set(m.id, { mode, done, via, task: taskOut, completedAt, pct: milestoneSharePct(m.properties) });
   }
   return out;
 }

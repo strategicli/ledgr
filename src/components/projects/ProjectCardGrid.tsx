@@ -52,7 +52,7 @@ function Card({ card }: { card: ProjectCard }) {
           <CountBits counts={card.counts} />
           {pct !== null && <span className="shrink-0 text-neutral-400">{pct}%</span>}
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-700/50">
           <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct ?? 0}%` }} />
         </div>
       </div>

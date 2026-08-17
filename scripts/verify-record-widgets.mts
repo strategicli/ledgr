@@ -66,23 +66,37 @@ console.log("\n# milestone: polymorphic attach + completion (ADR-196)");
   const { relateItems } = await import("../src/lib/relations");
   const asRow = (m: { id: string; statusCategory: string; dueDate: Date | null; properties: unknown }) => m;
 
-  // 1. date fallback: dated + no task link + date passed => done via "date".
+  // 1. date fallback: dated + no task link + date passed => done via "date",
+  //    and the mode is date-driven (no checkbox affordance).
   let states = await milestoneStates(ownerId, [asRow(ms)]);
+  check("a dated, un-linked milestone is date-mode", states.get(ms.id)?.mode === "date");
   check("a passed date completes an un-linked milestone (via 'date')", states.get(ms.id)?.via === "date");
+  check("a date-mode completion dates itself at the due date", states.get(ms.id)?.completedAt?.getTime() === ms.dueDate?.getTime());
 
-  // 2. manual: checking it off wins outright.
+  // 2. manual: an undated, un-linked milestone is checkbox-mode; checking it
+  //    off completes it AND stamps properties.completed_at (the Timeline places
+  //    it at that day); reopening clears the stamp.
   const manual = await make("milestone", "PJ5 manual milestone");
+  states = await milestoneStates(ownerId, [asRow(manual)]);
+  check("an undated, un-linked milestone is manual-mode", states.get(manual.id)?.mode === "manual");
   await toggleItemDone(ownerId, manual.id);
   const manualFresh = await getItem(ownerId, manual.id);
+  const stamp = (manualFresh.properties as Record<string, unknown> | null)?.completed_at;
+  check("completing a milestone stamps properties.completed_at", typeof stamp === "string" && !Number.isNaN(new Date(stamp as string).getTime()));
   states = await milestoneStates(ownerId, [asRow(manualFresh)]);
   check("checking a milestone off completes it (via 'manual')", states.get(manual.id)?.via === "manual");
+  check("the state carries the completion date", states.get(manual.id)?.completedAt != null);
+  await toggleItemDone(ownerId, manual.id); // reopen
+  const manualReopened = await getItem(ownerId, manual.id);
+  check("reopening clears the stamp", (manualReopened.properties as Record<string, unknown> | null)?.completed_at === undefined);
 
-  // 3. task link: an open linked task holds it open — even past its date —
-  //    and the task completing completes it.
+  // 3. task link: task-mode; an open linked task holds it open — even past its
+  //    date — and the task completing completes it.
   const linked = await make("milestone", "PJ5 linked milestone", { dueDate: new Date("2026-07-15T00:00:00.000Z") });
   const drive = await make("task", "PJ5 driving task");
   await relateItems(ownerId, linked.id, drive.id, "task");
   states = await milestoneStates(ownerId, [asRow(linked)]);
+  check("a task-linked milestone is task-mode (even with a date)", states.get(linked.id)?.mode === "task");
   check("an open linked task holds a milestone open (date is a target, not a trigger)", states.get(linked.id)?.done === false);
   await toggleItemDone(ownerId, drive.id);
   states = await milestoneStates(ownerId, [asRow(linked)]);
