@@ -24,17 +24,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Composition, RecordWidget } from "@/lib/composition";
-import { WIDGET_LIMIT_DEFAULT, WIDGET_LIMIT_MAX, widgetLimit } from "@/lib/composition";
+import { WIDGET_LIMIT_ALL, WIDGET_LIMIT_DEFAULT, WIDGET_LIMIT_MAX, widgetLimit } from "@/lib/composition";
 
-// One row of the editor: a catalog section plus whether this type shows it.
+// One row of the editor: a catalog tool plus whether this type shows it.
 type Row = {
   id: string;
   label: string;
-  // "collection"/"relation" cards preview N rows then link to the full list, so
-  // only those get a count control.
+  // "collection"/"relation" cards (and the Timeline) preview N rows then link
+  // to the full list, so only those get a count control.
   capped: boolean;
   shown: boolean;
   limit: number;
+  // Timeline only: the no-date milestone group's label ("" = "Upcoming").
+  undatedLabel?: string;
 };
 
 export default function TypeSectionsEditor({
@@ -73,6 +75,12 @@ export default function TypeSectionsEditor({
         capped: def.capped,
         shown: Boolean(inst) && !inst!.hidden,
         limit: inst ? widgetLimit(inst) : WIDGET_LIMIT_DEFAULT,
+        // Timeline only: what its no-date milestone group is called (Tyler,
+        // 2026-08-17). Blank = the built-in "Upcoming".
+        undatedLabel:
+          id === "timeline" && typeof inst?.options?.undatedLabel === "string"
+            ? inst.options.undatedLabel
+            : "",
       };
     });
   }
@@ -131,7 +139,15 @@ export default function TypeSectionsEditor({
     const widgets: RecordWidget[] = rows.map((r) => {
       const w: RecordWidget = { instanceId: r.id, defId: r.id };
       if (!r.shown) w.hidden = true;
-      if (r.capped && r.limit !== WIDGET_LIMIT_DEFAULT) w.options = { limit: r.limit };
+      // "All" reads as Infinity (widgetLimit) but persists as the literal "all"
+      // — Infinity doesn't survive JSON.
+      if (r.capped && r.limit !== WIDGET_LIMIT_DEFAULT) {
+        w.options = { limit: Number.isFinite(r.limit) ? r.limit : WIDGET_LIMIT_ALL };
+      }
+      // Timeline's custom no-date group label; blank = the built-in "Upcoming".
+      if (r.id === "timeline" && r.undatedLabel?.trim()) {
+        w.options = { ...w.options, undatedLabel: r.undatedLabel.trim().slice(0, 30) };
+      }
       return w;
     });
     void send({
@@ -152,10 +168,10 @@ export default function TypeSectionsEditor({
 
   return (
     <fieldset className="mt-6 flex flex-col gap-3 rounded-card border border-line p-4">
-      <legend className="px-1 ui-section-label text-ink-muted">Record sections</legend>
+      <legend className="px-1 ui-section-label text-ink-muted">Tools</legend>
       <p className="ui-meta text-ink-subtle">
-        What every {typeLabel.toLowerCase()} record shows on its own page, and in
-        what order. Turning a section off{" "}
+        The default tools every new {typeLabel.toLowerCase()} starts with, and in
+        what order. Turning a tool off{" "}
         <span className="text-ink-muted">never deletes anything</span> — the
         tasks, notes and meetings behind it stay exactly where they are, so
         turning it back on brings the card back with its contents. A record that
@@ -165,7 +181,7 @@ export default function TypeSectionsEditor({
       <div className="flex items-center gap-2 ui-meta text-ink-subtle">
         {customized ? (
           <span>
-            This type has its own sections ({shownCount} shown).
+            This type has its own tools ({shownCount} shown).
           </span>
         ) : (
           <span>
@@ -194,25 +210,56 @@ export default function TypeSectionsEditor({
             </label>
 
             {r.capped && r.shown && (
-              <label className="flex shrink-0 items-center gap-1 ui-meta text-ink-subtle">
+              <span className="flex shrink-0 items-center gap-1 ui-meta text-ink-subtle">
                 show
-                <input
-                  type="number"
-                  min={1}
-                  max={WIDGET_LIMIT_MAX}
-                  value={r.limit}
-                  onChange={(e) =>
-                    update(r.id, {
-                      limit: Math.min(
-                        Math.max(Math.round(Number(e.target.value) || WIDGET_LIMIT_DEFAULT), 1),
-                        WIDGET_LIMIT_MAX
-                      ),
-                    })
-                  }
-                  className="w-14 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-right ui-meta text-ink outline-none focus:border-line-strong"
-                  aria-label={`${r.label}: rows to preview`}
-                />
+                {Number.isFinite(r.limit) && (
+                  <input
+                    type="number"
+                    min={1}
+                    max={WIDGET_LIMIT_MAX}
+                    value={r.limit}
+                    onChange={(e) =>
+                      update(r.id, {
+                        limit: Math.min(
+                          Math.max(Math.round(Number(e.target.value) || WIDGET_LIMIT_DEFAULT), 1),
+                          WIDGET_LIMIT_MAX
+                        ),
+                      })
+                    }
+                    className="w-14 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-right ui-meta text-ink outline-none focus:border-line-strong"
+                    aria-label={`${r.label}: rows to preview`}
+                  />
+                )}
                 rows
+                <label className="ml-1 flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="ledgr-check ledgr-check-sm"
+                    checked={!Number.isFinite(r.limit)}
+                    onChange={(e) =>
+                      update(r.id, {
+                        limit: e.target.checked ? Number.POSITIVE_INFINITY : WIDGET_LIMIT_DEFAULT,
+                      })
+                    }
+                    aria-label={`${r.label}: show all rows`}
+                  />
+                  all
+                </label>
+              </span>
+            )}
+
+            {r.id === "timeline" && r.shown && (
+              <label className="flex shrink-0 items-center gap-1 ui-meta text-ink-subtle">
+                no-date group
+                <input
+                  type="text"
+                  value={r.undatedLabel ?? ""}
+                  onChange={(e) => update(r.id, { undatedLabel: e.target.value })}
+                  placeholder="Upcoming"
+                  maxLength={30}
+                  className="w-24 rounded border border-line bg-surface-1 px-1.5 py-0.5 ui-meta text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+                  aria-label="Timeline: label for the no-date milestone group"
+                />
               </label>
             )}
 

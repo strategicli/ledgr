@@ -9,9 +9,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { WIDGET_LIMIT_MAX, type Composition } from "@/lib/composition";
+import { WIDGET_LIMIT_ALL, WIDGET_LIMIT_MAX, type Composition } from "@/lib/composition";
 
-const PRESETS = [3, 5, 10, 20, 50];
+// "All" persists as the literal "all" and reads back as Infinity (widgetLimit).
+const PRESETS: (number | "all")[] = [3, 5, 10, 20, 50, "all"];
+
+function presetLabel(v: number | "all"): string {
+  return v === "all" ? "All" : String(v);
+}
 
 export default function SectionCountGear({
   itemId,
@@ -30,9 +35,11 @@ export default function SectionCountGear({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function setLimit(value: number) {
-    const clamped = Math.min(Math.max(Math.round(value), 1), WIDGET_LIMIT_MAX);
-    if (busy || clamped === current) {
+  async function setLimit(value: number | "all") {
+    const stored =
+      value === "all" ? WIDGET_LIMIT_ALL : Math.min(Math.max(Math.round(value), 1), WIDGET_LIMIT_MAX);
+    const asNumber = value === "all" ? Number.POSITIVE_INFINITY : stored;
+    if (busy || asNumber === current) {
       setOpen(false);
       return;
     }
@@ -40,7 +47,7 @@ export default function SectionCountGear({
     const next: Composition = {
       ...composition,
       widgets: composition.widgets.map((w) =>
-        w.instanceId === instanceId ? { ...w, options: { ...w.options, limit: clamped } } : w
+        w.instanceId === instanceId ? { ...w, options: { ...w.options, limit: stored } } : w
       ),
     };
     try {
@@ -63,7 +70,7 @@ export default function SectionCountGear({
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
         aria-label={`How many ${label} to show`}
-        title={`How many to show (now ${current})`}
+        title={`How many to show (now ${Number.isFinite(current) ? current : "All"})`}
         className="rounded p-0.5 text-neutral-600 opacity-0 transition-opacity hover:text-neutral-300 group-hover/card:opacity-100 disabled:opacity-40 aria-expanded:opacity-100"
         aria-expanded={open}
       >
@@ -87,26 +94,29 @@ export default function SectionCountGear({
             className="absolute right-0 z-20 mt-1 w-32 rounded-lg border border-neutral-700 bg-neutral-900 p-1 shadow-lg"
           >
             <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-neutral-500">Show on card</p>
-            {PRESETS.map((n) => (
+            {PRESETS.map((n) => {
+              const active = n === "all" ? !Number.isFinite(current) : n === current;
+              return (
               <button
                 key={n}
                 type="button"
                 role="menuitemradio"
-                aria-checked={n === current}
+                aria-checked={active}
                 onClick={() => void setLimit(n)}
                 disabled={busy}
                 className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm hover:bg-neutral-800 ${
-                  n === current ? "text-neutral-100" : "text-neutral-300"
+                  active ? "text-neutral-100" : "text-neutral-300"
                 }`}
               >
-                <span>{n}</span>
-                {n === current && (
+                <span>{presetLabel(n)}</span>
+                {active && (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M5 13l4 4L19 7" />
                   </svg>
                 )}
               </button>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

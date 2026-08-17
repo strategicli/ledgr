@@ -19,6 +19,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import AddSectionButton from "@/components/canvas/AddSectionButton";
+import HeaderOverview from "@/components/canvas/HeaderOverview";
 import SectionGrid from "@/components/canvas/SectionGrid";
 import TasksWidget from "@/components/canvas/widgets/TasksWidget";
 import NotesWidget from "@/components/canvas/widgets/NotesWidget";
@@ -29,6 +30,7 @@ import MindmapWidget from "@/components/canvas/widgets/MindmapWidget";
 import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
 import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import type { CanvasProps } from "@/lib/modules";
+import { bodyMarkdown } from "@/lib/body";
 import { resolveComposition, widgetLimit, type Composition } from "@/lib/composition";
 import { progressPct } from "@/lib/project-progress";
 import { resolveStatusSchema } from "@/lib/status";
@@ -37,8 +39,10 @@ import { resolveRecordWidgets, type RecordWidgetData } from "@/lib/record-widget
 import { getType } from "@/lib/types";
 
 // Widgets that render in the header strip (no card, no title); everything else
-// is a section card.
-const HEADER_WIDGETS = new Set(["status", "people", "progress"]);
+// is a section card. Overview joined the header 2026-08-17 (Tyler): the
+// project's one-paragraph identity reads directly under the title as an
+// inline-editable block, not as a peer of the collection cards.
+const HEADER_WIDGETS = new Set(["status", "people", "progress", "overview"]);
 
 // Card title overrides — the Notes collection reads as "Docs" on a project
 // (Tyler's wording), without renaming the widget everywhere else.
@@ -124,7 +128,9 @@ function HeaderProgress({ data }: { data: RecordWidgetData }) {
       <div className="flex items-center justify-between text-xs text-neutral-400">
         <span>{pct === null ? "Nothing to track yet" : `${pct}% complete`}</span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+      {/* Track is a translucent step, not a fixed neutral: bg-neutral-800 was
+          invisible against the peek modal's bg-surface-2 (Tyler, 2026-08-17). */}
+      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-700/50">
         <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct ?? 0}%` }} />
       </div>
     </div>
@@ -143,11 +149,13 @@ function isBucketWidget(data: RecordWidgetData): boolean {
 }
 
 // The card footer for a collection preview: when there are more items than the
-// card shows, link into the full collection page (Tyler, 2026-07-01).
+// card shows, link into the full collection page (Tyler, 2026-07-01). The
+// Timeline card drills into its own full chronological page instead.
 function CardOverflowLink({ recordId, defId, shown, total }: { recordId: string; defId: string; shown: number; total: number }) {
+  const href = defId === "timeline" ? `/items/${recordId}/timeline` : `/items/${recordId}/collection/${defId}`;
   return (
     <Link
-      href={`/items/${recordId}/collection/${defId}`}
+      href={href}
       className="mt-2 inline-block text-xs text-neutral-500 transition-colors hover:text-neutral-300"
     >
       Showing {shown} of {total} →
@@ -157,13 +165,26 @@ function CardOverflowLink({ recordId, defId, shown, total }: { recordId: string;
 
 function CardBody(props: { data: RecordWidgetData; recordId: string; projectTitle: string; body: unknown }) {
   const { data, recordId } = props;
-  const shown = data.items?.length ?? 0;
+  const isTimeline = data.def.id === "timeline";
+  const shown = isTimeline
+    ? (data.timeline?.length ?? 0) + (data.timelineUndated?.length ?? 0)
+    : (data.items?.length ?? 0);
   const total = data.count ?? shown;
   return (
     <>
       <WidgetInner {...props} />
-      {isBucketWidget(data) && total > shown && (
+      {(isBucketWidget(data) || isTimeline) && total > shown && (
         <CardOverflowLink recordId={recordId} defId={data.def.id} shown={shown} total={total} />
+      )}
+      {/* The review timeline is reachable even when nothing overflows (Tyler,
+          2026-08-17 — a gear set to "All" used to eat the only link to it). */}
+      {isTimeline && total > 0 && total <= shown && (
+        <Link
+          href={`/items/${recordId}/timeline`}
+          className="mt-2 inline-block text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+        >
+          Open timeline →
+        </Link>
       )}
     </>
   );
@@ -211,6 +232,15 @@ function WidgetInner({
             id: i.id,
             title: i.title,
             dueDate: i.dueDate ? i.dueDate.toISOString() : null,
+            // Mode + completion resolved server-side (ADR-196); fall back to
+            // the row's own status if the milestone info is somehow missing.
+            mode: i.milestone?.mode ?? (i.dueDate ? ("date" as const) : ("manual" as const)),
+            done: i.milestone?.done ?? i.statusCategory === "done",
+            via: i.milestone?.via ?? (i.statusCategory === "done" ? "manual" : null),
+            taskId: i.milestone?.taskId ?? null,
+            taskTitle: i.milestone?.taskTitle ?? null,
+            taskDone: i.milestone?.taskDone ?? false,
+            pct: i.milestone?.pct ?? 0,
           }))}
         />
       );
@@ -271,21 +301,52 @@ function WidgetInner({
     }
     case "timeline": {
       const entries = data.timeline ?? [];
-      if (entries.length === 0) return <EmptyState>No meetings or milestones yet.</EmptyState>;
+      const undated = data.timelineUndated ?? [];
+      if (entries.length === 0 && undated.length === 0) {
+        return <EmptyState>No meetings or milestones yet.</EmptyState>;
+      }
       return (
-        <ul className="flex flex-col gap-1">
-          {entries.map((e) => (
-            <li key={`${e.kind}-${e.id}`} className="flex items-center gap-2 text-sm">
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${e.kind === "milestone" ? "bg-amber-950/50 text-amber-300" : "bg-sky-950/50 text-sky-300"}`}>
-                {e.kind}
-              </span>
-              <Link href={`/items/${e.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
-                {e.title || "Untitled"}
-              </Link>
-              <span className="shrink-0 text-xs text-neutral-500">{fmtDay(e.date)}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-1 empty:hidden">
+            {entries.map((e) => (
+              <li key={`${e.kind}-${e.id}`} className="flex items-center gap-2 text-sm">
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${e.kind === "milestone" ? "bg-amber-950/50 text-amber-300" : "bg-sky-950/50 text-sky-300"}`}>
+                  {e.kind}
+                </span>
+                <Link
+                  href={`/items/${e.id}`}
+                  className={`min-w-0 flex-1 truncate hover:text-neutral-100 ${e.done ? "text-neutral-500 line-through" : "text-neutral-200"}`}
+                >
+                  {e.title || "Untitled"}
+                </Link>
+                <span className="shrink-0 text-xs text-neutral-500">{fmtDay(e.date)}</span>
+              </li>
+            ))}
+          </ul>
+          {/* Open milestones with no date to plot (Tyler, 2026-08-17): they sit
+              here until completed, when the completion stamp places them on the
+              axis above at the day they finished. The group label defaults to
+              "Upcoming" and is owner-configurable per type (Build → Tools). */}
+          {undated.length > 0 && (
+            <div className="mt-1 border-t border-neutral-800 pt-1.5">
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">
+                {typeof data.instance.options?.undatedLabel === "string" && data.instance.options.undatedLabel
+                  ? data.instance.options.undatedLabel
+                  : "Upcoming"}
+              </p>
+              <ul className="flex flex-col gap-1">
+                {undated.map((u) => (
+                  <li key={u.id} className="flex items-center gap-2 text-sm">
+                    <span className="shrink-0 rounded bg-amber-950/50 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">milestone</span>
+                    <Link href={`/items/${u.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
+                      {u.title || "Untitled"}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       );
     }
     default:
@@ -317,6 +378,7 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
   const statusData = headerWidgets.find((d) => d.def.id === "status");
   const peopleData = headerWidgets.find((d) => d.def.id === "people");
   const progressData = headerWidgets.find((d) => d.def.id === "progress");
+  const overviewData = headerWidgets.find((d) => d.def.id === "overview");
 
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const statusMode = typeDef?.statusMode ?? "checkbox";
@@ -333,6 +395,19 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
       <div className="mb-3 min-w-0">
         <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="title" />
       </div>
+
+      {/* Overview sits directly under the title (Tyler, 2026-08-17): rendered
+          only when written; empty, it collapses to a small lines-glyph button
+          that expands the editor (HeaderOverview). */}
+      {overviewData && (
+        <div className="mb-4 min-w-0">
+          <HeaderOverview
+            itemId={item.id}
+            body={item.body}
+            hasContent={bodyMarkdown(item.body).trim().length > 0}
+          />
+        </div>
+      )}
 
       {hasHeader && (
         // Progress on top spanning the header (Tyler, 2026-07-01), then People on
@@ -370,9 +445,12 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
             instanceId: data.instance.instanceId,
             title: CARD_TITLE[data.def.id] ?? data.def.label,
             body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} />,
-            // Collection/related cards get the hover "show N" gear (default 5);
-            // Overview / Status / derived single-value cards don't.
-            countLimit: isBucketWidget(data) ? widgetLimit(data.instance) : undefined,
+            // Collection/related cards and the Timeline get the hover "show N"
+            // gear (default 5); Status / derived single-value cards don't.
+            countLimit:
+              isBucketWidget(data) || data.def.id === "timeline"
+                ? widgetLimit(data.instance)
+                : undefined,
           }))}
         />
       )}

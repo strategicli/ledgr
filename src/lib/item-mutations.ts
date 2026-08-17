@@ -436,6 +436,41 @@ export async function updateItem(
       patch.propertyPatch
     )}::jsonb`;
   }
+  // Completion stamp (ADR-196; widened to tasks in ADR-197): entering the done
+  // category writes properties.completed_at — the Timeline places a finished
+  // undated milestone at this date, and the project markdown document reports
+  // when each task finished — leaving done clears it. Composed on top of
+  // whatever properties write this patch already carries, so a status flip with
+  // a sibling property edit stays one atomic UPDATE. Recurring task series
+  // never reach here on completion (intercepted above — they advance instead of
+  // finishing), so only genuinely-completed items are stamped.
+  const stampType = patch.type ?? existing[0].type;
+  if ((stampType === "milestone" || stampType === "task") && nextCategory !== undefined) {
+    const wasDone = existing[0].statusCategory === "done";
+    const entering = nextCategory === "done" && !wasDone;
+    const leaving = nextCategory !== "done" && wasDone;
+    if (entering || leaving) {
+      const stamp = { completed_at: new Date().toISOString() };
+      if (patch.properties !== undefined) {
+        // Wholesale replace: fold the stamp into (or out of) the new object.
+        const base = { ...((patch.properties ?? {}) as Record<string, unknown>) };
+        if (entering) base.completed_at = stamp.completed_at;
+        else delete base.completed_at;
+        set.properties = base;
+      } else if (patch.propertyPatch !== undefined) {
+        // Per-key merge: re-derive with the stamp folded in, then strip on reopen.
+        const merged = entering
+          ? { ...patch.propertyPatch, ...stamp }
+          : patch.propertyPatch;
+        const mergeSql = sql`coalesce(${items.properties}, '{}'::jsonb) || ${JSON.stringify(merged)}::jsonb`;
+        set.properties = entering ? mergeSql : sql`(${mergeSql}) - 'completed_at'`;
+      } else {
+        set.properties = entering
+          ? sql`coalesce(${items.properties}, '{}'::jsonb) || ${JSON.stringify(stamp)}::jsonb`
+          : sql`coalesce(${items.properties}, '{}'::jsonb) - 'completed_at'`;
+      }
+    }
+  }
   if (patch.inbox !== undefined) set.inbox = patch.inbox;
   if (writeBody) {
     set.body = patch.body;

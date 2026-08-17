@@ -1,31 +1,46 @@
 "use client";
 
-// Milestones widget body (Project Type): the record's key dates. A milestone has
-// NO done-state — it arrives whether you act or not (PRD §6), so each row's
-// "upcoming"/"passed" is DERIVED from its date vs today, never a checkbox. Adding
-// is a "+ Milestone" that expands a compact title + date box (InlineContainAdd),
-// Add/Cancel or Enter (Tyler, 2026-07-01).
+// Milestones widget body (Project Type). A milestone's MODE falls out of what
+// it carries (ADR-196, refined 2026-08-17 after Tyler's first use):
+//
+//   - task-linked ("Completes with task"): the row's circle acts on the TASK —
+//     one gesture completes both, reopening the task reopens the milestone. A
+//     date on it is a target, never a trigger.
+//   - dated, no task: date-driven, the original PRD §6 "arrives whether you
+//     act or not". NO circle; upcoming/passed derive from the date.
+//   - undated, no task: a manual work milestone with a checkbox circle.
+//
+// Dates are optional; an undated milestone just shows no date. A milestone
+// carrying an explicit `points` percent shows it as a chip — its share of the
+// project bar. Adding is a "+ Milestone" that expands a compact box with
+// title, optional date, optional points %, and an optional completes-with
+// task picker (InlineContainAdd).
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import InlineContainAdd from "@/components/canvas/widgets/InlineContainAdd";
+import TaskCheckCircle from "@/components/tasks/TaskCheckCircle";
+import { onListRefreshFlush } from "@/lib/list-refresh";
 
-type Row = { id: string; title: string; dueDate: string | null };
+type Row = {
+  id: string;
+  title: string;
+  dueDate: string | null;
+  mode: "task" | "date" | "manual";
+  done: boolean;
+  via: "manual" | "task" | "date" | null;
+  taskId: string | null;
+  taskTitle: string | null;
+  taskDone: boolean;
+  pct: number;
+};
 
-function dayLabel(iso: string | null): string {
-  if (!iso) return "no date";
+function dayLabel(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
   });
-}
-
-// Passed if the date is strictly before today's UTC calendar day.
-function isPassed(iso: string | null): boolean {
-  if (!iso) return false;
-  const today = new Date();
-  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return new Date(iso).getTime() < todayUtc;
 }
 
 export default function MilestonesWidget({
@@ -35,8 +50,17 @@ export default function MilestonesWidget({
   recordId: string;
   items: Row[];
 }) {
-  // By date, closest on top (ascending); undated last (Tyler, 2026-07-01).
+  // Optimistic done state mirrored from the circle (same pattern as TasksWidget)
+  // so the row styles the instant it's checked; the coalesced refresh re-syncs.
+  const [doneOverride, setDoneOverride] = useState<Record<string, boolean>>({});
+  useEffect(() => onListRefreshFlush(() => setDoneOverride({})), []);
+
+  // Open milestones first, then done; within each, by date ascending, undated
+  // last (Tyler, 2026-07-01 order, done-sink added with completability).
   const sorted = [...items].sort((a, b) => {
+    const ad = a.done ? 1 : 0;
+    const bd = b.done ? 1 : 0;
+    if (ad !== bd) return ad - bd;
     if (!a.dueDate) return b.dueDate ? 1 : 0;
     if (!b.dueDate) return -1;
     return a.dueDate.localeCompare(b.dueDate);
@@ -44,18 +68,67 @@ export default function MilestonesWidget({
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-col gap-1 empty:hidden">
+      <ul className="flex flex-col gap-1.5 empty:hidden">
         {sorted.map((m) => {
-          const passed = isPassed(m.dueDate);
+          const done = doneOverride[m.id] ?? m.done;
+          // "passed" = date-derived (it arrived); a checked-off or
+          // task-completed milestone reads "done"; otherwise upcoming/open.
+          const badge = done
+            ? m.via === "date" && doneOverride[m.id] === undefined
+              ? { text: "passed", cls: "bg-neutral-800 text-neutral-500" }
+              : { text: "done", cls: "bg-emerald-950/50 text-emerald-300" }
+            : { text: m.dueDate ? "upcoming" : "open", cls: "bg-amber-950/50 text-amber-300" };
           return (
             <li key={m.id} className="flex items-center gap-2 text-sm">
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${passed ? "bg-neutral-800 text-neutral-500" : "bg-amber-950/50 text-amber-300"}`}>
-                {passed ? "passed" : "upcoming"}
+              {/* The circle's target depends on mode: a task-linked milestone's
+                  circle completes the TASK; a manual one completes itself; a
+                  date-driven one has no circle (the date decides). A DONE
+                  milestone shows no circle at all (Tyler, 2026-08-17 — the
+                  badge + strikethrough say it; un-doing happens from the item
+                  or the task). */}
+              {done ? null : m.mode === "task" && m.taskId ? (
+                <TaskCheckCircle
+                  itemId={m.taskId}
+                  done={doneOverride[m.id] ?? m.taskDone}
+                  onOptimisticChange={(next) =>
+                    setDoneOverride((cur) => ({ ...cur, [m.id]: next }))
+                  }
+                />
+              ) : m.mode === "manual" ? (
+                <TaskCheckCircle
+                  itemId={m.id}
+                  done={doneOverride[m.id] ?? m.via === "manual"}
+                  onOptimisticChange={(next) =>
+                    setDoneOverride((cur) => ({ ...cur, [m.id]: next }))
+                  }
+                />
+              ) : null}
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${badge.cls}`}
+                title={m.taskTitle ? `Completes with task: ${m.taskTitle}` : undefined}
+              >
+                {badge.text}
               </span>
-              <Link href={`/items/${m.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
+              <Link
+                href={`/items/${m.id}`}
+                className={`min-w-0 flex-1 truncate hover:text-neutral-100 ${done ? "text-neutral-500 line-through" : "text-neutral-200"}`}
+              >
                 {m.title || "Untitled"}
+                {m.taskTitle && !done && (
+                  <span className="text-xs text-neutral-500"> ↳ {m.taskTitle}</span>
+                )}
               </Link>
-              <span className="shrink-0 text-xs text-neutral-500">{dayLabel(m.dueDate)}</span>
+              {m.pct > 0 && (
+                <span
+                  className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400"
+                  title={`Worth ${m.pct}% of the project`}
+                >
+                  {m.pct}%
+                </span>
+              )}
+              {m.dueDate && (
+                <span className="shrink-0 text-xs text-neutral-500">{dayLabel(m.dueDate)}</span>
+              )}
             </li>
           );
         })}

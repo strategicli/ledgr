@@ -8,12 +8,13 @@
 // the precise bar). Perf note: this runs ~4 bounded queries per project; if the
 // project count grows large, batch these into grouped queries (see next_steps).
 import {
+  applyMilestoneShares,
   combineProgress,
   meetingPoints,
-  milestonePoints,
   taskPoints,
   type PointProgress,
 } from "@/lib/project-progress";
+import { milestoneProgressParts } from "@/lib/milestones";
 import { statusSchemaForType } from "@/lib/status-schema";
 import { queryViewItems } from "@/lib/views";
 
@@ -27,11 +28,6 @@ export type ProjectCard = {
 };
 
 type ProjectRow = { id: string; title: string; status: string; statusCategory: string };
-
-function todayUtcMs(): number {
-  const d = new Date();
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
 
 async function cardData(
   ownerId: string,
@@ -47,15 +43,21 @@ async function cardData(
     queryViewItems(ownerId, { type: "person", relatedTo: project.id }, { field: "updatedAt", dir: "desc" }, 12),
   ]);
   const now = Date.now();
-  const today = todayUtcMs();
-  const progress = combineProgress([
-    ...tasks.map((t) => taskPoints(t.statusCategory === "done" ? 1 : 0, 0)),
-    ...milestones.map((m) => milestonePoints(m.dueDate ? m.dueDate.getTime() < today : false)),
-    ...meetings.map((e) => {
-      const when = e.meetingAt ?? e.scheduledDate ?? e.dueDate;
-      return meetingPoints(when ? when.getTime() < now : false);
-    }),
-  ]);
+  // Milestones complete by checkbox / linked task / date (ADR-196); explicit
+  // `points` percents overlay the pooled bar as shares — same math as the
+  // record canvas, so a card and its open project agree.
+  const { pool: msParts, shares } = await milestoneProgressParts(ownerId, milestones);
+  const progress = applyMilestoneShares(
+    combineProgress([
+      ...tasks.map((t) => taskPoints(t.statusCategory === "done" ? 1 : 0, 0)),
+      ...msParts,
+      ...meetings.map((e) => {
+        const when = e.meetingAt ?? e.scheduledDate ?? e.dueDate;
+        return meetingPoints(when ? when.getTime() < now : false);
+      }),
+    ]),
+    shares
+  );
   return {
     id: project.id,
     title: project.title,

@@ -216,11 +216,15 @@ export function isWidgetEnabled(comp: Composition, defId: string): boolean {
 // The per-card preview cap for a collection/related widget (Tyler, 2026-07-01):
 // how many rows the card shows before offering a "Showing N of M →" link into
 // the full collection page. Stored per instance (the card's hover gear writes
-// options.limit); default 5, clamped [1, 50]. Pure + client-safe so the fan-out,
-// the canvas, and the gear all read one rule.
+// options.limit); default 5, clamped [1, 50] — or the literal "all" (Tyler,
+// 2026-08-17), which reads back as Infinity so slice()/comparisons need no
+// special case (the fan-out widens its fetch window, still bounded). Pure +
+// client-safe so the fan-out, the canvas, and the gear all read one rule.
 export const WIDGET_LIMIT_DEFAULT = 5;
 export const WIDGET_LIMIT_MAX = 50;
+export const WIDGET_LIMIT_ALL = "all";
 export function widgetLimit(instance: RecordWidget): number {
+  if (instance.options?.limit === WIDGET_LIMIT_ALL) return Number.POSITIVE_INFINITY;
   const n = Number(instance.options?.limit);
   if (!Number.isFinite(n)) return WIDGET_LIMIT_DEFAULT;
   return Math.min(Math.max(Math.round(n), 1), WIDGET_LIMIT_MAX);
