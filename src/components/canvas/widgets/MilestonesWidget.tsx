@@ -82,8 +82,11 @@ export default function MilestonesWidget({
             <li key={m.id} className="flex items-center gap-2 text-sm">
               {/* The circle's target depends on mode: a task-linked milestone's
                   circle completes the TASK; a manual one completes itself; a
-                  date-driven one has no circle (the date decides). */}
-              {m.mode === "task" && m.taskId ? (
+                  date-driven one has no circle (the date decides). A DONE
+                  milestone shows no circle at all (Tyler, 2026-08-17 — the
+                  badge + strikethrough say it; un-doing happens from the item
+                  or the task). */}
+              {done ? null : m.mode === "task" && m.taskId ? (
                 <TaskCheckCircle
                   itemId={m.taskId}
                   done={doneOverride[m.id] ?? m.taskDone}

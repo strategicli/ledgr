@@ -60,7 +60,9 @@ export default async function EditType({
     .map((w) => ({
       id: w.id,
       label: w.label,
-      capped: w.kind === "collection" || w.kind === "relation",
+      // The Timeline previews N entries with a drill-down too (2026-08-17), so
+      // it takes the same count control as the collection/relation cards.
+      capped: w.kind === "collection" || w.kind === "relation" || w.id === "timeline",
     }));
   const storedDefault = parseComposition(type.defaultWidgets);
   const { composition: effectiveSections } = resolveComposition(

@@ -2,6 +2,8 @@
 
 **Status:** parked idea (Tyler, 2026-08-17). Not intent, not a decision. Module-level UI over existing data — no new tables expected, so likely NOT core, buildable solo when its time comes.
 
+> **Pivot, same day:** Tyler's follow-up direction is that the timeline (and milestones, tasks with added/completed dates, meetings, links, people) **lives in the project's markdown file** rather than needing a bespoke visual page first — see `explorations/project-markdown-file.md`, which absorbs this doc's data questions (the task `completed_at` gap especially). The vertical center-spine page below stays parked as the possible visual twin.
+
 ## The idea (Tyler's words, lightly compressed)
 
 A full page that lets you review a whole project by scrolling through time: "a complete vertical timeline of everything — when notes were made, when meetings were had, when key findings came forward, when milestones got completed — with the bigger events (meetings, milestones) standing out among everything (task completions, notes made, links added). The user could scroll down through a whole project to review a project. I see the vertical timeline being a line in the middle of the page with dates popping up on the left and right and the big dates as like h1 or h2's on that page."

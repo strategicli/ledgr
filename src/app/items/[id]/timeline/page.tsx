@@ -11,9 +11,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { resolveComposition } from "@/lib/composition";
 import { getItem } from "@/lib/items";
 import { milestoneStates } from "@/lib/milestones";
 import { resolveOwner } from "@/lib/owner";
+import { getType } from "@/lib/types";
 import { queryViewItems } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -55,11 +57,20 @@ export default async function RecordTimelinePage({
     notFound();
   }
 
-  const [events, milestones] = await Promise.all([
+  const [events, milestones, typeDef] = await Promise.all([
     queryViewItems(owner.id, { type: "event", relatedTo: id }, { field: "meetingAt", dir: "asc" }, 500),
     queryViewItems(owner.id, { type: "milestone", relatedTo: id }, { field: "dueDate", dir: "asc" }, 500),
+    getType(record.type).catch(() => null),
   ]);
   const states = await milestoneStates(owner.id, milestones);
+  // The no-date group's label follows the record's Timeline tool setting (its
+  // own composition, else the type default), same as the card.
+  const { composition } = resolveComposition(record.composition, typeDef?.defaultWidgets, record.type);
+  const tlOptions = composition.widgets.find((w) => w.defId === "timeline")?.options;
+  const undatedLabel =
+    typeof tlOptions?.undatedLabel === "string" && tlOptions.undatedLabel
+      ? tlOptions.undatedLabel
+      : "Upcoming";
 
   const entries: Entry[] = [
     ...events.flatMap((e): Entry[] => {
@@ -136,7 +147,7 @@ export default async function RecordTimelinePage({
             ))}
             {undated.length > 0 && (
               <section className="mb-4">
-                <h2 className="mb-1 text-xs uppercase tracking-wide text-neutral-500">Uncompleted</h2>
+                <h2 className="mb-1 text-xs uppercase tracking-wide text-neutral-500">{undatedLabel}</h2>
                 <ul className="flex flex-col">
                   {undated.map((u) => (
                     <li key={u.id} className="flex items-center gap-2 border-b border-neutral-900 py-2 last:border-0">

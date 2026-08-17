@@ -19,6 +19,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import AddSectionButton from "@/components/canvas/AddSectionButton";
+import HeaderOverview from "@/components/canvas/HeaderOverview";
 import SectionGrid from "@/components/canvas/SectionGrid";
 import TasksWidget from "@/components/canvas/widgets/TasksWidget";
 import NotesWidget from "@/components/canvas/widgets/NotesWidget";
@@ -29,6 +30,7 @@ import MindmapWidget from "@/components/canvas/widgets/MindmapWidget";
 import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
 import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import type { CanvasProps } from "@/lib/modules";
+import { bodyMarkdown } from "@/lib/body";
 import { resolveComposition, widgetLimit, type Composition } from "@/lib/composition";
 import { progressPct } from "@/lib/project-progress";
 import { resolveStatusSchema } from "@/lib/status";
@@ -313,10 +315,15 @@ function WidgetInner({
           </ul>
           {/* Open milestones with no date to plot (Tyler, 2026-08-17): they sit
               here until completed, when the completion stamp places them on the
-              axis above at the day they finished. */}
+              axis above at the day they finished. The group label defaults to
+              "Upcoming" and is owner-configurable per type (Build → Tools). */}
           {undated.length > 0 && (
             <div className="mt-1 border-t border-neutral-800 pt-1.5">
-              <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">Uncompleted</p>
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-600">
+                {typeof data.instance.options?.undatedLabel === "string" && data.instance.options.undatedLabel
+                  ? data.instance.options.undatedLabel
+                  : "Upcoming"}
+              </p>
               <ul className="flex flex-col gap-1">
                 {undated.map((u) => (
                   <li key={u.id} className="flex items-center gap-2 text-sm">
@@ -379,16 +386,15 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
         <ItemEditor item={{ id: item.id, title: item.title, body: item.body }} slot="title" />
       </div>
 
-      {/* Overview sits directly under the title (Tyler, 2026-08-17): the
-          project's short description, editable in place. Same editor the old
-          Overview card mounted (toolbar appears on focus), just relocated. */}
+      {/* Overview sits directly under the title (Tyler, 2026-08-17): rendered
+          only when written; empty, it collapses to a small lines-glyph button
+          that expands the editor (HeaderOverview). */}
       {overviewData && (
         <div className="mb-4 min-w-0">
-          <ItemEditor
-            item={{ id: item.id, title: "", body: item.body as never }}
-            slot="body"
-            collapsibleToolbar
-            compactBody
+          <HeaderOverview
+            itemId={item.id}
+            body={item.body}
+            hasContent={bodyMarkdown(item.body).trim().length > 0}
           />
         </div>
       )}

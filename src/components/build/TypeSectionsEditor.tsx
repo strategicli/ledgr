@@ -26,15 +26,17 @@ import { useRouter } from "next/navigation";
 import type { Composition, RecordWidget } from "@/lib/composition";
 import { WIDGET_LIMIT_ALL, WIDGET_LIMIT_DEFAULT, WIDGET_LIMIT_MAX, widgetLimit } from "@/lib/composition";
 
-// One row of the editor: a catalog section plus whether this type shows it.
+// One row of the editor: a catalog tool plus whether this type shows it.
 type Row = {
   id: string;
   label: string;
-  // "collection"/"relation" cards preview N rows then link to the full list, so
-  // only those get a count control.
+  // "collection"/"relation" cards (and the Timeline) preview N rows then link
+  // to the full list, so only those get a count control.
   capped: boolean;
   shown: boolean;
   limit: number;
+  // Timeline only: the no-date milestone group's label ("" = "Upcoming").
+  undatedLabel?: string;
 };
 
 export default function TypeSectionsEditor({
@@ -73,6 +75,12 @@ export default function TypeSectionsEditor({
         capped: def.capped,
         shown: Boolean(inst) && !inst!.hidden,
         limit: inst ? widgetLimit(inst) : WIDGET_LIMIT_DEFAULT,
+        // Timeline only: what its no-date milestone group is called (Tyler,
+        // 2026-08-17). Blank = the built-in "Upcoming".
+        undatedLabel:
+          id === "timeline" && typeof inst?.options?.undatedLabel === "string"
+            ? inst.options.undatedLabel
+            : "",
       };
     });
   }
@@ -136,6 +144,10 @@ export default function TypeSectionsEditor({
       if (r.capped && r.limit !== WIDGET_LIMIT_DEFAULT) {
         w.options = { limit: Number.isFinite(r.limit) ? r.limit : WIDGET_LIMIT_ALL };
       }
+      // Timeline's custom no-date group label; blank = the built-in "Upcoming".
+      if (r.id === "timeline" && r.undatedLabel?.trim()) {
+        w.options = { ...w.options, undatedLabel: r.undatedLabel.trim().slice(0, 30) };
+      }
       return w;
     });
     void send({
@@ -156,10 +168,10 @@ export default function TypeSectionsEditor({
 
   return (
     <fieldset className="mt-6 flex flex-col gap-3 rounded-card border border-line p-4">
-      <legend className="px-1 ui-section-label text-ink-muted">Record sections</legend>
+      <legend className="px-1 ui-section-label text-ink-muted">Tools</legend>
       <p className="ui-meta text-ink-subtle">
-        What every {typeLabel.toLowerCase()} record shows on its own page, and in
-        what order. Turning a section off{" "}
+        The default tools every new {typeLabel.toLowerCase()} starts with, and in
+        what order. Turning a tool off{" "}
         <span className="text-ink-muted">never deletes anything</span> — the
         tasks, notes and meetings behind it stay exactly where they are, so
         turning it back on brings the card back with its contents. A record that
@@ -169,7 +181,7 @@ export default function TypeSectionsEditor({
       <div className="flex items-center gap-2 ui-meta text-ink-subtle">
         {customized ? (
           <span>
-            This type has its own sections ({shownCount} shown).
+            This type has its own tools ({shownCount} shown).
           </span>
         ) : (
           <span>
@@ -234,6 +246,21 @@ export default function TypeSectionsEditor({
                   all
                 </label>
               </span>
+            )}
+
+            {r.id === "timeline" && r.shown && (
+              <label className="flex shrink-0 items-center gap-1 ui-meta text-ink-subtle">
+                no-date group
+                <input
+                  type="text"
+                  value={r.undatedLabel ?? ""}
+                  onChange={(e) => update(r.id, { undatedLabel: e.target.value })}
+                  placeholder="Upcoming"
+                  maxLength={30}
+                  className="w-24 rounded border border-line bg-surface-1 px-1.5 py-0.5 ui-meta text-ink outline-none placeholder:text-ink-faint focus:border-line-strong"
+                  aria-label="Timeline: label for the no-date milestone group"
+                />
+              </label>
             )}
 
             <span className="flex shrink-0 items-center">

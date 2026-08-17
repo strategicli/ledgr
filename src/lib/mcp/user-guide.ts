@@ -378,15 +378,17 @@ done. Nothing stacks up when you miss a week.
 
 ## Projects and records
 
-A project is a hub page composed of widget sections: the things that live in it,
-an activity log, a next action, progress, milestones, a timeline, a mindmap.
+A project is a hub page composed of **tools**: the things that live in it, an
+activity log, a next action, progress, milestones, a timeline, a mindmap. The
+**Add a Tool** button below the grid adds any tool not already on the page.
 
-Choose which sections show, and in what order, on the type's edit page under
-**Record sections** — or per record, from the record itself. The **Overview**
-reads directly under the title, editable in place (the toolbar appears when you
-click into it). Each collection card's hover gear sets how many rows it
-previews (3–50, or **All**); the Tasks card lists open tasks only — completed
-ones move off the card and stay on its full collection page.
+Choose the default tools every new record starts with, and their order, on the
+type's edit page under **Tools** — or per record, from the record itself. The
+**Overview** reads directly under the title when you've written one; empty, it
+collapses to a small lines icon that opens it for typing. Each collection
+card's hover gear sets how many rows it previews (3–50, or **All**); the Tasks
+card lists open tasks only — completed ones move off the card and stay on its
+full collection page.
 
 **Milestones complete three ways**, decided by what you give one when you add
 it (the "+ Milestone" box takes a title, an optional date, optional points, and
@@ -404,9 +406,10 @@ project's progress bar, however many tasks it has; milestones without points
 share the bar's remainder with the tasks and meetings.
 
 **The Timeline card** previews the meetings and milestones nearest today, with
-open undated milestones in an **Uncompleted** tail — completing one moves it
-onto the axis at the day it finished. Its "Showing N of M" opens the record's
-full month-by-month timeline page.
+open undated milestones in an **Upcoming** tail (rename that group per type
+under Build → the type's **Tools**) — completing one moves it onto the axis at
+the day it finished. Its "Showing N of M" opens the record's full
+month-by-month timeline page.
 
 # Finding and seeing
 
