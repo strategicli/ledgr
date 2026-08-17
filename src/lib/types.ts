@@ -113,6 +113,11 @@ export type TypeDefinition = {
   // chips/checkboxes. Presentation only; status_category stays the plumbing.
   statusMode: StatusMode;
   showInQuickCapture: boolean;
+  // Whether this type's items show a Listen (read-aloud) control on the canvas.
+  listenEnabled: boolean;
+  // Nested under listenEnabled: redirect to Microsoft Edge instead of playing
+  // locally, when the browser supports it and isn't already Edge.
+  listenOpenInEdge: boolean;
   // SPIKE (bespoke-tool catalog): the attached module-capability id, or null.
   // The registry (modules.ts) resolves this type's canvas/format/exporters from
   // it when set — see canvasIdForType's third arg.
@@ -335,6 +340,8 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     // multi-status type's own statuses); otherwise unset resolves to 'none'.
     statusMode: resolveStatusMode(row.statusMode, statusSchema != null),
     showInQuickCapture: row.showInQuickCapture,
+    listenEnabled: row.listenEnabled,
+    listenOpenInEdge: row.listenOpenInEdge,
     capability: row.capability,
     hidden: row.hidden,
     canvasLayout: parseCanvasLayout(row.canvasLayout),
@@ -440,6 +447,28 @@ export async function setTypeQuickCapture(
 ): Promise<void> {
   await getType(key); // existence (throws not_found)
   await getDb().update(types).set({ showInQuickCapture }).where(eq(types.key, key));
+}
+
+// Toggle whether a type's items show a Listen (read-aloud) control (the Build →
+// Types "Listen" column). Mirrors setTypeQuickCapture exactly: a standalone
+// setter so the column can flip it without resending the whole definition.
+export async function setTypeListenEnabled(
+  key: string,
+  listenEnabled: boolean
+): Promise<void> {
+  await getType(key); // existence (throws not_found)
+  await getDb().update(types).set({ listenEnabled }).where(eq(types.key, key));
+}
+
+// Toggle whether Listen redirects to Microsoft Edge instead of playing locally.
+// Only meaningful when listenEnabled is also true; the UI nests this checkbox
+// under Listen, but the column itself has no DB-level dependency on it.
+export async function setTypeListenOpenInEdge(
+  key: string,
+  listenOpenInEdge: boolean
+): Promise<void> {
+  await getType(key); // existence (throws not_found)
+  await getDb().update(types).set({ listenOpenInEdge }).where(eq(types.key, key));
 }
 
 // Inline label fix (ADR-068): rename a type's display label in place from the

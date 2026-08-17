@@ -519,6 +519,18 @@ beside".
 - **A cross-device guard** stops a stale tab from overwriting a newer edit. If
   you have no unsaved work, it just reloads quietly.
 
+## Listen (read aloud)
+
+Turn this on per type at \`/build/types\` (expand a type's row and flip the
+"Listen" switch). A type with it on gets a **Listen** entry in the item's ⋯
+menu, which reads the note aloud
+using your browser's own read-aloud voice. Choosing it opens a small strip
+with Play, pause, stop, and a reading-speed picker. It works best in Microsoft
+Edge, which has noticeably better free voices than most other browsers — an
+optional second setting next to Listen, "Open in Edge," sends the ⋯ menu's
+Listen straight to Edge instead of playing locally when you are not already
+there.
+
 # Getting data in and out
 
 ## Save Offline

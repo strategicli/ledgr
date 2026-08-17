@@ -39,6 +39,9 @@ export const ACTION_ICONS = {
     '<rect x="3" y="3" width="11" height="16" rx="2"/><path d="M3 8h11"/><path d="M6 12h5M6 15h3"/><path d="M18.5 14v6M15.5 17h6"/>',
   templateApply:
     '<rect x="3" y="3" width="11" height="16" rx="2"/><path d="M3 8h11"/><path d="M6 12h5M6 15h3"/><path d="M15.5 17.5l2 2 4-4"/>',
+  // Listen (read-aloud) — a speaker with two sound-wave arcs.
+  speaker:
+    '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/>',
 } as const;
 
 export type ActionIconKey = keyof typeof ACTION_ICONS;
