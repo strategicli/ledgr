@@ -26,6 +26,9 @@ export type RowConnection = {
   type: string;
   role: string;
   home: boolean;
+  // The person's built-in Image (migration 0053) — the strip shows the face in
+  // place of the person glyph. null for non-persons and unpictured persons.
+  image: string | null;
 };
 
 export type TaskRowMeta = {
@@ -67,6 +70,7 @@ export async function taskRowMeta(
         id: items.id,
         title: items.title,
         type: items.type,
+        image: sql<string | null>`${items.properties}->>'image'`,
       })
       .from(relations)
       .innerJoin(items, eq(items.id, relations.targetId))
@@ -95,6 +99,7 @@ export async function taskRowMeta(
       type: r.type,
       role: r.role,
       home: r.home ?? false,
+      image: r.type === "person" && r.image && /^https?:\/\//i.test(r.image) ? r.image : null,
     });
   }
   // Tags lead the strip; everything else keeps the query's title order.

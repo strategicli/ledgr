@@ -111,6 +111,22 @@ await sql`UPDATE types SET icon = 'project' WHERE key = 'project' AND icon = 'fo
 // before the flip (mirrors migration 0052).
 await sql`UPDATE types SET is_system = true WHERE key IN ('project', 'tag') AND is_system = false`;
 
+// Person ships with a built-in "Image" url property (2026-08-18): a picture of
+// the person, read by the avatar circles (project cards, task-row person chips).
+// Guarded append, so an owner who already added their own `image` field is left
+// untouched (mirrors migration 0053).
+await sql`
+  UPDATE types
+  SET property_schema = COALESCE(property_schema, '[]'::jsonb)
+    || '[{"key": "image", "label": "Image", "kind": "url"}]'::jsonb
+  WHERE key = 'person'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(COALESCE(property_schema, '[]'::jsonb)) e
+      WHERE e->>'key' = 'image'
+    )
+`;
+
 // The milestone type (ADR-111/PJ5): a polymorphic collection item with no
 // done-state; date = due_date, upcoming/passed derived. Hidden, out of quick
 // capture, status_mode none. Mirrors migration 0037.

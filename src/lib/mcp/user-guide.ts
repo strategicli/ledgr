@@ -354,6 +354,14 @@ Ledgr is its own task manager. Nothing else needs to be running.
 - **Type "/" while naming a task** to jump to its description: everything
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
+- **The add card's chip row** carries Date, Priority, **Tag**, and **Person**
+  pickers (sigils still work: "#" tags, "@" links, "+" files), and the **⋯**
+  chip opens any other custom property on the task type so you can set it at
+  creation.
+- **People get faces.** The person type ships with a built-in **Image**
+  property (paste a picture URL on a person's page); project cards' people
+  circles and a task row's person chips then show the face, falling back to
+  initials or the person glyph without one.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
   deadline.

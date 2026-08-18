@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import PersonAvatar from "@/components/people/PersonAvatar";
 import { TAGS_ROLE } from "@/lib/tags";
 import type { RowConnection } from "@/lib/task-row-meta";
 
@@ -62,7 +63,17 @@ export default function ConnectionStrip({ items }: { items: RowConnection[] }) {
             onClick={(e) => e.stopPropagation()}
             className="inline-flex max-w-[10rem] shrink-0 items-center gap-1 rounded border border-line px-1.5 text-xs text-ink-subtle hover:border-line-strong hover:text-ink-muted"
           >
-            {c.role === TAGS_ROLE ? <TagIcon /> : c.type === "person" ? <PersonIcon /> : null}
+            {c.role === TAGS_ROLE ? (
+              <TagIcon />
+            ) : c.type === "person" ? (
+              // The face when the person's built-in Image is set; the glyph
+              // otherwise (ADR-202 addendum 3 — "a person assigned to a task").
+              c.image ? (
+                <PersonAvatar src={c.image} name={c.title} size={14} fallback="icon" />
+              ) : (
+                <PersonIcon />
+              )
+            ) : null}
             <span className="truncate">{c.title || "Untitled"}</span>
           </Link>
         ))}

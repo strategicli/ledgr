@@ -9,6 +9,7 @@
 // the precise bar). Perf note: this runs ~4 bounded queries per project (5 with
 // the links element on); if the project count grows large, batch these into
 // grouped queries (see next_steps).
+import { personImage } from "@/lib/person-image";
 import {
   applyMilestoneShares,
   combineProgress,
@@ -31,7 +32,7 @@ export type ProjectCard = {
   title: string;
   status: { label: string; color: string; category: string } | null;
   progress: PointProgress;
-  people: { id: string; title: string }[];
+  people: { id: string; title: string; image: string | null }[];
   counts: { tasks: number; milestones: number; meetings: number };
   // Key links (the "links" card element): the record's most recent link items.
   // Empty when the element is off (not fetched) or the project has none.
@@ -85,7 +86,7 @@ async function cardData(
     title: project.title,
     status: statusColor(project.status),
     progress,
-    people: people.map((p) => ({ id: p.id, title: p.title })),
+    people: people.map((p) => ({ id: p.id, title: p.title, image: personImage(p.properties) })),
     counts: { tasks: tasks.length, milestones: milestones.length, meetings: meetings.length },
     links: links.map((l) => ({ id: l.id, title: l.title, url: l.url ?? null })),
     favorited: favorites.has(project.id),
