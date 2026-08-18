@@ -358,10 +358,12 @@ Ledgr is its own task manager. Nothing else needs to be running.
   pickers (sigils still work: "#" tags, "@" links, "+" files), and the **⋯**
   chip opens any other custom property on the task type so you can set it at
   creation.
-- **People get faces.** The person type ships with a built-in **Image**
-  property (paste a picture URL on a person's page); project cards' people
-  circles and a task row's person chips then show the face, falling back to
-  initials or the person glyph without one.
+- **People get faces.** The person type ships with a built-in **Image**: a
+  square picture box on the person's page — click it to upload a photo (it's
+  center-cropped square automatically) or paste an image URL, and Remove lives
+  in the same panel. Project cards' people circles and a task row's person
+  chips then show the face, falling back to initials or the person glyph
+  without one.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
   deadline.

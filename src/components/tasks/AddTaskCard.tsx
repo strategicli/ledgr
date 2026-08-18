@@ -35,6 +35,7 @@ import {
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
 import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
+import DayPickerPanel from "@/components/ui/DayPickerPanel";
 import type { PropertyDef } from "@/lib/types";
 
 function localTodayYmd(): string {
@@ -244,9 +245,10 @@ export default function AddTaskCard({
   }, [personOpen, personQ]);
 
   // Kebab: the task type's OTHER custom scalar properties (relation kinds have
-  // their own chips/sigils; multi_select defers). Loaded once, on first open.
+  // their own chips/sigils; multi_select defers). Loaded on mount so the kebab
+  // can HIDE entirely when there is nothing beyond the built-in chips to offer
+  // (Tyler, 2026-08-18).
   useEffect(() => {
-    if (!moreOpen || taskSchema !== null) return;
     fetch("/api/types/task")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -254,7 +256,37 @@ export default function AddTaskCard({
         setTaskSchema(schema.filter((pr) => pr.kind !== "relation" && pr.kind !== "multi_select"));
       })
       .catch(() => setTaskSchema([]));
-  }, [moreOpen, taskSchema]);
+  }, []);
+
+  // Chip popovers (date / tag / person / kebab) dismiss on any outside click —
+  // each wrapper wears data-chip-pop, so a click inside any of them survives.
+  useEffect(() => {
+    if (!pickDate && !tagOpen && !personOpen && !moreOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest?.("[data-chip-pop]")) return;
+      setPickDate(false);
+      setTagOpen(false);
+      setPersonOpen(false);
+      setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [pickDate, tagOpen, personOpen, moreOpen]);
+
+  // Clicking anywhere OUTSIDE the card dismisses it, like Cancel (Tyler,
+  // 2026-08-18 — "I expect both to work"). Chip popovers and portaled menus
+  // don't count as outside.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (cardRef.current?.contains(t)) return;
+      if (t.closest?.("[data-chip-pop],[data-row-menu]")) return;
+      onCancel();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onCancel]);
 
   const mention = useMemo(() => detectMentionToken(title, caret), [title, caret]);
   const { hits, typeFilter, query: mQuery } = useMentionTypeahead(mention);
@@ -529,7 +561,7 @@ export default function AddTaskCard({
   const destProject = projects.find((p) => p.id === effDest);
 
   return (
-    <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-lg shadow-black/40">
+    <div ref={cardRef} className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-lg shadow-black/40">
       {/* title + top-right toggles */}
       <div className="flex items-start gap-2">
         {/* The title wraps to multiple lines as it grows: a textarea overlays an
@@ -651,21 +683,24 @@ export default function AddTaskCard({
       {/* SVG chip row — detected date/recurrence/priority/project fill these in */}
       <div className="mt-2 flex flex-wrap items-center gap-2 border-b border-neutral-800 pb-3">
         {showAction("deadline") && (
-          <span className="relative">
+          <span className="relative" data-chip-pop>
             <button type="button" className={`${chip} ${scheduleLabel ? "text-[var(--accent)]" : ""}`} onClick={() => setPickDate((v) => !v)}>
               {recurrenceLabel ? IconRepeat : IconCalendar} {scheduleLabel ?? "Date"}
               {scheduleLabel && (
                 <span role="button" aria-label="Clear date" onClick={(e) => { e.stopPropagation(); setDue(""); setScheduled(""); setDateCleared(true); }} className="text-neutral-500 hover:text-neutral-200">{IconX}</span>
               )}
             </button>
+            {/* The same Todoist-shaped picker the task rows use (quick picks +
+                month grid + free text) — one date UI everywhere. */}
             {pickDate && (
-              <span className="absolute left-0 top-full z-10 mt-1 flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1">
-                <DateInput
-                  value={due || null}
-                  autoFocus
-                  ariaLabel="Date"
-                  onCommit={(ymd) => { setDue(ymd); setPickDate(false); setDateCleared(false); }}
-                  className="bg-transparent text-sm text-neutral-200 outline-none [color-scheme:dark]"
+              <span className="absolute left-0 top-full z-20 mt-1 block max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-xl shadow-black/50">
+                <DayPickerPanel
+                  valueYmd={due || null}
+                  today={localTodayYmd()}
+                  onPick={(ymd) => {
+                    if (ymd) { setDue(ymd); setDateCleared(false); } else { setDue(""); setScheduled(""); setDateCleared(true); }
+                    setPickDate(false);
+                  }}
                 />
               </span>
             )}
@@ -691,7 +726,7 @@ export default function AddTaskCard({
         {/* Tag chip (Tyler, 2026-08-18): pick from existing tags (the 200 the
             token matcher already loads) or create one, without typing "#". */}
         {showAction("tags") && (
-          <span className="relative">
+          <span className="relative" data-chip-pop>
             <button type="button" className={chip} onClick={() => { setTagOpen((v) => !v); setTagQ(""); }}>
               {IconHash} Tag
             </button>
@@ -740,7 +775,7 @@ export default function AddTaskCard({
         {/* Person chip: attach a person (a `related` edge — the same list the
             "@" mention writes, so LinkedChips shows and removes them). */}
         {showAction("person") && (
-          <span className="relative">
+          <span className="relative" data-chip-pop>
             <button type="button" className={chip} onClick={() => { setPersonOpen((v) => !v); setPersonQ(""); }}>
               {IconUser} Person
             </button>
@@ -785,20 +820,19 @@ export default function AddTaskCard({
           </span>
         )}
         {/* The kebab (Tyler, 2026-08-18): every OTHER custom property the task
-            type carries, settable at creation. Same chip height as its siblings. */}
-        <span className="relative">
+            type carries, settable at creation. Hidden entirely when the type has
+            nothing beyond the built-in chips; the h-5 content line matches the
+            text chips' height. */}
+        {taskSchema != null && taskSchema.length > 0 && (
+        <span className="relative" data-chip-pop>
           <button type="button" className={chip} onClick={() => setMoreOpen((v) => !v)} title="More properties" aria-label="More properties">
-            {IconDots}
+            <span className="flex h-5 items-center">{IconDots}</span>
           </button>
           {moreOpen && (
             <span className="absolute left-0 top-full z-10 mt-1 flex w-56 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
-              {taskSchema === null ? (
-                <span className="block px-2 py-1 text-xs text-neutral-600">Loading…</span>
-              ) : taskSchema.filter((pr) => !openProps.includes(pr.key)).length === 0 ? (
+              {taskSchema.filter((pr) => !openProps.includes(pr.key)).length === 0 ? (
                 <span className="block px-2 py-1 text-xs text-neutral-600">
-                  {taskSchema.length === 0
-                    ? "No custom properties on task — add them in Build → Types."
-                    : "Every property is already shown."}
+                  Every property is already shown.
                 </span>
               ) : (
                 taskSchema
@@ -818,6 +852,7 @@ export default function AddTaskCard({
             </span>
           )}
         </span>
+        )}
       </div>
 
       {/* Kebab-opened property editors: one compact labelled control per opened
