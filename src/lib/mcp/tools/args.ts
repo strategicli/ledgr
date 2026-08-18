@@ -124,19 +124,52 @@ const WRITE_FIELDS = [
   "scheduledDate",
   "meetingAt",
   "url",
-  "kind",
   "properties",
   "inbox",
   "parentId",
 ] as const;
 
+// Wrong names callers actually reach for, each pointing at the real field.
+// The body is the one that bites: it's the only arg that ISN'T the REST field
+// name (bodyMarkdown, not body), so a caller who guesses gets no signal that
+// they guessed wrong unless we name the fix.
+const KEY_HINTS: Record<string, string> = {
+  body: "bodyMarkdown",
+  content: "bodyMarkdown",
+  text: "bodyMarkdown",
+  markdown: "bodyMarkdown",
+};
+
 // Builds the ItemInput/ItemPatch raw object for parseItemPayload from MCP args.
 // MCP takes the body as a markdown string (bodyMarkdown); everything else maps
 // 1:1 onto the REST item fields, so parseItemPayload does the real validation.
+// handlerKeys are args the calling tool reads itself outside this builder
+// (e.g. relateTo, id): accepted here, never copied into the raw object.
 export function buildWriteRaw(
   args: Record<string, unknown>,
-  extra: string[]
+  extra: string[],
+  handlerKeys: string[] = []
 ): Record<string, unknown> {
+  // Enforce the schemas' additionalProperties:false. Nothing else does: the
+  // transport doesn't validate args, so an unknown key used to be dropped
+  // silently — a create_item whose body rode in as `body` "succeeded" with an
+  // empty body. Reject by name instead, with a did-you-mean where we have one.
+  const allowed = new Set<string>([
+    "bodyMarkdown",
+    ...WRITE_FIELDS,
+    ...extra,
+    ...handlerKeys,
+  ]);
+  const unknown = Object.keys(args).filter((k) => !allowed.has(k));
+  if (unknown.length > 0) {
+    const named = unknown
+      .map((k) => (KEY_HINTS[k] ? `"${k}" (did you mean "${KEY_HINTS[k]}"?)` : `"${k}"`))
+      .join(", ");
+    throw new ItemError(
+      "bad_request",
+      `unknown field${unknown.length > 1 ? "s" : ""} ${named}; accepted fields: ${[...allowed].sort().join(", ")}`
+    );
+  }
   const raw: Record<string, unknown> = {};
   for (const k of [...WRITE_FIELDS, ...extra]) {
     if (k in args && args[k] !== undefined) raw[k] = args[k];

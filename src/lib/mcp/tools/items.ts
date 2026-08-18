@@ -366,7 +366,7 @@ export const itemTools: McpTool[] = [
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     handler: async (ownerId, args) => {
-      const raw = buildWriteRaw(args, ["type"]);
+      const raw = buildWriteRaw(args, ["type"], ["relateTo"]);
       const input = parseItemPayload(raw, "create");
       const created = await createItem(ownerId, input);
       const relateTo = optUuidArray(args, "relateTo");
@@ -417,7 +417,18 @@ export const itemTools: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
       const id = asUuid(args.id, "id");
-      const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"]), "patch");
+      const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"], ["id"]), "patch");
+      // Catch the empty patch here, where we can name the tool's own fields
+      // (bodyMarkdown especially — the shared lib's "no fields to update"
+      // can't mention it, and used to fire exactly when a caller mis-named it).
+      if (Object.keys(patch).length === 0) {
+        throw new ItemError(
+          "bad_request",
+          "no fields to update: pass at least one of title, bodyMarkdown, status, " +
+            "dueDate, scheduledDate, meetingAt, urgency, url, parentId, " +
+            "properties, propertyPatch, inbox"
+        );
+      }
       const updated = await updateItem(ownerId, id, patch);
       return rowView(updated);
     },
