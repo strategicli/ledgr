@@ -45,7 +45,10 @@
 // so editing that file without bumping VERSION leaves every installed device on
 // the old copy, silently and with nothing to debug. Any future edit to
 // offline.html (or anything else in PRECACHE) needs this same bump.
-const VERSION = "v9";
+// v10: the app icons are REPLACED (the stacked-layers mark, Tyler 2026-08-18)
+// and a maskable variant joins the precache — same rule as v9: the icons are
+// served cache-first, so without this bump installed devices keep the old "L".
+const VERSION = "v10";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -53,6 +56,7 @@ const PRECACHE = [
   OFFLINE_URL,
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/icon-512-maskable.png",
   "/icons/badge-96.png",
 ];
 
