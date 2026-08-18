@@ -102,8 +102,13 @@ export function TaskRow({
   const recurring = Boolean(props && typeof props === "object" && props.recurrence);
 
   const all = connections ?? [];
-  const project = showProject ? all.find((c) => c.role === PROJECT_ROLE && c.home) ?? all.find((c) => c.role === PROJECT_ROLE) : undefined;
-  const strip = all.filter((c) => c !== project);
+  // The primary project is excluded from the strip even when the chip is hidden
+  // (a project-scoped surface already names it); secondary project edges stay.
+  const primaryProject =
+    all.find((c) => c.role === PROJECT_ROLE && c.home) ??
+    all.find((c) => c.role === PROJECT_ROLE);
+  const project = showProject ? primaryProject : undefined;
+  const strip = all.filter((c) => c !== primaryProject);
 
   const hasPill = rollup != null && rollup.total > 0;
   const hasMeta = hasPill || strip.length > 0 || project != null;
