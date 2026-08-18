@@ -37,8 +37,24 @@ check(
 );
 check(
   "the response body is parsed unconditionally — it can only be read once",
-  /const \{ item \} = \(await res\.json\(\)\)[\s\S]{0,200}if \(destId !== "inbox"/.test(card),
-  "the id must be read before the relations branch, not inside it"
+  /const \{ item, relateErrors \} = \(await res\.json\(\)\)/.test(card),
+  "the id (and relateErrors) must be read once, before any branch"
+);
+// ADR-202 addendum 5: known-target edges (destination project, "@"-links,
+// existing tags) ride the create itself, so a task can never exist without its
+// project because a follow-up POST silently failed — and the offline outbox
+// replays the association too, since it lives in the body.
+check(
+  "known-target edges ride the create body (relateTo), not follow-up POSTs",
+  /if \(relateTo\.length > 0\) body\.relateTo = relateTo;/.test(card)
+);
+check(
+  "the destination project is in relateTo",
+  /relateTo\.push\(\{ targetId: destId/.test(card)
+);
+check(
+  "a failed server-side relate is surfaced, not swallowed",
+  /relateErrors[\s\S]{0,120}showToast\(/.test(card)
 );
 check("persist() actually returns it", /return item\.id;/.test(card));
 check(

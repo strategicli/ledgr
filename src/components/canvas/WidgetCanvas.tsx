@@ -458,7 +458,7 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
                 {peopleData && (
                   <ProjectPeople
                     recordId={item.id}
-                    people={(peopleData.items ?? []).map((p) => ({ id: p.id, title: p.title }))}
+                    people={(peopleData.items ?? []).map((p) => ({ id: p.id, title: p.title, image: p.image }))}
                   />
                 )}
               </div>

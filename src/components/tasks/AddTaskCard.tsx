@@ -35,6 +35,7 @@ import {
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
 import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
+import { showToast } from "@/components/ui/ActionToast";
 import DayPickerPanel from "@/components/ui/DayPickerPanel";
 import type { PropertyDef } from "@/lib/types";
 
@@ -412,6 +413,24 @@ export default function AddTaskCard({
       if (!pendingTags.some((x) => x.name.toLowerCase() === t.name.toLowerCase())) pendingTags.push(t);
     }
 
+    // Every edge with a KNOWN target rides the create itself (`relateTo`,
+    // ADR-202 addendum 5): the destination project, "@"-linked items, and
+    // existing tags. The old follow-up POSTs swallowed failures — a task could
+    // land without its project (Tyler hit exactly that on a record's full task
+    // list) — and the offline outbox replayed the bare create with no edges at
+    // all. Only brand-new tags still need the post-create flow (the tag has to
+    // exist before it can be linked).
+    const relateTo: { targetId: string; role?: string }[] = [];
+    if (destId !== "inbox") {
+      relateTo.push({ targetId: destId, role: destId === host?.id ? host.role ?? "related" : "project" });
+    }
+    for (const l of linked) relateTo.push({ targetId: l.id, role: "related" });
+    for (const t of pendingTags) {
+      if (t.id) relateTo.push({ targetId: t.id, role: TAGS_ROLE });
+    }
+    if (relateTo.length > 0) body.relateTo = relateTo;
+    const newTags = pendingTags.filter((t) => t.id === null);
+
     // POST the task and wire up its destination/@-linked relations. Shared by
     // both paths below. Returns the created id so the optimistic path can settle
     // its provisional row into a real one (see onOptimisticSettle).
@@ -425,35 +444,36 @@ export default function AddTaskCard({
       // Read the body unconditionally: it used to be parsed only when there were
       // relations to write, but the id is now always wanted, and a response body
       // can only be consumed once.
-      const { item } = (await res.json()) as { item: { id: string } };
-      if (destId !== "inbox" || linked.length > 0 || pendingTags.length > 0) {
+      const { item, relateErrors } = (await res.json()) as {
+        item: { id: string };
+        relateErrors?: string[];
+      };
+      // The server wrote the known edges with the create; say so if any failed
+      // instead of silently shipping an unassociated task.
+      if (relateErrors && relateErrors.length > 0) {
+        showToast("Task created, but linking it failed");
+      }
+      if (newTags.length > 0) {
         const rel = (targetId: string, role: string) =>
           fetch(`/api/items/${item.id}/relations`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ targetId, role }),
           }).catch(() => {});
-        if (destId !== "inbox") await rel(destId, destId === host?.id ? host.role ?? "related" : "project");
-        // "@"-linked items → plain `related` edges (the universal related list).
-        await Promise.all(linked.map((l) => rel(l.id, "related")));
-        // "#tag" tokens → `tags` edges, creating the tag when it's new. Tags are
-        // created WITHOUT inbox:true (unlike the "@" create-on-miss stub): a tag
-        // isn't an untriaged capture, it's a finished thing the moment it's named.
-        // Sequential rather than parallel so two "#" tokens naming the same new tag
-        // in one submit can't race into two duplicate tag items.
-        for (const t of pendingTags) {
-          let tagId = t.id;
-          if (!tagId) {
-            const tr = await fetch("/api/items", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: TAG_TYPE, title: t.name }),
-            }).catch(() => null);
-            if (!tr || !tr.ok) continue;
-            const created = (await tr.json()) as { item?: { id?: string } };
-            tagId = created.item?.id ?? null;
-          }
-          if (tagId) await rel(tagId, TAGS_ROLE);
+        // Brand-new "#tag"/picked tags → create the tag, then the `tags` edge.
+        // Tags are created WITHOUT inbox:true (unlike the "@" create-on-miss
+        // stub): a tag isn't an untriaged capture, it's a finished thing the
+        // moment it's named. Sequential so two tokens naming the same new tag
+        // in one submit can't race into duplicates.
+        for (const t of newTags) {
+          const tr = await fetch("/api/items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: TAG_TYPE, title: t.name }),
+          }).catch(() => null);
+          if (!tr || !tr.ok) continue;
+          const created = (await tr.json()) as { item?: { id?: string } };
+          if (created.item?.id) await rel(created.item.id, TAGS_ROLE);
         }
       }
       return item.id;
