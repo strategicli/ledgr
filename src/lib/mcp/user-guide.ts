@@ -352,6 +352,14 @@ Ledgr is its own task manager. Nothing else needs to be running.
 - **Six priorities,** P1 to P6, colour-coded. They drive the checkbox colour, row
   chips and grouping.
 - **Subtasks nest,** with an "n of m done" rollup and a breadcrumb.
+- **Rows tell you more at a glance.** A task row shows its title, the first
+  line of its body as a one-line description, an **n/m pill** that folds its
+  subtasks out underneath (they start closed — click the arrow), its tag and
+  connection chips (people, records — scroll the strip sideways when there
+  are many), and the project it belongs to on the right.
+- **Click the date on any row to change it.** The row's date is a button: it
+  edits what's shown — the scheduled date if the task has one, otherwise the
+  due date — and a repeat glyph beside it marks a repeating task.
 - **Reschedule fast:** Today / Tomorrow / +1wk chips, or type "in 3 days" or
   "next Tuesday".
 - **Roll overdue tasks forward** in one click from Today. It moves the plan and

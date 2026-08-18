@@ -15,8 +15,7 @@ import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import TaskList, { effTaskDate } from "@/components/tasks/TaskListRow";
-import { outgoingRelationsBySource } from "@/lib/relations";
-import { TAGS_ROLE } from "@/lib/tags";
+import { taskRowMeta } from "@/lib/task-row-meta";
 import { childRollups } from "@/lib/subtasks";
 import { staleProjects } from "@/lib/digest/stale";
 import { bulkConfigForType } from "@/lib/bulk-config";
@@ -128,11 +127,14 @@ export default async function Tasks({
       ...overdue.map((t) => t.id),
       ...ordered.flatMap(([, items]) => items.map((t) => t.id)),
     ];
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Tag chips for the rows about to render. One batched query keyed on the
-    // ids already computed for selection, so it costs a single extra round trip
-    // per page rather than one per row (the no-N+1 perf rule).
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    // Rollups + the per-row extras (excerpt, connections, project breadcrumb) —
+    // batched queries keyed on the ids already computed for selection, so the
+    // cost is a few extra round trips per page, never one per row (the no-N+1
+    // perf rule).
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     // Projects gone quiet (Tyler, 2026-08-17): active projects not opened or
     // touched within their per-project window surface here as P1-styled
     // check-in rows — virtual rows, not real tasks (no data to clean up;
@@ -183,7 +185,7 @@ export default async function Tasks({
               <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">
                 Overdue
               </h3>
-              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
             </div>
           )}
           {ordered.map(([k, items]) => {
@@ -193,7 +195,7 @@ export default async function Tasks({
                 <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
                   {k === 6 ? "No priority" : `Priority ${k}`}
                 </h3>
-                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
               </div>
             );
           })}
@@ -202,16 +204,15 @@ export default async function Tasks({
   } else if (tab === "inbox") {
     const inbox = await queryViewItems(owner.id, { type: "task", inbox: true, statusCategory: "active" }, { field: "createdAt", dir: "desc" });
     selectableIds = inbox.map((t) => t.id);
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Tag chips for the rows about to render. One batched query keyed on the
-    // ids already computed for selection, so it costs a single extra round trip
-    // per page rather than one per row (the no-N+1 perf rule).
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     body =
       inbox.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
       ) : (
-        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
       );
   } else if (tab === "upcoming") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
@@ -227,11 +228,10 @@ export default async function Tasks({
     }
     const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
     selectableIds = days.flatMap((d) => (byDay.get(dayKey(d)) ?? []).map((t) => t.id));
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Tag chips for the rows about to render. One batched query keyed on the
-    // ids already computed for selection, so it costs a single extra round trip
-    // per page rather than one per row (the no-N+1 perf rule).
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     body = (
       <div className="mt-4">
         {/* week nav + day-jump chips */}
@@ -265,7 +265,7 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />}
                 <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
@@ -309,10 +309,12 @@ export default async function Tasks({
       }))
     );
     selectableIds = cards.flatMap(({ tasks }) => tasks.map((t) => t.id));
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Same batched tag read as the other tabs — one query for every task across
-    // every project card, not one per card.
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    // Same batched reads as the other tabs — one set of queries for every task
+    // across every project card, not one per card.
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     body =
       cards.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">No projects yet. Create one to gather its tasks, notes, and events.</p>
@@ -334,7 +336,7 @@ export default async function Tasks({
                   )}
                 </div>
                 {tasks.length > 0 ? (
-                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} showProject={false} />
                 ) : (
                   <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
                 )}
