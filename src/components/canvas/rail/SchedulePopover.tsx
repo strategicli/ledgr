@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { beginSave, endSave } from "@/lib/save-status";
 import Popover from "@/components/ui/Popover";
 import DayField from "./DayField";
-import { RowFace } from "./row-ui";
+import { RowFace, CalendarGlyph } from "./row-ui";
 import { RAIL_TRIGGER } from "./styles";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
@@ -117,7 +117,12 @@ export default function SchedulePopover({
       width={344}
       triggerClassName={RAIL_TRIGGER}
       trigger={
-        <RowFace label="Schedule" empty={empty} overdue={overdue}>
+        <RowFace
+          label="Schedule"
+          empty={empty}
+          overdue={overdue}
+          icon={<CalendarGlyph className={overdue ? "text-red-400" : empty ? "text-ink-faint" : "text-[var(--accent)]"} />}
+        >
           {empty ? (
             "Add date"
           ) : (

@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { beginSave, endSave } from "@/lib/save-status";
 import Popover from "@/components/ui/Popover";
 import DayField from "./DayField";
-import { RowFace } from "./row-ui";
+import { RowFace, TargetGlyph } from "./row-ui";
 import { RAIL_TRIGGER } from "./styles";
 import { formatDayLabel, isOverdueYmd } from "@/lib/format-date";
 
@@ -65,7 +65,12 @@ export default function DueRow({
       width={288}
       triggerClassName={RAIL_TRIGGER}
       trigger={
-        <RowFace label="Due" empty={!iso} overdue={overdue}>
+        <RowFace
+          label="Due"
+          empty={!iso}
+          overdue={overdue}
+          icon={<TargetGlyph className={overdue ? "text-red-400" : !iso ? "text-ink-faint" : "text-[var(--accent)]"} />}
+        >
           {label ?? "Add date"}
         </RowFace>
       }

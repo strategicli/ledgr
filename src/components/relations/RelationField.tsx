@@ -11,10 +11,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import type { RelationCardinality } from "@/lib/types";
 import { useAnchoredPanel } from "@/components/ui/Popover";
+import { RAIL_LABEL } from "@/components/canvas/rail/styles";
 import {
   createMentionTarget,
   createTargets,
@@ -37,6 +39,8 @@ export default function RelationField({
   targetTypeLabel,
   cardinality,
   initial,
+  heading,
+  readOnlyChips = [],
 }: {
   itemId: string;
   // The field key — the edge role. null = a generic connection (ADR-175): adds
@@ -47,6 +51,14 @@ export default function RelationField({
   targetTypeLabel: string | null;
   cardinality: RelationCardinality;
   initial: Chip[];
+  // Todoist-style section mode (the task rail, Tyler 2026-08-18): the field
+  // renders its OWN label line with a "+" on the right that opens the add
+  // input, chips underneath — so the parent passes the label in here instead
+  // of drawing a <dt>. Absent = the classic chips + "+ Add" shape, unchanged.
+  heading?: ReactNode;
+  // Chips shown before the editable ones but not removable here — PeopleRow's
+  // mention-only persons (the body owns that edge, ADR-175).
+  readOnlyChips?: { id: string; title: string; hint?: string }[];
 }) {
   const router = useRouter();
   const [chips, setChips] = useState<Chip[]>(initial);
@@ -205,8 +217,19 @@ export default function RelationField({
   // in-flow `absolute` child: the canvas rail is `overflow-y-auto`, which clipped
   // the menu's bottom rows and — since overflow-y:auto makes overflow-x `auto`
   // too — added a stray horizontal scrollbar that shifted the rail's labels.
-  return (
+  const body = (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {readOnlyChips.map((p) => (
+        <Link
+          key={p.id}
+          href={`/items/${p.id}`}
+          title={p.hint}
+          className="inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-neutral-700 bg-neutral-800/60 px-2 py-0.5 text-sm text-neutral-200 hover:underline"
+        >
+          <span className="text-neutral-500">@</span>
+          <span className="max-w-[12rem] truncate">{p.title || "Untitled"}</span>
+        </Link>
+      ))}
       {chips.map((chip) => (
         <span
           key={chip.id}
@@ -313,7 +336,10 @@ export default function RelationField({
           )}
         </>
       ) : (
-        !atCapacity && (
+        // In heading mode the label line's "+" is the add affordance, so the
+        // inline one only renders in the classic shape.
+        !atCapacity &&
+        !heading && (
           <button
             onClick={() => setOpen(true)}
             disabled={busy}
@@ -324,6 +350,31 @@ export default function RelationField({
         )
       )}
       {error && <span className="text-xs text-red-400">failed</span>}
+    </div>
+  );
+
+  if (!heading) return body;
+
+  const hasContent = readOnlyChips.length > 0 || chips.length > 0 || open;
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className={RAIL_LABEL}>{heading}</span>
+        {!atCapacity && !open && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            disabled={busy}
+            aria-label="Add"
+            className="flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-surface-2 hover:text-ink disabled:opacity-50"
+          >
+            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {hasContent && body}
     </div>
   );
 }

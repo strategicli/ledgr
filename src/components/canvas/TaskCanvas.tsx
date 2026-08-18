@@ -12,7 +12,6 @@ import TaskTitle from "@/components/canvas/TaskTitle";
 import RelationProperties from "@/components/relations/RelationProperties";
 import PeopleRow from "@/components/relations/PeopleRow";
 import CustomProperties from "@/components/build/CustomProperties";
-import CanvasSection from "@/components/canvas/CanvasSection";
 import CanvasTwoPane from "@/components/canvas/CanvasTwoPane";
 import SchedulePopover from "@/components/canvas/rail/SchedulePopover";
 import DueRow from "@/components/canvas/rail/DueRow";
@@ -63,6 +62,12 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
 
   const relationFields = propertySchema.filter((p) => p.kind === "relation");
   const scalarFields = propertySchema.filter((p) => p.kind !== "relation");
+  // Project leads the rail (the Todoist order, Tyler 2026-08-18): the field that
+  // says where the task LIVES reads before the ones that say when.
+  const projectFields = relationFields.filter(
+    (p) => p.key === "project" || p.targetType === "project"
+  );
+  const otherRelationFields = relationFields.filter((p) => !projectFields.includes(p));
 
   // Parent breadcrumb (a subtask points up to its parent task).
   const parent = item.parentId ? await getItem(ownerId, item.parentId).catch(() => null) : null;
@@ -87,10 +92,12 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
       <CanvasTwoPane
         storageKey="task"
         resizable={false}
-        // 280, not 340 (Tyler, 2026-08-14): the rail carries short rows, so the
-        // extra 60px only stole reading width from the title/body/subtask pane.
-        // Its rows now stack label-over-value, so they read fine this narrow.
-        defaultWidth={280}
+        // The tinted, visually separate properties panel (Tyler, 2026-08-18 —
+        // "a completely separate column that stands out"). 248 wide: the rows
+        // stack label-over-value, so narrower still reads, and the main pane
+        // keeps the width.
+        railPanel
+        defaultWidth={248}
         main={
           <div className="min-w-0">
             <TaskTitle
@@ -132,6 +139,13 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             </div>
           )}
 
+          {/* Project first (the Todoist order): where the task lives. */}
+          {projectFields.length > 0 && (
+            <div className={`${RAIL_ROW} ${RAIL_STATIC} first:pt-0`}>
+              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={projectFields} rail />
+            </div>
+          )}
+
           {/* Schedule: scheduled date + time-of-day + repeat + reminder, tucked
               into one popover. */}
           <div className={RAIL_ROW}>
@@ -153,20 +167,26 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             <PriorityRow itemId={item.id} initial={item.urgency} />
           </div>
 
-          {/* Properties: scalar + relation fields under one header (the canvas
-              redesign), bare so the compact rail stays a divided list, not a card
-              (Brandon, 2026-06-27). Relations are marked with a link glyph.
-              People is a bespoke row, not a typed field (ADR-175): it shows every
-              confirmed person edge whoever wrote it, so it always renders. */}
+          {/* The remaining fields as self-labelled Todoist-style sections — no
+              "Properties" group header (Tyler, 2026-08-18): each field names
+              itself, so the umbrella heading only added a level. Tags/relations
+              and People get the label-line-with-"+" shape (rail mode); scalar
+              custom fields keep their stacked rows. People is a bespoke row, not
+              a typed field (ADR-175): it shows every confirmed person edge
+              whoever wrote it, so it always renders. */}
+          {otherRelationFields.length > 0 && (
+            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={otherRelationFields} rail />
+            </div>
+          )}
           <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
-            <CanvasSection bare icon="properties" title="Properties">
-              <div className="flex flex-col gap-2">
-                <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
-                <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={relationFields} hideHeading bare />
-                <PeopleRow ownerId={ownerId} itemId={item.id} bare />
-              </div>
-            </CanvasSection>
+            <PeopleRow ownerId={ownerId} itemId={item.id} rail />
           </div>
+          {scalarFields.length > 0 && (
+            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+              <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
+            </div>
+          )}
 
           {/* Focus today: a one-tap star, kept in plain sight (not behind a
               popover) since it's a frequent daily action. */}

@@ -20,6 +20,7 @@ export default async function RelationProperties({
   props,
   hideHeading = false,
   bare = false,
+  rail = false,
 }: {
   ownerId: string;
   itemId: string;
@@ -31,6 +32,10 @@ export default async function RelationProperties({
   // Drop the wide centered-column padding so it sits flush in a narrow rail
   // (the task canvas right pane) instead of the full-width classic canvas.
   bare?: boolean;
+  // Todoist-style rail sections (Tyler, 2026-08-18): each field is its own
+  // hairline-divided section whose label line RelationField draws itself, with
+  // the "+" add on the right — replacing the dt/dd rows and the link glyph.
+  rail?: boolean;
 }) {
   const relationProps = props.filter((p) => p.kind === "relation");
   if (relationProps.length === 0) return null;
@@ -44,6 +49,26 @@ export default async function RelationProperties({
     getDb().select({ key: types.key, label: types.label }).from(types),
   ]);
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
+
+  if (rail) {
+    return (
+      <>
+        {relationProps.map((prop) => (
+          <div key={prop.key} className="border-t border-line py-2.5 first:border-t-0 first:pt-0 last:pb-0">
+            <RelationField
+              itemId={itemId}
+              role={prop.key}
+              targetType={prop.targetType ?? null}
+              targetTypeLabel={prop.targetType ? (labels.get(prop.targetType) ?? null) : null}
+              cardinality={prop.cardinality ?? "many"}
+              initial={(byRole.get(prop.key) ?? []).map((r) => ({ id: r.id, title: r.title }))}
+              heading={<InlineLabel typeKey={typeKey} propertyKey={prop.key} label={prop.label} />}
+            />
+          </div>
+        ))}
+      </>
+    );
+  }
 
   return (
     <section className={bare ? "" : "mx-auto w-full max-w-3xl px-2 pb-6 pt-2 sm:px-8 md:px-12"}>

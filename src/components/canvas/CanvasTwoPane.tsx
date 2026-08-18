@@ -43,6 +43,7 @@ export default function CanvasTwoPane({
   defaultWidth = 360,
   minWidth = 280,
   maxWidth = 620,
+  railPanel = false,
 }: {
   main: ReactNode;
   rail: ReactNode;
@@ -54,6 +55,11 @@ export default function CanvasTwoPane({
   defaultWidth?: number;
   minWidth?: number;
   maxWidth?: number;
+  // Render the rail as a visually separate, tinted column (a bg-surface-1 panel
+  // with its own padding — the Todoist properties-panel look, Tyler 2026-08-18)
+  // instead of an open list beside a hairline. The boundary keeps the collapse
+  // chevron but drops its hairline (the panel's own edge draws the split).
+  railPanel?: boolean;
 }) {
   const OPEN_KEY = `ledgr:${storageKey}-rail-open`;
   const WIDTH_KEY = `ledgr:${storageKey}-rail-width`;
@@ -130,7 +136,9 @@ export default function CanvasTwoPane({
               resizable ? "cursor-col-resize" : ""
             }`}
           >
-            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line transition-colors group-hover:bg-line-strong" />
+            {!railPanel && (
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line transition-colors group-hover:bg-line-strong" />
+            )}
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -151,9 +159,13 @@ export default function CanvasTwoPane({
         <aside
           style={{ ["--rail-w" as string]: `${railWidth}px` }}
           className={
-            open
-              ? "min-w-0 mt-4 border-t border-line pt-4 @min-[640px]:mt-0 @min-[640px]:border-t-0 @min-[640px]:pt-0 @min-[640px]:w-[var(--rail-w)] @min-[640px]:shrink-0 @min-[640px]:sticky @min-[640px]:top-4 @min-[640px]:self-start @min-[640px]:max-h-[calc(100vh-1.5rem)] @min-[640px]:overflow-y-auto @min-[640px]:pl-5"
-              : "min-w-0 mt-4 border-t border-line pt-4 @min-[640px]:hidden"
+            railPanel
+              ? open
+                ? "min-w-0 mt-4 rounded-card border border-line bg-surface-1 p-4 @min-[640px]:mt-0 @min-[640px]:w-[var(--rail-w)] @min-[640px]:shrink-0 @min-[640px]:sticky @min-[640px]:top-4 @min-[640px]:self-start @min-[640px]:max-h-[calc(100vh-1.5rem)] @min-[640px]:overflow-y-auto"
+                : "min-w-0 mt-4 rounded-card border border-line bg-surface-1 p-4 @min-[640px]:hidden"
+              : open
+                ? "min-w-0 mt-4 border-t border-line pt-4 @min-[640px]:mt-0 @min-[640px]:border-t-0 @min-[640px]:pt-0 @min-[640px]:w-[var(--rail-w)] @min-[640px]:shrink-0 @min-[640px]:sticky @min-[640px]:top-4 @min-[640px]:self-start @min-[640px]:max-h-[calc(100vh-1.5rem)] @min-[640px]:overflow-y-auto @min-[640px]:pl-5"
+                : "min-w-0 mt-4 border-t border-line pt-4 @min-[640px]:hidden"
           }
         >
           {rail}
