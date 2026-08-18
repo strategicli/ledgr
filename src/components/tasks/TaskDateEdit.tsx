@@ -1,28 +1,36 @@
-// Click-to-edit date on a task row (tasks-row-redesign, ADR-202). The row's
-// date text is now a button: clicking it opens a small draft-commit DateInput
-// (ADR-169 — never write on the picker's first change) that edits the field the
-// row DISPLAYS — scheduled if set, else due (Tyler: "edit what's shown"). An
-// undated row gets a ghost "＋ date" affordance on hover that sets scheduled.
-// A repeating task shows the loop glyph beside the date — a read-only signal;
-// the rule itself is edited on the canvas (and the engine keeps advancing the
-// scheduled date on complete regardless of a manual nudge here).
+// Click-to-edit date on a task row (tasks-row-redesign, ADR-202 + the
+// scheduler follow-on). The row's date text is a trigger for the shared
+// Popover — portaled to <body> with fixed positioning, so it never clips
+// against the row/list (the first cut used an in-flow absolute panel and the
+// calendar vanished under the next row), and the panel scrolls internally when
+// tall (Tyler). Inside: the Todoist-shaped DayPickerPanel (quick picks + month
+// grid + free text) editing the field the row DISPLAYS — scheduled if set,
+// else due ("edit what's shown") — plus Time and Repeat expanders reusing the
+// canvas's ScheduledTimeControl / RecurrenceControl verbatim (bare mode), the
+// SchedulePopover posture. A repeating task shows the loop glyph beside the
+// date.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import DateInput from "@/components/ui/DateInput";
+import Popover from "@/components/ui/Popover";
+import DayPickerPanel from "@/components/ui/DayPickerPanel";
+import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
+import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import { showToast } from "@/components/ui/ActionToast";
+import { DEFAULT_DURATION_MINUTES, type ScheduledTime } from "@/lib/scheduled-time";
+import type { RecurrenceRule } from "@/lib/recurrence";
 
 function ymdToIso(ymd: string): string {
   return `${ymd}T00:00:00.000Z`;
 }
 
-function RepeatIcon() {
+function RepeatIcon({ className = "h-3.5 w-3.5 shrink-0" }: { className?: string }) {
   return (
     <svg
       aria-hidden
       viewBox="0 0 24 24"
-      className="h-3.5 w-3.5 shrink-0"
+      className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
@@ -37,112 +45,152 @@ function RepeatIcon() {
   );
 }
 
+function ClockIcon({ className = "h-4 w-4 shrink-0" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
 export default function TaskDateEdit({
   id,
   ymd,
   label,
   field,
   overdue,
-  recurring,
+  today,
+  scheduledIso,
+  dueIso,
+  recurrence,
+  scheduledTime,
 }: {
   id: string;
   ymd: string | null; // the displayed date as YYYY-MM-DD, or null when undated
   label: string | null; // preformatted server-side ("Aug 18") so SSR and tabs agree
   field: "scheduledDate" | "dueDate"; // which column the click edits (what's shown)
   overdue: boolean;
-  recurring: boolean;
+  today: string; // app-timezone YYYY-MM-DD
+  scheduledIso: string | null; // for the Repeat control's anchor
+  dueIso: string | null;
+  recurrence: RecurrenceRule | null;
+  scheduledTime: ScheduledTime | null;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const wrap = useRef<HTMLSpanElement>(null);
+  const [showTime, setShowTime] = useState(false);
+  const [showRepeat, setShowRepeat] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  async function commit(next: string | null) {
-    setSaving(true);
+  // The date write is this component's own; Time and Repeat keep their controls'
+  // own optimistic PATCH + refresh (the SchedulePopover posture).
+  async function commit(next: string | null, time?: string, close?: () => void) {
     try {
+      const body: Record<string, unknown> = { [field]: next ? ymdToIso(next) : null };
+      if (time) {
+        body.propertyPatch = {
+          scheduledTime: {
+            start: time,
+            durationMinutes: scheduledTime?.durationMinutes ?? DEFAULT_DURATION_MINUTES,
+          },
+        };
+      }
       const res = await fetch(`/api/items/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: next ? ymdToIso(next) : null }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
-      setOpen(false);
+      close?.();
       router.refresh();
     } catch {
       showToast("Something went wrong");
-    } finally {
-      setSaving(false);
     }
   }
 
+  const footerBtn =
+    "flex w-full items-center justify-center gap-2 rounded-card border border-line px-2 py-1.5 text-sm text-ink-muted hover:border-line-strong hover:bg-surface-2 hover:text-ink";
+
   return (
-    <span ref={wrap} className="relative inline-flex shrink-0 items-center gap-1">
-      {recurring && (
+    <span
+      className="inline-flex shrink-0 items-center gap-1"
+      // Clicks inside the date UI must not reach the row's gesture layer.
+      onClick={(e) => e.stopPropagation()}
+    >
+      {recurrence && (
         <span title="Repeats" className={overdue ? "text-red-400" : "text-neutral-500"}>
           <RepeatIcon />
         </span>
       )}
-      <button
-        type="button"
-        title={ymd ? `Change ${field === "dueDate" ? "due" : "scheduled"} date` : "Set date"}
-        onClick={(e) => {
-          // The row link/gestures must not see this click.
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
-        className={`rounded px-1 text-xs hover:bg-neutral-800 ${
+      <Popover
+        ariaLabel={ymd ? `Change ${field === "dueDate" ? "due" : "scheduled"} date` : "Set date"}
+        align="right"
+        width={300}
+        triggerClassName={`rounded px-1 text-xs hover:bg-neutral-800 ${
           ymd
             ? overdue
               ? "text-red-400"
               : "text-neutral-600 hover:text-neutral-300"
             : "text-neutral-600 opacity-0 hover:text-neutral-300 focus-visible:opacity-100 group-hover:opacity-100"
         }`}
+        trigger={<>{label ?? "＋ date"}</>}
       >
-        {label ?? "＋ date"}
-      </button>
-      {open && (
-        <span
-          className="absolute right-0 top-full z-30 mt-1 flex items-center gap-1 rounded-card border border-line-strong bg-surface-3 p-1.5 shadow-xl shadow-black/40"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="px-0.5 text-xs text-ink-subtle">
-            {field === "dueDate" ? "Due" : "Scheduled"}
-          </span>
-          <DateInput
-            value={ymd}
-            onCommit={(next) => void commit(next)}
-            autoFocus
-            ariaLabel={field === "dueDate" ? "Due date" : "Scheduled date"}
-            className="rounded border border-line bg-surface-1 px-1 py-0.5 text-xs text-ink [color-scheme:dark]"
-          />
-          {ymd && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void commit(null)}
-              className="rounded px-1.5 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
-            >
-              Clear
-            </button>
-          )}
-        </span>
-      )}
+        {(close) => (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                {field === "dueDate" ? "Due date" : "Scheduled"}
+              </span>
+            </div>
+            <DayPickerPanel
+              valueYmd={ymd}
+              today={today}
+              parseTime={field === "scheduledDate"}
+              onPick={(next, time) => void commit(next, time, close)}
+            />
+            <div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
+              <button
+                type="button"
+                aria-expanded={showTime}
+                className={footerBtn}
+                onClick={() => setShowTime((v) => !v)}
+              >
+                <ClockIcon />
+                Time
+              </button>
+              {showTime && (
+                <div className="px-0.5 pb-1">
+                  <ScheduledTimeControl
+                    itemId={id}
+                    initial={scheduledTime}
+                    hasSchedule={scheduledIso != null || recurrence != null}
+                  />
+                </div>
+              )}
+              <button
+                type="button"
+                aria-expanded={showRepeat}
+                className={footerBtn}
+                onClick={() => setShowRepeat((v) => !v)}
+              >
+                <RepeatIcon className="h-4 w-4 shrink-0" />
+                Repeat
+              </button>
+              {showRepeat && (
+                <div className="px-0.5 pb-1">
+                  <RecurrenceControl
+                    itemId={id}
+                    initial={recurrence}
+                    scheduledDate={scheduledIso}
+                    dueDate={dueIso}
+                    today={today}
+                    bare
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Popover>
     </span>
   );
 }

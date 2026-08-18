@@ -357,9 +357,13 @@ Ledgr is its own task manager. Nothing else needs to be running.
   subtasks out underneath (they start closed — click the arrow), its tag and
   connection chips (people, records — scroll the strip sideways when there
   are many), and the project it belongs to on the right.
-- **Click the date on any row to change it.** The row's date is a button: it
-  edits what's shown — the scheduled date if the task has one, otherwise the
-  due date — and a repeat glyph beside it marks a repeating task.
+- **Click the date on any row to change it.** The row's date is a button
+  opening a full scheduler: quick picks (Tomorrow, Later this week, This
+  weekend, Next week, No date), a month calendar, a free-text box ("next fri
+  9am"), and Time / Repeat controls. It edits what's shown — the scheduled
+  date if the task has one, otherwise the due date — and a repeat glyph
+  beside it marks a repeating task. The same picker now backs the Schedule
+  and Due popovers on the task page.
 - **Reschedule fast:** Today / Tomorrow / +1wk chips, or type "in 3 days" or
   "next Tuesday".
 - **Roll overdue tasks forward** in one click from Today. It moves the plan and

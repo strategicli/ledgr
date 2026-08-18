@@ -18,6 +18,8 @@ import SubtaskExpandableRow, { SubtaskPillSlot } from "@/components/subtasks/Sub
 import ConnectionStrip from "@/components/tasks/ConnectionStrip";
 import TaskDateEdit from "@/components/tasks/TaskDateEdit";
 import { priorityStyle, type Priority } from "@/lib/priority";
+import { parseRecurrence } from "@/lib/recurrence";
+import { parseScheduledTime } from "@/lib/scheduled-time";
 import type { Progress } from "@/lib/subtasks";
 import type { StatusDef } from "@/lib/status";
 import {
@@ -99,7 +101,8 @@ export function TaskRow({
   const overdue = !done && date != null && date < dueToday;
   const pri = task.urgency != null ? (task.urgency as Priority) : null;
   const props = task.properties as { recurrence?: unknown } | null | undefined;
-  const recurring = Boolean(props && typeof props === "object" && props.recurrence);
+  const recurrence = parseRecurrence(props?.recurrence);
+  const scheduledTime = parseScheduledTime(task.properties);
 
   const all = connections ?? [];
   // The primary project is excluded from the strip even when the chip is hidden
@@ -146,7 +149,11 @@ export function TaskRow({
               label={date ? dayFmt.format(date) : null}
               field={task.scheduledDate ? "scheduledDate" : date ? "dueDate" : "scheduledDate"}
               overdue={overdue}
-              recurring={recurring}
+              today={today}
+              scheduledIso={task.scheduledDate ? task.scheduledDate.toISOString() : null}
+              dueIso={task.dueDate ? task.dueDate.toISOString() : null}
+              recurrence={recurrence}
+              scheduledTime={scheduledTime}
             />
           </span>
           {excerpt && (
