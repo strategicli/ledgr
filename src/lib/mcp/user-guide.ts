@@ -94,9 +94,11 @@ Tasks, events, notes, links, people, and every type you invent are all rows in
 one table. That is why anything can link to anything, one search covers
 everything, and a note can become a meeting without being retyped.
 
-Five types are built in and cannot be deleted: **task**, **event**, **note**,
-**link**, **person**. You can still edit them, add properties, and hide the ones
-you do not use.
+Seven types are built in and cannot be deleted: **task**, **event**, **note**,
+**link**, **person**, **project**, and **tag** (plus the milestone and
+transcript child types they use). You can still edit them, add properties, and
+hide the ones you do not use — and add your own classifier types (a "category",
+a "topic") alongside tag whenever one grouping axis isn't enough.
 
 ## Three ways to reach anything
 
@@ -382,6 +384,31 @@ A project is a hub page composed of **tools**: the things that live in it, an
 activity log, a next action, progress, milestones, a timeline, a mindmap. The
 **Add a Tool** button below the grid adds any tool not already on the page.
 
+**Any type you create can be a project-style hub, and any type can be a tool.**
+A custom type without its own canvas already gets this same tool-composed page
+— make a "Book" or "Video" type and its records carry tasks, milestones,
+docs, progress, the timeline, all of it. And the reverse: flip **Offer as a
+tool** on a type's edit page (Build → Types) and it joins the Add a Tool menu
+everywhere — so a "Chapter" type becomes a Chapters card on your Book, with
+its own "+ Add chapter" and a full-page drill-down. Build the shape your work
+actually has.
+
+**Group the task list, if you want.** The Tasks card's hover gear has a
+**Group by** choice: none (flat, the default), **milestone** (tasks section
+under the milestone they complete), or **priority**. The full task list
+follows whatever the card chooses.
+
+**Favorites show on cards.** Star a project (⋯ → favorite) and its card wears
+a small accent star and a subtle glow, everywhere cards render. Just a visual
+marker — nothing reorders.
+
+**Quiet projects ask for a check-in.** If an active project isn't opened or
+touched for its quiet window (14 days by default), it surfaces at the top of
+**Tasks → Today** as a P1-styled "Check on …" row. Opening the project IS the
+check-in — the row disappears on its own; there's no button to press. Each
+project's **Check-ins** control (bottom of its page) turns this off or changes
+the window.
+
 Choose the default tools every new record starts with, and their order, on the
 type's edit page under **Tools** — or per record, from the record itself. The
 **Overview** reads directly under the title when you've written one; empty, it
@@ -389,6 +416,27 @@ collapses to a small lines icon that opens it for typing. Each collection
 card's hover gear sets how many rows it previews (3–50, or **All**); the Tasks
 card lists open tasks only — completed ones move off the card and stay on its
 full collection page.
+
+**Subtasks ride along with their parent.** Put a task on a project and its
+subtasks come too, without cluttering the surface: on the Tasks card and the
+full task list, a task with subtasks wears an **n/m pill** that folds them out
+in place, and each subtask completion becomes a tick on the review timeline.
+
+**Every tool's full page carries the tool's own powers.** A card's "Showing N
+of M" used to land on a bare list; now each full collection page renders the
+same rows as its card, plus the card's add box pre-bound to the record. Tasks:
+complete in place, swipe or use the row menu, expand subtasks under their
+parent. Milestones: the same mode-aware circles, badges, and points chips.
+Meetings, docs, links, mindmaps: the same rows and "+ Add" as their cards.
+Select mode and bulk actions stay on all of them.
+
+**Completed tasks fold away, and milestones flag their tasks.** Done tasks
+leave both the Tasks card and its full list; a quiet **"N tasks completed"**
+line at the bottom of each opens them when you want the history. And a task
+that completes a milestone ("Completes with task") wears a small flag chip
+naming that milestone on the project's task surfaces — milestones are the
+natural grouping for a project's tasks, so the membership is visible where the
+tasks are.
 
 **Milestones complete three ways**, decided by what you give one when you add
 it (the "+ Milestone" box takes a title, an optional date, optional points, and
@@ -418,6 +466,15 @@ renders it as a single readable document — summary, people, milestones,
 meetings, clickable links, tasks with added/completed dates, and the timeline —
 composed live from the project's current state, with Copy and **Download .md**.
 Hand the file to anyone; it reads without Ledgr.
+
+**Project cards, everywhere you list projects.** The rich card from the
+Projects list — title, status, progress bar, counts, people — now renders on
+any saved **list or board view** of projects too, so a kanban of projects shows
+the same card as the grid. Pick which elements every card carries at **Build →
+Types → Project → Card elements** (status pill, counts, progress bar, people,
+key links, a Timeline button); a saved view can override that set in its own
+editor. The pieces are buttons: "6 tasks" opens the full task list, the
+Timeline chip opens the review timeline, and a key-link chip opens the link.
 
 # Finding and seeing
 

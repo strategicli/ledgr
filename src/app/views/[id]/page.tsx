@@ -19,6 +19,7 @@ import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
+import { projectCardsForView } from "@/lib/project-cards";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { childRollups } from "@/lib/subtasks";
 import { listCalendarEventsForRange } from "@/lib/calendar/feed";
@@ -54,6 +55,9 @@ export default async function ViewPage({ params, searchParams }: Context) {
   const items = await queryViewItems(owner.id, view.filter, view.sort);
   const rollups = await childRollups(owner.id, items.map((i) => i.id));
   const tz = await getAppTimezone(owner.id);
+  // Rich project cards (2026-08-17): a project-scoped list/board view renders
+  // the configured card (view override → type default → the classic card).
+  const projectCards = await projectCardsForView(owner.id, view, items);
 
   // The read-only calendar overlay is only meaningful on a writable calendar
   // (one that places tasks on scheduled/due/plan — the interactive PlannerCalendar
@@ -171,8 +175,9 @@ export default async function ViewPage({ params, searchParams }: Context) {
 
         <SelectionProvider ids={items.map((item) => item.id)}>
           {/* Board/calendar render no row checkboxes (ADR-118), so they get no
-              select toggle either — list/table/agenda do. */}
-          {view.layout !== "board" && view.layout !== "calendar" && (
+              select toggle either — list/table/agenda do. The project-card grid
+              is a gallery layout, same exception. */}
+          {view.layout !== "board" && view.layout !== "calendar" && !projectCards && (
             <SelectModeToggle />
           )}
           <DeskHostProvider
@@ -194,6 +199,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
               rollups={rollups}
               today={appTodayYmd(new Date(), tz)}
               tz={tz}
+              projectCards={projectCards ?? undefined}
             />
           </DeskHostProvider>
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />

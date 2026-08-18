@@ -12,6 +12,11 @@ import { ItemError, listColumns } from "@/lib/items";
 import { appTimezoneSync, todayBounds, zonedMidnightUtc } from "@/lib/today";
 import { parseWhere, type WhereCondition, type WhereGroup } from "@/lib/view-where";
 import { BUILTIN_DATES, type DateRef, type BuiltinDate } from "@/lib/placement";
+import {
+  DEFAULT_PROJECT_CARD,
+  parseProjectCardConfig,
+  type ProjectCardConfig,
+} from "@/lib/project-card-config";
 
 // Date windows. "overdue" is strictly before today (for a meeting, "in the
 // past"); "today" is the single day; "week" is today through six days out;
@@ -594,6 +599,11 @@ export type ViewDisplay = {
   // ad-hoc pairings (e.g. scheduled→due). See placement.ts.
   startField?: DateRef | null;
   endField?: DateRef | null;
+  // --- Project cards (2026-08-17) ---
+  // Per-view override of which elements a project card shows, for a view scoped
+  // to a card-rendering type (project) on the list/board layouts. Absent =
+  // inherit the type default (settings.cardsByType) → DEFAULT_PROJECT_CARD.
+  card?: ProjectCardConfig;
 };
 
 // Resolved defaults for a calendar view with no (or partial) display config.
@@ -609,6 +619,7 @@ export const DISPLAY_DEFAULTS: Required<ViewDisplay> = {
   zoom: "week",
   startField: null,
   endField: null,
+  card: DEFAULT_PROJECT_CARD,
 };
 
 export type ViewDefinition = {
@@ -889,6 +900,9 @@ export function parseDisplay(raw: unknown): ViewDisplay | null {
   if (sf) out.startField = sf;
   const ef = parseDateRef(r.endField);
   if (ef) out.endField = ef;
+  // Project-card element override (2026-08-17); tolerant like the rest.
+  const card = parseProjectCardConfig(r.card);
+  if (card) out.card = card;
   return Object.keys(out).length ? out : null;
 }
 

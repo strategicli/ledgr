@@ -5,7 +5,8 @@
 //
 //   BIG   — meetings, milestones (due or completed), and the record's own
 //           creation (the story's opening line): the h2s of the scroll.
-//   SMALL — task completions, notes made, links added: the ticks between them.
+//   SMALL — task completions (subtasks of the project's tasks included, via
+//           parent_id descent), notes made, links added: the ticks between them.
 //
 // Same source rules as the Timeline card and the project markdown document
 // (project-markdown.ts): home-agnostic association, a milestone plots at its
@@ -14,6 +15,7 @@
 // 500 rows per collection, one relations query for milestone states.
 import { milestoneStates } from "@/lib/milestones";
 import { getItem } from "@/lib/items";
+import { listDescendantTasks } from "@/lib/subtasks";
 import { queryViewItems } from "@/lib/views";
 
 export type TimelineTier = "big" | "small";
@@ -140,6 +142,29 @@ export async function gatherProjectTimeline(
       kind: "task",
       label: "Task completed",
       title: t.title,
+      hasTime: false,
+      calendarDay: false,
+      done: true,
+    });
+  }
+
+  // Subtasks ride along with their parent (Tyler, 2026-08-17): a task on the
+  // project brings every task under it (parent_id descent, derived at read time
+  // — no relation edges are written for subtasks). A completed subtask is a
+  // small tick like any task completion. Deduped against the direct set, since
+  // a subtask can also carry its own relation to the project.
+  const directTaskIds = new Set(tasks.map((t) => t.id));
+  const subtasks = await listDescendantTasks(ownerId, tasks.map((t) => t.id));
+  for (const s of subtasks) {
+    if (directTaskIds.has(s.id) || s.statusCategory !== "done") continue;
+    entries.push({
+      id: `task-${s.id}`,
+      itemId: s.id,
+      date: taskCompletedAt(s.properties, s.updatedAt),
+      tier: "small",
+      kind: "task",
+      label: "Subtask completed",
+      title: s.title,
       hasTime: false,
       calendarDay: false,
       done: true,

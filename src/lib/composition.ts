@@ -35,7 +35,10 @@ export type Composition = {
 
 export const DEFAULT_DIGEST: DigestBehavior = {
   enabled: true,
-  stalenessDays: 7,
+  // 14, not 7 (Tyler, 2026-08-17): "haven't looked at it in a while" is a
+  // two-week feeling. Opening the project resets the clock (the view beacon
+  // writes checkin_reviewed), so an actively-read project never surfaces.
+  stalenessDays: 14,
   upcomingDays: 7,
 };
 

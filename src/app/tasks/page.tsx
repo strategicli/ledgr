@@ -10,24 +10,20 @@ import ListPage from "@/components/lists/ListPage";
 import ViewRenderer from "@/components/views/ViewRenderer";
 import NewItemButton from "@/components/home/NewItemButton";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
-import SwipeRow from "@/components/lists/SwipeRow";
 import TabStrip from "@/components/nav/TabStrip";
 import BulkActionBar from "@/components/selection/BulkActionBar";
-import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
-import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
-import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
-import TagChips, { type TagRef } from "@/components/relations/TagChips";
+import TaskList, { effTaskDate } from "@/components/tasks/TaskListRow";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { TAGS_ROLE } from "@/lib/tags";
 import { childRollups } from "@/lib/subtasks";
-import type { Progress } from "@/lib/subtasks";
+import { staleProjects } from "@/lib/digest/stale";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
 import { appTodayYmd } from "@/lib/recurrence-service";
-import { resolveStatusSchema, type StatusDef } from "@/lib/status";
+import { resolveStatusSchema } from "@/lib/status";
 import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { queryViewItems, type ViewDefinition } from "@/lib/views";
@@ -52,88 +48,9 @@ const weekdayFmt = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone:
 const shortDay = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-// The date that places a task: its effective plan date — scheduled (planned)
-// day if set, else the due deadline (ADR-109). Scheduled-primary, due-secondary,
-// and undated when neither is set.
-function effDate(t: ListedItem): Date | null {
-  return t.scheduledDate ?? t.dueDate ?? null;
-}
-
-const TASK_ROW_CLASS = "group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
-
-function TaskRow({ task, dueToday, statuses, rollup, today, tags }: { task: ListedItem; dueToday: Date; statuses: StatusDef[]; rollup?: Progress; today: string; tags?: TagRef[] }) {
-  const done = task.statusCategory === "done";
-  const sdef = statuses.find((s) => s.key === task.status);
-  const date = effDate(task);
-  const overdue = !done && date != null && date < dueToday;
-  const pri = task.urgency != null ? (task.urgency as Priority) : null;
-  const inner = (
-    <>
-      <SelectCheckbox id={task.id} />
-      <SubtaskCheckbox id={task.id} done={done} />
-      {/* Tags at the leading edge, before the title (Tyler: "show on the task to
-          the left of it somewhere"). Read-only here; the Tags field on the canvas
-          is where they're edited. If the ragged left edge this gives the title
-          column reads worse than the Todoist placement (chips AFTER the title),
-          moving this one line below the Link is the whole change. */}
-      <TagChips tags={tags ?? []} />
-      <Link
-        href={`/items/${task.id}`}
-        className={`min-w-0 flex-1 truncate text-sm ${task.title ? "text-neutral-200" : "text-neutral-500"} ${done ? "line-through opacity-60" : ""}`}
-      >
-        {task.title || "Untitled"}
-      </Link>
-      {pri != null && pri <= 5 && (
-        <span className={`shrink-0 rounded border px-1.5 text-xs ${priorityStyle(pri).text} ${priorityStyle(pri).border}`}>
-          P{pri}
-        </span>
-      )}
-      {sdef && sdef.category !== "not_started" && (
-        <span className="hidden shrink-0 items-center gap-1 rounded bg-neutral-800 px-1.5 text-xs text-neutral-400 sm:inline-flex">
-          {sdef.color && <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: sdef.color }} />}
-          {sdef.label}
-        </span>
-      )}
-      <span className={`shrink-0 text-xs ${overdue ? "text-red-400" : "text-neutral-600"}`}>
-        {date ? dayFmt.format(date) : ""}
-      </span>
-    </>
-  );
-  // Trash + Complete/Focus/Schedule live in the shared row menu (right-click /
-  // long-press), not an always-visible button; task rows also swipe (right =
-  // complete, left = schedule). ADR-142, mirroring /list/[type].
-  const menuOpts = {
-    id: task.id,
-    canComplete: true,
-    done,
-    today,
-    label: task.title || "Untitled",
-  };
-  // A task with task-children gets the expandable pill (which carries the menu);
-  // everything else stays a plain flat row with swipe + menu.
-  if (rollup && rollup.total > 0) {
-    return (
-      <SubtaskExpandableRow id={task.id} done={rollup.done} total={rollup.total} liClassName={TASK_ROW_CLASS} menuOptions={menuOpts}>
-        {inner}
-      </SubtaskExpandableRow>
-    );
-  }
-  return (
-    <SwipeRow className={TASK_ROW_CLASS} {...menuOpts}>
-      {inner}
-    </SwipeRow>
-  );
-}
-
-function TaskList({ tasks, dueToday, statuses, rollups, today, tagsBySource }: { tasks: ListedItem[]; dueToday: Date; statuses: StatusDef[]; rollups?: Map<string, Progress>; today: string; tagsBySource?: Map<string, TagRef[]> }) {
-  return (
-    <ul className="mt-1">
-      {tasks.map((t) => (
-        <TaskRow key={t.id} task={t} dueToday={dueToday} statuses={statuses} rollup={rollups?.get(t.id)} today={today} tags={tagsBySource?.get(t.id)} />
-      ))}
-    </ul>
-  );
-}
+// The shared task row + list moved to components/tasks/TaskListRow.tsx
+// (2026-08-17) so a record's full task list renders the same rows as these tabs.
+const effDate = effTaskDate;
 
 export default async function Tasks({
   searchParams,
@@ -216,11 +133,51 @@ export default async function Tasks({
     // ids already computed for selection, so it costs a single extra round trip
     // per page rather than one per row (the no-N+1 perf rule).
     const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    // Projects gone quiet (Tyler, 2026-08-17): active projects not opened or
+    // touched within their per-project window surface here as P1-styled
+    // check-in rows — virtual rows, not real tasks (no data to clean up;
+    // opening the project makes the row disappear, because the view beacon
+    // resets the clock). Per-project opt-out lives on the project itself.
+    const quiet = await staleProjects(owner.id);
+    const quietSection =
+      quiet.length > 0 ? (
+        <div>
+          <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${priorityStyle(1).text}`}>
+            Check in
+          </h3>
+          <ul className="mt-1">
+            {quiet.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/items/${p.id}`}
+                  className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
+                >
+                  <span className={`shrink-0 rounded border px-1.5 text-xs ${priorityStyle(1).text} ${priorityStyle(1).border}`}>
+                    P1
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">
+                    Check on {p.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-neutral-600">
+                    quiet {p.daysQuiet}d
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null;
     body =
-      onPlate.length === 0 ? (
+      onPlate.length === 0 && !quietSection ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
+      ) : onPlate.length === 0 ? (
+        <div className="mt-4 space-y-4">
+          {quietSection}
+          <p className="px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
+        </div>
       ) : (
         <div className="mt-4 space-y-4">
+          {quietSection}
           {overdue.length > 0 && (
             <div>
               <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">

@@ -14,6 +14,11 @@ import type { PropertyDef } from "@/lib/types";
 import type { WhereGroup } from "@/lib/view-where";
 import { CALENDAR_MODES, TIMELINE_ZOOMS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition, ViewDisplay, CalendarMode, TimelineZoom } from "@/lib/views";
+import {
+  DEFAULT_PROJECT_CARD,
+  PROJECT_CARD_ELEMENTS,
+  type ProjectCardElement,
+} from "@/lib/project-card-config";
 
 // Friendly labels for the calendar-display controls (ADR-166). "timegrid"
 // (Multi-day) is retired from new views but kept selectable when a stored view
@@ -330,6 +335,13 @@ export default function ViewBuilder({
   // Chosen columns, in order; empty = the layout's default columns. Toggling
   // appends (so check order = column order) or removes.
   const [columns, setColumns] = useState<ViewColumn[]>(initial?.columns ?? []);
+  // Project cards (2026-08-17): whether THIS view overrides the type-default
+  // card, and with which elements. Applies only to a project-scoped list/board
+  // view; stored as views.display.card (null/absent = inherit the type default).
+  const [cardCustom, setCardCustom] = useState<boolean>(initial?.display?.card != null);
+  const [cardShow, setCardShow] = useState<ProjectCardElement[]>(
+    initial?.display?.card?.show ?? [...DEFAULT_PROJECT_CARD.show]
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -345,6 +357,8 @@ export default function ViewBuilder({
 
   const needsDate = layout === "calendar" || layout === "agenda";
   const canGroup = layout === "board" || layout === "agenda";
+  // Project cards render on project-scoped list/board views (2026-08-17).
+  const cardApplies = type === "project" && (layout === "list" || layout === "board");
   const dateFields = dateFieldsFor(type);
   const sortFields = sortFieldsFor(type);
   const groupFields = groupFieldsFor(type).filter(
@@ -456,12 +470,20 @@ export default function ViewBuilder({
           : null,
       columns: showsColumns(layout) && columns.length ? columns : null,
       dateProperty: needsDate ? dateProperty : null,
-      // Preserve any other display fields the view already had (dayCount, etc.)
-      // and overlay the calendar mode + timeline zoom this builder edits.
-      display:
-        layout === "calendar"
-          ? ({ ...(initial?.display ?? {}), mode: calMode, zoom: calZoom } as ViewDisplay)
-          : initial?.display ?? null,
+      // Preserve any other display fields the view already had (dayCount, etc.),
+      // overlay the calendar mode + timeline zoom on a calendar layout, and set
+      // or clear the project-card override this builder edits. An empty display
+      // collapses to null so a plain view stores nothing.
+      display: (() => {
+        const d = { ...(initial?.display ?? {}) } as ViewDisplay;
+        if (layout === "calendar") {
+          d.mode = calMode;
+          d.zoom = calZoom;
+        }
+        if (cardApplies && cardCustom) d.card = { show: cardShow };
+        else delete d.card;
+        return Object.keys(d).length ? d : null;
+      })(),
     };
     try {
       const res = await fetch(
@@ -760,6 +782,47 @@ export default function ViewBuilder({
               );
             })}
           </div>
+        </fieldset>
+      )}
+
+      {cardApplies && (
+        <fieldset className="flex flex-col gap-2 rounded-lg border border-neutral-800 p-3">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Project cards
+          </legend>
+          <p className="text-xs text-neutral-600">
+            This view renders projects as rich cards. By default it uses the
+            card set from Build → Types → Project; customize to pick a
+            different set just for this view.
+          </p>
+          <label className="flex items-center gap-2 text-sm text-neutral-300">
+            <input
+              type="checkbox"
+              className="ledgr-check ledgr-check-sm"
+              checked={cardCustom}
+              onChange={(e) => setCardCustom(e.target.checked)}
+            />
+            Customize card elements for this view
+          </label>
+          {cardCustom && (
+            <div className="flex flex-col gap-1.5 pl-6">
+              {PROJECT_CARD_ELEMENTS.map((el) => (
+                <label key={el.key} className="flex items-center gap-2 text-sm text-neutral-300">
+                  <input
+                    type="checkbox"
+                    className="ledgr-check ledgr-check-sm"
+                    checked={cardShow.includes(el.key)}
+                    onChange={() =>
+                      setCardShow((s) =>
+                        s.includes(el.key) ? s.filter((x) => x !== el.key) : [...s, el.key]
+                      )
+                    }
+                  />
+                  {el.label}
+                </label>
+              ))}
+            </div>
+          )}
         </fieldset>
       )}
 

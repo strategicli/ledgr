@@ -5,12 +5,16 @@ import { notFound, redirect } from "next/navigation";
 import TypeBuilder from "@/components/build/TypeBuilder";
 import StatusSchemaEditor from "@/components/build/StatusSchemaEditor";
 import TypeSectionsEditor from "@/components/build/TypeSectionsEditor";
+import CardElementsEditor from "@/components/build/CardElementsEditor";
 import ListTabsEditor from "@/components/build/ListTabsEditor";
 import TocSettingsEditor from "@/components/build/TocSettingsEditor";
+import { resolveProjectCardConfig } from "@/lib/project-card-config";
 import { parseComposition, resolveComposition } from "@/lib/composition";
 import { lensesForType, lensPropertyOptions } from "@/lib/list-lenses";
 import { capabilityById } from "@/lib/modules";
-import { isWidgetAvailable, widgetsForScope } from "@/lib/widgets";
+import { BUILTIN_TOOL_TYPE_KEYS, isWidgetAvailable, widgetsForScope } from "@/lib/widgets";
+import { customToolDefs } from "@/lib/custom-tools";
+import ToolTypeToggle from "@/components/build/ToolTypeToggle";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { tocForType } from "@/lib/toc";
@@ -55,15 +59,18 @@ export default async function EditType({
   // else the built-in starting set — so the editor opens on current behavior
   // rather than an empty list. Collection/relation cards preview N rows, so only
   // those get a count control.
-  const sectionCatalog = widgetsForScope("record")
-    .filter(isWidgetAvailable)
-    .map((w) => ({
-      id: w.id,
-      label: w.label,
-      // The Timeline previews N entries with a drill-down too (2026-08-17), so
-      // it takes the same count control as the collection/relation cards.
-      capped: w.kind === "collection" || w.kind === "relation" || w.id === "timeline",
-    }));
+  const sectionCatalog = [
+    ...widgetsForScope("record").filter(isWidgetAvailable),
+    // The owner's custom-type tools (2026-08-17): designated types join the
+    // sections vocabulary so a type default can carry, say, a Chapters card.
+    ...(await customToolDefs(owner.id)),
+  ].map((w) => ({
+    id: w.id,
+    label: w.label,
+    // The Timeline previews N entries with a drill-down too (2026-08-17), so
+    // it takes the same count control as the collection/relation cards.
+    capped: w.kind === "collection" || w.kind === "relation" || w.id === "timeline",
+  }));
   const storedDefault = parseComposition(type.defaultWidgets);
   const { composition: effectiveSections } = resolveComposition(
     null,
@@ -103,6 +110,26 @@ export default async function EditType({
           initial={storedDefault}
           effective={effectiveSections}
         />
+        {/* Offer-as-a-tool (2026-08-17): any type not already covered by a
+            built-in catalog card can join the Add-a-Tool menu on widget-home
+            records. Hidden for built-in tool types (the card would double). */}
+        {!BUILTIN_TOOL_TYPE_KEYS.has(key) && (
+          <ToolTypeToggle
+            typeKey={key}
+            typeLabel={type.label}
+            initial={settings.toolTypes.includes(key)}
+          />
+        )}
+        {/* Project cards carry a configurable element set (2026-08-17). Only the
+            project type renders cards today; widen this gate when another type
+            grows a card (pursuit is the likely next). */}
+        {key === "project" && (
+          <CardElementsEditor
+            typeKey={key}
+            initial={resolveProjectCardConfig(null, settings.cardsByType[key])}
+            customized={Boolean(settings.cardsByType[key])}
+          />
+        )}
         <ListTabsEditor
           typeKey={key}
           propertyOptions={propertyOptions}

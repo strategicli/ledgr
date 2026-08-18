@@ -9,6 +9,7 @@ import { users } from "@/db/schema";
 import { isIconRef, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 import { parseListTabs, type Lens } from "@/lib/list-lenses";
 import { parseTocByType, type TocConfig } from "@/lib/toc";
+import { parseCardsByType, type ProjectCardConfig } from "@/lib/project-card-config";
 import { sanitizeLayout, type DeskLayout } from "@/lib/desk/layout";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
@@ -301,6 +302,16 @@ export type UserSettings = {
   // Per-type floating-TOC overrides (ADR-114). Keyed by type key; an absent key
   // resolves to DEFAULT_TOC (auto-on). Additive, no migration.
   tocByType: Record<string, TocConfig>;
+  // Per-type project-card element overrides (2026-08-17): which tools a project
+  // card shows wherever cards render (the grid, view lenses, boards). Keyed by
+  // type key ("project" today); an absent key = DEFAULT_PROJECT_CARD. A saved
+  // view can further override via views.display.card. Additive, no migration.
+  cardsByType: Record<string, ProjectCardConfig>;
+  // Type keys the owner offers as TOOLS on widget-home records (2026-08-17):
+  // each becomes a synthetic collection card ("collection:<key>") in Add a
+  // Tool, so a "Chapter" type can be a Chapters card on a Book project.
+  // Toggled from the type's edit page. Additive, no migration.
+  toolTypes: string[];
   // Item ids whose outline the owner has pinned open as a sidebar (ADR-167).
   // Per ITEM, not per type: "I pinned the outline on this long note" is a fact
   // about that note, so it follows the note to every device. Deliberately NOT
@@ -400,6 +411,21 @@ function parseNotificationPrefs(raw: unknown): Record<string, boolean> {
   return out;
 }
 
+// Type keys offered as tools on widget-home records (slug-shaped, deduped,
+// bounded — a malformed entry is dropped, not rejected).
+function parseToolTypes(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    if (!/^[a-z][a-z0-9_]*$/.test(entry)) continue;
+    if (out.includes(entry)) continue;
+    out.push(entry);
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
 // developer/admin destinations (Views, Items) that used to live in the nav are
 // intentionally not here — they belong in Build, not daily nav.
@@ -439,6 +465,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   favorites: [],
   listTabs: {},
   tocByType: {},
+  cardsByType: {},
+  toolTypes: [],
   tocPinnedItems: [],
   relatedLensChoices: {},
   notificationPrefs: {},
@@ -665,6 +693,8 @@ export function parseSettings(raw: unknown): UserSettings {
   const favorites = parseItemIdList(r.favorites, FAVORITES_HARD_CAP);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
+  const cardsByType = parseCardsByType(r.cardsByType);
+  const toolTypes = parseToolTypes(r.toolTypes);
   // ponytail: the whole list is rewritten on every pin toggle. Fine for the
   // dozens of long notes worth pinning; if this ever reaches thousands, move it
   // to its own table (or an items column) rather than growing the settings blob.
@@ -715,6 +745,8 @@ export function parseSettings(raw: unknown): UserSettings {
     favorites,
     listTabs,
     tocByType,
+    cardsByType,
+    toolTypes,
     tocPinnedItems,
     relatedLensChoices,
     notificationPrefs,
