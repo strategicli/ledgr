@@ -307,6 +307,11 @@ export type UserSettings = {
   // type key ("project" today); an absent key = DEFAULT_PROJECT_CARD. A saved
   // view can further override via views.display.card. Additive, no migration.
   cardsByType: Record<string, ProjectCardConfig>;
+  // Type keys the owner offers as TOOLS on widget-home records (2026-08-17):
+  // each becomes a synthetic collection card ("collection:<key>") in Add a
+  // Tool, so a "Chapter" type can be a Chapters card on a Book project.
+  // Toggled from the type's edit page. Additive, no migration.
+  toolTypes: string[];
   // Item ids whose outline the owner has pinned open as a sidebar (ADR-167).
   // Per ITEM, not per type: "I pinned the outline on this long note" is a fact
   // about that note, so it follows the note to every device. Deliberately NOT
@@ -406,6 +411,21 @@ function parseNotificationPrefs(raw: unknown): Record<string, boolean> {
   return out;
 }
 
+// Type keys offered as tools on widget-home records (slug-shaped, deduped,
+// bounded — a malformed entry is dropped, not rejected).
+function parseToolTypes(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    if (!/^[a-z][a-z0-9_]*$/.test(entry)) continue;
+    if (out.includes(entry)) continue;
+    out.push(entry);
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
 // The starting middle slots: Inbox (with its count badge), Tasks, Search. The
 // developer/admin destinations (Views, Items) that used to live in the nav are
 // intentionally not here — they belong in Build, not daily nav.
@@ -446,6 +466,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   listTabs: {},
   tocByType: {},
   cardsByType: {},
+  toolTypes: [],
   tocPinnedItems: [],
   relatedLensChoices: {},
   notificationPrefs: {},
@@ -673,6 +694,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
   const cardsByType = parseCardsByType(r.cardsByType);
+  const toolTypes = parseToolTypes(r.toolTypes);
   // ponytail: the whole list is rewritten on every pin toggle. Fine for the
   // dozens of long notes worth pinning; if this ever reaches thousands, move it
   // to its own table (or an items column) rather than growing the settings blob.
@@ -724,6 +746,7 @@ export function parseSettings(raw: unknown): UserSettings {
     listTabs,
     tocByType,
     cardsByType,
+    toolTypes,
     tocPinnedItems,
     relatedLensChoices,
     notificationPrefs,

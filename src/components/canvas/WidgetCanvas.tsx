@@ -34,7 +34,12 @@ import { bodyMarkdown } from "@/lib/body";
 import { resolveComposition, widgetLimit, type Composition } from "@/lib/composition";
 import { progressPct } from "@/lib/project-progress";
 import { resolveStatusSchema } from "@/lib/status";
-import { availableWidgets } from "@/lib/widgets";
+import { availableWidgets, customToolTypeKey } from "@/lib/widgets";
+import { customToolDefs } from "@/lib/custom-tools";
+import { parseTaskGroupBy, TASK_GROUP_MODES } from "@/lib/task-grouping";
+import AddContainedItemButton from "@/components/canvas/widgets/AddContainedItemButton";
+import RecordViewBeacon from "@/components/records/RecordViewBeacon";
+import DigestControl from "@/components/canvas/DigestControl";
 import { resolveRecordWidgets, type RecordWidgetData } from "@/lib/record-widgets";
 import { getType } from "@/lib/types";
 
@@ -209,6 +214,7 @@ function WidgetInner({
           projectTitle={projectTitle}
           items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, statusCategory: i.statusCategory, urgency: i.urgency, recurrence: i.recurrence, subtasks: i.subtasks ?? null, milestone: i.completesMilestone ?? null }))}
           doneCount={data.doneCount ?? 0}
+          groupBy={parseTaskGroupBy(data.instance.options?.groupBy)}
         />
       );
     case "notes":
@@ -350,27 +356,54 @@ function WidgetInner({
         </div>
       );
     }
-    default:
-      // collection + relation widgets (meetings, links, relatedRecords, …)
+    default: {
+      // A custom-type tool (collection:<key>, 2026-08-17): the generic preview
+      // rows plus the type's own "+ Add", which creates an item of that type
+      // contained by this record and opens it — the Docs/Links launcher shape.
+      const customType = customToolTypeKey(data.def.id);
+      if (customType) {
+        return (
+          <div className="flex flex-col gap-2">
+            <ItemList data={data} />
+            <AddContainedItemButton
+              recordId={recordId}
+              type={customType}
+              label={`Add ${data.def.label.toLowerCase()}`}
+            />
+          </div>
+        );
+      }
+      // collection + relation widgets (relatedRecords, …)
       return <ItemList data={data} />;
+    }
   }
 }
 
-// The "+ Add section" menu contents: catalog sections not already present. For a
-// Project we curate the list (PROJECT_SECTIONS); other widget-home types get the
-// whole catalog.
-function addableSections(type: string, comp: Composition): { id: string; label: string }[] {
+// The "+ Add section" menu contents: catalog sections not already present, plus
+// the owner's custom-type tools (settings.toolTypes → customToolDefs). For a
+// Project we curate the CATALOG list (PROJECT_SECTIONS); custom tools always
+// offer — designating a type as a tool is itself the curation.
+function addableSections(
+  type: string,
+  comp: Composition,
+  customDefs: { id: string; label: string }[]
+): { id: string; label: string }[] {
   const present = new Set(comp.widgets.map((w) => w.defId));
-  return availableWidgets(type)
-    .filter((w) => (type === "project" ? PROJECT_SECTIONS.has(w.id) : true))
-    .filter((w) => !present.has(w.id))
-    .map((w) => ({ id: w.id, label: CARD_TITLE[w.id] ?? w.label }));
+  return [
+    ...availableWidgets(type)
+      .filter((w) => (type === "project" ? PROJECT_SECTIONS.has(w.id) : true))
+      .map((w) => ({ id: w.id, label: CARD_TITLE[w.id] ?? w.label })),
+    ...customDefs,
+  ].filter((w) => !present.has(w.id));
 }
 
 export default async function WidgetCanvas({ item, ownerId, variant }: CanvasProps) {
   const typeDef = await getType(item.type).catch(() => null);
   const { composition } = resolveComposition(item.composition, typeDef?.defaultWidgets, item.type);
-  const widgets = await resolveRecordWidgets(ownerId, item, composition);
+  const [widgets, customDefs] = await Promise.all([
+    resolveRecordWidgets(ownerId, item, composition),
+    customToolDefs(ownerId),
+  ]);
 
   // Render order = composition array order (header widgets are pulled out by id).
   const headerWidgets = widgets.filter((d) => HEADER_WIDGETS.has(d.def.id));
@@ -386,7 +419,11 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
   const showStatus = Boolean(statusData) && statusMode !== "none" && statuses.length > 0;
 
   const hasHeader = showStatus || Boolean(peopleData) || Boolean(progressData);
-  const addable = addableSections(item.type, composition);
+  const addable = addableSections(
+    item.type,
+    composition,
+    customDefs.map((d) => ({ id: d.id, label: d.label }))
+  );
 
   return (
     // Same container as the breadcrumb row + the other canvases (max-w-3xl,
@@ -452,11 +489,28 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
               isBucketWidget(data) || data.def.id === "timeline"
                 ? widgetLimit(data.instance)
                 : undefined,
+            // The Tasks card's gear also offers "Group by" (2026-08-17).
+            ...(data.def.id === "tasks"
+              ? {
+                  groupChoices: [...TASK_GROUP_MODES],
+                  groupCurrent: parseTaskGroupBy(data.instance.options?.groupBy),
+                }
+              : {}),
           }))}
         />
       )}
 
-      <AddSectionButton itemId={item.id} composition={composition} addable={addable} />
+      <div className="flex items-center justify-between gap-3">
+        <AddSectionButton itemId={item.id} composition={composition} addable={addable} />
+        {/* Per-record quiet-surfacing control (tracked container types only). */}
+        {(item.type === "project" || item.type === "pursuit") && (
+          <DigestControl itemId={item.id} composition={composition} />
+        )}
+      </div>
+      {/* Looking at the record IS the check-in (Tyler, 2026-08-17): the beacon
+          resets the Digest staleness clock so an actively-read project never
+          surfaces as "gone quiet." Throttled server-side to one stamp / 12h. */}
+      <RecordViewBeacon itemId={item.id} />
     </div>
   );
 }

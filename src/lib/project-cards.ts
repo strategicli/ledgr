@@ -36,6 +36,9 @@ export type ProjectCard = {
   // Key links (the "links" card element): the record's most recent link items.
   // Empty when the element is off (not fetched) or the project has none.
   links: { id: string; title: string; url: string | null }[];
+  // Starred via ⋯ → favorite (settings.favorites). Visual only for now (Tyler,
+  // 2026-08-17): the card wears a star + a subtle highlight; no reordering.
+  favorited: boolean;
 };
 
 type ProjectRow = { id: string; title: string; status: string; statusCategory: string };
@@ -47,7 +50,8 @@ async function cardData(
   ownerId: string,
   project: ProjectRow,
   statusColor: (key: string) => { label: string; color: string; category: string } | null,
-  withLinks: boolean
+  withLinks: boolean,
+  favorites: ReadonlySet<string>
 ): Promise<ProjectCard> {
   const [tasks, milestones, meetings, people, links] = await Promise.all([
     // Everything associated with the project (any relation) — matches the canvas
@@ -84,13 +88,15 @@ async function cardData(
     people: people.map((p) => ({ id: p.id, title: p.title })),
     counts: { tasks: tasks.length, milestones: milestones.length, meetings: meetings.length },
     links: links.map((l) => ({ id: l.id, title: l.title, url: l.url ?? null })),
+    favorited: favorites.has(project.id),
   };
 }
 
 export async function listProjectCardData(
   ownerId: string,
   projects: ProjectRow[],
-  config?: ProjectCardConfig
+  config?: ProjectCardConfig,
+  favorites?: ReadonlySet<string>
 ): Promise<ProjectCard[]> {
   const schema = await statusSchemaForType("project");
   const statusColor = (key: string) => {
@@ -98,17 +104,8 @@ export async function listProjectCardData(
     return def ? { label: def.label, color: def.color, category: def.category } : null;
   };
   const withLinks = config ? cardShows(config, "links") : false;
-  return Promise.all(projects.map((p) => cardData(ownerId, p, statusColor, withLinks)));
-}
-
-// The owner's type-default card config for the project type (Build → Types →
-// Project → "Card elements"), used wherever a view's display.card doesn't
-// override it.
-export async function projectCardTypeDefault(
-  ownerId: string
-): Promise<ProjectCardConfig | undefined> {
-  const settings = await getSettings(ownerId);
-  return settings.cardsByType["project"];
+  const favs = favorites ?? new Set<string>();
+  return Promise.all(projects.map((p) => cardData(ownerId, p, statusColor, withLinks, favs)));
 }
 
 export type ViewProjectCards = {
@@ -135,9 +132,9 @@ export async function projectCardsForView(
   items: ProjectRow[]
 ): Promise<ViewProjectCards | null> {
   if (!viewRendersProjectCards(view)) return null;
-  const typeDefault = await projectCardTypeDefault(ownerId);
-  const config = resolveProjectCardConfig(view.display?.card, typeDefault);
-  const cards = await listProjectCardData(ownerId, items, config);
+  const settings = await getSettings(ownerId);
+  const config = resolveProjectCardConfig(view.display?.card, settings.cardsByType["project"]);
+  const cards = await listProjectCardData(ownerId, items, config, new Set(settings.favorites));
   const byId: Record<string, ProjectCard> = {};
   for (const c of cards) byId[c.id] = c;
   return { config, byId };

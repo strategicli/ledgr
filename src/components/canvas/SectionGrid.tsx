@@ -21,7 +21,16 @@ const HEADER_WIDGETS = new Set(["status", "people", "progress"]);
 // `countLimit` present → this card previews a collection and gets the hover
 // "show N" gear (its current per-card limit). Undefined → no gear (Overview,
 // derived single-value cards).
-export type SectionItem = { instanceId: string; title: string; body: ReactNode; countLimit?: number };
+export type SectionItem = {
+  instanceId: string;
+  title: string;
+  body: ReactNode;
+  countLimit?: number;
+  // Tasks card only (2026-08-17): the gear also offers "Group by" with these
+  // choices, writing options.groupBy through the same composition PATCH.
+  groupChoices?: string[];
+  groupCurrent?: string;
+};
 
 export default function SectionGrid({
   itemId,
@@ -141,6 +150,8 @@ export default function SectionGrid({
                   instanceId={id}
                   current={it.countLimit}
                   label={it.title}
+                  groupChoices={it.groupChoices}
+                  groupCurrent={it.groupCurrent}
                 />
               )}
               <RemoveSection itemId={itemId} composition={composition} instanceId={id} label={it.title} />

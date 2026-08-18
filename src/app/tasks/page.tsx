@@ -18,6 +18,7 @@ import TaskList, { effTaskDate } from "@/components/tasks/TaskListRow";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { TAGS_ROLE } from "@/lib/tags";
 import { childRollups } from "@/lib/subtasks";
+import { staleProjects } from "@/lib/digest/stale";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
 import { resolveOwner } from "@/lib/owner";
@@ -132,11 +133,51 @@ export default async function Tasks({
     // ids already computed for selection, so it costs a single extra round trip
     // per page rather than one per row (the no-N+1 perf rule).
     const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    // Projects gone quiet (Tyler, 2026-08-17): active projects not opened or
+    // touched within their per-project window surface here as P1-styled
+    // check-in rows — virtual rows, not real tasks (no data to clean up;
+    // opening the project makes the row disappear, because the view beacon
+    // resets the clock). Per-project opt-out lives on the project itself.
+    const quiet = await staleProjects(owner.id);
+    const quietSection =
+      quiet.length > 0 ? (
+        <div>
+          <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${priorityStyle(1).text}`}>
+            Check in
+          </h3>
+          <ul className="mt-1">
+            {quiet.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/items/${p.id}`}
+                  className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60"
+                >
+                  <span className={`shrink-0 rounded border px-1.5 text-xs ${priorityStyle(1).text} ${priorityStyle(1).border}`}>
+                    P1
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">
+                    Check on {p.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-neutral-600">
+                    quiet {p.daysQuiet}d
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null;
     body =
-      onPlate.length === 0 ? (
+      onPlate.length === 0 && !quietSection ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
+      ) : onPlate.length === 0 ? (
+        <div className="mt-4 space-y-4">
+          {quietSection}
+          <p className="px-2 text-sm text-neutral-600">Nothing due today. 🎉</p>
+        </div>
       ) : (
         <div className="mt-4 space-y-4">
+          {quietSection}
           {overdue.length > 0 && (
             <div>
               <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">

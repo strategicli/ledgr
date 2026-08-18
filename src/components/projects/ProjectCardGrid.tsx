@@ -109,6 +109,18 @@ export function ProjectCardBody({
       <div className="flex items-start justify-between gap-2">
         {/* The stretched link: the whole card is clickable, the chips float above. */}
         <h3 className={`min-w-0 flex-1 break-words font-medium text-neutral-100 ${compact ? "text-sm" : ""}`}>
+          {card.favorited && (
+            /* Favorited (⋯ → star): a small filled star riding the title.
+               Visual only, deliberately — no reordering (Tyler, 2026-08-17). */
+            <svg
+              aria-label="Favorited"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="mb-0.5 mr-1.5 inline-block h-3.5 w-3.5 text-[var(--accent)]"
+            >
+              <path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.65 1.13 6.58L12 17.57l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" />
+            </svg>
+          )}
           <Link
             href={`/items/${card.id}`}
             draggable={false}
@@ -199,9 +211,17 @@ export function ProjectCardBody({
   );
 }
 
+// A favorited card gets a whisper of the accent: a tinted border + a faint
+// glow, subtle on purpose (Tyler, 2026-08-17 — "nothing crazy").
+export function projectCardFrameClass(favorited: boolean): string {
+  return favorited
+    ? "border-[var(--accent)]/40 bg-neutral-900/40 shadow-[0_0_14px_-6px_var(--accent)] hover:border-[var(--accent)]/60"
+    : "border-neutral-800 bg-neutral-900/40 hover:border-neutral-700 hover:bg-neutral-900/70";
+}
+
 function Card({ card, config }: { card: ProjectCard; config: ProjectCardConfig }) {
   return (
-    <div className="relative rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/70">
+    <div className={`relative rounded-xl border p-4 transition-colors ${projectCardFrameClass(card.favorited)}`}>
       <ProjectCardBody card={card} config={config} />
     </div>
   );

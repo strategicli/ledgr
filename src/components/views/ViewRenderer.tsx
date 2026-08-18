@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
-import ProjectCardGrid, { ProjectCardBody } from "@/components/projects/ProjectCardGrid";
+import ProjectCardGrid, { ProjectCardBody, projectCardFrameClass } from "@/components/projects/ProjectCardGrid";
 import type { ViewProjectCards } from "@/lib/project-cards";
 import PlannerCalendar from "@/components/planner/PlannerCalendar";
 import RowMenu from "@/components/lists/RowMenu";
@@ -531,7 +531,7 @@ function boardProjectCard(item: ViewItem, projectCards: ViewProjectCards): React
   const card = projectCards.byId[item.id];
   if (!card) return null;
   return (
-    <div className="relative rounded border border-neutral-800 bg-neutral-900 p-2.5 hover:border-neutral-700">
+    <div className={`relative rounded border p-2.5 ${projectCardFrameClass(card.favorited)}`}>
       <ProjectCardBody card={card} config={projectCards.config} compact />
     </div>
   );

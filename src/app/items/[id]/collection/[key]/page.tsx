@@ -34,7 +34,9 @@ import { TAGS_ROLE } from "@/lib/tags";
 import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { boundFilter, milestoneFlagsFor, sortTasksDoneLast } from "@/lib/record-widgets";
-import { widgetById } from "@/lib/widgets";
+import { customToolTypeKey, widgetById } from "@/lib/widgets";
+import { resolveComposition } from "@/lib/composition";
+import { groupTasks, parseTaskGroupBy, type TaskGroupBy } from "@/lib/task-grouping";
 import { countViewItems, queryViewItems, VIEW_MAX, type ViewSort } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -119,11 +121,14 @@ export default async function CollectionPage({
   // Tasks: done always sinks to the bottom (same rule as the card preview).
   const rows = collectionType === "task" ? sortTasksDoneLast(rowsRaw) : rowsRaw;
 
-  const label = COLLECTION_TITLE[def.id] ?? def.label;
+  // A custom-type tool's synthetic def carries a placeholder label; the type's
+  // real label wins (same dressing the record fan-out applies).
   // Typed collection → that type's bulk actions; mixed Related Records → the
   // generic Move + Delete only (bulkConfigForType(null)).
   const typeDef = collectionType ? await getType(collectionType).catch(() => null) : null;
   const bulkConfig = typeDef ? bulkConfigForType(typeDef) : {};
+  const isCustomTool = customToolTypeKey(def.id) !== null;
+  const label = COLLECTION_TITLE[def.id] ?? (isCustomTool ? typeDef?.label ?? def.label : def.label);
 
   // A task collection renders the SAME rows as the Tasks tabs (TaskListRow,
   // 2026-08-17): completable in place (SubtaskCheckbox), swipe + row menu, tag
@@ -147,6 +152,26 @@ export default async function CollectionPage({
   const taskStatuses = isTaskList ? resolveStatusSchema(typeDef?.statusSchema ?? null) : [];
   const { dueToday } = isTaskList && tz ? todayBounds(new Date(), tz) : { dueToday: new Date() };
   const todayYmd = isTaskList && tz ? appTodayYmd(new Date(), tz) : "";
+
+  // The full list honors the Tasks card's "Group by" (options.groupBy on the
+  // record's tasks widget instance, set from the card's hover gear) — the card
+  // and its full page group the same way.
+  let taskGroupBy: TaskGroupBy = "none";
+  if (isTaskList) {
+    const recordTypeDef = await getType(record.type).catch(() => null);
+    const { composition } = resolveComposition(
+      record.composition,
+      recordTypeDef?.defaultWidgets,
+      record.type
+    );
+    const inst =
+      composition.widgets.find((w) => w.defId === def.id && !w.hidden) ??
+      composition.widgets.find((w) => w.defId === def.id);
+    taskGroupBy = parseTaskGroupBy(inst?.options?.groupBy);
+  }
+  const taskGroups = isTaskList
+    ? groupTasks(rows, taskGroupBy, (r) => milestoneFlags?.get(r.id))
+    : [];
 
   // Milestone and meeting collections render the SAME rows as their cards
   // (Tyler, 2026-08-17: "copy the rules we have on the tool to the full page"):
@@ -220,15 +245,26 @@ export default async function CollectionPage({
             {rows.length === 0 ? (
               <p className="mt-4 px-2 text-sm text-neutral-600">Nothing here yet.</p>
             ) : isTaskList ? (
-              <TaskList
-                tasks={rows}
-                dueToday={dueToday}
-                statuses={taskStatuses}
-                rollups={taskRollups}
-                today={todayYmd}
-                tagsBySource={taskTags}
-                milestonesByTask={milestoneFlags}
-              />
+              taskGroups.map((g) => (
+                <div key={g.key}>
+                  {g.label && (
+                    <p className="mt-3 px-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      {g.label}
+                    </p>
+                  )}
+                  <TaskList
+                    tasks={g.rows}
+                    dueToday={dueToday}
+                    statuses={taskStatuses}
+                    rollups={taskRollups}
+                    today={todayYmd}
+                    tagsBySource={taskTags}
+                    // Milestone sections already name the milestone; the
+                    // per-row flag would repeat it.
+                    milestonesByTask={taskGroupBy === "milestone" ? undefined : milestoneFlags}
+                  />
+                </div>
+              ))
             ) : isMilestoneList ? (
               <div className="mt-3">
                 <MilestoneList items={milestoneRows} selectable />
@@ -322,6 +358,16 @@ export default async function CollectionPage({
                 );
               })}
             </ul>
+            {/* A custom-type tool's full page carries the card's typed add. */}
+            {isCustomTool && collectionType && (
+              <div className="mt-3 px-2">
+                <AddContainedItemButton
+                  recordId={id}
+                  type={collectionType}
+                  label={`Add ${label.toLowerCase()}`}
+                />
+              </div>
+            )}
             {rows.length < total && (
               <p className="mt-4 px-2 text-xs text-neutral-600">
                 Showing the first {rows.length} of {total}.

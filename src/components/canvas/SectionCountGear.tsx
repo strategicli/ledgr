@@ -24,12 +24,18 @@ export default function SectionCountGear({
   instanceId,
   current,
   label,
+  groupChoices,
+  groupCurrent,
 }: {
   itemId: string;
   composition: Composition;
   instanceId: string;
   current: number;
   label: string;
+  // Optional second control (the Tasks card, 2026-08-17): a "Group by" radio
+  // block writing options.groupBy through the same composition PATCH.
+  groupChoices?: string[];
+  groupCurrent?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -48,6 +54,28 @@ export default function SectionCountGear({
       ...composition,
       widgets: composition.widgets.map((w) =>
         w.instanceId === instanceId ? { ...w, options: { ...w.options, limit: stored } } : w
+      ),
+    };
+    try {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ composition: next }),
+      });
+      if (res.ok) router.refresh();
+    } finally {
+      setBusy(false);
+      setOpen(false);
+    }
+  }
+
+  async function setOption(key: string, value: string) {
+    if (busy) return;
+    setBusy(true);
+    const next: Composition = {
+      ...composition,
+      widgets: composition.widgets.map((w) =>
+        w.instanceId === instanceId ? { ...w, options: { ...w.options, [key]: value } } : w
       ),
     };
     try {
@@ -117,6 +145,36 @@ export default function SectionCountGear({
               </button>
               );
             })}
+            {groupChoices && groupChoices.length > 0 && (
+              <>
+                <p className="mt-1 border-t border-neutral-800 px-2 pb-1 pt-2 text-[10px] uppercase tracking-wide text-neutral-500">
+                  Group by
+                </p>
+                {groupChoices.map((c) => {
+                  const active = c === (groupCurrent ?? groupChoices[0]);
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={active}
+                      onClick={() => void setOption("groupBy", c)}
+                      disabled={busy}
+                      className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm capitalize hover:bg-neutral-800 ${
+                        active ? "text-neutral-100" : "text-neutral-300"
+                      }`}
+                    >
+                      <span>{c}</span>
+                      {active && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
         </>
       )}

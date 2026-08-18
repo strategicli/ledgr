@@ -13,6 +13,7 @@ import TaskCheckCircle from "@/components/tasks/TaskCheckCircle";
 import MilestoneFlag from "@/components/milestones/MilestoneFlag";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { onListRefreshFlush } from "@/lib/list-refresh";
+import { groupTasks, type TaskGroupBy } from "@/lib/task-grouping";
 
 type Row = {
   id: string;
@@ -34,6 +35,7 @@ export default function TasksWidget({
   projectTitle,
   items,
   doneCount = 0,
+  groupBy = "none",
 }: {
   recordId: string;
   projectTitle: string;
@@ -41,6 +43,9 @@ export default function TasksWidget({
   // How many of the record's tasks are done — they leave the card's rows, so
   // the card offers "N tasks completed" into the full list showing them.
   doneCount?: number;
+  // Optional grouping (the card gear's "Group by"): sections under the
+  // milestone each task completes, or under priority. "none" = the flat list.
+  groupBy?: TaskGroupBy;
 }) {
   // Optimistic done state, mirrored from each row's circle so the TITLE strikes
   // through the instant the circle fills. The server prop stays the source of
@@ -49,60 +54,73 @@ export default function TasksWidget({
   const [doneOverride, setDoneOverride] = useState<Record<string, boolean>>({});
   useEffect(() => onListRefreshFlush(() => setDoneOverride({})), []);
 
+  const groups = groupTasks(items, groupBy, (t) => t.milestone);
+
+  function renderRow(t: Row) {
+    const done = doneOverride[t.id] ?? t.statusCategory === "done";
+    const inner = (
+      <>
+        <TaskCheckCircle
+          itemId={t.id}
+          done={done}
+          priority={t.urgency}
+          onOptimisticChange={(next) =>
+            setDoneOverride((cur) => ({ ...cur, [t.id]: next }))
+          }
+        />
+        <Link
+          href={`/items/${t.id}`}
+          className={`min-w-0 flex-1 truncate hover:text-neutral-200 ${done ? "text-neutral-500 line-through" : "text-neutral-200"}`}
+        >
+          {t.title || "Untitled"}
+          {/* Recurrence reads inline, in the accent color, right in the
+              flow of the task name (Tyler): "Water the plants Weekly on Mon". */}
+          {t.recurrence && !done && (
+            <span className="text-[var(--accent)]"> {t.recurrence}</span>
+          )}
+        </Link>
+        {/* Grouped-by-milestone sections already NAME the milestone; the
+            per-row flag would repeat it. */}
+        {t.milestone && !done && groupBy !== "milestone" && (
+          <MilestoneFlag id={t.milestone.id} title={t.milestone.title} />
+        )}
+      </>
+    );
+    // A task with subtasks gets the expandable "n/m" pill (same component
+    // as the list surfaces); its subtasks fold out beneath it in place.
+    if (t.subtasks && t.subtasks.total > 0) {
+      return (
+        <SubtaskExpandableRow
+          key={t.id}
+          id={t.id}
+          done={t.subtasks.done}
+          total={t.subtasks.total}
+          liClassName="flex items-center gap-2.5 text-sm"
+        >
+          {inner}
+        </SubtaskExpandableRow>
+      );
+    }
+    return (
+      <li key={t.id} className="flex items-center gap-2.5 text-sm">
+        {inner}
+      </li>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       {items.length === 0 && <p className="text-sm text-neutral-500">No tasks yet.</p>}
-      <ul className="flex flex-col gap-1.5">
-        {items.map((t) => {
-          const done = doneOverride[t.id] ?? t.statusCategory === "done";
-          const inner = (
-            <>
-              <TaskCheckCircle
-                itemId={t.id}
-                done={done}
-                priority={t.urgency}
-                onOptimisticChange={(next) =>
-                  setDoneOverride((cur) => ({ ...cur, [t.id]: next }))
-                }
-              />
-              <Link
-                href={`/items/${t.id}`}
-                className={`min-w-0 flex-1 truncate hover:text-neutral-200 ${done ? "text-neutral-500 line-through" : "text-neutral-200"}`}
-              >
-                {t.title || "Untitled"}
-                {/* Recurrence reads inline, in the accent color, right in the
-                    flow of the task name (Tyler): "Water the plants Weekly on Mon". */}
-                {t.recurrence && !done && (
-                  <span className="text-[var(--accent)]"> {t.recurrence}</span>
-                )}
-              </Link>
-              {t.milestone && !done && (
-                <MilestoneFlag id={t.milestone.id} title={t.milestone.title} />
-              )}
-            </>
-          );
-          // A task with subtasks gets the expandable "n/m" pill (same component
-          // as the list surfaces); its subtasks fold out beneath it in place.
-          if (t.subtasks && t.subtasks.total > 0) {
-            return (
-              <SubtaskExpandableRow
-                key={t.id}
-                id={t.id}
-                done={t.subtasks.done}
-                total={t.subtasks.total}
-                liClassName="flex items-center gap-2.5 text-sm"
-              >
-                {inner}
-              </SubtaskExpandableRow>
-            );
-          }
-          return (
-            <li key={t.id} className="flex items-center gap-2.5 text-sm">
-              {inner}
-            </li>
-          );
-        })}
-      </ul>
+      {groups.map((g) => (
+        <div key={g.key}>
+          {g.label && (
+            <p className="mb-1 mt-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              {g.label}
+            </p>
+          )}
+          <ul className="flex flex-col gap-1.5">{g.rows.map(renderRow)}</ul>
+        </div>
+      ))}
       {/* Done tasks leave the card (it previews what's left to do); their count
           stays reachable — "N tasks completed" opens the full list with the
           completed tail expanded (Tyler, 2026-08-17). */}

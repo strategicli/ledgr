@@ -138,7 +138,7 @@ export default async function TypeList({
   const cardConfig = resolveProjectCardConfig(null, settings.cardsByType["project"]);
   const projectCards =
     type === "project" && !viewData && items.length > 0
-      ? await listProjectCardData(owner.id, items, cardConfig)
+      ? await listProjectCardData(owner.id, items, cardConfig, new Set(settings.favorites))
       : [];
 
   // Subtask "n/m" rollups + a linked-item summary for the in-view rows (empty

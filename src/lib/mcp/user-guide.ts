@@ -384,6 +384,31 @@ A project is a hub page composed of **tools**: the things that live in it, an
 activity log, a next action, progress, milestones, a timeline, a mindmap. The
 **Add a Tool** button below the grid adds any tool not already on the page.
 
+**Any type you create can be a project-style hub, and any type can be a tool.**
+A custom type without its own canvas already gets this same tool-composed page
+— make a "Book" or "Video" type and its records carry tasks, milestones,
+docs, progress, the timeline, all of it. And the reverse: flip **Offer as a
+tool** on a type's edit page (Build → Types) and it joins the Add a Tool menu
+everywhere — so a "Chapter" type becomes a Chapters card on your Book, with
+its own "+ Add chapter" and a full-page drill-down. Build the shape your work
+actually has.
+
+**Group the task list, if you want.** The Tasks card's hover gear has a
+**Group by** choice: none (flat, the default), **milestone** (tasks section
+under the milestone they complete), or **priority**. The full task list
+follows whatever the card chooses.
+
+**Favorites show on cards.** Star a project (⋯ → favorite) and its card wears
+a small accent star and a subtle glow, everywhere cards render. Just a visual
+marker — nothing reorders.
+
+**Quiet projects ask for a check-in.** If an active project isn't opened or
+touched for its quiet window (14 days by default), it surfaces at the top of
+**Tasks → Today** as a P1-styled "Check on …" row. Opening the project IS the
+check-in — the row disappears on its own; there's no button to press. Each
+project's **Check-ins** control (bottom of its page) turns this off or changes
+the window.
+
 Choose the default tools every new record starts with, and their order, on the
 type's edit page under **Tools** — or per record, from the record itself. The
 **Overview** reads directly under the title when you've written one; empty, it

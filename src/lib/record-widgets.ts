@@ -8,6 +8,7 @@
 import { listActivity, listActivityForSubjects } from "@/lib/activity";
 import { widgetLimit, type Composition, type RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
+import { getType } from "@/lib/types";
 import { describeRule, parseRecurrence } from "@/lib/recurrence";
 import {
   applyMilestoneShares,
@@ -19,7 +20,7 @@ import {
 import { milestoneProgressParts, milestoneStates } from "@/lib/milestones";
 import { childRollups, listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import { listRelatedItems } from "@/lib/relations";
-import { widgetById, type WidgetDefinition } from "@/lib/widgets";
+import { customToolTypeKey, widgetById, type WidgetDefinition } from "@/lib/widgets";
 import { countViewItems, queryViewItems, type ViewFilter } from "@/lib/views";
 
 const COLLECTION_LIMIT = 50;
@@ -321,7 +322,12 @@ async function dataForWidget(
         : await listActivityForSubjects(ownerId, subjects, ACTIVITY_LIMIT);
     return {
       ...base,
-      activity: events.map((e) => ({ id: e.id, kind: e.kind, summary: e.summary, occurredAt: e.occurredAt })),
+      // checkin_reviewed is plumbing (the view beacon's staleness reset,
+      // 2026-08-17), not narrative — a daily "Reviewed" line would drown the
+      // card. It stays in the log; it just doesn't display here.
+      activity: events
+        .filter((e) => e.kind !== "checkin_reviewed")
+        .map((e) => ({ id: e.id, kind: e.kind, summary: e.summary, occurredAt: e.occurredAt })),
     };
   }
 
@@ -497,9 +503,18 @@ export async function resolveRecordWidgets(
 ): Promise<RecordWidgetData[]> {
   const visible = composition.widgets.filter((iw) => !iw.hidden);
   return Promise.all(
-    visible.map((instance) => {
-      const def = widgetById(instance.defId);
-      if (!def) return Promise.resolve(null);
+    visible.map(async (instance) => {
+      let def = widgetById(instance.defId);
+      if (!def) return null;
+      // A custom-type tool's synthetic def carries a placeholder label; dress
+      // it with the type's real one. A deleted/hidden type retires the card
+      // (the instance stays in the composition — restore the type, it returns).
+      const customKey = customToolTypeKey(def.id);
+      if (customKey) {
+        const t = await getType(customKey).catch(() => null);
+        if (!t || t.hidden) return null;
+        def = { ...def, label: t.label };
+      }
       return dataForWidget(ownerId, record, instance, def);
     })
   ).then((arr) => arr.filter((x): x is RecordWidgetData => x !== null));
