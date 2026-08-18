@@ -12,6 +12,10 @@ credentials. Nothing is shared between instances.
 
 ## How to behave while running this
 
+- **Their only jobs are creating accounts and granting permission.** Everything
+  that can be done through a granted CLI, you do. Never send them to click around
+  a website for something `gh`/`vercel`/`neonctl`/`clerk` can reach — the whole
+  design is: they sign up, they click Allow, you do the rest.
 - **One step at a time.** Before every browser popup, tell the person in one plain
   sentence what window is about to open and what to do in it ("A Vercel page will
   open — click Continue with GitHub"). Wait for each login to finish before starting
@@ -32,14 +36,16 @@ credentials. Nothing is shared between instances.
 
 ## Inputs to collect first
 
-The setup guide's build prompt supplies all four; ask for any that are missing.
+The setup guide's build prompt supplies all three; ask for any that are missing.
 
 1. **`OWNER_EMAIL`** — the exact email address they will sign in with. Read it back
    to them.
 2. **`NAME`** — their first name, lowercased (e.g. `michelle`). Used for the Vercel
    project `<NAME>-ledgr` and the app URL `https://<NAME>-ledgr.vercel.app`.
-3. **`GH_USER`** — their GitHub username.
-4. **`TIMEZONE`** — their IANA timezone (most Bethany folks: `America/Chicago`).
+3. **`TIMEZONE`** — their IANA timezone (most Bethany folks: `America/Chicago`).
+
+**`GH_USER`** (their GitHub username) is not asked for — derive it:
+`gh api user -q .login`.
 
 ## Phase 0 — Preflight
 
@@ -51,11 +57,16 @@ Git.Git`, then have them close and reopen the terminal so PATH updates — you'l
 need to be relaunched in the new window; tell them to run `claude --continue`
 there to pick this session back up).
 
-Every CLI below runs via `npx`, so nothing else needs a global install:
+The npm CLIs run via `npx`, so they need no global install:
 
 - Vercel: `npx -y vercel@latest <cmd>`
 - Neon: `npx -y neonctl@latest <cmd>`
 - Clerk: `npx -y clerk@latest <cmd>` (the npm package is **`clerk`**, not `@clerk/cli`)
+
+GitHub's CLI (`gh`) is not on npm; the guide's step 2 had you install it. If it's
+missing: Windows `winget install GitHub.cli`; macOS `brew install gh` when
+Homebrew exists, otherwise download the latest macOS `.pkg` from
+https://github.com/cli/cli/releases and run `sudo installer -pkg <file> -target /`.
 
 If any CLI's flags disagree with this document, the binary is the source of truth —
 run `--help` and adapt. This doc was written against Vercel CLI 55, neonctl 2.x,
@@ -68,12 +79,14 @@ The setup guide already walked the person through this, one account at a time
 so they could click Allow in the browser. So this phase is a **verification pass**,
 not a redo — but each check has a fallback in case a guide step was skipped:
 
-1. **GitHub fork exists:** `curl -s -o /dev/null -w '%{http_code}'
-   https://github.com/<GH_USER>/ledgr` must be `200`. If not, have them create an
-   account at https://github.com/signup if needed, then open
-   **https://github.com/strategicli/ledgr/fork** and click **Create fork** — a fork
-   lands in whoever clicks the button, so this is the one step you cannot run for
-   them.
+1. **GitHub:** `gh auth status` must show them logged in — on failure, have them
+   create an account at https://github.com/signup if needed, then run
+   `gh auth login --web`, show them the one-time code, and wait while they enter
+   it in the browser and click **Authorize**. That grant is what lets you act on
+   their account. Then set `GH_USER=$(gh api user -q .login)` and verify the fork:
+   `gh repo view "$GH_USER/ledgr"` — on failure, create it yourself:
+   `gh repo fork strategicli/ledgr --clone=false`. Never ask them to click around
+   github.com; the whole point of the grant is that you do the GitHub work.
 2. **Vercel:** `npx -y vercel@latest whoami` — on failure, run
    `npx -y vercel@latest login` and tell them to pick **Continue with GitHub**
    (it makes the git connection in Phase 5 seamless).
@@ -85,7 +98,7 @@ not a redo — but each check has a fallback in case a guide step was skipped:
 ## Phase 2 — Get the code
 
 ```sh
-git clone https://github.com/<GH_USER>/ledgr.git ledgr
+gh repo clone "$GH_USER/ledgr" ledgr
 cd ledgr
 npm install
 ```
@@ -185,12 +198,18 @@ Without a GitHub token, `/build/updates` is status-only and the in-app Changelog
 shows "not connected." With one, they update themselves with a button — the whole
 point being that a non-builder should never need a terminal again.
 
-1. Walk them through creating a **fine-grained personal access token** at
-   https://github.com/settings/personal-access-tokens/new — Repository access:
-   *Only select repositories* → their `ledgr` fork; Permissions: **Contents:
-   Read and write**. Expiration: 1 year (note the date for them somewhere).
-2. `printf '%s' "<token>" | npx -y vercel@latest env add GITHUB_TOKEN production`
-3. Redeploy: `npx -y vercel@latest redeploy <deployment-url>` or push any commit.
+1. Use the token from the gh grant — no clicks needed:
+   `gh auth token | tr -d '\n' | npx -y vercel@latest env add GITHUB_TOKEN production`
+   That token covers their whole account (broader than strictly needed) and is
+   revocable anytime at https://github.com/settings/applications ("GitHub CLI").
+   Tell them that in one sentence and note the alternative: a fine-grained PAT
+   from https://github.com/settings/personal-access-tokens/new scoped to only
+   their `ledgr` fork with **Contents: Read and write** — the better choice if
+   they care, or if this setup ran on a borrowed machine (the cleanup below
+   logs gh out, and they shouldn't leave a personal token minted on someone
+   else's gh session).
+2. Redeploy so it takes effect: `npx -y vercel@latest redeploy <deployment-url>`
+   or push any commit.
 
 Leave `GITHUB_REPO` unset (it defaults to `strategicli/ledgr`, which is what the
 Changelog should read); the self-updater detects their fork from Vercel's own git
@@ -198,16 +217,19 @@ env vars.
 
 ## Phase 8 — Wrap up
 
-1. **Print a summary block** for the person to screenshot / send to Tyler, who
-   keeps the roster in `instances.local.json`:
+1. **Print a summary block** and tell the person to keep a screenshot of it
+   somewhere safe, and to share it with Tyler if he asks (he keeps the roster in
+   `instances.local.json` until instance registration is built into Ledgr itself):
    - name, `GH_USER/ledgr`, `OWNER_EMAIL`, app URL
-   - the pooled `DATABASE_URL` — this is a credential; have them share it with
-     Tyler directly (in person or a private message), not posted anywhere public.
-2. **Say plainly what is not set up:** no R2 means uploads/attachments quietly do
+   - the pooled `DATABASE_URL` — this is a credential; if shared, share it
+     directly (in person or a private message), never posted anywhere public.
+2. **Point them at updates:** show them Build → Updates in the app and say that's
+   how they get new versions from now on — one button, no terminal.
+3. **Say plainly what is not set up:** no R2 means uploads/attachments quietly do
    not work; no transcription; no Microsoft Graph export. All optional, all
    addable later (`.env.example` documents each).
-3. **Clean up:** delete `.env.clerk`. If this ran on a borrowed machine, log out:
-   `npx vercel logout`, `npx clerk auth logout`, and remove
+4. **Clean up:** delete `.env.clerk`. If this ran on a borrowed machine, log out:
+   `npx vercel logout`, `npx clerk auth logout`, `gh auth logout`, and remove
    `~/.config/neonctl/credentials.json`.
-4. The local clone can be kept (handy for future maintenance) or deleted; the
+5. The local clone can be kept (handy for future maintenance) or deleted; the
    deployed instance does not need it.

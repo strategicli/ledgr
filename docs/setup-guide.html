@@ -223,9 +223,9 @@
     <div class="step-body">
       <span class="who who-you">You + Claude</span>
       <h2>GitHub — where your copy of Ledgr lives</h2>
-      <p>Paste this to Claude. It opens the GitHub sign-up page, waits while you create your account, then has you click one button to make your own copy of the Ledgr code.</p>
-      <div class="cmd"><pre>I'm setting up my own Ledgr (step 2 of Tyler's guide: GitHub). Open https://github.com/signup in my browser and wait while I create a GitHub account — if I say I already have one, skip ahead. When I'm signed in, open https://github.com/strategicli/ledgr/fork and wait while I click the green "Create fork" button. Then ask me for my GitHub username and confirm my fork exists.</pre><button class="mini-copy" type="button" data-copy>Copy</button></div>
-      <p class="then"><strong>What you'll see:</strong> the sign-up page, then a page with a green <strong>Create fork</strong> button. Write down the username you picked — the last step asks for it.</p>
+      <p>Paste this to Claude. It opens the GitHub sign-up page and waits while you create your account. Then Claude installs GitHub's tool, you grant it permission, and Claude makes your own copy of the Ledgr code for you.</p>
+      <div class="cmd"><pre>I'm setting up my own Ledgr (step 2 of Tyler's guide: GitHub). First, open https://github.com/signup in my browser and wait while I create a GitHub account — if I say I already have one, skip ahead. Then install GitHub's command-line tool (gh) and connect my account: run gh auth login --web, show me the short code, and wait while I enter it in the browser and click Authorize. Once connected, make my copy of the Ledgr code for me: run gh repo fork strategicli/ledgr --clone=false, then confirm the fork exists and tell me my GitHub username.</pre><button class="mini-copy" type="button" data-copy>Copy</button></div>
+      <p class="then"><strong>What you'll see:</strong> the sign-up page, then Claude shows you a short code (like <strong>ABCD-1234</strong>) — a GitHub page opens, you type the code in and click <strong>Authorize</strong>. Claude handles the rest.</p>
     </div>
   </section>
 
@@ -265,7 +265,7 @@
     <div class="step-body">
       <span class="who who-claude">Claude does the work</span>
       <h2>Build your Ledgr</h2>
-      <p>Answer the four questions below, press the copy button, and paste the result to Claude. This is the big one — Claude sets up the database, connects the pieces, and puts your Ledgr on the internet. It takes 10–15 minutes and narrates as it goes; near the end it asks you to approve one more GitHub connection in the browser.</p>
+      <p>Answer the three questions below, press the copy button, and paste the result to Claude. This is the big one — Claude sets up the database, connects the pieces, and puts your Ledgr on the internet. It takes 10–15 minutes and narrates as it goes; near the end it asks you to approve one more GitHub connection in the browser.</p>
       <div class="card">
         <div class="field">
           <label for="email">The email address you'll sign in to Ledgr with</label>
@@ -276,10 +276,6 @@
           <label for="fname">Your first name</label>
           <input id="fname" type="text" autocomplete="given-name" placeholder="michelle">
           <div class="hint">Used to name your copy, like <em>michelle-ledgr</em>.</div>
-        </div>
-        <div class="field">
-          <label for="ghuser">Your GitHub username</label>
-          <input id="ghuser" type="text" autocomplete="off" placeholder="the one you picked in step 2">
         </div>
         <div class="field">
           <label for="tz">Your timezone</label>
@@ -309,9 +305,10 @@
   <section class="step">
     <div class="step-num">8</div>
     <div class="step-body">
-      <span class="who who-you">You do this</span>
-      <h2>Send Tyler the summary</h2>
-      <p>Claude ends with a short summary block. Screenshot it and send it to Tyler privately (text or in person — it contains a password-like line). He keeps a list of everyone's copies so he can help if something ever needs fixing.</p>
+      <span class="who who-you">You do this — later, whenever</span>
+      <h2>Getting updates</h2>
+      <p>Ledgr keeps improving, and your copy was set up to take updates safely. When you want the latest: inside Ledgr, go to <strong>Build → Updates</strong> and press the button if one is offered. That's the whole thing — no terminal, no Claude. If an update ever has a problem, your current version simply stays running.</p>
+      <p>Claude also ends the setup with a short summary block — keep a screenshot of it somewhere safe, and share it with Tyler if he asks (he can help if anything ever needs fixing).</p>
     </div>
   </section>
 
@@ -326,8 +323,6 @@
       <dd>Just tell Claude what you see on the screen. It can read error messages and try again. Nothing in this setup is fragile — steps can be safely re-run.</dd>
       <dt>Uploading a photo or file doesn't work</dt>
       <dd>That's expected for now — file storage is an optional extra that isn't part of the basic setup. Ask Tyler if you want it added.</dd>
-      <dt>How do I get updates later?</dt>
-      <dd>Inside Ledgr, go to <strong>Build → Updates</strong> and press the button when one is offered. No terminal, no Claude needed.</dd>
     </dl>
   </section>
 
@@ -336,14 +331,13 @@
   </footer>
 </main>
 <script>
-  const tmpl = (email, name, gh, tz) =>
+  const tmpl = (email, name, tz) =>
 `Time to build my Ledgr (step 6 of Tyler's guide). All four accounts — GitHub, Vercel, Neon, Clerk — are already created and connected from the earlier steps, and my fork of the code exists.
 
-Fetch https://raw.githubusercontent.com/strategicli/ledgr/main/docs/satellite-setup.md and follow that procedure one step at a time. Verify each account connection instead of redoing the logins.
+Fetch https://raw.githubusercontent.com/strategicli/ledgr/main/docs/satellite-setup.md and follow that procedure one step at a time. Verify each account connection instead of redoing the logins, and get my GitHub username from the gh tool.
 
 My sign-in email is: ${email}
 My first name is: ${name}
-My GitHub username is: ${gh}
 My timezone is: ${tz}
 
 I'm not technical. Explain each step in plain language, tell me clearly whenever I need to do something in a browser window, and wait for me to finish before moving on.`;
@@ -361,11 +355,9 @@ I'm not technical. Explain each step in plain language, tell me clearly whenever
   btn.addEventListener("click", async () => {
     const email = $("email").value.trim();
     const name = $("fname").value.trim().toLowerCase();
-    const gh = $("ghuser").value.trim();
     if (!email || !email.includes("@")) { $("email").focus(); btn.textContent = "Enter your email first"; return; }
     if (!name) { $("fname").focus(); btn.textContent = "Enter your first name"; return; }
-    if (!gh) { $("ghuser").focus(); btn.textContent = "Enter your GitHub username"; return; }
-    const text = tmpl(email, name, gh, $("tz").value);
+    const text = tmpl(email, name, $("tz").value);
     $("preview").textContent = text;
     try {
       await navigator.clipboard.writeText(text);
