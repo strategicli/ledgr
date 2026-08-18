@@ -75,7 +75,10 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
     parent && !parent.deletedAt ? { href: `/items/${parent.id}`, title: parent.title || "Untitled" } : null;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 md:px-10">
+    // No right padding at the split width (Tyler, 2026-08-18): the rail panel
+    // runs to the container's right edge (the scrollbar in the modal). Stacked
+    // mobile keeps px-4 on both sides.
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:pl-8 sm:pr-0 md:pl-10">
       {parentLink && (
         <Link
           href={parentLink.href}

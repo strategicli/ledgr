@@ -47,7 +47,8 @@ export default function ConnectionStrip({ items }: { items: RowConnection[] }) {
   if (items.length === 0) return null;
 
   return (
-    <span className="relative min-w-0 flex-1">
+    // z-[1]: chips must sit above the row's stretched title-link overlay.
+    <span className="relative z-[1] min-w-0 flex-1">
       <span
         ref={scroller}
         data-scroll-x

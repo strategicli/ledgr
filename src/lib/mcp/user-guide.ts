@@ -346,6 +346,14 @@ Build your own kinds of item at \`/build/types\`.
 
 Ledgr is its own task manager. Nothing else needs to be running.
 
+- **Six tabs at \`/tasks\`:** Today (overdue + due, grouped by priority), All
+  (every open task), Upcoming (week-paged days), **Overdue** (every past-due
+  task in one sweepable list — click each row's date to reschedule in place),
+  Projects (each project with its open tasks), and Planner (drag-to-schedule
+  calendar).
+- **Type "/" while naming a task** to jump to its description: everything
+  after the slash lands in the task's body. Word-boundary only, so dates like
+  9/13 and URLs never trigger it.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
   deadline.

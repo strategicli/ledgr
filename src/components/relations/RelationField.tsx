@@ -356,8 +356,21 @@ export default function RelationField({
   if (!heading) return body;
 
   const hasContent = readOnlyChips.length > 0 || chips.length > 0 || open;
+  const canAdd = !atCapacity && !open && !busy;
   return (
-    <div className="flex w-full flex-col gap-1">
+    // The WHOLE section is the add target (Tyler, 2026-08-18 — "like Priority"):
+    // clicking anywhere in it opens the typeahead, except on a chip, the ✕, or
+    // the input themselves (the closest() guard), which keep their own jobs.
+    <div
+      className={`flex w-full flex-col gap-1 rounded-md transition-colors ${
+        canAdd ? "cursor-pointer hover:bg-surface-2/60" : ""
+      }`}
+      onClick={(e) => {
+        if (!canAdd) return;
+        if ((e.target as HTMLElement).closest("a,button,input")) return;
+        setOpen(true);
+      }}
+    >
       <div className="flex items-center justify-between">
         <span className={RAIL_LABEL}>{heading}</span>
         {!atCapacity && !open && (

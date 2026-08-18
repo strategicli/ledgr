@@ -58,6 +58,7 @@ export default function PriorityRow({
         <RowFace
           label="Priority"
           empty={val == null}
+          inline
           icon={<FlagGlyph className={cur ? cur.text : "text-ink-faint"} />}
         >
           {cur ? <span className={cur.text}>{cur.label}</span> : "Add"}

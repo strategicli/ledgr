@@ -39,12 +39,15 @@ export function FlagGlyph({ className = "" }: { className?: string }) {
 }
 
 // Small label line on top, value (or muted placeholder) with an optional
-// leading glyph under it — the Todoist stacked section.
+// leading glyph under it — the Todoist stacked section. `inline` keeps a short
+// value (Priority's P-chip) on the label's own line instead (Tyler, 2026-08-18:
+// "to the right rather than underneath").
 export function RowFace({
   label,
   empty = false,
   overdue = false,
   icon,
+  inline = false,
   children,
 }: {
   label: string;
@@ -53,19 +56,31 @@ export function RowFace({
   overdue?: boolean;
   // A leading glyph on the value line (calendar, flag…); dims when empty.
   icon?: ReactNode;
+  inline?: boolean;
   children: ReactNode;
 }) {
+  const value = (
+    <span
+      className={`flex min-w-0 items-center gap-2 ${
+        overdue ? "text-red-400" : empty ? "text-ink-faint" : "text-ink"
+      }`}
+    >
+      {icon}
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+  if (inline) {
+    return (
+      <span className="flex w-full items-center justify-between gap-3">
+        <span className={RAIL_LABEL}>{label}</span>
+        {value}
+      </span>
+    );
+  }
   return (
     <span className="flex w-full flex-col gap-1">
       <span className={RAIL_LABEL}>{label}</span>
-      <span
-        className={`flex min-w-0 items-center gap-2 ${
-          overdue ? "text-red-400" : empty ? "text-ink-faint" : "text-ink"
-        }`}
-      >
-        {icon}
-        <span className="min-w-0 truncate">{children}</span>
-      </span>
+      {value}
     </span>
   );
 }

@@ -179,6 +179,7 @@ export default function AddTaskCard({
   // (The old "@name = assignee" shortcut was retired here — a dedicated assignee
   // picker can hang off the Assignee chip later.)
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const descRef = useRef<HTMLInputElement>(null);
   const { glyph, typeLabel } = useTypeGlyphs();
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -439,6 +440,20 @@ export default function AddTaskCard({
       if (e.key === "Enter") { e.preventDefault(); pickSelected(); return; }
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDismissedQuery(mention?.rawQuery ?? null); return; }
     }
+    // "/" at a word boundary hands off to the description (Tyler, 2026-08-18):
+    // type the title, hit "/", keep typing — the rest lands in the task's body.
+    // Word-boundary only, so "9/13" and "https://…" never trigger it.
+    if (e.key === "/" && !mOpen) {
+      const el = e.currentTarget;
+      const at = el.selectionStart ?? 0;
+      const before = at === 0 ? " " : el.value[at - 1];
+      if (/\s/.test(before)) {
+        e.preventDefault();
+        setShowDesc(true);
+        requestAnimationFrame(() => descRef.current?.focus());
+        return;
+      }
+    }
     if (e.key === "Enter") { e.preventDefault(); void create(); }
     if (e.key === "Escape") onCancel();
   }
@@ -510,8 +525,13 @@ export default function AddTaskCard({
 
       {(showDesc || description) && (
         <input
+          ref={descRef}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); void create(); }
+            if (e.key === "Escape") onCancel();
+          }}
           placeholder="Description"
           aria-label="Description"
           className="mt-1 w-full bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"

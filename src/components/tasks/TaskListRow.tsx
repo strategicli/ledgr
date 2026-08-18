@@ -60,9 +60,12 @@ export function effTaskDate(t: {
 }
 
 // items-start (not center): the row is now up to three lines tall, and the
-// checkboxes hang with the title line (the h-5 wrapper below).
+// checkboxes hang with the title line (the h-5 wrapper below). `relative`
+// anchors the title link's stretched overlay, which makes the WHOLE row a
+// click target (Tyler, 2026-08-18) — interactive bits raise above it with
+// z-[1].
 export const TASK_ROW_CLASS =
-  "group flex items-start gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
+  "group relative flex items-start gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
 
 export function TaskRow({
   task,
@@ -119,19 +122,29 @@ export function TaskRow({
     <>
         {/* h-5 matches the title line's text-sm line height, so the circles sit
             on the first line of a multi-line row. */}
-        <span className="flex h-5 shrink-0 items-center gap-2.5">
+        <span className="relative z-[1] flex h-5 shrink-0 items-center gap-2.5">
           <SelectCheckbox id={task.id} />
-          <SubtaskCheckbox id={task.id} done={done} />
+          {/* vanishRow: completing from a list optimistically fades the row out
+              (these surfaces all drop done rows), so it doesn't linger until the
+              coalesced refresh returns from the server. */}
+          <SubtaskCheckbox id={task.id} done={done} vanishRow />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
+            {/* The stretched overlay (after:inset-0) makes the whole row open
+                the task; SwipeRow's sliding div (transformed) or the row <li>
+                (relative) is its containing block. */}
             <Link
               href={`/items/${task.id}`}
-              className={`min-w-0 flex-1 truncate text-sm ${task.title ? "text-neutral-200" : "text-neutral-500"} ${done ? "line-through opacity-60" : ""}`}
+              className={`min-w-0 flex-1 truncate text-sm after:absolute after:inset-0 after:content-[''] ${task.title ? "text-neutral-200" : "text-neutral-500"} ${done ? "line-through opacity-60" : ""}`}
             >
               {task.title || "Untitled"}
             </Link>
-            {milestone && <MilestoneFlag id={milestone.id} title={milestone.title} />}
+            {milestone && (
+              <span className="relative z-[1] flex shrink-0">
+                <MilestoneFlag id={milestone.id} title={milestone.title} />
+              </span>
+            )}
             {pri != null && pri <= 5 && (
               <span className={`shrink-0 rounded border px-1.5 text-xs ${priorityStyle(pri).text} ${priorityStyle(pri).border}`}>
                 P{pri}
@@ -143,6 +156,7 @@ export function TaskRow({
                 {sdef.label}
               </span>
             )}
+            <span className="relative z-[1] flex shrink-0">
             <TaskDateEdit
               id={task.id}
               ymd={date ? date.toISOString().slice(0, 10) : null}
@@ -155,20 +169,25 @@ export function TaskRow({
               recurrence={recurrence}
               scheduledTime={scheduledTime}
             />
+            </span>
           </span>
+          {/* Plain text, not a link — the row's stretched overlay opens the task. */}
           {excerpt && (
-            <Link
-              href={`/items/${task.id}`}
-              className="mt-0.5 block truncate text-xs text-neutral-500 hover:text-neutral-400"
-            >
+            <span className="mt-0.5 block truncate text-xs text-neutral-500">
               {excerpt}
-            </Link>
+            </span>
           )}
           {hasMeta && (
             <span className="mt-0.5 flex items-center gap-2">
-              {hasPill && <SubtaskPillSlot />}
+              {hasPill && (
+                <span className="relative z-[1] flex shrink-0">
+                  <SubtaskPillSlot />
+                </span>
+              )}
               <ConnectionStrip items={strip} />
               {project && (
+                // Accent so a project-homed task pops in the list (Tyler,
+                // 2026-08-18); the parent breadcrumb stays muted.
                 <Link
                   href={`/items/${project.id}`}
                   title={
@@ -176,15 +195,15 @@ export function TaskRow({
                       ? `${projectParent.title || "Untitled"} / ${project.title || "Untitled project"}`
                       : project.title || "Untitled project"
                   }
-                  className="ml-auto inline-flex max-w-[14rem] shrink-0 items-center text-xs text-neutral-500 hover:text-neutral-300"
+                  className="relative z-[1] ml-auto inline-flex max-w-[14rem] shrink-0 items-center text-xs"
                 >
                   {projectParent && (
                     <>
-                      <span className="max-w-[6rem] truncate">{projectParent.title || "Untitled"}</span>
+                      <span className="max-w-[6rem] truncate text-neutral-500">{projectParent.title || "Untitled"}</span>
                       <span className="px-0.5 text-neutral-700">/</span>
                     </>
                   )}
-                  <span className="truncate">{project.title || "Untitled project"}</span>
+                  <span className="truncate text-[var(--accent)] hover:underline">{project.title || "Untitled project"}</span>
                 </Link>
               )}
             </span>
