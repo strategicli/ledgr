@@ -11,6 +11,7 @@ import { AppAuthProvider } from "@/lib/auth/provider";
 import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
+import { createLogger } from "@/lib/log";
 import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX, UI_SCALE } from "@/lib/settings";
 import { DEFAULT_TIMEZONE, primeAppTimezone } from "@/lib/today";
 import "./globals.css";
@@ -109,8 +110,18 @@ export default async function RootLayout({
       sectionStyle = s.sectionStyle;
       tz = s.timezone ?? DEFAULT_TIMEZONE;
     }
-  } catch {
-    /* defaults */
+  } catch (err) {
+    // Next's dynamic-usage marker must propagate (it's how a build learns the
+    // route is dynamic, not a failure) — rethrow it instead of logging noise.
+    if ((err as { digest?: string })?.digest === "DYNAMIC_SERVER_USAGE") throw err;
+    // The defaults fallback is deliberate (the shell must always render), but
+    // swallowing the failure SILENTLY is how the 2026-08-19 vanished-chrome
+    // incident hid — a request that wore default-blue with no nav left no
+    // trace. Rule 9: say why in the drain.
+    createLogger("layout.settings").warn(
+      "owner/settings resolution failed; rendering default chrome",
+      { error: err instanceof Error ? err.message : String(err) }
+    );
   }
   primeAppTimezone(tz);
   // Per-surface interface density. Must set --ui-scale on :root (custom
