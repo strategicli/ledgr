@@ -16,12 +16,17 @@ export default async function PeopleRow({
   ownerId,
   itemId,
   bare = false,
+  rail = false,
 }: {
   ownerId: string;
   itemId: string;
   // Stack the label above its value instead of holding a fixed 128px label
   // column — the narrow-rail layout its sibling property rows use.
   bare?: boolean;
+  // Todoist-style rail section (Tyler, 2026-08-18): RelationField draws the
+  // "People" label line itself with the "+" add on the right; mention-only
+  // persons ride along as its read-only chips.
+  rail?: boolean;
 }) {
   const related = await listRelatedItems(ownerId, itemId);
   const people = related.filter(
@@ -31,6 +36,25 @@ export default async function PeopleRow({
     p.roles.every((r) => r === MENTION_ROLE)
   );
   const editable = people.filter((p) => p.roles.some((r) => r !== MENTION_ROLE));
+
+  if (rail) {
+    return (
+      <RelationField
+        itemId={itemId}
+        role={null}
+        targetType="person"
+        targetTypeLabel="Person"
+        cardinality="many"
+        initial={editable.map((p) => ({ id: p.id, title: p.title }))}
+        heading="People"
+        readOnlyChips={mentionOnly.map((p) => ({
+          id: p.id,
+          title: p.title,
+          hint: "Linked by an @-mention in the body",
+        }))}
+      />
+    );
+  }
 
   // Own <dl> wrapper: this renders as a sibling of RelationProperties' list,
   // and a bare <dt>/<dd> outside a <dl> is invalid markup.

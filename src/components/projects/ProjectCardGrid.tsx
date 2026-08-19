@@ -16,6 +16,7 @@
 // Selection/bulk-select is deliberately off here (a gallery layout, like the
 // board/calendar exceptions in CLAUDE.md); the plain list lens still has it.
 import Link from "next/link";
+import PersonAvatar from "@/components/people/PersonAvatar";
 import type { ReactNode } from "react";
 import { progressPct } from "@/lib/project-progress";
 import {
@@ -25,11 +26,6 @@ import {
 } from "@/lib/project-card-config";
 import type { ProjectCard } from "@/lib/project-cards";
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
-}
 
 // One count segment, deep-linking into the collection's full list page.
 function CountBit({
@@ -156,13 +152,10 @@ export function ProjectCardBody({
       {cardShows(config, "people") && card.people.length > 0 && (
         <div className="flex items-center">
           {shown.map((p, i) => (
-            <span
-              key={p.id}
-              title={p.title || "Untitled"}
-              className="flex h-6 w-6 items-center justify-center rounded-full border border-neutral-900 bg-neutral-700 text-[10px] font-medium text-neutral-200"
-              style={{ marginLeft: i === 0 ? 0 : -6 }}
-            >
-              {initials(p.title)}
+            // Face when the person's built-in Image is set, initials otherwise
+            // (the pre-avatar look) — ADR-202 addendum 3.
+            <span key={p.id} style={{ marginLeft: i === 0 ? 0 : -6 }} className="flex">
+              <PersonAvatar src={p.image ?? null} name={p.title} size={24} fallback="initials" />
             </span>
           ))}
           {extra > 0 && <span className="ml-1.5 text-xs text-neutral-500">+{extra}</span>}

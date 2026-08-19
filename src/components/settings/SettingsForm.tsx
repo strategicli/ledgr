@@ -253,6 +253,8 @@ export default function SettingsForm({
           {[
             { id: "deadline", label: "Deadline (due date)" },
             { id: "priority", label: "Priority" },
+            { id: "tags", label: "Tag" },
+            { id: "person", label: "Person" },
             { id: "assignee", label: "Assignee" },
           ].map((it) => {
             const shown = !settings.quickAddHidden.includes(it.id);

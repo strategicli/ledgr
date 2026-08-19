@@ -22,15 +22,14 @@ import MindmapList, { type MindmapRow } from "@/components/mindmaps/MindmapList"
 import NoteList, { type NoteRow } from "@/components/notes/NoteList";
 import MilestoneList, { type MilestoneRow } from "@/components/milestones/MilestoneList";
 import TaskList from "@/components/tasks/TaskListRow";
+import { taskRowMeta } from "@/lib/task-row-meta";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { milestoneStates } from "@/lib/milestones";
 import { getItem } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { appTodayYmd } from "@/lib/recurrence-service";
-import { outgoingRelationsBySource } from "@/lib/relations";
 import { resolveStatusSchema } from "@/lib/status";
 import { childRollups } from "@/lib/subtasks";
-import { TAGS_ROLE } from "@/lib/tags";
 import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { boundFilter, milestoneFlagsFor, sortTasksDoneLast } from "@/lib/record-widgets";
@@ -136,11 +135,9 @@ export default async function CollectionPage({
   // beneath it — the subtasks ride along with their parent rather than
   // cluttering the top level. Two extra batched queries, same as /tasks.
   const isTaskList = collectionType === "task";
-  const [taskRollups, taskTags, tz, doneCount, milestoneFlags] = await Promise.all([
+  const [taskRollups, taskMeta, tz, doneCount, milestoneFlags] = await Promise.all([
     isTaskList ? childRollups(owner.id, rows.map((r) => r.id)) : undefined,
-    isTaskList
-      ? outgoingRelationsBySource(owner.id, rows.map((r) => r.id), TAGS_ROLE)
-      : undefined,
+    isTaskList ? taskRowMeta(owner.id, rows.map((r) => r.id)) : undefined,
     isTaskList ? getAppTimezone(owner.id) : undefined,
     // The completed tail's size, for the "N tasks completed" line at the bottom.
     isTaskList
@@ -258,7 +255,10 @@ export default async function CollectionPage({
                     statuses={taskStatuses}
                     rollups={taskRollups}
                     today={todayYmd}
-                    tagsBySource={taskTags}
+                    meta={taskMeta}
+                    // These rows already live under this record; the project
+                    // chip would repeat the page header.
+                    showProject={false}
                     // Milestone sections already name the milestone; the
                     // per-row flag would repeat it.
                     milestonesByTask={taskGroupBy === "milestone" ? undefined : milestoneFlags}

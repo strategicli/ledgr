@@ -324,7 +324,7 @@ export default function CustomProperties({
         key={prop.key}
         className={`group text-sm ${bare ? "flex flex-col gap-0.5" : "flex items-center gap-3"}`}
       >
-        <dt className={bare ? "text-neutral-500" : "w-32 shrink-0 text-neutral-500"}>
+        <dt className={bare ? "text-xs font-medium text-ink-subtle" : "w-32 shrink-0 text-neutral-500"}>
           <InlineLabel typeKey={typeKey} propertyKey={prop.key} label={prop.label} />
         </dt>
         <dd className="flex min-w-0 items-center gap-1">

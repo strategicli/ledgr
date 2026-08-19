@@ -346,12 +346,42 @@ Build your own kinds of item at \`/build/types\`.
 
 Ledgr is its own task manager. Nothing else needs to be running.
 
+- **Six tabs at \`/tasks\`:** Today (overdue + due, grouped by priority), All
+  (every open task), Upcoming (week-paged days), **Overdue** (every past-due
+  task in one sweepable list — click each row's date to reschedule in place),
+  Projects (each project with its open tasks), and Planner (drag-to-schedule
+  calendar).
+- **Type "/" while naming a task** to jump to its description: everything
+  after the slash lands in the task's body. Word-boundary only, so dates like
+  9/13 and URLs never trigger it.
+- **The add card's chip row** carries Date, Priority, **Tag**, and **Person**
+  pickers (sigils still work: "#" tags, "@" links, "+" files), and the **⋯**
+  chip opens any other custom property on the task type so you can set it at
+  creation.
+- **People get faces.** The person type ships with a built-in **Image**: a
+  square picture box on the person's page — click it to upload a photo (it's
+  center-cropped square automatically) or paste an image URL, and Remove lives
+  in the same panel. Project cards' people circles and a task row's person
+  chips then show the face, falling back to initials or the person glyph
+  without one.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
   deadline.
 - **Six priorities,** P1 to P6, colour-coded. They drive the checkbox colour, row
   chips and grouping.
 - **Subtasks nest,** with an "n of m done" rollup and a breadcrumb.
+- **Rows tell you more at a glance.** A task row shows its title, the first
+  line of its body as a one-line description, an **n/m pill** that folds its
+  subtasks out underneath (they start closed — click the arrow), its tag and
+  connection chips (people, records — scroll the strip sideways when there
+  are many), and the project it belongs to on the right.
+- **Click the date on any row to change it.** The row's date is a button
+  opening a full scheduler: quick picks (Tomorrow, Later this week, This
+  weekend, Next week, No date), a month calendar, a free-text box ("next fri
+  9am"), and Time / Repeat controls. It edits what's shown — the scheduled
+  date if the task has one, otherwise the due date — and a repeat glyph
+  beside it marks a repeating task. The same picker now backs the Schedule
+  and Due popovers on the task page.
 - **Reschedule fast:** Today / Tomorrow / +1wk chips, or type "in 3 days" or
   "next Tuesday".
 - **Roll overdue tasks forward** in one click from Today. It moves the plan and

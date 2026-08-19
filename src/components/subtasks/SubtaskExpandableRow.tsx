@@ -11,10 +11,22 @@
 // together so one client component can own the shared open state.
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import Link from "next/link";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 import { useRowMenu, type RowMenuOptions } from "@/components/lists/RowMenu";
+
+// How a host places the pill INSIDE its own row markup instead of at the
+// trailing edge (the redesigned task row puts it on the meta line, ADR-202).
+// A function child can't cross the server→client boundary, so the pill travels
+// by context: pass pillPlacement="slot" and render <SubtaskPillSlot /> where
+// the pill should appear. Outside a slot-mode expandable row the slot renders
+// nothing, so hosts can include it unconditionally.
+const PillContext = createContext<ReactNode | null>(null);
+
+export function SubtaskPillSlot() {
+  return <>{useContext(PillContext)}</>;
+}
 
 // The subtree endpoint serializes dates to strings, so this mirrors SubtaskNode
 // with string dates rather than reusing it (which types them as Date).
@@ -104,6 +116,7 @@ export default function SubtaskExpandableRow({
   liClassName,
   children,
   menuOptions,
+  pillPlacement = "trailing",
 }: {
   id: string;
   done: number;
@@ -115,6 +128,10 @@ export default function SubtaskExpandableRow({
   // Wires the shared row context menu (S4) onto this row too, so a task with
   // subtasks gets the same long-press/right-click actions as a plain row.
   menuOptions?: RowMenuOptions;
+  // "trailing" (default) appends the "n/m" pill after the children — the
+  // original shape, still what the generic list / views / widgets use. "slot"
+  // hands the pill to <SubtaskPillSlot /> inside the children instead.
+  pillPlacement?: "trailing" | "slot";
 }) {
   const [open, setOpen] = useState(false);
   const [nodes, setNodes] = useState<TreeNode[] | null>(null);
@@ -143,20 +160,30 @@ export default function SubtaskExpandableRow({
     }
   }
 
+  const pill = (
+    <button
+      type="button"
+      onClick={() => void toggle()}
+      aria-expanded={open}
+      title={open ? "Hide subtasks" : "Show subtasks"}
+      className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+    >
+      <Chevron open={open} />
+      {done}/{total}
+    </button>
+  );
+
   return (
     <>
       <li className={liClassName} {...(menu ? menu.handlers : {})}>
-        {children}
-        <button
-          type="button"
-          onClick={() => void toggle()}
-          aria-expanded={open}
-          title={open ? "Hide subtasks" : "Show subtasks"}
-          className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-        >
-          <Chevron open={open} />
-          {done}/{total}
-        </button>
+        {pillPlacement === "slot" ? (
+          <PillContext.Provider value={pill}>{children}</PillContext.Provider>
+        ) : (
+          <>
+            {children}
+            {pill}
+          </>
+        )}
         {menu?.menu}
       </li>
       {open && (

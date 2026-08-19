@@ -20,6 +20,8 @@ import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import ItemLayoutGrid from "@/components/canvas/ItemLayoutGrid";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import CustomProperties from "@/components/build/CustomProperties";
+import PersonImageBox from "@/components/people/PersonImageBox";
+import { personImage } from "@/lib/person-image";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
@@ -208,6 +210,11 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         return <MeetingTranscripts ownerId={ownerId} itemId={item.id} bare />;
       if (id.startsWith("prop:")) {
         const key = id.slice(5);
+        // The person's built-in Image edits through the picture box (upload /
+        // URL / remove — ADR-202 addendum 4), not a bare url row.
+        if (item.type === "person" && key === "image") {
+          return <PersonImageBox itemId={item.id} initial={personImage(item.properties)} />;
+        }
         const def = propertySchema.find((p) => p.key === key);
         return def ? (
           <CustomProperties
@@ -294,6 +301,13 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         locked={locked}
         collapsibleToolbar
       />
+      {/* The person's picture (ADR-202 addendum 4): a square box — click to
+          upload (center-cropped square) or paste a URL. Feeds every avatar. */}
+      {item.type === "person" && (
+        <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
+          <PersonImageBox itemId={item.id} initial={personImage(item.properties)} />
+        </div>
+      )}
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
           meeting line it came from; clicking deep-links + flashes that line. */}
       {sourceLink && (
@@ -338,7 +352,13 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             <CustomProperties
               itemId={item.id}
               typeKey={item.type}
-              schema={propertySchema}
+              // The person's Image edits through the picture box above, so the
+              // raw url row would repeat it.
+              schema={
+                item.type === "person"
+                  ? propertySchema.filter((pr) => pr.key !== "image")
+                  : propertySchema
+              }
               initial={(item.properties as Record<string, unknown>) ?? {}}
               locked={locked}
               hideHeading

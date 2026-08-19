@@ -35,6 +35,9 @@ import {
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
 import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
+import { showToast } from "@/components/ui/ActionToast";
+import DayPickerPanel from "@/components/ui/DayPickerPanel";
+import type { PropertyDef } from "@/lib/types";
 
 function localTodayYmd(): string {
   const d = new Date();
@@ -161,6 +164,22 @@ export default function AddTaskCard({
   const [qaHidden, setQaHidden] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pickDate, setPickDate] = useState(false);
+  // Tag + Person chips (Tyler, 2026-08-18): pick tags/persons without typing
+  // the "#"/"@" sigils. Picked tags merge with "#" tokens on save; picked
+  // persons ride the same `linked` list the "@" mentions use (related edges).
+  const [pickedTags, setPickedTags] = useState<{ id: string | null; name: string }[]>([]);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagQ, setTagQ] = useState("");
+  const [personOpen, setPersonOpen] = useState(false);
+  const [personQ, setPersonQ] = useState("");
+  const [personHits, setPersonHits] = useState<{ id: string; title: string }[]>([]);
+  // The kebab (⋯): any OTHER custom property on the task type, set at creation.
+  // Schema loads on first open; opened keys render small per-kind editors whose
+  // values land in the POST's properties.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [taskSchema, setTaskSchema] = useState<PropertyDef[] | null>(null);
+  const [openProps, setOpenProps] = useState<string[]>([]);
+  const [extraProps, setExtraProps] = useState<Record<string, unknown>>({});
   const showAction = (id: string) => !qaHidden.has(id);
   // Two chip-row controls are placeholders with nothing wired behind them yet:
   // the "Rich editor" button (no canvas handoff) and the "Assignee" chip (the
@@ -179,6 +198,7 @@ export default function AddTaskCard({
   // (The old "@name = assignee" shortcut was retired here — a dedicated assignee
   // picker can hang off the Assignee chip later.)
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const descRef = useRef<HTMLInputElement>(null);
   const { glyph, typeLabel } = useTypeGlyphs();
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -201,6 +221,73 @@ export default function AddTaskCard({
       .then((d) => setTags(Array.isArray(d?.items) ? d.items : []))
       .catch(() => {});
   }, []);
+
+  // Person chip typeahead: a small debounced search over person items.
+  useEffect(() => {
+    if (!personOpen) return;
+    const q = personQ.trim();
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ type: "person", limit: "8" });
+        if (q) params.set("q", q);
+        const res = await fetch(`/api/items?${params}`, { signal: ctrl.signal });
+        if (!res.ok) return;
+        const d = (await res.json()) as { items: { id: string; title: string }[] };
+        setPersonHits(Array.isArray(d.items) ? d.items : []);
+      } catch {
+        // aborted or offline; the next keystroke retries
+      }
+    }, 150);
+    return () => {
+      ctrl.abort();
+      clearTimeout(t);
+    };
+  }, [personOpen, personQ]);
+
+  // Kebab: the task type's OTHER custom scalar properties (relation kinds have
+  // their own chips/sigils; multi_select defers). Loaded on mount so the kebab
+  // can HIDE entirely when there is nothing beyond the built-in chips to offer
+  // (Tyler, 2026-08-18).
+  useEffect(() => {
+    fetch("/api/types/task")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const schema = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]) : [];
+        setTaskSchema(schema.filter((pr) => pr.kind !== "relation" && pr.kind !== "multi_select"));
+      })
+      .catch(() => setTaskSchema([]));
+  }, []);
+
+  // Chip popovers (date / tag / person / kebab) dismiss on any outside click —
+  // each wrapper wears data-chip-pop, so a click inside any of them survives.
+  useEffect(() => {
+    if (!pickDate && !tagOpen && !personOpen && !moreOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest?.("[data-chip-pop]")) return;
+      setPickDate(false);
+      setTagOpen(false);
+      setPersonOpen(false);
+      setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [pickDate, tagOpen, personOpen, moreOpen]);
+
+  // Clicking anywhere OUTSIDE the card dismisses it, like Cancel (Tyler,
+  // 2026-08-18 — "I expect both to work"). Chip popovers and portaled menus
+  // don't count as outside.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (cardRef.current?.contains(t)) return;
+      if (t.closest?.("[data-chip-pop],[data-row-menu]")) return;
+      onCancel();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onCancel]);
 
   const mention = useMemo(() => detectMentionToken(title, caret), [title, caret]);
   const { hits, typeFilter, query: mQuery } = useMentionTypeahead(mention);
@@ -309,8 +396,40 @@ export default function AddTaskCard({
     if (urg != null) body.urgency = urg;
     const props: Record<string, unknown> = {};
     if (rec) props.recurrence = rec;
+    // Kebab-opened custom properties: only committed values ride along.
+    for (const [k, v] of Object.entries(extraProps)) {
+      if (v !== "" && v != null) props[k] = v;
+    }
     if (Object.keys(props).length) body.properties = props;
     if (description.trim()) body.body = { format: "markdown", text: description.trim() };
+
+    // "#" tokens + Tag-chip picks, deduped by name (case-blind) so typing
+    // "#prayer" AND picking "Prayer" can't double-tag or double-create.
+    const pendingTags: { id: string | null; name: string }[] = [];
+    for (const t of [
+      ...tagMatches.map((t) => ({ id: t.tag?.id ?? null, name: t.name })),
+      ...pickedTags,
+    ]) {
+      if (!pendingTags.some((x) => x.name.toLowerCase() === t.name.toLowerCase())) pendingTags.push(t);
+    }
+
+    // Every edge with a KNOWN target rides the create itself (`relateTo`,
+    // ADR-202 addendum 5): the destination project, "@"-linked items, and
+    // existing tags. The old follow-up POSTs swallowed failures — a task could
+    // land without its project (Tyler hit exactly that on a record's full task
+    // list) — and the offline outbox replayed the bare create with no edges at
+    // all. Only brand-new tags still need the post-create flow (the tag has to
+    // exist before it can be linked).
+    const relateTo: { targetId: string; role?: string }[] = [];
+    if (destId !== "inbox") {
+      relateTo.push({ targetId: destId, role: destId === host?.id ? host.role ?? "related" : "project" });
+    }
+    for (const l of linked) relateTo.push({ targetId: l.id, role: "related" });
+    for (const t of pendingTags) {
+      if (t.id) relateTo.push({ targetId: t.id, role: TAGS_ROLE });
+    }
+    if (relateTo.length > 0) body.relateTo = relateTo;
+    const newTags = pendingTags.filter((t) => t.id === null);
 
     // POST the task and wire up its destination/@-linked relations. Shared by
     // both paths below. Returns the created id so the optimistic path can settle
@@ -325,35 +444,36 @@ export default function AddTaskCard({
       // Read the body unconditionally: it used to be parsed only when there were
       // relations to write, but the id is now always wanted, and a response body
       // can only be consumed once.
-      const { item } = (await res.json()) as { item: { id: string } };
-      if (destId !== "inbox" || linked.length > 0 || tagMatches.length > 0) {
+      const { item, relateErrors } = (await res.json()) as {
+        item: { id: string };
+        relateErrors?: string[];
+      };
+      // The server wrote the known edges with the create; say so if any failed
+      // instead of silently shipping an unassociated task.
+      if (relateErrors && relateErrors.length > 0) {
+        showToast("Task created, but linking it failed");
+      }
+      if (newTags.length > 0) {
         const rel = (targetId: string, role: string) =>
           fetch(`/api/items/${item.id}/relations`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ targetId, role }),
           }).catch(() => {});
-        if (destId !== "inbox") await rel(destId, destId === host?.id ? host.role ?? "related" : "project");
-        // "@"-linked items → plain `related` edges (the universal related list).
-        await Promise.all(linked.map((l) => rel(l.id, "related")));
-        // "#tag" tokens → `tags` edges, creating the tag when it's new. Tags are
-        // created WITHOUT inbox:true (unlike the "@" create-on-miss stub): a tag
-        // isn't an untriaged capture, it's a finished thing the moment it's named.
-        // Sequential rather than parallel so two "#" tokens naming the same new tag
-        // in one submit can't race into two duplicate tag items.
-        for (const t of tagMatches) {
-          let tagId = t.tag?.id ?? null;
-          if (!tagId) {
-            const tr = await fetch("/api/items", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: TAG_TYPE, title: t.name }),
-            }).catch(() => null);
-            if (!tr || !tr.ok) continue;
-            const created = (await tr.json()) as { item?: { id?: string } };
-            tagId = created.item?.id ?? null;
-          }
-          if (tagId) await rel(tagId, TAGS_ROLE);
+        // Brand-new "#tag"/picked tags → create the tag, then the `tags` edge.
+        // Tags are created WITHOUT inbox:true (unlike the "@" create-on-miss
+        // stub): a tag isn't an untriaged capture, it's a finished thing the
+        // moment it's named. Sequential so two tokens naming the same new tag
+        // in one submit can't race into duplicates.
+        for (const t of newTags) {
+          const tr = await fetch("/api/items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: TAG_TYPE, title: t.name }),
+          }).catch(() => null);
+          if (!tr || !tr.ok) continue;
+          const created = (await tr.json()) as { item?: { id?: string } };
+          if (created.item?.id) await rel(created.item.id, TAGS_ROLE);
         }
       }
       return item.id;
@@ -439,6 +559,20 @@ export default function AddTaskCard({
       if (e.key === "Enter") { e.preventDefault(); pickSelected(); return; }
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDismissedQuery(mention?.rawQuery ?? null); return; }
     }
+    // "/" at a word boundary hands off to the description (Tyler, 2026-08-18):
+    // type the title, hit "/", keep typing — the rest lands in the task's body.
+    // Word-boundary only, so "9/13" and "https://…" never trigger it.
+    if (e.key === "/" && !mOpen) {
+      const el = e.currentTarget;
+      const at = el.selectionStart ?? 0;
+      const before = at === 0 ? " " : el.value[at - 1];
+      if (/\s/.test(before)) {
+        e.preventDefault();
+        setShowDesc(true);
+        requestAnimationFrame(() => descRef.current?.focus());
+        return;
+      }
+    }
     if (e.key === "Enter") { e.preventDefault(); void create(); }
     if (e.key === "Escape") onCancel();
   }
@@ -447,7 +581,7 @@ export default function AddTaskCard({
   const destProject = projects.find((p) => p.id === effDest);
 
   return (
-    <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-lg shadow-black/40">
+    <div ref={cardRef} className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-lg shadow-black/40">
       {/* title + top-right toggles */}
       <div className="flex items-start gap-2">
         {/* The title wraps to multiple lines as it grows: a textarea overlays an
@@ -510,8 +644,13 @@ export default function AddTaskCard({
 
       {(showDesc || description) && (
         <input
+          ref={descRef}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); void create(); }
+            if (e.key === "Escape") onCancel();
+          }}
           placeholder="Description"
           aria-label="Description"
           className="mt-1 w-full bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
@@ -526,7 +665,7 @@ export default function AddTaskCard({
           rather than silently appearing in your tag list afterwards. This is the
           legibility half of the fix: the old "#" ate the word with no feedback at
           all. Read-only chips (edit the text to change them). */}
-      {tagMatches.length > 0 && (
+      {(tagMatches.length > 0 || pickedTags.length > 0) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {tagMatches.map((t) => (
             <span
@@ -539,27 +678,49 @@ export default function AddTaskCard({
               {!t.tag && <span className="text-[var(--accent)]">new</span>}
             </span>
           ))}
+          {pickedTags.map((t) => (
+            <span
+              key={`picked-${t.name}`}
+              className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs text-ink-muted"
+              title={t.id ? `Existing tag "${t.name}"` : `Creates a new tag "${t.name}"`}
+            >
+              <span className="text-ink-faint">{IconHash}</span>
+              {t.name}
+              {!t.id && <span className="text-[var(--accent)]">new</span>}
+              <button
+                type="button"
+                aria-label={`Remove tag ${t.name}`}
+                onClick={() => setPickedTags((cur) => cur.filter((x) => x.name !== t.name))}
+                className="text-neutral-500 hover:text-red-400"
+              >
+                {IconX}
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
       {/* SVG chip row — detected date/recurrence/priority/project fill these in */}
       <div className="mt-2 flex flex-wrap items-center gap-2 border-b border-neutral-800 pb-3">
         {showAction("deadline") && (
-          <span className="relative">
+          <span className="relative" data-chip-pop>
             <button type="button" className={`${chip} ${scheduleLabel ? "text-[var(--accent)]" : ""}`} onClick={() => setPickDate((v) => !v)}>
               {recurrenceLabel ? IconRepeat : IconCalendar} {scheduleLabel ?? "Date"}
               {scheduleLabel && (
                 <span role="button" aria-label="Clear date" onClick={(e) => { e.stopPropagation(); setDue(""); setScheduled(""); setDateCleared(true); }} className="text-neutral-500 hover:text-neutral-200">{IconX}</span>
               )}
             </button>
+            {/* The same Todoist-shaped picker the task rows use (quick picks +
+                month grid + free text) — one date UI everywhere. */}
             {pickDate && (
-              <span className="absolute left-0 top-full z-10 mt-1 flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1">
-                <DateInput
-                  value={due || null}
-                  autoFocus
-                  ariaLabel="Date"
-                  onCommit={(ymd) => { setDue(ymd); setPickDate(false); setDateCleared(false); }}
-                  className="bg-transparent text-sm text-neutral-200 outline-none [color-scheme:dark]"
+              <span className="absolute left-0 top-full z-20 mt-1 block max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-2 shadow-xl shadow-black/50">
+                <DayPickerPanel
+                  valueYmd={due || null}
+                  today={localTodayYmd()}
+                  onPick={(ymd) => {
+                    if (ymd) { setDue(ymd); setDateCleared(false); } else { setDue(""); setScheduled(""); setDateCleared(true); }
+                    setPickDate(false);
+                  }}
                 />
               </span>
             )}
@@ -582,6 +743,94 @@ export default function AddTaskCard({
             <span className={`pointer-events-none absolute right-1.5 ${pStyle ? pStyle.text : "text-neutral-500"}`}>{IconFlag}</span>
           </span>
         )}
+        {/* Tag chip (Tyler, 2026-08-18): pick from existing tags (the 200 the
+            token matcher already loads) or create one, without typing "#". */}
+        {showAction("tags") && (
+          <span className="relative" data-chip-pop>
+            <button type="button" className={chip} onClick={() => { setTagOpen((v) => !v); setTagQ(""); }}>
+              {IconHash} Tag
+            </button>
+            {tagOpen && (
+              <span className="absolute left-0 top-full z-10 mt-1 flex w-56 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
+                <input
+                  autoFocus
+                  value={tagQ}
+                  onChange={(e) => setTagQ(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") setTagOpen(false); }}
+                  placeholder="Search tags…"
+                  aria-label="Search tags"
+                  className="mb-1 w-full rounded border border-neutral-700 bg-transparent px-2 py-1 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-500"
+                />
+                <span className="max-h-44 overflow-y-auto">
+                  {tags
+                    .filter((t) => t.title.toLowerCase().includes(tagQ.trim().toLowerCase()))
+                    .filter((t) => !pickedTags.some((x) => x.name.toLowerCase() === t.title.toLowerCase()))
+                    .slice(0, 8)
+                    .map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => { setPickedTags((cur) => [...cur, { id: t.id, name: t.title }]); setTagOpen(false); }}
+                        className="flex w-full items-center rounded px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800"
+                      >
+                        {t.title || "Untitled"}
+                      </button>
+                    ))}
+                  {tagQ.trim() !== "" &&
+                    !tags.some((t) => t.title.trim().toLowerCase() === tagQ.trim().toLowerCase()) && (
+                      <button
+                        type="button"
+                        onClick={() => { setPickedTags((cur) => [...cur, { id: null, name: tagQ.trim() }]); setTagOpen(false); }}
+                        className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-sm hover:bg-neutral-800"
+                      >
+                        <span className="text-neutral-400">Create</span>
+                        <span className="min-w-0 flex-1 truncate text-neutral-100">“{tagQ.trim()}”</span>
+                      </button>
+                    )}
+                </span>
+              </span>
+            )}
+          </span>
+        )}
+        {/* Person chip: attach a person (a `related` edge — the same list the
+            "@" mention writes, so LinkedChips shows and removes them). */}
+        {showAction("person") && (
+          <span className="relative" data-chip-pop>
+            <button type="button" className={chip} onClick={() => { setPersonOpen((v) => !v); setPersonQ(""); }}>
+              {IconUser} Person
+            </button>
+            {personOpen && (
+              <span className="absolute left-0 top-full z-10 mt-1 flex w-56 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
+                <input
+                  autoFocus
+                  value={personQ}
+                  onChange={(e) => setPersonQ(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") setPersonOpen(false); }}
+                  placeholder="Search people…"
+                  aria-label="Search people"
+                  className="mb-1 w-full rounded border border-neutral-700 bg-transparent px-2 py-1 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-500"
+                />
+                <span className="max-h-44 overflow-y-auto">
+                  {personHits
+                    .filter((h) => !alreadyLinked(h.id))
+                    .map((h) => (
+                      <button
+                        key={h.id}
+                        type="button"
+                        onClick={() => { setLinked((cur) => [...cur, { id: h.id, title: h.title, type: "person" }]); setPersonOpen(false); }}
+                        className="flex w-full items-center rounded px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800"
+                      >
+                        {h.title || "Untitled"}
+                      </button>
+                    ))}
+                  {personHits.length === 0 && (
+                    <span className="block px-2 py-1 text-xs text-neutral-600">No matches.</span>
+                  )}
+                </span>
+              </span>
+            )}
+          </span>
+        )}
         {/* Assignee is kept as a placeholder chip (defer-by-hiding): assign-by-@
             was retired when "@" became a generic link, and a dedicated picker
             can hang off this chip later. Config-hideable via Quick Add. */}
@@ -590,8 +839,94 @@ export default function AddTaskCard({
             {IconUser} Assignee
           </span>
         )}
-        <button type="button" className="rounded-md border border-neutral-700 px-2 py-1 text-neutral-400 hover:border-neutral-600" title="More" aria-label="More">{IconDots}</button>
+        {/* The kebab (Tyler, 2026-08-18): every OTHER custom property the task
+            type carries, settable at creation. Hidden entirely when the type has
+            nothing beyond the built-in chips; the h-5 content line matches the
+            text chips' height. */}
+        {taskSchema != null && taskSchema.length > 0 && (
+        <span className="relative" data-chip-pop>
+          <button type="button" className={chip} onClick={() => setMoreOpen((v) => !v)} title="More properties" aria-label="More properties">
+            <span className="flex h-5 items-center">{IconDots}</span>
+          </button>
+          {moreOpen && (
+            <span className="absolute left-0 top-full z-10 mt-1 flex w-56 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
+              {taskSchema.filter((pr) => !openProps.includes(pr.key)).length === 0 ? (
+                <span className="block px-2 py-1 text-xs text-neutral-600">
+                  Every property is already shown.
+                </span>
+              ) : (
+                taskSchema
+                  .filter((pr) => !openProps.includes(pr.key))
+                  .map((pr) => (
+                    <button
+                      key={pr.key}
+                      type="button"
+                      onClick={() => { setOpenProps((cur) => [...cur, pr.key]); setMoreOpen(false); }}
+                      className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800"
+                    >
+                      {pr.label}
+                      <span className="text-xs text-neutral-600">{pr.kind}</span>
+                    </button>
+                  ))
+              )}
+            </span>
+          )}
+        </span>
+        )}
       </div>
+
+      {/* Kebab-opened property editors: one compact labelled control per opened
+          key; the value rides the POST's properties. */}
+      {openProps.length > 0 && taskSchema && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {openProps.map((key) => {
+            const def = taskSchema.find((pr) => pr.key === key);
+            if (!def) return null;
+            const val = extraProps[key];
+            const set = (v: unknown) => setExtraProps((cur) => ({ ...cur, [key]: v }));
+            const drop = () => {
+              setOpenProps((cur) => cur.filter((k) => k !== key));
+              setExtraProps((cur) => { const next = { ...cur }; delete next[key]; return next; });
+            };
+            const box = "rounded border border-neutral-700 bg-transparent px-2 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-500";
+            return (
+              <span key={key} className="inline-flex items-center gap-1.5 text-sm text-neutral-400">
+                {def.label}
+                {def.kind === "date" ? (
+                  <DateInput
+                    value={typeof val === "string" ? val.slice(0, 10) : null}
+                    onCommit={(ymd) => set(`${ymd}T00:00:00.000Z`)}
+                    ariaLabel={def.label}
+                    className={`${box} [color-scheme:dark]`}
+                  />
+                ) : def.kind === "checkbox" ? (
+                  <input
+                    type="checkbox"
+                    checked={val === true}
+                    onChange={(e) => set(e.target.checked)}
+                    aria-label={def.label}
+                    className="accent-[var(--accent)]"
+                  />
+                ) : def.kind === "select" ? (
+                  <select value={typeof val === "string" ? val : ""} onChange={(e) => set(e.target.value)} aria-label={def.label} className={box}>
+                    <option value="">—</option>
+                    {(def.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type={def.kind === "number" ? "number" : "text"}
+                    value={typeof val === "string" || typeof val === "number" ? String(val) : ""}
+                    onChange={(e) => set(def.kind === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
+                    aria-label={def.label}
+                    className={`${box} w-36`}
+                  />
+                )}
+                <button type="button" aria-label={`Remove ${def.label}`} onClick={drop} className="text-neutral-600 hover:text-red-400">{IconX}</button>
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* footer: destination + actions. When the destination is locked to the
           host (a project's Tasks card), the picker is hidden and the actions get

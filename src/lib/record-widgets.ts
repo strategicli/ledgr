@@ -5,6 +5,7 @@
 // scoped for contained collections), and derived/property widgets read the base
 // + the log. Server-only (queries the DB); the canvas renders what this returns,
 // with no widget-side branching on the record's Type.
+import { personImage } from "@/lib/person-image";
 import { listActivity, listActivityForSubjects } from "@/lib/activity";
 import { widgetLimit, type Composition, type RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
@@ -42,6 +43,9 @@ export type WidgetItemRow = {
   // A human recurrence label (e.g. "Weekly on Mon") when the item repeats, else
   // null. Surfaced so a task row can show its recurrence inline with the title.
   recurrence: string | null;
+  // Person rows only: the built-in Image (migration 0053), so the header People
+  // chips can wear the face. null for other types and unpictured persons.
+  image: string | null;
   // Task rows only (2026-08-17): the "n/m done" rollup over direct task
   // children, so the Tasks card can fold subtasks out beneath their parent
   // (the same expandable pill the list surfaces use). Absent = no subtasks.
@@ -173,6 +177,7 @@ function row(i: Awaited<ReturnType<typeof queryViewItems>>[number]): WidgetItemR
     meetingAt: i.meetingAt,
     url: i.url ?? null,
     recurrence: recurrenceLabel(i.properties),
+    image: i.type === "person" ? personImage(i.properties) : null,
   };
 }
 
@@ -350,6 +355,9 @@ async function dataForWidget(
       meetingAt: r.meetingAt,
       url: (r as { url?: string | null }).url ?? null,
       recurrence: null,
+      // listRelatedItems rows are body/property-free; the contained-records box
+      // doesn't render avatars anyway.
+      image: null,
     }));
     // Preview cap (Tyler, 2026-07-01): show `limit`, keep the true count for the
     // "Showing N of M →" drill-down.

@@ -15,8 +15,7 @@ import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import TaskList, { effTaskDate } from "@/components/tasks/TaskListRow";
-import { outgoingRelationsBySource } from "@/lib/relations";
-import { TAGS_ROLE } from "@/lib/tags";
+import { taskRowMeta } from "@/lib/task-row-meta";
 import { childRollups } from "@/lib/subtasks";
 import { staleProjects } from "@/lib/digest/stale";
 import { bulkConfigForType } from "@/lib/bulk-config";
@@ -33,11 +32,16 @@ import { overlayWindow } from "@/lib/calendar/overlay";
 export const dynamic = "force-dynamic";
 
 type ListedItem = Awaited<ReturnType<typeof queryViewItems>>[number];
-type Tab = "today" | "inbox" | "upcoming" | "projects" | "planner";
+type Tab = "today" | "all" | "upcoming" | "overdue" | "projects" | "planner";
 const TABS: { key: Tab; label: string }[] = [
   { key: "today", label: "Today" },
-  { key: "inbox", label: "Inbox" },
+  // "All" replaced the Inbox tab (Tyler, 2026-08-18): every active task in one
+  // list, dated or not. Untriaged capture still has its own home at /inbox.
+  { key: "all", label: "All" },
   { key: "upcoming", label: "Upcoming" },
+  // Overdue before Projects (Tyler, 2026-08-18): one place to sweep every
+  // past-due task and fix its date with the row's click-to-edit picker.
+  { key: "overdue", label: "Overdue" },
   { key: "projects", label: "Projects" },
   { key: "planner", label: "Planner" },
 ];
@@ -63,9 +67,10 @@ export default async function Tasks({
   const tab: Tab = (TABS.find((t) => t.key === sp.tab)?.key ?? "today") as Tab;
   const weekOffset = Math.max(0, Number.parseInt(typeof sp.week === "string" ? sp.week : "0", 10) || 0);
 
-  const taskType = await getType("task");
+  // Parallel: two independent reads that used to run back-to-back (each
+  // router.refresh pays this page's full latency, so serial awaits are felt).
+  const [taskType, tz] = await Promise.all([getType("task"), getAppTimezone(owner.id)]);
   const statuses = resolveStatusSchema(taskType.statusSchema);
-  const tz = await getAppTimezone(owner.id);
   const { dueToday } = todayBounds(new Date(), tz);
   // App-timezone today (YYYY-MM-DD) for the row menu's Focus + Schedule quick
   // dates (ADR-142). Named `todayYmd` to avoid the "today" tab's local `today`
@@ -128,17 +133,20 @@ export default async function Tasks({
       ...overdue.map((t) => t.id),
       ...ordered.flatMap(([, items]) => items.map((t) => t.id)),
     ];
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Tag chips for the rows about to render. One batched query keyed on the
-    // ids already computed for selection, so it costs a single extra round trip
-    // per page rather than one per row (the no-N+1 perf rule).
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    // Rollups + the per-row extras (excerpt, connections, project breadcrumb) —
+    // batched queries keyed on the ids already computed for selection, so the
+    // cost is a few extra round trips per page, never one per row (the no-N+1
+    // perf rule).
     // Projects gone quiet (Tyler, 2026-08-17): active projects not opened or
     // touched within their per-project window surface here as P1-styled
     // check-in rows — virtual rows, not real tasks (no data to clean up;
     // opening the project makes the row disappear, because the view beacon
     // resets the clock). Per-project opt-out lives on the project itself.
-    const quiet = await staleProjects(owner.id);
+    const [rollups, meta, quiet] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+      staleProjects(owner.id),
+    ]);
     const quietSection =
       quiet.length > 0 ? (
         <div>
@@ -183,7 +191,7 @@ export default async function Tasks({
               <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">
                 Overdue
               </h3>
-              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
             </div>
           )}
           {ordered.map(([k, items]) => {
@@ -193,25 +201,24 @@ export default async function Tasks({
                 <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
                   {k === 6 ? "No priority" : `Priority ${k}`}
                 </h3>
-                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
               </div>
             );
           })}
         </div>
       );
-  } else if (tab === "inbox") {
-    const inbox = await queryViewItems(owner.id, { type: "task", inbox: true, statusCategory: "active" }, { field: "createdAt", dir: "desc" });
-    selectableIds = inbox.map((t) => t.id);
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Tag chips for the rows about to render. One batched query keyed on the
-    // ids already computed for selection, so it costs a single extra round trip
-    // per page rather than one per row (the no-N+1 perf rule).
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+  } else if (tab === "all") {
+    const all = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
+    selectableIds = all.map((t) => t.id);
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     body =
-      inbox.length === 0 ? (
-        <p className="mt-6 px-2 text-sm text-neutral-600">Inbox zero. Quick-capture lands here for triage.</p>
+      all.length === 0 ? (
+        <p className="mt-6 px-2 text-sm text-neutral-600">No open tasks.</p>
       ) : (
-        <TaskList tasks={inbox} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+        <TaskList tasks={all} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
       );
   } else if (tab === "upcoming") {
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
@@ -227,11 +234,10 @@ export default async function Tasks({
     }
     const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
     selectableIds = days.flatMap((d) => (byDay.get(dayKey(d)) ?? []).map((t) => t.id));
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Tag chips for the rows about to render. One batched query keyed on the
-    // ids already computed for selection, so it costs a single extra round trip
-    // per page rather than one per row (the no-N+1 perf rule).
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     body = (
       <div className="mt-4">
         {/* week nav + day-jump chips */}
@@ -265,7 +271,7 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />}
                 <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
@@ -273,6 +279,32 @@ export default async function Tasks({
         </div>
       </div>
     );
+  } else if (tab === "overdue") {
+    // Every active task whose effective date is behind today, oldest first —
+    // the same set Today's Overdue group shows, as its own sweepable surface:
+    // each row's date is click-to-editable, so cleaning up a backlog is one
+    // picker per row without leaving the tab.
+    const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
+    const late = active.filter((t) => {
+      const d = effDate(t);
+      return d != null && d < dueToday;
+    });
+    selectableIds = late.map((t) => t.id);
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
+    body =
+      late.length === 0 ? (
+        <p className="mt-6 px-2 text-sm text-neutral-600">Nothing overdue. 🎉</p>
+      ) : (
+        <div className="mt-4">
+          <p className="px-2 text-xs text-neutral-500">
+            {late.length} overdue — click a row&apos;s date to reschedule it in place.
+          </p>
+          <TaskList tasks={late} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
+        </div>
+      );
   } else if (tab === "planner") {
     // Drag-to-schedule calendar over all active tasks (ADR-131). Defaults to the
     // multi-day time-grid (it self-navigates by day, so no ?month param is needed
@@ -309,10 +341,12 @@ export default async function Tasks({
       }))
     );
     selectableIds = cards.flatMap(({ tasks }) => tasks.map((t) => t.id));
-    const rollups = await childRollups(owner.id, selectableIds);
-    // Same batched tag read as the other tabs — one query for every task across
-    // every project card, not one per card.
-    const tagsBySource = await outgoingRelationsBySource(owner.id, selectableIds, TAGS_ROLE);
+    // Same batched reads as the other tabs — one set of queries for every task
+    // across every project card, not one per card.
+    const [rollups, meta] = await Promise.all([
+      childRollups(owner.id, selectableIds),
+      taskRowMeta(owner.id, selectableIds),
+    ]);
     body =
       cards.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">No projects yet. Create one to gather its tasks, notes, and events.</p>
@@ -334,7 +368,7 @@ export default async function Tasks({
                   )}
                 </div>
                 {tasks.length > 0 ? (
-                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} tagsBySource={tagsBySource} />
+                  <TaskList tasks={tasks} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} showProject={false} />
                 ) : (
                   <p className="mt-2 px-2 text-xs text-neutral-600">No open tasks.</p>
                 )}
@@ -361,7 +395,7 @@ export default async function Tasks({
             <InlineAddTask dueYmd={dayKey(dueToday)} />
           </div>
         )}
-        {tab === "inbox" && (
+        {tab === "all" && (
           <div className="mt-3">
             <InlineAddTask />
           </div>
