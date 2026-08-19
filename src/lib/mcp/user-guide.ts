@@ -415,13 +415,19 @@ activity log, a next action, progress, milestones, a timeline, a mindmap. The
 **Add a Tool** button below the grid adds any tool not already on the page.
 
 **Any type you create can be a project-style hub, and any type can be a tool.**
-A custom type without its own canvas already gets this same tool-composed page
-— make a "Book" or "Video" type and its records carry tasks, milestones,
-docs, progress, the timeline, all of it. And the reverse: flip **Offer as a
-tool** on a type's edit page (Build → Types) and it joins the Add a Tool menu
-everywhere — so a "Chapter" type becomes a Chapters card on your Book, with
-its own "+ Add chapter" and a full-page drill-down. Build the shape your work
-actually has.
+Check **Project-style page** on a type's edit page (Build → Types) and its
+records open as this same tool-composed page — make a "Book" or "Video" type
+and its records carry tasks, milestones, docs, progress, the timeline, all of
+it. Leave it unchecked and records open as a plain document page. And the
+reverse: flip **Offer as a tool** on the same edit page and the type joins the
+Add a Tool menu everywhere — so a "Chapter" type becomes a Chapters card on
+your Book, with its own "+ Add chapter" and a full-page drill-down. Build the
+shape your work actually has.
+
+**Rename any tool card.** Every card's hover gear has a **Rename** box: call
+the Docs card "Sermon research" on one project without touching any other.
+The rename is per record, the card's full drill-down page follows it, and
+saving it empty restores the default name.
 
 **Group the task list, if you want.** The Tasks card's hover gear has a
 **Group by** choice: none (flat, the default), **milestone** (tasks section

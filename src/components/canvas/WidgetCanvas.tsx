@@ -31,7 +31,7 @@ import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
 import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import type { CanvasProps } from "@/lib/modules";
 import { bodyMarkdown } from "@/lib/body";
-import { resolveComposition, widgetLimit, type Composition } from "@/lib/composition";
+import { resolveComposition, widgetLimit, widgetTitle, type Composition } from "@/lib/composition";
 import { progressPct } from "@/lib/project-progress";
 import { resolveStatusSchema } from "@/lib/status";
 import { availableWidgets, customToolTypeKey } from "@/lib/widgets";
@@ -479,24 +479,33 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
           itemId={item.id}
           composition={composition}
           variant={variant}
-          items={cardWidgets.map((data) => ({
-            instanceId: data.instance.instanceId,
-            title: CARD_TITLE[data.def.id] ?? data.def.label,
-            body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} />,
-            // Collection/related cards and the Timeline get the hover "show N"
-            // gear (default 5); Status / derived single-value cards don't.
-            countLimit:
-              isBucketWidget(data) || data.def.id === "timeline"
-                ? widgetLimit(data.instance)
-                : undefined,
-            // The Tasks card's gear also offers "Group by" (2026-08-17).
-            ...(data.def.id === "tasks"
-              ? {
-                  groupChoices: [...TASK_GROUP_MODES],
-                  groupCurrent: parseTaskGroupBy(data.instance.options?.groupBy),
-                }
-              : {}),
-          }))}
+          items={cardWidgets.map((data) => {
+            // A per-record rename (the gear's Rename, options.title) wins over
+            // the catalog default (2026-08-19).
+            const defaultTitle = CARD_TITLE[data.def.id] ?? data.def.label;
+            const customTitle = widgetTitle(data.instance);
+            return {
+              instanceId: data.instance.instanceId,
+              title: customTitle ?? defaultTitle,
+              defaultTitle,
+              customTitle,
+              body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} />,
+              // Collection/related cards and the Timeline get the "show N"
+              // count section in the gear (default 5); Status / derived
+              // single-value cards get the gear (Rename) without it.
+              countLimit:
+                isBucketWidget(data) || data.def.id === "timeline"
+                  ? widgetLimit(data.instance)
+                  : undefined,
+              // The Tasks card's gear also offers "Group by" (2026-08-17).
+              ...(data.def.id === "tasks"
+                ? {
+                    groupChoices: [...TASK_GROUP_MODES],
+                    groupCurrent: parseTaskGroupBy(data.instance.options?.groupBy),
+                  }
+                : {}),
+            };
+          })}
         />
       )}
 

@@ -188,13 +188,13 @@ export const coreModule: ModuleManifest = {
       // widgets bound to the record (PRD §0). The body stays markdown (the
       // Overview widget renders it), so the canonical format is unchanged.
       //
-      // `hidden`: this is no longer a pickable "bespoke tool" — it is the default
-      // homepage for CUSTOM types (TypeBuilder sets it at create; core module
-      // types keep their purpose-built canvas since `typeDefFor` wins first). It
-      // stays a resolvable capability so the types that carry it (custom types,
-      // Project, Pursuit) still route to the widget canvas — it's just dropped
-      // from the Build catalog. (Direction: eventually every type; custom-only for
-      // now — Brandon/Tyler, 2026-07-01.)
+      // `hidden`: not a pickable "bespoke tool" — the Build catalog doesn't
+      // offer it. Since ADR-204 it is an EXPLICIT OPT-IN, not the silent
+      // default it was from 2026-07-01: TypeBuilder's "Project-style page"
+      // checkbox writes it (a new custom type without the checkbox gets the
+      // plain document canvas). It stays a resolvable capability so the types
+      // that carry it (custom types that opted in, Project, Pursuit) still
+      // route to the widget canvas.
       id: "widget-home",
       label: "Widget homepage",
       description: "Compose this type's page from widgets (tasks, notes, milestones, progress, …) bound to the record.",

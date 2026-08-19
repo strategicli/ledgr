@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { createItem } from "@/lib/item-mutations";
 import { getItem } from "@/lib/items";
+import { listTypes } from "@/lib/types";
 import { homeParentRecord, relateItems, setHome } from "@/lib/relations";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,12 @@ type Context = { params: Promise<{ id: string }> };
 // properties.points (the % share of the project bar), taskId links an existing
 // task as the milestone's "Completes with task" (edges with role 'task'), and
 // newTaskTitle creates that task IN this record first, then links it.
+// The built-in collections this route has always served. Custom types are
+// allowed too (ADR-204 — the bug Tyler hit: a type offered as a tool got a 400
+// from this allowlist, and the card's add did nothing): any LIVE, non-hidden
+// type from the registry may be contained. `milestone`/`mindmap` are hidden
+// types, which is why the built-in set stays a fast path rather than folding
+// into the registry check.
 const ALLOWED = new Set(["task", "note", "milestone", "event", "link", "mindmap"]);
 
 export async function POST(request: Request, context: Context) {
@@ -28,7 +35,10 @@ export async function POST(request: Request, context: Context) {
     const raw = (await request.json()) as Record<string, unknown>;
     const type = String(raw.type ?? "");
     if (!ALLOWED.has(type)) {
-      return NextResponse.json({ error: "unsupported contained type" }, { status: 400 });
+      const live = await listTypes(); // excludes hidden + deleted types
+      if (!live.some((t) => t.key === type)) {
+        return NextResponse.json({ error: "unsupported contained type" }, { status: 400 });
+      }
     }
     const title = typeof raw.title === "string" ? raw.title : "";
     const text = typeof raw.text === "string" ? raw.text.trim() : "";

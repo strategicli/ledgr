@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { openItem } from "@/lib/item-nav";
+import { showToast } from "@/components/ui/ActionToast";
 
 export default function AddContainedItemButton({
   recordId,
@@ -34,7 +35,12 @@ export default function AddContainedItemButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ type, title: "" }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Rule 9: this used to return silently, which is how the custom-tool
+        // add bug (ADR-204) hid — the button clicked and nothing happened.
+        showToast(`Couldn't add ${label}`);
+        return;
+      }
       const { item } = (await res.json()) as { item: { id: string } };
       openItem(router, item.id);
     } finally {

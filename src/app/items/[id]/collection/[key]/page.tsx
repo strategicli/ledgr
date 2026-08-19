@@ -34,7 +34,7 @@ import { getAppTimezone, todayBounds } from "@/lib/today";
 import { getType } from "@/lib/types";
 import { boundFilter, milestoneFlagsFor, sortTasksDoneLast } from "@/lib/record-widgets";
 import { customToolTypeKey, widgetById } from "@/lib/widgets";
-import { resolveComposition } from "@/lib/composition";
+import { resolveComposition, widgetTitle } from "@/lib/composition";
 import { groupTasks, parseTaskGroupBy, type TaskGroupBy } from "@/lib/task-grouping";
 import { countViewItems, queryViewItems, VIEW_MAX, type ViewSort } from "@/lib/views";
 
@@ -127,7 +127,24 @@ export default async function CollectionPage({
   const typeDef = collectionType ? await getType(collectionType).catch(() => null) : null;
   const bulkConfig = typeDef ? bulkConfigForType(typeDef) : {};
   const isCustomTool = customToolTypeKey(def.id) !== null;
-  const label = COLLECTION_TITLE[def.id] ?? (isCustomTool ? typeDef?.label ?? def.label : def.label);
+  // The record's composition instance for this card: a per-record rename
+  // (options.title, the card gear's Rename — 2026-08-19) retitles this full
+  // page too, so the card and its drill-down never disagree. The same instance
+  // carries the Tasks card's groupBy (read below), which is why this resolution
+  // is hoisted from the old task-only block.
+  const recordTypeDef = await getType(record.type).catch(() => null);
+  const { composition } = resolveComposition(
+    record.composition,
+    recordTypeDef?.defaultWidgets,
+    record.type
+  );
+  const inst =
+    composition.widgets.find((w) => w.defId === def.id && !w.hidden) ??
+    composition.widgets.find((w) => w.defId === def.id);
+  const label =
+    (inst ? widgetTitle(inst) : null) ??
+    COLLECTION_TITLE[def.id] ??
+    (isCustomTool ? typeDef?.label ?? def.label : def.label);
 
   // A task collection renders the SAME rows as the Tasks tabs (TaskListRow,
   // 2026-08-17): completable in place (SubtaskCheckbox), swipe + row menu, tag
@@ -153,19 +170,9 @@ export default async function CollectionPage({
   // The full list honors the Tasks card's "Group by" (options.groupBy on the
   // record's tasks widget instance, set from the card's hover gear) — the card
   // and its full page group the same way.
-  let taskGroupBy: TaskGroupBy = "none";
-  if (isTaskList) {
-    const recordTypeDef = await getType(record.type).catch(() => null);
-    const { composition } = resolveComposition(
-      record.composition,
-      recordTypeDef?.defaultWidgets,
-      record.type
-    );
-    const inst =
-      composition.widgets.find((w) => w.defId === def.id && !w.hidden) ??
-      composition.widgets.find((w) => w.defId === def.id);
-    taskGroupBy = parseTaskGroupBy(inst?.options?.groupBy);
-  }
+  const taskGroupBy: TaskGroupBy = isTaskList
+    ? parseTaskGroupBy(inst?.options?.groupBy)
+    : "none";
   const taskGroups = isTaskList
     ? groupTasks(rows, taskGroupBy, (r) => milestoneFlags?.get(r.id))
     : [];

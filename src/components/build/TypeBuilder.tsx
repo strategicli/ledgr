@@ -182,6 +182,11 @@ export default function TypeBuilder({
     initial?.showInQuickCapture ?? true
   );
   const [tabsEnabled, setTabsEnabled] = useState(capability === "tabs");
+  // Project-style page: EXPLICIT opt-in (Tyler, 2026-08-18/19 — ADR-204). New
+  // custom types used to get the widget homepage silently, which read as "my
+  // type got treated as a Project"; now it's this checkbox. A type that already
+  // carries widget-home starts checked (grandfathered on; uncheck to leave).
+  const [projectStyle, setProjectStyle] = useState(capability === "widget-home");
   // Seed rows from the existing schema with index ids (no ref read in render).
   const [rows, setRows] = useState<Row[]>(() =>
     (initial?.propertySchema ?? []).map((p, i) => ({
@@ -277,15 +282,19 @@ export default function TypeBuilder({
       icon: icon.trim() || null,
       showInQuickCapture,
       propertySchema: schema,
-      // The "tabs" toggle wins for the capability slot; otherwise preserve any
-      // real bespoke canvas the type already borrowed. Failing both, a CUSTOM
-      // (non-system) type defaults to the Widget Homepage (2026-07-01): the
-      // widget-composed page is the standard homepage for user types now, not a
-      // pickable bespoke tool. Core/system types are left untouched (null) —
-      // their module canvas wins at resolution regardless.
+      // One capability slot, three explicit claimants: the "tabs" toggle, the
+      // "Project-style page" checkbox (widget-home — an OPT-IN since ADR-204;
+      // it used to be the silent default for custom types), then any real
+      // bespoke canvas the type already borrowed. None of them → null, the
+      // plain document canvas (core/system types resolve their module canvas
+      // regardless).
       capability: tabsEnabled
         ? "tabs"
-        : otherCapability ?? (isSystem ? null : "widget-home"),
+        : projectStyle
+          ? "widget-home"
+          : otherCapability !== "widget-home"
+            ? otherCapability
+            : null,
       ...(editing ? {} : { key: finalKey }),
     };
     try {
@@ -343,10 +352,11 @@ export default function TypeBuilder({
     router.refresh();
   }
 
-  // A custom type with no tabs and no borrowed bespoke canvas renders through the
-  // Widget Homepage (its records become a composable widget page). Surface that
-  // plainly so the choice is legible (Brandon's "scope the UI" rule).
-  const willUseWidgetHome = !isSystem && !tabsEnabled && !otherCapability;
+  // The Project-style checkbox renders only where it can actually apply: not on
+  // system types (their module canvas wins) and not on a type borrowing a real
+  // bespoke canvas (single capability slot).
+  const projectStyleAvailable =
+    !isSystem && (otherCapability === null || otherCapability === "widget-home");
 
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
@@ -439,7 +449,12 @@ export default function TypeBuilder({
             type="checkbox"
             checked={isNote || tabsEnabled}
             disabled={isNote}
-            onChange={(e) => setTabsEnabled(e.target.checked)}
+            onChange={(e) => {
+              setTabsEnabled(e.target.checked);
+              // One capability slot: tabs and the project-style page can't
+              // both be on.
+              if (e.target.checked) setProjectStyle(false);
+            }}
             className="ledgr-check"
           />
           <span className="cursor-help underline decoration-dotted decoration-neutral-600 underline-offset-2">
@@ -456,14 +471,29 @@ export default function TypeBuilder({
         </label>
       </div>
 
-      {willUseWidgetHome && (
-        <p className="text-xs text-neutral-500">
-          Records of this type open as a{" "}
-          <span className="font-medium text-neutral-300">Widget Homepage</span>:
-          a composable page of widgets (tasks, notes, milestones, progress, …)
-          bound to each record. That&rsquo;s the standard homepage for your own
-          types; enable tabs above to use the plain document canvas instead.
-        </p>
+      {projectStyleAvailable && (
+        <label className="group relative flex items-center gap-2 pb-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={projectStyle && !tabsEnabled}
+            onChange={(e) => {
+              setProjectStyle(e.target.checked);
+              if (e.target.checked) setTabsEnabled(false);
+            }}
+            className="ledgr-check"
+          />
+          <span className="cursor-help underline decoration-dotted decoration-neutral-600 underline-offset-2">
+            Project-style page
+          </span>
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-72 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs normal-case text-neutral-300 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+          >
+            Records of this type open like a Project: a composable page of
+            tools (tasks, notes, milestones, progress, …) bound to each record,
+            with Add a Tool to shape it. Off = the plain document canvas.
+          </span>
+        </label>
       )}
 
       <fieldset className="flex flex-col gap-3 rounded-lg border border-neutral-800 p-3">
