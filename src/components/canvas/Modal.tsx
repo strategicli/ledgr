@@ -13,8 +13,12 @@
 // (the slot stays mounted, the URL doesn't), close just unmounts the panel:
 // back() there would walk the main pane's history instead of closing.
 // Arrow-walk uses router.replace so ↑/↓ browsing the list doesn't grow history.
-// (Making a single back() always return to the list even after clicking through
-// several items inside the peek is a known rough edge, deferred to its own slice.)
+// While the panel owns the URL, ANY navigation to another item is forced to
+// replace, not push — the capture-phase click interceptor below handles anchor
+// clicks (list rows, related rows), and openItem() in src/lib/item-nav.ts
+// handles programmatic pushes (it reads the body[data-item-panel] flag set
+// here) — so history never grows past the launching surface and one back()
+// always closes back to it, no matter how many items were viewed in the panel.
 // Expand is a plain anchor (hard navigation) so the same URL re-renders as the
 // full page form.
 "use client";
@@ -255,6 +259,52 @@ export default function Modal({
     return () => window.removeEventListener("resize", onResize);
   }, [openMode]);
 
+  // Advertise the open panel to the rest of the app while it owns the URL.
+  // src/lib/item-nav.ts reads this flag to replace instead of push on
+  // programmatic item navigations, keeping close() a single back() to the
+  // launching surface.
+  useEffect(() => {
+    if (stale) return;
+    document.body.dataset.itemPanel = "open";
+    return () => {
+      delete document.body.dataset.itemPanel;
+    };
+  }, [stale]);
+
+  // One close() must always return to the launching surface, no matter how
+  // many items were viewed in the panel (the "close cycles back through every
+  // item" bug). While this panel owns the URL, a plain left-click on any
+  // /items/ link — a background list row, a related-item row, a rendered
+  // mention link — re-renders the panel via replace instead of push, so
+  // history never grows past the launcher. Capture phase beats next/link's
+  // own click handler (Link bails on defaultPrevented). Modified/middle
+  // clicks, target/download links, and data-hard-nav anchors (Expand needs a
+  // real document load) keep their native behavior.
+  useEffect(() => {
+    if (stale) return;
+    const onClickCapture = (e: MouseEvent) => {
+      if (
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey ||
+        e.defaultPrevented
+      )
+        return;
+      const a = (e.target as Element | null)?.closest?.('a[href^="/items/"]');
+      if (!(a instanceof HTMLAnchorElement)) return;
+      if (a.target || a.hasAttribute("download") || a.hasAttribute("data-hard-nav"))
+        return;
+      e.preventDefault();
+      const href = a.getAttribute("href")!;
+      // Same item (e.g. clicking the open item's own row): nothing to do.
+      if (href !== pathname) router.replace(href, { scroll: false });
+    };
+    document.addEventListener("click", onClickCapture, true);
+    return () => document.removeEventListener("click", onClickCapture, true);
+  }, [stale, pathname, router]);
+
   // Lock the page scroll behind a full overlay (sheet or center modal), so a
   // drag on/near the sheet can't scroll the list underneath — the "main page
   // scrolls while I'm aiming at the drawer" report. Peek is non-modal (the list
@@ -420,6 +470,7 @@ export default function Modal({
               intercepted; a document load renders the full page form. */}
           <a
             href={`/items/${itemId}`}
+            data-hard-nav
             className="rounded px-2 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
             title="Expand to full page"
           >

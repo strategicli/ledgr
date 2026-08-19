@@ -14,6 +14,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { openItem } from "@/lib/item-nav";
 import {
   useCallback,
   useEffect,
@@ -309,7 +310,7 @@ export default function ItemRglInner({
   // grid one (Brandon, 2026-06-17). Any real drag/resize/pin/hide already
   // scheduled a save; this commits it immediately, then navigates.
   const handleDone = useCallback(() => {
-    const go = () => router.push(`/items/${itemId}`);
+    const go = () => openItem(router, itemId);
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
@@ -447,7 +448,7 @@ export default function ItemRglInner({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ layout: null }),
     }).catch(() => {});
-    router.push(`/items/${itemId}`);
+    openItem(router, itemId);
     router.refresh();
   }, [typeKey, itemId, router]);
 
