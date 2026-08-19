@@ -17,6 +17,7 @@ import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import TaskList, { effTaskDate } from "@/components/tasks/TaskListRow";
 import { taskRowMeta } from "@/lib/task-row-meta";
 import { childRollups } from "@/lib/subtasks";
+import { foldTodayTasks } from "@/lib/subtask-fold";
 import { staleProjects } from "@/lib/digest/stale";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { priorityStyle, prioritySortKey, type Priority } from "@/lib/priority";
@@ -114,14 +115,22 @@ export default async function Tasks({
     // priority groups (Todoist-style); the rest — due exactly today — group by
     // priority so an overdue item shows once, in Overdue, not also under a
     // priority. Overdue keeps the query's plan-asc order (oldest first).
-    const overdue = onPlate.filter((t) => {
+    const overdueAll = onPlate.filter((t) => {
       const d = effDate(t);
       return d != null && d < dueToday;
     });
-    const dueNow = onPlate.filter((t) => {
+    const dueNowAll = onPlate.filter((t) => {
       const d = effDate(t);
       return d != null && d >= dueToday;
     });
+    // The subtask fold (ADR-205): a task whose parent is also on this page
+    // renders under the parent's pre-expanded tree instead of as its own row
+    // (overdue children hide only under an overdue parent — see subtask-fold).
+    const {
+      overdue,
+      dueToday: dueNow,
+      expandIds,
+    } = foldTodayTasks(overdueAll, dueNowAll);
     // group the rest by priority (1..6; null → 6/none)
     const groups = new Map<number, ListedItem[]>();
     for (const t of dueNow) {
@@ -191,7 +200,7 @@ export default async function Tasks({
               <h3 className="px-2 text-xs font-semibold uppercase tracking-wide text-red-400">
                 Overdue
               </h3>
-              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
+              <TaskList tasks={overdue} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} expandIds={expandIds} />
             </div>
           )}
           {ordered.map(([k, items]) => {
@@ -201,7 +210,7 @@ export default async function Tasks({
                 <h3 className={`px-2 text-xs font-semibold uppercase tracking-wide ${s.text}`}>
                   {k === 6 ? "No priority" : `Priority ${k}`}
                 </h3>
-                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
+                <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} expandIds={expandIds} />
               </div>
             );
           })}

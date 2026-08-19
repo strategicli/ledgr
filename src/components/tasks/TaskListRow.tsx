@@ -78,6 +78,7 @@ export function TaskRow({
   projectParent,
   showProject = true,
   milestone,
+  defaultOpenSubtasks = false,
 }: {
   task: TaskRowItem;
   dueToday: Date;
@@ -97,6 +98,9 @@ export function TaskRow({
   // The milestone this task completes (record-context surfaces pass it via
   // milestoneFlagsFor); renders as a subtle flag chip after the title.
   milestone?: { id: string; title: string };
+  // The Today fold (ADR-205): start this row's subtask tree expanded because a
+  // subtask that would otherwise be its own row folded under it.
+  defaultOpenSubtasks?: boolean;
 }) {
   const done = task.statusCategory === "done";
   const sdef = statuses.find((s) => s.key === task.status);
@@ -127,7 +131,12 @@ export function TaskRow({
           {/* vanishRow: completing from a list optimistically fades the row out
               (these surfaces all drop done rows), so it doesn't linger until the
               coalesced refresh returns from the server. */}
-          <SubtaskCheckbox id={task.id} done={done} vanishRow />
+          <SubtaskCheckbox
+            id={task.id}
+            done={done}
+            vanishRow
+            openSubtasks={rollup ? rollup.total - rollup.done : 0}
+          />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
@@ -234,6 +243,7 @@ export function TaskRow({
         liClassName={TASK_ROW_CLASS}
         menuOptions={menuOpts}
         pillPlacement="slot"
+        defaultOpen={defaultOpenSubtasks}
       >
         {inner}
       </SubtaskExpandableRow>
@@ -255,6 +265,7 @@ export default function TaskList({
   meta,
   showProject = true,
   milestonesByTask,
+  expandIds,
 }: {
   tasks: TaskRowItem[];
   dueToday: Date;
@@ -268,6 +279,8 @@ export default function TaskList({
   // taskId → the milestone it completes (milestoneFlagsFor); record-context
   // surfaces pass it, the global Tasks tabs leave it undefined.
   milestonesByTask?: Map<string, { id: string; title: string }>;
+  // Rows whose subtask tree starts expanded (the Today fold's expandIds).
+  expandIds?: Set<string>;
 }) {
   const m = meta ?? emptyTaskRowMeta();
   return (
@@ -288,6 +301,7 @@ export default function TaskList({
             projectParent={project ? m.projectParents.get(project.id) : undefined}
             showProject={showProject}
             milestone={milestonesByTask?.get(t.id)}
+            defaultOpenSubtasks={expandIds?.has(t.id) ?? false}
           />
         );
       })}

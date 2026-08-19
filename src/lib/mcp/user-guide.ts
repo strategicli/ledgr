@@ -351,6 +351,14 @@ Ledgr is its own task manager. Nothing else needs to be running.
   task in one sweepable list — click each row's date to reschedule in place),
   Projects (each project with its open tasks), and Planner (drag-to-schedule
   calendar).
+- **Subtasks fold under their parent on today surfaces.** On the Today home
+  page and the Today tab, a dated subtask whose parent is also on the list
+  shows nested under the parent instead of as its own row — pre-expanded, so
+  it's visible without a click (the n/m pill collapses it). A dated subtask
+  whose parent ISN'T on the list still gets its own flat row, and an overdue
+  subtask never hides behind a merely due-today parent. Completing a parent
+  with open subtasks is always allowed — the toast just tells you how many
+  are still open.
 - **Type "/" while naming a task** to jump to its description: everything
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.

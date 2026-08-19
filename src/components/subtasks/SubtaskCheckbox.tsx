@@ -7,11 +7,13 @@
 
 import { useRef, useState } from "react";
 import { useListRefresh } from "@/lib/list-refresh";
+import { showToast } from "@/components/ui/ActionToast";
 
 export default function SubtaskCheckbox({
   id,
   done,
   vanishRow = false,
+  openSubtasks = 0,
 }: {
   id: string;
   done: boolean;
@@ -24,6 +26,11 @@ export default function SubtaskCheckbox({
   // styles ride on the li that this task's key owns, and the refresh unmounts
   // it, so nothing leaks onto other rows. A failed PATCH restores it.
   vanishRow?: boolean;
+  // How many of this task's subtasks are still open (rollup.total - done).
+  // Completing a PARENT with open children is allowed — the hierarchy informs,
+  // it never gates (ADR-205: finishing the parent can genuinely moot the
+  // children) — but the toast says so, so it's a choice, not an accident.
+  openSubtasks?: number;
 }) {
   const refresh = useListRefresh();
   const [checked, setChecked] = useState(done);
@@ -66,6 +73,11 @@ export default function SubtaskCheckbox({
       // not-started status (S2), so the checkbox needs no status schema.
       const res = await fetch(`/api/items/${id}/complete`, { method: "POST" });
       if (!res.ok) throw new Error(String(res.status));
+      if (next && openSubtasks > 0) {
+        showToast(
+          `Completed. ${openSubtasks} subtask${openSubtasks === 1 ? "" : "s"} still open`
+        );
+      }
       refresh();
     } catch {
       setChecked(!next);
