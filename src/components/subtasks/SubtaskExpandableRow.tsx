@@ -11,7 +11,7 @@
 // together so one client component can own the shared open state.
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 import { useRowMenu, type RowMenuOptions } from "@/components/lists/RowMenu";
@@ -117,6 +117,7 @@ export default function SubtaskExpandableRow({
   children,
   menuOptions,
   pillPlacement = "trailing",
+  defaultOpen = false,
 }: {
   id: string;
   done: number;
@@ -132,32 +133,52 @@ export default function SubtaskExpandableRow({
   // original shape, still what the generic list / views / widgets use. "slot"
   // hands the pill to <SubtaskPillSlot /> inside the children instead.
   pillPlacement?: "trailing" | "slot";
+  // Start expanded, fetching the tree on mount (the Today fold, ADR-205: a
+  // subtask that folded under this row must be visible without a click). The
+  // pill still collapses it; every other surface keeps the lazy default.
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [nodes, setNodes] = useState<TreeNode[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  // In-flight guard as a ref, not state: the mount-effect fetch below must not
+  // set state synchronously (react-hooks/set-state-in-effect), and the render
+  // treats `nodes === null` as loading anyway.
+  const inFlight = useRef(false);
   // Always call the hook (rules-of-hooks); only wire it when the host asked for
   // a menu. The fallback id keeps the hook valid when menuOptions is absent.
   const rowMenu = useRowMenu(menuOptions ?? { id });
   const menu = menuOptions ? rowMenu : null;
 
+  async function load() {
+    if (nodes !== null || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      const res = await fetch(`/api/items/${id}/subtree`);
+      if (res.ok) {
+        const data = (await res.json()) as { children?: TreeNode[] };
+        setNodes(data.children ?? []);
+      }
+    } catch {
+      // offline/transient; a second click retries
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  // Mount-only: a pre-expanded row (defaultOpen) needs its tree immediately —
+  // the whole point is showing the folded subtask without a click. The
+  // set-state-in-effect disable is a false positive: load() only sets state
+  // after the fetch resolves (a real side effect), never synchronously.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+    if (defaultOpen) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function toggle() {
     const next = !open;
     setOpen(next);
-    if (next && nodes === null && !loading) {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/items/${id}/subtree`);
-        if (res.ok) {
-          const data = (await res.json()) as { children?: TreeNode[] };
-          setNodes(data.children ?? []);
-        }
-      } catch {
-        // offline/transient; a second click retries
-      } finally {
-        setLoading(false);
-      }
-    }
+    if (next) void load();
   }
 
   const pill = (
@@ -189,12 +210,12 @@ export default function SubtaskExpandableRow({
       {open && (
         <li>
           <ul className="ml-7 border-l border-neutral-800 pl-3">
-            {loading && nodes === null ? (
+            {nodes === null ? (
               <li className="px-2 py-1 text-xs text-neutral-600">Loading…</li>
-            ) : (nodes ?? []).length === 0 ? (
+            ) : nodes.length === 0 ? (
               <li className="px-2 py-1 text-xs text-neutral-600">No subtasks.</li>
             ) : (
-              (nodes ?? []).map((node) => <MiniRow key={node.id} node={node} />)
+              nodes.map((node) => <MiniRow key={node.id} node={node} />)
             )}
           </ul>
         </li>

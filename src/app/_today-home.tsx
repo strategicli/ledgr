@@ -14,9 +14,12 @@ import PushToggle from "@/components/pwa/PushToggle";
 import RollOverdueButton from "@/components/today/RollOverdueButton";
 import FocusStar from "@/components/today/FocusStar";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
+import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { FOCUS_SOFT_CAP, focusOrder, isFocusedOn } from "@/lib/focus";
 import { listItems } from "@/lib/items";
 import { resolveOwnerState } from "@/lib/owner";
+import { childRollups } from "@/lib/subtasks";
+import { foldTodayTasks } from "@/lib/subtask-fold";
 import { getAppTimezone, getTodayData } from "@/lib/today";
 
 type ListedItem = Awaited<ReturnType<typeof listItems>>[number];
@@ -75,19 +78,34 @@ function planDate(task: ListedItem): Date | null {
   return task.scheduledDate ?? task.dueDate ?? null;
 }
 
+const TODAY_ROW_CLASS =
+  "group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60";
+
 function TaskRow({
   task,
   overdue,
   today,
+  rollup,
+  defaultOpen = false,
 }: {
   task: ListedItem;
   overdue: boolean;
   today: string;
+  // This task's subtask progress (childRollups) — a task with children gets the
+  // n/m expand pill, same as the /tasks rows.
+  rollup?: { done: number; total: number };
+  // The Today fold (ADR-205): start expanded because a subtask that would
+  // otherwise be its own row folded under this one.
+  defaultOpen?: boolean;
 }) {
   const d = planDate(task);
-  return (
-    <li className="group flex items-center gap-2.5 rounded px-2 py-1 hover:bg-neutral-800/60">
-      <SubtaskCheckbox id={task.id} done={false} />
+  const inner = (
+    <>
+      <SubtaskCheckbox
+        id={task.id}
+        done={false}
+        openSubtasks={rollup ? rollup.total - rollup.done : 0}
+      />
       <Link
         href={`/items/${task.id}`}
         className={`min-w-0 flex-1 truncate text-sm ${
@@ -118,8 +136,24 @@ function TaskRow({
         focused={isFocusedOn(task.properties, today)}
         today={today}
       />
-    </li>
+    </>
   );
+  // A task with subtasks gets the n/m pill + inline tree (the same expandable
+  // row the /tasks tabs use), pre-expanded when a child folded under it.
+  if (rollup && rollup.total > 0) {
+    return (
+      <SubtaskExpandableRow
+        id={task.id}
+        done={rollup.done}
+        total={rollup.total}
+        liClassName={TODAY_ROW_CLASS}
+        defaultOpen={defaultOpen}
+      >
+        {inner}
+      </SubtaskExpandableRow>
+    );
+  }
+  return <li className={TODAY_ROW_CLASS}>{inner}</li>;
 }
 
 // The Work home (/). If the owner has assigned a dashboard as Home, render it;
@@ -178,19 +212,32 @@ export default async function TodayHome() {
   const rest = dueTasks.filter((t) => !focusedIds.has(t.id));
   // Partition on the effective plan date (scheduled, else due), so a task
   // planned for an earlier day counts as overdue even with no deadline.
-  const overdue = rest.filter((t) => {
+  const overdueAll = rest.filter((t) => {
     const d = t.scheduledDate ?? t.dueDate;
     return d != null && d < bounds.dueToday;
   });
-  const dueToday = rest.filter((t) => {
+  const dueTodayAll = rest.filter((t) => {
     const d = t.scheduledDate ?? t.dueDate;
     return d != null && d >= bounds.dueToday;
   });
   // Recurring series advance via completion, not the roll (recurrence-service.ts),
-  // so the roll button only counts the non-recurring overdue it would actually move.
-  const rollableOverdue = overdue.filter(
+  // so the roll button only counts the non-recurring overdue it would actually
+  // move. Counted PRE-fold: the roll endpoint moves every overdue task in the
+  // DB, folded-under-a-parent or not, so the count must match what it does.
+  const rollableOverdue = overdueAll.filter(
     (t) => !(t.properties as Record<string, unknown> | null)?.recurrence
   ).length;
+  // The subtask fold (ADR-205): a task whose parent is also in this section
+  // renders under the parent's pre-expanded tree instead of as its own row
+  // (overdue children hide only under an overdue parent — see subtask-fold).
+  // Focus-zone parents don't fold anything: focus is an explicit, curated set.
+  const { overdue, dueToday, expandIds } = foldTodayTasks(overdueAll, dueTodayAll);
+  // Subtask progress for every rendered task row — powers the n/m expand pill
+  // and the "N subtasks still open" completion toast. One batched query.
+  const rollups = await childRollups(
+    owner.id,
+    [...focus, ...overdue, ...dueToday].map((t) => t.id)
+  );
 
   return (
     <main className="min-h-screen">
@@ -219,7 +266,13 @@ export default async function TodayHome() {
           >
             <ul className="mt-1">
               {focus.map((t) => (
-                <TaskRow key={t.id} task={t} overdue={false} today={todayYmd} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  overdue={false}
+                  today={todayYmd}
+                  rollup={rollups.get(t.id)}
+                />
               ))}
             </ul>
           </Section>
@@ -256,10 +309,24 @@ export default async function TodayHome() {
           {overdue.length + dueToday.length > 0 ? (
             <ul className="mt-1">
               {overdue.map((t) => (
-                <TaskRow key={t.id} task={t} overdue today={todayYmd} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  overdue
+                  today={todayYmd}
+                  rollup={rollups.get(t.id)}
+                  defaultOpen={expandIds.has(t.id)}
+                />
               ))}
               {dueToday.map((t) => (
-                <TaskRow key={t.id} task={t} overdue={false} today={todayYmd} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  overdue={false}
+                  today={todayYmd}
+                  rollup={rollups.get(t.id)}
+                  defaultOpen={expandIds.has(t.id)}
+                />
               ))}
             </ul>
           ) : (
