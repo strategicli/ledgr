@@ -232,3 +232,16 @@ export function widgetLimit(instance: RecordWidget): number {
   if (!Number.isFinite(n)) return WIDGET_LIMIT_DEFAULT;
   return Math.min(Math.max(Math.round(n), 1), WIDGET_LIMIT_MAX);
 }
+
+// The per-card display title override (Tyler, 2026-08-19, rides ADR-204): the
+// card gear's Rename writes options.title, so a tool can be named per record
+// ("Docs" → "Sermon research" on one project, untouched elsewhere). Null = no
+// override; callers fall back to the catalog default. Trimmed and capped here
+// (not just in the input) so a stored stray value can't blow up the header.
+export const WIDGET_TITLE_MAX = 60;
+export function widgetTitle(instance: RecordWidget): string | null {
+  const raw = instance.options?.title;
+  if (typeof raw !== "string") return null;
+  const t = raw.trim().slice(0, WIDGET_TITLE_MAX);
+  return t.length > 0 ? t : null;
+}
