@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
@@ -34,15 +35,38 @@ export async function resolveOwner(): Promise<Owner | null> {
   return state.kind === "owner" ? state.owner : null;
 }
 
-export async function resolveOwnerState(): Promise<OwnerState> {
+// One transient-failure retry for the resolution's first DB read. The first
+// query of a request against a cold (autosuspended) Neon compute is the one
+// that flakes; a single short-backoff retry turns "the chrome rendered
+// signed-out this morning" into ~300ms of extra latency once a day.
+async function retryOnce<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    await new Promise((r) => setTimeout(r, 300));
+    return await fn();
+  }
+}
+
+// Wrapped in React cache(): the root layout, the Nav, and the page each resolve
+// the owner during ONE request, and three independent resolutions are three
+// chances to disagree — which is exactly the 2026-08-19 incident (Tyler, after
+// a cold Safari start on prod): the page rendered his tasks while the layout
+// wore default-blue and the Nav rendered null, because their resolutions came
+// out differently. cache() makes every caller in a request await the SAME
+// resolution, so the chrome and the content can never again tell two stories.
+// (In route handlers cache() is a passthrough — same behavior as before.)
+export const resolveOwnerState = cache(async (): Promise<OwnerState> => {
   const authUser = await authProvider.getCurrentUser();
   if (!authUser) return { kind: "signed-out" };
 
   const db = getDb();
-  const byClerkId = await db
-    .select({ id: users.id, email: users.email })
-    .from(users)
-    .where(eq(users.clerkId, authUser.externalId));
+  const byClerkId = await retryOnce(() =>
+    db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.clerkId, authUser.externalId))
+  );
   if (byClerkId.length > 0) return { kind: "owner", owner: byClerkId[0] };
 
   // Past here the caller IS authenticated but no row matched, which is always a
@@ -80,4 +104,4 @@ export async function resolveOwnerState(): Promise<OwnerState> {
     kind: "owner",
     owner: { id: byEmail[0].id, email: byEmail[0].email },
   };
-}
+});
