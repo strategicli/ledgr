@@ -20,6 +20,7 @@ import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { useIsDesktop } from "./useIsDesktop";
 import { useRouter } from "next/navigation";
+import { openItem } from "@/lib/item-nav";
 import {
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
@@ -668,7 +669,7 @@ export default function MarkdownEditor({
     const dom = editor.view.dom;
     const handler = (e: Event) => {
       const itemId = (e as CustomEvent<{ itemId: string }>).detail?.itemId;
-      if (itemId) router.push(`/items/${itemId}`);
+      if (itemId) openItem(router, itemId);
     };
     dom.addEventListener(OPEN_ITEM_EVENT, handler);
     return () => dom.removeEventListener(OPEN_ITEM_EVENT, handler);
