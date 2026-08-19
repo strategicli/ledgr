@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { openItem } from "@/lib/item-nav";
 
 export default function AddContainedItemButton({
   recordId,
@@ -35,7 +36,7 @@ export default function AddContainedItemButton({
       });
       if (!res.ok) return;
       const { item } = (await res.json()) as { item: { id: string } };
-      router.push(`/items/${item.id}`);
+      openItem(router, item.id);
     } finally {
       setBusy(false);
     }
