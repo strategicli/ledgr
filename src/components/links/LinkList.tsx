@@ -8,6 +8,7 @@
 import Link from "next/link";
 import NavGlyph from "@/components/nav/NavGlyph";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import SmartHref from "@/components/ui/SmartHref";
 
 export type LinkRow = { id: string; title: string; url: string | null };
 
@@ -25,14 +26,14 @@ export default function LinkList({
           {selectable && <SelectCheckbox id={l.id} />}
           <NavGlyph icon="external-link" size={15} className="shrink-0 text-neutral-500" />
           {l.url ? (
-            <a
+            // SmartHref: a file:// URL can't be opened from a web page, so the
+            // click copies it instead (with a toast); normal URLs open as ever.
+            <SmartHref
               href={l.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="min-w-0 flex-1 truncate text-neutral-200 hover:text-[var(--accent)]"
             >
               {l.title || l.url}
-            </a>
+            </SmartHref>
           ) : (
             <Link href={`/items/${l.id}`} className="min-w-0 flex-1 truncate text-neutral-400 hover:text-neutral-200">
               {l.title || "Untitled link"}

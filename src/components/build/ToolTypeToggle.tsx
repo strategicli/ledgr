@@ -58,7 +58,7 @@ export default function ToolTypeToggle({
             Offer as a tool
           </h2>
           <p className="mt-1 text-xs text-neutral-500">
-            Put {typeLabel} in the &ldquo;Add a Tool&rdquo; menu on projects and
+            Put &ldquo;{typeLabel}&rdquo; in the &ldquo;Add a Tool&rdquo; menu on projects and
             other tool-composed pages, as its own card with a typed &ldquo;+
             Add&rdquo;. Turning it off removes it from the menu; pages already
             carrying the card keep it until removed there.

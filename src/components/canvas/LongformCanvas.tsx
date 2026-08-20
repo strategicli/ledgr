@@ -22,6 +22,7 @@ import RelatedPanel from "@/components/relations/RelatedPanel";
 import DiscoverPanel from "@/components/relations/DiscoverPanel";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import NavGlyph from "@/components/nav/NavGlyph";
+import SmartHref from "@/components/ui/SmartHref";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
 import { outgoingRelationsByRole } from "@/lib/relations";
@@ -84,16 +85,16 @@ export default async function LongformCanvas(canvasProps: CanvasProps) {
       <div className="flex flex-col gap-2 border-b border-line pb-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm">
           {showUrl && (
-            <a
+            // SmartHref: file:// URLs copy-on-click (a web page can't open
+            // them); everything else opens in a new tab as before.
+            <SmartHref
               href={item.url!}
-              target="_blank"
-              rel="noreferrer"
               title={item.url!}
               className="inline-flex max-w-full items-center gap-1.5 rounded-card border border-line bg-surface-1 px-2.5 py-0.5 text-[var(--accent)] hover:border-line-strong hover:brightness-110"
             >
               <span className="truncate">{item.url}</span>
               <NavGlyph icon="external-link" size={12} className="shrink-0 text-ink-subtle" />
-            </a>
+            </SmartHref>
           )}
           {fields.length > 0 && (
             <FieldStrip itemId={item.id} fields={fields} initial={strip} today={today} statuses={statuses} locked={locked} flush />
