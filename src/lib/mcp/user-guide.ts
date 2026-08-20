@@ -351,14 +351,17 @@ Ledgr is its own task manager. Nothing else needs to be running.
   task in one sweepable list — click each row's date to reschedule in place),
   Projects (each project with its open tasks), and Planner (drag-to-schedule
   calendar).
-- **Subtasks fold under their parent on today surfaces.** On the Today home
-  page and the Today tab, a dated subtask whose parent is also on the list
-  shows nested under the parent instead of as its own row — pre-expanded, so
-  it's visible without a click (the n/m pill collapses it). A dated subtask
-  whose parent ISN'T on the list still gets its own flat row, and an overdue
-  subtask never hides behind a merely due-today parent. Completing a parent
-  with open subtasks is always allowed — the toast just tells you how many
-  are still open.
+- **A subtask shows in one place, under its parent.** Across the task lists, a
+  subtask whose parent is on the same list (same day, on Upcoming) nests under
+  the parent instead of appearing as its own peer row. On dated surfaces
+  (Today, Upcoming's days, Overdue) the parent starts expanded so the dated
+  subtask is visible without a click; on All everything starts collapsed —
+  click the arrow. A dated subtask whose parent isn't on the list still gets
+  its own flat row, and an overdue subtask never hides behind a merely
+  due-today parent. Completing a parent with open subtasks is always allowed —
+  the toast just tells you how many are still open.
+- **Dates in the subtask tree are click-to-edit** — the same picker as the
+  rows, wherever a subtask's date shows under its parent's arrow.
 - **Type "/" while naming a task** to jump to its description: everything
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
@@ -383,7 +386,7 @@ Ledgr is its own task manager. Nothing else needs to be running.
   custom-property kebab — so a subtask is born as complete as any task.
 - **Rows tell you more at a glance.** A task row shows its title, the first
   line of its body as a one-line description, an **n/m pill** that folds its
-  subtasks out underneath (they start closed — click the arrow), its tag and
+  subtasks out underneath, its tag and
   connection chips (people, records — scroll the strip sideways when there
   are many), and the project it belongs to on the right.
 - **Click the date on any row to change it.** The row's date is a button

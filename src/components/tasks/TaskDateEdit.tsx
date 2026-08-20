@@ -65,6 +65,7 @@ export default function TaskDateEdit({
   dueIso,
   recurrence,
   scheduledTime,
+  minimal = false,
 }: {
   id: string;
   ymd: string | null; // the displayed date as YYYY-MM-DD, or null when undated
@@ -76,6 +77,11 @@ export default function TaskDateEdit({
   dueIso: string | null;
   recurrence: RecurrenceRule | null;
   scheduledTime: ScheduledTime | null;
+  // Date-only popover: no Time/Repeat expanders. For hosts whose data doesn't
+  // carry the task's recurrence/time (the subtask tree rows read the subtree
+  // endpoint) — offering those controls there would edit blind, and a "no
+  // rule" RecurrenceControl on a task that HAS a rule could overwrite it.
+  minimal?: boolean;
 }) {
   const router = useRouter();
   const [showTime, setShowTime] = useState(false);
@@ -147,6 +153,7 @@ export default function TaskDateEdit({
               parseTime={field === "scheduledDate"}
               onPick={(next, time) => void commit(next, time, close)}
             />
+            {!minimal && (
             <div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
               <button
                 type="button"
@@ -188,6 +195,7 @@ export default function TaskDateEdit({
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </Popover>

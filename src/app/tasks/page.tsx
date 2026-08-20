@@ -217,7 +217,12 @@ export default async function Tasks({
         </div>
       );
   } else if (tab === "all") {
-    const all = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
+    const allRaw = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
+    // The fold, All-tab flavor (ADR-205 addendum 2): a subtask renders under
+    // its parent's pill, never as a peer row — its active parent is on this
+    // list by definition. COLLAPSED by default here (expandIds discarded): All
+    // is the inventory, and nothing on it is dated-today urgent.
+    const { dueToday: all } = foldTodayTasks([], allRaw);
     selectableIds = all.map((t) => t.id);
     const [rollups, meta] = await Promise.all([
       childRollups(owner.id, selectableIds),
@@ -240,6 +245,17 @@ export default async function Tasks({
       if (d == null || d <= dueToday) continue; // future only (overdue/today live on Today)
       const k = dayKey(d);
       (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(t);
+    }
+    // The fold, per day (ADR-205 addendum 2 — the duplication Tyler screenshotted:
+    // a subtask flat in the day AND inside its parent's tree). Within one day a
+    // subtask folds under its same-day parent, pre-expanded; a subtask whose
+    // parent sits on another day (or is undated) keeps its own flat row under
+    // ITS day — dated work always appears under its date.
+    const expandIds = new Set<string>();
+    for (const [k, items] of byDay) {
+      const folded = foldTodayTasks([], items);
+      byDay.set(k, folded.dueToday);
+      for (const id of folded.expandIds) expandIds.add(id);
     }
     const label = weekOffset === 0 ? "Current" : `+${weekOffset} week${weekOffset === 1 ? "" : "s"}`;
     selectableIds = days.flatMap((d) => (byDay.get(dayKey(d)) ?? []).map((t) => t.id));
@@ -280,7 +296,7 @@ export default async function Tasks({
                 <h3 className="border-b border-neutral-800/60 px-2 pb-1 text-sm font-semibold text-neutral-200">
                   {dayFmt.format(d)} · {isToday ? "Today" : weekdayFmt.format(d)}
                 </h3>
-                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />}
+                {items.length > 0 && <TaskList tasks={items} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} expandIds={expandIds} />}
                 <InlineAddTask dueYmd={dayKey(d)} />
               </div>
             );
@@ -294,24 +310,29 @@ export default async function Tasks({
     // each row's date is click-to-editable, so cleaning up a backlog is one
     // picker per row without leaving the tab.
     const active = await queryViewItems(owner.id, { type: "task", statusCategory: "active" }, { field: "plan", dir: "asc" });
-    const late = active.filter((t) => {
+    const lateAll = active.filter((t) => {
       const d = effDate(t);
       return d != null && d < dueToday;
     });
+    // The fold (ADR-205 addendum 2): an overdue subtask folds under its
+    // overdue parent, pre-expanded — the tree rows' dates are click-to-edit
+    // too, so the sweep still reaches every row. The header count stays
+    // PRE-fold: it names how many tasks are overdue, not how many rows render.
+    const { overdue: late, expandIds } = foldTodayTasks(lateAll, []);
     selectableIds = late.map((t) => t.id);
     const [rollups, meta] = await Promise.all([
       childRollups(owner.id, selectableIds),
       taskRowMeta(owner.id, selectableIds),
     ]);
     body =
-      late.length === 0 ? (
+      lateAll.length === 0 ? (
         <p className="mt-6 px-2 text-sm text-neutral-600">Nothing overdue. 🎉</p>
       ) : (
         <div className="mt-4">
           <p className="px-2 text-xs text-neutral-500">
-            {late.length} overdue — click a row&apos;s date to reschedule it in place.
+            {lateAll.length} overdue — click a row&apos;s date to reschedule it in place.
           </p>
-          <TaskList tasks={late} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} />
+          <TaskList tasks={late} dueToday={dueToday} statuses={statuses} rollups={rollups} today={todayYmd} meta={meta} expandIds={expandIds} />
         </div>
       );
   } else if (tab === "planner") {
