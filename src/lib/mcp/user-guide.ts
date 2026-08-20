@@ -249,6 +249,10 @@ typing, spaces and all.
   task carries a working checkbox you can tick from here.
 - **Saving creates the relation** automatically, so mentions show up in the
   linked item's "Linked here" list too.
+- **Local file links** (a \`file:///…\` URL on a link item) can't be opened by
+  a browser from a web page — that's a browser security rule, not a Ledgr
+  choice — so clicking one **copies the link** instead, ready to paste into
+  the address bar or Finder → Go.
 
 ## Live tokens
 
