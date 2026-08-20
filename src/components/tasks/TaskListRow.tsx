@@ -244,6 +244,7 @@ export function TaskRow({
         menuOptions={menuOpts}
         pillPlacement="slot"
         defaultOpen={defaultOpenSubtasks}
+        today={today}
       >
         {inner}
       </SubtaskExpandableRow>

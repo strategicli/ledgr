@@ -14,7 +14,16 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import SubtaskCheckbox from "./SubtaskCheckbox";
+import TaskDateEdit from "@/components/tasks/TaskDateEdit";
 import { useRowMenu, type RowMenuOptions } from "@/components/lists/RowMenu";
+
+// App-timezone today comes from the host when it has one (the task tabs and
+// Today home already carry it); this local fallback covers hosts that don't
+// (generic lists, views) so the picker's quick rows still anchor sensibly.
+function localTodayYmd(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // How a host places the pill INSIDE its own row markup instead of at the
 // trailing edge (the redesigned task row puts it on the meta line, ADR-202).
@@ -63,13 +72,45 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function MiniRow({ node }: { node: TreeNode }) {
+// A tree row's date, click-to-edit with the standard picker (Tyler,
+// 2026-08-19: "the same date picker there as well"). Minimal mode — the
+// subtree payload carries no recurrence/time, so the popover is date-only.
+function MiniDate({
+  node,
+  field,
+  today,
+  done,
+}: {
+  node: TreeNode;
+  field: "scheduledDate" | "dueDate";
+  today: string;
+  done: boolean;
+}) {
+  const iso = field === "scheduledDate" ? node.scheduledDate : node.dueDate;
+  if (!iso) return null;
+  const ymd = iso.slice(0, 10);
+  return (
+    <TaskDateEdit
+      id={node.id}
+      ymd={ymd}
+      label={`${field === "scheduledDate" ? "scheduled" : "due"} ${fmt(iso)}`}
+      field={field}
+      overdue={!done && ymd < today}
+      today={today}
+      scheduledIso={node.scheduledDate}
+      dueIso={node.dueDate}
+      recurrence={null}
+      scheduledTime={null}
+      minimal
+    />
+  );
+}
+
+function MiniRow({ node, today }: { node: TreeNode; today: string }) {
   const done = node.type === "task" && node.statusCategory === "done";
-  const scheduled = fmt(node.scheduledDate);
-  const due = fmt(node.dueDate);
   return (
     <li>
-      <div className="group/row flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">
+      <div className="group/row group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">
         {node.type === "task" ? (
           <SubtaskCheckbox id={node.id} done={done} />
         ) : (
@@ -93,15 +134,26 @@ function MiniRow({ node }: { node: TreeNode }) {
             {node.progress.done}/{node.progress.total} done
           </span>
         )}
-        {scheduled && (
-          <span className="shrink-0 text-xs text-neutral-500">scheduled {scheduled}</span>
+        {node.type === "task" ? (
+          <>
+            <MiniDate node={node} field="scheduledDate" today={today} done={done} />
+            <MiniDate node={node} field="dueDate" today={today} done={done} />
+          </>
+        ) : (
+          <>
+            {node.scheduledDate && (
+              <span className="shrink-0 text-xs text-neutral-500">scheduled {fmt(node.scheduledDate)}</span>
+            )}
+            {node.dueDate && (
+              <span className="shrink-0 text-xs text-neutral-500">due {fmt(node.dueDate)}</span>
+            )}
+          </>
         )}
-        {due && <span className="shrink-0 text-xs text-neutral-500">due {due}</span>}
       </div>
       {node.children.length > 0 && (
         <ul className="ml-4 border-l border-neutral-800 pl-3">
           {node.children.map((child) => (
-            <MiniRow key={child.id} node={child} />
+            <MiniRow key={child.id} node={child} today={today} />
           ))}
         </ul>
       )}
@@ -118,6 +170,7 @@ export default function SubtaskExpandableRow({
   menuOptions,
   pillPlacement = "trailing",
   defaultOpen = false,
+  today,
 }: {
   id: string;
   done: number;
@@ -137,6 +190,9 @@ export default function SubtaskExpandableRow({
   // subtask that folded under this row must be visible without a click). The
   // pill still collapses it; every other surface keeps the lazy default.
   defaultOpen?: boolean;
+  // App-timezone YYYY-MM-DD for the tree rows' date pickers; hosts that carry
+  // it pass it, others fall back to the browser's local day.
+  today?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [nodes, setNodes] = useState<TreeNode[] | null>(null);
@@ -215,7 +271,9 @@ export default function SubtaskExpandableRow({
             ) : nodes.length === 0 ? (
               <li className="px-2 py-1 text-xs text-neutral-600">No subtasks.</li>
             ) : (
-              nodes.map((node) => <MiniRow key={node.id} node={node} />)
+              nodes.map((node) => (
+                <MiniRow key={node.id} node={node} today={today ?? localTodayYmd()} />
+              ))
             )}
           </ul>
         </li>

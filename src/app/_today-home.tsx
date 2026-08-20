@@ -148,6 +148,7 @@ function TaskRow({
         total={rollup.total}
         liClassName={TODAY_ROW_CLASS}
         defaultOpen={defaultOpen}
+        today={today}
       >
         {inner}
       </SubtaskExpandableRow>
