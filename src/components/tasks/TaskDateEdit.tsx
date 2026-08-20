@@ -66,6 +66,7 @@ export default function TaskDateEdit({
   recurrence,
   scheduledTime,
   minimal = false,
+  onCommitted,
 }: {
   id: string;
   ymd: string | null; // the displayed date as YYYY-MM-DD, or null when undated
@@ -82,6 +83,12 @@ export default function TaskDateEdit({
   // endpoint) — offering those controls there would edit blind, and a "no
   // rule" RecurrenceControl on a task that HAS a rule could overwrite it.
   minimal?: boolean;
+  // Fires after a successful date PATCH. Hosts whose display is CLIENT state
+  // rather than server render (the subtask tree caches its fetched nodes) use
+  // this to refetch — router.refresh() alone can't reach that state, which is
+  // how "I clicked Today and nothing happened" looked (the write landed, the
+  // stale tree just didn't say so).
+  onCommitted?: () => void;
 }) {
   const router = useRouter();
   const [showTime, setShowTime] = useState(false);
@@ -107,6 +114,7 @@ export default function TaskDateEdit({
       });
       if (!res.ok) throw new Error(String(res.status));
       close?.();
+      onCommitted?.();
       router.refresh();
     } catch {
       showToast("Something went wrong");

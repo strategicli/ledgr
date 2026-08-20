@@ -75,38 +75,54 @@ function Chevron({ open }: { open: boolean }) {
 // A tree row's date, click-to-edit with the standard picker (Tyler,
 // 2026-08-19: "the same date picker there as well"). Minimal mode — the
 // subtree payload carries no recurrence/time, so the popover is date-only.
+// `show: "always"` renders the ghost "＋ date" trigger even without a value
+// (an undated subtask needs something to click); onCommitted refetches the
+// tree, whose nodes are client state router.refresh() can't reach.
 function MiniDate({
   node,
   field,
   today,
   done,
+  show = "when-set",
+  onCommitted,
 }: {
   node: TreeNode;
   field: "scheduledDate" | "dueDate";
   today: string;
   done: boolean;
+  show?: "when-set" | "always";
+  onCommitted: () => void;
 }) {
   const iso = field === "scheduledDate" ? node.scheduledDate : node.dueDate;
-  if (!iso) return null;
-  const ymd = iso.slice(0, 10);
+  if (!iso && show === "when-set") return null;
+  const ymd = iso ? iso.slice(0, 10) : null;
   return (
     <TaskDateEdit
       id={node.id}
       ymd={ymd}
-      label={`${field === "scheduledDate" ? "scheduled" : "due"} ${fmt(iso)}`}
+      label={iso ? `${field === "scheduledDate" ? "scheduled" : "due"} ${fmt(iso)}` : null}
       field={field}
-      overdue={!done && ymd < today}
+      overdue={!done && ymd != null && ymd < today}
       today={today}
       scheduledIso={node.scheduledDate}
       dueIso={node.dueDate}
       recurrence={null}
       scheduledTime={null}
       minimal
+      onCommitted={onCommitted}
     />
   );
 }
 
-function MiniRow({ node, today }: { node: TreeNode; today: string }) {
+function MiniRow({
+  node,
+  today,
+  onCommitted,
+}: {
+  node: TreeNode;
+  today: string;
+  onCommitted: () => void;
+}) {
   const done = node.type === "task" && node.statusCategory === "done";
   return (
     <li>
@@ -136,8 +152,17 @@ function MiniRow({ node, today }: { node: TreeNode; today: string }) {
         )}
         {node.type === "task" ? (
           <>
-            <MiniDate node={node} field="scheduledDate" today={today} done={done} />
-            <MiniDate node={node} field="dueDate" today={today} done={done} />
+            <MiniDate
+              node={node}
+              field="scheduledDate"
+              today={today}
+              done={done}
+              // An undated subtask still gets a clickable "＋ date" (scheduled,
+              // the planning field); dated ones just show their dates.
+              show={node.scheduledDate || node.dueDate ? "when-set" : "always"}
+              onCommitted={onCommitted}
+            />
+            <MiniDate node={node} field="dueDate" today={today} done={done} onCommitted={onCommitted} />
           </>
         ) : (
           <>
@@ -153,7 +178,7 @@ function MiniRow({ node, today }: { node: TreeNode; today: string }) {
       {node.children.length > 0 && (
         <ul className="ml-4 border-l border-neutral-800 pl-3">
           {node.children.map((child) => (
-            <MiniRow key={child.id} node={child} today={today} />
+            <MiniRow key={child.id} node={child} today={today} onCommitted={onCommitted} />
           ))}
         </ul>
       )}
@@ -205,8 +230,10 @@ export default function SubtaskExpandableRow({
   const rowMenu = useRowMenu(menuOptions ?? { id });
   const menu = menuOptions ? rowMenu : null;
 
-  async function load() {
-    if (nodes !== null || inFlight.current) return;
+  // force=true refetches even when nodes are already loaded — the tree's dates
+  // are client state, so an edit made from inside it (MiniDate) re-reads here.
+  async function load(force = false) {
+    if ((nodes !== null && !force) || inFlight.current) return;
     inFlight.current = true;
     try {
       const res = await fetch(`/api/items/${id}/subtree`);
@@ -272,7 +299,12 @@ export default function SubtaskExpandableRow({
               <li className="px-2 py-1 text-xs text-neutral-600">No subtasks.</li>
             ) : (
               nodes.map((node) => (
-                <MiniRow key={node.id} node={node} today={today ?? localTodayYmd()} />
+                <MiniRow
+                  key={node.id}
+                  node={node}
+                  today={today ?? localTodayYmd()}
+                  onCommitted={() => void load(true)}
+                />
               ))
             )}
           </ul>
