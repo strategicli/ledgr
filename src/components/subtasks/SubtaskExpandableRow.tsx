@@ -57,6 +57,17 @@ const dateFmt = new Intl.DateTimeFormat("en-US", {
 });
 const fmt = (d: string | null) => (d ? dateFmt.format(new Date(d)) : "");
 
+// Hide-completed helpers: prune done task nodes (their subtrees go with them —
+// a finished parent's checklist is finished business), and count nodes so the
+// "Show N completed" line can say how many rows are tucked away (pruned nodes
+// plus everything that rode out with them).
+const countAll = (ns: TreeNode[]): number =>
+  ns.reduce((sum, n) => sum + 1 + countAll(n.children), 0);
+const pruneDone = (ns: TreeNode[]): TreeNode[] =>
+  ns
+    .filter((n) => !(n.type === "task" && n.statusCategory === "done"))
+    .map((n) => ({ ...n, children: pruneDone(n.children) }));
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -128,7 +139,9 @@ function MiniRow({
     <li>
       <div className="group/row group flex items-center gap-2 rounded px-2 py-1 hover:bg-neutral-800/60">
         {node.type === "task" ? (
-          <SubtaskCheckbox id={node.id} done={done} />
+          // onToggled refetches the tree, so a just-checked subtask tucks
+          // under the "Show N completed" line instead of lingering struck-out.
+          <SubtaskCheckbox id={node.id} done={done} onToggled={onCommitted} />
         ) : (
           <span className="w-4 shrink-0 text-center text-neutral-600">•</span>
         )}
@@ -221,6 +234,9 @@ export default function SubtaskExpandableRow({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [nodes, setNodes] = useState<TreeNode[] | null>(null);
+  // Completed subtasks hide by default (Tyler, 2026-08-20 — a long checklist
+  // read as mostly strikethrough); "Show N completed" reveals them.
+  const [showDone, setShowDone] = useState(false);
   // In-flight guard as a ref, not state: the mount-effect fetch below must not
   // set state synchronously (react-hooks/set-state-in-effect), and the render
   // treats `nodes === null` as loading anyway.
@@ -264,6 +280,9 @@ export default function SubtaskExpandableRow({
     if (next) void load();
   }
 
+  const shown = nodes === null ? null : showDone ? nodes : pruneDone(nodes);
+  const hiddenCount = nodes === null || shown === null ? 0 : countAll(nodes) - countAll(shown);
+
   const pill = (
     <button
       type="button"
@@ -293,19 +312,34 @@ export default function SubtaskExpandableRow({
       {open && (
         <li>
           <ul className="ml-7 border-l border-neutral-800 pl-3">
-            {nodes === null ? (
+            {nodes === null || shown === null ? (
               <li className="px-2 py-1 text-xs text-neutral-600">Loading…</li>
             ) : nodes.length === 0 ? (
               <li className="px-2 py-1 text-xs text-neutral-600">No subtasks.</li>
             ) : (
-              nodes.map((node) => (
-                <MiniRow
-                  key={node.id}
-                  node={node}
-                  today={today ?? localTodayYmd()}
-                  onCommitted={() => void load(true)}
-                />
-              ))
+              <>
+                {shown.map((node) => (
+                  <MiniRow
+                    key={node.id}
+                    node={node}
+                    today={today ?? localTodayYmd()}
+                    onCommitted={() => void load(true)}
+                  />
+                ))}
+                {(hiddenCount > 0 || showDone) && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => setShowDone((v) => !v)}
+                      className="rounded px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-800 hover:text-neutral-400"
+                    >
+                      {showDone
+                        ? "Hide completed"
+                        : `Show ${hiddenCount} completed`}
+                    </button>
+                  </li>
+                )}
+              </>
             )}
           </ul>
         </li>

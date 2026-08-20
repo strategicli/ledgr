@@ -361,7 +361,9 @@ Ledgr is its own task manager. Nothing else needs to be running.
   due-today parent. Completing a parent with open subtasks is always allowed —
   the toast just tells you how many are still open.
 - **Dates in the subtask tree are click-to-edit** — the same picker as the
-  rows, wherever a subtask's date shows under its parent's arrow.
+  rows, wherever a subtask's date shows under its parent's arrow; an undated
+  subtask gets a "＋ date" on hover. **Completed subtasks tuck away** behind a
+  "Show N completed" line at the bottom of the tree.
 - **Type "/" while naming a task** to jump to its description: everything
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
