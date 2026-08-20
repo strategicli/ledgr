@@ -377,7 +377,10 @@ Ledgr is its own task manager. Nothing else needs to be running.
   deadline.
 - **Six priorities,** P1 to P6, colour-coded. They drive the checkbox colour, row
   chips and grouping.
-- **Subtasks nest,** with an "n of m done" rollup and a breadcrumb.
+- **Subtasks nest,** with an "n of m done" rollup and a breadcrumb. **Add
+  subtask** on a task's page opens the same full add card as anywhere else —
+  date, priority, tag and person chips, "/" to description, "@" links, the
+  custom-property kebab — so a subtask is born as complete as any task.
 - **Rows tell you more at a glance.** A task row shows its title, the first
   line of its body as a one-line description, an **n/m pill** that folds its
   subtasks out underneath (they start closed — click the arrow), its tag and

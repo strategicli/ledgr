@@ -116,6 +116,7 @@ export type OptimisticTask = {
 export default function AddTaskCard({
   defaultDueYmd,
   host,
+  parentId,
   autoFocus = true,
   lockDestination = false,
   onDone,
@@ -128,6 +129,11 @@ export default function AddTaskCard({
   // auto-associates with it instead of landing in the Inbox. role defaults to
   // "related" ("project" for a project host).
   host?: { id: string; label: string; role?: string };
+  // Subtask mode (Tyler, 2026-08-19): the created task nests under this parent
+  // (body.parentId). A subtask's place IS its parent, so the destination picker
+  // hides and no inbox/project destination is written — a typed "+project"
+  // still relates the subtask to that project (never a silent no-op).
+  parentId?: string;
   autoFocus?: boolean;
   // Destination is fixed to the host (e.g. a project's Tasks card): hide the
   // destination picker entirely and always file onto the host.
@@ -384,12 +390,21 @@ export default function AddTaskCard({
     // change fixes. Unmatched "#tag" tokens are safe to strip because they DO act —
     // they create the tag below.
     const finalTitle = stripConsumedTokens(p.title || raw, tagMatches, projectMatch);
-    const destId = lockDestination && host ? host.id : (projectMatch?.project?.id ?? dest);
+    // Subtask mode: the parent is the placement, so there is no destination —
+    // except a "+project" the user actually typed, which becomes a plain
+    // project relation below (stripping the token and doing nothing would be
+    // the silent no-op the comment above warns about).
+    const destId = parentId
+      ? projectMatch?.project?.id ?? null
+      : lockDestination && host
+        ? host.id
+        : projectMatch?.project?.id ?? dest;
     const dueDay = effDue || effDefault;
     const sched = effScheduled;
     const urg = urgency ?? p.urgency ?? null;
     const rec = p.recurrence ?? null;
     const body: Record<string, unknown> = { type: "task", title: finalTitle };
+    if (parentId) body.parentId = parentId;
     if (destId === "inbox") body.inbox = true;
     if (dueDay) body.dueDate = `${dueDay}T00:00:00.000Z`;
     if (sched) body.scheduledDate = `${sched}T00:00:00.000Z`;
@@ -421,7 +436,7 @@ export default function AddTaskCard({
     // all. Only brand-new tags still need the post-create flow (the tag has to
     // exist before it can be linked).
     const relateTo: { targetId: string; role?: string }[] = [];
-    if (destId !== "inbox") {
+    if (destId && destId !== "inbox") {
       relateTo.push({ targetId: destId, role: destId === host?.id ? host.role ?? "related" : "project" });
     }
     for (const l of linked) relateTo.push({ targetId: l.id, role: "related" });
@@ -931,8 +946,8 @@ export default function AddTaskCard({
       {/* footer: destination + actions. When the destination is locked to the
           host (a project's Tasks card), the picker is hidden and the actions get
           the full row. */}
-      <div className={`mt-3 flex items-center gap-2 ${lockDestination ? "justify-end" : "justify-between"}`}>
-        {!lockDestination && (
+      <div className={`mt-3 flex items-center gap-2 ${lockDestination || parentId ? "justify-end" : "justify-between"}`}>
+        {!lockDestination && !parentId && (
           <span className="relative inline-flex items-center text-sm text-neutral-300">
             <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconPlus : IconInbox}</span>
             <select
@@ -952,7 +967,7 @@ export default function AddTaskCard({
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancel} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700">Cancel</button>
           <button type="button" disabled={!title.trim() || busy} onClick={() => void create()} className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40">
-            {busy ? "Adding…" : "Add task"}
+            {busy ? "Adding…" : parentId ? "Add subtask" : "Add task"}
           </button>
         </div>
       </div>

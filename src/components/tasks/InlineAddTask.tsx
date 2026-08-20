@@ -27,15 +27,23 @@ import { onListRefreshFlush } from "@/lib/list-refresh";
 export default function InlineAddTask({
   dueYmd,
   host,
+  parentId,
   label = "Add task",
   lockDestination = false,
+  buttonClassName,
 }: {
   dueYmd?: string;
   host?: { id: string; label: string; role?: string };
+  // Subtask mode (Tyler, 2026-08-19): the card creates the task nested under
+  // this parent — the same full card (chips, "/", "@", kebab), not a bare box.
+  parentId?: string;
   label?: string;
   // When the destination is already known (e.g. a project's Tasks card), hide the
   // destination picker so the task always lands on the host.
   lockDestination?: boolean;
+  // Host override for the "+ label" button's classes (the Subtasks section keeps
+  // its deliberately bright button, Tyler 2026-08-14).
+  buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [optimistic, setOptimistic] = useState<OptimisticTask[]>([]);
@@ -62,7 +70,10 @@ export default function InlineAddTask({
         return (
           <div
             key={t.id}
-            className={`my-1 flex items-center gap-2 rounded-card px-2 py-1.5 text-sm ${
+            // w-full: inside a flex-wrap host (the Subtasks add row) the
+            // provisional row and the card each take their own full line;
+            // in block hosts it's a no-op.
+            className={`my-1 flex w-full items-center gap-2 rounded-card px-2 py-1.5 text-sm ${
               realId ? "text-ink" : "text-ink-muted opacity-70"
             }`}
           >
@@ -88,10 +99,11 @@ export default function InlineAddTask({
       })}
 
       {open ? (
-        <div className="my-1.5">
+        <div className="my-1.5 w-full">
           <AddTaskCard
             defaultDueYmd={dueYmd}
             host={host}
+            parentId={parentId}
             lockDestination={lockDestination}
             onOptimisticAdd={(t) => setOptimistic((cur) => [...cur, t])}
             onOptimisticSettle={(tmpId, realId) =>
@@ -105,7 +117,10 @@ export default function InlineAddTask({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 rounded px-2 py-1 text-sm text-neutral-500 hover:text-neutral-300"
+          className={
+            buttonClassName ??
+            "flex items-center gap-1.5 rounded px-2 py-1 text-sm text-neutral-500 hover:text-neutral-300"
+          }
         >
           <span className="text-base leading-none text-[var(--accent)]">+</span> {label}
         </button>
