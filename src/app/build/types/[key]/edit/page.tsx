@@ -11,7 +11,7 @@ import TocSettingsEditor from "@/components/build/TocSettingsEditor";
 import { resolveProjectCardConfig } from "@/lib/project-card-config";
 import { parseComposition, resolveComposition } from "@/lib/composition";
 import { lensesForType, lensPropertyOptions } from "@/lib/list-lenses";
-import { capabilityById } from "@/lib/modules";
+import { canvasIdForType, capabilityById } from "@/lib/modules";
 import { BUILTIN_TOOL_TYPE_KEYS, isWidgetAvailable, widgetsForScope } from "@/lib/widgets";
 import { customToolDefs } from "@/lib/custom-tools";
 import ToolTypeToggle from "@/components/build/ToolTypeToggle";
@@ -103,13 +103,19 @@ export default async function EditType({
           initialMode={type.statusMode}
           initial={type.statusSchema}
         />
-        <TypeSectionsEditor
-          typeKey={key}
-          typeLabel={type.label}
-          catalog={sectionCatalog}
-          initial={storedDefault}
-          effective={effectiveSections}
-        />
+        {/* Tools (default sections) only apply to types whose records resolve
+            to the widget canvas — project, pursuit, and custom types with the
+            Project-style page checkbox on (ADR-204). Rendering it on a plain
+            document type read as "my type is still treated as a Project." */}
+        {canvasIdForType(key, owner.id, type.capability) === "widgets" && (
+          <TypeSectionsEditor
+            typeKey={key}
+            typeLabel={type.label}
+            catalog={sectionCatalog}
+            initial={storedDefault}
+            effective={effectiveSections}
+          />
+        )}
         {/* Offer-as-a-tool (2026-08-17): any type not already covered by a
             built-in catalog card can join the Add-a-Tool menu on widget-home
             records. Hidden for built-in tool types (the card would double). */}

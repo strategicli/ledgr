@@ -14,6 +14,7 @@ export default function SubtaskCheckbox({
   done,
   vanishRow = false,
   openSubtasks = 0,
+  onToggled,
 }: {
   id: string;
   done: boolean;
@@ -31,6 +32,9 @@ export default function SubtaskCheckbox({
   // it never gates (ADR-205: finishing the parent can genuinely moot the
   // children) — but the toast says so, so it's a choice, not an accident.
   openSubtasks?: number;
+  // Fires after a successful toggle. Hosts whose rows are client state that
+  // router.refresh() can't reach (the subtask tree) refetch through it.
+  onToggled?: () => void;
 }) {
   const refresh = useListRefresh();
   const [checked, setChecked] = useState(done);
@@ -73,6 +77,7 @@ export default function SubtaskCheckbox({
       // not-started status (S2), so the checkbox needs no status schema.
       const res = await fetch(`/api/items/${id}/complete`, { method: "POST" });
       if (!res.ok) throw new Error(String(res.status));
+      onToggled?.();
       if (next && openSubtasks > 0) {
         showToast(
           `Completed. ${openSubtasks} subtask${openSubtasks === 1 ? "" : "s"} still open`

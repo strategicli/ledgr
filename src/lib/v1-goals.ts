@@ -116,6 +116,11 @@ export const V1_GOALS: GoalSet[] = [
         status: "done",
         note: "done though not perfect — ready for my use (Tyler, 2026-08-20; widget home + tools, ADR-199/200/204)",
       },
+      {
+        label: "Item windows round: peek + full screen + arrange",
+        status: "todo",
+        note: "the parked window round (next_steps, 2026-08-17) plus its bugs: the vanishing mid-width field, peek click-through-to-underneath, customize-layout discoverability",
+      },
     ],
   },
 ];
