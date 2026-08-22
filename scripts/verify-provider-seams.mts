@@ -71,19 +71,21 @@ check("StorageProvider interface exists", existsSync("src/lib/storage/types.ts")
 // the same authenticated URL. A new unauthenticated machine route would both
 // be a security hole and break the local-cron swap.
 //
-// There are TWO machine-token helpers, and this guard only knew one: the original
-// `verifyMachineToken()`, and `verifyApiToken()` + `resolveMachineOwner` (the
-// ADR-117 OAuth shim, added in db6ae4b). Four routes — attachments, capture,
-// items, relations — use the second and were reported as unauthenticated for
-// months. They are gated (each handler verifies a token and 401s; confirmed by
-// reading all four), so this was a false alarm, and a security guard that cries
-// wolf on every run is one people learn to ignore. Accept either helper.
+// There are THREE machine-auth helpers, and this guard once only knew one: the
+// original `verifyMachineToken()`; `verifyApiToken()` + `resolveMachineOwner`
+// (the ADR-117 OAuth shim, added in db6ae4b — four routes use it and were
+// reported as unauthenticated for months, a false alarm a security guard can't
+// afford, so it was taught); and `verifySyncDevice()` (the sync spine's
+// DB-backed device tokens, src/lib/sync/auth.ts — same sha256 +
+// timingSafeEqual as machine.ts, hash stored on a revocable sync_peers row per
+// the plan's decision 15). Accept exactly these three names, nothing looser:
+// a new machine route must use one of them or extend this list deliberately.
 //
 // Checked PER EXPORTED HANDLER rather than per file, which is stricter than
 // before: the old file-level grep would pass a file whose GET was gated and whose
 // newly-added POST was not. Segmenting on `export async function` is enough
 // because each machine handler authenticates inline, at its top.
-const AUTH_HELPER = /verifyMachineToken\s*\(|verifyApiToken\s*\(/;
+const AUTH_HELPER = /verifyMachineToken\s*\(|verifyApiToken\s*\(|verifySyncDevice\s*\(/;
 const machineRoutes = files.filter((p) => /^src\/app\/api\/machine\/.*\/route\.ts$/.test(p));
 const unauthedHandlers: string[] = [];
 let handlerCount = 0;

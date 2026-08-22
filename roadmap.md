@@ -209,11 +209,15 @@ Desktop-only workspace at `/desk` — items, saved views, and read-only dashboar
 
 ---
 
-## Phase 4: Packageable local / self-hosted build (exploratory)
+## Phase 4: Local hub/spoke build (DECIDED — ADR-206, 2026-08-22; built alongside Vercel+Neon, cutover on Brandon's call; plan in `plans/local-hub-idea-to-cutover.html`, gitignored)
 
-- [ ] Gated on a genuine alternative-deployment motivation (not resilience, already covered by export + Pulpit Ready)
-- [ ] Swap/stub external deps behind provider interfaces (Clerk → local single-user, R2 → local FS, scheduler → local cron, Graph/Todoist → off or stubbed)
-- [ ] DB is already portable (Drizzle connection-string change)
+- [x] LH0 — Record: ADR-206 (Tyler agreed; 15 landed decisions), COLLAB heads-up, exploration status flip (2026-08-22)
+- [x] LH1 — Sync spine: `sync_ops`/`sync_peers`/`sync_device` migration 0054 with row-level triggers on the 8 synced tables; pure merge engine (field LWW, body-loser → revisions); `/api/machine/sync` with device-token auth + schema-version gate; sync client loop (armed by `LEDGR_SYNC_HUBS`); `pg` driver branch in `getDb()`; `verify-sync.mts` 36/36 incl. two-DB convergence on ephemeral embedded-postgres clusters (2026-08-22)
+- [ ] LH2 — Local runtime on the PC: supervisor (embedded Postgres + fresh-dir build + keep-last-good swap), `localAuthProvider`, `LEDGR_BUILD_SHA` stamping, restore from backup
+- [ ] LH3 — Alongside: PC spoke ↔ cloud hub live two-way sync; SyncPill + Synced-devices management + /health sync fields; weeks of soak
+- [ ] LH4 — Installer + updates: `install.ps1` + `local-setup.mjs` wizard (hub/spoke, join token, service registration); local apply behind the ADR-194 Update-now card
+- [ ] LH5 — Hub duties: Tailscale Funnel (first checkpoint: the MCP/Clerk-over-Funnel walkthrough), local crons via supervisor, ordered backup-hub failover
+- [ ] LH6 — Cutover (Brandon's call): flip MCP/phone to the PC, cloud demoted to backup hub. Post-cutover backlog: local blob store + OneDrive tiering, drop-Neon decision, `install.sh`, supervisor auto-update flag
 
 ---
 

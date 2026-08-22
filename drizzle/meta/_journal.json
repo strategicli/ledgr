@@ -379,6 +379,13 @@
       "when": 1787270000000,
       "tag": "0053_person_image",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1787423029455,
+      "tag": "0054_sync_spine",
+      "breakpoints": true
     }
   ]
 }

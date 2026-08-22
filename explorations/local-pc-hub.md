@@ -1,6 +1,6 @@
 # Exploration: local Ledgr on an always-on PC hub ("the box in the closet")
 
-**Status:** exploration, consolidated 2026-08-15 from a Brandon + Claude working session. Not intent, not a decision. Any build touches the provider seams and the deployment story Tyler shares, so it is **core: both-agree + ADR first**.
+**Status:** **decided and scheduled (ADR-206, 2026-08-22; Tyler agreed verbally).** Originally an exploration, consolidated 2026-08-15 from a Brandon + Claude working session. The build plan lives in `plans/local-hub-idea-to-cutover.html` (gitignored local artifact); the **alongside strategy** there (cloud stays live as peer #1, the PC syncs against it continuously, cutover is a role swap) supersedes probes 1-2 and the localhost week-test below. The rest of this doc stands as the record of how the shape was reached.
 
 **This doc supersedes and replaces** `local-first-split.md` (2026-06-11) and `local-p2p-sync.md` (2026-07-12), both deleted in the same commit; git history keeps them. Their essentials are folded in below ("For the record") so nothing is lost.
 
