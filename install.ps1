@@ -25,7 +25,11 @@
 #     powershell -ExecutionPolicy Bypass -File install.ps1 -InstallDir C:\ledgr
 
 param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\Ledgr\app"
+    [string]$InstallDir = "$env:LOCALAPPDATA\Ledgr\app",
+    # Everything after -- lands here and is forwarded to the setup wizard, so
+    # flags like --force stay reachable from the double-click entry point.
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$WizardArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -114,5 +118,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "npm ci failed."; exit 1 }
 # Everything from here is shared cross-platform Node code: the wizard asks
 # hub-or-spoke, restores or seeds the data, writes supervisor/config.json,
 # and offers Task Scheduler registration.
-node scripts\local-setup.mjs
+#
+# Anything after -- on our own command line is forwarded to the wizard, so a
+# double-click user is not cut off from its flags: install.cmd -- --force,
+# for instance. The wizard also ASKS before overwriting an existing config
+# when it has a terminal, so a plain re-run works without any flag at all.
+node scripts\local-setup.mjs @WizardArgs
 exit $LASTEXITCODE
