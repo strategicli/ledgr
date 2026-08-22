@@ -342,7 +342,7 @@ export const itemTools: McpTool[] = [
       properties: {
         type: { type: "string", description: "Type key (task, event, note, link, person, or a custom type — see list_types)." },
         title: { type: "string", description: "Item title." },
-        bodyMarkdown: { type: "string", description: "Body as markdown. To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
+        bodyMarkdown: { type: "string", description: "Body as markdown (also accepted as `body`). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
         dueDate: { type: "string", description: "Due date (the deadline), ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
         scheduledDate: { type: "string", description: "Planned date — the day you intend to WORK on it, as opposed to dueDate (the deadline). ISO 8601. This is what Today/Planner and a recurring series read." },
@@ -392,7 +392,7 @@ export const itemTools: McpTool[] = [
       properties: {
         id: { type: "string", description: "The item id (UUID)." },
         title: { type: "string", description: "New title." },
-        bodyMarkdown: { type: "string", description: "New body markdown (replaces the entire body). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
+        bodyMarkdown: { type: "string", description: "New body markdown, replacing the entire body (also accepted as `body`). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
         status: { type: "string", enum: [...ITEM_STATUSES], description: "New status." },
         dueDate: { type: "string", description: "New due date / deadline (ISO 8601), or null to clear." },
         scheduledDate: { type: "string", description: "New planned date — the day you intend to work on it (ISO 8601), or null to clear. On a recurring task this is the next occurrence, so prefer letting status=done advance it." },

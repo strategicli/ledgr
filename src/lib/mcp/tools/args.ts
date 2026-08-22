@@ -129,20 +129,46 @@ const WRITE_FIELDS = [
   "parentId",
 ] as const;
 
-// Wrong names callers actually reach for, each pointing at the real field.
-// The body is the one that bites: it's the only arg that ISN'T the REST field
-// name (bodyMarkdown, not body), so a caller who guesses gets no signal that
-// they guessed wrong unless we name the fix.
+// Wrong names callers actually reach for, each pointing at the real field
+// (ADR-201). `body` is NOT here: it's a competing convention rather than a
+// typo, so optBodyMarkdown accepts it as an alias instead (ADR-207).
 const KEY_HINTS: Record<string, string> = {
-  body: "bodyMarkdown",
   content: "bodyMarkdown",
   text: "bodyMarkdown",
   markdown: "bodyMarkdown",
 };
 
+// The body markdown, under either name (ADR-207). The declared field is
+// bodyMarkdown, but `body` is what model callers reach for — it's the name
+// Ledgr's own REST API and the items.body column use — and dropping it cost
+// three real empty-body saves. This is the single place every MCP write path
+// takes a body from, so no caller can guess wrong again. bodyMarkdown wins if
+// both are passed. `at` prefixes the error for nested entries ("subtasks[2].").
+//
+// DON'T re-reject the alias: ADR-201 tried exactly that and the saves kept
+// happening, because three write tools never went through buildWriteRaw. Read
+// ADR-207 before narrowing this back.
+export function optBodyMarkdown(
+  args: Record<string, unknown>,
+  at = ""
+): string | undefined {
+  const key =
+    args.bodyMarkdown !== undefined && args.bodyMarkdown !== null ? "bodyMarkdown" : "body";
+  const v = args[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string") {
+    throw new ItemError(
+      "bad_request",
+      `${at}${key} must be a markdown string${key === "body" ? " (alias for bodyMarkdown)" : ""}`
+    );
+  }
+  return v;
+}
+
 // Builds the ItemInput/ItemPatch raw object for parseItemPayload from MCP args.
-// MCP takes the body as a markdown string (bodyMarkdown); everything else maps
-// 1:1 onto the REST item fields, so parseItemPayload does the real validation.
+// MCP takes the body as a markdown string (bodyMarkdown, or its `body` alias);
+// everything else maps 1:1 onto the REST item fields, so parseItemPayload does
+// the real validation.
 // handlerKeys are args the calling tool reads itself outside this builder
 // (e.g. relateTo, id): accepted here, never copied into the raw object.
 export function buildWriteRaw(
@@ -156,6 +182,7 @@ export function buildWriteRaw(
   // empty body. Reject by name instead, with a did-you-mean where we have one.
   const allowed = new Set<string>([
     "bodyMarkdown",
+    "body", // alias, see optBodyMarkdown
     ...WRITE_FIELDS,
     ...extra,
     ...handlerKeys,
@@ -174,11 +201,7 @@ export function buildWriteRaw(
   for (const k of [...WRITE_FIELDS, ...extra]) {
     if (k in args && args[k] !== undefined) raw[k] = args[k];
   }
-  if (args.bodyMarkdown !== undefined && args.bodyMarkdown !== null) {
-    if (typeof args.bodyMarkdown !== "string") {
-      throw new ItemError("bad_request", "bodyMarkdown must be a string");
-    }
-    raw.body = makeMarkdownBody(args.bodyMarkdown);
-  }
+  const md = optBodyMarkdown(args);
+  if (md !== undefined) raw.body = makeMarkdownBody(md);
   return raw;
 }

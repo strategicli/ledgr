@@ -34,7 +34,7 @@ import {
   type OptionSchema,
   type WidgetDefinition,
 } from "@/lib/widgets";
-import { optString } from "./args";
+import { optBodyMarkdown, optString } from "./args";
 import { rowView, typeView } from "./serializers";
 import type { McpTool } from "./wire";
 
@@ -406,7 +406,7 @@ export const recordTools: McpTool[] = [
         type: { type: "string", enum: [...CONTAINABLE], description: "What to create: task | note | milestone | event | link | mindmap." },
         title: { type: "string", description: "Title of the new item." },
         titles: { type: "array", items: { type: "string" }, description: "Create several of the same type at once, in order. Use instead of title." },
-        bodyMarkdown: { type: "string", description: "Body as markdown (single create only)." },
+        bodyMarkdown: { type: "string", description: "Body as markdown (single create only). Also accepted as `body`." },
         dueDate: { type: "string", description: "Deadline, ISO 8601 — a milestone's or task's date." },
         scheduledDate: { type: "string", description: "Planned work date, ISO 8601 (tasks)." },
         meetingAt: { type: "string", description: "Start time, ISO 8601 date-time (events)." },
@@ -480,7 +480,7 @@ export const recordTools: McpTool[] = [
       const scheduledDate = asDate("scheduledDate");
       const meetingAt = asDate("meetingAt");
       const url = optString(args, "url");
-      const bodyMarkdown = optString(args, "bodyMarkdown");
+      const bodyMarkdown = optBodyMarkdown(args);
       let urgency: number | undefined;
       if (args.urgency !== undefined && args.urgency !== null) {
         const n = Number(args.urgency);
