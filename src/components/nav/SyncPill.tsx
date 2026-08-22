@@ -50,20 +50,23 @@ export default function SyncPill({
   if (!status?.enabled) return null;
 
   const onBackup = status.activeHubIndex > 0;
-  const color =
-    status.state === "offline"
-      ? "bg-rose-500"
-      : status.state === "pending" || onBackup
-        ? "bg-amber-500"
-        : "bg-emerald-500";
+  // A silent guardrail is not a guardrail: any hold, or a warn-level clock
+  // skew even without a hold, keeps the pill off green.
+  const amber = status.state === "pending" || status.state === "held" || onBackup || status.skewWarn;
+  const color = status.state === "offline" ? "bg-rose-500" : amber ? "bg-amber-500" : "bg-emerald-500";
 
   const hubName = onBackup ? "backup hub" : "primary hub";
+  const skewNote = status.skewWarn ? " · clock skew detected" : "";
   const label =
     status.state === "offline"
       ? `Offline. No hub reachable${status.lastError ? `: ${status.lastError}` : ""}`
-      : status.state === "pending"
-        ? `${status.pendingOps} change${status.pendingOps === 1 ? "" : "s"} waiting to sync to the ${hubName}`
-        : `Synced to ${hubName}${status.lastSyncAt ? ` · ${relativeTime(status.lastSyncAt)}` : ""}`;
+      : status.state === "held"
+        ? status.holdReason === "first_push_size"
+          ? `Push held: ${status.heldOpsCount} pending changes exceed the first-push limit. Pulling continues.`
+          : "Push held: this device's clock is too far off the hub's. Pulling continues."
+        : status.state === "pending"
+          ? `${status.pendingOps} change${status.pendingOps === 1 ? "" : "s"} waiting to sync to the ${hubName}${skewNote}`
+          : `Synced to ${hubName}${status.mode === "pull-only" ? " (pull-only)" : ""}${status.lastSyncAt ? ` · ${relativeTime(status.lastSyncAt)}` : ""}${skewNote}`;
 
   return (
     <Link

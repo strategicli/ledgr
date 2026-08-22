@@ -6,6 +6,7 @@ import { verifySyncDevice } from "@/lib/sync/auth";
 import { latestSchemaVer } from "@/lib/sync/version";
 import { versionGate, type SyncOp } from "@/lib/sync/engine";
 import { applySyncOps } from "@/lib/sync/apply";
+import { pullOnlyRejectsPush } from "@/lib/sync/peers";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // The hub side of the sync spine (plans/local-hub-idea-to-cutover.html,
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
 
   const ops = Array.isArray(body.ops) ? body.ops : [];
   const sinceSeq = Number.isFinite(body.sinceSeq) ? Number(body.sinceSeq) : 0;
+
+  // Guardrail 1, hub side: a pull_only device is refused outright rather than
+  // silently dropped, so the guarantee never depends on the spoke behaving
+  // (a bug or a misconfigured spoke can't push around it).
+  if (pullOnlyRejectsPush(peer.pullOnly, ops.length)) {
+    log.warn("pull-only device attempted to push ops", { peer: peer.name, count: ops.length });
+    return NextResponse.json(
+      { error: "this device is pull-only; it cannot push changes" },
+      { status: 403 }
+    );
+  }
 
   try {
     const db = getDb();
@@ -121,6 +133,9 @@ export async function POST(request: Request) {
       schemaVer: localVer,
       applied: result.actions,
       rejected: result.rejected,
+      // Guardrail 3: additive field so existing callers are unaffected. The
+      // client compares this to its own clock to detect skew.
+      serverTime: new Date().toISOString(),
     });
   } catch (err) {
     const message = errorMessage(err);

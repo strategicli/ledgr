@@ -33,12 +33,21 @@ export function deleteRefusal(revoked: boolean): string | null {
   return revoked ? null : "Revoke the device before deleting it.";
 }
 
+// Guardrail 1's hub-side belt-and-suspenders: whether /api/machine/sync must
+// refuse this request outright. Pure so it's testable without a route in the
+// loop; the check does not depend on the spoke's own honesty.
+export function pullOnlyRejectsPush(pullOnly: boolean, opsCount: number): boolean {
+  return pullOnly && opsCount > 0;
+}
+
 // ── DB-backed operations ─────────────────────────────────────────────────────
 
 export type PeerSummary = {
   deviceId: string;
   name: string;
   revoked: boolean;
+  // Guardrail 1: this device may pull but the hub refuses any push from it.
+  pullOnly: boolean;
   lastSeenAt: string | null;
   // Cursor lag, as ops (see cursorLag above).
   opsBehind: number;
@@ -55,6 +64,7 @@ export async function listPeers(): Promise<PeerSummary[]> {
       deviceId: syncPeers.deviceId,
       name: syncPeers.name,
       revoked: syncPeers.revoked,
+      pullOnly: syncPeers.pullOnly,
       lastSeenAt: syncPeers.lastSeenAt,
       lastPulledSeq: syncPeers.lastPulledSeq,
       createdAt: syncPeers.createdAt,
@@ -65,6 +75,7 @@ export async function listPeers(): Promise<PeerSummary[]> {
     deviceId: r.deviceId,
     name: r.name,
     revoked: r.revoked,
+    pullOnly: r.pullOnly,
     lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
     opsBehind: cursorLag(maxSeq, r.lastPulledSeq),
   }));
@@ -72,8 +83,11 @@ export async function listPeers(): Promise<PeerSummary[]> {
 
 // Mints a device row + its token. The returned plaintext is the ONLY copy —
 // the row keeps just the hash — so the caller shows it once and drops it.
+// pullOnly defaults false; the Add-device UI offers it as the safe default
+// for a brand-new peer (guardrail 1).
 export async function createPeer(
-  name: string
+  name: string,
+  opts: { pullOnly?: boolean } = {}
 ): Promise<{ deviceId: string; name: string; token: string }> {
   const token = generateSyncToken();
   const deviceId = crypto.randomUUID();
@@ -81,6 +95,7 @@ export async function createPeer(
     deviceId,
     name,
     tokenHash: hashToken(token),
+    pullOnly: opts.pullOnly === true,
   });
   return { deviceId, name, token };
 }
@@ -90,6 +105,18 @@ export async function setPeerRevoked(deviceId: string, revoked: boolean): Promis
   const rows = await getDb()
     .update(syncPeers)
     .set({ revoked })
+    .where(eq(syncPeers.deviceId, deviceId))
+    .returning({ deviceId: syncPeers.deviceId });
+  return rows.length > 0;
+}
+
+// Flip a device between pull-only and full. This is the "arming sync safely"
+// lever: add a device pull-only, confirm data flows down, then flip to full.
+// Returns false when no such device exists.
+export async function setPeerPullOnly(deviceId: string, pullOnly: boolean): Promise<boolean> {
+  const rows = await getDb()
+    .update(syncPeers)
+    .set({ pullOnly })
     .where(eq(syncPeers.deviceId, deviceId))
     .returning({ deviceId: syncPeers.deviceId });
   return rows.length > 0;

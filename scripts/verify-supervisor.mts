@@ -77,6 +77,29 @@ check(
   "a bogus update mode is refused",
   throws(() => normalizeConfig({ ...goodRaw, update: { mode: "yolo" } }, "/x"))
 );
+check("syncMode defaults to full", cfg.syncMode === "full");
+check(
+  "syncMode: pull-only is accepted",
+  normalizeConfig({ ...goodRaw, syncMode: "pull-only" }, "/x").syncMode === "pull-only"
+);
+check(
+  "a bogus syncMode is refused",
+  throws(() => normalizeConfig({ ...goodRaw, syncMode: "read-write" }, "/x"))
+);
+check(
+  "syncGuardrails default sanely",
+  cfg.syncGuardrails.maxFirstPush === 500 &&
+    cfg.syncGuardrails.confirmLargePush === false &&
+    cfg.syncGuardrails.skewWarnMs === 5000 &&
+    cfg.syncGuardrails.skewHoldMs === 60000
+);
+check(
+  "syncGuardrails are read from config",
+  normalizeConfig(
+    { ...goodRaw, syncGuardrails: { maxFirstPush: 50, confirmLargePush: true, skewWarnMs: 1000, skewHoldMs: 5000 } },
+    "/x"
+  ).syncGuardrails.maxFirstPush === 50
+);
 check(
   "a bogus port is refused",
   throws(() => normalizeConfig({ ...goodRaw, appPort: "eighty" }, "/x"))
@@ -114,6 +137,14 @@ check(
   "cadence knobs land as sync env",
   env.LEDGR_SYNC_PUSH_DEBOUNCE_MS === "2500" && env.LEDGR_SYNC_PULL_MS === "12000"
 );
+check("syncMode lands as sync env", env.LEDGR_SYNC_MODE === "full");
+check(
+  "guardrail knobs land as sync env",
+  env.LEDGR_SYNC_MAX_FIRST_PUSH === "500" &&
+    env.LEDGR_SYNC_CONFIRM_LARGE_PUSH === "false" &&
+    env.LEDGR_SYNC_SKEW_WARN_MS === "5000" &&
+    env.LEDGR_SYNC_SKEW_HOLD_MS === "60000"
+);
 check(
   "no hubs (or no token) means NO half-armed sync env",
   (() => {
@@ -121,7 +152,12 @@ check(
       normalizeConfig({ dataDir: "/d", ownerEmail: "a@b.c" }, "/x"),
       "sha"
     ) as Record<string, string>;
-    return !("LEDGR_SYNC_HUBS" in e) && !("LEDGR_SYNC_TOKEN" in e);
+    return (
+      !("LEDGR_SYNC_HUBS" in e) &&
+      !("LEDGR_SYNC_TOKEN" in e) &&
+      !("LEDGR_SYNC_MODE" in e) &&
+      !("LEDGR_SYNC_MAX_FIRST_PUSH" in e)
+    );
   })()
 );
 check(

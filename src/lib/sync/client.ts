@@ -23,7 +23,13 @@ import { createLogger } from "@/lib/log";
 
 const log = createLogger("sync-client");
 
-export type SyncState = "synced" | "pending" | "offline";
+// "held" = a push is deliberately withheld (first-push size guard or a
+// clock-skew hold); pulling still proceeds in that state.
+export type SyncState = "synced" | "pending" | "offline" | "held";
+
+export type SyncMode = "full" | "pull-only";
+
+export type HoldReason = "first_push_size" | "clock_skew";
 
 export type SyncStatus = {
   state: SyncState;
@@ -31,9 +37,20 @@ export type SyncStatus = {
   activeHubIndex: number;
   lastSyncAt: string | null;
   lastError: string | null;
+  // Guardrail 2/3: why a push is currently held, if it is.
+  holdReason: HoldReason | null;
+  // Populated only when holdReason === "first_push_size".
+  heldOpsCount: number | null;
+  // Guardrail 3: last measured (serverTime - local time), ms. Positive means
+  // the hub's clock reads ahead of this peer's. Null until the first
+  // exchange completes (skew is learned FROM that exchange's response, so it
+  // can never gate the very first round-trip — only ones after it).
+  skewMs: number | null;
+  // True once |skewMs| has reached the warn threshold, independent of hold.
+  skewWarn: boolean;
 };
 
-// In-memory status for the future SyncPill (phase 3). Module-level is enough:
+// In-memory status for the SyncPill / /build/updates. Module-level is enough:
 // `next start` on a local peer is one long-lived process.
 const status: SyncStatus = {
   state: "offline",
@@ -41,7 +58,18 @@ const status: SyncStatus = {
   activeHubIndex: 0,
   lastSyncAt: null,
   lastError: null,
+  holdReason: null,
+  heldOpsCount: null,
+  skewMs: null,
+  skewWarn: false,
 };
+
+// Guardrail 2's "only the FIRST push is gated" boundary: once a real push
+// attempt has been let through (or found nothing to send), this never gates
+// again for the rest of the process's lifetime. Deliberately separate from
+// `status`, which is allowed to move back and forth (e.g. holdReason clears
+// once resolved) — this flag must not.
+let firstPushDone = false;
 
 export function getSyncStatus(): SyncStatus {
   return { ...status };
@@ -63,24 +91,32 @@ export function syncEnabled(): boolean {
   return parseHubs(process.env.LEDGR_SYNC_HUBS).length > 0;
 }
 
+// Guardrail 1: is this peer allowed to push at all? Read fresh from env
+// everywhere (like parseHubs) rather than cached, since it's static config.
+export function parseSyncMode(raw: string | undefined): SyncMode {
+  return raw === "pull-only" ? "pull-only" : "full";
+}
+
 export type FullSyncStatus =
   | { enabled: false }
-  | ({ enabled: true; hubCount: number } & SyncStatus);
+  | ({ enabled: true; hubCount: number; mode: SyncMode } & SyncStatus);
 
 // Pure shape assembly (verify-sync-ui.mts exercises this): the in-memory loop
 // status plus an on-demand pendingOps count. Freshly written ops the loop
 // hasn't pushed yet flip a "synced" reading to "pending" — the loop only
 // refreshes its own copy when it runs, and the status endpoint reads between
-// runs.
+// runs. A "held" reading is never downgraded by the pendingOps recompute.
 export function buildSyncStatus(
   hubs: string[],
   s: SyncStatus,
-  pendingOps: number
+  pendingOps: number,
+  mode: SyncMode
 ): FullSyncStatus {
   if (hubs.length === 0) return { enabled: false };
   return {
     enabled: true,
     hubCount: hubs.length,
+    mode,
     ...s,
     pendingOps,
     state: s.state === "synced" && pendingOps > 0 ? "pending" : s.state,
@@ -97,7 +133,107 @@ export async function gatherSyncStatus(): Promise<FullSyncStatus> {
   const hub = hubs[Math.min(Math.max(s.activeHubIndex, 0), hubs.length - 1)];
   const cursor = await readCursor(hub);
   const pendingOps = await pendingCount(cursor.push);
-  return buildSyncStatus(hubs, s, pendingOps);
+  return buildSyncStatus(hubs, s, pendingOps, parseSyncMode(process.env.LEDGR_SYNC_MODE));
+}
+
+// ── Guardrail 2: first-push size guard (pure, tested directly) ─────────────
+
+export type FirstPushCheck =
+  | { hold: false; done: true }
+  | { hold: true; done: false; reason: string };
+
+/**
+ * Decide whether the client's first-ever push attempt this process should be
+ * held. `firstPushDone` makes this a one-shot gate: once a decision comes
+ * back non-held, the caller must flip it permanently so a legitimately busy
+ * spoke is never throttled again.
+ */
+export function checkFirstPush(opts: {
+  firstPushDone: boolean;
+  pendingCount: number;
+  maxFirstPush: number;
+  confirmLargePush: boolean;
+}): FirstPushCheck {
+  if (opts.firstPushDone) return { hold: false, done: true };
+  if (opts.pendingCount > opts.maxFirstPush && !opts.confirmLargePush) {
+    return {
+      hold: true,
+      done: false,
+      reason:
+        `First push held: ${opts.pendingCount} pending changes exceed the ` +
+        `first-push limit of ${opts.maxFirstPush}. Look at what is pending, ` +
+        `then either raise maxFirstPush or set confirmLargePush: true in ` +
+        `supervisor/config.json and restart to release it.`,
+    };
+  }
+  return { hold: false, done: true };
+}
+
+// ── Guardrail 3: clock-skew detection (pure, tested directly) ──────────────
+
+export type SkewClass = "ok" | "warn" | "hold";
+
+/** abs(skewMs) classified against the two configured thresholds. */
+export function classifySkew(skewMs: number, warnMs: number, holdMs: number): SkewClass {
+  const abs = Math.abs(skewMs);
+  if (abs >= holdMs) return "hold";
+  if (abs >= warnMs) return "warn";
+  return "ok";
+}
+
+// ── Push decision (pure, tested directly) ───────────────────────────────────
+// Composes guardrails 1-3 into one place: given what THIS round could push
+// (already-fetched candidates, so no DB access here) and the current guard
+// state, decide what actually goes out. Pulling is never part of this
+// decision — the caller runs the pull side unconditionally regardless of the
+// result, which is what keeps a held/pull-only device pulling normally.
+export type PushSelection = {
+  ops: SyncOp[];
+  holdReason: HoldReason | null;
+  heldOpsCount: number | null;
+  firstPushDoneAfter: boolean;
+};
+
+export function selectPushOps(opts: {
+  mode: SyncMode;
+  candidateOps: SyncOp[];
+  pendingCount: number;
+  firstPushDone: boolean;
+  maxFirstPush: number;
+  confirmLargePush: boolean;
+  skewMs: number | null;
+  skewWarnMs: number;
+  skewHoldMs: number;
+}): PushSelection {
+  if (opts.mode === "pull-only") {
+    // Guardrail 1: never send local ops, regardless of firstPushDone/skew.
+    return { ops: [], holdReason: null, heldOpsCount: null, firstPushDoneAfter: opts.firstPushDone };
+  }
+  if (opts.skewMs !== null && classifySkew(opts.skewMs, opts.skewWarnMs, opts.skewHoldMs) === "hold") {
+    // Guardrail 3: not limited to the first push — holds for as long as the
+    // skew stays this bad, however many pushes in.
+    return {
+      ops: [],
+      holdReason: "clock_skew",
+      heldOpsCount: null,
+      firstPushDoneAfter: opts.firstPushDone,
+    };
+  }
+  const check = checkFirstPush({
+    firstPushDone: opts.firstPushDone,
+    pendingCount: opts.pendingCount,
+    maxFirstPush: opts.maxFirstPush,
+    confirmLargePush: opts.confirmLargePush,
+  });
+  if (check.hold) {
+    return {
+      ops: [],
+      holdReason: "first_push_size",
+      heldOpsCount: opts.pendingCount,
+      firstPushDoneAfter: false,
+    };
+  }
+  return { ops: opts.candidateOps, holdReason: null, heldOpsCount: null, firstPushDoneAfter: true };
 }
 
 const PUSH_BATCH = 500;
@@ -165,15 +301,52 @@ async function pendingCount(afterSeq: number): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
+type PushGuard = {
+  mode: SyncMode;
+  maxFirstPush: number;
+  confirmLargePush: boolean;
+  skewWarnMs: number;
+  skewHoldMs: number;
+};
+
 // One full exchange with one hub: push until drained, pull until drained.
 // Throws on any transport/HTTP failure so the caller can walk the hub list.
-async function exchangeWith(hub: string, deviceId: string, token: string): Promise<void> {
+// Guardrails 1-3 all act at the same point: deciding what `ops` to send.
+// Pulling is never gated by any of them (holding a push cannot corrupt the
+// hub; holding a pull would just leave this peer stale).
+async function exchangeWith(hub: string, deviceId: string, token: string, guard: PushGuard): Promise<void> {
   const schemaVer = latestSchemaVer();
   let cursor = await readCursor(hub);
   // Bounded loop: worst case both sides hold deep backlogs; each round moves
   // at least one batch, and the caller reruns on the next tick anyway.
   for (let round = 0; round < 20; round++) {
-    const ops = await unpushedOps(cursor.push);
+    // candidateOps is what would be sent absent any guard; selectPushOps
+    // (pure) decides whether it actually goes out. Cheap enough to always
+    // fetch — pull-only skips it outright since it can never be used.
+    const pending = await pendingCount(cursor.push);
+    const candidateOps = guard.mode === "pull-only" ? [] : await unpushedOps(cursor.push);
+    const sel = selectPushOps({
+      mode: guard.mode,
+      candidateOps,
+      pendingCount: pending,
+      firstPushDone,
+      maxFirstPush: guard.maxFirstPush,
+      confirmLargePush: guard.confirmLargePush,
+      skewMs: status.skewMs,
+      skewWarnMs: guard.skewWarnMs,
+      skewHoldMs: guard.skewHoldMs,
+    });
+    firstPushDone = sel.firstPushDoneAfter;
+    status.holdReason = sel.holdReason;
+    status.heldOpsCount = sel.heldOpsCount;
+    if (sel.holdReason === "first_push_size") {
+      log.warn("first push held: pending oplog exceeds the first-push limit", {
+        pending: sel.heldOpsCount,
+        maxFirstPush: guard.maxFirstPush,
+      });
+    }
+    const ops = sel.ops;
+
     const res = await fetch(`${hub.replace(/\/$/, "")}/api/machine/sync`, {
       method: "POST",
       headers: {
@@ -188,14 +361,29 @@ async function exchangeWith(hub: string, deviceId: string, token: string): Promi
         `schema version mismatch: hub has ${detail.localVer ?? "?"}, this peer has ${schemaVer}`
       );
     }
+    if (res.status === 403) {
+      // The hub-side belt-and-suspenders (a pull_only device that somehow
+      // sent ops anyway). Never expected given the checks above, but surface
+      // it rather than retry the same rejected push forever.
+      const detail = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(detail.error ?? "hub refused this device's ops (pull-only)");
+    }
     if (!res.ok) throw new Error(`sync exchange failed: HTTP ${res.status}`);
     const data = (await res.json()) as {
       ops: SyncOp[];
       cursor: number;
       hasMore: boolean;
+      serverTime?: string;
     };
     if (data.ops.length > 0) {
       await applySyncOps(data.ops);
+    }
+    if (data.serverTime) {
+      const skewMs = Date.parse(data.serverTime) - Date.now();
+      if (Number.isFinite(skewMs)) {
+        status.skewMs = skewMs;
+        status.skewWarn = classifySkew(skewMs, guard.skewWarnMs, guard.skewHoldMs) !== "ok";
+      }
     }
     cursor = {
       push: ops.length > 0 ? ops[ops.length - 1].seq : cursor.push,
@@ -207,14 +395,14 @@ async function exchangeWith(hub: string, deviceId: string, token: string): Promi
   status.pendingOps = await pendingCount(cursor.push);
 }
 
-async function exchange(hubs: string[], deviceId: string, token: string): Promise<void> {
+async function exchange(hubs: string[], deviceId: string, token: string, guard: PushGuard): Promise<void> {
   for (let i = 0; i < hubs.length; i++) {
     try {
-      await exchangeWith(hubs[i], deviceId, token);
+      await exchangeWith(hubs[i], deviceId, token, guard);
       status.activeHubIndex = i;
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
-      status.state = status.pendingOps > 0 ? "pending" : "synced";
+      status.state = status.holdReason ? "held" : status.pendingOps > 0 ? "pending" : "synced";
       return;
     } catch (err) {
       status.lastError = err instanceof Error ? err.message : String(err);
@@ -242,6 +430,13 @@ export function startSyncLoop(): void {
 
   const pushDebounceMs = envInt("LEDGR_SYNC_PUSH_DEBOUNCE_MS", 2000);
   const pullMs = envInt("LEDGR_SYNC_PULL_MS", 10000);
+  const guard: PushGuard = {
+    mode: parseSyncMode(process.env.LEDGR_SYNC_MODE),
+    maxFirstPush: envInt("LEDGR_SYNC_MAX_FIRST_PUSH", 500),
+    confirmLargePush: /^(1|true)$/i.test(process.env.LEDGR_SYNC_CONFIRM_LARGE_PUSH ?? ""),
+    skewWarnMs: envInt("LEDGR_SYNC_SKEW_WARN_MS", 5000),
+    skewHoldMs: envInt("LEDGR_SYNC_SKEW_HOLD_MS", 60000),
+  };
 
   let deviceId: string | null = null;
   let lastSeenSeq = -1;
@@ -261,7 +456,7 @@ export function startSyncLoop(): void {
       const due = Date.now() - lastFullExchange >= pullMs;
       const wrote = lastSeenSeq >= 0 && maxSeq > lastSeenSeq;
       if (due || wrote || lastSeenSeq < 0) {
-        await exchange(hubs, deviceId, token);
+        await exchange(hubs, deviceId, token, guard);
         lastFullExchange = Date.now();
       }
       lastSeenSeq = maxSeq;

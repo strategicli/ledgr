@@ -848,7 +848,11 @@ running. Those are two separate things, and the page reports them separately.
   instance that does not sync, neither appears.
 - **Synced devices.** The list of devices allowed to sync against this
   instance. **Add device** names a new one and shows its access token exactly
-  once; copy it into that device's setup, because it cannot be shown again.
+  once; copy it into that device's setup, because it cannot be shown again. A
+  new device can be added **pull-only**, meaning it can only receive changes
+  from this instance and never push its own; that is the safe default when
+  proving out a fresh device, and it can be flipped between pull-only and
+  full at any time from here, even if the device itself is unreachable.
   **Revoke** shuts a device out remotely (its next sync is refused),
   **Restore** lets it back in, and a revoked device can then be deleted. The
   section is empty unless other devices sync against this instance.

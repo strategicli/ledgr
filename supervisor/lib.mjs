@@ -29,6 +29,10 @@ export function normalizeConfig(raw, baseDir) {
   if (updateMode !== "prompted" && updateMode !== "auto") {
     throw new Error(`config.update.mode must be "prompted" or "auto", got ${JSON.stringify(updateMode)}`);
   }
+  const syncMode = cfg.syncMode ?? "full";
+  if (syncMode !== "full" && syncMode !== "pull-only") {
+    throw new Error(`config.syncMode must be "full" or "pull-only", got ${JSON.stringify(syncMode)}`);
+  }
   const hubs = Array.isArray(cfg.hubs) ? cfg.hubs.filter((h) => typeof h === "string" && h.length > 0) : [];
 
   const abs = (p, fallback) => {
@@ -54,6 +58,7 @@ export function normalizeConfig(raw, baseDir) {
     ownerEmail: cfg.ownerEmail,
     hubs,
     deviceToken: typeof cfg.deviceToken === "string" ? cfg.deviceToken : "",
+    syncMode,
     update: {
       mode: updateMode,
       pollIntervalMs: Math.max(60_000, Number(cfg.update?.pollIntervalMs) || 15 * 60_000),
@@ -61,6 +66,15 @@ export function normalizeConfig(raw, baseDir) {
     cadence: {
       pushDebounceMs: Number(cfg.cadence?.pushDebounceMs) || 2000,
       pullMs: Number(cfg.cadence?.pullMs) || 10_000,
+    },
+    // Guardrails 2 & 3 (first-push size guard, clock-skew hold). Defaults
+    // mirror src/lib/sync/client.ts's own fallbacks, so an unset config and an
+    // unset env var behave identically.
+    syncGuardrails: {
+      maxFirstPush: Math.max(1, Number(cfg.syncGuardrails?.maxFirstPush) || 500),
+      confirmLargePush: cfg.syncGuardrails?.confirmLargePush === true,
+      skewWarnMs: Math.max(0, Number(cfg.syncGuardrails?.skewWarnMs) || 5000),
+      skewHoldMs: Math.max(0, Number(cfg.syncGuardrails?.skewHoldMs) || 60_000),
     },
     // Extra env passed through to the app verbatim (R2 keys, Graph secrets…).
     extraEnv: cfg.extraEnv && typeof cfg.extraEnv === "object" ? { ...cfg.extraEnv } : {},
@@ -97,6 +111,11 @@ export function assembleAppEnv(cfg, buildSha) {
   if (cfg.hubs.length > 0 && cfg.deviceToken) {
     env.LEDGR_SYNC_HUBS = cfg.hubs.join(",");
     env.LEDGR_SYNC_TOKEN = cfg.deviceToken;
+    env.LEDGR_SYNC_MODE = cfg.syncMode;
+    env.LEDGR_SYNC_MAX_FIRST_PUSH = String(cfg.syncGuardrails.maxFirstPush);
+    env.LEDGR_SYNC_CONFIRM_LARGE_PUSH = String(cfg.syncGuardrails.confirmLargePush);
+    env.LEDGR_SYNC_SKEW_WARN_MS = String(cfg.syncGuardrails.skewWarnMs);
+    env.LEDGR_SYNC_SKEW_HOLD_MS = String(cfg.syncGuardrails.skewHoldMs);
   }
   return env;
 }

@@ -8,7 +8,7 @@ import { getDb } from "@/db";
 import { syncPeers } from "@/db/schema";
 import { hashToken, digestsMatch } from "@/lib/auth/machine";
 
-export type SyncPeerIdentity = { deviceId: string; name: string };
+export type SyncPeerIdentity = { deviceId: string; name: string; pullOnly: boolean };
 
 /**
  * Verifies a Bearer device token from an incoming sync request against the
@@ -28,12 +28,13 @@ export async function verifySyncDevice(
       deviceId: syncPeers.deviceId,
       name: syncPeers.name,
       tokenHash: syncPeers.tokenHash,
+      pullOnly: syncPeers.pullOnly,
     })
     .from(syncPeers)
     .where(eq(syncPeers.revoked, false));
   for (const peer of peers) {
     if (digestsMatch(digest, peer.tokenHash)) {
-      return { deviceId: peer.deviceId, name: peer.name };
+      return { deviceId: peer.deviceId, name: peer.name, pullOnly: peer.pullOnly };
     }
   }
   return null;

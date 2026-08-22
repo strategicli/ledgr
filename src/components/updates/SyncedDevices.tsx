@@ -18,6 +18,7 @@ type Minted = { name: string; token: string };
 export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSummary[] }) {
   const [peers, setPeers] = useState<PeerSummary[]>(initialPeers);
   const [name, setName] = useState("");
+  const [pullOnlyNew, setPullOnlyNew] = useState(true);
   const [minted, setMinted] = useState<Minted | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -40,7 +41,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
       const res = await fetch("/api/sync/peers", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, pullOnly: pullOnlyNew }),
       });
       const data = (await res.json()) as { token?: string; error?: string };
       if (!res.ok || !data.token) {
@@ -50,6 +51,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
       setMinted({ name: trimmed, token: data.token });
       setCopied(false);
       setName("");
+      setPullOnlyNew(true);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "The device could not be added.");
@@ -74,6 +76,16 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ revoked }),
+    });
+
+  // Guardrail 1's "arming sync safely" lever: flip a device between
+  // pull-only and full from the hub, correctable even if the spoke can't be
+  // reached.
+  const setPullOnly = (deviceId: string, pullOnly: boolean) =>
+    mutate(deviceId, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pullOnly }),
     });
 
   const rowButton =
@@ -104,6 +116,11 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                     {p.revoked && (
                       <span className="ui-meta ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-ink-subtle">
                         revoked
+                      </span>
+                    )}
+                    {p.pullOnly && (
+                      <span className="ui-meta ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-ink-subtle">
+                        pull-only
                       </span>
                     )}
                   </td>
@@ -143,15 +160,28 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                           />
                         </>
                       ) : (
-                        <ConfirmButton
-                          title={`Revoke ${p.name}?`}
-                          description="Its next sync will be refused. You can restore it later."
-                          confirmLabel="Revoke"
-                          align="right"
-                          trigger={<span>Revoke</span>}
-                          triggerClassName={rowButton}
-                          onConfirm={() => setRevoked(p.deviceId, true)}
-                        />
+                        <>
+                          <button
+                            type="button"
+                            className={rowButton}
+                            onClick={() =>
+                              void setPullOnly(p.deviceId, !p.pullOnly).catch((err) =>
+                                setError(err instanceof Error ? err.message : String(err))
+                              )
+                            }
+                          >
+                            {p.pullOnly ? "Allow push" : "Make pull-only"}
+                          </button>
+                          <ConfirmButton
+                            title={`Revoke ${p.name}?`}
+                            description="Its next sync will be refused. You can restore it later."
+                            confirmLabel="Revoke"
+                            align="right"
+                            trigger={<span>Revoke</span>}
+                            triggerClassName={rowButton}
+                            onConfirm={() => setRevoked(p.deviceId, true)}
+                          />
+                        </>
                       )}
                     </div>
                   </td>
@@ -208,6 +238,14 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
           placeholder="Device name (e.g. Study PC)"
           className="w-56 rounded-card border border-line bg-surface-0 px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-line-strong focus:outline-none"
         />
+        <label className="ui-meta flex items-center gap-1.5 text-ink-muted">
+          <input
+            type="checkbox"
+            checked={pullOnlyNew}
+            onChange={(e) => setPullOnlyNew(e.target.checked)}
+          />
+          Pull-only (safe default for a new device)
+        </label>
         <button
           type="button"
           onClick={() => void addDevice()}
