@@ -1,7 +1,6 @@
 // Idempotent seed: the five system type rows and the single v1 user row.
 // Run via: npm run db:seed (loads .env / .env.local if present).
 // Safe to re-run; every insert is ON CONFLICT DO NOTHING.
-import { neon } from "@neondatabase/serverless";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -9,14 +8,31 @@ if (!url) {
   process.exit(1);
 }
 const hostname = new URL(url).hostname;
-if (hostname.endsWith(".neon.tech") && !hostname.includes("-pooler")) {
+const isNeon = hostname.endsWith(".neon.tech");
+if (isNeon && !hostname.includes("-pooler")) {
   console.error(
     "DATABASE_URL must be the Neon pooler connection string (runbook.md §1)."
   );
   process.exit(1);
 }
 
-const sql = neon(url);
+// Driver branch mirrors scripts/migrate.mjs: a Neon URL seeds over neon-http;
+// anything else (a local hub/spoke Postgres, LH4) uses node-postgres behind
+// the same tagged-template shape, so every statement below runs unchanged.
+let sql;
+if (isNeon) {
+  const { neon } = await import("@neondatabase/serverless");
+  sql = neon(url);
+} else {
+  const { default: pg } = await import("pg");
+  // allowExitOnIdle: the script ends by falling off the bottom; an idle pool
+  // must not pin the process open.
+  const pool = new pg.Pool({ connectionString: url, allowExitOnIdle: true });
+  sql = async (strings, ...values) => {
+    const text = strings.reduce((q, s, i) => q + (i ? `$${i}` : "") + s, "");
+    return (await pool.query(text, values)).rows;
+  };
+}
 
 const systemTypes = [
   ["task", "Task", "check-square"],
