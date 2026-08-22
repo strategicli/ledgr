@@ -1,0 +1,14 @@
+{
+  "role": "spoke",
+  "dataDir": "C:/ledgr-data",
+  "repoDir": "..",
+  "branch": "main",
+  "appPort": 3000,
+  "dbPort": 5433,
+  "ownerEmail": "you@example.com",
+  "hubs": ["https://your-hub.example.com"],
+  "deviceToken": "",
+  "update": { "mode": "prompted", "pollIntervalMs": 900000 },
+  "cadence": { "pushDebounceMs": 2000, "pullMs": 10000 },
+  "extraEnv": {}
+}
