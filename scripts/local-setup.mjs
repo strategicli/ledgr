@@ -332,10 +332,11 @@ async function startEmpty(cfg) {
     // Windows initdb inherits the OS locale, which yields a WIN1252 cluster
     // that cannot store the arrows, curly quotes, em dashes and emoji real
     // Ledgr bodies are full of (it failed on a migration comment first).
-    // ponytail: locale=C means bytewise text sorting, so ORDER BY title can
-    // differ slightly from the hub. Encoding is correctness, collation is
-    // cosmetic; revisit only if list order visibly diverges.
-    initdbFlags: ["--encoding=UTF8", "--locale=C"],
+    // ICU gives linguistic collation (Apple < Ärger < banana), matching what
+    // Neon does and what a person expects, independent of the OS codepage.
+    // The libc --locale stays C because Windows libc locales are codepage
+    // based; ICU owns collation, so that no longer costs anything.
+    initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
   });
   if (!existsSync(join(pgDir, "PG_VERSION"))) {
     console.log("initdb (first run)…");

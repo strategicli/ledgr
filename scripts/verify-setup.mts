@@ -403,12 +403,16 @@ for (const rel of [
 ]) {
   const src = readFileSync(rel, "utf8");
   check(`${rel} forces UTF8 at initdb`, /initdbFlags:\s*\[[^\]]*--encoding=UTF8/.test(src));
+  // ICU gives linguistic collation independent of the OS codepage, which is
+  // what matches the hub. A Windows libc locale cannot, which is the whole
+  // reason the local cluster ever came up WIN1252.
+  check(`${rel} uses the ICU locale provider`, /--locale-provider=icu/.test(src));
 }
 {
   const src = readFileSync("scripts/local-restore.mjs", "utf8");
   check(
-    "local-restore creates the database from template0 with an explicit UTF8 encoding",
-    /create database ledgr template template0 encoding 'UTF8'/.test(src)
+    "local-restore inherits the cluster's UTF8 + ICU settings (no template0 special-casing)",
+    /create database ledgr"\)/.test(src) && !/template template0/.test(src)
   );
   check(
     "local-restore asserts the created database really is UTF8 before loading data",
