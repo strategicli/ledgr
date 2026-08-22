@@ -30,6 +30,7 @@ import {
   type WriteAction,
 } from "../src/lib/sync/engine";
 import { applySyncOps, type SyncDb } from "../src/lib/sync/apply";
+import { pruneSyncOps, SYNC_OPS_RETENTION_DAYS } from "../src/lib/sync/peers";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -412,6 +413,64 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
     check(
       "the oplog stops growing (echo terminates)",
       (await opCount(A)) === beforeA && (await opCount(B)) === beforeB
+    );
+
+    // ── Retention prune (the daily purge's oplog cleanup) ──────────────────
+    // Destructive to A's oplog, so it runs LAST. Ops are back-dated past the
+    // floor; the cursor half of the rule is what the checks actually move.
+    await A.query(
+      `update sync_ops set at = now() - make_interval(days => $1)`,
+      [SYNC_OPS_RETENTION_DAYS + 1]
+    );
+    const aged = await opCount(A);
+    check("prune fixture: A holds back-dated ops", aged > 1, `n=${aged}`);
+
+    // A registered device that has never pulled pins the whole log.
+    await A.query(
+      `insert into sync_peers (device_id, name, token_hash) values ($1, 'never-synced', 'x')`,
+      [B.deviceId]
+    );
+    const pinned = await pruneSyncOps({ db: A.db });
+    check(
+      "a peer at cursor 0 pins the whole oplog",
+      pinned.syncOpsPruned === 0 && (await opCount(A)) === aged
+    );
+
+    // Cursor advanced into the middle: everything at or below it goes, the
+    // tail the peer hasn't pulled stays.
+    const midRow = await A.query(`select seq from sync_ops order by seq offset $1 limit 1`, [
+      Math.floor(aged / 2),
+    ]);
+    const mid = Number(midRow.rows[0].seq);
+    await A.query(`update sync_peers set last_pulled_seq = $1 where device_id = $2`, [
+      mid,
+      B.deviceId,
+    ]);
+    const partial = await pruneSyncOps({ db: A.db });
+    const remaining = await A.query(`select min(seq)::int as lo, count(*)::int as n from sync_ops`);
+    check(
+      "pulled ops are pruned and unpulled ops are kept",
+      partial.syncOpsPruned > 0 &&
+        Number(remaining.rows[0].n) === aged - partial.syncOpsPruned &&
+        Number(remaining.rows[0].lo) > mid,
+      `pruned=${partial.syncOpsPruned} lo=${remaining.rows[0].lo} mid=${mid}`
+    );
+
+    // Revoked devices don't hold history: the cursor guard falls away and the
+    // time floor alone applies (the no-peers case prod runs today).
+    await A.query(`update sync_peers set revoked = true`);
+    await pruneSyncOps({ db: A.db });
+    check("a revoked peer no longer pins the oplog", (await opCount(A)) === 0);
+
+    // The floor is absolute: a fresh op survives even with nobody to serve.
+    await A.query(`delete from sync_peers`);
+    await A.query(`update items set title = 'retention probe' where id = $1`, [ITEM]);
+    const young = await opCount(A);
+    const kept = await pruneSyncOps({ db: A.db });
+    check(
+      "ops inside the retention window are never pruned",
+      young > 0 && kept.syncOpsPruned === 0 && (await opCount(A)) === young,
+      `young=${young}`
     );
   } finally {
     await A.end();
