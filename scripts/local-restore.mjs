@@ -2,43 +2,52 @@
 // for a new hub/spoke peer (LH2, ADR-206). Two sources:
 //
 //   npm run local:restore -- /path/to/ledgr-YYYY-MM-DD.dump [/path/to/config.json]
-//   npm run local:restore -- --from-url <DIRECT Neon connection string> [/path/to/config.json]
+//   npm run local:restore -- --from-url <Neon connection string, pooled or direct> [/path/to/config.json]
 //
-// The dump form takes the backup workflow's custom-format file (pg_dump -Fc
-// --no-owner --no-privileges, .github/workflows/backup.yml), pulled from
-// OneDrive /Ledgr/Backups/. The --from-url form runs that same pg_dump
-// itself, straight from the live Neon database, into a temp file it deletes
-// when done — fresher than the weekly backup, and no hunting for the file.
+// The dump form restores the backup workflow's custom-format file (pg_dump
+// -Fc --no-owner --no-privileges, .github/workflows/backup.yml), pulled from
+// OneDrive /Ledgr/Backups/, via `pg_restore` — that format genuinely needs
+// the Postgres client tools, since it's pg_dump's own portable-DDL wrapper
+// around the data.
 //
-// Either way, the restore half is identical from here: start the embedded
-// cluster from the supervisor's data dir (initdb on first run) → drop/
-// recreate the ledgr database → pg_restore → migrate to the bundled journal
-// version → clear the sync state that must NOT be cloned from the hub:
-//   - sync_ops truncated (this peer starts with an empty oplog)
-//   - sync_device replaced (a fresh identity self-assigns; two peers sharing
-//     a device id would corrupt cursoring)
-//   - sync_peers truncated (device registrations belong to the hub)
-//   - job_state sync cursors deleted (they were the HUB's cursors)
-// A restored spoke then reconciles anything newer than the backup by its
-// first full pull/push cycle against the hub (see supervisor/README.md).
+// The --from-url form needs none of that. Its schema comes from running our
+// OWN migrations (scripts/migrate.mjs) against the fresh local database, the
+// same as `npm run local:setup`'s start-empty path — so pg_dump's one hard
+// job (emitting portable schema DDL) never has to happen at all. What's left
+// is copying ROWS between two Postgres databases of a schema we control,
+// which scripts/lib/pg-copy.mjs does natively with the `pg` driver we
+// already ship as a runtime dependency. Zero extra tools, zero PATH setup.
+// Order: start the embedded cluster → drop/recreate the local `ledgr`
+// database → migrate it → copy every table's rows (skipping the ones a
+// spoke must never clone: sync_ops, sync_peers, sync_device) → clear the
+// job_state sync cursors, which were the HUB's cursors, not this peer's.
+// sync_device is never in that copy set, and migrating a fresh database
+// already self-assigns this peer its own device identity (migration 0054's
+// seed insert) — so there is nothing left to "replace" the way the dump path
+// still has to.
 //
-// Needs `pg_restore` on PATH always, and `pg_dump` too for --from-url (the
-// embedded binaries ship the server only):
+// The dump form still needs `pg_restore` on PATH:
 // Windows: winget install PostgreSQL.PostgreSQL.18 (or the zip binaries);
 // macOS: brew install libpq (then follow its PATH caveat).
+// The --from-url form needs nothing beyond `npm ci` (the `pg` driver ships
+// with the app itself).
 //
 // SAFETY: the RESTORE half never reads DATABASE_URL and only ever connects
-// to 127.0.0.1 on the configured local port — it cannot touch Neon. The
-// --from-url DUMP half is the one exception: it makes a single, read-only
-// pg_dump connection to whatever host the caller passes on the command line.
-// The connection string is never written to config.json, never logged, and
-// not kept once the dump exists (see redactConnectionString below). Stop the
-// supervisor before running either form (the cluster can't be started twice).
+// to 127.0.0.1 on the configured local port, so it cannot touch Neon. The
+// --from-url form's one exception is the read side of the copy: it opens a
+// single connection to whatever host the caller passes on the command line
+// and only ever issues SELECTs against it (see copyAllTables in pg-copy.mjs)
+// — never a write. That connection string is never written to config.json,
+// never logged, and redacted out of any error text (see
+// redactConnectionString below). Unlike pg_dump, an ordinary pooled
+// connection reads rows just fine, so a `-pooler` hostname is now ACCEPTED
+// rather than refused — pg_dump's multi-connection, session-state-dependent
+// needs (the old reason for the refusal) simply don't apply to plain SELECTs.
+// Stop the supervisor before running either form (the cluster can't be
+// started twice).
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, unlinkSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
-import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -46,22 +55,63 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(here, "..");
 const { normalizeConfig, buildDbUrl } = await import(new URL("../supervisor/lib.mjs", import.meta.url));
-const { redactConnectionString, refusePooledUrl } = await import(
-  new URL("./local-setup-lib.mjs", import.meta.url)
-);
+const { redactConnectionString } = await import(new URL("./local-setup-lib.mjs", import.meta.url));
+const { copyAllTables } = await import(new URL("./lib/pg-copy.mjs", import.meta.url));
 
 const USAGE =
   "usage: npm run local:restore -- /path/to/ledgr-YYYY-MM-DD.dump [/path/to/config.json]\n" +
-  "   or: npm run local:restore -- --from-url <DIRECT Neon connection string> [/path/to/config.json]";
+  "   or: npm run local:restore -- --from-url <Neon connection string, pooled or direct> [/path/to/config.json]";
 
 function fail(msg) {
   throw new Error(msg);
 }
 
+/** Start the embedded cluster at cfg.dataDir (initdb on first run). Shared
+ * by both fill modes — the one description of "bring the local cluster up".
+ * Returns { cluster, pg } (the constructed EmbeddedPostgres instance and the
+ * `pg` module); the caller owns calling cluster.stop() when done. */
+async function startCluster(cfg) {
+  const requireFromRepo = createRequire(join(repoDir, "package.json"));
+  const EmbeddedPostgres = (await import(requireFromRepo.resolve("embedded-postgres"))).default;
+  const pg = (await import(requireFromRepo.resolve("pg"))).default;
+
+  const pgDir = join(cfg.dataDir, "pg");
+  mkdirSync(cfg.dataDir, { recursive: true });
+  const cluster = new EmbeddedPostgres({
+    databaseDir: pgDir,
+    user: "postgres",
+    password: "postgres",
+    port: cfg.dbPort,
+    persistent: true,
+  });
+  if (!existsSync(join(pgDir, "PG_VERSION"))) {
+    console.log("First run: initdb…");
+    await cluster.initialise();
+  }
+  try {
+    await cluster.start();
+  } catch (err) {
+    fail(
+      `could not start the local Postgres (is the supervisor still running? stop it first): ${err instanceof Error ? err.message : err}`
+    );
+  }
+  return { cluster, pg };
+}
+
+/** Clean slate: drop and recreate the local `ledgr` database so a fill never
+ * merges into leftovers. Shared by both fill modes. */
+async function resetLocalDatabase(pg, cfg) {
+  const adminUrl = `postgresql://postgres:postgres@127.0.0.1:${cfg.dbPort}/postgres`;
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  await admin.query("drop database if exists ledgr with (force)");
+  await admin.query("create database ledgr");
+  await admin.end();
+}
+
 /** Restore an already-produced custom-format dump file into the local
- * cluster. Shared by both source modes — this is the one description of
- * "restore this file", so neither mode reimplements it. Throws on any
- * failure; the caller decides how to report and clean up. */
+ * cluster. Throws on any failure; the caller decides how to report and
+ * clean up. */
 async function restoreFromFile(dumpPath, cfg) {
   // A custom-format dump starts with the magic bytes PGDMP (same loud check
   // the backup workflow makes at dump time).
@@ -85,42 +135,11 @@ async function restoreFromFile(dumpPath, cfg) {
   }
   console.log(`Restoring ${dumpPath}\n  into the local cluster at ${cfg.dataDir} (port ${cfg.dbPort})`);
 
-  const requireFromRepo = createRequire(join(repoDir, "package.json"));
-  const EmbeddedPostgres = (await import(requireFromRepo.resolve("embedded-postgres"))).default;
-  const pg = (await import(requireFromRepo.resolve("pg"))).default;
-
-  const pgDir = join(cfg.dataDir, "pg");
-  mkdirSync(cfg.dataDir, { recursive: true });
-  const cluster = new EmbeddedPostgres({
-    databaseDir: pgDir,
-    user: "postgres",
-    password: "postgres",
-    port: cfg.dbPort,
-    persistent: true,
-  });
-
-  if (!existsSync(join(pgDir, "PG_VERSION"))) {
-    console.log("First run: initdb…");
-    await cluster.initialise();
-  }
-  try {
-    await cluster.start();
-  } catch (err) {
-    fail(
-      `could not start the local Postgres (is the supervisor still running? stop it first): ${err instanceof Error ? err.message : err}`
-    );
-  }
+  const { cluster, pg } = await startCluster(cfg);
 
   try {
-    const adminUrl = `postgresql://postgres:postgres@127.0.0.1:${cfg.dbPort}/postgres`;
     const dbUrl = buildDbUrl(cfg);
-
-    // Clean slate: the restore must not merge into leftovers.
-    const admin = new pg.Client({ connectionString: adminUrl });
-    await admin.connect();
-    await admin.query("drop database if exists ledgr with (force)");
-    await admin.query("create database ledgr");
-    await admin.end();
+    await resetLocalDatabase(pg, cfg);
 
     console.log("pg_restore…");
     const restore = spawnSync(
@@ -165,52 +184,71 @@ async function restoreFromFile(dumpPath, cfg) {
   }
 }
 
-/** Dump the live database at `url` (a DIRECT, non-pooled connection string)
- * into a fresh temp file and return its path. Read-only against the remote
- * host; never persists or prints `url` itself. */
-function dumpFromUrl(url) {
+/**
+ * The native live pull (THE KEY INSIGHT: no pg_dump needed — see the header
+ * comment). Starts the cluster, resets the local database, migrates it to
+ * create the schema, then copies every table's rows from `url` into it with
+ * scripts/lib/pg-copy.mjs. `url` is read-only throughout: only SELECTs ever
+ * run against it (copyAllTables), and only 127.0.0.1 is ever written to.
+ * Any pooled OR direct Neon connection string works — see the header comment
+ * for why the old pg_dump-only `-pooler` refusal doesn't apply here.
+ */
+async function pullFromUrl(url, cfg) {
   let hostname;
   try {
     hostname = new URL(url).hostname;
   } catch {
     fail("--from-url is not a valid connection string (couldn't parse a hostname from it).");
   }
+  console.log(`Pulling from ${hostname} ...`);
 
-  const refusal = refusePooledUrl(hostname);
-  if (refusal) fail(refusal);
+  const { cluster, pg } = await startCluster(cfg);
+  try {
+    await resetLocalDatabase(pg, cfg);
+    const dbUrl = buildDbUrl(cfg);
 
-  const dumpCheck = spawnSync("pg_dump", ["--version"], { encoding: "utf8" });
-  if (dumpCheck.status !== 0) {
-    fail(
-      "pg_dump is not on PATH. Install the Postgres client tools:\n" +
-        "  Windows: winget install PostgreSQL.PostgreSQL.18\n" +
-        "  macOS:   brew install libpq && brew link --force libpq"
-    );
-  }
+    console.log("Migrating to the bundled journal version (creates the schema)…");
+    const mig = spawnSync(process.execPath, [join(repoDir, "scripts", "migrate.mjs")], {
+      cwd: repoDir,
+      stdio: "inherit",
+      env: { ...process.env, DATABASE_URL: dbUrl },
+    });
+    if (mig.status !== 0) fail("migrate failed");
 
-  const dumpPath = join(tmpdir(), `ledgr-restore-${randomUUID()}.dump`);
-  console.log(`Dumping from ${hostname} ...`);
-  const dump = spawnSync(
-    "pg_dump",
-    ["--format=custom", "--no-owner", "--no-privileges", "--file", dumpPath, url],
-    { encoding: "utf8" }
-  );
-  if (dump.status !== 0) {
-    // pg_dump can echo its own argument back into stderr on a bad
-    // connection string — redact before this ever reaches the console.
-    const stderr = redactConnectionString(dump.stderr ?? "", url);
-    if (/version mismatch/i.test(stderr)) {
-      fail(
-        "pg_dump failed: the local Postgres CLIENT is older than the Neon server.\n" +
-          "Install client tools at least as new as the Neon server version, then re-run:\n" +
-          "  Windows: winget install PostgreSQL.PostgreSQL.18\n" +
-          "  macOS:   brew install libpq && brew link --force libpq\n\n" +
-          stderr
-      );
+    console.log("Copying rows…");
+    const source = new pg.Client({ connectionString: url });
+    const dest = new pg.Client({ connectionString: dbUrl });
+    try {
+      await source.connect();
+      await dest.connect();
+      await copyAllTables(source, dest, { log: console.log });
+    } catch (err) {
+      // Never let a raw pg error (which can echo the connection string back
+      // in a bad-auth/bad-host message) reach the console unredacted.
+      fail(redactConnectionString(err instanceof Error ? err.message : String(err), url));
+    } finally {
+      await source.end().catch(() => {});
+      await dest.end().catch(() => {});
     }
-    fail(`pg_dump failed (see below).\n${stderr}`);
+
+    console.log("Clearing the hub's sync cursors (this peer starts its own fresh)…");
+    const db = new pg.Client({ connectionString: dbUrl });
+    await db.connect();
+    await db.query("delete from job_state where key like 'sync:cursor:%'");
+    await db.end();
+
+    console.log(
+      "\nPull complete. Start the peer with `npm run local:supervisor`.\n" +
+        "If this peer syncs against a hub, its first pull/push cycle reconciles\n" +
+        "everything newer than this pull — expect a burst of ops, then steady state."
+    );
+  } finally {
+    try {
+      await cluster.stop();
+    } catch {
+      // best-effort
+    }
   }
-  return dumpPath;
 }
 
 // ── Args + config ────────────────────────────────────────────────────────────
@@ -228,7 +266,7 @@ try {
 }
 
 const fromUrl = values["from-url"];
-let dumpPath; // set below: either the given file, or pg_dump's temp output
+let dumpPath;
 let configPath;
 if (fromUrl) {
   configPath = positionals[0] ? resolve(positionals[0]) : join(repoDir, "supervisor", "config.json");
@@ -242,7 +280,6 @@ if (fromUrl) {
 }
 
 let exitCode = 0;
-let tempDumpPath = null;
 try {
   if (!existsSync(configPath)) {
     fail(`no supervisor config at ${configPath} — copy supervisor/config.example.json and edit it first.`);
@@ -250,25 +287,13 @@ try {
   const cfg = normalizeConfig(JSON.parse(readFileSync(configPath, "utf8")), dirname(configPath));
 
   if (fromUrl) {
-    tempDumpPath = dumpFromUrl(fromUrl);
-    dumpPath = tempDumpPath;
-  } else if (!existsSync(dumpPath)) {
-    fail(`${dumpPath} does not exist`);
+    await pullFromUrl(fromUrl, cfg);
+  } else {
+    if (!existsSync(dumpPath)) fail(`${dumpPath} does not exist`);
+    await restoreFromFile(dumpPath, cfg);
   }
-
-  await restoreFromFile(dumpPath, cfg);
 } catch (err) {
   console.error(`ERROR: ${err instanceof Error ? err.message : err}`);
   exitCode = 1;
-} finally {
-  // The dump is a one-time bootstrap artifact, not something to keep around
-  // — delete it whether the restore that follows succeeded or failed.
-  if (tempDumpPath) {
-    try {
-      unlinkSync(tempDumpPath);
-    } catch {
-      // best-effort
-    }
-  }
 }
 process.exit(exitCode);

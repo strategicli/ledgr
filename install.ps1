@@ -66,13 +66,31 @@ function Ensure-Tool([string]$Cmd, [string]$WingetId, [string]$ManualUrl, [bool]
 
 Ensure-Tool "git" "Git.Git" "https://git-scm.com/download/win"
 Ensure-Tool "node" "OpenJS.NodeJS.LTS" "https://nodejs.org"
-# Both restore paths (npm run local:restore, from a backup file or a live
-# pull) need pg_restore, and the live pull also needs pg_dump; starting
-# empty needs neither. Non-fatal on purpose: don't block "start empty" on a
-# tool it doesn't use.
+# Only restoring from a BACKUP FILE (npm run local:restore, the pg_dump-format
+# path) needs the Postgres client tools, for pg_restore. The live database
+# pull is native (scripts/lib/pg-copy.mjs copies rows with the `pg` driver the
+# app already ships) and starting empty needs neither, so this is non-fatal:
+# don't block either of those on a tool they don't use.
+#
+# Unlike Git and Node, the PostgreSQL Windows installer does NOT add itself to
+# PATH — that gap, not a missing install, is what broke the first real
+# install (pg_restore was on disk but unresolvable). Ensure-Tool's PATH splice
+# only covers a FRESH winget install; find the client tools' bin folder below
+# so an install from before this fix (or a manual installer run) still works.
 Ensure-Tool "pg_restore" "PostgreSQL.PostgreSQL.18" "https://www.postgresql.org/download/windows/" $false
 if (-not (Test-Cmd "pg_restore")) {
-    Write-Host "Warning: pg_restore/pg_dump not found. Restoring from a backup file or pulling from the live database will need them; starting empty will not."
+    $pgBin = Get-ChildItem "C:\Program Files\PostgreSQL" -Directory -ErrorAction SilentlyContinue |
+        Sort-Object { [int]$_.Name } -Descending |
+        ForEach-Object { Join-Path $_.FullName "bin" } |
+        Where-Object { Test-Path (Join-Path $_ "pg_restore.exe") } |
+        Select-Object -First 1
+    if ($pgBin) {
+        Write-Host "Found the Postgres client tools at $pgBin (not on PATH this session) - using them directly."
+        $env:Path = "$pgBin;$env:Path"
+    }
+}
+if (-not (Test-Cmd "pg_restore")) {
+    Write-Host "Warning: pg_restore not found. This is only needed to restore from a backup FILE; the live database pull needs no extra tools at all."
 }
 
 # Clone fresh, or bring an existing clone current. --ff-only so a locally

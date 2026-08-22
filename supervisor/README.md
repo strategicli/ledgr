@@ -40,19 +40,22 @@ First **data**: fill it before first use, either from the weekly backup —
 npm run local:restore -- /path/to/ledgr-YYYY-MM-DD.dump
 ```
 
-— or straight from the live database (fresher, no file to find; needs the
-**direct**, not `-pooler`, Neon connection string):
+— or straight from the live database (fresher, no file to find; any Neon
+connection string works, pooled or direct, and this path needs no extra
+tools at all — it copies rows natively with the `pg` driver, since the
+schema comes from running our own migrations rather than pg_dump):
 
 ```
-npm run local:restore -- --from-url "postgresql://...direct-host.../ledgr"
+npm run local:restore -- --from-url "postgresql://...neon.tech/ledgr"
 ```
 
-(Needs `pg_restore` on PATH always, `pg_dump` too for `--from-url`; the
-embedded binaries ship the server only. Stop the supervisor first.) Either
-way the restore clears the sync state that must not be cloned from the hub —
-the oplog, the device identity, peer registrations, and cursors — so the
-peer starts as a fresh device. If it syncs against a hub, its first
-pull/push cycle reconciles everything newer than the backup.
+(The backup-file form above still needs `pg_restore` on PATH; the embedded
+binaries ship the server only. Stop the supervisor first, either way.) Both
+forms clear the sync state that must not be cloned from the hub — the
+oplog, peer registrations, and cursors always come out fresh, and the local
+device identity is simply this peer's own (never the hub's) either way. If
+this peer syncs against a hub, its first pull/push cycle reconciles
+everything newer than the fill.
 
 ## Update flow and keep-last-good
 
@@ -108,18 +111,19 @@ by hand, then `npm run local:setup`).
   Download the newest `ledgr-*.dump` from OneDrive `/Ledgr/Backups/`, then
   point `--backup` at it (or answer the prompt with its path).
 - **Pull from the live database** — fresher than the weekly backup, no
-  hunting for a file. Needs the **direct (unpooled)** Neon connection string
-  from the Neon dashboard, not the `-pooler` one the app itself uses; the
-  wizard (and `local-restore.mjs`) refuses a pooler string outright, since
-  `pg_dump` can't run through it.
+  hunting for a file, and **no extra tools needed at all**. Any Neon
+  connection string works, the pooled one included, since this path copies
+  rows natively with the `pg` driver the app already ships rather than
+  shelling out to `pg_dump` (the schema comes from running our own
+  migrations, not from a portable dump).
 - **Start empty** — migrate + seed a fresh database; a syncing spoke then
   reconciles everything from the hub on its first pull (correct, but slower
   for a large dataset).
 
-Both the restore and the live-pull path need the Postgres client tools
-(`pg_restore` always, `pg_dump` for the live pull) on PATH —
-`winget install PostgreSQL.PostgreSQL.18` on Windows, `brew install libpq` on
-macOS. The wizard's data-fill step says so if they're missing.
+Only the restore-from-file path needs the Postgres client tools (`pg_restore`)
+on PATH — `winget install PostgreSQL.PostgreSQL.18` on Windows,
+`brew install libpq` on macOS. The wizard's data-fill step says so if it's
+missing; the live pull needs nothing beyond `npm ci`.
 
 ## Windows bring-up checklist (manual fallback; also what install.ps1 does)
 
@@ -129,7 +133,10 @@ Run these on the always-on PC, in order:
    - `winget install Git.Git`
    - `winget install OpenJS.NodeJS.LTS`
    - `winget install PostgreSQL.PostgreSQL.18` (client tools only needed for
-     `pg_restore`; add its `bin` to PATH if the installer didn't)
+     restoring from a backup FILE, via `pg_restore`; the live database pull
+     needs none of this. The installer does NOT add itself to PATH — unlike
+     Git and Node — so add its `bin` folder yourself if you go this route;
+     `install.ps1` also finds and uses it automatically)
 2. **Clone and install:**
    - `git clone https://github.com/strategicli/ledgr.git C:\ledgr`
    - `cd C:\ledgr && npm ci`
@@ -141,11 +148,11 @@ Run these on the always-on PC, in order:
    the hub's Synced-devices section. (Steps 3-4 and 7 are the wizard's job:
    `npm run local:setup`.)
 4. **Fill the data:** either download the newest `ledgr-*.dump` from OneDrive
-   `/Ledgr/Backups/` and `npm run local:restore -- C:\path\to\ledgr-....dump`,
-   or pull straight from the live database with the **direct** (not
-   `-pooler`) connection string: `npm run local:restore -- --from-url "..."`.
-   Watch: `pg_restore`/`pg_dump` must be the PG 17+ client (`pg_restore
-   --version`).
+   `/Ledgr/Backups/` and `npm run local:restore -- C:\path\to\ledgr-....dump`
+   (watch: `pg_restore` must be on PATH and be the PG 17+ client — `pg_restore
+   --version`), or pull straight from the live database — any connection
+   string works, pooled included — with `npm run local:restore -- --from-url
+   "..."` (no client tools needed for this path at all).
 5. **First supervisor run, in a terminal** (not the service yet):
    `npm run local:supervisor`. Watch for:
    - **initdb succeeds** (embedded-postgres win32 binaries actually run;

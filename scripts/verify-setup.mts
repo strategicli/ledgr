@@ -22,13 +22,20 @@ import {
   formatSchtasks,
   parseSetupArgs,
   redactConnectionString,
-  refusePooledUrl,
   schtasksCreateArgs,
   validateEmail,
   validateHubUrl,
   validatePort,
   validateRole,
 } from "./local-setup-lib.mjs";
+import {
+  buildInsertSql,
+  buildPageQuery,
+  buildSetvalSql,
+  EXCLUDED_TABLES,
+  isCopyableTable,
+  rowsPerBatch,
+} from "./lib/pg-copy.mjs";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -123,21 +130,14 @@ check(
   throws(() => decideFill({ fill: undefined, backup: "/x.dump", fromUrl: "postgresql://u:p@h/db" }))
 );
 
-// ── (3b) Live-pull helpers: pooled-URL refusal + redaction ───────────────────
+// ── (3b) Live-pull helpers: redaction (no pooled-URL refusal any more — the
+// native copy reads with plain SELECTs, so a pooled connection is fine) ─────
 
-check(
-  "a -pooler hostname is refused (pg_dump needs the direct connection)",
-  typeof refusePooledUrl("ep-cool-mountain-123456-pooler.us-east-2.aws.neon.tech") === "string"
-);
-check(
-  "a direct (non-pooler) hostname is allowed",
-  refusePooledUrl("ep-cool-mountain-123456.us-east-2.aws.neon.tech") === null
-);
 {
-  const secret = "postgresql://user:pw@ep-cool-mountain-123456.us-east-2.aws.neon.tech/ledgr";
-  const echoed = `pg_dump: error: connection to server at "${secret}" failed`;
+  const secret = "postgresql://user:pw@ep-cool-mountain-123456-pooler.us-east-2.aws.neon.tech/ledgr";
+  const echoed = `error: connection to server at "${secret}" failed`;
   check(
-    "redactConnectionString strips the connection string out of echoed pg_dump output",
+    "redactConnectionString strips a connection string out of an echoed error",
     !redactConnectionString(echoed, secret).includes(secret)
   );
   check("redactConnectionString is a no-op with no secret to strip", redactConnectionString("plain text", undefined) === "plain text");
@@ -252,8 +252,12 @@ check(
 );
 check("install.ps1's usage comment points to install.cmd as the double-click entry point", ps1.includes("install.cmd"));
 check(
-  "install.ps1 also bootstraps the Postgres client tools (both restore paths need them)",
+  "install.ps1 also bootstraps the Postgres client tools (the backup-file restore path needs them; the live pull does not)",
   ps1.includes("PostgreSQL.PostgreSQL.18") && ps1.includes("pg_restore")
+);
+check(
+  "install.ps1 finds an already-installed Postgres bin folder even when it never made it onto PATH",
+  ps1.includes("pg_restore.exe") && ps1.includes("Program Files\\PostgreSQL")
 );
 
 // ── (8b) install.cmd (text checks; the double-click entry point) ────────────
@@ -298,8 +302,72 @@ check("the README's bring-up leads with install.cmd (the double-click entry poin
 check("the README keeps the PowerShell invocation as the alternative", readme.includes("install.ps1"));
 check("the README keeps the manual fallback checklist", readme.includes("manual fallback"));
 check(
-  "the README documents the live-pull option and the direct-vs-pooler requirement",
-  readme.includes("-pooler") && readme.includes("pg_dump")
+  "the README documents the live-pull option as needing no extra tools, any connection string",
+  readme.includes("no extra tools") && readme.includes("pooled")
+);
+
+// ── (10) The native pg-copy engine's pure helpers ────────────────────────────
+// The connected discovery/copy functions (listCopyableTables, copyAllTables,
+// etc.) need a real database — that's scripts/verify-pg-copy.mts, gated on
+// embedded-postgres the same way verify-sync.mts is. These are the parts
+// that don't: the exclusion list, batch sizing, and the SQL shapes.
+
+check(
+  "the never-clone set excludes exactly the per-peer sync tables",
+  isCopyableTable("items") &&
+    isCopyableTable("relations") &&
+    !isCopyableTable("sync_ops") &&
+    !isCopyableTable("sync_peers") &&
+    !isCopyableTable("sync_device"),
+  [...EXCLUDED_TABLES].join(", ")
+);
+
+check(
+  "rowsPerBatch stays under the 65535 bound-parameter cap",
+  rowsPerBatch(20) * 20 <= 65535 && rowsPerBatch(1) * 1 <= 65535 && rowsPerBatch(9999) * 9999 <= 65535
+);
+check("rowsPerBatch caps at maxRows even when the param cap allows more", rowsPerBatch(1, { maxRows: 500 }) === 500);
+check(
+  "rowsPerBatch shrinks for wide tables (more columns, fewer rows per batch)",
+  rowsPerBatch(4) > rowsPerBatch(400)
+);
+check("rowsPerBatch refuses a non-positive column count", throws(() => rowsPerBatch(0)));
+
+{
+  const plain = buildInsertSql("items", ["id", "title"], 2);
+  check(
+    "buildInsertSql with no conflict column produces a plain INSERT, placeholders numbered sequentially",
+    plain === 'insert into "items" ("id", "title") values ($1, $2), ($3, $4)'
+  );
+  const upsert = buildInsertSql("items", ["id", "title"], 1, "id");
+  check(
+    "buildInsertSql with a conflict column upserts every OTHER column from excluded (a fresh migrated dest can already hold this row — types, sync_schema_ver — and a second pull must be idempotent)",
+    upsert === 'insert into "items" ("id", "title") values ($1, $2) on conflict ("id") do update set "title" = excluded."title"'
+  );
+  const singleCol = buildInsertSql("sync_schema_ver", ["ver"], 1, "ver");
+  check(
+    "buildInsertSql falls back to DO NOTHING when the pk is the only column (nothing else to set)",
+    singleCol === 'insert into "sync_schema_ver" ("ver") values ($1) on conflict ("ver") do nothing'
+  );
+  check("buildInsertSql refuses zero rows", throws(() => buildInsertSql("items", ["id"], 0)));
+}
+
+{
+  const { firstText, text } = buildPageQuery("items", ["id", "title"], "id", 500);
+  check(
+    "buildPageQuery's first page has no WHERE (no cursor yet)",
+    firstText === 'select "id", "title" from "items" order by "id" limit 500'
+  );
+  check(
+    "buildPageQuery's later pages key off the cursor as a bound parameter",
+    text === 'select "id", "title" from "items" where "id" > $1 order by "id" limit 500'
+  );
+}
+
+check(
+  "buildSetvalSql realigns past the max copied value, floored at 1 for an empty table",
+  buildSetvalSql("items_seq", "items", "seq") ===
+    'select setval(\'items_seq\', coalesce((select max("seq") from "items"), 1))'
 );
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
