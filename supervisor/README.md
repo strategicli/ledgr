@@ -20,9 +20,28 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | `appPort` / `dbPort` | The app and Postgres ports (defaults 3000 / 5433). |
 | `ownerEmail` | Becomes `LEDGR_LOCAL_OWNER_EMAIL`: the no-login local owner identity (plan decision 5). Must match the owner's `users.email`. |
 | `hubs` / `deviceToken` | Ordered hub URLs plus this device's sync token (minted on the hub). Both set arms the in-app sync loop; either missing leaves sync off. |
+| `syncMode` | `full` (default) pushes and pulls. `pull-only` never sends this device's own changes to the hub — only receives. Threaded through as `LEDGR_SYNC_MODE`. See "Arming sync safely" below. |
 | `update.mode` | `prompted` (default): updates apply only when the app's Update button writes the signal file. `auto`: the supervisor also polls git every `pollIntervalMs` and applies on its own. |
 | `cadence` | Sync knobs, passed through as `LEDGR_SYNC_PUSH_DEBOUNCE_MS` / `LEDGR_SYNC_PULL_MS`. |
+| `syncGuardrails.maxFirstPush` | This device's very first push (this process's lifetime) is held rather than sent if the pending oplog exceeds this count (default 500) — the guard against a bad restore or bug dumping the whole database at the hub as edits. Only the first push is gated; a busy device that's been syncing fine is never throttled. Threaded as `LEDGR_SYNC_MAX_FIRST_PUSH`. |
+| `syncGuardrails.confirmLargePush` | Set `true` (after looking at what's pending) to release a held first push without raising the limit. Threaded as `LEDGR_SYNC_CONFIRM_LARGE_PUSH`. |
+| `syncGuardrails.skewWarnMs` / `skewHoldMs` | Clock-skew thresholds (ms) against the hub's reported time. Past `skewWarnMs` (default 5000) the Sync section and pill turn amber but syncing continues; past `skewHoldMs` (default 60000) pushes are held — last-writer-wins can't be trusted at that much drift — while pulling keeps working. Threaded as `LEDGR_SYNC_SKEW_WARN_MS` / `LEDGR_SYNC_SKEW_HOLD_MS`. |
 | `extraEnv` | Any additional env for the app (R2 keys, Graph secrets, machine tokens), passed through verbatim. |
+
+### Arming sync safely
+
+The first time a device syncs against your **production** hub, prove data
+flows the right way before letting it push:
+
+1. On the hub's `/build/updates` → Synced devices, **Add device** with the
+   "Pull-only" checkbox on (the default for a new device). Paste the token
+   into this device's `deviceToken`.
+2. Start this device and confirm data arrives correctly — it can only pull,
+   so nothing it does can touch the hub's data.
+3. Once you're satisfied, flip it to full either from the hub (the device row's
+   "Allow push" button) or by setting `"syncMode": "full"` here and
+   restarting. The hub-side flip takes effect immediately, even if this
+   device is offline or misconfigured — that's the point of doing it there.
 
 ## Run
 

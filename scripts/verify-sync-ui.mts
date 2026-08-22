@@ -6,10 +6,19 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  checkFirstPush,
+  classifySkew,
   parseHubs,
+  parseSyncMode,
+  selectPushOps,
   type SyncStatus,
 } from "../src/lib/sync/client";
-import { cursorLag, deleteRefusal, generateSyncToken } from "../src/lib/sync/peers";
+import {
+  cursorLag,
+  deleteRefusal,
+  generateSyncToken,
+  pullOnlyRejectsPush,
+} from "../src/lib/sync/peers";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -48,6 +57,166 @@ check("a never-synced peer is behind by the whole oplog", cursorLag(12, 0) === 1
 check("deleting a live device is refused", typeof deleteRefusal(false) === "string");
 check("deleting a revoked device is allowed", deleteRefusal(true) === null);
 
+// ── Guardrail 1: pull-only ───────────────────────────────────────────────────
+
+check("full sync mode is the default", parseSyncMode(undefined) === "full");
+check("unrecognized env falls back to full", parseSyncMode("nonsense") === "full");
+check("pull-only is recognized", parseSyncMode("pull-only") === "pull-only");
+
+check(
+  "hub refuses a non-empty push from a pull-only device",
+  pullOnlyRejectsPush(true, 3) === true
+);
+check(
+  "hub allows an empty push (pull) from a pull-only device",
+  pullOnlyRejectsPush(true, 0) === false
+);
+check("hub allows any push from a full device", pullOnlyRejectsPush(false, 500) === false);
+
+{
+  // The client's own decision never sends ops in pull-only mode, no matter
+  // how big the backlog or how done firstPushDone already is.
+  const sel = selectPushOps({
+    mode: "pull-only",
+    candidateOps: [],
+    pendingCount: 999999,
+    firstPushDone: false,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewMs: null,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  });
+  check(
+    "pull-only mode sends zero ops regardless of backlog",
+    sel.ops.length === 0 && sel.holdReason === null
+  );
+}
+
+// ── Guardrail 2: first-push size guard ───────────────────────────────────────
+
+const fpBase = { firstPushDone: false, maxFirstPush: 500, confirmLargePush: false };
+
+check(
+  "just under the limit pushes",
+  checkFirstPush({ ...fpBase, pendingCount: 499 }).hold === false
+);
+check(
+  "exactly at the limit pushes (only EXCEEDING holds)",
+  checkFirstPush({ ...fpBase, pendingCount: 500 }).hold === false
+);
+check(
+  "just over the limit holds",
+  checkFirstPush({ ...fpBase, pendingCount: 501 }).hold === true
+);
+check(
+  "a held check does not consume the one-shot gate",
+  checkFirstPush({ ...fpBase, pendingCount: 501 }).done === false
+);
+check(
+  "a passed check consumes the one-shot gate",
+  checkFirstPush({ ...fpBase, pendingCount: 499 }).done === true
+);
+check(
+  "confirmLargePush releases an over-limit push",
+  checkFirstPush({ ...fpBase, pendingCount: 100000, confirmLargePush: true }).hold === false
+);
+check(
+  "once firstPushDone, a huge backlog is never gated again (a busy spoke isn't throttled)",
+  checkFirstPush({ ...fpBase, pendingCount: 100000, firstPushDone: true }).hold === false
+);
+check(
+  "the held reason names the release path",
+  /maxFirstPush/.test((checkFirstPush({ ...fpBase, pendingCount: 501 }) as { reason: string }).reason) &&
+    /confirmLargePush/.test((checkFirstPush({ ...fpBase, pendingCount: 501 }) as { reason: string }).reason)
+);
+
+{
+  // selectPushOps end-to-end: a first over-limit round holds and does NOT
+  // consume the gate; a second round with the same backlog (simulating the
+  // owner having raised confirmLargePush) pushes and DOES consume it; a
+  // third round with an even bigger backlog is not gated (second push rule).
+  const candidateOps = [{ seq: 1 } as never];
+  const round1 = selectPushOps({
+    mode: "full",
+    candidateOps,
+    pendingCount: 600,
+    firstPushDone: false,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewMs: null,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  });
+  check(
+    "round 1: an oversized first push holds and reports the count",
+    round1.ops.length === 0 && round1.holdReason === "first_push_size" && round1.heldOpsCount === 600
+  );
+  const round2 = selectPushOps({
+    mode: "full",
+    candidateOps,
+    pendingCount: 600,
+    firstPushDone: round1.firstPushDoneAfter,
+    maxFirstPush: 500,
+    confirmLargePush: true,
+    skewMs: null,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  });
+  check(
+    "round 2: confirmLargePush releases it and the gate is now consumed",
+    round2.ops === candidateOps && round2.firstPushDoneAfter === true
+  );
+  const round3 = selectPushOps({
+    mode: "full",
+    candidateOps,
+    pendingCount: 5_000_000,
+    firstPushDone: round2.firstPushDoneAfter,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewMs: null,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  });
+  check(
+    "round 3 (the SECOND real push): never gated even at a much bigger size",
+    round3.ops === candidateOps && round3.holdReason === null
+  );
+}
+
+// ── Guardrail 3: clock-skew detection ────────────────────────────────────────
+
+check("well within thresholds classifies ok", classifySkew(1000, 5000, 60000) === "ok");
+check("at the warn threshold classifies warn", classifySkew(5000, 5000, 60000) === "warn");
+check("just under warn classifies ok", classifySkew(4999, 5000, 60000) === "ok");
+check("between warn and hold classifies warn", classifySkew(30000, 5000, 60000) === "warn");
+check("at the hold threshold classifies hold", classifySkew(60000, 5000, 60000) === "hold");
+check("over the hold threshold classifies hold", classifySkew(120000, 5000, 60000) === "hold");
+check(
+  "negative skew (hub behind spoke) classifies the same as positive",
+  classifySkew(-70000, 5000, 60000) === "hold" && classifySkew(-1000, 5000, 60000) === "ok"
+);
+
+{
+  // A hold-level skew withholds push but is independent of firstPushDone —
+  // it can trip on the 100th push, not just the first.
+  const sel = selectPushOps({
+    mode: "full",
+    candidateOps: [{ seq: 1 } as never],
+    pendingCount: 1,
+    firstPushDone: true,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewMs: 90000,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  });
+  check(
+    "a clock-skew hold withholds push even after the first-push gate is long done",
+    sel.ops.length === 0 && sel.holdReason === "clock_skew" && sel.firstPushDoneAfter === true
+  );
+}
+
 // ── Hub-list parsing = the nav pill's server gate ────────────────────────────
 
 check("no env → no hubs (pill unmounted)", parseHubs(undefined).length === 0);
@@ -69,24 +238,29 @@ const base: SyncStatus = {
   activeHubIndex: 0,
   lastSyncAt: "2026-08-22T10:00:00.000Z",
   lastError: null,
+  holdReason: null,
+  heldOpsCount: null,
+  skewMs: null,
+  skewWarn: false,
 };
 
 {
-  const disabled = buildSyncStatus([], base, 0);
+  const disabled = buildSyncStatus([], base, 0, "full");
   check("disabled shape is exactly {enabled: false}",
     disabled.enabled === false && Object.keys(disabled).length === 1
   );
 }
 
 {
-  const s = buildSyncStatus(["h1", "h2"], base, 0);
+  const s = buildSyncStatus(["h1", "h2"], base, 0, "full");
   check(
-    "enabled shape carries state/pendingOps/hub fields",
+    "enabled shape carries state/pendingOps/hub/mode fields",
     s.enabled === true &&
       s.state === "synced" &&
       s.pendingOps === 0 &&
       s.activeHubIndex === 0 &&
       s.hubCount === 2 &&
+      s.mode === "full" &&
       s.lastSyncAt === base.lastSyncAt &&
       s.lastError === null
   );
@@ -94,7 +268,7 @@ const base: SyncStatus = {
 
 {
   // Unpushed local writes between loop runs flip a stale "synced" to pending.
-  const s = buildSyncStatus(["h1"], base, 3);
+  const s = buildSyncStatus(["h1"], base, 3, "full");
   check(
     "on-demand pendingOps overrides the loop's stale count",
     s.enabled === true && s.pendingOps === 3 && s.state === "pending"
@@ -103,11 +277,49 @@ const base: SyncStatus = {
 
 {
   // Offline stays offline no matter the backlog; the count still reports.
-  const s = buildSyncStatus(["h1"], { ...base, state: "offline", lastError: "x" }, 7);
+  const s = buildSyncStatus(["h1"], { ...base, state: "offline", lastError: "x" }, 7, "full");
   check(
     "offline is not masked by the pending flip",
     s.enabled === true && s.state === "offline" && s.pendingOps === 7
   );
+}
+
+{
+  // A held push is not masked or upgraded by the pendingOps recompute either.
+  const s = buildSyncStatus(
+    ["h1"],
+    { ...base, state: "held", holdReason: "first_push_size", heldOpsCount: 600 },
+    600,
+    "full"
+  );
+  check(
+    "held state carries its reason and count through untouched",
+    s.enabled === true &&
+      s.state === "held" &&
+      s.holdReason === "first_push_size" &&
+      s.heldOpsCount === 600
+  );
+}
+
+{
+  // Pull-only mode is reported even while otherwise fully synced.
+  const s = buildSyncStatus(["h1"], base, 0, "pull-only");
+  check("pull-only mode is carried into the response", s.enabled === true && s.mode === "pull-only");
+}
+
+{
+  // A warn-level skew surfaces even when nothing is held.
+  const s = buildSyncStatus(["h1"], { ...base, skewMs: 8000, skewWarn: true }, 0, "full");
+  check(
+    "skew fields surface even when the state is otherwise synced",
+    s.enabled === true && s.state === "synced" && s.skewWarn === true && s.skewMs === 8000
+  );
+}
+
+{
+  // Skew can be negative (hub behind spoke) and still reports as-is.
+  const s = buildSyncStatus(["h1"], { ...base, skewMs: -75000, skewWarn: true }, 0, "full");
+  check("negative skew round-trips through the status shape", s.enabled === true && s.skewMs === -75000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

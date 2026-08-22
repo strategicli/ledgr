@@ -975,6 +975,11 @@ export const syncPeers = pgTable("sync_peers", {
   name: text("name").notNull(),
   tokenHash: text("token_hash").notNull(),
   revoked: boolean("revoked").notNull().default(false),
+  // Guardrail 1 (belt and suspenders): when true, /api/machine/sync REJECTS
+  // any non-empty ops array from this device with a 403, regardless of what
+  // the spoke sends. Flippable from the hub's Synced-devices UI, so a
+  // mistake is correctable even if the spoke itself is misconfigured.
+  pullOnly: boolean("pull_only").notNull().default(false),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   // Cursors: the highest of the peer's own seqs it has pushed here, and the
   // highest local seq it has pulled — what the Synced-devices UI reads as lag.

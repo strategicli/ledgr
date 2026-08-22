@@ -25,12 +25,14 @@ export async function POST(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
-    const body = (await request.json()) as { name?: unknown };
+    const body = (await request.json()) as { name?: unknown; pullOnly?: unknown };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
-    return NextResponse.json(await createPeer(name.slice(0, 80)));
+    return NextResponse.json(
+      await createPeer(name.slice(0, 80), { pullOnly: body.pullOnly === true })
+    );
   } catch (err) {
     if (err instanceof SyntaxError) {
       return NextResponse.json({ error: "invalid JSON" }, { status: 400 });

@@ -326,13 +326,20 @@ export default async function Updates() {
           <h2 className="ui-section-label">Sync</h2>
           <Card>
             <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[9rem_1fr]">
+              <dt className="ui-meta text-ink-subtle">Mode</dt>
+              <dd className="text-sm text-ink">
+                {sync.mode === "pull-only"
+                  ? "Pull-only — this instance never pushes changes to the hub"
+                  : "Full — pushes and pulls"}
+              </dd>
+
               <dt className="ui-meta text-ink-subtle">State</dt>
               <dd className="flex items-center gap-2 text-sm text-ink">
                 <StatusDot
                   tone={
                     sync.state === "synced" && sync.activeHubIndex === 0
                       ? "ok"
-                      : sync.state === "offline"
+                      : sync.state === "offline" || sync.state === "held"
                         ? "warn"
                         : "info"
                   }
@@ -341,8 +348,31 @@ export default async function Updates() {
                   ? "Synced"
                   : sync.state === "pending"
                     ? "Changes waiting to sync"
-                    : "Offline (no hub reachable)"}
+                    : sync.state === "held"
+                      ? "Push held (pulling still works)"
+                      : "Offline (no hub reachable)"}
               </dd>
+
+              {sync.state === "held" && (
+                <>
+                  <dt className="ui-meta text-ink-subtle">Why</dt>
+                  <dd className="text-sm text-amber-400">
+                    {sync.holdReason === "first_push_size"
+                      ? `${sync.heldOpsCount} pending change${sync.heldOpsCount === 1 ? "" : "s"} exceed the first-push limit. Raise maxFirstPush in supervisor/config.json, or set confirmLargePush: true, then restart to release it.`
+                      : `This device's clock differs from the hub's by about ${Math.round(Math.abs(sync.skewMs ?? 0) / 1000)}s, too far to trust which edit is newer. Fix the clock, then restart.`}
+                  </dd>
+                </>
+              )}
+
+              {sync.state !== "held" && sync.skewWarn && (
+                <>
+                  <dt className="ui-meta text-ink-subtle">Clock skew</dt>
+                  <dd className="text-sm text-amber-400">
+                    About {Math.round(Math.abs(sync.skewMs ?? 0) / 1000)}s off from the hub. Still
+                    syncing, but worth fixing the clock.
+                  </dd>
+                </>
+              )}
 
               <dt className="ui-meta text-ink-subtle">Hub</dt>
               <dd className="text-sm text-ink">

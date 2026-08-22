@@ -8,7 +8,14 @@
   "ownerEmail": "you@example.com",
   "hubs": ["https://your-hub.example.com"],
   "deviceToken": "",
+  "syncMode": "full",
   "update": { "mode": "prompted", "pollIntervalMs": 900000 },
   "cadence": { "pushDebounceMs": 2000, "pullMs": 10000 },
+  "syncGuardrails": {
+    "maxFirstPush": 500,
+    "confirmLargePush": false,
+    "skewWarnMs": 5000,
+    "skewHoldMs": 60000
+  },
   "extraEnv": {}
 }
