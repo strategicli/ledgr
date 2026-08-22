@@ -10,7 +10,8 @@
 //
 // What it does, in order: preflight → questions (or flags) → write
 // supervisor/config.json (never clobbering without --force) → initial data
-// fill (restore a pg_dump, or pull straight from the live database, both via
+// fill (restore a pg_dump file via pg_restore, or pull straight from the live
+// database natively with no extra tools needed, both via
 // scripts/local-restore.mjs, or migrate+seed an empty database in
 // new-instance.mjs's order) → service registration (Task Scheduler on win32;
 // printed instructions elsewhere) → summary.
@@ -65,8 +66,9 @@ Flags (each replaces one prompt; --yes answers the rest with defaults):
   --hub-url <url>         spoke only: the hub to sync against
   --hub-token <token>     spoke only: the one-time device token minted on the hub
   --backup <path>         restore this pg_dump as the initial data (implies --fill restore)
-  --from-url <url>        pull the initial data live from this DIRECT (unpooled) Neon
-                          connection string (implies --fill pull)
+  --from-url <url>        pull the initial data live from this Neon connection
+                          string, pooled or direct, no other tools needed
+                          (implies --fill pull)
   --fill restore|pull|seed|skip  initial data fill (default seed = start empty)
   --config <path>         where to write config.json (default supervisor/config.json)
   --force                 overwrite an existing config.json
@@ -219,13 +221,13 @@ try {
 if (flags.fill === undefined && flags.backup === undefined && flags["from-url"] === undefined && rl) {
   console.log(
     "\nInitial data, three ways: 'restore' loads a weekly pg_dump backup file\n" +
-      "(the fast path when you already have one from OneDrive /Ledgr/Backups/).\n" +
-      "'pull' connects straight to the live Neon database instead — it's the\n" +
-      "freshest option, but needs the DIRECT (unpooled) connection string from\n" +
-      "the Neon dashboard, not the pooler one the app itself uses. 'seed' starts\n" +
-      "empty (a spoke then pulls everything from the hub on first sync — correct,\n" +
-      "but slow for large data); 'skip' leaves the database alone (re-running the\n" +
-      "wizard on an existing peer).\n"
+      "(the fast path when you already have one from OneDrive /Ledgr/Backups/;\n" +
+      "needs the Postgres client tools). 'pull' connects straight to the live\n" +
+      "Neon database instead — it's the freshest option, needs no extra tools at\n" +
+      "all, and takes any connection string (the pooled one the app itself uses\n" +
+      "works fine). 'seed' starts empty (a spoke then pulls everything from the\n" +
+      "hub on first sync — correct, but slow for large data); 'skip' leaves the\n" +
+      "database alone (re-running the wizard on an existing peer).\n"
   );
   fill = await answer("Initial data (restore, pull, seed, or skip)", {
     flagValue: undefined,
@@ -250,8 +252,8 @@ if (fill === "restore" && !backupPath) {
 }
 let fromUrl = flags["from-url"];
 if (fill === "pull" && !fromUrl) {
-  if (!rl) fail("--fill pull needs --from-url <direct Neon connection string>");
-  fromUrl = await answer("Live database connection string (DIRECT, not the pooler one)", {
+  if (!rl) fail("--fill pull needs --from-url <Neon connection string>");
+  fromUrl = await answer("Live database connection string (pooled or direct, either works)", {
     flagValue: undefined,
     flagName: "--from-url",
     validate: (v) => {

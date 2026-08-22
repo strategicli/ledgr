@@ -269,12 +269,12 @@ check(
   /insert into sync_device/.test(restoreSrc)
 );
 check(
-  "the RESTORE half only ever connects to 127.0.0.1 (the --from-url DUMP half is the one deliberate, read-only exception)",
+  "local-restore.mjs never reads the DB env var directly (writes only ever target 127.0.0.1; the --from-url source connection is the one deliberate, read-only exception)",
   !restoreSrc.includes(`process.env.${DB_KEY}`) && restoreSrc.includes("127.0.0.1")
 );
 check(
-  "the --from-url path refuses a pooled Neon URL before ever running pg_dump",
-  restoreSrc.includes("refusePooledUrl") && restoreSrc.includes('"pg_dump"')
+  "the --from-url path is native (no pg_dump/pg_restore shelled out to; copies rows with the pg driver)",
+  !restoreSrc.includes('"pg_dump"') && restoreSrc.includes("copyAllTables")
 );
 check(
   "the --from-url connection string is redacted rather than logged raw",

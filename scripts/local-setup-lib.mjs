@@ -19,7 +19,7 @@ const OPTIONS = {
   port: { type: "string" }, // app port
   "db-port": { type: "string" },
   backup: { type: "string" }, // path to a pg_dump file → implies --fill restore
-  "from-url": { type: "string" }, // direct (unpooled) Neon connection string → implies --fill pull
+  "from-url": { type: "string" }, // any Postgres connection string, pooled included → implies --fill pull
   fill: { type: "string" }, // restore | pull | seed | skip
   config: { type: "string" }, // where config.json is written (default supervisor/config.json)
   yes: { type: "boolean", default: false },
@@ -115,27 +115,21 @@ export function fillSummaryLine(fill, { backupPath } = {}) {
 }
 
 // ── Live-pull helpers (scripts/local-restore.mjs's --from-url mode) ─────────
-// Pure so verify-setup.mts can exercise them without a real pg_dump or a real
-// Neon connection string.
+// Pure so verify-setup.mts can exercise them without a real Neon connection
+// string.
+//
+// There used to be a refusePooledUrl helper here: pg_dump needs a DIRECT
+// (unpooled) connection, since it opens more than one connection and expects
+// session state to persist across them, which the pgbouncer-based Neon
+// pooler does not support. The live pull is native now (scripts/lib/pg-copy.mjs,
+// plain `pg` SELECTs through the `pg` driver), so that restriction is gone:
+// an ordinary pooled connection reads rows just fine. Any Neon connection
+// string, pooled or direct, works.
 
-/**
- * pg_dump needs a DIRECT (unpooled) connection: it opens more than one
- * connection and expects session state (search_path, locks) to persist
- * across them, neither of which the pgbouncer-based Neon pooler supports.
- * This is the exact INVERSE of src/db/index.ts's assertPooledUrl, which
- * requires the pooler for the app's own runtime connections — that
- * asymmetry is intentional, not a bug to reconcile: don't "fix" one to match
- * the other.
- */
-export function refusePooledUrl(hostname) {
-  return hostname.includes("-pooler")
-    ? "pg_dump needs the DIRECT (unpooled) connection string; the -pooler hostname will not work. Get the direct string from the Neon dashboard."
-    : null;
-}
-
-/** Strip a connection string out of arbitrary text — pg_dump can echo its
- * argument back into stderr on failure, and that text must never reach the
- * console verbatim. */
+/** Strip a connection string out of arbitrary text before it reaches the
+ * console or an error message — a defensive measure in case a `pg` error
+ * ever echoes its connection argument back (drivers sometimes do on a bad
+ * host/auth failure). */
 export function redactConnectionString(text, url) {
   return url ? text.split(url).join("<connection-string>") : text;
 }
