@@ -26,7 +26,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir, userInfo } from "node:os";
 import { stdin, stdout } from "node:process";
 import * as readline from "node:readline/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildDbUrl, normalizeConfig } from "../supervisor/lib.mjs";
 import {
   buildPeerConfig,
@@ -320,7 +320,7 @@ console.log("Config written.");
  */
 async function startEmpty(cfg) {
   const requireFromRepo = createRequire(join(repoDir, "package.json"));
-  const EmbeddedPostgres = (await import(requireFromRepo.resolve("embedded-postgres"))).default;
+  const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
   const pgDir = join(cfg.dataDir, "pg");
   mkdirSync(cfg.dataDir, { recursive: true });
   const cluster = new EmbeddedPostgres({

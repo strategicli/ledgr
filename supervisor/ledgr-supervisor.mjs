@@ -32,7 +32,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   assembleAppEnv,
   buildDbUrl,
@@ -95,7 +95,7 @@ function lockHash(dir) {
 // Resolve embedded-postgres from the repo clone (it is a runtime dependency
 // there); the supervisor dir itself has no node_modules.
 const requireFromRepo = createRequire(join(cfg.repoDir, "package.json"));
-const EmbeddedPostgres = (await import(requireFromRepo.resolve("embedded-postgres"))).default;
+const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
 
 const pgDir = join(cfg.dataDir, "pg");
 const firstRun = !existsSync(join(pgDir, "PG_VERSION"));
