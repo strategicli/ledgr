@@ -67,6 +67,8 @@ function baseReport(): HealthReport {
       graph: { configured: true, ok: true },
       github: { configured: true, ok: true, repo: "strategicli/ledgr" },
       healthCheck: { lastRunAt: null, lastSuccessAt: null, lastAlertAt: null, alerts: [] },
+      schema: { state: "current", pending: [], total: 60 },
+      sync: { enabled: false },
       errors: { last24h: 0 },
     },
     timestamp: NOW.toISOString(),

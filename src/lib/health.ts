@@ -16,7 +16,9 @@ import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
 import { checkGithub, type GithubHealth } from "@/lib/github/client";
 import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
 import { getPushState } from "@/lib/push/notify";
+import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
 import { getTodoistState } from "@/lib/todoist/sync";
+import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
 import { transcriptionAdapter, type TranscriptionAdapterId } from "@/lib/transcription/provider";
 import { createLogger, isDebugMode } from "@/lib/log";
@@ -31,6 +33,12 @@ export type ErrorsCheck = {
 } | null;
 
 export type McpCanary = { configured: boolean; hasToken: boolean; ownerResolves: boolean };
+
+// The hub/spoke sync canary (ADR-206 phase 3). {enabled: false} on any
+// instance that isn't a sync spoke (the cloud hub, Tyler's) — cheap, env-only.
+export type SyncCanary =
+  | { enabled: false }
+  | { enabled: true; state: SyncState; pendingOps: number; lastSyncAt: string | null };
 
 export type HealthReport = {
   status: "ok" | "degraded";
@@ -60,6 +68,10 @@ export type HealthReport = {
     graph: GraphHealth;
     github: GithubHealth;
     healthCheck: HealthCheckCanary;
+    // Migration currency (the /build/updates schema axis, surfaced here too so
+    // a machine check can see a code-ahead-of-database gap).
+    schema: SchemaStatus;
+    sync: SyncCanary;
     errors: ErrorsCheck;
   };
   timestamp: string;
@@ -211,6 +223,28 @@ export async function gatherHealth(): Promise<HealthReport> {
     // checkGithub swallows its own errors; belt-and-suspenders.
   }
 
+  // Migration currency. getSchemaStatus never throws (it reports "unknown"),
+  // and it degrades to "unknown" on its own when the DB is down.
+  const schema = await getSchemaStatus();
+
+  // Sync canary: env-only {enabled: false} on non-spokes; two small oplog
+  // reads on a spoke. Never changes overall status — sync being behind must
+  // not make the app itself look unhealthy (same posture as Graph/GitHub).
+  let syncCheck: SyncCanary = { enabled: false };
+  try {
+    const s = await gatherSyncStatus();
+    if (s.enabled) {
+      syncCheck = {
+        enabled: true,
+        state: s.state,
+        pendingOps: s.pendingOps,
+        lastSyncAt: s.lastSyncAt,
+      };
+    }
+  } catch {
+    // same posture as the export state read.
+  }
+
   return {
     status: database.ok ? "ok" : "degraded",
     checks: {
@@ -233,6 +267,8 @@ export async function gatherHealth(): Promise<HealthReport> {
       graph,
       github,
       healthCheck,
+      schema,
+      sync: syncCheck,
       errors,
     },
     timestamp: new Date().toISOString(),
