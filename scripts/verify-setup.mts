@@ -389,5 +389,32 @@ for (const rel of [
   check(`${rel} wraps every resolved dynamic import in pathToFileURL (Windows ESM)`, bad.length === 0);
 }
 
+
+// UTF8 guard (regression, 2026-08-22): Windows initdb inherits the OS locale
+// and produces a WIN1252 cluster, which cannot store the arrows, curly quotes,
+// em dashes and emoji that real Ledgr bodies (and many of our own migration
+// comments) contain. Encoding must be forced at both levels: initdb for a
+// fresh cluster, and CREATE DATABASE ... TEMPLATE template0 so a UTF8 database
+// can still be made inside an existing non-UTF8 cluster.
+for (const rel of [
+  "scripts/local-setup.mjs",
+  "scripts/local-restore.mjs",
+  "supervisor/ledgr-supervisor.mjs",
+]) {
+  const src = readFileSync(rel, "utf8");
+  check(`${rel} forces UTF8 at initdb`, /initdbFlags:\s*\[[^\]]*--encoding=UTF8/.test(src));
+}
+{
+  const src = readFileSync("scripts/local-restore.mjs", "utf8");
+  check(
+    "local-restore creates the database from template0 with an explicit UTF8 encoding",
+    /create database ledgr template template0 encoding 'UTF8'/.test(src)
+  );
+  check(
+    "local-restore asserts the created database really is UTF8 before loading data",
+    /pg_encoding_to_char/.test(src)
+  );
+}
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

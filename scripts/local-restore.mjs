@@ -83,6 +83,13 @@ async function startCluster(cfg) {
     password: "postgres",
     port: cfg.dbPort,
     persistent: true,
+    // Windows initdb inherits the OS locale, which yields a WIN1252 cluster
+    // that cannot store the arrows, curly quotes, em dashes and emoji real
+    // Ledgr bodies are full of (it failed on a migration comment first).
+    // ponytail: locale=C means bytewise text sorting, so ORDER BY title can
+    // differ slightly from the hub. Encoding is correctness, collation is
+    // cosmetic; revisit only if list order visibly diverges.
+    initdbFlags: ["--encoding=UTF8", "--locale=C"],
   });
   if (!existsSync(join(pgDir, "PG_VERSION"))) {
     console.log("First run: initdb…");
@@ -105,7 +112,26 @@ async function resetLocalDatabase(pg, cfg) {
   const admin = new pg.Client({ connectionString: adminUrl });
   await admin.connect();
   await admin.query("drop database if exists ledgr with (force)");
-  await admin.query("create database ledgr");
+  // TEMPLATE template0 + an explicit encoding is what lets a UTF8 database
+  // live inside a cluster whose own default is something else. That is the
+  // common case on Windows, where initdb inherits the OS locale and produces
+  // WIN1252 — which cannot store the arrows, curly quotes, em dashes or emoji
+  // that real Ledgr bodies contain. Without this, an existing Windows cluster
+  // would have to be deleted and re-initdb'd instead of just re-pulled.
+  // lc_collate/lc_ctype must be C here: the cluster's own locale belongs to
+  // its old encoding and cannot be reused across the switch.
+  await admin.query(
+    "create database ledgr template template0 encoding 'UTF8' lc_collate 'C' lc_ctype 'C'"
+  );
+  // Assert rather than assume: a silently non-UTF8 database corrupts body text
+  // on write, and the failure would surface much later as mangled characters.
+  const enc = await admin.query(
+    "select pg_encoding_to_char(encoding) as enc from pg_database where datname = 'ledgr'"
+  );
+  if (enc.rows[0]?.enc !== "UTF8") {
+    await admin.end();
+    fail(`local database was created as ${enc.rows[0]?.enc ?? "unknown"}, not UTF8; refusing to load data into it.`);
+  }
   await admin.end();
 }
 
