@@ -281,10 +281,24 @@ if (existsSync(configPath)) {
 console.log(`\nConfig → ${configPath}`);
 for (const line of configSummary(config, existing)) console.log(line);
 
+// The clobber guard is a hard stop only when nobody is there to answer for it.
+// Interactively, refusing outright is the wrong call: re-running the wizard
+// after a failed step is the COMMON case, and the double-click entry point
+// (install.cmd → install.ps1) has no way to pass --force, so a hard refusal
+// made a re-run impossible from the only door most users have. Ask instead.
 const refusal = configWriteRefusal(existsSync(configPath), flags.force);
-if (refusal) fail(refusal);
-
-if (rl) {
+if (refusal) {
+  if (!rl) fail(refusal);
+  console.log(`\n${refusal}`);
+  const over = (await rl.question("Overwrite it now? [y/N] ")).trim();
+  if (!/^y/i.test(over)) {
+    console.log(
+      "Nothing written. The existing config is unchanged; to run only the data\n" +
+        "fill against it, use: npm run local:restore -- --from-url <connection-string>"
+    );
+    process.exit(0);
+  }
+} else if (rl) {
   const go = (await rl.question("\nWrite this config? [Y/n] ")).trim();
   if (/^n/i.test(go)) {
     console.log("Nothing written.");
