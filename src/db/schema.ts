@@ -11,7 +11,9 @@
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
+  bigserial,
   boolean,
+  check,
   customType,
   index,
   integer,
@@ -901,6 +903,85 @@ export const activeContext = pgTable(
   },
   (t) => [uniqueIndex("active_context_owner_uq").on(t.ownerId)]
 );
+
+// ── Sync spine (local hub/spoke, phase 1) ───────────────────────────────────
+// The op-based sync engine (plans/local-hub-idea-to-cutover.html). Every
+// instance gets these tables via the shared migration; an instance with no
+// LEDGR_SYNC_HUBS set (the cloud hub, Tyler's) just accrues an oplog and never
+// runs the loop. Machinery, not user content (rule 2): none of this is
+// owner-authored, so none of it is in `items`.
+
+// This instance's device identity: exactly one row, self-assigned by the
+// migration's seed (INSERT ... WHERE NOT EXISTS), so every instance — prod
+// Neon, local peers, Tyler's — gets a stable uuid the moment it migrates.
+export const syncDevice = pgTable("sync_device", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name"),
+});
+
+// The wire format's schema-version stamp, read by the oplog trigger. One row,
+// holding the migration tag as of the last SYNC-TOUCHING migration (seeded
+// '0054_sync_spine'; any future migration that changes a synced table's shape
+// must UPDATE it). Chosen over recreating the trigger function per migration:
+// a one-row UPDATE is harder to forget and impossible to get subtly wrong.
+// The /api/machine/sync version GATE compares full journal tags instead (see
+// src/lib/sync/version.ts); this stamp is provenance on each op row.
+export const syncSchemaVer = pgTable("sync_schema_ver", {
+  ver: text("ver").primaryKey(),
+});
+
+// The oplog: one row per write to a synced table, appended by row-level AFTER
+// triggers (hand-written SQL in migration 0054 — drizzle-kit doesn't emit
+// triggers). `changed` is the full row for insert/delete and only the changed
+// fields (key -> new value) for update, diffed in the trigger via to_jsonb;
+// the generated `search` column is stripped. `origin_device_id` is stamped
+// (via the ledgr.sync_origin GUC) when the apply layer runs in a transaction,
+// marking the op as an echo of a foreign write so push excludes it; when the
+// driver can't (neon-http), echoes terminate after one round because apply
+// only writes values that actually differ and the triggers' IS DISTINCT FROM
+// guards log nothing for no-op writes.
+export const syncOps = pgTable(
+  "sync_ops",
+  {
+    seq: bigserial("seq", { mode: "number" }).primaryKey(),
+    deviceId: uuid("device_id").notNull(),
+    // The device this write is an echo OF (null = an original local write).
+    originDeviceId: uuid("origin_device_id"),
+    ownerId: uuid("owner_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    tbl: text("tbl").notNull(),
+    // For `types` (text pk) this is md5('types:' || key)::uuid — deterministic
+    // across instances; the real key travels in `changed`.
+    rowId: uuid("row_id").notNull(),
+    kind: text("kind").notNull(),
+    changed: jsonb("changed").notNull(),
+    schemaVer: text("schema_ver").notNull(),
+  },
+  (t) => [
+    // seq is the pk (cursor scans); this one serves the apply layer's
+    // per-row field-stamp lookups.
+    index("sync_ops_tbl_row_idx").on(t.tbl, t.rowId),
+    check("sync_ops_kind_check", sql`${t.kind} in ('insert', 'update', 'delete')`),
+  ]
+);
+
+// The hub's device registry AND the cursor store: one row per peer device
+// that may sync against this instance. Token auth mirrors machine.ts (sha256
+// hash stored, timingSafeEqual compare) but lives in the DB — deliberately,
+// per the plan's decision 15 — so revoking a device is a row flip on the hub,
+// not an env edit + redeploy.
+export const syncPeers = pgTable("sync_peers", {
+  deviceId: uuid("device_id").primaryKey(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  revoked: boolean("revoked").notNull().default(false),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  // Cursors: the highest of the peer's own seqs it has pushed here, and the
+  // highest local seq it has pulled — what the Synced-devices UI reads as lag.
+  lastPushedSeq: bigint("last_pushed_seq", { mode: "number" }).notNull().default(0),
+  lastPulledSeq: bigint("last_pulled_seq", { mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
 
 // No silent failures: failed crons/webhooks land here and surface through
 // /health and the UI. detail is shown only when debug mode is on.
