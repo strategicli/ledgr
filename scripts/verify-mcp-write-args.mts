@@ -1,10 +1,11 @@
-// Verification: the MCP write-arg guard in buildWriteRaw. The tool schemas
-// declare additionalProperties:false but the transport never validates args,
-// so buildWriteRaw is the enforcement point: an unknown key must throw a
-// bad_request naming the key (with a did-you-mean for the body mis-names),
-// instead of being silently dropped — the observed failure was a create_item
-// whose body rode in as `body` and "succeeded" as an empty note. Pure (no DB,
-// no server). Run:
+// Verification: the MCP write-arg guard in buildWriteRaw + the `body` alias in
+// optBodyMarkdown. The tool schemas declare additionalProperties:false but the
+// transport never validates args, so these two are the enforcement point: an
+// unknown key must throw a bad_request naming it (with a did-you-mean for the
+// body mis-names), and `body` — the name callers actually guess — must be
+// honoured as bodyMarkdown instead of being dropped into an empty note (the
+// observed failure, twice: 2026-08-19, 2026-08-22). Pure (no DB, no server).
+// Run:
 //   npx tsx scripts/verify-mcp-write-args.mts
 import { existsSync, readFileSync } from "node:fs";
 
@@ -17,7 +18,7 @@ if (existsSync(".env.local")) {
   }
 }
 
-const { buildWriteRaw } = await import("../src/lib/mcp/tools/args");
+const { buildWriteRaw, optBodyMarkdown } = await import("../src/lib/mcp/tools/args");
 const { ItemError } = await import("../src/lib/items");
 
 let failures = 0;
@@ -46,20 +47,6 @@ function rejects(
 
 console.log("\n# unknown keys rejected (the silent-drop bug)");
 rejects(
-  "create_item body → names the key",
-  { type: "note", title: "x", body: "y" },
-  ["type"],
-  ["relateTo"],
-  (m) => m.includes('"body"')
-);
-rejects(
-  "create_item body → suggests bodyMarkdown",
-  { type: "note", title: "x", body: "y" },
-  ["type"],
-  ["relateTo"],
-  (m) => m.includes('did you mean "bodyMarkdown"')
-);
-rejects(
   "update_item content → suggests bodyMarkdown",
   { id: "00000000-0000-0000-0000-000000000000", content: "y" },
   ["propertyPatch"],
@@ -82,10 +69,54 @@ rejects(
 );
 rejects(
   "message lists the accepted fields",
-  { type: "note", body: "y" },
+  { type: "note", bodyText: "y" },
   ["type"],
   [],
   (m) => m.includes("accepted fields:") && m.includes("bodyMarkdown") && m.includes("dueDate")
+);
+
+console.log("\n# `body` is an alias, not an unknown key (the empty-note bug)");
+{
+  const raw = buildWriteRaw({ type: "note", title: "x", body: "y" }, ["type"], ["relateTo"]);
+  check("create_item body lands as the body", (raw.body as { text?: string })?.text === "y");
+}
+{
+  const raw = buildWriteRaw(
+    { id: "00000000-0000-0000-0000-000000000000", body: "y" },
+    ["propertyPatch"],
+    ["id"]
+  );
+  check("update_item body lands as the body", (raw.body as { text?: string })?.text === "y");
+}
+{
+  const raw = buildWriteRaw({ type: "note", bodyMarkdown: "real", body: "alias" }, ["type"], []);
+  check("bodyMarkdown wins when both are passed", (raw.body as { text?: string })?.text === "real");
+}
+check(
+  "the alias reaches the hand-parsed tools too (remember, add_to_record)",
+  optBodyMarkdown({ body: "y" }) === "y" && optBodyMarkdown({ bodyMarkdown: "y" }) === "y"
+);
+check("no body at all stays undefined", optBodyMarkdown({ title: "x" }) === undefined);
+{
+  // The REST body shape is NOT the alias — say so instead of silently dropping.
+  let msg = "";
+  try {
+    optBodyMarkdown({ body: { format: "markdown", text: "y" } });
+  } catch (e) {
+    msg = e instanceof ItemError && e.code === "bad_request" ? e.message : `wrong error: ${e}`;
+  }
+  check("a non-string body is a clear error", msg.includes("bodyMarkdown"), msg);
+}
+check(
+  "nested entries get their path in the error",
+  (() => {
+    try {
+      optBodyMarkdown({ bodyMarkdown: 3 }, "subtasks[2].");
+      return false;
+    } catch (e) {
+      return e instanceof Error && e.message.startsWith("subtasks[2].bodyMarkdown");
+    }
+  })()
 );
 
 console.log("\n# legit calls still pass");

@@ -45,6 +45,7 @@ import {
 } from "@/lib/recurrence-service";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
 import {
+  optBodyMarkdown,
   optEnum,
   optEnumArray,
   optInt,
@@ -164,12 +165,8 @@ function subtaskInputs(
     for (const k of ["status", "urgency", "dueDate", "scheduledDate", "url"]) {
       if (e[k] !== undefined) out[k] = e[k];
     }
-    if (e.bodyMarkdown !== undefined && e.bodyMarkdown !== null) {
-      if (typeof e.bodyMarkdown !== "string") {
-        throw new ItemError("bad_request", `${at}.bodyMarkdown must be a string`);
-      }
-      out.body = { format: "markdown", text: e.bodyMarkdown };
-    }
+    const md = optBodyMarkdown(e, `${at}.`);
+    if (md !== undefined) out.body = { format: "markdown", text: md };
     return out;
   });
 }
@@ -459,7 +456,7 @@ export const taskTools: McpTool[] = [
                   dueDate: { type: "string", description: "Deadline, ISO 8601." },
                   scheduledDate: { type: "string", description: "Planned work date, ISO 8601." },
                   url: { type: "string", description: "URL, for a link-ish child." },
-                  bodyMarkdown: { type: "string", description: "Body as markdown." },
+                  bodyMarkdown: { type: "string", description: "Body as markdown. Also accepted as `body`." },
                 },
                 required: ["title"],
                 additionalProperties: false,
