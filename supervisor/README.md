@@ -34,17 +34,25 @@ First run: initdb, then a full build of the repo's current HEAD (npm ci +
 `next build` + migrate), then the app serves on `appPort`. Ctrl+C stops the
 app, then Postgres, in order.
 
-First **data**: restore the weekly backup before first use —
+First **data**: fill it before first use, either from the weekly backup —
 
 ```
 npm run local:restore -- /path/to/ledgr-YYYY-MM-DD.dump
 ```
 
-(Needs `pg_restore` on PATH; the embedded binaries ship the server only.
-Stop the supervisor first.) The restore clears the sync state that must not
-be cloned from the hub — the oplog, the device identity, peer registrations,
-and cursors — so the peer starts as a fresh device. If it syncs against a
-hub, its first pull/push cycle reconciles everything newer than the backup.
+— or straight from the live database (fresher, no file to find; needs the
+**direct**, not `-pooler`, Neon connection string):
+
+```
+npm run local:restore -- --from-url "postgresql://...direct-host.../ledgr"
+```
+
+(Needs `pg_restore` on PATH always, `pg_dump` too for `--from-url`; the
+embedded binaries ship the server only. Stop the supervisor first.) Either
+way the restore clears the sync state that must not be cloned from the hub —
+the oplog, the device identity, peer registrations, and cursors — so the
+peer starts as a fresh device. If it syncs against a hub, its first
+pull/push cycle reconciles everything newer than the backup.
 
 ## Update flow and keep-last-good
 
@@ -67,26 +75,51 @@ The supervisor then:
 identically on every platform, needs no privileges, and the supervisor reads
 it once at spawn.
 
-## Set up a new machine: run `install.ps1` (LH4)
+## Set up a new machine: download `install.cmd` (LH4)
 
 On Windows, the whole bring-up below collapses to one downloaded file:
+**download `install.cmd` and double-click it.** (Windows won't run a `.ps1`
+on double-click — it opens an editor instead — so `install.cmd` is the file
+to actually download; it's a tiny wrapper that runs `install.ps1` and keeps
+the window open so you can read the result. If `install.ps1` isn't sitting
+next to it, it fetches that too.)
+
+The PowerShell invocation still works directly, if you'd rather:
 
 ```
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-It installs git and Node LTS via winget if missing, clones the repo into
+It installs git, Node LTS, and the Postgres client tools via winget if
+missing (the Postgres tools warn-and-continue rather than blocking, since
+starting empty doesn't need them), clones the repo into
 `%LOCALAPPDATA%\Ledgr\app` (override with `-InstallDir`), runs `npm ci`, and
 hands off to the cross-platform wizard — `npm run local:setup` — which asks
-hub-or-spoke, restores a backup or starts empty (migrate + seed), writes
-`supervisor/config.json` (never clobbering without `--force`), and offers the
-Task Scheduler registration. Every prompt has a flag override
-(`node scripts/local-setup.mjs --help`), so it also runs unattended. On
-macOS/Linux the wizard is the same; only the bootstrap differs (`install.sh`
-is deferred to post-cutover — clone + `npm ci` by hand, then
-`npm run local:setup`). Restoring a backup still needs `pg_restore` on PATH
-(`winget install PostgreSQL.PostgreSQL.18`); the wizard's restore path says so
-if it's missing.
+hub-or-spoke, fills the initial data, writes `supervisor/config.json` (never
+clobbering without `--force`), and offers the Task Scheduler registration.
+Every prompt has a flag override (`node scripts/local-setup.mjs --help`), so
+it also runs unattended. On macOS/Linux the wizard is the same; only the
+bootstrap differs (`install.sh` is deferred to post-cutover — clone + `npm ci`
+by hand, then `npm run local:setup`).
+
+**Initial data, three ways** (the wizard's "Initial data" question):
+
+- **Restore a backup file** — the fast path when you already have one.
+  Download the newest `ledgr-*.dump` from OneDrive `/Ledgr/Backups/`, then
+  point `--backup` at it (or answer the prompt with its path).
+- **Pull from the live database** — fresher than the weekly backup, no
+  hunting for a file. Needs the **direct (unpooled)** Neon connection string
+  from the Neon dashboard, not the `-pooler` one the app itself uses; the
+  wizard (and `local-restore.mjs`) refuses a pooler string outright, since
+  `pg_dump` can't run through it.
+- **Start empty** — migrate + seed a fresh database; a syncing spoke then
+  reconciles everything from the hub on its first pull (correct, but slower
+  for a large dataset).
+
+Both the restore and the live-pull path need the Postgres client tools
+(`pg_restore` always, `pg_dump` for the live pull) on PATH —
+`winget install PostgreSQL.PostgreSQL.18` on Windows, `brew install libpq` on
+macOS. The wizard's data-fill step says so if they're missing.
 
 ## Windows bring-up checklist (manual fallback; also what install.ps1 does)
 
@@ -107,9 +140,12 @@ Run these on the always-on PC, in order:
    `ownerEmail`, and (for a syncing spoke) `hubs` + `deviceToken` minted on
    the hub's Synced-devices section. (Steps 3-4 and 7 are the wizard's job:
    `npm run local:setup`.)
-4. **Restore the backup:** download the newest `ledgr-*.dump` from OneDrive
-   `/Ledgr/Backups/`, then `npm run local:restore -- C:\path\to\ledgr-....dump`.
-   Watch: `pg_restore` must be the PG 17+ client (`pg_restore --version`).
+4. **Fill the data:** either download the newest `ledgr-*.dump` from OneDrive
+   `/Ledgr/Backups/` and `npm run local:restore -- C:\path\to\ledgr-....dump`,
+   or pull straight from the live database with the **direct** (not
+   `-pooler`) connection string: `npm run local:restore -- --from-url "..."`.
+   Watch: `pg_restore`/`pg_dump` must be the PG 17+ client (`pg_restore
+   --version`).
 5. **First supervisor run, in a terminal** (not the service yet):
    `npm run local:supervisor`. Watch for:
    - **initdb succeeds** (embedded-postgres win32 binaries actually run;

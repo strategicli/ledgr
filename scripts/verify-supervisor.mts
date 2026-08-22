@@ -269,8 +269,16 @@ check(
   /insert into sync_device/.test(restoreSrc)
 );
 check(
-  "the restore script only ever connects to 127.0.0.1 (it can never touch Neon)",
+  "the RESTORE half only ever connects to 127.0.0.1 (the --from-url DUMP half is the one deliberate, read-only exception)",
   !restoreSrc.includes(`process.env.${DB_KEY}`) && restoreSrc.includes("127.0.0.1")
+);
+check(
+  "the --from-url path refuses a pooled Neon URL before ever running pg_dump",
+  restoreSrc.includes("refusePooledUrl") && restoreSrc.includes('"pg_dump"')
+);
+check(
+  "the --from-url connection string is redacted rather than logged raw",
+  restoreSrc.includes("redactConnectionString") && !/console\.(log|error)\(`[^`]*\$\{fromUrl\}/.test(restoreSrc)
 );
 
 const supervisorSrc = readFileSync("supervisor/ledgr-supervisor.mjs", "utf8");

@@ -10,9 +10,10 @@
 //
 // What it does, in order: preflight → questions (or flags) → write
 // supervisor/config.json (never clobbering without --force) → initial data
-// fill (restore a pg_dump via scripts/local-restore.mjs, or migrate+seed an
-// empty database in new-instance.mjs's order) → service registration
-// (Task Scheduler on win32; printed instructions elsewhere) → summary.
+// fill (restore a pg_dump, or pull straight from the live database, both via
+// scripts/local-restore.mjs, or migrate+seed an empty database in
+// new-instance.mjs's order) → service registration (Task Scheduler on win32;
+// printed instructions elsewhere) → summary.
 // The first APP BUILD is deliberately not here: the supervisor builds the
 // repo's HEAD on its own first start (LH2), and duplicating that would drift.
 // Decision logic lives in local-setup-lib.mjs (pure, verified by
@@ -32,6 +33,7 @@ import {
   configWriteRefusal,
   decideFill,
   defaultDataDir,
+  fillSummaryLine,
   formatSchtasks,
   parseSetupArgs,
   schtasksCreateArgs,
@@ -63,7 +65,9 @@ Flags (each replaces one prompt; --yes answers the rest with defaults):
   --hub-url <url>         spoke only: the hub to sync against
   --hub-token <token>     spoke only: the one-time device token minted on the hub
   --backup <path>         restore this pg_dump as the initial data (implies --fill restore)
-  --fill restore|seed|skip  initial data fill (default seed = start empty)
+  --from-url <url>        pull the initial data live from this DIRECT (unpooled) Neon
+                          connection string (implies --fill pull)
+  --fill restore|pull|seed|skip  initial data fill (default seed = start empty)
   --config <path>         where to write config.json (default supervisor/config.json)
   --force                 overwrite an existing config.json
   --register-service      win32: run the schtasks registration without asking
@@ -208,22 +212,26 @@ if (role === "spoke") {
 // pull, which for a large dataset is much slower than restoring the dump).
 let fill;
 try {
-  fill = decideFill({ fill: flags.fill, backup: flags.backup });
+  fill = decideFill({ fill: flags.fill, backup: flags.backup, fromUrl: flags["from-url"] });
 } catch (err) {
   fail(err instanceof Error ? err.message : String(err));
 }
-if (flags.fill === undefined && flags.backup === undefined && rl) {
+if (flags.fill === undefined && flags.backup === undefined && flags["from-url"] === undefined && rl) {
   console.log(
-    "\nInitial data: 'restore' loads a weekly pg_dump backup (the fast path for\n" +
-      "an existing dataset), 'seed' starts empty (a spoke then pulls everything\n" +
-      "from the hub on first sync — correct, but slow for large data), 'skip'\n" +
-      "leaves the database alone (re-running the wizard on an existing peer).\n"
+    "\nInitial data, three ways: 'restore' loads a weekly pg_dump backup file\n" +
+      "(the fast path when you already have one from OneDrive /Ledgr/Backups/).\n" +
+      "'pull' connects straight to the live Neon database instead — it's the\n" +
+      "freshest option, but needs the DIRECT (unpooled) connection string from\n" +
+      "the Neon dashboard, not the pooler one the app itself uses. 'seed' starts\n" +
+      "empty (a spoke then pulls everything from the hub on first sync — correct,\n" +
+      "but slow for large data); 'skip' leaves the database alone (re-running the\n" +
+      "wizard on an existing peer).\n"
   );
-  fill = await answer("Initial data (restore, seed, or skip)", {
+  fill = await answer("Initial data (restore, pull, seed, or skip)", {
     flagValue: undefined,
     flagName: "--fill",
     def: "seed",
-    validate: (v) => decideFill({ fill: v, backup: undefined }),
+    validate: (v) => decideFill({ fill: v, backup: undefined, fromUrl: undefined }),
   });
 }
 let backupPath = flags.backup ? resolve(flags.backup) : undefined;
@@ -239,6 +247,18 @@ if (fill === "restore" && !backupPath) {
       },
     })
   );
+}
+let fromUrl = flags["from-url"];
+if (fill === "pull" && !fromUrl) {
+  if (!rl) fail("--fill pull needs --from-url <direct Neon connection string>");
+  fromUrl = await answer("Live database connection string (DIRECT, not the pooler one)", {
+    flagValue: undefined,
+    flagName: "--from-url",
+    validate: (v) => {
+      if (!v) throw new Error("a connection string is required");
+      return v;
+    },
+  });
 }
 
 // ── Write supervisor/config.json ─────────────────────────────────────────────
@@ -335,7 +355,7 @@ async function startEmpty(cfg) {
 }
 
 if (fill === "restore") {
-  console.log("\nRestoring the backup (scripts/local-restore.mjs)…");
+  console.log(`\n${fillSummaryLine(fill, { backupPath })} (scripts/local-restore.mjs)…`);
   const res = spawnSync(
     process.execPath,
     [join(repoDir, "scripts", "local-restore.mjs"), backupPath, configPath],
@@ -344,8 +364,21 @@ if (fill === "restore") {
   if (res.status !== 0) {
     fail("restore failed (see above). The config is written; fix the issue and re-run just the restore: npm run local:restore -- " + backupPath);
   }
+} else if (fill === "pull") {
+  console.log(`\n${fillSummaryLine(fill)} (scripts/local-restore.mjs)…`);
+  const res = spawnSync(
+    process.execPath,
+    [join(repoDir, "scripts", "local-restore.mjs"), "--from-url", fromUrl, configPath],
+    { cwd: repoDir, stdio: "inherit" }
+  );
+  if (res.status !== 0) {
+    fail(
+      "pull failed (see above). The config is written; fix the issue and re-run just the pull: " +
+        "npm run local:restore -- --from-url <connection-string> " + configPath
+    );
+  }
 } else if (fill === "seed") {
-  console.log("\nStarting empty (migrate + seed)…");
+  console.log(`\n${fillSummaryLine(fill)}…`);
   try {
     await startEmpty(normalized);
   } catch (err) {
@@ -359,7 +392,7 @@ if (fill === "restore") {
     );
   }
 } else {
-  console.log("\nSkipping the data fill (existing database left alone).");
+  console.log(`\n${fillSummaryLine(fill)}.`);
 }
 
 // ── First build ──────────────────────────────────────────────────────────────

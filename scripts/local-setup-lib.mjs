@@ -19,7 +19,8 @@ const OPTIONS = {
   port: { type: "string" }, // app port
   "db-port": { type: "string" },
   backup: { type: "string" }, // path to a pg_dump file → implies --fill restore
-  fill: { type: "string" }, // restore | seed | skip
+  "from-url": { type: "string" }, // direct (unpooled) Neon connection string → implies --fill pull
+  fill: { type: "string" }, // restore | pull | seed | skip
   config: { type: "string" }, // where config.json is written (default supervisor/config.json)
   yes: { type: "boolean", default: false },
   force: { type: "boolean", default: false }, // allow overwriting an existing config.json
@@ -69,19 +70,74 @@ export function defaultDataDir(platform, home) {
 }
 
 /**
- * Which initial data fill to run. --backup implies restore; an explicit
- * --fill wins over the default; the default is seed (start empty). "skip" is
- * for re-running the wizard on a peer that already has data.
+ * Which initial data fill to run. --backup implies restore, --from-url
+ * implies pull; an explicit --fill wins over either; the default is seed
+ * (start empty). "skip" is for re-running the wizard on a peer that already
+ * has data. Passing both --backup and --from-url is rejected rather than
+ * picking one silently.
  */
-export function decideFill({ fill, backup }) {
-  const resolved = fill ?? (backup ? "restore" : "seed");
-  if (!["restore", "seed", "skip"].includes(resolved)) {
-    throw new Error(`--fill must be restore, seed, or skip, got ${JSON.stringify(resolved)}`);
+export function decideFill({ fill, backup, fromUrl }) {
+  if (backup && fromUrl) {
+    throw new Error("pass either --backup or --from-url, not both");
+  }
+  const resolved = fill ?? (backup ? "restore" : fromUrl ? "pull" : "seed");
+  if (!["restore", "pull", "seed", "skip"].includes(resolved)) {
+    throw new Error(`--fill must be restore, pull, seed, or skip, got ${JSON.stringify(resolved)}`);
   }
   if (resolved !== "restore" && backup) {
     throw new Error(`--backup only makes sense with the restore fill, not "${resolved}"`);
   }
+  if (resolved !== "pull" && fromUrl) {
+    throw new Error(`--from-url only makes sense with the pull fill, not "${resolved}"`);
+  }
   return resolved;
+}
+
+/**
+ * One-line, safe-to-print description of a chosen data fill. A connection
+ * string is never included — "pull" always reads as "(connection string
+ * set)" rather than showing the value, the same non-echo convention
+ * configSummary uses for deviceToken.
+ */
+export function fillSummaryLine(fill, { backupPath } = {}) {
+  switch (fill) {
+    case "restore":
+      return `Restoring the backup${backupPath ? ` (${backupPath})` : ""}`;
+    case "pull":
+      return "Pulling from the live database (connection string set)";
+    case "seed":
+      return "Starting empty (migrate + seed)";
+    case "skip":
+      return "Skipping the data fill (existing database left alone)";
+    default:
+      throw new Error(`unknown fill: ${JSON.stringify(fill)}`);
+  }
+}
+
+// ── Live-pull helpers (scripts/local-restore.mjs's --from-url mode) ─────────
+// Pure so verify-setup.mts can exercise them without a real pg_dump or a real
+// Neon connection string.
+
+/**
+ * pg_dump needs a DIRECT (unpooled) connection: it opens more than one
+ * connection and expects session state (search_path, locks) to persist
+ * across them, neither of which the pgbouncer-based Neon pooler supports.
+ * This is the exact INVERSE of src/db/index.ts's assertPooledUrl, which
+ * requires the pooler for the app's own runtime connections — that
+ * asymmetry is intentional, not a bug to reconcile: don't "fix" one to match
+ * the other.
+ */
+export function refusePooledUrl(hostname) {
+  return hostname.includes("-pooler")
+    ? "pg_dump needs the DIRECT (unpooled) connection string; the -pooler hostname will not work. Get the direct string from the Neon dashboard."
+    : null;
+}
+
+/** Strip a connection string out of arbitrary text — pg_dump can echo its
+ * argument back into stderr on failure, and that text must never reach the
+ * console verbatim. */
+export function redactConnectionString(text, url) {
+  return url ? text.split(url).join("<connection-string>") : text;
 }
 
 // ── Config assembly ──────────────────────────────────────────────────────────

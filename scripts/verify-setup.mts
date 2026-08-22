@@ -18,8 +18,11 @@ import {
   configWriteRefusal,
   decideFill,
   defaultDataDir,
+  fillSummaryLine,
   formatSchtasks,
   parseSetupArgs,
+  redactConnectionString,
+  refusePooledUrl,
   schtasksCreateArgs,
   validateEmail,
   validateHubUrl,
@@ -67,6 +70,10 @@ check(
 check("booleans default off", parseSetupArgs([]).yes === false && parseSetupArgs([]).force === false);
 check("an unknown flag throws (typos fail loudly)", throws(() => parseSetupArgs(["--rol", "hub"])));
 check("a positional argument throws", throws(() => parseSetupArgs(["hub"])));
+check(
+  "--from-url parses",
+  parseSetupArgs(["--from-url", "postgresql://u:p@h/db", "--yes"])["from-url"] === "postgresql://u:p@h/db"
+);
 
 // ── (2) Validators ───────────────────────────────────────────────────────────
 
@@ -88,11 +95,63 @@ check(
 
 // ── (3) Fill decision ────────────────────────────────────────────────────────
 
-check("default fill is seed (start empty)", decideFill({ fill: undefined, backup: undefined }) === "seed");
-check("--backup implies restore", decideFill({ fill: undefined, backup: "/x.dump" }) === "restore");
-check("explicit skip works", decideFill({ fill: "skip", backup: undefined }) === "skip");
-check("an unknown fill throws", throws(() => decideFill({ fill: "clone", backup: undefined })));
-check("--backup with a non-restore fill throws", throws(() => decideFill({ fill: "seed", backup: "/x.dump" })));
+check(
+  "default fill is seed (start empty)",
+  decideFill({ fill: undefined, backup: undefined, fromUrl: undefined }) === "seed"
+);
+check(
+  "--backup implies restore",
+  decideFill({ fill: undefined, backup: "/x.dump", fromUrl: undefined }) === "restore"
+);
+check("explicit skip works", decideFill({ fill: "skip", backup: undefined, fromUrl: undefined }) === "skip");
+check("an unknown fill throws", throws(() => decideFill({ fill: "clone", backup: undefined, fromUrl: undefined })));
+check(
+  "--backup with a non-restore fill throws",
+  throws(() => decideFill({ fill: "seed", backup: "/x.dump", fromUrl: undefined }))
+);
+check(
+  "--from-url implies pull",
+  decideFill({ fill: undefined, backup: undefined, fromUrl: "postgresql://u:p@h/db" }) === "pull"
+);
+check("explicit pull works", decideFill({ fill: "pull", backup: undefined, fromUrl: undefined }) === "pull");
+check(
+  "--from-url with a non-pull fill throws",
+  throws(() => decideFill({ fill: "seed", backup: undefined, fromUrl: "postgresql://u:p@h/db" }))
+);
+check(
+  "--backup and --from-url together throws (no silent pick)",
+  throws(() => decideFill({ fill: undefined, backup: "/x.dump", fromUrl: "postgresql://u:p@h/db" }))
+);
+
+// ── (3b) Live-pull helpers: pooled-URL refusal + redaction ───────────────────
+
+check(
+  "a -pooler hostname is refused (pg_dump needs the direct connection)",
+  typeof refusePooledUrl("ep-cool-mountain-123456-pooler.us-east-2.aws.neon.tech") === "string"
+);
+check(
+  "a direct (non-pooler) hostname is allowed",
+  refusePooledUrl("ep-cool-mountain-123456.us-east-2.aws.neon.tech") === null
+);
+{
+  const secret = "postgresql://user:pw@ep-cool-mountain-123456.us-east-2.aws.neon.tech/ledgr";
+  const echoed = `pg_dump: error: connection to server at "${secret}" failed`;
+  check(
+    "redactConnectionString strips the connection string out of echoed pg_dump output",
+    !redactConnectionString(echoed, secret).includes(secret)
+  );
+  check("redactConnectionString is a no-op with no secret to strip", redactConnectionString("plain text", undefined) === "plain text");
+}
+check(
+  "fillSummaryLine never shows a connection string for pull",
+  fillSummaryLine("pull") === "Pulling from the live database (connection string set)"
+);
+check(
+  "fillSummaryLine has a line for every fill mode",
+  fillSummaryLine("restore").length > 0 &&
+    fillSummaryLine("seed").length > 0 &&
+    fillSummaryLine("skip").length > 0
+);
 
 // ── (4) Config assembly: hub vs spoke ────────────────────────────────────────
 
@@ -191,6 +250,24 @@ check(
   "PowerShell 5.1 compatible: no PS7-only operators",
   !ps1.includes("&&") && !ps1.includes("??") && !/\?\s*:/.test(ps1)
 );
+check("install.ps1's usage comment points to install.cmd as the double-click entry point", ps1.includes("install.cmd"));
+check(
+  "install.ps1 also bootstraps the Postgres client tools (both restore paths need them)",
+  ps1.includes("PostgreSQL.PostgreSQL.18") && ps1.includes("pg_restore")
+);
+
+// ── (8b) install.cmd (text checks; the double-click entry point) ────────────
+
+check("install.cmd exists at the repo root", existsSync("install.cmd"));
+const installCmd = readFileSync("install.cmd", "utf8");
+check("install.cmd references install.ps1", installCmd.includes("install.ps1"));
+check("install.cmd keeps the window open (pause) so errors are readable", /pause/i.test(installCmd));
+check("install.cmd carries the pinned repo's raw URL as a fetch fallback", installCmd.includes("raw.githubusercontent.com/strategicli/ledgr"));
+check(
+  "no hardcoded secret pattern in install.cmd",
+  !/\b(token|secret|password|apikey)\s*=/i.test(installCmd) && !/Bearer\s+[A-Za-z0-9]/.test(installCmd)
+);
+check("install.cmd passes through arguments (e.g. -InstallDir)", installCmd.includes("%*"));
 
 // ── (9) The wizard shell (text checks) ───────────────────────────────────────
 
@@ -199,6 +276,7 @@ check("the wizard's decisions come from the lib", wizard.includes('from "./local
 check("the wizard validates with the supervisor's own normalizeConfig", wizard.includes("normalizeConfig"));
 check("prompts use node:readline/promises (builtins only)", wizard.includes('"node:readline/promises"'));
 check("restore delegates to scripts/local-restore.mjs", wizard.includes("local-restore.mjs"));
+check("the wizard's pull path also delegates to scripts/local-restore.mjs", wizard.includes("--from-url"));
 check(
   "start-empty runs migrate before seed (new-instance.mjs's order)",
   wizard.indexOf('["migrate"') > 0 && wizard.indexOf('["migrate"') < wizard.indexOf('["seed"')
@@ -216,8 +294,13 @@ check(
 );
 
 const readme = readFileSync("supervisor/README.md", "utf8");
-check("the README's bring-up leads with install.ps1", readme.includes("install.ps1"));
+check("the README's bring-up leads with install.cmd (the double-click entry point)", readme.includes("install.cmd"));
+check("the README keeps the PowerShell invocation as the alternative", readme.includes("install.ps1"));
 check("the README keeps the manual fallback checklist", readme.includes("manual fallback"));
+check(
+  "the README documents the live-pull option and the direct-vs-pooler requirement",
+  readme.includes("-pooler") && readme.includes("pg_dump")
+);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);
