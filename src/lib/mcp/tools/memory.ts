@@ -13,7 +13,7 @@ import {
   getMemoryStumps,
 } from "@/lib/memory";
 import { assertOwnedItems, relateItems } from "@/lib/relations";
-import { optEnum, optInt, optUuidArray, reqString } from "./args";
+import { optBodyMarkdown, optEnum, optInt, optUuidArray, reqString } from "./args";
 import { rowView } from "./serializers";
 import type { McpTool } from "./wire";
 
@@ -87,7 +87,8 @@ export const memoryTools: McpTool[] = [
         },
         bodyMarkdown: {
           type: "string",
-          description: "The detail — the fact, plus a why / how-to-apply. Markdown.",
+          description:
+            "The detail — the fact, plus a why / how-to-apply. Markdown. Also accepted as `body`.",
         },
         kind: {
           type: "string",
@@ -138,12 +139,8 @@ export const memoryTools: McpTool[] = [
       if (horizon) properties.horizon = horizon;
       if (pinned !== undefined) properties.pinned = pinned;
       const raw: Record<string, unknown> = { type: MEMORY_TYPE, title };
-      if (args.bodyMarkdown !== undefined && args.bodyMarkdown !== null) {
-        if (typeof args.bodyMarkdown !== "string") {
-          throw new ItemError("bad_request", "bodyMarkdown must be a string");
-        }
-        raw.body = makeMarkdownBody(args.bodyMarkdown);
-      }
+      const md = optBodyMarkdown(args);
+      if (md !== undefined) raw.body = makeMarkdownBody(md);
       if (Object.keys(properties).length) raw.properties = properties;
       const input = parseItemPayload(raw, "create");
       const about = optUuidArray(args, "about");
