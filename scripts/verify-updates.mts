@@ -86,6 +86,7 @@ const base: InstanceIdentity = {
   isSatellite: true,
   selfUpdate: "off",
   vercelEnv: "production",
+  supervisorDir: null,
 };
 const behind = (touchesSchema: boolean): CodeStatus => ({
   state: "behind",
@@ -140,6 +141,66 @@ check(
     { ...base, selfUpdate: "banana" as unknown as InstanceIdentity["selfUpdate"] },
     behind(false)
   ).canApply === false
+);
+check(
+  "an allowed satellite update carries the github-merge strategy",
+  resolveApplicability({ ...base, selfUpdate: "safe" }, behind(false)).strategy ===
+    "github-merge"
+);
+check(
+  "a blocked update carries no strategy",
+  resolveApplicability({ ...base, selfUpdate: "off" }, behind(false)).strategy === null
+);
+
+// ── (3b) The local-peer path (LH2, ADR-206): supervisor-signal strategy ─────
+
+// A local peer: not on Vercel at all, with a supervisor signal dir configured.
+const localPeer: InstanceIdentity = {
+  ...base,
+  isSatellite: false,
+  deployRepo: null,
+  vercelEnv: null,
+  supervisorDir: "/data/ledgr",
+  selfUpdate: "on",
+};
+
+check(
+  "a local peer with self-update on may apply, via the supervisor signal",
+  (() => {
+    const r = resolveApplicability(localPeer, behind(true));
+    return r.canApply === true && r.strategy === "supervisor-signal";
+  })()
+);
+check(
+  "a local peer with self-update off is blocked (fail closed)",
+  resolveApplicability({ ...localPeer, selfUpdate: "off" }, behind(false)).canApply === false
+);
+check(
+  "a local peer in safe mode blocks a schema-carrying update (same rule as satellites)",
+  resolveApplicability({ ...localPeer, selfUpdate: "safe" }, behind(true)).canApply === false
+);
+check(
+  "a local peer in safe mode allows a schema-free update",
+  resolveApplicability({ ...localPeer, selfUpdate: "safe" }, behind(false)).strategy ===
+    "supervisor-signal"
+);
+check(
+  "a VERCEL deploy with a stray supervisor dir NEVER takes the supervisor path",
+  resolveApplicability(
+    { ...localPeer, vercelEnv: "production", isSatellite: true, deployRepo: "someone/ledgr" },
+    behind(false)
+  ).strategy === "github-merge"
+);
+check(
+  "a local next-start without a supervisor dir has nothing to signal (source-instance answer)",
+  (() => {
+    const r = resolveApplicability({ ...localPeer, supervisorDir: null }, behind(false));
+    return r.canApply === false && r.strategy === null;
+  })()
+);
+check(
+  "a current local peer has nothing to apply",
+  resolveApplicability(localPeer, current).canApply === false
 );
 
 // ── (4) getInstanceIdentity: env resolution ─────────────────────────────────
@@ -217,6 +278,19 @@ withEnv({ LEDGR_SELF_UPDATE: undefined }, () => {
   check("self-update defaults to off when unset", getInstanceIdentity().selfUpdate === "off");
 });
 
+withEnv({ LEDGR_SUPERVISOR_DIR: undefined }, () => {
+  check(
+    "supervisorDir is null when unset (the local apply path stays closed)",
+    getInstanceIdentity().supervisorDir === null
+  );
+});
+withEnv({ LEDGR_SUPERVISOR_DIR: "/data/ledgr" }, () => {
+  check(
+    "supervisorDir is read from the environment",
+    getInstanceIdentity().supervisorDir === "/data/ledgr"
+  );
+});
+
 // ── (5) Structural guards ───────────────────────────────────────────────────
 
 const updatesSrc = readFileSync("src/lib/updates.ts", "utf8");
@@ -231,6 +305,10 @@ check("the updates route is owner-gated", routeSrc.includes("requireOwner"));
 check(
   "the POST route re-checks applicability server-side rather than trusting the caller",
   routeSrc.includes("resolveApplicability")
+);
+check(
+  "the POST route branches on the supervisor-signal strategy (local apply path)",
+  routeSrc.includes('"supervisor-signal"') && routeSrc.includes("update-requested")
 );
 
 const navSrc = readFileSync("src/lib/build-nav.ts", "utf8");

@@ -19,7 +19,9 @@
     "db:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed.mjs",
     "instance:new": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/new-instance.mjs",
     "instances:sync": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/sync-instances.mjs",
-    "db:seed-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-test-data.mjs"
+    "db:seed-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-test-data.mjs",
+    "local:supervisor": "node supervisor/ledgr-supervisor.mjs",
+    "local:restore": "node scripts/local-restore.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "7.5.2",
@@ -39,6 +41,7 @@
     "aws4fetch": "^1.0.20",
     "docx": "^9.7.1",
     "drizzle-orm": "0.45.2",
+    "embedded-postgres": "^18.4.0-beta.17",
     "linkedom": "^0.18.12",
     "markdown-it": "^14.2.0",
     "next": "16.2.9",
@@ -59,7 +62,6 @@
     "@types/react-grid-layout": "^1.3.6",
     "@types/turndown": "^5.0.6",
     "drizzle-kit": "0.31.10",
-    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",

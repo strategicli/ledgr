@@ -40,6 +40,10 @@ next-env.d.ts
 # instances.example.json is the tracked template.
 instances.local.json
 
+# Local-peer supervisor config: holds the sync device token + owner email.
+# supervisor/config.example.json is the tracked template.
+supervisor/config.json
+
 # Vercel
 .vercel
 

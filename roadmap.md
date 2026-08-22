@@ -213,7 +213,7 @@ Desktop-only workspace at `/desk` — items, saved views, and read-only dashboar
 
 - [x] LH0 — Record: ADR-206 (Tyler agreed; 15 landed decisions), COLLAB heads-up, exploration status flip (2026-08-22)
 - [x] LH1 — Sync spine: `sync_ops`/`sync_peers`/`sync_device` migration 0054 with row-level triggers on the 8 synced tables; pure merge engine (field LWW, body-loser → revisions); `/api/machine/sync` with device-token auth + schema-version gate; sync client loop (armed by `LEDGR_SYNC_HUBS`); `pg` driver branch in `getDb()`; `verify-sync.mts` 36/36 incl. two-DB convergence on ephemeral embedded-postgres clusters (2026-08-22)
-- [ ] LH2 — Local runtime on the PC: supervisor (embedded Postgres + fresh-dir build + keep-last-good swap), `localAuthProvider`, `LEDGR_BUILD_SHA` stamping, restore from backup
+- [x] LH2 — Local runtime on the PC: supervisor (embedded Postgres + fresh-dir worktree builds + `live.json` keep-last-good pointer), `localAuthProvider` (pure `chooseAuthProvider` rule, ADR-184 fail-closed held), `LEDGR_BUILD_SHA` stamping, `local:restore` from the weekly pg_dump (clears cloned sync state), updates-card `supervisor-signal` apply path; Mac smoke run end-to-end incl. a failed-build keep-last-good proof; Windows bring-up checklist in `supervisor/README.md` (2026-08-22)
 - [ ] LH3 — Alongside: PC spoke ↔ cloud hub live two-way sync; SyncPill + Synced-devices management + /health sync fields; weeks of soak
 - [ ] LH4 — Installer + updates: `install.ps1` + `local-setup.mjs` wizard (hub/spoke, join token, service registration); local apply behind the ADR-194 Update-now card
 - [ ] LH5 — Hub duties: Tailscale Funnel (first checkpoint: the MCP/Clerk-over-Funnel walkthrough), local crons via supervisor, ordered backup-hub failover

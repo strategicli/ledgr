@@ -34,7 +34,7 @@ export async function POST() {
     instance.branch,
     instance.isSatellite
   );
-  const { canApply, blockedReason } = resolveApplicability(instance, code);
+  const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);
 
   if (code.state !== "behind") {
     return NextResponse.json(
@@ -42,7 +42,40 @@ export async function POST() {
       { status: 409 }
     );
   }
-  if (!canApply || !instance.deployRepo) {
+
+  // Local peer (LH2, ADR-206): hand the update to the supervisor by writing
+  // the signal file it polls; it pulls, builds fresh, migrates, and swaps
+  // (keep-last-good). The sha is informational — the supervisor builds
+  // whatever `git pull` lands on.
+  if (strategy === "supervisor-signal") {
+    if (!canApply || !instance.supervisorDir) {
+      return NextResponse.json(
+        { ok: false, error: blockedReason ?? "Updating is not available on this instance." },
+        { status: 403 }
+      );
+    }
+    const targetSha = code.commits.at(-1)?.sha ?? "";
+    try {
+      const { writeFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      await writeFile(join(instance.supervisorDir, "update-requested"), targetSha, "utf8");
+    } catch (err) {
+      log.error("update signal write failed", { dir: instance.supervisorDir, detail: String(err) });
+      return NextResponse.json(
+        { ok: false, error: "Could not signal the supervisor. Is its data directory writable?" },
+        { status: 502 }
+      );
+    }
+    log.info("update signaled to supervisor", { from: instance.shortSha, commits: code.count });
+    return NextResponse.json({
+      ok: true,
+      mergeType: "supervisor",
+      commits: code.count,
+      message: "Update handed to the supervisor. This instance rebuilds and restarts now.",
+    });
+  }
+
+  if (!canApply || strategy !== "github-merge" || !instance.deployRepo) {
     return NextResponse.json(
       { ok: false, error: blockedReason ?? "Updating is not available on this instance." },
       { status: 403 }

@@ -119,6 +119,10 @@ export type InstanceIdentity = {
   // carefully. See LEDGR_SELF_UPDATE in .env.example.
   selfUpdate: SelfUpdateMode;
   vercelEnv: string | null;
+  // Set by the local-peer supervisor (LH2, ADR-206): the data dir where an
+  // update-requested signal file can be written. Null everywhere else, which
+  // is what keeps the local apply path fail-closed.
+  supervisorDir: string | null;
 };
 
 function normalizeMode(raw: string | undefined): SelfUpdateMode {
@@ -149,10 +153,18 @@ export function getInstanceIdentity(): InstanceIdentity {
       !!deployRepo && deployRepo.toLowerCase() !== upstreamRepo.toLowerCase(),
     selfUpdate: normalizeMode(process.env.LEDGR_SELF_UPDATE),
     vercelEnv: process.env.VERCEL_ENV ?? null,
+    supervisorDir: process.env.LEDGR_SUPERVISOR_DIR || null,
   };
 }
 
 // ── The combined answer ──────────────────────────────────────────────────────
+
+// HOW an allowed update is applied. "github-merge" is the satellite path
+// (merge upstream into the fork, Vercel redeploys); "supervisor-signal" is the
+// local-peer path (write <supervisorDir>/update-requested, the supervisor
+// pulls/builds/migrates/swaps — the local half of ADR-194). Null whenever
+// canApply is false.
+export type ApplyStrategy = "github-merge" | "supervisor-signal" | null;
 
 export type UpdateReport = {
   instance: InstanceIdentity;
@@ -162,6 +174,7 @@ export type UpdateReport = {
   // here so the page and the route can never disagree about it.
   canApply: boolean;
   blockedReason: string | null;
+  strategy: ApplyStrategy;
 };
 
 /**
@@ -176,25 +189,53 @@ export type UpdateReport = {
 export function resolveApplicability(
   instance: InstanceIdentity,
   code: CodeStatus
-): { canApply: boolean; blockedReason: string | null } {
+): { canApply: boolean; blockedReason: string | null; strategy: ApplyStrategy } {
   if (code.state !== "behind") {
-    return { canApply: false, blockedReason: null };
+    return { canApply: false, blockedReason: null, strategy: null };
+  }
+  // A LOCAL PEER (LH2, ADR-206): not a Vercel deploy at all, and a supervisor
+  // told the app where its signal dir is. Both conditions must hold — a Vercel
+  // deploy with a stray LEDGR_SUPERVISOR_DIR must never take this path, and a
+  // local `next start` without a supervisor has nothing to signal.
+  const isLocalPeer = !instance.vercelEnv && !!instance.supervisorDir;
+  // Fail CLOSED, on both paths: permission is granted only by a mode we
+  // recognize, never by the absence of a mode we refuse. getInstanceIdentity
+  // already normalizes an unknown value to "off", but this gate is what stands
+  // between an update and someone's working instance, so it does not lean on a
+  // caller having normalized anything first.
+  const modeAllows = instance.selfUpdate === "safe" || instance.selfUpdate === "on";
+  if (isLocalPeer) {
+    if (!modeAllows) {
+      return {
+        canApply: false,
+        blockedReason: "Self-update is turned off for this instance.",
+        strategy: null,
+      };
+    }
+    // "safe" keeps its meaning here for consistency, though the supervisor's
+    // apply path migrates before the swap, so it normally runs with "on".
+    if (instance.selfUpdate === "safe" && code.touchesSchema) {
+      return {
+        canApply: false,
+        blockedReason:
+          "This update changes the database, so it needs a builder to migrate first.",
+        strategy: null,
+      };
+    }
+    return { canApply: true, blockedReason: null, strategy: "supervisor-signal" };
   }
   if (!instance.isSatellite) {
     return {
       canApply: false,
       blockedReason: "This instance deploys from the shared repo, so it updates itself.",
+      strategy: null,
     };
   }
-  // Fail CLOSED: permission is granted only by a mode we recognize, never by
-  // the absence of a mode we refuse. getInstanceIdentity already normalizes an
-  // unknown value to "off", but this gate is what stands between an update and
-  // someone's working instance, so it does not lean on a caller having
-  // normalized anything first.
-  if (instance.selfUpdate !== "safe" && instance.selfUpdate !== "on") {
+  if (!modeAllows) {
     return {
       canApply: false,
       blockedReason: "Self-update is turned off for this instance.",
+      strategy: null,
     };
   }
   if (instance.selfUpdate === "safe" && code.touchesSchema) {
@@ -202,9 +243,10 @@ export function resolveApplicability(
       canApply: false,
       blockedReason:
         "This update changes the database, so it needs a builder to migrate first.",
+      strategy: null,
     };
   }
-  return { canApply: true, blockedReason: null };
+  return { canApply: true, blockedReason: null, strategy: "github-merge" };
 }
 
 /** Everything /build/updates and /api/updates render, gathered once. */
@@ -214,6 +256,6 @@ export async function getUpdateReport(): Promise<UpdateReport> {
     getCodeStatus(instance.sha, instance.upstreamRepo, instance.branch, instance.isSatellite),
     getSchemaStatus(),
   ]);
-  const { canApply, blockedReason } = resolveApplicability(instance, code);
-  return { instance, code, schema, canApply, blockedReason };
+  const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);
+  return { instance, code, schema, canApply, blockedReason, strategy };
 }

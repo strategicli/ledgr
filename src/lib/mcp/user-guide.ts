@@ -831,7 +831,10 @@ running. Those are two separate things, and the page reports them separately.
   take them, and the page lists what changed and offers **Update now**. Pressing
   it pulls the latest version and rebuilds, which takes a minute or two. If your
   instance instead runs directly from the shared codebase, it already receives
-  every change automatically and the page tells you so.
+  every change automatically and the page tells you so. On an instance running
+  on your own machine, **Update now** hands the update to the background service
+  that runs it, which rebuilds and restarts in place; if anything about the
+  update fails, the version you were on keeps serving.
 - **Database.** Some updates change the database structure. When the code has
   moved ahead of the database, the page names the changes still to apply. That
   gap is the usual reason pages start failing right after an update.

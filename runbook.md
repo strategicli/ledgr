@@ -249,6 +249,12 @@ The roster lives in **`instances.local.json`** (gitignored, holds connection str
 
 ---
 
+## 1l. Local peers: the supervisor (LH2, ADR-206)
+
+A **local peer** is Ledgr running entirely on the owner's own machine: embedded Postgres + `next start`, both owned by one supervisor process (`npm run local:supervisor`, config in `supervisor/config.json`). First fill is a restore of the weekly backup (`npm run local:restore -- <dump>`; needs `pg_restore` on PATH), which also resets the sync identity so the peer joins as a fresh device. Updates apply through the same `/build/updates` button: on a local peer it writes a signal file and the supervisor pulls, builds into a fresh directory, migrates, and swaps — any failure keeps the previous build serving. Full detail, config reference, and the Windows bring-up checklist: **`supervisor/README.md`**.
+
+---
+
 ## 2. Health and monitoring
 - **`/health`** checks: DB reachable (`database`), `lastExportAt` (last export run with zero item errors and nothing remaining), `lastExportRunAt` (last attempt of any outcome), `lastExportRemaining` (items still awaiting export as of that run — the backlog gauge; watch it with `scripts/watch-export-drain.sh`), `graph` (app-only Graph token grant; see below), and `errors.last24h` (count of `error_log` rows captured in the last 24 hours; should be 0). The Todoist API check joins once that integration exists.
 - **`checks.graph`** (slice 21, ADR-022) is the canary for every unattended Graph job (export, calendar, email-in): `{configured:false}` until the registration is set (§1b), `{configured:true, ok:true}` when an app-only token grant succeeds (proving the client secret is valid and unexpired), `{configured:true, ok:false, detail}` when it fails — the **secret-expiry / revoked-consent alarm**. It is a token grant only, not a resource call, so it stays green even before the calendar permission is granted (§1c); it never changes overall `/health` status (Graph down must not make the app look unhealthy — the DB is what "healthy" means).
