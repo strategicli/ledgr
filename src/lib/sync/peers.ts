@@ -9,6 +9,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { syncOps, syncPeers } from "@/db/schema";
 import { hashToken } from "@/lib/auth/machine";
+import type { SyncDb } from "./apply";
 
 // ── Pure pieces (verify-sync-ui.mts exercises these with no DB) ─────────────
 
@@ -109,4 +110,43 @@ export async function deletePeer(deviceId: string): Promise<DeletePeerResult> {
   if (refusal) return { ok: false, status: 409, error: refusal };
   await db.delete(syncPeers).where(eq(syncPeers.deviceId, deviceId));
   return { ok: true };
+}
+
+// ── Oplog retention (ADR-206 follow-up) ─────────────────────────────────────
+//
+// The one machine-side function in this file: the daily purge cron calls it
+// (src/app/api/machine/purge/route.ts), not a requireOwner route. It lives
+// here because peer cursors are what makes pruning safe.
+
+// How long an op is kept regardless of cursors. Sized off the bootstrap path:
+// a new peer first-fills from the WEEKLY pg_dump backup and then reconciles
+// the delta out of the oplog (scripts/local-restore.mjs), so the tail only has
+// to cover backup age plus slack.
+export const SYNC_OPS_RETENTION_DAYS = 14;
+
+// Delete ops that are past the retention floor AND already pulled by every
+// registered (non-revoked) device. With no live peers at all — prod today,
+// and Tyler's instance always — the oplog serves nobody, so the cursor guard
+// falls away and the time floor alone applies.
+//
+// A registered device that has NEVER pulled sits at cursor 0 and therefore
+// pins the whole log, which is the point: it hasn't got that history yet. If
+// such a device is dead, revoke or delete it in Build → Updates; until then
+// the daily purge log shows 0 pruned.
+export async function pruneSyncOps(opts: { db?: SyncDb } = {}) {
+  const db = opts.db ?? (getDb() as unknown as SyncDb);
+  // seq is the primary key, so the cursor bound is an index range scan and
+  // `at` is a filter over it — the two are monotonic together. No index on
+  // `at`: it would cost an extra index write on EVERY app write (the triggers
+  // fire on items/relations/revisions/...) to speed up one daily statement.
+  const res = await db.execute(sql`
+    delete from sync_ops
+    where at < now() - make_interval(days => ${SYNC_OPS_RETENTION_DAYS})
+      and seq <= coalesce(
+        (select min(last_pulled_seq) from sync_peers where revoked = false),
+        (select coalesce(max(seq), 0) from sync_ops)
+      )
+    returning seq
+  `);
+  return { syncOpsPruned: res.rows.length };
 }

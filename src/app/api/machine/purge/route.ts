@@ -4,6 +4,7 @@ import { captureError, createLogger } from "@/lib/log";
 import { purgeExpiredTrash } from "@/lib/item-mutations";
 import { purgeExpiredAudio } from "@/lib/attachments";
 import { purgeArchivedNotifications } from "@/lib/notifications";
+import { pruneSyncOps } from "@/lib/sync/peers";
 
 // Daily Trash purge (vercel.json cron). Vercel sends GET with
 // `Authorization: Bearer $CRON_SECRET`; CRON_SECRET holds a raw machine
@@ -28,13 +29,17 @@ export async function GET(request: Request) {
     const audio = await purgeExpiredAudio();
     // 30-day purge of archived notifications (ADR-129), matching Trash's window.
     const notifications = await purgeArchivedNotifications();
-    log.info("purge run finished", { ...result, ...audio, ...notifications });
+    // Sync oplog retention (ADR-206): the row-level triggers append forever,
+    // so drop ops every live peer has pulled that are past the time floor.
+    const syncOps = await pruneSyncOps();
+    log.info("purge run finished", { ...result, ...audio, ...notifications, ...syncOps });
     return NextResponse.json({
       ok: true,
       correlationId: log.correlationId,
       ...result,
       ...audio,
       ...notifications,
+      ...syncOps,
     });
   } catch (err) {
     // No silent failures: cron errors land in error_log and surface
