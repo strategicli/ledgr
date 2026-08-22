@@ -329,6 +329,13 @@ async function startEmpty(cfg) {
     password: "postgres",
     port: cfg.dbPort,
     persistent: true,
+    // Windows initdb inherits the OS locale, which yields a WIN1252 cluster
+    // that cannot store the arrows, curly quotes, em dashes and emoji real
+    // Ledgr bodies are full of (it failed on a migration comment first).
+    // ponytail: locale=C means bytewise text sorting, so ORDER BY title can
+    // differ slightly from the hub. Encoding is correctness, collation is
+    // cosmetic; revisit only if list order visibly diverges.
+    initdbFlags: ["--encoding=UTF8", "--locale=C"],
   });
   if (!existsSync(join(pgDir, "PG_VERSION"))) {
     console.log("initdb (first run)…");
