@@ -67,7 +67,28 @@ The supervisor then:
 identically on every platform, needs no privileges, and the supervisor reads
 it once at spawn.
 
-## Windows bring-up checklist (the parts only the real PC can prove)
+## Set up a new machine: run `install.ps1` (LH4)
+
+On Windows, the whole bring-up below collapses to one downloaded file:
+
+```
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+It installs git and Node LTS via winget if missing, clones the repo into
+`%LOCALAPPDATA%\Ledgr\app` (override with `-InstallDir`), runs `npm ci`, and
+hands off to the cross-platform wizard — `npm run local:setup` — which asks
+hub-or-spoke, restores a backup or starts empty (migrate + seed), writes
+`supervisor/config.json` (never clobbering without `--force`), and offers the
+Task Scheduler registration. Every prompt has a flag override
+(`node scripts/local-setup.mjs --help`), so it also runs unattended. On
+macOS/Linux the wizard is the same; only the bootstrap differs (`install.sh`
+is deferred to post-cutover — clone + `npm ci` by hand, then
+`npm run local:setup`). Restoring a backup still needs `pg_restore` on PATH
+(`winget install PostgreSQL.PostgreSQL.18`); the wizard's restore path says so
+if it's missing.
+
+## Windows bring-up checklist (manual fallback; also what install.ps1 does)
 
 Run these on the always-on PC, in order:
 
@@ -84,7 +105,8 @@ Run these on the always-on PC, in order:
 3. **Configure:** copy `supervisor\config.example.json` to
    `supervisor\config.json`; set `dataDir` (e.g. `C:/ledgr-data`),
    `ownerEmail`, and (for a syncing spoke) `hubs` + `deviceToken` minted on
-   the hub's Synced-devices section.
+   the hub's Synced-devices section. (Steps 3-4 and 7 are the wizard's job:
+   `npm run local:setup`.)
 4. **Restore the backup:** download the newest `ledgr-*.dump` from OneDrive
    `/Ledgr/Backups/`, then `npm run local:restore -- C:\path\to\ledgr-....dump`.
    Watch: `pg_restore` must be the PG 17+ client (`pg_restore --version`).
@@ -116,3 +138,17 @@ Run these on the always-on PC, in order:
 Windows-specific unknowns to watch overall: file locks during the build swap
 (step 6), the embedded-postgres win32 binaries under antivirus (step 5), and
 the firewall prompt for the app port (step 5).
+
+## Register at boot (macOS / Linux)
+
+The wizard prints these rather than executing them (Windows is the only
+platform where it offers to run the registration itself):
+
+- **macOS (launchd):** `~/Library/LaunchAgents/org.ledgr.supervisor.plist`
+  with `RunAtLoad` true and `ProgramArguments` =
+  `[node, <repo>/supervisor/ledgr-supervisor.mjs, <repo>/supervisor/config.json]`,
+  then `launchctl load` it.
+- **Linux (systemd user unit):**
+  `~/.config/systemd/user/ledgr-supervisor.service` with
+  `ExecStart=node <repo>/supervisor/ledgr-supervisor.mjs <repo>/supervisor/config.json`
+  and `Restart=always`, then `systemctl --user enable --now ledgr-supervisor`.
