@@ -370,5 +370,24 @@ check(
     'select setval(\'items_seq\', coalesce((select max("seq") from "items"), 1))'
 );
 
+
+// Windows ESM guard (regression, 2026-08-22): `require.resolve()` returns an
+// absolute filesystem path, and on Windows `import("C:\\...")` throws
+// ERR_UNSUPPORTED_ESM_URL_SCHEME because "C:" parses as a URL scheme. It works
+// on macOS and Linux, so only a real Windows run catches it, which is exactly
+// how it reached Brandon's install. Every dynamic import of a resolved path
+// must go through pathToFileURL().href.
+for (const rel of [
+  "scripts/local-setup.mjs",
+  "scripts/local-restore.mjs",
+  "supervisor/ledgr-supervisor.mjs",
+]) {
+  const src = readFileSync(rel, "utf8");
+  const bad = [...src.matchAll(/await import\(([^)]*resolve\([^)]*\))\)/g)].filter(
+    (m) => !m[1].includes("pathToFileURL")
+  );
+  check(`${rel} wraps every resolved dynamic import in pathToFileURL (Windows ESM)`, bad.length === 0);
+}
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

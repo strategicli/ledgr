@@ -50,7 +50,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } fr
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(here, "..");
@@ -72,8 +72,8 @@ function fail(msg) {
  * `pg` module); the caller owns calling cluster.stop() when done. */
 async function startCluster(cfg) {
   const requireFromRepo = createRequire(join(repoDir, "package.json"));
-  const EmbeddedPostgres = (await import(requireFromRepo.resolve("embedded-postgres"))).default;
-  const pg = (await import(requireFromRepo.resolve("pg"))).default;
+  const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
+  const pg = (await import(pathToFileURL(requireFromRepo.resolve("pg")).href)).default;
 
   const pgDir = join(cfg.dataDir, "pg");
   mkdirSync(cfg.dataDir, { recursive: true });
