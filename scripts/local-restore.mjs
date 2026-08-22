@@ -86,10 +86,11 @@ async function startCluster(cfg) {
     // Windows initdb inherits the OS locale, which yields a WIN1252 cluster
     // that cannot store the arrows, curly quotes, em dashes and emoji real
     // Ledgr bodies are full of (it failed on a migration comment first).
-    // ponytail: locale=C means bytewise text sorting, so ORDER BY title can
-    // differ slightly from the hub. Encoding is correctness, collation is
-    // cosmetic; revisit only if list order visibly diverges.
-    initdbFlags: ["--encoding=UTF8", "--locale=C"],
+    // ICU gives linguistic collation (Apple < Ärger < banana), matching what
+    // Neon does and what a person expects, independent of the OS codepage.
+    // The libc --locale stays C because Windows libc locales are codepage
+    // based; ICU owns collation, so that no longer costs anything.
+    initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
   });
   if (!existsSync(join(pgDir, "PG_VERSION"))) {
     console.log("First run: initdb…");
@@ -112,17 +113,14 @@ async function resetLocalDatabase(pg, cfg) {
   const admin = new pg.Client({ connectionString: adminUrl });
   await admin.connect();
   await admin.query("drop database if exists ledgr with (force)");
-  // TEMPLATE template0 + an explicit encoding is what lets a UTF8 database
-  // live inside a cluster whose own default is something else. That is the
-  // common case on Windows, where initdb inherits the OS locale and produces
-  // WIN1252 — which cannot store the arrows, curly quotes, em dashes or emoji
-  // that real Ledgr bodies contain. Without this, an existing Windows cluster
-  // would have to be deleted and re-initdb'd instead of just re-pulled.
-  // lc_collate/lc_ctype must be C here: the cluster's own locale belongs to
-  // its old encoding and cannot be reused across the switch.
-  await admin.query(
-    "create database ledgr template template0 encoding 'UTF8' lc_collate 'C' lc_ctype 'C'"
-  );
+  // The cluster is UTF8 with ICU collation by construction (see initdbFlags),
+  // so a plain CREATE DATABASE inherits both. There is deliberately NO
+  // template0 fallback for a legacy non-UTF8 cluster: the assert below fails
+  // loudly instead, and re-initdb is one deleted directory away. Windows
+  // initdb used to inherit the OS locale and produce a WIN1252 cluster, which
+  // cannot store the arrows, curly quotes, em dashes or emoji real Ledgr
+  // bodies contain.
+  await admin.query("create database ledgr");
   // Assert rather than assume: a silently non-UTF8 database corrupts body text
   // on write, and the failure would surface much later as mangled characters.
   const enc = await admin.query(
@@ -130,7 +128,11 @@ async function resetLocalDatabase(pg, cfg) {
   );
   if (enc.rows[0]?.enc !== "UTF8") {
     await admin.end();
-    fail(`local database was created as ${enc.rows[0]?.enc ?? "unknown"}, not UTF8; refusing to load data into it.`);
+    fail(
+      `local database came up as ${enc.rows[0]?.enc ?? "unknown"}, not UTF8, so it cannot hold real body text ` +
+        `(arrows, curly quotes, em dashes, emoji). This means the cluster predates the UTF8 fix: ` +
+        `stop the supervisor, delete ${cfg.dataDir}, and re-run to get a clean UTF8 + ICU cluster.`
+    );
   }
   await admin.end();
 }

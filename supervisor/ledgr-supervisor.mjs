@@ -107,7 +107,7 @@ const pg = new EmbeddedPostgres({
   persistent: true,
   // See scripts/local-restore.mjs: a Windows-default cluster is WIN1252 and
   // cannot hold real body text. UTF8 is not optional here.
-  initdbFlags: ["--encoding=UTF8", "--locale=C"],
+  initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
 });
 
 async function startPostgres() {
