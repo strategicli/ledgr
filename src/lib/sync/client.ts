@@ -47,6 +47,59 @@ export function getSyncStatus(): SyncStatus {
   return { ...status };
 }
 
+// The hub list, parsed the one way everywhere (loop arming, status endpoint,
+// the nav pill's server-side gate).
+export function parseHubs(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+}
+
+// Is this instance a sync SPOKE at all? False on the cloud hub and on Tyler's
+// instance (no LEDGR_SYNC_HUBS), which is what keeps every sync surface —
+// the /api/sync/status work, the nav pill mount — off those deploys entirely.
+export function syncEnabled(): boolean {
+  return parseHubs(process.env.LEDGR_SYNC_HUBS).length > 0;
+}
+
+export type FullSyncStatus =
+  | { enabled: false }
+  | ({ enabled: true; hubCount: number } & SyncStatus);
+
+// Pure shape assembly (verify-sync-ui.mts exercises this): the in-memory loop
+// status plus an on-demand pendingOps count. Freshly written ops the loop
+// hasn't pushed yet flip a "synced" reading to "pending" — the loop only
+// refreshes its own copy when it runs, and the status endpoint reads between
+// runs.
+export function buildSyncStatus(
+  hubs: string[],
+  s: SyncStatus,
+  pendingOps: number
+): FullSyncStatus {
+  if (hubs.length === 0) return { enabled: false };
+  return {
+    enabled: true,
+    hubCount: hubs.length,
+    ...s,
+    pendingOps,
+    state: s.state === "synced" && pendingOps > 0 ? "pending" : s.state,
+  };
+}
+
+// The /api/sync/status read: cheap `{enabled: false}` with zero queries when
+// the loop isn't armed, otherwise the live status with pendingOps computed
+// from the oplog (max local seq past the active hub's push cursor).
+export async function gatherSyncStatus(): Promise<FullSyncStatus> {
+  const hubs = parseHubs(process.env.LEDGR_SYNC_HUBS);
+  if (hubs.length === 0) return { enabled: false };
+  const s = getSyncStatus();
+  const hub = hubs[Math.min(Math.max(s.activeHubIndex, 0), hubs.length - 1)];
+  const cursor = await readCursor(hub);
+  const pendingOps = await pendingCount(cursor.push);
+  return buildSyncStatus(hubs, s, pendingOps);
+}
+
 const PUSH_BATCH = 500;
 
 function envInt(name: string, fallback: number): number {
@@ -182,11 +235,9 @@ async function exchange(hubs: string[], deviceId: string, token: string): Promis
 export function startSyncLoop(): void {
   const g = globalThis as { __ledgrSyncLoop?: boolean };
   if (g.__ledgrSyncLoop) return;
-  const hubsRaw = process.env.LEDGR_SYNC_HUBS;
+  const hubs = parseHubs(process.env.LEDGR_SYNC_HUBS);
   const token = process.env.LEDGR_SYNC_TOKEN;
-  if (!hubsRaw || !token) return;
-  const hubs = hubsRaw.split(",").map((h) => h.trim()).filter(Boolean);
-  if (hubs.length === 0) return;
+  if (hubs.length === 0 || !token) return;
   g.__ledgrSyncLoop = true;
 
   const pushDebounceMs = envInt("LEDGR_SYNC_PUSH_DEBOUNCE_MS", 2000);

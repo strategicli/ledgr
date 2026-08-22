@@ -19,6 +19,7 @@ import {
   type NavBadge,
   type NavSlotConfig,
 } from "@/lib/settings";
+import { syncEnabled } from "@/lib/sync/client";
 import { compareTypeKeys } from "@/lib/type-order";
 import { listTypes } from "@/lib/types";
 
@@ -117,6 +118,7 @@ export default async function Nav() {
       navDensity={settings.navDensity}
       railAnchor={settings.railAnchor}
       searchMode={settings.searchMode}
+      syncEnabled={syncEnabled()}
     />
   );
 }

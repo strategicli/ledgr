@@ -838,6 +838,20 @@ running. Those are two separate things, and the page reports them separately.
 - **Database.** Some updates change the database structure. When the code has
   moved ahead of the database, the page names the changes still to apply. That
   gap is the usual reason pages start failing right after an update.
+- **Sync.** On an instance that syncs its data to a hub, the page shows the
+  connection: whether it is talking to its primary hub or a backup, whether
+  local changes are waiting to go out, when the last exchange happened, and
+  the last error if one occurred. Such an instance also carries a small dot in
+  the navigation with the same state at a glance, green when synced, amber
+  while changes are waiting or while on a backup hub, red when no hub is
+  reachable; hovering names the state and clicking it opens this page. On an
+  instance that does not sync, neither appears.
+- **Synced devices.** The list of devices allowed to sync against this
+  instance. **Add device** names a new one and shows its access token exactly
+  once; copy it into that device's setup, because it cannot be shown again.
+  **Revoke** shuts a device out remotely (its next sync is refused),
+  **Restore** lets it back in, and a revoked device can then be deleted. The
+  section is empty unless other devices sync against this instance.
 
 Whether the Update button appears at all is a setting on the instance, because
 an update that changes the database needs the database migrated as part of

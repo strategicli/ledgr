@@ -40,6 +40,7 @@ import AppBadgeSync from "@/components/pwa/AppBadgeSync";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import Launcher, { type LauncherTile } from "@/components/nav/Launcher";
+import SyncPill from "@/components/nav/SyncPill";
 import { isBuildPath } from "@/lib/build-nav";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
@@ -128,6 +129,7 @@ export default function NavShell({
   navDensity: navDensityProp,
   railAnchor: railAnchorProp,
   searchMode,
+  syncEnabled = false,
 }: {
   slots: ShellSlot[];
   mobileSlots: ShellSlot[];
@@ -144,6 +146,9 @@ export default function NavShell({
   railAnchor: RailAnchor;
   // What the Search slot opens (ADR-182): the ⌘K palette, or the /search page.
   searchMode: SearchMode;
+  // This instance syncs against a hub (LEDGR_SYNC_HUBS set): mounts the sync
+  // dot. Server-gated so the cloud hub / Tyler render zero sync overhead.
+  syncEnabled?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -700,6 +705,7 @@ export default function NavShell({
   // below (Search + New, icon-only; More retired into the Launcher — Q7).
   const pillTrailingControls = (
     <>
+      {syncEnabled && <SyncPill />}
       <button
         onClick={() => setCaptureOpen(true)}
         title="Quick capture (q)"
@@ -731,6 +737,7 @@ export default function NavShell({
   // the slot row with the other icons instead of being pinned beside New.
   const mobileTrailingControls = (
     <>
+      {syncEnabled && <SyncPill />}
       <button
         onClick={() => {
           setLauncherOpen(false);
@@ -864,6 +871,7 @@ export default function NavShell({
               renderSlot(slot, id, topSlot, true, "top-full mt-2 left-0")
             )}
             <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
+              {syncEnabled && <SyncPill tooltipSide="bottom" />}
               <button
                 onClick={() => setCaptureOpen(true)}
                 title="Quick capture (q)"
@@ -966,6 +974,11 @@ export default function NavShell({
 
           {/* Search + New + More. */}
           <div className="flex flex-col gap-1">
+            {syncEnabled && (
+              <div className={railSize === "fat" ? "flex px-1" : "flex justify-center"}>
+                <SyncPill tooltipAlign={navPosition === "left" ? "left" : "right"} />
+              </div>
+            )}
             <button
               onClick={() => setCaptureOpen(true)}
               title="Quick capture (q)"
