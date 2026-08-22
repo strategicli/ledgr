@@ -15,9 +15,14 @@
 # runtime. No admin elevation is required by this script itself; winget MAY
 # prompt for elevation (UAC) while installing Git or Node system-wide.
 #
-# Usage (PowerShell 5.1+):
-#   powershell -ExecutionPolicy Bypass -File install.ps1
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -InstallDir C:\ledgr
+# Usage:
+#   Double-click install.cmd — the file to actually download. Windows won't
+#   run a .ps1 on double-click (it opens an editor instead); install.cmd is
+#   the tiny batch wrapper that runs this script and keeps the window open.
+#
+#   Or from PowerShell directly (5.1+):
+#     powershell -ExecutionPolicy Bypass -File install.ps1
+#     powershell -ExecutionPolicy Bypass -File install.ps1 -InstallDir C:\ledgr
 
 param(
     [string]$InstallDir = "$env:LOCALAPPDATA\Ledgr\app"
@@ -32,7 +37,9 @@ function Test-Cmd([string]$Name) {
 
 # Install a prerequisite through winget, or say exactly what to do by hand
 # when winget itself is missing (older Windows 10 images ship without it).
-function Ensure-Tool([string]$Cmd, [string]$WingetId, [string]$ManualUrl) {
+# $Fatal = $false makes a missing tool a warning instead of a stop: used for
+# the Postgres client tools below, since "start empty" never needs them.
+function Ensure-Tool([string]$Cmd, [string]$WingetId, [string]$ManualUrl, [bool]$Fatal = $true) {
     if (Test-Cmd $Cmd) {
         Write-Host "$Cmd found."
         return
@@ -41,7 +48,7 @@ function Ensure-Tool([string]$Cmd, [string]$WingetId, [string]$ManualUrl) {
         Write-Host ""
         Write-Host "winget is not available, so $Cmd cannot be installed automatically."
         Write-Host "Install it manually from $ManualUrl , then re-run this script."
-        exit 1
+        if ($Fatal) { exit 1 } else { return }
     }
     Write-Host "Installing $Cmd (winget $WingetId; a UAC prompt may appear)..."
     winget install --id $WingetId -e --accept-source-agreements --accept-package-agreements
@@ -49,13 +56,24 @@ function Ensure-Tool([string]$Cmd, [string]$WingetId, [string]$ManualUrl) {
     # and user PATH so git/node resolve without opening a new terminal.
     $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
     if (-not (Test-Cmd $Cmd)) {
-        Write-Host "$Cmd still is not on PATH. Open a NEW PowerShell window and re-run this script."
-        exit 1
+        if ($Fatal) {
+            Write-Host "$Cmd still is not on PATH. Open a NEW PowerShell window and re-run this script."
+            exit 1
+        }
+        Write-Host "$Cmd still is not on PATH; continuing without it (see the warning below)."
     }
 }
 
 Ensure-Tool "git" "Git.Git" "https://git-scm.com/download/win"
 Ensure-Tool "node" "OpenJS.NodeJS.LTS" "https://nodejs.org"
+# Both restore paths (npm run local:restore, from a backup file or a live
+# pull) need pg_restore, and the live pull also needs pg_dump; starting
+# empty needs neither. Non-fatal on purpose: don't block "start empty" on a
+# tool it doesn't use.
+Ensure-Tool "pg_restore" "PostgreSQL.PostgreSQL.18" "https://www.postgresql.org/download/windows/" $false
+if (-not (Test-Cmd "pg_restore")) {
+    Write-Host "Warning: pg_restore/pg_dump not found. Restoring from a backup file or pulling from the live database will need them; starting empty will not."
+}
 
 # Clone fresh, or bring an existing clone current. --ff-only so a locally
 # diverged clone fails loudly instead of merging silently.
