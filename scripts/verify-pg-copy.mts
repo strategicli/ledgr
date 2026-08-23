@@ -26,6 +26,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmDirBestEffort } from "../supervisor/rm-dir.mjs";
+import { freePorts } from "./lib/free-port.mjs";
 import { copyAllTables, EXCLUDED_TABLES } from "./lib/pg-copy.mjs";
 // jsonb does not preserve object key order (Postgres docs), so a straight
 // JSON.stringify of a round-tripped value can differ from the original by
@@ -228,7 +229,11 @@ async function main(): Promise<void> {
   }
 
   const dirs = [mkdtempSync(join(tmpdir(), "ledgr-pgcopy-a-")), mkdtempSync(join(tmpdir(), "ledgr-pgcopy-b-"))];
-  const ports = [55443, 55444];
+  // OS-assigned, never hardcoded: a leaked postmaster from a crashed run
+  // holding a fixed port wedged this suite instead of failing it (one CI run
+  // sat there 77 minutes), and fixed ports also stop two cluster suites from
+  // ever running at once.
+  const ports = await freePorts(2);
   const clusters = dirs.map(
     (databaseDir, i) =>
       new EmbeddedPostgres({
