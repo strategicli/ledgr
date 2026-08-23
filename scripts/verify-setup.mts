@@ -258,6 +258,14 @@ check(
   "an unrecognized scope also defaults to logon rather than guessing",
   schtasksCreateArgs({ ...taskPaths, scope: "whenever" }).includes("ONLOGON")
 );
+check(
+  "the always-on scope names the account (it runs with nobody signed in)",
+  schtasksCreateArgs({ ...taskPaths, scope: "always" }).includes("/RU")
+);
+check(
+  "the logon scope does NOT pass /RU (the default is the current user; naming them can demand a password the scope exists to avoid)",
+  !schtasksCreateArgs({ ...taskPaths, scope: "logon" }).includes("/RU")
+);
 check("startupScope normalizes", startupScope("always") === "always" && startupScope("logon") === "logon");
 check("startupScope refuses to invent a scope", startupScope(undefined) === "logon" && startupScope("boot") === "logon");
 

@@ -255,6 +255,7 @@ export function parseStartupState(text) {
  */
 export function schtasksCreateArgs(o) {
   const { username, nodePath, supervisorScript, configPath, scope = "logon" } = o;
+  const always = startupScope(scope) === "always";
   return [
     "/Create",
     "/TN",
@@ -262,9 +263,12 @@ export function schtasksCreateArgs(o) {
     "/SC",
     // Chosen deliberately (ADR-211). This used to be hardcoded ONSTART, which
     // quietly demanded elevation on every install.
-    startupScope(scope) === "always" ? "ONSTART" : "ONLOGON",
-    "/RU",
-    username,
+    always ? "ONSTART" : "ONLOGON",
+    // /RU only for the always-on scope, where the account has to be named
+    // because the task runs with nobody signed in. For the logon scope the
+    // default IS the current user, and naming them can pull in a password
+    // requirement the scope exists to avoid.
+    ...(always ? ["/RU", username] : []),
     "/TR",
     `"${nodePath}" "${supervisorScript}" "${configPath}"`,
     "/F", // idempotent: re-running replaces the task instead of erroring
