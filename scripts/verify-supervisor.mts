@@ -25,6 +25,14 @@ import {
   parseLivePointer,
   pruneList,
   serializeLivePointer,
+  parseStartupRequest,
+  serializeStartupRequest,
+  parseStartupState,
+  serializeStartupState,
+  startupScope,
+  startupSignalPath,
+  startupStatePath,
+  stopSignalPath,
 } from "../supervisor/lib.mjs";
 import { chooseAuthProvider } from "../src/lib/auth/local";
 
@@ -378,6 +386,108 @@ check(
   supervisorSrc.includes('err?.code === "EPERM"')
 );
 check("the lock is released on shutdown", supervisorSrc.includes("releaseLock()"));
+
+
+// ── (N) The startup signal file — the in-app toggle's channel (ADR-211) ──────
+//
+// Same signal-file pattern as update-requested, deliberately. A malformed or
+// truncated file must read as "no request" — acting on a half-written file is
+// how a toggle turns into a surprise.
+check(
+  "a request round-trips",
+  JSON.stringify(parseStartupRequest(serializeStartupRequest(true, "always"))) ===
+    JSON.stringify({ enabled: true, scope: "always" })
+);
+check(
+  "a disable request round-trips",
+  parseStartupRequest(serializeStartupRequest(false, "logon"))?.enabled === false
+);
+check("a truncated request is ignored", parseStartupRequest('{"enabled":tr') === null);
+check("an empty file is ignored", parseStartupRequest("") === null);
+check("a request without enabled is ignored", parseStartupRequest('{"scope":"always"}') === null);
+check(
+  "a request with a junk scope still parses, defaulting to logon",
+  parseStartupRequest('{"enabled":true,"scope":"whenever"}')?.scope === "logon"
+);
+
+// The recorded outcome. ok:false is a NORMAL state (elevation refused), so it
+// has to survive the round trip with its detail and its escape-hatch command —
+// an owner who ticks a box and is not told it failed believes their hub comes
+// back after a reboot.
+{
+  const failed = parseStartupState(
+    serializeStartupState({
+      enabled: true,
+      scope: "always",
+      ok: false,
+      detail: "Access is denied.",
+      command: "schtasks /Create ...",
+    })
+  );
+  check(
+    "a failed registration round-trips with its reason and command",
+    failed?.ok === false && failed.detail === "Access is denied." && !!failed.command
+  );
+  const good = parseStartupState(
+    serializeStartupState({ enabled: true, scope: "logon", ok: true })
+  );
+  check("a successful registration round-trips", good?.ok === true && good.scope === "logon");
+  check(
+    "state defaults to NOT ok when the flag is missing, never to success",
+    parseStartupState('{"enabled":true,"scope":"logon"}')?.ok === false
+  );
+  check("unreadable state is null", parseStartupState("nonsense") === null);
+}
+
+check(
+  "the startup signal and state files live in the data dir, beside update-requested",
+  startupSignalPath("/data/ledgr").endsWith("startup-requested") &&
+    startupStatePath("/data/ledgr").endsWith("startup-state.json")
+);
+check("the stop request lives there too", stopSignalPath("/data/ledgr").endsWith("stop-requested"));
+
+// ── Stopping has to be GRACEFUL, and on Windows a signal cannot be (ADR-211) ─
+//
+// `process.kill(pid, "SIGTERM")` from another process does not deliver a
+// catchable signal on Windows: it terminates outright, so the shutdown handler
+// never runs — Postgres is killed rather than shut down (recovery on the next
+// start) and the lock file survives looking like a live owner. Observed live on
+// the dev rig. The stop path therefore has to ASK through the file the
+// supervisor polls, and reach the same handler a Ctrl-C reaches.
+check(
+  "the supervisor polls the stop request and routes it through shutdown()",
+  supervisorSrc.includes("stopSignalPath") && /shutdown\("stop-requested"\)/.test(supervisorSrc)
+);
+{
+  const ctlSrc = readFileSync("supervisor/ledgr-ctl.mjs", "utf8");
+  check(
+    "stop asks through the file rather than signalling the pid",
+    ctlSrc.includes("stopSignalPath") && !/process\.kill\([^)]*"SIGTERM"/.test(ctlSrc)
+  );
+  check(
+    "stop still verifies the process actually went away, rather than assuming",
+    ctlSrc.includes("pidAlive(pid)")
+  );
+  check(
+    "status and stop never hard-kill (no SIGKILL anywhere in the control script)",
+    !ctlSrc.includes("SIGKILL")
+  );
+}
+
+// The cluster has to be SHUT DOWN, not killed. embedded-postgres stops it with
+// `taskkill /f /t` on Windows, so every stop left the next start replaying WAL
+// ("database system was not properly shut down") — seen on the dev rig. Asking
+// pg_ctl for a fast shutdown first is what makes "stops cleanly" true.
+check(
+  "shutdown asks pg_ctl for a real shutdown before falling back to the library kill",
+  /pg_ctl/.test(supervisorSrc) &&
+    supervisorSrc.includes('"-m", "fast"') &&
+    supervisorSrc.includes("stopPostgresGracefully")
+);
+check(
+  "the forced fallback is still there, and bounded so a wedged cluster cannot hang shutdown",
+  supervisorSrc.includes("Promise.race([pg.stop()")
+);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

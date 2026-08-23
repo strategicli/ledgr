@@ -5,6 +5,59 @@ embedded Postgres, the app (`next start`), and the update apply path. No
 system Postgres install, no service wiring beyond registering this one
 process to run at boot.
 
+## Run, stop, and check it
+
+```
+npm run local:supervisor          # start it (foreground; this is the process)
+npm run local:status              # is it running? serving? which build? at boot?
+npm run local:status -- --json    # the same, for a script or an install agent
+npm run local:stop                # stop it cleanly
+npm run local:startup             # show or change "start when Windows starts"
+```
+
+Any of these takes `--config=<path>` when the config is not
+`supervisor/config.json` (useful when one machine hosts more than one peer).
+
+`status` separates two facts that fail independently: whether the **supervisor
+process** is alive, and whether the **app actually answers** on its port — a
+supervisor can be up while a bad build is down. It also reports the boot
+registration by asking Windows, not by trusting what we last wrote. Its exit
+code is 0 when running and 1 when not, so an install script can branch on it.
+
+`stop` asks through a file (`stop-requested`) rather than signalling the
+process. On Windows a termination signal from another process is not something
+Node can catch: it terminates outright, so the shutdown path never runs,
+Postgres is killed rather than shut down, and the lock file is left behind
+looking like a live owner. Asking lets the process stop itself the same way
+Ctrl-C does. An update already in flight is not interrupted, so a stop during a
+build waits for it.
+
+### Start when Windows starts
+
+The ordinary desktop-app checkbox, and it is a real choice:
+
+| Scope | What it means |
+| --- | --- |
+| `--logon` | Starts when you sign in. **No administrator prompt.** Right for a laptop or desktop you use. |
+| `--always` | Starts at boot, before anyone signs in. What a **hub** needs, since your phone and Claude reach it whether or not you are at the desk. Expect an administrator prompt, and give the task a saved password in Task Scheduler if nobody will be logged in — without one Windows will not run it while logged out. |
+
+```
+npm run local:startup -- --logon
+npm run local:startup -- --always
+npm run local:startup -- --disable
+```
+
+The same setting is a toggle in the app at **Build → Updates → Start with the
+computer**. The app cannot register a scheduled task itself, so it writes a
+request (`startup-requested`) that the supervisor carries out, then reports what
+happened — including a failure, with the exact command to run in an
+Administrator prompt instead. A silent failure here is the expensive kind: you
+would believe your hub survives a reboot when it does not.
+
+**macOS and Linux are still by hand.** The wizard prints the launchd plist and
+the systemd user unit to create; `npm run local:startup` says so rather than
+pretending. Automating those is queued.
+
 ## Configure
 
 ```

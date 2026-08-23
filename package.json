@@ -20,6 +20,9 @@
     "instance:new": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/new-instance.mjs",
     "instances:sync": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/sync-instances.mjs",
     "local:supervisor": "node supervisor/ledgr-supervisor.mjs",
+    "local:status": "node supervisor/ledgr-ctl.mjs status",
+    "local:stop": "node supervisor/ledgr-ctl.mjs stop",
+    "local:startup": "node supervisor/ledgr-ctl.mjs startup",
     "local:restore": "node scripts/local-restore.mjs",
     "local:setup": "node scripts/local-setup.mjs"
   },

@@ -845,6 +845,18 @@ applying it. When it is not available, the page says why.
 
 The **Changelog** (\`/changelog\`) has the full history behind each version.
 
+**Start with the computer.** On an instance that runs on your own machine,
+Updates also carries the switch every desktop app has: whether Ledgr comes back
+on its own after a reboot. Without it, a restart leaves it down until someone
+starts it by hand, and anything pointed at it — your phone, Claude, your other
+devices — stays down with it. Two choices, and the difference is real: *when I
+sign in* needs no administrator prompt but waits for you to log in, which suits
+a laptop; *at boot, always on* is what a machine other devices rely on needs,
+and Windows will ask for an administrator prompt (plus a saved password for the
+task if nobody will be signed in). If the change does not take effect, the page
+says so and shows the exact command to run instead — it will not quietly let you
+believe a reboot is covered when it is not.
+
 # The sync network
 
 **Network** (\`/build/network\`) is the whole sync topology on one page: the

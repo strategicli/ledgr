@@ -139,6 +139,168 @@ export function signalPath(dataDir) {
   return join(dataDir, "update-requested");
 }
 
+// ── "Start when Windows starts" (ADR-211) ────────────────────────────────────
+//
+// Same shape as the update signal above, deliberately: the app cannot register
+// a scheduled task itself (the always-on scope wants an elevated prompt), so
+// it writes a signal file and the supervisor — already a long-running local
+// process the owner started — does the work and records what happened where
+// the app can read it. One signal-file pattern, not two.
+
+/**
+ * The graceful-stop request. Needed because on Windows `process.kill(pid,
+ * "SIGTERM")` does NOT deliver a signal a Node handler can catch — it
+ * terminates the process outright, so the supervisor's shutdown path never
+ * runs: Postgres is killed rather than shut down (recovery on the next start)
+ * and the lock file is left behind looking like a live owner. Asking through a
+ * file lets the process stop ITSELF through the same handler a Ctrl-C uses.
+ */
+export function stopSignalPath(dataDir) {
+  return join(dataDir, "stop-requested");
+}
+
+export function startupSignalPath(dataDir) {
+  return join(dataDir, "startup-requested");
+}
+
+export function startupStatePath(dataDir) {
+  return join(dataDir, "startup-state.json");
+}
+
+export const STARTUP_TASK_NAME = "Ledgr Supervisor";
+
+/**
+ * The two scopes, and the difference matters enough that nothing defaults it
+ * silently:
+ *   "logon"  — /SC ONLOGON. Needs no elevation, but the peer only comes up
+ *              after somebody signs in.
+ *   "always" — /SC ONSTART. What a 24/7 hub actually needs (the phone and the
+ *              MCP connector reach it whether or not anyone is at the desk),
+ *              and it generally wants elevation plus a stored credential.
+ */
+export function startupScope(raw) {
+  return raw === "always" ? "always" : "logon";
+}
+
+/** Tolerant parse of the signal file: anything unreadable means "no request". */
+export function parseStartupRequest(text) {
+  try {
+    const v = JSON.parse(text);
+    if (!v || typeof v !== "object" || typeof v.enabled !== "boolean") return null;
+    return { enabled: v.enabled, scope: startupScope(v.scope) };
+  } catch {
+    return null;
+  }
+}
+
+export function serializeStartupRequest(enabled, scope) {
+  return JSON.stringify({ enabled: !!enabled, scope: startupScope(scope) }) + "\n";
+}
+
+/**
+ * The outcome the supervisor records after acting. `ok: false` is a normal,
+ * expected state — registering the always-on scope without elevation fails —
+ * so `command` carries what the owner can run in an Administrator prompt
+ * instead. A silent failure here would be the worst kind: the owner ticks a
+ * box, believes their hub survives a reboot, and finds out otherwise.
+ */
+/**
+ * @param {{enabled: boolean, scope?: string, ok: boolean, detail?: string | null,
+ *          command?: string | null, at?: string | null}} o
+ */
+export function serializeStartupState(o) {
+  const { enabled, scope, ok, detail = null, command = null, at = null } = o;
+  return (
+    JSON.stringify(
+      {
+        enabled: !!enabled,
+        scope: startupScope(scope),
+        ok: !!ok,
+        detail: detail ?? null,
+        command: command ?? null,
+        at: at ?? new Date().toISOString(),
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+/** Tolerant parse of the recorded state; null when absent or unusable. */
+export function parseStartupState(text) {
+  try {
+    const v = JSON.parse(text);
+    if (!v || typeof v !== "object" || typeof v.enabled !== "boolean") return null;
+    return {
+      enabled: v.enabled,
+      scope: startupScope(v.scope),
+      ok: v.ok === true,
+      detail: typeof v.detail === "string" ? v.detail : null,
+      command: typeof v.command === "string" ? v.command : null,
+      at: typeof v.at === "string" ? v.at : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── The scheduled-task argv (win32) ──────────────────────────────────────────
+// Pure argv builders so both the wizard and the supervisor register the task
+// the same way, and `status` can read back what Windows actually holds.
+
+/**
+ * @param {{username: string, nodePath: string, supervisorScript: string,
+ *          configPath: string, scope?: string}} o — an absent scope means the
+ *          SAFE one (logon), never the one that demands elevation.
+ */
+export function schtasksCreateArgs(o) {
+  const { username, nodePath, supervisorScript, configPath, scope = "logon" } = o;
+  const always = startupScope(scope) === "always";
+  return [
+    "/Create",
+    "/TN",
+    STARTUP_TASK_NAME,
+    "/SC",
+    // Chosen deliberately (ADR-211). This used to be hardcoded ONSTART, which
+    // quietly demanded elevation on every install.
+    always ? "ONSTART" : "ONLOGON",
+    // /RU only for the always-on scope, where the account has to be named
+    // because the task runs with nobody signed in. For the logon scope the
+    // default IS the current user, and naming them can pull in a password
+    // requirement the scope exists to avoid.
+    ...(always ? ["/RU", username] : []),
+    "/TR",
+    `"${nodePath}" "${supervisorScript}" "${configPath}"`,
+    "/F", // idempotent: re-running replaces the task instead of erroring
+  ];
+}
+
+export function schtasksDeleteArgs() {
+  return ["/Delete", "/TN", STARTUP_TASK_NAME, "/F"];
+}
+
+export function schtasksQueryArgs() {
+  return ["/Query", "/TN", STARTUP_TASK_NAME, "/FO", "LIST"];
+}
+
+/**
+ * Read the registered scope back out of `schtasks /Query /FO LIST` output, so
+ * `status` reports what Windows holds rather than what we last asked for.
+ * Returns "always" | "logon" | null (registered but unrecognized).
+ */
+export function parseSchtasksScope(text) {
+  if (/^\s*Schedule Type:\s*At system start ?up/im.test(text)) return "always";
+  if (/^\s*Schedule Type:\s*At logon/im.test(text)) return "logon";
+  return null;
+}
+
+export function formatSchtasks(args) {
+  return (
+    "schtasks " +
+    args.map((a) => (/[\s"]/.test(a) ? `"${a.replaceAll('"', '\\"')}"` : a)).join(" ")
+  );
+}
+
 // ── Single-instance ownership ────────────────────────────────────────────────
 //
 // One supervisor per dataDir, because two of them fight over everything that

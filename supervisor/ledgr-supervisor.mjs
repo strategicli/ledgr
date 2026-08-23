@@ -48,6 +48,15 @@ import {
   pruneList,
   serializeLivePointer,
   signalPath,
+  formatSchtasks,
+  parseStartupRequest,
+  schtasksCreateArgs,
+  schtasksDeleteArgs,
+  serializeStartupState,
+  startupSignalPath,
+  startupStatePath,
+  stopSignalPath,
+  STARTUP_TASK_NAME,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +107,12 @@ function lockHash(dir) {
 // there); the supervisor dir itself has no node_modules.
 const requireFromRepo = createRequire(join(cfg.repoDir, "package.json"));
 const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
+
+// Which @embedded-postgres/<platform> package holds the binaries, so pg_ctl
+// can be found beside the postgres binary for a graceful shutdown.
+const PG_PLATFORM_PKG = `${process.platform === "win32" ? "windows" : process.platform}-${
+  process.arch === "arm64" ? "arm64" : "x64"
+}`;
 
 const pgDir = join(cfg.dataDir, "pg");
 const firstRun = !existsSync(join(pgDir, "PG_VERSION"));
@@ -327,6 +342,107 @@ setInterval(() => {
   void applyUpdate(target ? `signal (target ${target.slice(0, 7)})` : "signal");
 }, 2000).unref?.();
 
+// A graceful stop, asked for through a file (ADR-211). `npm run local:stop`
+// writes it rather than signalling the pid, because on Windows a "SIGTERM"
+// from another process is a hard terminate: the handler below never runs, so
+// Postgres gets killed instead of shut down and the lock file survives looking
+// like a live owner. Reaching the same shutdown path a Ctrl-C reaches is the
+// whole point.
+const stopSignal = stopSignalPath(cfg.dataDir);
+setInterval(() => {
+  if (!existsSync(stopSignal)) return;
+  try {
+    unlinkSync(stopSignal);
+  } catch {
+    return; // mid-write; next tick gets it
+  }
+  void shutdown("stop-requested");
+}, 2000).unref?.();
+
+// ── "Start when Windows starts" (ADR-211) ────────────────────────────────────
+//
+// The app's toggle cannot register a scheduled task itself, so it writes a
+// request here and this — a local process the owner started — carries it out.
+// Deliberately the SAME signal-file mechanism as the update above rather than
+// a second pattern.
+//
+// The outcome is recorded either way, because the failure is expected: the
+// always-on scope generally needs elevation, and this process usually is not
+// elevated. An owner who ticks a box and is not told it failed believes their
+// hub survives a reboot when it does not.
+const startupSignal = startupSignalPath(cfg.dataDir);
+
+function applyStartupRequest(req) {
+  const script = join(here, "ledgr-supervisor.mjs");
+  const args = req.enabled
+    ? schtasksCreateArgs({
+        username: process.env.USERNAME || process.env.USER || "",
+        nodePath: process.execPath,
+        supervisorScript: script,
+        configPath,
+        scope: req.scope,
+      })
+    : schtasksDeleteArgs();
+
+  if (!isWin) {
+    writeFileSync(
+      startupStatePath(cfg.dataDir),
+      serializeStartupState({
+        enabled: req.enabled,
+        scope: req.scope,
+        ok: false,
+        detail:
+          "Boot registration is only automated on Windows so far. On macOS use a " +
+          "launchd plist, on Linux a systemd user unit — see supervisor/README.md.",
+      }),
+      "utf8"
+    );
+    log("startup request not automated on this platform", { platform: process.platform });
+    return;
+  }
+
+  const res = run("schtasks", args);
+  const ok = res.ok;
+  writeFileSync(
+    startupStatePath(cfg.dataDir),
+    serializeStartupState({
+      enabled: req.enabled,
+      scope: req.scope,
+      ok,
+      detail: ok
+        ? null
+        : (res.stderr || res.stdout || "schtasks failed").trim().split("\n")[0] ||
+          "schtasks failed",
+      // The escape hatch, given verbatim: the owner can paste this into an
+      // Administrator prompt and get the same result.
+      command: ok ? null : formatSchtasks(args),
+    }),
+    "utf8"
+  );
+  log(ok ? "startup registration updated" : "startup registration FAILED", {
+    task: STARTUP_TASK_NAME,
+    enabled: req.enabled,
+    scope: req.scope,
+  });
+}
+
+setInterval(() => {
+  if (!existsSync(startupSignal)) return;
+  let raw = "";
+  try {
+    raw = readFileSync(startupSignal, "utf8");
+    unlinkSync(startupSignal);
+  } catch {
+    return; // mid-write; next tick gets it
+  }
+  const req = parseStartupRequest(raw);
+  if (!req) {
+    log("ignoring an unreadable startup request");
+    return;
+  }
+  applyStartupRequest(req);
+}, 2000).unref?.();
+
 if (cfg.update.mode === "auto") {
   setInterval(() => {
     if (updating) return;
@@ -400,17 +516,56 @@ function releaseLock() {
 }
 
 
+/**
+ * Shut the cluster down the way Postgres wants to be shut down.
+ *
+ * embedded-postgres's own `stop()` runs `taskkill /pid <postmaster> /f /t` on
+ * Windows, which is not a shutdown at all — it is a kill, so every single stop
+ * leaves the cluster replaying WAL on the next start ("database system was not
+ * properly shut down; automatic recovery in progress", observed on the dev rig
+ * 2026-08-23). Recovery is safe, but it is not free, and a hub that gets
+ * stopped for every update should not pay it every time.
+ *
+ * `pg_ctl stop -m fast` is the ordinary answer: refuse new connections, roll
+ * back open transactions, checkpoint, exit. pg_ctl ships in the same bin
+ * directory as the postgres binary embedded-postgres already resolved.
+ */
+function stopPostgresGracefully() {
+  let bin;
+  try {
+    // resolve() lands on the package's dist entry; the binaries live one level
+    // up in native/bin.
+    bin = dirname(dirname(requireFromRepo.resolve("@embedded-postgres/" + PG_PLATFORM_PKG)));
+  } catch {
+    return false;
+  }
+  const pgCtl = join(bin, "native", "bin", isWin ? "pg_ctl.exe" : "pg_ctl");
+  if (!existsSync(pgCtl)) return false;
+  // -w waits for it to finish; -t bounds that wait so a wedged cluster cannot
+  // hang shutdown forever (the forced stop below is the fallback).
+  const res = run(pgCtl, ["stop", "-D", pgDir, "-m", "fast", "-w", "-t", "30"]);
+  if (!res.ok) log("pg_ctl stop did not complete; falling back to a forced stop", {
+    detail: res.stderr || res.stdout,
+  });
+  return res.ok;
+}
+
 async function shutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
   log("shutting down", { sig });
   if (restartTimer) clearTimeout(restartTimer);
   await stopApp();
+  const clean = stopPostgresGracefully();
   try {
-    await pg.stop();
+    // Either finishes the job (when pg_ctl could not) or just releases the
+    // handle. Bounded: once the postmaster has already exited, this library's
+    // promise waits on an "exit" event that has been and gone.
+    await Promise.race([pg.stop(), new Promise((r) => setTimeout(r, clean ? 2000 : 20000))]);
   } catch (err) {
     log("postgres stop failed", { error: String(err) });
   }
+  log("postgres stopped", { clean });
   releaseLock();
   process.exit(0);
 }
