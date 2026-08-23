@@ -921,6 +921,18 @@ hubs this instance syncs **to**, and the devices that sync **from** it.
   no more than this. Publishing the instance publicly is a separate step, and
   the only thing that really needs it is the Claude connector, because that
   request comes from Anthropic's servers rather than from a device of yours.
+- **How long a device's history is kept.** For another device to reconnect and
+  simply carry on, this instance has to keep the changes it missed. That costs
+  storage that cannot be cleaned up while it waits, so each device has a
+  window — 14 days by default, changeable per device. Inside the window it
+  reconnects and catches up. Past it, the device can still come back, but it
+  needs a full re-fill from this instance rather than just reconnecting. You
+  will be told **before** that happens: once a device has been away for most
+  of its window, a note appears here naming it, saying what will happen, and
+  offering the two answers — **keep its history** (for a machine you know is
+  coming back; it holds indefinitely and the storage keeps accruing) or **let
+  it go** (frees the storage now). A device that syncs regularly never
+  triggers any of this.
 - **Devices that sync from this instance.** **Add device** names a new one
   and shows its access token exactly once; copy it into that device's setup,
   because it cannot be shown again. A new device can be added **pull-only**,
