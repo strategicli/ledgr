@@ -87,7 +87,7 @@ export default async function Network() {
       )}
       {sync.enabled && !sync.fallbackPrompt && sync.fallbackApproval && (
         <section className="mt-8">
-          <h2 className="ui-section-label">Needs your decision</h2>
+          <h2 className="ui-section-label">Running on a backup</h2>
           <FallbackApprovalBlock approval={sync.fallbackApproval} />
         </section>
       )}
