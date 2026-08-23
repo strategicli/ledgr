@@ -861,7 +861,10 @@ hubs this instance syncs **to**, and the devices that sync **from** it.
   because changing the URL alone would merge two diverged databases.
 - **This instance's sync.** The connection state: mode (pull-only or full,
   with the toggle to allow or stop pushing), whether changes are waiting to
-  go out, when the last exchange happened, and the last error. A syncing
+  go out, when the last exchange happened, and the last error. When a large
+  first push is being held (the guard against a bad restore), a **Send
+  anyway** button releases it one-shot after you confirm the pending changes
+  are real. A syncing
   instance also carries a small dot in the navigation with the same state at
   a glance — green when synced, amber while changes are waiting or while on a
   backup hub, red when no hub is reachable; clicking it opens this page.
