@@ -50,26 +50,44 @@ export type SyncStatus = {
   skewWarn: boolean;
 };
 
-// In-memory status for the SyncPill / /build/updates. Module-level is enough:
-// `next start` on a local peer is one long-lived process.
-const status: SyncStatus = {
-  state: "offline",
-  pendingOps: 0,
-  activeHubIndex: 0,
-  lastSyncAt: null,
-  lastError: null,
-  holdReason: null,
-  heldOpsCount: null,
-  skewMs: null,
-  skewWarn: false,
-};
-
-// Guardrail 2's "only the FIRST push is gated" boundary: once a real push
-// attempt has been let through (or found nothing to send), this never gates
-// again for the rest of the process's lifetime. Deliberately separate from
-// `status`, which is allowed to move back and forth (e.g. holdReason clears
-// once resolved) — this flag must not.
-let firstPushDone = false;
+// In-memory status for the SyncPill / /build/updates, plus the loop's
+// one-shot first-push flag, held on globalThis.
+//
+// Module-level was NOT enough, which is what the first real spoke found:
+// /api/sync/status and /build/updates reported "Offline, never synced" on a
+// peer the database proved was pulling (a Principle 9 silent misreport). Next
+// bundles the instrumentation hook and the route handlers as separate server
+// entries, so this module is instantiated more than once in the one process.
+// The loop mutated one instance's object; every reader read another's, which
+// is still at its defaults and always will be. The loop-arming guard below
+// already reached for globalThis for exactly this reason; the state it
+// protects has to live there too, or the guard is the only part that works.
+//
+// This fixes duplication WITHIN a process, which is the observed cause. It
+// cannot fix separate processes: if the app is ever served by more than one,
+// status has to move to the database (job_state) instead.
+type SyncShared = { status: SyncStatus; firstPushDone: boolean; loopArmed: boolean };
+const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgrSync ??= {
+  status: {
+    state: "offline",
+    pendingOps: 0,
+    activeHubIndex: 0,
+    lastSyncAt: null,
+    lastError: null,
+    holdReason: null,
+    heldOpsCount: null,
+    skewMs: null,
+    skewWarn: false,
+  },
+  // Guardrail 2's "only the FIRST push is gated" boundary: once a real push
+  // attempt has been let through (or found nothing to send), this never gates
+  // again for the rest of the process's lifetime. Deliberately separate from
+  // `status`, which is allowed to move back and forth (e.g. holdReason clears
+  // once resolved) — this flag must not.
+  firstPushDone: false,
+  loopArmed: false,
+});
+const status = shared.status;
 
 export function getSyncStatus(): SyncStatus {
   return { ...status };
@@ -329,14 +347,14 @@ async function exchangeWith(hub: string, deviceId: string, token: string, guard:
       mode: guard.mode,
       candidateOps,
       pendingCount: pending,
-      firstPushDone,
+      firstPushDone: shared.firstPushDone,
       maxFirstPush: guard.maxFirstPush,
       confirmLargePush: guard.confirmLargePush,
       skewMs: status.skewMs,
       skewWarnMs: guard.skewWarnMs,
       skewHoldMs: guard.skewHoldMs,
     });
-    firstPushDone = sel.firstPushDoneAfter;
+    shared.firstPushDone = sel.firstPushDoneAfter;
     status.holdReason = sel.holdReason;
     status.heldOpsCount = sel.heldOpsCount;
     if (sel.holdReason === "first_push_size") {
@@ -421,12 +439,11 @@ async function exchange(hubs: string[], deviceId: string, token: string, guard: 
  * the pull window.
  */
 export function startSyncLoop(): void {
-  const g = globalThis as { __ledgrSyncLoop?: boolean };
-  if (g.__ledgrSyncLoop) return;
+  if (shared.loopArmed) return;
   const hubs = parseHubs(process.env.LEDGR_SYNC_HUBS);
   const token = process.env.LEDGR_SYNC_TOKEN;
   if (hubs.length === 0 || !token) return;
-  g.__ledgrSyncLoop = true;
+  shared.loopArmed = true;
 
   const pushDebounceMs = envInt("LEDGR_SYNC_PUSH_DEBOUNCE_MS", 2000);
   const pullMs = envInt("LEDGR_SYNC_PULL_MS", 10000);
