@@ -20,6 +20,9 @@ export const maxDuration = 60;
 
 // Response batch cap; the client loops while hasMore.
 const PULL_BATCH = 500;
+// How far past the cap a batch may extend to finish the last op's same-`at`
+// run (one hub transaction), so an FK-linked delete family is never split.
+const RUN_EXTEND_CAP = 500;
 
 type SyncRequest = {
   deviceId?: string;
@@ -100,6 +103,30 @@ export async function POST(request: Request) {
       .orderBy(syncOps.seq)
       .limit(PULL_BATCH);
     const hasMore = rows.length === PULL_BATCH;
+    // A capped batch must not split one transaction's ops (they share `at` —
+    // the trigger stamps now()): the receiver executes a batch's items
+    // deletes as ONE statement (ADR-206 addendum 7), so a parent+child family
+    // hard-deleted together has to travel together or the parent's delete
+    // fails its FK and wedges the peer. Extend to the end of the run.
+    // ponytail: RUN_EXTEND_CAP bounds a monster transaction; a >500-op
+    // same-instant DELETE family could still split — raise the cap if ever
+    // seen live.
+    if (hasMore) {
+      const last = rows[rows.length - 1];
+      const run = await db
+        .select()
+        .from(syncOps)
+        .where(
+          and(
+            gt(syncOps.seq, last.seq),
+            eq(syncOps.at, last.at),
+            or(isNull(syncOps.originDeviceId), ne(syncOps.originDeviceId, peer.deviceId))
+          )
+        )
+        .orderBy(syncOps.seq)
+        .limit(RUN_EXTEND_CAP);
+      rows.push(...run);
+    }
     // When the batch is capped, the cursor stops at the last included op so
     // the caller's loop misses nothing; otherwise it jumps to the head so
     // filtered-out echoes aren't rescanned forever.

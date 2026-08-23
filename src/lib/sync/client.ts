@@ -294,6 +294,9 @@ export function selectPushOps(opts: {
 }
 
 const PUSH_BATCH = 500;
+// How far past the cap a push batch extends to finish the last op's same-`at`
+// run (one local transaction) — see unpushedOps.
+const RUN_EXTEND_CAP = 500;
 
 function envInt(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -336,6 +339,22 @@ async function unpushedOps(afterSeq: number): Promise<SyncOp[]> {
     .where(and(gt(syncOps.seq, afterSeq), isNull(syncOps.originDeviceId)))
     .orderBy(asc(syncOps.seq))
     .limit(PUSH_BATCH);
+  // Same rule as the hub's pull batch (ADR-206 addendum 7): never split one
+  // transaction's ops (same `at`) across batches — the hub applies a batch's
+  // items deletes as ONE statement, so an FK-linked delete family must travel
+  // whole. Bounded by RUN_EXTEND_CAP.
+  if (rows.length === PUSH_BATCH) {
+    const last = rows[rows.length - 1];
+    const run = await getDb()
+      .select()
+      .from(syncOps)
+      .where(
+        and(gt(syncOps.seq, last.seq), eq(syncOps.at, last.at), isNull(syncOps.originDeviceId))
+      )
+      .orderBy(asc(syncOps.seq))
+      .limit(RUN_EXTEND_CAP);
+    rows.push(...run);
+  }
   return rows.map((r) => ({
     seq: r.seq,
     deviceId: r.deviceId,
