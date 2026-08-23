@@ -6,6 +6,7 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  effectiveHubs,
   effectiveSyncMode,
   getSyncStatus,
   checkFirstPush,
@@ -244,6 +245,7 @@ const base: SyncStatus = {
   heldOpsCount: null,
   skewMs: null,
   skewWarn: false,
+  hubs: [],
 };
 
 {
@@ -336,6 +338,37 @@ const base: SyncStatus = {
   check("no override falls back to the env value", effectiveSyncMode(undefined, "pull-only") === "pull-only");
   check("garbage in the override is ignored, not obeyed", effectiveSyncMode("yolo", "pull-only") === "pull-only");
   check("nothing anywhere means full (the shipped default)", effectiveSyncMode(null, undefined) === "full");
+}
+
+// ── The effective hub list: stored wins, even empty (ADR-209) ───────────────
+//
+// The env pair (LEDGR_SYNC_HUBS + one LEDGR_SYNC_TOKEN) is only the initial
+// value; the Network page edits a job_state list carrying a token PER hub.
+// An empty STORED list means "the owner removed every hub", never "fall back
+// to config" — otherwise removing the last hub would silently resurrect it.
+{
+  const stored = [{ url: "https://a.example", token: "ta" }];
+  check(
+    "a stored hub list wins over env",
+    JSON.stringify(effectiveHubs(stored, "https://env.example", "tenv")) === JSON.stringify(stored)
+  );
+  check(
+    "an EMPTY stored list means no hubs, not env fallback",
+    effectiveHubs([], "https://env.example", "tenv").length === 0
+  );
+  check(
+    "no stored list falls back to env, same token on each",
+    JSON.stringify(effectiveHubs(undefined, "https://a.example, https://b.example", "t1")) ===
+      JSON.stringify([
+        { url: "https://a.example", token: "t1" },
+        { url: "https://b.example", token: "t1" },
+      ])
+  );
+  check("env hubs without a token arm nothing", effectiveHubs(undefined, "https://a.example", undefined).length === 0);
+  check(
+    "malformed stored entries are dropped, not obeyed",
+    effectiveHubs([{ url: "https://a.example" }, { token: "x" }, null, "junk"], undefined, undefined).length === 0
+  );
 }
 
 // ── The loop's status must live on globalThis, not in module scope ──────────

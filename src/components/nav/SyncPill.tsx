@@ -4,7 +4,7 @@
 // server nav gates the mount on LEDGR_SYNC_HUBS, so the cloud hub and Tyler's
 // instance never render this or fetch anything. Green = synced to the primary
 // hub, amber = changes waiting or running on a backup hub, red = no hub
-// reachable. Detail lives on /build/updates; clicking the dot goes there. The
+// reachable. Detail lives on /build/network (ADR-209); clicking goes there. The
 // tooltip is the CSS-hover standard (group-hover, role=tooltip), minus the
 // dotted underline that marks text triggers.
 import Link from "next/link";
@@ -70,7 +70,7 @@ export default function SyncPill({
 
   return (
     <Link
-      href="/build/updates"
+      href="/build/network"
       aria-label={`Sync: ${label}`}
       className="group relative flex shrink-0 items-center justify-center rounded-xl p-2 hover:bg-neutral-800/60"
     >

@@ -838,30 +838,41 @@ running. Those are two separate things, and the page reports them separately.
 - **Database.** Some updates change the database structure. When the code has
   moved ahead of the database, the page names the changes still to apply. That
   gap is the usual reason pages start failing right after an update.
-- **Sync.** On an instance that syncs its data to a hub, the page shows the
-  connection: whether it is talking to its primary hub or a backup, whether
-  local changes are waiting to go out, when the last exchange happened, and
-  the last error if one occurred. Such an instance also carries a small dot in
-  the navigation with the same state at a glance, green when synced, amber
-  while changes are waiting or while on a backup hub, red when no hub is
-  reachable; hovering names the state and clicking it opens this page. On an
-  instance that does not sync, neither appears.
-- **Synced devices.** The list of devices allowed to sync against this
-  instance. **Add device** names a new one and shows its access token exactly
-  once; copy it into that device's setup, because it cannot be shown again. A
-  new device can be added **pull-only**, meaning it can only receive changes
-  from this instance and never push its own; that is the safe default when
-  proving out a fresh device, and it can be flipped between pull-only and
-  full at any time from here, even if the device itself is unreachable.
-  **Revoke** shuts a device out remotely (its next sync is refused),
-  **Restore** lets it back in, and a revoked device can then be deleted. The
-  section is empty unless other devices sync against this instance.
 
 Whether the Update button appears at all is a setting on the instance, because
 an update that changes the database needs the database migrated as part of
 applying it. When it is not available, the page says why.
 
 The **Changelog** (\`/changelog\`) has the full history behind each version.
+
+# The sync network
+
+**Network** (\`/build/network\`) is the whole sync topology on one page: the
+hubs this instance syncs **to**, and the devices that sync **from** it.
+
+- **Hubs this instance syncs to.** Each hub with its state, when it last
+  synced, and whether it is the primary (first in the list; the rest are
+  fallbacks). **Add hub** asks for the hub's URL and a device token minted on
+  that hub — the mirror image of adding a device below. **Remove** stops
+  syncing to a hub; the data on both sides stays where it is. Changes take
+  effect within seconds, no restart. One thing that is deliberately not a
+  button: repointing this instance at a different primary hub needs its data
+  re-filled from the new hub first (\`npm run local:restore -- --from-url\`),
+  because changing the URL alone would merge two diverged databases.
+- **This instance's sync.** The connection state: mode (pull-only or full,
+  with the toggle to allow or stop pushing), whether changes are waiting to
+  go out, when the last exchange happened, and the last error. A syncing
+  instance also carries a small dot in the navigation with the same state at
+  a glance — green when synced, amber while changes are waiting or while on a
+  backup hub, red when no hub is reachable; clicking it opens this page.
+- **Devices that sync from this instance.** **Add device** names a new one
+  and shows its access token exactly once; copy it into that device's setup,
+  because it cannot be shown again. A new device can be added **pull-only**,
+  meaning it can only receive changes and never push its own — the safe
+  default when proving out a fresh device — and can be flipped between
+  pull-only and full at any time from here, even if the device itself is
+  unreachable. **Revoke** shuts a device out remotely, **Restore** lets it
+  back in, and a revoked device can then be deleted.
 
 # Not here yet
 
