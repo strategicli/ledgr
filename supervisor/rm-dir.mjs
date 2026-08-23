@@ -15,11 +15,13 @@
 // as side-effect free.
 import { rmSync } from "node:fs";
 
-// 10 tries with a 50ms linear backoff: ~2.75s worst case, which is well past
-// a stopped postmaster's or node process's handle release without stalling a
-// build swap noticeably.
-const MAX_RETRIES = 10;
-const RETRY_DELAY_MS = 50;
+// 20 tries with a 100ms linear backoff: ~21s worst case. Measured need, not a
+// guess: a stopped postmaster's handles outlived a 2.75s budget on this
+// machine, leaving a temp cluster directory behind. Nothing waits on these
+// removals (the supervisor starts the new app BEFORE it prunes), so a long
+// tail costs patience only in the rare case where something is really stuck.
+const MAX_RETRIES = 20;
+const RETRY_DELAY_MS = 100;
 
 /** Remove `dir` recursively, retrying past Windows handle-release races. */
 export function rmDirRetry(dir) {
