@@ -19,7 +19,6 @@
     "db:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed.mjs",
     "instance:new": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/new-instance.mjs",
     "instances:sync": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/sync-instances.mjs",
-    "db:seed-test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed-test-data.mjs",
     "local:supervisor": "node supervisor/ledgr-supervisor.mjs",
     "local:restore": "node scripts/local-restore.mjs",
     "local:setup": "node scripts/local-setup.mjs"
