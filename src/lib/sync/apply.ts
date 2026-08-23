@@ -13,6 +13,7 @@ import {
   type SyncOp,
   type WriteAction,
 } from "./engine";
+import { replacePassageRefs } from "@/lib/passages/refs";
 
 // The minimal db surface apply needs; both drizzle drivers satisfy it, and the
 // verify suite passes its own node-postgres instances for the two-DB tier.
@@ -197,6 +198,27 @@ async function runAction(db: SyncDb, action: WriteAction): Promise<void> {
   );
 }
 
+/**
+ * The item + body an action wrote, when the write could change that item's
+ * passage edges: an insert carrying a body, or an update whose merged fields
+ * include one. Anything else (a soft-delete stamp, a title edit, a non-items
+ * table) yields null, so a 500-op batch only derives for the bodies in it.
+ *
+ * `fields` and `row` already hold the MERGED winning values, so the derived
+ * edges match what the row will actually contain and no re-read is needed.
+ */
+export function passageBodyFromAction(
+  action: WriteAction
+): { itemId: string; body: unknown } | null {
+  if (action.kind === "insert" && action.tbl === "items" && action.row.body != null) {
+    return { itemId: String(action.row.id), body: action.row.body };
+  }
+  if (action.kind === "update" && action.tbl === "items" && "body" in action.fields) {
+    return { itemId: action.pkVal, body: action.fields.body };
+  }
+  return null;
+}
+
 export type ApplyResult = { actions: number; rejected: number };
 
 /**
@@ -227,11 +249,19 @@ export async function applySyncOps(
           await tx.execute(sql`select set_config('ledgr.sync_origin', ${origin}, true)`);
         }
         await runAction(tx, action);
+        // Derived data the row write cannot carry: passage_refs is outside
+        // ADR-206's synced set and has no trigger, so a body arriving here
+        // must rebuild its own edges or the peer's passage index silently
+        // freezes. Inside the transaction, so the two commit together.
+        const derived = passageBodyFromAction(action);
+        if (derived) await replacePassageRefs(tx, derived.itemId, derived.body);
       }
     });
   } else {
     for (const action of actions) {
       await runAction(db, action);
+      const derived = passageBodyFromAction(action);
+      if (derived) await replacePassageRefs(db, derived.itemId, derived.body);
     }
   }
   return { actions: actions.length, rejected: rejected.length };

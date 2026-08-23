@@ -31,7 +31,7 @@ import {
   type SyncOp,
   type WriteAction,
 } from "../src/lib/sync/engine";
-import { applySyncOps, type SyncDb } from "../src/lib/sync/apply";
+import { applySyncOps, passageBodyFromAction, type SyncDb } from "../src/lib/sync/apply";
 import { pruneSyncOps, SYNC_OPS_RETENTION_DAYS } from "../src/lib/sync/peers";
 
 let failures = 0;
@@ -216,6 +216,48 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   check("hard delete applies once", r1.actions.length === 1 && r1.actions[0].kind === "delete" && r2.actions.length === 0);
 }
 
+// (12) which applied actions need their passage edges rebuilt. The filter is
+// what keeps a 500-op batch from doing 500 needless reconciles, so it has to
+// be exactly the body-carrying writes and nothing else.
+{
+  const ins = (row: Record<string, unknown>): WriteAction => ({
+    kind: "insert", tbl: "items", ownerId: OWNER, origin: "d", row,
+  });
+  const upd = (fields: Record<string, unknown>): WriteAction => ({
+    kind: "update", tbl: "items", ownerId: OWNER, origin: "d", pkCol: "id", pkVal: ITEM, fields,
+  });
+  check(
+    "an insert carrying a body derives",
+    passageBodyFromAction(ins({ id: ITEM, body: { format: "markdown", text: "x" } }))?.itemId === ITEM
+  );
+  check("an insert with no body does not", passageBodyFromAction(ins({ id: ITEM, body: null })) === null);
+  check(
+    "an update touching body derives, with the MERGED value",
+    JSON.stringify(passageBodyFromAction(upd({ body: { format: "markdown", text: "won" } }))?.body) ===
+      JSON.stringify({ format: "markdown", text: "won" })
+  );
+  check(
+    "a body cleared to null still derives (its edges must go)",
+    passageBodyFromAction(upd({ body: null }))?.itemId === ITEM
+  );
+  check("a title-only update does not", passageBodyFromAction(upd({ title: "t" })) === null);
+  check(
+    "a soft-delete stamp does not",
+    passageBodyFromAction(upd({ deleted_at: "2026-08-23T00:00:00Z" })) === null
+  );
+  check(
+    "a non-items table never does",
+    passageBodyFromAction({
+      kind: "update", tbl: "types", ownerId: OWNER, origin: "d", pkCol: "key", pkVal: "note",
+      fields: { body: { text: "not an item" } },
+    }) === null
+  );
+  check(
+    "a hard delete does not (the cascade takes its edges)",
+    passageBodyFromAction({ kind: "delete", tbl: "items", ownerId: OWNER, origin: "d", pkCol: "id", pkVal: ITEM }) === null
+  );
+}
+
 // ── Tier (b): two real databases, offline edits, convergence ────────────────
 
 type Peer = {
@@ -324,6 +366,47 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
     await A.query(`update types set label = 'Note (renamed)' where key = 'note'`);
     await sleep(50); // B writes later — B must win LWW
     await B.query(`update items set title = 'title from B', body = '{"format":"markdown","text":"body from B"}' where id = $1`, [ITEM]);
+
+    // Derived data (passage_refs) must follow a synced body. The apply path
+    // writes item rows directly, so nothing calls item-mutations.ts and
+    // nothing would rebuild these edges: that was silent drift on every peer
+    // until 2026-08-23. passage_refs is deliberately NOT in the synced set,
+    // so this is the receiving side deriving from the body it just merged.
+    // Its own item, so it cannot perturb the LWW/revisions fixtures above.
+    {
+      const P = "33333333-0000-4000-8000-000000000004";
+      await A.query(
+        `insert into items (id, owner_id, type, title, body) values ($1, $2, 'note', 'passages',
+           '{"format":"markdown","text":"see [Ps 23](ledgr://passage/1002003) and [again](ledgr://passage/1002003) and [range](ledgr://passage/2000001-2000005)"}')`,
+        [P, OWNER]
+      );
+      await exchangeOnce(A, B);
+      const rows = await B.query(
+        `select start_ref, end_ref from passage_refs where source_item_id = $1 and role = 'passage' order by start_ref`,
+        [P]
+      );
+      check(
+        "a synced body rebuilds passage_refs on the RECEIVING peer",
+        rows.rows.length === 2,
+        `${rows.rows.length} edge(s)`
+      );
+      check(
+        "the derived edges carry the body's own start/end refs, deduped",
+        JSON.stringify(rows.rows.map((r: Record<string, unknown>) => [Number(r.start_ref), Number(r.end_ref)])) ===
+          JSON.stringify([[1002003, 1002003], [2000001, 2000005]])
+      );
+      // Removing the links must remove the edges, or the index only ever grows.
+      await A.query(
+        `update items set body = '{"format":"markdown","text":"no passages here"}' where id = $1`,
+        [P]
+      );
+      await exchangeOnce(A, B);
+      const after = await B.query(
+        `select count(*)::int as n from passage_refs where source_item_id = $1 and role = 'passage'`,
+        [P]
+      );
+      check("clearing the links clears the derived edges", Number(after.rows[0].n) === 0);
+    }
 
     // Concurrent same-edge creation with different uuids, plus a one-sided edge.
     const T2 = "33333333-0000-4000-8000-000000000003";
