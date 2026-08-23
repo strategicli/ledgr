@@ -20,6 +20,7 @@
 //   node scripts/verify-ci.mjs --list     # just show the classification
 import { readdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 
 const DIR = "scripts";
@@ -58,12 +59,21 @@ console.log(
 // while dodging the regex above must fail HERE, not mysteriously in CI.
 const env = { ...process.env, DATABASE_URL: "" };
 
+// Spawn tsx's own entry with this node, rather than shelling out to `npx tsx`
+// once per script. npx re-resolves the package on every single call, which on
+// Windows cost 4719ms per script against 1194ms for the direct spawn
+// (measured; across 67 scripts that is minutes, not milliseconds). It also
+// needed a shell on win32 to find the .cmd shim, which spends a cmd.exe per
+// spawn and earns a DEP0190 warning for passing args through one. Same tsx,
+// same argv, no shell. verify-setup.mts guards it, since a regression here is
+// silent: the suite still passes, just far slower.
+const TSX = createRequire(import.meta.url).resolve("tsx/cli");
+
 const failed = [];
 for (const f of pure) {
-  const res = spawnSync("npx", ["tsx", join(DIR, f)], {
+  const res = spawnSync(process.execPath, [TSX, join(DIR, f)], {
     encoding: "utf8",
     env,
-    shell: process.platform === "win32",
   });
   const ok = res.status === 0;
   if (!ok) failed.push({ f, out: `${res.stdout ?? ""}${res.stderr ?? ""}` });
