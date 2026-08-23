@@ -22,9 +22,10 @@
 // silently drop it from CI (it stays a local/manual step, like verify-sync).
 //
 // Run: npx tsx scripts/verify-pg-copy.mts
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { rmDirBestEffort } from "../supervisor/rm-dir.mjs";
 import { copyAllTables, EXCLUDED_TABLES } from "./lib/pg-copy.mjs";
 // jsonb does not preserve object key order (Postgres docs), so a straight
 // JSON.stringify of a round-tripped value can differ from the original by
@@ -236,6 +237,14 @@ async function main(): Promise<void> {
         password: "postgres",
         port: ports[i],
         persistent: false,
+        // Windows initdb inherits the OS locale and would produce a WIN1252
+        // cluster with libc collation, which cannot store the arrows, curly
+        // quotes and em dashes that real Ledgr bodies (and this suite's own
+        // fixtures) contain. The three runtime cluster sites force this; a
+        // test cluster that does not is testing a database the app never
+        // runs on. Kept identical to them on purpose, and verify-setup.mts
+        // asserts that every cluster-creating file carries these flags.
+        initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
       })
   );
   try {
@@ -263,7 +272,16 @@ async function main(): Promise<void> {
         // best-effort teardown
       }
     }
-    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    // Best-effort: on Windows the postmaster we just stopped releases its
+    // handles asynchronously, so an immediate recursive remove loses the
+    // race and throws EPERM. Every assertion has already run by here, so a
+    // temp directory we cannot delete yet is noise in %TEMP%, not a sync
+    // regression — reporting it and exiting on the real result beats
+    // crashing a green suite in its teardown.
+    for (const d of dirs) {
+      const err = rmDirBestEffort(d);
+      if (err) console.log(`NOTE  temp cluster dir left behind (still in use): ${d}`);
+    }
   }
 }
 
