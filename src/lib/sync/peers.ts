@@ -7,7 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { syncOps, syncPeers } from "@/db/schema";
+import { jobState, syncOps, syncPeers } from "@/db/schema";
 import { hashToken } from "@/lib/auth/machine";
 import type { SyncDb } from "./apply";
 
@@ -38,6 +38,31 @@ export function deleteRefusal(revoked: boolean): string | null {
 // loop; the check does not depend on the spoke's own honesty.
 export function pullOnlyRejectsPush(pullOnly: boolean, opsCount: number): boolean {
   return pullOnly && opsCount > 0;
+}
+
+// The staleness refusal (ADR-208): a peer whose pull cursor points into
+// pruned oplog territory must be REFUSED, not silently handed the partial
+// stream that remains — ops in (sinceSeq, prunedThrough] are gone forever,
+// so "give it what's left" is a permanently incomplete database that reports
+// synced. sinceSeq 0 is deliberately exempt: a freshly FILLED peer starts at
+// cursor 0 with current data, and its first pull legitimately replays
+// whatever the oplog still holds (LWW makes that a no-op against the fill).
+// The start-empty trap (cursor 0, empty data) is a different failure with
+// its own warning in supervisor/README.md; seq alone cannot distinguish it.
+export function cursorTooStale(sinceSeq: number, prunedThrough: number): boolean {
+  return sinceSeq > 0 && sinceSeq < prunedThrough;
+}
+
+// Push dedupe (same ADR): ops this peer has already pushed are dropped, not
+// re-applied. Re-delivery is real — a response lost after the hub applied a
+// push makes the client re-send the same batch, and before this guard each
+// re-apply wrote real rows whose triggers logged fresh hub ops (unbounded
+// oplog growth). lastPushedSeq is the boundary because the client pushes in
+// ascending local seq. Known ceiling: a spoke restored from its own old
+// backup rewinds its seq and would see its first pushes dropped — that spoke
+// needs a re-fill anyway, which resets its device identity.
+export function dedupePushedOps<T extends { seq: number }>(ops: T[], lastPushedSeq: number): T[] {
+  return ops.filter((o) => o.seq > lastPushedSeq);
 }
 
 // ── DB-backed operations ─────────────────────────────────────────────────────
@@ -175,5 +200,43 @@ export async function pruneSyncOps(opts: { db?: SyncDb } = {}) {
       )
     returning seq
   `);
+  // Record the boundary the staleness refusal compares against (ADR-208):
+  // the highest seq ever actually deleted. Exact by construction — a
+  // bigserial gap below min(seq) was never an op, so "min(seq) - 1" would
+  // over-refuse; this never does. Monotonic upsert: a smaller run can't move
+  // it backwards. Instance-local on purpose (job_state is not in the synced
+  // set), the same as the cursors it protects.
+  if (res.rows.length > 0) {
+    const maxPruned = res.rows.reduce(
+      (m, r) => Math.max(m, Number((r as { seq: unknown }).seq)),
+      0
+    );
+    await db.execute(sql`
+      insert into job_state (key, value)
+      values (${SYNC_PRUNED_THROUGH_KEY}, jsonb_build_object('seq', ${maxPruned}::bigint))
+      on conflict (key) do update set
+        value = case
+          when coalesce((job_state.value->>'seq')::bigint, 0) >= ${maxPruned}::bigint
+            then job_state.value
+          else excluded.value
+        end,
+        updated_at = now()
+    `);
+  }
   return { syncOpsPruned: res.rows.length };
+}
+
+// job_state key for the prune boundary above. Read per exchange by
+// /api/machine/sync; missing (a hub that has never pruned, or pruned only
+// before ADR-208 landed) reads as 0, which refuses nobody — the status quo.
+export const SYNC_PRUNED_THROUGH_KEY = "sync:prunedThrough";
+
+export async function readPrunedThrough(): Promise<number> {
+  const rows = await getDb()
+    .select({ value: jobState.value })
+    .from(jobState)
+    .where(eq(jobState.key, SYNC_PRUNED_THROUGH_KEY));
+  const seq = (rows[0]?.value as { seq?: unknown } | undefined)?.seq;
+  const n = Number(seq);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }

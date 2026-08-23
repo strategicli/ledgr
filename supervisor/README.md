@@ -109,22 +109,26 @@ everything newer than the fill.
 
 ### Parking a peer, and why you cannot simply revoke it
 
-**Known gap, do not rely on a long absence working cleanly yet** (tracked in
-`next_steps.md`). Pruning keeps every op above `min(last_pulled_seq)` across
-non-revoked peers, so:
+Pruning keeps every op above `min(last_pulled_seq)` across non-revoked peers,
+so:
 
 - **Leave a parked device registered** and the hub's oplog grows for as long as
   it sleeps, holding whole body text per op. It can rejoin and catch up.
 - **Revoke it** and the prune is free to delete exactly the ops it had not
   pulled. It is inert while parked, which is what you wanted, but it can no
-  longer catch up by pulling — and **nothing detects that**: the hub answers
-  "ops newer than your cursor", the peer gets a partial stream and reports
-  itself synced.
+  longer catch up by pulling.
 
-Until the staleness refusal lands, treat a revoked-and-parked peer as needing a
-**re-fill** when it returns (`npm run local:restore -- --from-url <hub db>`,
-~4 minutes for a full copy), not a resume. That is a fine outcome; the problem
-is only that today you have to know it rather than be told.
+**The hub now refuses that second peer instead of quietly under-serving it
+(ADR-208):** a returning peer whose cursor predates the oldest pruned op gets
+HTTP 410 and shows "too far behind this hub … re-fill required" in the Sync
+section, rather than pulling a partial stream and reporting synced. Its
+pushes still land first — local edits made while parked drain to the hub
+before you re-fill, so nothing unpushed is lost. The remedy is what it always
+was: `npm run local:restore -- --from-url <hub db>` (~4 minutes for a full
+copy); the difference is the system now tells you. A middle path that
+reconciles only what differs instead of re-copying everything is designed
+(ADR-208) but not yet built, as is a real "paused" device state that drops
+the retention hold without revoking.
 
 ### After an update, check what a PUSHING peer is about to send
 

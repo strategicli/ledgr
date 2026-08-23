@@ -561,6 +561,24 @@ async function exchangeWith(hub: HubConfig, deviceId: string, guard: PushGuard):
       const detail = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(detail.error ?? "hub refused this device's ops (pull-only)");
     }
+    if (res.status === 410) {
+      // The staleness refusal (ADR-208): this peer's pull cursor predates
+      // the hub's oldest retained op, so anything it would pull is a
+      // permanently partial stream. The hub applied our push before
+      // refusing (pushApplied), so advance the push cursor — otherwise the
+      // next tick re-sends the same ops forever — but NEVER the pull
+      // cursor: staying put is what keeps the refusal firing until the
+      // owner re-fills, instead of quietly resuming past a hole.
+      const detail = (await res.json().catch(() => ({}))) as { pushApplied?: boolean };
+      if (detail.pushApplied && ops.length > 0) {
+        cursor = { ...cursor, push: ops[ops.length - 1].seq };
+        await writeCursor(hub.url, cursor);
+      }
+      throw new Error(
+        "too far behind this hub: ops this peer never pulled have been pruned. " +
+          "Re-fill required: stop the supervisor, then `npm run local:restore -- --from-url <hub db url>`."
+      );
+    }
     if (!res.ok) throw new Error(`sync exchange failed: HTTP ${res.status}`);
     const data = (await res.json()) as {
       ops: SyncOp[];

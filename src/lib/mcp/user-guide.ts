@@ -867,7 +867,13 @@ hubs this instance syncs **to**, and the devices that sync **from** it.
   are real. A syncing
   instance also carries a small dot in the navigation with the same state at
   a glance — green when synced, amber while changes are waiting or while on a
-  backup hub, red when no hub is reachable; clicking it opens this page.
+  backup hub, red when no hub is reachable; clicking it opens this page. A
+  device that has been away so long that a hub no longer holds the history it
+  missed is refused rather than left silently incomplete: this section says
+  "too far behind, re-fill required", its own recent changes still reach the
+  hub, and the remedy is re-filling from the hub
+  (\`npm run local:restore -- --from-url\`, documented in the supervisor
+  README).
 - **Devices that sync from this instance.** **Add device** names a new one
   and shows its access token exactly once; copy it into that device's setup,
   because it cannot be shown again. A new device can be added **pull-only**,
