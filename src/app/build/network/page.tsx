@@ -9,12 +9,23 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { relativeTime } from "@/lib/relative-time";
-import { gatherSyncStatus, readSyncHubs, type FullSyncStatus } from "@/lib/sync/client";
+import {
+  gatherSyncStatus,
+  hubCadence,
+  hubFallback,
+  readSyncHubs,
+  type FullSyncStatus,
+  type HubConfig,
+} from "@/lib/sync/client";
 import { listPeers, type PeerSummary } from "@/lib/sync/peers";
 import SyncedDevices from "@/components/updates/SyncedDevices";
 import SyncModeToggle from "@/components/updates/SyncModeToggle";
-import { AddHub, RemoveHub } from "@/components/network/HubActions";
+import { AddHub, HubSettings, RemoveHub } from "@/components/network/HubActions";
 import ReleasePushButton from "@/components/network/ReleasePushButton";
+import {
+  FallbackApprovalBlock,
+  FallbackPromptBlock,
+} from "@/components/network/FallbackPrompt";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +50,11 @@ export default async function Network() {
   if (!owner) redirect("/sign-in");
 
   let sync: FullSyncStatus = { enabled: false };
-  let hubUrls: string[] = [];
+  let hubs: HubConfig[] = [];
   try {
     sync = await gatherSyncStatus();
-    hubUrls = (await readSyncHubs()).map((h) => h.url);
+    // Tokens are never rendered; only url + the two ADR-210 axes are read.
+    hubs = await readSyncHubs();
   } catch {
     // A database without the sync tables just shows the empty states.
   }
@@ -66,11 +78,25 @@ export default async function Network() {
         <em>from</em> it. Both directions are managed here.
       </p>
 
+      {/* ── The fallback decision, when there is one (ADR-210) ──────────── */}
+      {sync.enabled && sync.fallbackPrompt && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Needs your decision</h2>
+          <FallbackPromptBlock prompt={sync.fallbackPrompt} />
+        </section>
+      )}
+      {sync.enabled && !sync.fallbackPrompt && sync.fallbackApproval && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Running on a backup</h2>
+          <FallbackApprovalBlock approval={sync.fallbackApproval} />
+        </section>
+      )}
+
       {/* ── Hubs this instance syncs to ─────────────────────────────────── */}
       <section className="mt-8">
         <h2 className="ui-section-label">Hubs this instance syncs to</h2>
         <Card>
-          {hubUrls.length === 0 ? (
+          {hubs.length === 0 ? (
             <p className="text-sm text-ink-muted">
               This instance does not sync to any hub. It works entirely on its
               own data. Add a hub to start exchanging changes with another
@@ -78,27 +104,42 @@ export default async function Network() {
             </p>
           ) : (
             <ul className="divide-y divide-line">
-              {hubUrls.map((url, i) => {
+              {hubs.map((hub, i) => {
+                const url = hub.url;
                 const h = hubStatusByUrl.get(url);
-                const isActive = sync.enabled && sync.activeHubIndex === i && sync.state !== "offline";
+                const reading = h?.pulling ?? hubFallback(hub) === "automatic";
+                const isActive =
+                  sync.enabled && sync.activeHubIndex === i && sync.state !== "offline";
                 return (
                   <li key={url} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
-                    <StatusDot
-                      tone={h?.lastError ? "warn" : h?.lastSyncAt ? "ok" : "info"}
-                    />
-                    <span className="min-w-0 flex-1">
+                    <StatusDot tone={h?.lastError ? "warn" : h?.lastSyncAt ? "ok" : "info"} />
+                    <span className="min-w-0 flex-1 basis-64">
                       <span className="block truncate font-mono text-sm text-ink">{url}</span>
+                      <span className="ui-meta block text-ink-subtle">
+                        {i + 1}
+                        {i === 0 ? " · highest priority" : ""}
+                        {isActive ? " · in use" : ""}
+                        {" · "}
+                        {reading
+                          ? "sending and reading"
+                          : "sending only, until you approve reading"}
+                        {" · "}
+                        {h?.lastSyncAt ? `synced ${relativeTime(h.lastSyncAt)}` : "no sync yet"}
+                        {h?.behindOps !== null && h?.behindOps !== undefined && h.behindOps > 0
+                          ? ` · ${h.behindOps} of your changes not delivered`
+                          : ""}
+                      </span>
                       {h?.lastError && (
                         <span className="ui-meta block text-amber-400">{h.lastError}</span>
                       )}
                     </span>
-                    <span className="ui-meta text-ink-subtle">
-                      {i === 0 ? "Primary" : "Backup"}
-                      {isActive ? " · in use" : ""}
-                    </span>
-                    <span className="ui-meta text-ink-subtle">
-                      {h?.lastSyncAt ? `synced ${relativeTime(h.lastSyncAt)}` : "no sync yet"}
-                    </span>
+                    <HubSettings
+                      url={url}
+                      cadence={hubCadence(hub)}
+                      fallback={hubFallback(hub)}
+                      canMoveUp={i > 0}
+                      canMoveDown={i < hubs.length - 1}
+                    />
                     <RemoveHub url={url} />
                   </li>
                 );
@@ -109,8 +150,11 @@ export default async function Network() {
             <AddHub />
           </div>
           <p className="ui-meta mt-3 text-ink-subtle">
-            Order matters: changes go to the first hub that answers, and the
-            rest are fallbacks. Repointing this instance at a{" "}
+            Every hub gets your changes, each on its own schedule — a backup
+            that stops receiving is not a backup. Order is priority: this
+            instance reads from the first automatic hub that answers, and asks
+            before it starts reading from an &ldquo;ask first&rdquo; hub.
+            Repointing this instance at a{" "}
             <em>different primary</em> is not a setting — its data has to be
             re-filled from the new hub first: stop the supervisor, then{" "}
             <Mono>npm run local:restore -- --from-url &lt;new hub db&gt;</Mono>.
