@@ -49,6 +49,15 @@ flows the right way before letting it push:
 npm run local:supervisor
 ```
 
+**One supervisor per `dataDir`, enforced.** It takes
+`<dataDir>/supervisor.lock` before starting Postgres; a second start refuses
+and names the owning pid. A stale lock (any hard kill, any reboot) is taken
+over automatically. So if you register the boot task below AND run it in a
+terminal, the second one exits instead of fighting the first over the ports,
+the cluster and the update signal. Note the supervisor does not restart
+*itself* when an update changes `supervisor/*.mjs` — the app flips, but the
+supervisor process keeps running its old code until you restart it.
+
 First run: initdb, then a full build of the repo's current HEAD (npm ci +
 `next build` + migrate), then the app serves on `appPort`. Ctrl+C stops the
 app, then Postgres, in order.
@@ -135,9 +144,22 @@ by hand, then `npm run local:setup`).
   rows natively with the `pg` driver the app already ships rather than
   shelling out to `pg_dump` (the schema comes from running our own
   migrations, not from a portable dump).
-- **Start empty** — migrate + seed a fresh database; a syncing spoke then
-  reconciles everything from the hub on its first pull (correct, but slower
-  for a large dataset).
+- **Start empty** — migrate + seed a fresh database. **For a HUB, or a peer
+  you intend to fill by hand, only.** A spoke that starts empty does NOT
+  fill itself from the hub: see the warning below.
+
+> **⚠️ Start-empty does not fill a spoke, and this file used to say it did.**
+> Sync ships `sync_ops` rows and nothing else — there is no snapshot path in
+> the protocol — so a spoke can only ever receive **what the oplog still
+> holds**. The oplog begins at migration `0054` (2026-08-22) and is pruned at
+> `SYNC_OPS_RETENTION_DAYS` (14 days), so a spoke that starts empty ends up
+> with a permanently partial database, **silently**. Verified on Brandon's
+> laptop on 2026-08-23: the whole prod oplog was 5 rows spanning a few hours,
+> against 23,462 items. Fill a spoke from a backup file or a live pull, and
+> check that the fill is newer than the oplog's own start; if it is not, the
+> gap between them is lost. Until a hub-side bootstrap endpoint exists (see
+> `next_steps.md`), the **live pull is the only fill that is both complete
+> and current**, because the newest weekly dump can be older than the oplog.
 
 Only the restore-from-file path needs the Postgres client tools (`pg_restore`)
 on PATH — `winget install PostgreSQL.PostgreSQL.18` on Windows,
