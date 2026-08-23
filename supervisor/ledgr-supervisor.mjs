@@ -108,6 +108,12 @@ function lockHash(dir) {
 const requireFromRepo = createRequire(join(cfg.repoDir, "package.json"));
 const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
 
+// Which @embedded-postgres/<platform> package holds the binaries, so pg_ctl
+// can be found beside the postgres binary for a graceful shutdown.
+const PG_PLATFORM_PKG = `${process.platform === "win32" ? "windows" : process.platform}-${
+  process.arch === "arm64" ? "arm64" : "x64"
+}`;
+
 const pgDir = join(cfg.dataDir, "pg");
 const firstRun = !existsSync(join(pgDir, "PG_VERSION"));
 const pg = new EmbeddedPostgres({
@@ -510,17 +516,56 @@ function releaseLock() {
 }
 
 
+/**
+ * Shut the cluster down the way Postgres wants to be shut down.
+ *
+ * embedded-postgres's own `stop()` runs `taskkill /pid <postmaster> /f /t` on
+ * Windows, which is not a shutdown at all — it is a kill, so every single stop
+ * leaves the cluster replaying WAL on the next start ("database system was not
+ * properly shut down; automatic recovery in progress", observed on the dev rig
+ * 2026-08-23). Recovery is safe, but it is not free, and a hub that gets
+ * stopped for every update should not pay it every time.
+ *
+ * `pg_ctl stop -m fast` is the ordinary answer: refuse new connections, roll
+ * back open transactions, checkpoint, exit. pg_ctl ships in the same bin
+ * directory as the postgres binary embedded-postgres already resolved.
+ */
+function stopPostgresGracefully() {
+  let bin;
+  try {
+    // resolve() lands on the package's dist entry; the binaries live one level
+    // up in native/bin.
+    bin = dirname(dirname(requireFromRepo.resolve("@embedded-postgres/" + PG_PLATFORM_PKG)));
+  } catch {
+    return false;
+  }
+  const pgCtl = join(bin, "native", "bin", isWin ? "pg_ctl.exe" : "pg_ctl");
+  if (!existsSync(pgCtl)) return false;
+  // -w waits for it to finish; -t bounds that wait so a wedged cluster cannot
+  // hang shutdown forever (the forced stop below is the fallback).
+  const res = run(pgCtl, ["stop", "-D", pgDir, "-m", "fast", "-w", "-t", "30"]);
+  if (!res.ok) log("pg_ctl stop did not complete; falling back to a forced stop", {
+    detail: res.stderr || res.stdout,
+  });
+  return res.ok;
+}
+
 async function shutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
   log("shutting down", { sig });
   if (restartTimer) clearTimeout(restartTimer);
   await stopApp();
+  const clean = stopPostgresGracefully();
   try {
-    await pg.stop();
+    // Either finishes the job (when pg_ctl could not) or just releases the
+    // handle. Bounded: once the postmaster has already exited, this library's
+    // promise waits on an "exit" event that has been and gone.
+    await Promise.race([pg.stop(), new Promise((r) => setTimeout(r, clean ? 2000 : 20000))]);
   } catch (err) {
     log("postgres stop failed", { error: String(err) });
   }
+  log("postgres stopped", { clean });
   releaseLock();
   process.exit(0);
 }

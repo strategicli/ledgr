@@ -474,5 +474,20 @@ check(
   );
 }
 
+// The cluster has to be SHUT DOWN, not killed. embedded-postgres stops it with
+// `taskkill /f /t` on Windows, so every stop left the next start replaying WAL
+// ("database system was not properly shut down") — seen on the dev rig. Asking
+// pg_ctl for a fast shutdown first is what makes "stops cleanly" true.
+check(
+  "shutdown asks pg_ctl for a real shutdown before falling back to the library kill",
+  /pg_ctl/.test(supervisorSrc) &&
+    supervisorSrc.includes('"-m", "fast"') &&
+    supervisorSrc.includes("stopPostgresGracefully")
+);
+check(
+  "the forced fallback is still there, and bounded so a wedged cluster cannot hang shutdown",
+  supervisorSrc.includes("Promise.race([pg.stop()")
+);
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);
