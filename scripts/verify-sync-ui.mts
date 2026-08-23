@@ -6,6 +6,7 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  effectiveConfirmLargePush,
   effectiveHubs,
   effectiveSyncMode,
   getSyncStatus,
@@ -338,6 +339,14 @@ const base: SyncStatus = {
   check("no override falls back to the env value", effectiveSyncMode(undefined, "pull-only") === "pull-only");
   check("garbage in the override is ignored, not obeyed", effectiveSyncMode("yolo", "pull-only") === "pull-only");
   check("nothing anywhere means full (the shipped default)", effectiveSyncMode(null, undefined) === "full");
+}
+
+// ── Releasing a held first push: either source releases, stored is bool-true ─
+{
+  check("a stored release flag releases", effectiveConfirmLargePush(true, undefined));
+  check("the env var releases as before", effectiveConfirmLargePush(undefined, "true") && effectiveConfirmLargePush(false, "1"));
+  check("nothing set holds", !effectiveConfirmLargePush(undefined, undefined));
+  check("garbage in the store never releases", !effectiveConfirmLargePush("yes", "0") && !effectiveConfirmLargePush(1, undefined));
 }
 
 // ── The effective hub list: stored wins, even empty (ADR-209) ───────────────

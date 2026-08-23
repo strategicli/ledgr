@@ -166,6 +166,48 @@ export async function writeSyncMode(mode: SyncMode): Promise<void> {
     .onConflictDoUpdate({ target: jobState.key, set: { value: { mode }, updatedAt: new Date() } });
 }
 
+// ── Releasing a held first push (GUI-settable, one-shot) ────────────────────
+//
+// Guardrail 2 holds a first push whose pending oplog exceeds maxFirstPush.
+// The release used to be `confirmLargePush: true` in supervisor config plus a
+// restart — exactly the friction the mode toggle removed. The owner can now
+// release from Build → Network; the flag lives in job_state (never synced)
+// and the loop re-reads it every tick.
+//
+// ONE-SHOT on purpose: the loop clears the stored flag as soon as the first
+// push has gone through. A flag that stayed true would let a FUTURE process's
+// bad restore sail past the guard — the exact failure the guard exists for.
+// The env var (supervisor config) keeps its standing meaning for people who
+// set it deliberately; only the stored flag self-clears.
+const SYNC_CONFIRM_KEY = "sync:confirmLargePush";
+
+/** The precedence rule, pure: either source releases the hold. */
+export function effectiveConfirmLargePush(stored: unknown, envRaw: string | undefined): boolean {
+  return stored === true || /^(1|true)$/i.test(envRaw ?? "");
+}
+
+export async function readStoredConfirmLargePush(): Promise<boolean> {
+  const rows = await getDb()
+    .select({ value: jobState.value })
+    .from(jobState)
+    .where(eq(jobState.key, SYNC_CONFIRM_KEY));
+  return (rows[0]?.value as { confirm?: unknown } | undefined)?.confirm === true;
+}
+
+export async function writeStoredConfirmLargePush(confirm: boolean): Promise<void> {
+  if (!confirm) {
+    await getDb().delete(jobState).where(eq(jobState.key, SYNC_CONFIRM_KEY));
+    return;
+  }
+  await getDb()
+    .insert(jobState)
+    .values({ key: SYNC_CONFIRM_KEY, value: { confirm: true } })
+    .onConflictDoUpdate({
+      target: jobState.key,
+      set: { value: { confirm: true }, updatedAt: new Date() },
+    });
+}
+
 // ── The hub list (GUI-editable, per instance — ADR-209) ─────────────────────
 //
 // Supervisor config (env LEDGR_SYNC_HUBS + the single LEDGR_SYNC_TOKEN) is
@@ -293,8 +335,9 @@ export function checkFirstPush(opts: {
       reason:
         `First push held: ${opts.pendingCount} pending changes exceed the ` +
         `first-push limit of ${opts.maxFirstPush}. Look at what is pending, ` +
-        `then either raise maxFirstPush or set confirmLargePush: true in ` +
-        `supervisor/config.json and restart to release it.`,
+        `then release it from Build → Network ("Send anyway"), raise ` +
+        `maxFirstPush, or set confirmLargePush: true in ` +
+        `supervisor/config.json and restart.`,
     };
   }
   return { hold: false, done: true };
@@ -617,6 +660,11 @@ export function startSyncLoop(): void {
       // page's hub edits take effect on the next exchange, not the next
       // restart.
       guard.mode = await readSyncMode();
+      const storedConfirm = !shared.firstPushDone && (await readStoredConfirmLargePush());
+      guard.confirmLargePush = effectiveConfirmLargePush(
+        storedConfirm,
+        process.env.LEDGR_SYNC_CONFIRM_LARGE_PUSH
+      );
       const hubs = await readSyncHubs();
       if (hubs.length === 0) return;
       const head = await getDb()
@@ -629,6 +677,12 @@ export function startSyncLoop(): void {
       if (due || wrote || lastSeenSeq < 0) {
         await exchange(hubs, deviceId, guard);
         lastFullExchange = Date.now();
+      }
+      // One-shot: the stored release did its job the moment the first push
+      // went through; clear it so it can never release a future process's
+      // held push (a bad restore, for instance) by leftover accident.
+      if (storedConfirm && shared.firstPushDone) {
+        await writeStoredConfirmLargePush(false);
       }
       lastSeenSeq = maxSeq;
     } catch (err) {

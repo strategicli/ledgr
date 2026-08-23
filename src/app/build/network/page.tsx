@@ -14,6 +14,7 @@ import { listPeers, type PeerSummary } from "@/lib/sync/peers";
 import SyncedDevices from "@/components/updates/SyncedDevices";
 import SyncModeToggle from "@/components/updates/SyncModeToggle";
 import { AddHub, RemoveHub } from "@/components/network/HubActions";
+import ReleasePushButton from "@/components/network/ReleasePushButton";
 
 export const dynamic = "force-dynamic";
 
@@ -157,9 +158,18 @@ export default async function Network() {
                 <>
                   <dt className="ui-meta text-ink-subtle">Why</dt>
                   <dd className="text-sm text-amber-400">
-                    {sync.holdReason === "first_push_size"
-                      ? `${sync.heldOpsCount} pending change${sync.heldOpsCount === 1 ? "" : "s"} exceed the first-push limit. Raise maxFirstPush in supervisor/config.json, or set confirmLargePush: true, then restart to release it.`
-                      : `This device's clock differs from the hub's by about ${Math.round(Math.abs(sync.skewMs ?? 0) / 1000)}s, too far to trust which edit is newer. Fix the clock, then restart.`}
+                    {sync.holdReason === "first_push_size" ? (
+                      <>
+                        {sync.heldOpsCount} pending change
+                        {sync.heldOpsCount === 1 ? "" : "s"} exceed the first-push limit — the
+                        guard against a bad restore pushing a whole database as edits. If these
+                        are real changes (an import, a bulk edit), release them:
+                        <br />
+                        <ReleasePushButton heldOpsCount={sync.heldOpsCount ?? 0} />
+                      </>
+                    ) : (
+                      `This device's clock differs from the hub's by about ${Math.round(Math.abs(sync.skewMs ?? 0) / 1000)}s, too far to trust which edit is newer. Fix the clock, then restart.`
+                    )}
                   </dd>
                 </>
               )}
