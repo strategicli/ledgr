@@ -20,7 +20,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | `appPort` / `dbPort` | The app and Postgres ports (defaults 3000 / 5433). |
 | `ownerEmail` | Becomes `LEDGR_LOCAL_OWNER_EMAIL`: the no-login local owner identity (plan decision 5). Must match the owner's `users.email`. |
 | `hubs` / `deviceToken` | Ordered hub URLs plus this device's sync token (minted on the hub). Both set arms the in-app sync loop; either missing leaves sync off. |
-| `syncMode` | `full` (default) pushes and pulls. `pull-only` never sends this device's own changes to the hub — only receives. Threaded through as `LEDGR_SYNC_MODE`. See "Arming sync safely" below. |
+| `syncMode` | The **initial** push mode only: `full` (default) pushes and pulls, `pull-only` never sends this device's own changes. Threaded through as `LEDGR_SYNC_MODE`. Once the app is running, the owner changes it from **/build/updates → Sync → Mode**, which stores an override in `job_state` that the sync loop re-reads every tick — so arming or disarming a peer needs no config edit and no restart, and this key stops being consulted. See "Arming sync safely" below. |
 | `update.mode` | `prompted` (default): updates apply only when the app's Update button writes the signal file. `auto`: the supervisor also polls git every `pollIntervalMs` and applies on its own. |
 | `cadence` | Sync knobs, passed through as `LEDGR_SYNC_PUSH_DEBOUNCE_MS` / `LEDGR_SYNC_PULL_MS`. |
 | `syncGuardrails.maxFirstPush` | This device's very first push (this process's lifetime) is held rather than sent if the pending oplog exceeds this count (default 500) — the guard against a bad restore or bug dumping the whole database at the hub as edits. Only the first push is gated; a busy device that's been syncing fine is never throttled. Threaded as `LEDGR_SYNC_MAX_FIRST_PUSH`. |
@@ -52,10 +52,18 @@ flows the right way before letting it push:
    pull-only device's push is refused with 403 **before any op is applied**,
    that the same device can still pull, that a schema-version mismatch is a
    409 naming both versions, and that revoked and unknown tokens are refused.
-3. Once you're satisfied, flip it to full either from the hub (the device row's
-   "Allow push" button) or by setting `"syncMode": "full"` here and
-   restarting. The hub-side flip takes effect immediately, even if this
-   device is offline or misconfigured — that's the point of doing it there.
+3. Once you're satisfied, flip it to full. **Both sides have a say, and both
+   have a button:**
+   - the **hub**, per device: `/build/updates` → Synced devices → "Allow push"
+     (confirms with the consequences). This is the authoritative one — it takes
+     effect immediately even if the device is offline or misconfigured.
+   - the **spoke**, for itself: `/build/updates` → Sync → Mode → "Allow push
+     from this device". Stored in `job_state` and re-read every tick, so it
+     applies within seconds without a restart.
+
+   A spoke set to full still gets a 403 if the hub has not allowed that device,
+   so the safe order is: prove the pull direction, then allow it on the hub,
+   then allow it on the spoke.
 
 ## Run
 

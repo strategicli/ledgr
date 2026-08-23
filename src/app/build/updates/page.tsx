@@ -21,6 +21,7 @@ import { gatherSyncStatus, type FullSyncStatus } from "@/lib/sync/client";
 import { listPeers, type PeerSummary } from "@/lib/sync/peers";
 import { getUpdateReport } from "@/lib/updates";
 import SyncedDevices from "@/components/updates/SyncedDevices";
+import SyncModeToggle from "@/components/updates/SyncModeToggle";
 import UpdateButton from "@/components/updates/UpdateButton";
 
 export const dynamic = "force-dynamic";
@@ -331,6 +332,7 @@ export default async function Updates() {
                 {sync.mode === "pull-only"
                   ? "Pull-only — this instance never pushes changes to the hub"
                   : "Full — pushes and pulls"}
+                <SyncModeToggle mode={sync.mode} />
               </dd>
 
               <dt className="ui-meta text-ink-subtle">State</dt>

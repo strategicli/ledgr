@@ -6,6 +6,7 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  effectiveSyncMode,
   getSyncStatus,
   checkFirstPush,
   classifySkew,
@@ -321,6 +322,20 @@ const base: SyncStatus = {
   // Skew can be negative (hub behind spoke) and still reports as-is.
   const s = buildSyncStatus(["h1"], { ...base, skewMs: -75000, skewWarn: true }, 0, "full");
   check("negative skew round-trips through the status shape", s.enabled === true && s.skewMs === -75000);
+}
+
+// ── The effective push mode: a stored override beats the env default ────────
+//
+// LEDGR_SYNC_MODE used to be the only source, which meant arming a spoke took
+// a config-file edit and a restart. The override lives in job_state (outside
+// the synced set, so it can never replicate to another peer) and the loop
+// re-reads it per tick.
+{
+  check("a stored override wins over the env default", effectiveSyncMode("pull-only", "full") === "pull-only");
+  check("the other direction too", effectiveSyncMode("full", "pull-only") === "full");
+  check("no override falls back to the env value", effectiveSyncMode(undefined, "pull-only") === "pull-only");
+  check("garbage in the override is ignored, not obeyed", effectiveSyncMode("yolo", "pull-only") === "pull-only");
+  check("nothing anywhere means full (the shipped default)", effectiveSyncMode(null, undefined) === "full");
 }
 
 // ── The loop's status must live on globalThis, not in module scope ──────────
