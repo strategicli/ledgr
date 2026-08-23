@@ -302,6 +302,23 @@ check(
     restoreSrc.includes("truncate sync_peers") &&
     restoreSrc.includes("sync:cursor:")
 );
+// Regression, 2026-08-23: job_state is INSIDE the fill's copy set, so every
+// per-instance key in it must be cleared after a fill or the peer inherits the
+// source's. `sync:mode` (the GUI push-mode override) shipped the same day the
+// clearing list forgot it, which would have silently armed or disarmed push on
+// a re-filled peer. Both fill paths — dump and live pull — have to clear it.
+{
+  // Count the DELETE statements, not mentions: a comment saying it happens
+  // must not satisfy this.
+  const clears = restoreSrc
+    .split("\n")
+    .filter((l) => l.includes("delete from job_state") && l.includes("sync:mode")).length;
+  check(
+    "BOTH fill paths clear the push-mode override in an actual DELETE",
+    clears >= 2,
+    `${clears} statement(s)`
+  );
+}
 check(
   "the restore script re-seeds a fresh device identity",
   /insert into sync_device/.test(restoreSrc)

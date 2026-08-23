@@ -20,7 +20,8 @@
 // Order: start the embedded cluster → drop/recreate the local `ledgr`
 // database → migrate it → copy every table's rows (skipping the ones a
 // spoke must never clone: sync_ops, sync_peers, sync_device) → clear the
-// job_state sync cursors, which were the HUB's cursors, not this peer's.
+// per-instance job_state rows, which were the HUB's, not this peer's: the
+// sync cursors and the `sync:mode` push-mode override.
 // sync_device is never in that copy set, and migrating a fresh database
 // already self-assigns this peer its own device identity (migration 0054's
 // seed insert) — so there is nothing left to "replace" the way the dump path
@@ -195,7 +196,11 @@ async function restoreFromFile(dumpPath, cfg) {
       "insert into sync_device (id) select gen_random_uuid() where not exists (select 1 from sync_device)"
     );
     await db.query("truncate sync_peers");
-    await db.query("delete from job_state where key like 'sync:cursor:%'");
+    // Cursors AND the push-mode override: both are per-instance job_state, and
+    // job_state is inside the copy set, so a fill would otherwise adopt the
+    // SOURCE's values. A cloned cursor makes a spoke skip ops; a cloned mode
+    // silently arms or disarms push on a peer that never asked for it.
+    await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
     await db.end();
 
     console.log(
@@ -259,10 +264,12 @@ async function pullFromUrl(url, cfg) {
       await dest.end().catch(() => {});
     }
 
-    console.log("Clearing the hub's sync cursors (this peer starts its own fresh)…");
+    console.log("Clearing the hub's sync cursors and push mode (this peer starts its own)…");
     const db = new pg.Client({ connectionString: dbUrl });
     await db.connect();
-    await db.query("delete from job_state where key like 'sync:cursor:%'");
+    // Same reasoning as the dump path above: per-instance job_state must not
+    // be inherited from the source. `sync:mode` is the GUI push-mode override.
+    await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
     await db.end();
 
     console.log(
