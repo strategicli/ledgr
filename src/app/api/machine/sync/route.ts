@@ -6,7 +6,12 @@ import { verifySyncDevice } from "@/lib/sync/auth";
 import { latestSchemaVer } from "@/lib/sync/version";
 import { versionGate, type SyncOp } from "@/lib/sync/engine";
 import { applySyncOps } from "@/lib/sync/apply";
-import { pullOnlyRejectsPush } from "@/lib/sync/peers";
+import {
+  cursorTooStale,
+  dedupePushedOps,
+  pullOnlyRejectsPush,
+  readPrunedThrough,
+} from "@/lib/sync/peers";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // The hub side of the sync spine (plans/local-hub-idea-to-cutover.html,
@@ -72,7 +77,18 @@ export async function POST(request: Request) {
 
   try {
     const db = getDb();
-    const result = await applySyncOps(ops);
+    // Push dedupe (ADR-208): drop ops this device already pushed. Before
+    // this, a re-delivered batch (response lost after apply, or a client
+    // looping on a refusal below) was re-APPLIED, and each re-apply's row
+    // writes had their triggers log fresh hub ops — unbounded oplog growth.
+    const newOps = dedupePushedOps(ops, peer.lastPushedSeq);
+    if (newOps.length < ops.length) {
+      log.warn("dropped already-pushed ops (re-delivery)", {
+        peer: peer.name,
+        dropped: ops.length - newOps.length,
+      });
+    }
+    const result = await applySyncOps(newOps);
     if (result.rejected > 0) {
       // Owner-scope or unknown-table refusals are visible, never silent.
       log.warn("sync ops rejected", { peer: peer.name, rejected: result.rejected });
@@ -88,6 +104,37 @@ export async function POST(request: Request) {
         lastPushedSeq: sql`greatest(${syncPeers.lastPushedSeq}, ${maxPushed})`,
       })
       .where(eq(syncPeers.deviceId, peer.deviceId));
+
+    // The staleness refusal (ADR-208), AFTER the push half on purpose: a
+    // waking peer's local edits still drain to the hub (they are ordinary
+    // new ops, merged by the same LWW rules as any offline edit), because
+    // the remedy for staleness is a re-fill, and a re-fill destroys
+    // anything local that never pushed. The pull half is what must refuse:
+    // ops in (sinceSeq, prunedThrough] were pruned, so serving "what's
+    // left" would hand this peer a permanently partial database that
+    // reports synced — the exact silent failure Principle 9 forbids.
+    const prunedThrough = await readPrunedThrough();
+    if (cursorTooStale(sinceSeq, prunedThrough)) {
+      log.warn("peer cursor predates the oldest retained op; refusing", {
+        peer: peer.name,
+        sinceSeq,
+        prunedThrough,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "cursor too far behind: ops this peer never pulled have been pruned; re-fill required",
+          sinceSeq,
+          prunedThrough,
+          // The push half above DID run — the client may advance its push
+          // cursor for the ops it sent even though the pull was refused.
+          pushApplied: true,
+          applied: result.actions,
+          rejected: result.rejected,
+        },
+        { status: 410 }
+      );
+    }
 
     // Pull: our ops the peer hasn't seen, minus echoes of its own writes
     // (origin_device_id stamped by the apply layer where the driver allows).

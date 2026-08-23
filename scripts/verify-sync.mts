@@ -32,7 +32,13 @@ import {
   type WriteAction,
 } from "../src/lib/sync/engine";
 import { applySyncOps, passageBodyFromAction, planActions, type SyncDb } from "../src/lib/sync/apply";
-import { pruneSyncOps, SYNC_OPS_RETENTION_DAYS } from "../src/lib/sync/peers";
+import {
+  cursorTooStale,
+  dedupePushedOps,
+  pruneSyncOps,
+  SYNC_OPS_RETENTION_DAYS,
+  SYNC_PRUNED_THROUGH_KEY,
+} from "../src/lib/sync/peers";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -284,6 +290,42 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
     "apply wires the plan and runs items deletes as one statement",
     applySrc.includes("planActions(") && applySrc.includes("delete from items where id = any(")
   );
+}
+
+// (14) the staleness refusal decision (ADR-208). The bug this guards: the
+// route served `seq > sinceSeq` with no oldest-retained comparison, so a
+// peer whose cursor pointed into pruned territory received a partial stream
+// and reported synced. Reintroducing that (weakening cursorTooStale or
+// unwiring it from the route) fails these checks.
+{
+  check("a cursor below prunedThrough is stale", cursorTooStale(5, 10));
+  check("a cursor at prunedThrough is fine (needs only ops above it)", !cursorTooStale(10, 10));
+  check("a cursor past prunedThrough is fine", !cursorTooStale(11, 10));
+  check("cursor 0 is a fresh fill, never stale", !cursorTooStale(0, 10));
+  check("a hub that never pruned refuses nobody", !cursorTooStale(5, 0));
+}
+
+// (15) push dedupe (same ADR): a re-delivered batch must be dropped, not
+// re-applied — each re-apply's row writes had their triggers log fresh hub
+// ops, growing the oplog without bound.
+{
+  const ops = [{ seq: 1 }, { seq: 2 }, { seq: 3 }];
+  check("already-pushed ops are dropped", JSON.stringify(dedupePushedOps(ops, 2)) === JSON.stringify([{ seq: 3 }]));
+  check("a fresh device drops nothing", dedupePushedOps(ops, 0).length === 3);
+  check("a fully re-delivered batch drops everything", dedupePushedOps(ops, 3).length === 0);
+}
+
+// (16) structural: the decision functions above only guard anything if the
+// route and client actually call them. Source-level, so a refactor that
+// silently unwires either fails here rather than in production.
+{
+  const route = readFileSync("src/app/api/machine/sync/route.ts", "utf8");
+  check("the sync route wires cursorTooStale + readPrunedThrough", route.includes("cursorTooStale(") && route.includes("readPrunedThrough("));
+  check("the sync route wires the push dedupe", route.includes("dedupePushedOps("));
+  check("the sync route refuses staleness with 410", /status:\s*410/.test(route));
+  const client = readFileSync("src/lib/sync/client.ts", "utf8");
+  check("the sync client handles the 410 refusal", client.includes("res.status === 410"));
+  check("the sync client never advances the pull cursor on 410", client.includes("NEVER the pull"));
 }
 
 // ── Tier (b): two real databases, offline edits, convergence ────────────────
@@ -622,11 +664,30 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
       `pruned=${partial.syncOpsPruned} lo=${remaining.rows[0].lo} mid=${mid}`
     );
 
+    // ADR-208: the prune records the highest seq it deleted, which is the
+    // boundary the staleness refusal compares peer cursors against.
+    const pt = await A.query(`select (value->>'seq')::int as seq from job_state where key = $1`, [
+      SYNC_PRUNED_THROUGH_KEY,
+    ]);
+    check(
+      "the prune records prunedThrough at the highest deleted seq",
+      Number(pt.rows[0]?.seq) === mid,
+      `prunedThrough=${pt.rows[0]?.seq} expected=${mid}`
+    );
+
     // Revoked devices don't hold history: the cursor guard falls away and the
     // time floor alone applies (the no-peers case prod runs today).
     await A.query(`update sync_peers set revoked = true`);
     await pruneSyncOps({ db: A.db });
     check("a revoked peer no longer pins the oplog", (await opCount(A)) === 0);
+    const pt2 = await A.query(`select (value->>'seq')::int as seq from job_state where key = $1`, [
+      SYNC_PRUNED_THROUGH_KEY,
+    ]);
+    check(
+      "prunedThrough advances monotonically as later prunes delete deeper",
+      Number(pt2.rows[0]?.seq) > mid,
+      `prunedThrough=${pt2.rows[0]?.seq} mid=${mid}`
+    );
 
     // The floor is absolute: a fresh op survives even with nobody to serve.
     await A.query(`delete from sync_peers`);
