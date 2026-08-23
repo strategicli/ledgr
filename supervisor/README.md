@@ -99,6 +99,39 @@ device identity is simply this peer's own (never the hub's) either way. If
 this peer syncs against a hub, its first pull/push cycle reconciles
 everything newer than the fill.
 
+### After an update, check what a PUSHING peer is about to send
+
+Reads are safe: six real pages (Today, Tasks, search, an item, Build, home)
+were measured on 2026-08-23 and produced **zero** pushable ops, so browsing a
+peer never queues anything.
+
+Migrations are the exception, and the reason this section exists. A data
+migration runs against **this peer's own database** and its writes are this
+peer's OWN ops, so they push. `0052` (`UPDATE types SET is_system = true`) and
+`0053` (appending a property to `person`) are exactly that shape: harmless on
+a pull-only peer, but on a peer with push enabled they queue one op per row
+touched and send them to the hub, where the same migration has already run.
+The merge is field-level last-writer-wins, so the peer's copy would win on
+timestamp even though the hub's value is identical or newer.
+
+Nothing has gone wrong from this yet. The habit that prevents it, on any peer
+whose `syncMode` is `full`:
+
+```sql
+-- run against the peer, right after an update completes
+select seq, tbl, kind, row_id from sync_ops
+ where origin_device_id is null
+   and seq > (select (value->>'push')::bigint from job_state
+               where key like 'sync:cursor:%')
+ order by seq;
+```
+
+Zero rows is the expected answer. A row per migrated record means the
+migration queued a push: decide whether the hub wants those writes before the
+next exchange sends them, and remember `syncGuardrails.maxFirstPush` only
+gates the FIRST push of a process lifetime, so a restart is what arms that
+guard again.
+
 ## Update flow and keep-last-good
 
 "Update now" in the app (or the auto poll) writes `<dataDir>/update-requested`.
