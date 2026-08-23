@@ -403,6 +403,19 @@ export function nextDueAfter(opts: {
 }
 
 /**
+ * A hub's next-due time, corrected for a config change since it was set.
+ *
+ * The rig caught this live: per-hub schedules live in memory, so a hub set to
+ * `daily` and then switched back to `continuous` kept the due time the daily
+ * cadence had written — up to 24 hours away — and was silently skipped every
+ * round in between. Clamping to the CURRENT cadence means a schedule change
+ * takes effect within one interval, like every other GUI sync setting.
+ */
+export function clampNextDue(nextDueAt: number, now: number, cadenceMs: number): number {
+  return Math.min(nextDueAt, now + cadenceMs);
+}
+
+/**
  * Should the owner be asked to start pulling from an emergency hub? Only when
  * every automatic hub has been failing for longer than the threshold, an
  * emergency hub exists, and nothing is approved already.
@@ -980,6 +993,13 @@ async function exchange(
   approval: FallbackApproval | null
 ): Promise<void> {
   const now = Date.now();
+  // Forget the runtime state of hubs no longer configured, so a hub that is
+  // removed and re-added starts clean (fresh first-push gate, due at once)
+  // rather than inheriting a schedule and guard state from its last life.
+  const configured = new Set(hubs.map((hh) => hh.url));
+  for (const url of Object.keys(shared.hubRuntime)) {
+    if (!configured.has(url)) delete shared.hubRuntime[url];
+  }
   // Rebuild the per-hub view to the CURRENT list (it is GUI-editable between
   // ticks), carrying prior results forward by url so a hub that succeeded
   // earlier keeps its lastSyncAt while another is being attempted.
@@ -1015,9 +1035,11 @@ async function exchange(
     const hub = hubs[i];
     const rt = hubRuntime(hub.url);
     const isAutomatic = hubFallback(hub) === "automatic";
-    if (rt.nextDueAt > now) continue;
     const cadence = effectiveCadence(hub, approval);
     const cadenceMs = cadenceIntervalMs(cadence, guard.continuousMs);
+    // Honor a cadence the owner changed since this hub was last scheduled.
+    rt.nextDueAt = clampNextDue(rt.nextDueAt, now, cadenceMs);
+    if (rt.nextDueAt > now) continue;
     const pull = shouldPullFrom(hub, approval?.url ?? null);
     if (isAutomatic) automaticAttempted = true;
     try {

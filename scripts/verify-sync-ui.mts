@@ -7,6 +7,7 @@ import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
   cadenceIntervalMs,
+  clampNextDue,
   effectiveCadence,
   effectiveConfirmLargePush,
   effectiveFallbackApproval,
@@ -476,6 +477,39 @@ check(
   check(
     "a continuous hub never waits longer than its cadence on failure",
     nextDueAfter({ now, ok: false, cadenceMs: 10000, retryMs: 60000 }) === now + 10000
+  );
+}
+
+// A schedule already written must not outlive the cadence that wrote it.
+//
+// Caught live on the dev rig 2026-08-23: a hub was set to `daily`, which wrote
+// a due time ~24h out, then switched back to `continuous`. The stale due time
+// won, so the hub was skipped every round for a day — and because the hub in
+// question was the only AUTOMATIC one, the fallback approval it was supposed
+// to clear stayed in force. Silently skipping the primary is the Principle 9
+// shape this whole ADR exists to avoid, so it gets its own guard.
+{
+  const now = 1_000_000_000;
+  const dailyDue = now + CADENCE_DAILY_MS;
+  check(
+    "switching daily → continuous makes the hub due within the new interval",
+    clampNextDue(dailyDue, now, 10_000) === now + 10_000
+  );
+  check(
+    "a due time inside the current cadence is left alone",
+    clampNextDue(now + 3_000, now, 10_000) === now + 3_000
+  );
+  check(
+    "a hub already overdue stays overdue (never pushed into the future)",
+    clampNextDue(now - 5_000, now, 10_000) === now - 5_000
+  );
+  check(
+    "a daily hub that is legitimately scheduled a day out keeps that schedule",
+    clampNextDue(dailyDue, now, CADENCE_DAILY_MS) === dailyDue
+  );
+  check(
+    "a never-scheduled hub (0) is due immediately",
+    clampNextDue(0, now, CADENCE_DAILY_MS) === 0
   );
 }
 
