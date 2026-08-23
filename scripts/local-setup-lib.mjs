@@ -208,6 +208,8 @@ export function configSummary(next, existing = null) {
 // place that knows the command. Re-exported here so the wizard and
 // verify-setup.mts keep their existing imports.
 export {
+  hubUrlHint,
+  parseTailscaleJson,
   schtasksCreateArgs,
   schtasksDeleteArgs,
   schtasksQueryArgs,

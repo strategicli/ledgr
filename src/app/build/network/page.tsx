@@ -21,6 +21,13 @@ import { listPeers, type PeerSummary } from "@/lib/sync/peers";
 import SyncedDevices from "@/components/updates/SyncedDevices";
 import SyncModeToggle from "@/components/updates/SyncModeToggle";
 import { AddHub, HubSettings, RemoveHub } from "@/components/network/HubActions";
+import CopyAddress from "@/components/network/CopyAddress";
+import {
+  readLanIps,
+  readTailscaleState,
+  reachableAddresses,
+  TAILSCALE_ABSENT,
+} from "@/lib/network-addresses";
 import ReleasePushButton from "@/components/network/ReleasePushButton";
 import {
   FallbackApprovalBlock,
@@ -58,6 +65,19 @@ export default async function Network() {
   } catch {
     // A database without the sync tables just shows the empty states.
   }
+  // This instance's own reachable addresses (ADR-212), so adding a spoke is
+  // copy-from-here, paste-into-there. Only meaningful on a local peer: a cloud
+  // deploy's address is its domain and nobody needs telling.
+  const isLocal = !!process.env.LEDGR_SUPERVISOR_DIR;
+  const tailscale = isLocal ? await readTailscaleState() : TAILSCALE_ABSENT;
+  const myAddresses = isLocal
+    ? reachableAddresses({
+        tailscale,
+        lanIps: await readLanIps(),
+        port: Number(process.env.PORT) || 3000,
+      })
+    : [];
+
   let peers: PeerSummary[] = [];
   try {
     peers = await listPeers();
@@ -247,6 +267,50 @@ export default async function Network() {
                 </>
               )}
             </dl>
+          </Card>
+        </section>
+      )}
+
+      {/* ── This instance's own addresses (ADR-212) ─────────────────────── */}
+      {isLocal && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Other devices reach this instance at</h2>
+          <Card>
+            {myAddresses.length === 0 ? (
+              <p className="text-sm text-ink-muted">
+                No address to hand out yet. {tailscale.detail ?? "Tailscale is not installed here."}{" "}
+                The easy path is Tailscale on both machines, signed into the same
+                tailnet: the address then becomes{" "}
+                <Mono>http://&lt;machine&gt;.&lt;your-tailnet&gt;.ts.net:3000</Mono>{" "}
+                from anywhere, with nothing exposed to the internet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {myAddresses.map((a) => (
+                  <li key={a.url} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+                    <StatusDot tone={a.preferred ? "ok" : "info"} />
+                    <span className="min-w-0 flex-1 basis-64">
+                      <span className="block truncate font-mono text-sm text-ink">{a.url}</span>
+                      <span className="ui-meta block text-ink-subtle">
+                        {a.label} · {a.note}
+                      </span>
+                    </span>
+                    <CopyAddress value={a.url} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="ui-meta mt-3 text-ink-subtle">
+              Copy one of these into the other device&apos;s{" "}
+              <strong className="font-medium text-ink-muted">Add hub</strong> field,
+              along with a token from Devices below. A device that can join your
+              tailnet — a phone, a laptop — needs nothing more than this, and
+              nothing is exposed to the internet. Publishing this instance
+              publicly is only needed for callers that <em>cannot</em> join a
+              tailnet, and the one that matters is the Claude connector, because
+              that request comes from Anthropic&apos;s servers rather than a
+              device of yours.
+            </p>
           </Card>
         </section>
       )}

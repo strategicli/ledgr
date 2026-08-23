@@ -21,6 +21,8 @@ import {
   defaultDataDir,
   fillSummaryLine,
   formatSchtasks,
+  hubUrlHint,
+  parseTailscaleJson,
   parseSetupArgs,
   redactConnectionString,
   schtasksCreateArgs,
@@ -291,6 +293,74 @@ check(
   args[args.indexOf("/TR") + 1] === '"C:\\Program Files\\nodejs\\node.exe" "C:\\ledgr\\supervisor\\ledgr-supervisor.mjs" "C:\\ledgr\\supervisor\\config.json"'
 );
 check("schtasks: /F so a re-run replaces the task (idempotent wizard)", args.includes("/F"));
+
+// ── What to type at the hub-URL prompt (ADR-212) ─────────────────────────────
+//
+// Nothing in the wizard mentioned Tailscale, yet the whole hub story depends on
+// it. The hint has to branch on what this machine can actually reach with, and
+// it must never tell someone to use an address that will not answer.
+{
+  const running = parseTailscaleJson(
+    JSON.stringify({
+      BackendState: "Running",
+      Self: { DNSName: "bcdesktop.example-tailnet.ts.net.", TailscaleIPs: ["100.82.212.62", "fd7a::1"] },
+    })
+  );
+  check("a running tailnet is recognized", running.installed && running.running);
+  check("the trailing dot is stripped", running.dnsName === "bcdesktop.example-tailnet.ts.net");
+  check("IPv6 tailnet addresses are dropped", !running.ips.some((i: string) => i.includes(":")));
+
+  const hint = hubUrlHint(running, 3000);
+  check(
+    "with a tailnet up, the hint gives the tailnet form for the HUB",
+    hint.includes(".example-tailnet.ts.net:3000")
+  );
+  check(
+    "it prefers the readable hostname over the raw 100.x",
+    hint.includes("readable") && hint.indexOf("ts.net") < hint.indexOf("100.x")
+  );
+  check(
+    "it points at the hub's own Network page rather than making them derive it",
+    hint.includes("Build → Network")
+  );
+  check("the port is honored", hubUrlHint(running, 3002).includes(":3002"));
+}
+{
+  const needsLogin = parseTailscaleJson(JSON.stringify({ BackendState: "NeedsLogin", Self: {} }));
+  const hint = hubUrlHint(needsLogin, 3000);
+  check("installed-but-not-signed-in is not reported as running", !needsLogin.running);
+  check("the hint says to sign in rather than offering a tailnet address", hint.includes("tailscale up"));
+  check("and it names the alternatives and their limits", hint.includes("same network"));
+}
+{
+  const absent = { installed: false, running: false, dnsName: null, ips: [] };
+  const hint = hubUrlHint(absent, 3000);
+  check("with no Tailscale, the hint says what to install and why", hint.includes("not installed"));
+  check(
+    "it explains the LAN limit rather than just offering the address",
+    hint.includes("same network")
+  );
+  check(
+    "it is honest that a public tunnel is only for callers that cannot join a tailnet",
+    hint.includes("cannot join a tailnet")
+  );
+}
+check("garbage tailscale output does not throw", parseTailscaleJson("nonsense").running === false);
+check("empty tailscale output does not throw", parseTailscaleJson("").installed === true);
+
+// The wizard must actually PRINT it, or none of the above reaches anyone.
+{
+  const setupSrc = readFileSync("scripts/local-setup.mjs", "utf8");
+  check("the wizard prints the hint at the hub-URL prompt", setupSrc.includes("hubUrlHint("));
+  check(
+    "the wizard reads Tailscale with the .exe name on Windows (spawn does no PATHEXT resolution)",
+    setupSrc.includes('"tailscale.exe"')
+  );
+  check(
+    "the token instructions point at Network, not the old Updates location",
+    setupSrc.includes("Build → Network → Devices → Add device")
+  );
+}
 
 // ── (8) install.ps1 structure (text checks; no PowerShell tooling assumed) ──
 
