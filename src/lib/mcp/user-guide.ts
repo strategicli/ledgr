@@ -910,6 +910,17 @@ hubs this instance syncs **to**, and the devices that sync **from** it.
   hub, and the remedy is re-filling from the hub
   (\`npm run local:restore -- --from-url\`, documented in the supervisor
   README).
+- **Other devices reach this instance at.** On an instance running on your own
+  machine, this lists the addresses to hand to another device, best first, each
+  with a **Copy** button — so adding a spoke is copy from one screen, paste into
+  another, with nothing to work out. The tailnet name is the one to use: it
+  works from any device signed into your tailnet, from anywhere, and it keeps
+  working if the addresses change. A local-network address is offered too and
+  labelled for what it is: only good on that network. Nothing is exposed to the
+  internet by any of this — a phone or laptop that can join your tailnet needs
+  no more than this. Publishing the instance publicly is a separate step, and
+  the only thing that really needs it is the Claude connector, because that
+  request comes from Anthropic's servers rather than from a device of yours.
 - **Devices that sync from this instance.** **Add device** names a new one
   and shows its access token exactly once; copy it into that device's setup,
   because it cannot be shown again. A new device can be added **pull-only**,

@@ -244,6 +244,86 @@ export function parseStartupState(text) {
   }
 }
 
+// ── What to type at the hub-URL prompt (ADR-212) ─────────────────────────────
+//
+// Nothing in the wizard mentioned Tailscale, yet the whole hub story depends on
+// it. Rather than a general tour, the ask was narrower and more useful: at the
+// field where a hub URL goes, say what to put in it. So detect Tailscale by
+// asking it, never by asking the owner to interpret anything.
+//
+// Counterpart: src/lib/network-addresses.ts does the same read for the app,
+// which shows a hub its OWN addresses. Keep them in step.
+
+/** Tolerant read of `tailscale status --json`. Anything unexpected reads as
+ * "installed but not usable" rather than throwing. */
+export function parseTailscaleJson(raw) {
+  let v;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return { installed: true, running: false, dnsName: null, ips: [] };
+  }
+  const dns = typeof v?.Self?.DNSName === "string" ? v.Self.DNSName.replace(/\.$/, "") : "";
+  const ips = Array.isArray(v?.Self?.TailscaleIPs)
+    ? v.Self.TailscaleIPs.filter((i) => typeof i === "string" && !i.includes(":"))
+    : [];
+  return {
+    installed: true,
+    running: v?.BackendState === "Running",
+    dnsName: dns || null,
+    ips,
+  };
+}
+
+/**
+ * The help text for the hub-URL prompt, given what Tailscale reports and the
+ * hub's app port. Pure so the wording is testable without a tailnet.
+ *
+ * Prefers the MagicDNS hostname over the raw 100.x: both work, but the
+ * hostname is readable and survives a re-address.
+ */
+export function hubUrlHint(ts, port = 3000) {
+  const lines = [];
+  if (ts && ts.running && ts.dnsName) {
+    const mine = ts.dnsName;
+    const tailnet = mine.includes(".") ? mine.slice(mine.indexOf(".") + 1) : "your-tailnet.ts.net";
+    lines.push(
+      "Tailscale is running here, so use the hub's tailnet address:",
+      `  http://<the-hub's-machine-name>.${tailnet}:${port}`,
+      "",
+      `This machine's own tailnet name is ${mine}, so the hub's looks the same`,
+      "with its machine name in front. The hub shows you its exact address on its",
+      "own Build → Network page — copy it from there rather than typing it out.",
+      "",
+      "The raw 100.x.y.z address works too, but the name is readable and keeps",
+      "working if the addresses change."
+    );
+  } else if (ts && ts.installed && !ts.running) {
+    lines.push(
+      "Tailscale is installed here but not signed in yet, so it cannot reach a",
+      "hub over the tailnet. Run `tailscale up`, sign in, and the hub's address",
+      `will look like http://<machine>.<your-tailnet>.ts.net:${port}.`,
+      "",
+      "Without it, your options are limited: a LAN address",
+      `(http://192.168.x.x:${port}) reaches the hub only from this same network,`,
+      "or the hub has to be published on the internet, which is a bigger step."
+    );
+  } else {
+    lines.push(
+      "Tailscale is not installed here. It is the easy path: install it on both",
+      "machines, sign both into the same tailnet, and the hub's address becomes",
+      `http://<machine>.<your-tailnet>.ts.net:${port} from anywhere, with nothing`,
+      "exposed to the internet.",
+      "",
+      "Without it: a LAN address like http://192.168.x.x:" + port + " works only",
+      "while both machines are on the same network, or the hub has to be",
+      "published publicly (a tunnel), which is a bigger step and only actually",
+      "needed for callers that cannot join a tailnet."
+    );
+  }
+  return lines.join("\n");
+}
+
 // ── The scheduled-task argv (win32) ──────────────────────────────────────────
 // Pure argv builders so both the wizard and the supervisor register the task
 // the same way, and `status` can read back what Windows actually holds.

@@ -37,6 +37,8 @@ import {
   fillSummaryLine,
   formatSchtasks,
   parseSetupArgs,
+  hubUrlHint,
+  parseTailscaleJson,
   schtasksCreateArgs,
   validateEmail,
   validateHubUrl,
@@ -188,14 +190,37 @@ const ownerEmail = await answer("Owner email", {
   validate: validateEmail,
 });
 
+/** Ask the local Tailscale CLI, if it is there. Not installed is a normal
+ * answer, so nothing here throws. */
+function readTailscale() {
+  const candidates =
+    process.platform === "win32"
+      ? ["tailscale.exe", "C:\\Program Files\\Tailscale\\tailscale.exe"]
+      : ["tailscale", "/usr/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
+  for (const bin of candidates) {
+    try {
+      const res = spawnSync(bin, ["status", "--json"], { encoding: "utf8", timeout: 5000 });
+      if (res.error) continue;
+      if (typeof res.stdout === "string" && res.stdout.trim()) return parseTailscaleJson(res.stdout);
+      return { installed: true, running: false, dnsName: null, ips: [] };
+    } catch {
+      // try the next candidate
+    }
+  }
+  return { installed: false, running: false, dnsName: null, ips: [] };
+}
+
 let hubUrl;
 let hubToken;
 if (role === "spoke") {
   if (!flags["hub-url"] && rl) {
     console.log(
       "\nA spoke needs its hub's URL and a device token. Mint the token on the\n" +
-        "hub: Build → Updates → Synced devices → Add device (it is shown once).\n"
+        "hub: Build → Network → Devices → Add device (it is shown once).\n"
     );
+    // Say what to TYPE, based on what this machine can actually reach with
+    // (ADR-212) — rather than leaving the owner to work out the address form.
+    console.log(hubUrlHint(readTailscale(), 3000) + "\n");
   }
   hubUrl = await answer("Hub URL", {
     flagValue: flags["hub-url"],
