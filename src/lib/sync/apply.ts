@@ -221,6 +221,42 @@ export function passageBodyFromAction(
 
 export type ApplyResult = { actions: number; rejected: number };
 
+// ── Batch execution plan (ADR-206 addendum 7) ───────────────────────────────
+//
+// items DELETE actions are pulled out of the in-order stream and executed as
+// ONE multi-row statement per origin at the end of the batch. The reason is
+// items.parent_id, the one restricting FK among the synced tables (everything
+// else cascades FROM items): when the hub hard-deletes a parent and its
+// children in one statement, its own FK check happens at end-of-statement, but
+// the row-level triggers log one op per row in arbitrary physical order — the
+// dev rig caught "delete parent (seq 25), delete child (seq 26)". Replaying
+// those as separate statements fails the FK on the parent, the whole batch
+// rolls back, the cursor never advances, and the peer retries the same batch
+// forever: a hard wedge. One multi-row DELETE gets the same end-of-statement
+// FK semantics the hub had, so within-statement trigger order stops mattering.
+//
+// Grouped per origin so the GUC stamping (and therefore echo suppression)
+// stays per-writer. Accepted reordering ceiling: a hard-delete followed by a
+// re-insert of the SAME uuid inside one batch would now execute insert-then-
+// delete; no app path re-inserts a purged uuid, and uuids are never reused.
+export type ItemsDeleteGroup = { origin: string; ids: string[] };
+export type ActionPlan = { stream: WriteAction[]; itemsDeletes: ItemsDeleteGroup[] };
+
+export function planActions(actions: WriteAction[]): ActionPlan {
+  const stream: WriteAction[] = [];
+  const groups = new Map<string, ItemsDeleteGroup>();
+  for (const a of actions) {
+    if (a.kind === "delete" && a.tbl === "items") {
+      let g = groups.get(a.origin);
+      if (!g) groups.set(a.origin, (g = { origin: a.origin, ids: [] }));
+      g.ids.push(a.pkVal);
+    } else {
+      stream.push(a);
+    }
+  }
+  return { stream, itemsDeletes: [...groups.values()] };
+}
+
 /**
  * Merge + execute a batch of foreign ops. On drivers with sessions
  * (node-postgres) the whole batch runs in one transaction and each action
@@ -240,14 +276,22 @@ export async function applySyncOps(
   const { actions, rejected } = mergeOps(ops, state);
   if (actions.length === 0) return { actions: 0, rejected: rejected.length };
 
+  const plan = planActions(actions);
+
+  const deleteItemsGroup = async (tgt: SyncDb, g: ItemsDeleteGroup) => {
+    await tgt.execute(sql`delete from items where id = any(${uuidArray(g.ids)}::uuid[])`);
+  };
+
   if (useTx) {
     await db.transaction(async (tx) => {
       let origin: string | null = null;
-      for (const action of actions) {
-        if (action.origin !== origin) {
-          origin = action.origin;
-          await tx.execute(sql`select set_config('ledgr.sync_origin', ${origin}, true)`);
-        }
+      const setOrigin = async (next: string) => {
+        if (next === origin) return;
+        origin = next;
+        await tx.execute(sql`select set_config('ledgr.sync_origin', ${next}, true)`);
+      };
+      for (const action of plan.stream) {
+        await setOrigin(action.origin);
         await runAction(tx, action);
         // Derived data the row write cannot carry: passage_refs is outside
         // ADR-206's synced set and has no trigger, so a body arriving here
@@ -256,12 +300,19 @@ export async function applySyncOps(
         const derived = passageBodyFromAction(action);
         if (derived) await replacePassageRefs(tx, derived.itemId, derived.body);
       }
+      for (const g of plan.itemsDeletes) {
+        await setOrigin(g.origin);
+        await deleteItemsGroup(tx, g);
+      }
     });
   } else {
-    for (const action of actions) {
+    for (const action of plan.stream) {
       await runAction(db, action);
       const derived = passageBodyFromAction(action);
       if (derived) await replacePassageRefs(db, derived.itemId, derived.body);
+    }
+    for (const g of plan.itemsDeletes) {
+      await deleteItemsGroup(db, g);
     }
   }
   return { actions: actions.length, rejected: rejected.length };

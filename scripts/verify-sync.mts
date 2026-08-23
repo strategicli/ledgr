@@ -17,7 +17,7 @@
 //       dependency). If neither is possible it skips tier (b) loudly.
 //
 // Run: npx tsx scripts/verify-sync.mts
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmDirBestEffort } from "../supervisor/rm-dir.mjs";
@@ -31,7 +31,7 @@ import {
   type SyncOp,
   type WriteAction,
 } from "../src/lib/sync/engine";
-import { applySyncOps, passageBodyFromAction, type SyncDb } from "../src/lib/sync/apply";
+import { applySyncOps, passageBodyFromAction, planActions, type SyncDb } from "../src/lib/sync/apply";
 import { pruneSyncOps, SYNC_OPS_RETENTION_DAYS } from "../src/lib/sync/peers";
 
 let failures = 0;
@@ -255,6 +255,34 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   check(
     "a hard delete does not (the cascade takes its edges)",
     passageBodyFromAction({ kind: "delete", tbl: "items", ownerId: OWNER, origin: "d", pkCol: "id", pkVal: ITEM }) === null
+  );
+}
+
+// (13, ADR-206 addendum 7) the batch execution plan: items deletes leave the
+// in-order stream and group per origin into one multi-row statement, because
+// items.parent_id is a restricting FK and the hub's row triggers log a
+// one-statement family delete in arbitrary order (parent-first wedged the
+// dev rig). Everything else keeps its order.
+{
+  const del = (pkVal: string, origin = "d1"): WriteAction => ({
+    kind: "delete", tbl: "items", ownerId: OWNER, origin, pkCol: "id", pkVal,
+  });
+  const relDel: WriteAction = { kind: "delete", tbl: "relations", ownerId: OWNER, origin: "d1", pkCol: "id", pkVal: ITEM };
+  const upd: WriteAction = { kind: "update", tbl: "items", ownerId: OWNER, origin: "d1", pkCol: "id", pkVal: ITEM, fields: { title: "t" } };
+  const plan = planActions([upd, del("p"), relDel, del("c"), del("x", "d2")]);
+  check(
+    "items deletes leave the stream; other actions keep their order",
+    plan.stream.length === 2 && plan.stream[0] === upd && plan.stream[1] === relDel
+  );
+  check(
+    "items deletes group per origin, first-seen order kept",
+    JSON.stringify(plan.itemsDeletes) ===
+      JSON.stringify([{ origin: "d1", ids: ["p", "c"] }, { origin: "d2", ids: ["x"] }])
+  );
+  const applySrc = readFileSync("src/lib/sync/apply.ts", "utf8");
+  check(
+    "apply wires the plan and runs items deletes as one statement",
+    applySrc.includes("planActions(") && applySrc.includes("delete from items where id = any(")
   );
 }
 
@@ -499,6 +527,59 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
       "the oplog stops growing (echo terminates)",
       (await opCount(A)) === beforeA && (await opCount(B)) === beforeB
     );
+
+    // ── FK-inversion family delete (ADR-206 addendum 7) ────────────────────
+    // The hub hard-deletes a parent and its child in ONE statement; its row
+    // triggers log the two delete ops in arbitrary order (the dev rig caught
+    // parent first, child second, same `at`). Replayed as separate
+    // statements, the parent's delete violates items_parent_id_items_id_fk,
+    // the batch transaction rolls back, the cursor never advances, and the
+    // peer retries forever. The plan's one-statement items delete must apply
+    // this cleanly.
+    {
+      const P2 = "44444444-0000-4000-8000-000000000001";
+      const C2 = "44444444-0000-4000-8000-000000000002";
+      await A.query(
+        `insert into items (id, owner_id, type, title) values ($1, $2, 'note', 'family parent')`,
+        [P2, OWNER]
+      );
+      await A.query(
+        `insert into items (id, owner_id, type, title, parent_id) values ($1, $2, 'note', 'family child', $3)`,
+        [C2, OWNER, P2]
+      );
+      await exchangeOnce(A, B);
+      const have = await B.query(`select count(*)::int as n from items where id in ($1,$2)`, [P2, C2]);
+      check("fixture: the FK-linked family replicated to B", Number(have.rows[0].n) === 2);
+      const at = new Date().toISOString();
+      const mk = (rowId: string, seq: number): SyncOp => ({
+        seq,
+        deviceId: A.deviceId,
+        originDeviceId: null,
+        ownerId: OWNER,
+        at,
+        tbl: "items",
+        rowId,
+        kind: "delete",
+        changed: { id: rowId },
+        schemaVer: "test",
+      });
+      let applied = 0;
+      let error = "";
+      try {
+        applied = (await applySyncOps([mk(P2, 900001), mk(C2, 900002)], { db: B.db, transactions: true })).actions;
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+      }
+      const left = await B.query(`select count(*)::int as n from items where id in ($1,$2)`, [P2, C2]);
+      check(
+        "a parent-before-child delete pair applies without an FK wedge",
+        error === "" && applied === 2 && Number(left.rows[0].n) === 0,
+        error || `applied=${applied}`
+      );
+      // Bring A level again so later fixtures stay symmetric.
+      await A.query(`delete from items where id in ($1, $2)`, [C2, P2]);
+      await exchangeOnce(A, B);
+    }
 
     // ── Retention prune (the daily purge's oplog cleanup) ──────────────────
     // Destructive to A's oplog, so it runs LAST. Ops are back-dated past the
