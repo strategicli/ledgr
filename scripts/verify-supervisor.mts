@@ -17,6 +17,8 @@ import {
   assembleAppEnv,
   buildDbUrl,
   decideFlip,
+  lockPath,
+  lockVerdict,
   needsNpmCi,
   nextBackoffMs,
   normalizeConfig,
@@ -328,6 +330,37 @@ check(
   "the flip is guarded by decideFlip (keep-last-good is the rule, not a comment)",
   supervisorSrc.includes("decideFlip")
 );
+
+// ── Single-instance ownership (regression, 2026-08-23) ──────────────────────
+//
+// Three supervisors had accumulated on one machine, because stopping
+// `npm run local:supervisor` kills npm and orphans its node child. An orphan
+// won the race for an update signal file, tried to apply it with its app and
+// Postgres already killed underneath it, and the update failed silently. Two
+// is also the state README steps 5 and 7 produce on purpose (run it in a
+// terminal, then register it at boot), so the lock is the fix, not a warning.
+{
+  check("the lock lives in the data dir, beside the other supervisor state", lockPath("/data").endsWith("supervisor.lock"));
+  check("no owner recorded (garbage or empty file) -> take it", lockVerdict(NaN, 42, false) === "take");
+  check("a zero/negative pid is garbage, not an owner", lockVerdict(0, 42, false) === "take");
+  check("the recorded owner is alive -> REFUSE, this is the whole point", lockVerdict(99, 42, true) === "refuse");
+  check("the recorded owner is gone -> steal the stale lock", lockVerdict(99, 42, false) === "steal");
+  check("our own pid -> already mine, never refuse ourselves", lockVerdict(42, 42, true) === "mine");
+}
+check(
+  "the supervisor takes the lock BEFORE starting postgres (a loser must touch nothing)",
+  supervisorSrc.indexOf("acquireLock()") > 0 &&
+    supervisorSrc.indexOf("acquireLock()") < supervisorSrc.indexOf("await startPostgres()")
+);
+check(
+  "the lock file is created atomically (wx), so a simultaneous start cannot double-take",
+  supervisorSrc.includes("writeFileSync(lock") && supervisorSrc.includes('flag: "wx"')
+);
+check(
+  "EPERM counts as alive (the owner exists, it just is not ours); only ESRCH is gone",
+  supervisorSrc.includes('err?.code === "EPERM"')
+);
+check("the lock is released on shutdown", supervisorSrc.includes("releaseLock()"));
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);
