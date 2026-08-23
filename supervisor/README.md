@@ -113,6 +113,12 @@ Reads are safe: six real pages (Today, Tasks, search, an item, Build, home)
 were measured on 2026-08-23 and produced **zero** pushable ops, so browsing a
 peer never queues anything.
 
+**Volume is not the hazard; redundancy is.** A genuine import of 5,000 new
+items on a spoke SHOULD push all 5,000 to the hub, and it will — those are real
+new rows the hub has never seen, so there is nothing to conflict with. It takes
+as long as it takes. (What it runs into is the first-push size guard and
+throughput, both covered in `next_steps.md` under large imports.)
+
 Migrations are the exception, and the reason this section exists. A data
 migration runs against **this peer's own database** and its writes are this
 peer's OWN ops, so they push. `0052` (`UPDATE types SET is_system = true`) and
