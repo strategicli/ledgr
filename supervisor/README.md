@@ -38,6 +38,20 @@ flows the right way before letting it push:
    into this device's `deviceToken`.
 2. Start this device and confirm data arrives correctly — it can only pull,
    so nothing it does can touch the hub's data.
+   Before you trust that flag, prove it on this machine. The hub half of sync
+   is the same code on every peer, so a local instance proves the same
+   guarantees with nothing at stake:
+
+   ```
+   PEER_URL=http://localhost:3000 \
+     PEER_DB=postgresql://postgres:postgres@127.0.0.1:5433/ledgr \
+     npx tsx scripts/verify-sync-guards-live.mts
+   ```
+
+   It registers throwaway devices and cleans them up, and checks that a
+   pull-only device's push is refused with 403 **before any op is applied**,
+   that the same device can still pull, that a schema-version mismatch is a
+   409 naming both versions, and that revoked and unknown tokens are refused.
 3. Once you're satisfied, flip it to full either from the hub (the device row's
    "Allow push" button) or by setting `"syncMode": "full"` here and
    restarting. The hub-side flip takes effect immediately, even if this
