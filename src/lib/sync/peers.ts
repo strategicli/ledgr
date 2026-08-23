@@ -67,6 +67,108 @@ export function dedupePushedOps<T extends { seq: number }>(ops: T[], lastPushedS
 
 // ── DB-backed operations ─────────────────────────────────────────────────────
 
+// ── Retention holds, per device (ADR-213) ───────────────────────────────────
+//
+// A peer's cursor holds the hub's oplog: pruneSyncOps keeps every op above
+// min(last_pulled_seq), so anything the slowest peer has not read survives.
+// That is correct, and it was unbounded — a peer merely ASLEEP pinned the
+// oplog forever, while revoking (the only way to free the floor) is also what
+// destroys that peer's ability to resume. "Inert while parked" and "resumable"
+// had no third option.
+//
+// hold_mode is that option, and it governs RETENTION ONLY. Access is still
+// `revoked` (shut out) and `pullOnly` (may not push) — keeping the axes
+// separate is the point, because conflating them is what created the bind.
+export type HoldMode = "auto" | "warm" | "cold";
+
+/** The default window for "auto". Matches SYNC_OPS_RETENTION_DAYS on purpose:
+ * a sleeping peer then gets exactly the ordinary retention window and no
+ * more, which bounds the oplog at 14 days of ops however many peers sleep. */
+export const HOLD_GRACE_DAYS_DEFAULT = 14;
+
+/** Warn at a FRACTION of the window rather than a fixed number of days, so
+ * the warning still arrives usefully early when a device is given a 60-day
+ * window. 0.7 of 14 days ≈ 10 days, which is what Brandon asked for. */
+export const HOLD_WARN_FRACTION = 0.7;
+
+/** Tolerant: an unrecognized value behaves as "auto" (bounded), never as
+ * "warm" — an unreadable setting must not silently grant an unbounded hold. */
+export function parseHoldMode(raw: unknown): HoldMode {
+  return raw === "warm" || raw === "cold" ? raw : "auto";
+}
+
+export function effectiveGraceDays(graceDays: number | null | undefined): number {
+  return typeof graceDays === "number" && Number.isFinite(graceDays) && graceDays > 0
+    ? Math.floor(graceDays)
+    : HOLD_GRACE_DAYS_DEFAULT;
+}
+
+export type HoldState = {
+  mode: HoldMode;
+  graceDays: number;
+  // Is this peer's cursor holding the oplog right now?
+  holds: boolean;
+  // Whole days until an "auto" peer stops holding. Null when the question
+  // does not apply: "warm" never lapses, "cold" already has.
+  daysLeft: number | null;
+  // An "auto" peer whose window has passed. Returning now needs a re-fill,
+  // and saying so is the whole point — the alternative is the owner finding
+  // out at an ADR-208 refusal weeks later.
+  lapsed: boolean;
+  // Close enough to lapsing to be worth telling the owner about.
+  warn: boolean;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The per-device hold decision, pure.
+ *
+ * The clock is the last time we HEARD from the device, falling back to when it
+ * was created — so a token minted and never used ages out too. That case was
+ * the same bug wearing different clothes: a never-connected device sits at
+ * cursor 0 and pinned the entire oplog indefinitely.
+ *
+ * A device with neither timestamp (data we cannot reason about) is treated as
+ * holding: refusing to delete ops we are unsure about is the safe direction.
+ */
+export function holdState(opts: {
+  mode: unknown;
+  graceDays: number | null;
+  lastSeenAt: Date | string | null;
+  createdAt: Date | string | null;
+  now: Date | number;
+}): HoldState {
+  const mode = parseHoldMode(opts.mode);
+  const graceDays = effectiveGraceDays(opts.graceDays);
+  if (mode === "warm") {
+    return { mode, graceDays, holds: true, daysLeft: null, lapsed: false, warn: false };
+  }
+  if (mode === "cold") {
+    return { mode, graceDays, holds: false, daysLeft: null, lapsed: false, warn: false };
+  }
+  const stamp = opts.lastSeenAt ?? opts.createdAt;
+  if (!stamp) {
+    return { mode, graceDays, holds: true, daysLeft: null, lapsed: false, warn: false };
+  }
+  const seen = stamp instanceof Date ? stamp.getTime() : Date.parse(String(stamp));
+  const now = typeof opts.now === "number" ? opts.now : opts.now.getTime();
+  if (!Number.isFinite(seen)) {
+    return { mode, graceDays, holds: true, daysLeft: null, lapsed: false, warn: false };
+  }
+  const elapsedDays = (now - seen) / DAY_MS;
+  const lapsed = elapsedDays >= graceDays;
+  const daysLeft = Math.max(0, Math.ceil(graceDays - elapsedDays));
+  return {
+    mode,
+    graceDays,
+    holds: !lapsed,
+    daysLeft,
+    lapsed,
+    warn: !lapsed && elapsedDays >= graceDays * HOLD_WARN_FRACTION,
+  };
+}
+
 export type PeerSummary = {
   deviceId: string;
   name: string;
@@ -76,6 +178,11 @@ export type PeerSummary = {
   lastSeenAt: string | null;
   // Cursor lag, as ops (see cursorLag above).
   opsBehind: number;
+  // ADR-213: the retention hold, and whether the owner needs to hear about it.
+  hold: HoldState;
+  // True for the ONE peer whose cursor is currently the prune floor — the
+  // device actually holding the oplog back, as opposed to merely eligible to.
+  bindingHold: boolean;
 };
 
 export async function listPeers(): Promise<PeerSummary[]> {
@@ -93,17 +200,63 @@ export async function listPeers(): Promise<PeerSummary[]> {
       lastSeenAt: syncPeers.lastSeenAt,
       lastPulledSeq: syncPeers.lastPulledSeq,
       createdAt: syncPeers.createdAt,
+      holdMode: syncPeers.holdMode,
+      graceDays: syncPeers.graceDays,
     })
     .from(syncPeers);
   rows.sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
-  return rows.map((r) => ({
+  const now = Date.now();
+  const withHold = rows.map((r) => ({
+    row: r,
+    hold: holdState({
+      mode: r.holdMode,
+      graceDays: r.graceDays,
+      lastSeenAt: r.lastSeenAt,
+      createdAt: r.createdAt,
+      now,
+    }),
+  }));
+  // Which peer is actually the prune floor? The same rule the SQL uses: the
+  // lowest cursor among peers that are not revoked and still hold. Showing
+  // this stops "holding the oplog" reading as an accusation against every
+  // device in the list.
+  let binding: string | null = null;
+  let lowest = Number.POSITIVE_INFINITY;
+  for (const { row, hold } of withHold) {
+    if (row.revoked || !hold.holds) continue;
+    if (row.lastPulledSeq < lowest) {
+      lowest = row.lastPulledSeq;
+      binding = row.deviceId;
+    }
+  }
+  return withHold.map(({ row: r, hold }) => ({
     deviceId: r.deviceId,
     name: r.name,
     revoked: r.revoked,
     pullOnly: r.pullOnly,
     lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
     opsBehind: cursorLag(maxSeq, r.lastPulledSeq),
+    hold,
+    bindingHold: r.deviceId === binding,
   }));
+}
+
+/** Set a device's retention hold and/or its window. Returns false when the
+ * device does not exist, like the other setters here. */
+export async function setPeerHold(
+  deviceId: string,
+  patch: { mode?: HoldMode; graceDays?: number | null }
+): Promise<boolean> {
+  const set: Record<string, unknown> = {};
+  if (patch.mode) set.holdMode = patch.mode;
+  if (patch.graceDays !== undefined) set.graceDays = patch.graceDays;
+  if (Object.keys(set).length === 0) return true;
+  const res = await getDb()
+    .update(syncPeers)
+    .set(set)
+    .where(eq(syncPeers.deviceId, deviceId))
+    .returning({ deviceId: syncPeers.deviceId });
+  return res.length > 0;
 }
 
 // Mints a device row + its token. The returned plaintext is the ONLY copy —
@@ -195,7 +348,22 @@ export async function pruneSyncOps(opts: { db?: SyncDb } = {}) {
     delete from sync_ops
     where at < now() - make_interval(days => ${SYNC_OPS_RETENTION_DAYS})
       and seq <= coalesce(
-        (select min(last_pulled_seq) from sync_peers where revoked = false),
+        (select min(last_pulled_seq) from sync_peers
+          where revoked = false
+            -- ADR-213: only peers that still HOLD set the floor. "cold" never
+            -- does; "warm" always does; "auto" does while we have heard from
+            -- it inside its window, with created_at as the clock for a device
+            -- minted and never used (which sat at cursor 0 and pinned the
+            -- whole oplog). Anything unrecognized in hold_mode falls through
+            -- to the auto branch, never to an unbounded hold.
+            and hold_mode <> 'cold'
+            and (
+              hold_mode = 'warm'
+              or coalesce(last_seen_at, created_at) is null
+              or coalesce(last_seen_at, created_at) >
+                   now() - make_interval(days => coalesce(grace_days, ${HOLD_GRACE_DAYS_DEFAULT}))
+            )
+        ),
         (select coalesce(max(seq), 0) from sync_ops)
       )
     returning seq

@@ -393,6 +393,13 @@
       "when": 1787436878070,
       "tag": "0055_sync_pull_only",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1787521896961,
+      "tag": "0056_sync_hold_mode",
+      "breakpoints": true
     }
   ]
 }

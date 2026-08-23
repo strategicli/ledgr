@@ -981,6 +981,24 @@ export const syncPeers = pgTable("sync_peers", {
   // mistake is correctable even if the spoke itself is misconfigured.
   pullOnly: boolean("pull_only").notNull().default(false),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  // RETENTION, not access (ADR-213). pruneSyncOps keeps every op above
+  // min(last_pulled_seq) across non-revoked peers, so a peer that is merely
+  // ASLEEP used to pin the hub's oplog forever — unbounded, with whole body
+  // text in every row — while revoking, the only way to free the floor, is
+  // also what destroys the peer's ability to resume. This is the third
+  // option:
+  //   "auto" — holds while seen inside its window, then lapses. The default,
+  //            so the oplog is bounded with nobody having to remember.
+  //   "warm" — holds indefinitely by explicit choice, for a device the owner
+  //            knows is coming back (~25MB/month of unprunable oplog at
+  //            measured rates, which is why the UI says so).
+  //   "cold" — never holds; returning needs a full re-fill.
+  // Access stays governed by `revoked` and `pullOnly`; these axes are
+  // deliberately separate, which is the whole point.
+  holdMode: text("hold_mode").notNull().default("auto"),
+  // Per-device window for "auto", null = the system default. The device-side
+  // mirror of ADR-210's per-hub cadence.
+  graceDays: integer("grace_days"),
   // Cursors: the highest of the peer's own seqs it has pushed here, and the
   // highest local seq it has pulled — what the Synced-devices UI reads as lag.
   lastPushedSeq: bigint("last_pushed_seq", { mode: "number" }).notNull().default(0),
