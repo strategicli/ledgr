@@ -224,6 +224,29 @@ Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `
 
 ---
 
+## 1j-1. The Vercel build quota, and how not to hit it (2026-08-23)
+
+**What happened, so nobody re-discovers it:** a single evening of ordinary work (4 PRs, several pushes each, 4 merges) exhausted the account's daily deployment cap. Every Vercel check then failed with *"Deployment rate limited — retry in 24 hours"* — a **quota** failure, not a code failure, and it says nothing about the diff.
+
+**What it does and does not block.** Per §1j, `main` deploys nobody, so **production is never waiting on this**: `prod-brandon` only moves when you run `npm run release:prod`. What the cap actually stops is (a) the dev deployment that tracks `main`, and (b) **PR preview builds** — and (b) is the real consumer, because *every push to a PR branch rebuilds a preview in every project connected to the repo*. Three commits on one branch is six builds across two projects, for one PR.
+
+**The cheapest fix needs no Vercel change: squash locally before pushing.** One push per PR instead of four cuts builds fourfold. Do this by default.
+
+**To stop the automatic builds properly, the setting is per PROJECT, not in the repo.** This matters: `vercel.json` is checked in and shared, so `git.deploymentEnabled` or `ignoreCommand` there would also stop **Tyler's** project deploying. Use the dashboard's **Settings → Git → Ignored Build Step** on each project instead. The command's exit code decides, **inverted from intuition: exit 0 skips the build, exit 1 runs it.**
+
+| Project | Ignored Build Step | Effect |
+| --- | --- | --- |
+| the dev deployment | `git log -1 --pretty=%B \| grep -qE '\[deploy\]' && exit 1 \|\| exit 0` | builds only for a commit whose message carries `[deploy]` — merge all day, then batch one build when you want it current |
+| the production project | `[ "$VERCEL_ENV" = "production" ] && exit 1 \|\| exit 0` | kills PR previews (the waste) while **never** touching `release:prod`, which is always a production build |
+
+Do **not** put a marker-based ignore step on the production project: it would block `release:prod` whenever the marker was absent.
+
+A **Deploy Hook** (`vercel deploy-hooks create dev-manual --ref main`, then POST the URL it returns) gives an on-demand rebuild with no commit at all. **Unverified and worth one test:** whether the Ignored Build Step also runs for hook-triggered builds. If it does, the hook cannot override a skip and the commit marker is the only reliable trigger.
+
+**Working while capped:** nothing in the ordinary loop needs Vercel. GitHub Actions is a separate quota (the `check` job kept passing through the whole outage), `npm run build` and every `verify-*` script are local, and the local-peer rig is two complete instances that build from git — so even hub/spoke behavior can be exercised by pointing one local spoke at another, which is the post-cutover topology anyway. A failing Vercel check does not block a merge.
+
+---
+
 ## 1k. Satellite instances: standing one up, and keeping it updated (ADR-194)
 
 A **satellite** is another person's instance of this codebase (Michelle, Miles): their GitHub **fork**, their Vercel project, their Neon database, their Clerk app. Brandon's and Tyler's instances are **source** instances, deploying from `strategicli/ledgr` itself. The fork route exists because Tyler has `push` but **not `admin`** on the repo (verified via the API), so he cannot add collaborators; only an org owner can. The repo is public, so anyone can fork it without permission from anybody.
