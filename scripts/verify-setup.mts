@@ -10,7 +10,7 @@
 // classify it as backend-needing and silently drop it from CI.
 //
 // Run: npx tsx scripts/verify-setup.mts
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { assembleAppEnv, normalizeConfig } from "../supervisor/lib.mjs";
 import {
   buildPeerConfig,
@@ -396,11 +396,27 @@ for (const rel of [
 // comments) contain. Encoding must be forced at both levels: initdb for a
 // fresh cluster, and CREATE DATABASE ... TEMPLATE template0 so a UTF8 database
 // can still be made inside an existing non-UTF8 cluster.
-for (const rel of [
-  "scripts/local-setup.mjs",
-  "scripts/local-restore.mjs",
-  "supervisor/ledgr-supervisor.mjs",
-]) {
+// A hardcoded list is exactly what let this regress: the WIN1252 fix landed
+// on the three RUNTIME cluster sites, while verify-sync.mts and
+// verify-pg-copy.mts spin up their own ephemeral clusters and were not on
+// the list, so on Windows they came up WIN1252 and died on the first arrow
+// in a fixture body. So discover the sites instead (verify-ci.mjs's
+// "discovery over an allowlist" reasoning): any file that constructs an
+// embedded cluster must force both, including the next one somebody adds.
+// The needle is assembled so this scanner is not itself a match for it.
+const CLUSTER_NEEDLE = `new ${"EmbeddedPostgres"}`;
+const clusterFiles = ["scripts", "scripts/lib", "supervisor"].flatMap((dir) =>
+  readdirSync(dir)
+    .filter((f) => /\.(mts|mjs)$/.test(f))
+    .map((f) => `${dir}/${f}`)
+    .filter((rel) => readFileSync(rel, "utf8").includes(CLUSTER_NEEDLE))
+);
+check(
+  "the cluster-creating files are discovered (a scan finding nothing must FAIL, not pass silently)",
+  clusterFiles.length >= 5,
+  clusterFiles.join(", ")
+);
+for (const rel of clusterFiles) {
   const src = readFileSync(rel, "utf8");
   check(`${rel} forces UTF8 at initdb`, /initdbFlags:\s*\[[^\]]*--encoding=UTF8/.test(src));
   // ICU gives linguistic collation independent of the OS codepage, which is
@@ -419,6 +435,30 @@ for (const rel of [
     /pg_encoding_to_char/.test(src)
   );
 }
+
+
+// Windows handle-release guard (regression, 2026-08-22): every one of these
+// removals targets a directory whose files were open moments ago, an
+// embedded-postgres cluster just stopped or a build the app was serving from
+// until stopApp(). POSIX unlinks an open file happily; Windows releases
+// handles asynchronously AFTER the process exits, so an immediate recursive
+// remove loses the race and throws EPERM. `force: true` does not help (it
+// only swallows ENOENT), so a bare rmSync in these files is the bug: it
+// crashed verify-sync/verify-pg-copy in teardown with every assertion
+// already green, and would have killed the supervisor's prune right after a
+// successful build flip. All three must go through rm-dir.mjs, which is why
+// the check is that they no longer reach for rmSync at all.
+for (const rel of ["supervisor/ledgr-supervisor.mjs", "scripts/verify-sync.mts", "scripts/verify-pg-copy.mts"]) {
+  const src = readFileSync(rel, "utf8");
+  check(
+    `${rel} removes directories through rm-dir.mjs, never a bare rmSync`,
+    (src.includes("rmDirRetry(") || src.includes("rmDirBestEffort(")) && !src.includes("rmSync(")
+  );
+}
+check(
+  "rm-dir.mjs passes maxRetries + retryDelay (Node's remedy for the EPERM race; force alone only covers ENOENT)",
+  ["maxRetries", "retryDelay"].every((k) => readFileSync("supervisor/rm-dir.mjs", "utf8").includes(k))
+);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

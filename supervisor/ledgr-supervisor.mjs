@@ -25,7 +25,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -33,6 +32,7 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
 import {
   assembleAppEnv,
   buildDbUrl,
@@ -211,7 +211,7 @@ async function applyUpdate(reason, { pull = true } = {}) {
     // running app's directory is never touched.
     if (existsSync(dir)) {
       git(["worktree", "remove", "--force", dir]); // a previous failed attempt
-      rmSync(dir, { recursive: true, force: true });
+      rmDirRetry(dir);
       git(["worktree", "prune"]);
     }
     const wt = git(["worktree", "add", "--detach", dir, sha]);
@@ -276,7 +276,7 @@ async function applyUpdate(reason, { pull = true } = {}) {
       } else {
         // keep-last-good: drop the failed attempt so a retry starts clean.
         git(["worktree", "remove", "--force", dir]);
-        rmSync(dir, { recursive: true, force: true });
+        rmDirRetry(dir);
         git(["worktree", "prune"]);
       }
     }
@@ -299,7 +299,11 @@ function pruneBuilds(liveSha) {
     const dir = join(root, sha);
     log("pruning old build", { sha: sha.slice(0, 7) });
     git(["worktree", "remove", "--force", dir]);
-    rmSync(dir, { recursive: true, force: true });
+    // Best-effort: on Windows the app process we just stopped may still
+    // hold handles in here. A build left behind is disk usage the next
+    // prune clears, never a reason to fail an update that already flipped.
+    const err = rmDirBestEffort(dir);
+    if (err) log("prune deferred (directory still in use)", { sha: sha.slice(0, 7), error: String(err) });
   }
   git(["worktree", "prune"]);
 }
