@@ -55,6 +55,7 @@ import {
   serializeStartupState,
   startupSignalPath,
   startupStatePath,
+  stopSignalPath,
   STARTUP_TASK_NAME,
 } from "./lib.mjs";
 
@@ -333,6 +334,23 @@ setInterval(() => {
     return; // mid-write; next tick gets it
   }
   void applyUpdate(target ? `signal (target ${target.slice(0, 7)})` : "signal");
+}, 2000).unref?.();
+
+// A graceful stop, asked for through a file (ADR-211). `npm run local:stop`
+// writes it rather than signalling the pid, because on Windows a "SIGTERM"
+// from another process is a hard terminate: the handler below never runs, so
+// Postgres gets killed instead of shut down and the lock file survives looking
+// like a live owner. Reaching the same shutdown path a Ctrl-C reaches is the
+// whole point.
+const stopSignal = stopSignalPath(cfg.dataDir);
+setInterval(() => {
+  if (!existsSync(stopSignal)) return;
+  try {
+    unlinkSync(stopSignal);
+  } catch {
+    return; // mid-write; next tick gets it
+  }
+  void shutdown("stop-requested");
 }, 2000).unref?.();
 
 // ── "Start when Windows starts" (ADR-211) ────────────────────────────────────

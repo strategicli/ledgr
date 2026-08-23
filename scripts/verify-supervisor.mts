@@ -32,6 +32,7 @@ import {
   startupScope,
   startupSignalPath,
   startupStatePath,
+  stopSignalPath,
 } from "../supervisor/lib.mjs";
 import { chooseAuthProvider } from "../src/lib/auth/local";
 
@@ -443,6 +444,35 @@ check(
   startupSignalPath("/data/ledgr").endsWith("startup-requested") &&
     startupStatePath("/data/ledgr").endsWith("startup-state.json")
 );
+check("the stop request lives there too", stopSignalPath("/data/ledgr").endsWith("stop-requested"));
+
+// ── Stopping has to be GRACEFUL, and on Windows a signal cannot be (ADR-211) ─
+//
+// `process.kill(pid, "SIGTERM")` from another process does not deliver a
+// catchable signal on Windows: it terminates outright, so the shutdown handler
+// never runs — Postgres is killed rather than shut down (recovery on the next
+// start) and the lock file survives looking like a live owner. Observed live on
+// the dev rig. The stop path therefore has to ASK through the file the
+// supervisor polls, and reach the same handler a Ctrl-C reaches.
+check(
+  "the supervisor polls the stop request and routes it through shutdown()",
+  supervisorSrc.includes("stopSignalPath") && /shutdown\("stop-requested"\)/.test(supervisorSrc)
+);
+{
+  const ctlSrc = readFileSync("supervisor/ledgr-ctl.mjs", "utf8");
+  check(
+    "stop asks through the file rather than signalling the pid",
+    ctlSrc.includes("stopSignalPath") && !/process\.kill\([^)]*"SIGTERM"/.test(ctlSrc)
+  );
+  check(
+    "stop still verifies the process actually went away, rather than assuming",
+    ctlSrc.includes("pidAlive(pid)")
+  );
+  check(
+    "status and stop never hard-kill (no SIGKILL anywhere in the control script)",
+    !ctlSrc.includes("SIGKILL")
+  );
+}
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

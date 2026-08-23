@@ -147,6 +147,18 @@ export function signalPath(dataDir) {
 // process the owner started — does the work and records what happened where
 // the app can read it. One signal-file pattern, not two.
 
+/**
+ * The graceful-stop request. Needed because on Windows `process.kill(pid,
+ * "SIGTERM")` does NOT deliver a signal a Node handler can catch — it
+ * terminates the process outright, so the supervisor's shutdown path never
+ * runs: Postgres is killed rather than shut down (recovery on the next start)
+ * and the lock file is left behind looking like a live owner. Asking through a
+ * file lets the process stop ITSELF through the same handler a Ctrl-C uses.
+ */
+export function stopSignalPath(dataDir) {
+  return join(dataDir, "stop-requested");
+}
+
 export function startupSignalPath(dataDir) {
   return join(dataDir, "startup-requested");
 }

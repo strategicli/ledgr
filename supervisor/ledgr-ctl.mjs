@@ -8,7 +8,7 @@
 //
 //   npm run local:status                 # is it up, which build, boot state
 //   npm run local:status -- --json       # the same, machine-readable
-//   npm run local:stop                   # graceful SIGTERM to the owner pid
+//   npm run local:stop                   # graceful shutdown of the running peer
 //   npm run local:startup                # what Windows currently holds
 //   npm run local:startup -- --logon     # start at sign-in (no elevation)
 //   npm run local:startup -- --always    # start at boot (24/7 hub; elevation)
@@ -18,7 +18,7 @@
 // Postgres and the app on import-and-run, so it cannot answer a question
 // without becoming the thing it is being asked about.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -35,6 +35,7 @@ import {
   startupScope,
   startupSignalPath,
   startupStatePath,
+  stopSignalPath,
   parseStartupState,
   STARTUP_TASK_NAME,
 } from "./lib.mjs";
@@ -181,33 +182,52 @@ async function doStop() {
     return 0;
   }
   if (!pidAlive(pid)) {
-    console.log(`The lock names pid ${pid}, which is already gone. Its next start clears it.`);
+    console.log(`The lock names pid ${pid}, which is already gone — clearing the stale lock.`);
+    clearStaleLock(pid);
     return 0;
   }
-  // SIGTERM, never SIGKILL: the supervisor's own handler stops the app and
-  // shuts Postgres down cleanly, and a killed Postgres is a recovery on the
-  // next boot at best.
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch (err) {
-    console.error(`Could not signal pid ${pid}: ${err?.message ?? err}`);
-    return 1;
-  }
-  console.log(`Asked pid ${pid} to stop; waiting for it to release the lock…`);
-  const deadline = Date.now() + 45_000;
+
+  // Ask through a FILE, not a signal. Sending a termination signal to another
+  // process on Windows is a hard terminate, not something a Node handler can
+  // catch: the supervisor's shutdown path never runs, so Postgres is killed
+  // rather than shut down (recovery on the next start) and the lock survives
+  // looking like a live owner. Observed on the dev rig. The file reaches the
+  // same handler a Ctrl-C reaches, on every platform.
+  writeFileSync(stopSignalPath(cfg.dataDir), new Date().toISOString(), "utf8");
+  console.log(`Asked pid ${pid} to stop cleanly; waiting for it to shut down…`);
+
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 500));
     if (!pidAlive(pid)) {
+      // Postgres shutting down is the slow part, and it happens before the
+      // lock is released, so a gone pid means the clean path completed.
       console.log("Stopped.");
+      clearStaleLock(pid);
       return 0;
     }
   }
   console.error(
-    `pid ${pid} is still alive after 45s. Postgres shutdown can be slow; check again with\n` +
-      "  npm run local:status\n" +
-      "before killing it by hand."
+    `pid ${pid} is still running after 60s. It may be mid-build (an update in\n` +
+      "flight is not interrupted). Check with npm run local:status and try again;\n" +
+      "kill it by hand only as a last resort, since that skips the clean Postgres\n" +
+      "shutdown."
   );
   return 1;
+}
+
+/** Remove a lock whose owner is provably gone. Never touches a live one. */
+function clearStaleLock(pid) {
+  try {
+    const lock = lockPath(cfg.dataDir);
+    if (!existsSync(lock)) return;
+    if (Number.parseInt(readFileSync(lock, "utf8").trim(), 10) !== pid) return;
+    if (pidAlive(pid)) return;
+    unlinkSync(lock);
+  } catch {
+    // A lock we cannot clear is not worth failing the stop over; the next
+    // start steals it anyway (lockVerdict "steal").
+  }
 }
 
 // ── startup (the boot registration) ──────────────────────────────────────────
