@@ -12,6 +12,7 @@
 // Run: npx tsx scripts/verify-setup.mts
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { assembleAppEnv, normalizeConfig } from "../supervisor/lib.mjs";
+import { freePorts } from "./lib/free-port.mjs";
 import {
   buildPeerConfig,
   configSummary,
@@ -478,6 +479,26 @@ check(
     code.includes("spawnSync(process.execPath") && !code.includes("npx")
   );
   check("verify-ci spawns no shell (a cmd.exe per script, plus DEP0190)", !code.includes("shell:"));
+}
+
+// Test clusters take an OS-assigned port (regression, 2026-08-22). Both
+// cluster suites pinned theirs (55441/2 and 55443/4). When a postmaster
+// leaked from a crashed run still held one, the suite did not fail — it
+// wedged, and one CI run sat there for 77 minutes. Fixed ports also stop the
+// two suites from ever running concurrently, or from running at all beside a
+// second checkout. The runtime cluster sites are exempt: their port is the
+// owner's configured dbPort, which is supposed to be stable.
+for (const rel of clusterFiles.filter((f) => f.includes("verify-"))) {
+  const src = readFileSync(rel, "utf8");
+  check(
+    `${rel} takes an OS-assigned port, never a hardcoded one`,
+    src.includes("freePorts(") && !/=\s*\[\s*\d{4,}/.test(src)
+  );
+}
+{
+  const [a, b] = await freePorts(2);
+  check("freePorts hands back two distinct ports", a !== b, `${a}, ${b}`);
+  check("freePorts stays out of the reserved range", a > 1024 && b > 1024);
 }
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);

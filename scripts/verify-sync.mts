@@ -21,6 +21,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmDirBestEffort } from "../supervisor/rm-dir.mjs";
+import { freePorts } from "./lib/free-port.mjs";
 import {
   cmpStamp,
   mergeOps,
@@ -505,7 +506,11 @@ async function tierB(): Promise<void> {
   }
   console.log("\nTier (b): spinning two ephemeral embedded-postgres clusters…");
   const dirs = [mkdtempSync(join(tmpdir(), "ledgr-sync-a-")), mkdtempSync(join(tmpdir(), "ledgr-sync-b-"))];
-  const ports = [55441, 55442];
+  // OS-assigned, never hardcoded: a leaked postmaster from a crashed run
+  // holding a fixed port wedged this suite instead of failing it (one CI run
+  // sat there 77 minutes), and fixed ports also stop two cluster suites from
+  // ever running at once.
+  const ports = await freePorts(2);
   const clusters = dirs.map(
     (databaseDir, i) =>
       new EmbeddedPostgres({
