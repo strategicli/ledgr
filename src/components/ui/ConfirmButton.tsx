@@ -22,6 +22,7 @@ export default function ConfirmButton({
   children,
   align = "left",
   disabled = false,
+  panelClassName = "w-64",
 }: {
   onConfirm: () => void | Promise<void>;
   title: string;
@@ -35,6 +36,9 @@ export default function ConfirmButton({
   children?: ReactNode;
   align?: "left" | "right";
   disabled?: boolean;
+  // Panel width utility. Defaults to w-64; widen it when the description
+  // carries more than a one-line consequence.
+  panelClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   // Which way the popover opens. Measured from the trigger when it opens so a
@@ -116,7 +120,7 @@ export default function ConfirmButton({
         <div
           role="dialog"
           aria-label={title}
-          className={`absolute z-50 w-64 rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl shadow-black/50 ${
+          className={`absolute z-50 ${panelClassName} rounded-lg border border-neutral-700 bg-neutral-900 p-3 shadow-xl shadow-black/50 ${
             align === "right" ? "right-0" : "left-0"
           } ${side === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}
         >

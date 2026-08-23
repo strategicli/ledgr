@@ -98,7 +98,16 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
           No devices sync against this instance yet.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        // No overflow wrapper here on purpose: `overflow-x-auto` computes
+        // overflow-y to `auto` as well (one non-visible axis forces the other),
+        // which clipped the Revoke/Allow-push confirmation popover inside the
+        // table and put a stray scrollbar on the card. This table is four
+        // narrow columns on a desktop-first Build surface, so it never needed
+        // horizontal scrolling; long device names wrap instead (break-words on
+        // the name cell). ponytail: if a Build table ever genuinely needs BOTH
+        // horizontal scrolling and a popover, ConfirmButton needs to render in
+        // a portal — that is the real fix, and this is not that case.
+        <div>
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="ui-meta text-ink-subtle">
@@ -111,7 +120,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
             <tbody className="divide-y divide-line">
               {peers.map((p) => (
                 <tr key={p.deviceId} className={p.revoked ? "opacity-60" : undefined}>
-                  <td className="py-2 pr-4 text-ink">
+                  <td className="py-2 pr-4 break-words text-ink">
                     {p.name}
                     {p.revoked && (
                       <span className="ui-meta ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-ink-subtle">
@@ -161,17 +170,47 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                         </>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            className={rowButton}
-                            onClick={() =>
-                              void setPullOnly(p.deviceId, !p.pullOnly).catch((err) =>
-                                setError(err instanceof Error ? err.message : String(err))
-                              )
-                            }
-                          >
-                            {p.pullOnly ? "Allow push" : "Make pull-only"}
-                          </button>
+                          {p.pullOnly ? (
+                            <ConfirmButton
+                              title={`Let ${p.name} push to this hub?`}
+                              description="Its own edits start flowing here on its next sync. Until now it could only receive."
+                              confirmLabel="Allow push"
+                              align="right"
+                              panelClassName="w-80"
+                              trigger={<span>Allow push</span>}
+                              triggerClassName={rowButton}
+                              onConfirm={() => setPullOnly(p.deviceId, false)}
+                            >
+                              <ul className="ui-meta list-disc space-y-1 pl-4 text-ink-muted">
+                                <li>
+                                  Conflicts resolve per field by whichever write is newer, so a
+                                  device with a wrong clock or a stale copy can overwrite values
+                                  here.
+                                </li>
+                                <li>
+                                  A losing body is kept in that item&apos;s revisions and flagged,
+                                  so body edits are recoverable. Other fields are not.
+                                </li>
+                                <li>
+                                  Its first push is held if it has more than a few hundred pending
+                                  changes, which is the guard against a bad restore.
+                                </li>
+                                <li>Reversible here at any time, even while that device is offline.</li>
+                              </ul>
+                            </ConfirmButton>
+                          ) : (
+                            <button
+                              type="button"
+                              className={rowButton}
+                              onClick={() =>
+                                void setPullOnly(p.deviceId, true).catch((err) =>
+                                  setError(err instanceof Error ? err.message : String(err))
+                                )
+                              }
+                            >
+                              Make pull-only
+                            </button>
+                          )}
                           <ConfirmButton
                             title={`Revoke ${p.name}?`}
                             description="Its next sync will be refused. You can restore it later."

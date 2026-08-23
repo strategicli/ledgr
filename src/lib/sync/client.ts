@@ -115,6 +115,45 @@ export function parseSyncMode(raw: string | undefined): SyncMode {
   return raw === "pull-only" ? "pull-only" : "full";
 }
 
+// ── The effective push mode (GUI-settable, per instance) ────────────────────
+//
+// LEDGR_SYNC_MODE (supervisor config) is only the INITIAL value now. The owner
+// can flip this instance between pull-only and full from /build/updates, and
+// that has to work without editing a config file and restarting — which is
+// what it took the first time, and is not a thing to ask of anyone.
+//
+// The override lives in job_state, deliberately: job_state is NOT in ADR-206's
+// synced set, so one peer's mode can never replicate to another. It is read
+// fresh on every tick (like parseHubs), so a change takes effect on the next
+// exchange with no restart.
+//
+// This is the SPOKE's own choice. The hub's per-device pull_only flag is
+// separate and authoritative: a spoke set to full still gets a 403 if the hub
+// has not allowed that device to push.
+const SYNC_MODE_KEY = "sync:mode";
+
+/** The precedence rule, pure: a stored override wins, else the env default. */
+export function effectiveSyncMode(stored: unknown, envRaw: string | undefined): SyncMode {
+  if (stored === "pull-only" || stored === "full") return stored;
+  return parseSyncMode(envRaw);
+}
+
+export async function readSyncMode(): Promise<SyncMode> {
+  const rows = await getDb()
+    .select({ value: jobState.value })
+    .from(jobState)
+    .where(eq(jobState.key, SYNC_MODE_KEY));
+  const stored = (rows[0]?.value as { mode?: unknown } | undefined)?.mode;
+  return effectiveSyncMode(stored, process.env.LEDGR_SYNC_MODE);
+}
+
+export async function writeSyncMode(mode: SyncMode): Promise<void> {
+  await getDb()
+    .insert(jobState)
+    .values({ key: SYNC_MODE_KEY, value: { mode } })
+    .onConflictDoUpdate({ target: jobState.key, set: { value: { mode }, updatedAt: new Date() } });
+}
+
 export type FullSyncStatus =
   | { enabled: false }
   | ({ enabled: true; hubCount: number; mode: SyncMode } & SyncStatus);
@@ -151,7 +190,7 @@ export async function gatherSyncStatus(): Promise<FullSyncStatus> {
   const hub = hubs[Math.min(Math.max(s.activeHubIndex, 0), hubs.length - 1)];
   const cursor = await readCursor(hub);
   const pendingOps = await pendingCount(cursor.push);
-  return buildSyncStatus(hubs, s, pendingOps, parseSyncMode(process.env.LEDGR_SYNC_MODE));
+  return buildSyncStatus(hubs, s, pendingOps, await readSyncMode());
 }
 
 // ── Guardrail 2: first-push size guard (pure, tested directly) ─────────────
@@ -465,6 +504,9 @@ export function startSyncLoop(): void {
     running = true;
     try {
       deviceId ??= await localDeviceId();
+      // Re-read every tick so the /build/updates toggle takes effect on the
+      // next exchange rather than the next restart.
+      guard.mode = await readSyncMode();
       const head = await getDb()
         .select({ max: sql<string>`coalesce(max(${syncOps.seq}), 0)::text` })
         .from(syncOps)
