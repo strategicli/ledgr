@@ -31,13 +31,86 @@ export type SyncMode = "full" | "pull-only";
 
 export type HoldReason = "first_push_size" | "clock_skew";
 
-// Per-hub view of the exchange walk (ADR-209): one entry per configured hub,
-// in hub-list order, updated on every attempt — so the Network page can show
-// which uplink is healthy and which is failing, not just the blended state.
+// ── Per-hub behavior: two independent axes (ADR-210) ───────────────────────
+//
+// CADENCE is how often we exchange with a hub; FALLBACK TRUST is whether this
+// instance may start *relying* on it silently. They were one `role` field in
+// the first draft, which was wrong: a fast hub you would happily fall back to
+// and a daily hub you want to be asked about are the common pair, but the
+// axes are genuinely independent.
+//
+// The rule that makes "prompt first" coherent, because using a hub is two
+// different things:
+//   - PUSHING to a hub is always safe and never prompts. Depositing a copy of
+//     your changes somewhere cannot corrupt you, and a backup that stops
+//     receiving is not a backup. Every configured hub is pushed to on its own
+//     cadence, automatic or emergency.
+//   - PULLING is where trust lives. Not because stale rows are dangerous in
+//     the merge (per-field LWW means an older row loses to a newer one), but
+//     because your sense of freshness degrades silently: you would be reading
+//     a system that has not heard from your other machines in a day while the
+//     UI says "synced". That is the Principle 9 failure the staleness refusal
+//     fixed from the other direction.
+export type HubCadence = "continuous" | "daily";
+export type HubFallback = "automatic" | "prompt";
+
+export const CADENCE_DAILY_MS = 24 * 60 * 60 * 1000;
+
+// Per-hub view of the exchange round (ADR-209, extended by ADR-210): one
+// entry per configured hub, in hub-list order, updated on every attempt — so
+// the Network page can show which uplink is healthy and which is failing, not
+// just the blended state. The guard fields are per hub on purpose (ADR-210):
+// they were one global reading, which meant a slow emergency hub with a day
+// of ops queued could trip a hold that then blocked the healthy mirror.
 export type HubStatus = {
   url: string;
+  cadence: HubCadence;
+  fallback: HubFallback;
   lastSyncAt: string | null;
   lastError: string | null;
+  // When this hub is next due for an exchange (ISO), null when due now.
+  nextDueAt: string | null;
+  // Did the last attempt pull, or push only? An emergency hub is push-only
+  // until the owner approves pulling from it.
+  pulling: boolean;
+  holdReason: HoldReason | null;
+  heldOpsCount: number | null;
+  skewMs: number | null;
+  // How many of THIS instance's own changes this hub has not received yet —
+  // the freshness gap, computed from the per-hub push cursor that already
+  // exists. Null until the status endpoint computes it.
+  behindOps: number | null;
+};
+
+// The pending decision the loop records when every automatic hub has been
+// failing longer than the threshold and an emergency hub exists. The loop runs
+// server-side and cannot prompt, so it records this and the UI surfaces it —
+// the pattern the hold reasons already prove.
+export type FallbackPrompt = {
+  // The highest-priority emergency hub on offer.
+  url: string;
+  cadence: HubCadence;
+  // What each automatic hub actually said, so the prompt shows evidence.
+  automaticErrors: { url: string; error: string | null }[];
+  // How long every automatic hub has been failing, ms.
+  failingForMs: number;
+  // How stale this backup is: when it last exchanged, and how many of our
+  // own changes it has not received.
+  lastSyncAt: string | null;
+  behindOps: number | null;
+};
+
+// The owner's answer, stored in job_state (never synced, like every other
+// per-instance sync flag). Auto-clears once an automatic hub is fully caught
+// up again — Brandon's refinement: the recovered hub gets brought up to speed
+// FIRST, then the approval drops.
+export type FallbackApproval = {
+  url: string;
+  // Brandon chose "ask each time" for cadence promotion, and promotion
+  // reverts when the primary returns — so it lives here, on the ephemeral
+  // approval, never written into the hub's configured cadence.
+  promoteCadence: boolean;
+  approvedAt: string;
 };
 
 export type SyncStatus = {
@@ -59,6 +132,11 @@ export type SyncStatus = {
   skewWarn: boolean;
   // Per-hub attempt results (additive, ADR-209).
   hubs: HubStatus[];
+  // ADR-210: set when the loop wants the owner's approval to start pulling
+  // from an emergency hub. Null the rest of the time.
+  fallbackPrompt: FallbackPrompt | null;
+  // ADR-210: the approval currently in force, if any.
+  fallbackApproval: FallbackApproval | null;
 };
 
 // In-memory status for the SyncPill / /build/updates, plus the loop's
@@ -77,7 +155,23 @@ export type SyncStatus = {
 // This fixes duplication WITHIN a process, which is the observed cause. It
 // cannot fix separate processes: if the app is ever served by more than one,
 // status has to move to the database (job_state) instead.
-type SyncShared = { status: SyncStatus; firstPushDone: boolean; loopArmed: boolean };
+// ADR-210 makes the guard state PER HUB (`hubRuntime`, keyed by url): the
+// first-push flag and the learned skew were single global readings, so a slow
+// emergency hub with a day of ops queued could trip a hold that then blocked
+// the healthy mirror. `automaticFailingSince` is the clock behind the
+// fallback prompt.
+export type HubRuntime = {
+  firstPushDone: boolean;
+  skewMs: number | null;
+  // Epoch ms; 0 means due now.
+  nextDueAt: number;
+};
+type SyncShared = {
+  status: SyncStatus;
+  loopArmed: boolean;
+  hubRuntime: Record<string, HubRuntime>;
+  automaticFailingSince: number | null;
+};
 const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgrSync ??= {
   status: {
     state: "offline",
@@ -90,16 +184,23 @@ const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgr
     skewMs: null,
     skewWarn: false,
     hubs: [],
+    fallbackPrompt: null,
+    fallbackApproval: null,
   },
   // Guardrail 2's "only the FIRST push is gated" boundary: once a real push
   // attempt has been let through (or found nothing to send), this never gates
   // again for the rest of the process's lifetime. Deliberately separate from
   // `status`, which is allowed to move back and forth (e.g. holdReason clears
-  // once resolved) — this flag must not.
-  firstPushDone: false,
+  // once resolved) — this flag must not. Per hub since ADR-210.
   loopArmed: false,
+  hubRuntime: {},
+  automaticFailingSince: null,
 });
 const status = shared.status;
+
+function hubRuntime(url: string): HubRuntime {
+  return (shared.hubRuntime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0 });
+}
 
 export function getSyncStatus(): SyncStatus {
   return { ...status };
@@ -220,7 +321,104 @@ export async function writeStoredConfirmLargePush(confirm: boolean): Promise<voi
 // The stored token is this device's credential FOR that hub, held in the
 // local database — the same trust boundary as the plaintext deviceToken in
 // supervisor/config.json on the same disk.
-export type HubConfig = { url: string; token: string };
+//
+// ADR-210 adds `cadence` and `fallback` — two independent axes, additive on a
+// store that already exists, and parse-tolerant: an entry written before this
+// change reads as continuous + automatic, which is exactly what it was doing.
+export type HubConfig = {
+  url: string;
+  token: string;
+  cadence?: HubCadence;
+  fallback?: HubFallback;
+};
+
+/** The defaults, applied in one place so every reader agrees. */
+export function hubCadence(h: Pick<HubConfig, "cadence">): HubCadence {
+  return h.cadence === "daily" ? "daily" : "continuous";
+}
+export function hubFallback(h: Pick<HubConfig, "fallback">): HubFallback {
+  return h.fallback === "prompt" ? "prompt" : "automatic";
+}
+
+/** How long between exchanges with a hub on this cadence. `continuousMs` is
+ * the loop's own pull window, so "continuous" means "every normal round". */
+export function cadenceIntervalMs(cadence: HubCadence, continuousMs: number): number {
+  return cadence === "daily" ? CADENCE_DAILY_MS : continuousMs;
+}
+
+/**
+ * The one validation, and Brandon's instinct about it is right: if any hub is
+ * configured, at least one must be automatic. With every hub set to
+ * prompt-first the instance never syncs unattended — it just sits waiting for
+ * a human, which is a silently-not-syncing peer wearing a "synced" face. (A
+ * peer that should only sync when told is what pull-only MODE is for; that is
+ * a different control.) Returns the user-facing refusal, or null when fine.
+ */
+export function hubListRefusal(hubs: Pick<HubConfig, "fallback">[]): string | null {
+  if (hubs.length === 0) return null;
+  if (hubs.some((h) => hubFallback(h) === "automatic")) return null;
+  return (
+    "At least one hub has to be automatic. With every hub set to ask first, " +
+    "this instance would never sync unattended — it would sit waiting for you " +
+    "while reporting itself synced."
+  );
+}
+
+/**
+ * May this instance PULL from this hub right now? Automatic hubs always;
+ * an emergency hub only while the owner's approval names it.
+ */
+export function shouldPullFrom(
+  hub: Pick<HubConfig, "url" | "fallback">,
+  approvedUrl: string | null
+): boolean {
+  return hubFallback(hub) === "automatic" || hub.url === approvedUrl;
+}
+
+/**
+ * The effective cadence for a hub, honoring an approval that also promoted it.
+ * Promotion lives on the approval, never on the config, so it reverts by
+ * itself when the approval clears — Brandon's requirement.
+ */
+export function effectiveCadence(
+  hub: Pick<HubConfig, "url" | "cadence">,
+  approval: FallbackApproval | null
+): HubCadence {
+  if (approval?.promoteCadence && approval.url === hub.url) return "continuous";
+  return hubCadence(hub);
+}
+
+/**
+ * When is a hub next due after an attempt? A success waits the full cadence;
+ * a FAILURE retries on the normal pull window instead, so a daily hub that
+ * errors does not disappear for 24 hours.
+ */
+export function nextDueAfter(opts: {
+  now: number;
+  ok: boolean;
+  cadenceMs: number;
+  retryMs: number;
+}): number {
+  return opts.now + (opts.ok ? opts.cadenceMs : Math.min(opts.retryMs, opts.cadenceMs));
+}
+
+/**
+ * Should the owner be asked to start pulling from an emergency hub? Only when
+ * every automatic hub has been failing for longer than the threshold, an
+ * emergency hub exists, and nothing is approved already.
+ */
+export function shouldPromptFallback(opts: {
+  automaticFailingSince: number | null;
+  now: number;
+  thresholdMs: number;
+  hasEmergency: boolean;
+  approvedUrl: string | null;
+}): boolean {
+  if (opts.approvedUrl) return false;
+  if (!opts.hasEmergency) return false;
+  if (opts.automaticFailingSince === null) return false;
+  return opts.now - opts.automaticFailingSince >= opts.thresholdMs;
+}
 
 const SYNC_HUBS_KEY = "sync:hubs";
 
@@ -233,19 +431,29 @@ export function effectiveHubs(
   envToken: string | undefined
 ): HubConfig[] {
   if (Array.isArray(stored)) {
-    return stored.filter(
-      (h): h is HubConfig =>
-        !!h &&
-        typeof h === "object" &&
-        typeof (h as HubConfig).url === "string" &&
-        (h as HubConfig).url.length > 0 &&
-        typeof (h as HubConfig).token === "string" &&
-        (h as HubConfig).token.length > 0
-    );
+    return stored
+      .filter(
+        (h): h is HubConfig =>
+          !!h &&
+          typeof h === "object" &&
+          typeof (h as HubConfig).url === "string" &&
+          (h as HubConfig).url.length > 0 &&
+          typeof (h as HubConfig).token === "string" &&
+          (h as HubConfig).token.length > 0
+      )
+      // Normalize the ADR-210 axes here so nothing downstream has to guess:
+      // an entry stored before they existed reads as continuous + automatic,
+      // which is precisely the behavior it already had.
+      .map((h) => ({ ...h, cadence: hubCadence(h), fallback: hubFallback(h) }));
   }
   const token = (envToken ?? "").trim();
   if (!token) return [];
-  return parseHubs(envHubs).map((url) => ({ url, token }));
+  return parseHubs(envHubs).map((url) => ({
+    url,
+    token,
+    cadence: "continuous" as HubCadence,
+    fallback: "automatic" as HubFallback,
+  }));
 }
 
 export async function readSyncHubs(): Promise<HubConfig[]> {
@@ -267,6 +475,58 @@ export async function writeSyncHubs(hubs: HubConfig[]): Promise<void> {
     });
 }
 
+// ── The fallback approval (GUI-settable, auto-clearing — ADR-210) ──────────
+//
+// Stored in job_state like every other per-instance sync flag, so it survives
+// a restart and is never replicated to another peer. The loop re-reads it every
+// tick and CLEARS it once an automatic hub has completed a fully drained
+// exchange — Brandon's refinement: when the primary comes back it gets brought
+// up to speed FIRST, then the approval (and any cadence promotion with it)
+// drops. Clearing on a half-finished exchange would hand freshness back to a
+// hub that has not caught up yet.
+const SYNC_FALLBACK_KEY = "sync:fallbackApproval";
+
+/** Parse-tolerant read of a stored approval, pure. Rejects anything that no
+ * longer names a configured hub — a removed hub cannot stay approved. */
+export function effectiveFallbackApproval(
+  stored: unknown,
+  hubUrls: string[]
+): FallbackApproval | null {
+  if (!stored || typeof stored !== "object") return null;
+  const a = stored as Partial<FallbackApproval>;
+  if (typeof a.url !== "string" || !hubUrls.includes(a.url)) return null;
+  return {
+    url: a.url,
+    promoteCadence: a.promoteCadence === true,
+    approvedAt: typeof a.approvedAt === "string" ? a.approvedAt : new Date(0).toISOString(),
+  };
+}
+
+export async function readFallbackApproval(hubUrls: string[]): Promise<FallbackApproval | null> {
+  const rows = await getDb()
+    .select({ value: jobState.value })
+    .from(jobState)
+    .where(eq(jobState.key, SYNC_FALLBACK_KEY));
+  return effectiveFallbackApproval(
+    (rows[0]?.value as { approval?: unknown } | undefined)?.approval,
+    hubUrls
+  );
+}
+
+export async function writeFallbackApproval(approval: FallbackApproval | null): Promise<void> {
+  if (!approval) {
+    await getDb().delete(jobState).where(eq(jobState.key, SYNC_FALLBACK_KEY));
+    return;
+  }
+  await getDb()
+    .insert(jobState)
+    .values({ key: SYNC_FALLBACK_KEY, value: { approval } })
+    .onConflictDoUpdate({
+      target: jobState.key,
+      set: { value: { approval }, updatedAt: new Date() },
+    });
+}
+
 export type FullSyncStatus =
   | { enabled: false }
   | ({ enabled: true; hubCount: number; mode: SyncMode } & SyncStatus);
@@ -277,17 +537,44 @@ export type FullSyncStatus =
 // refreshes its own copy when it runs, and the status endpoint reads between
 // runs. A "held" reading is never downgraded by the pendingOps recompute.
 export function buildSyncStatus(
-  hubs: string[],
+  hubs: Pick<HubConfig, "url" | "cadence" | "fallback">[],
   s: SyncStatus,
   pendingOps: number,
-  mode: SyncMode
+  mode: SyncMode,
+  // Per-hub "our changes it has not received" counts, by url (ADR-210).
+  behindByUrl: Record<string, number> = {}
 ): FullSyncStatus {
   if (hubs.length === 0) return { enabled: false };
+  // The configured list is authoritative for shape and order: a hub added
+  // between ticks appears immediately (config-only, no attempt yet) rather
+  // than waiting for the loop to notice it.
+  const seen = new Map(s.hubs.map((h) => [h.url, h] as const));
+  const merged: HubStatus[] = hubs.map((h) => {
+    const prior = seen.get(h.url);
+    return {
+      url: h.url,
+      cadence: hubCadence(h),
+      fallback: hubFallback(h),
+      lastSyncAt: prior?.lastSyncAt ?? null,
+      lastError: prior?.lastError ?? null,
+      nextDueAt: prior?.nextDueAt ?? null,
+      pulling: prior?.pulling ?? shouldPullFrom(h, s.fallbackApproval?.url ?? null),
+      holdReason: prior?.holdReason ?? null,
+      heldOpsCount: prior?.heldOpsCount ?? null,
+      skewMs: prior?.skewMs ?? null,
+      behindOps: behindByUrl[h.url] ?? prior?.behindOps ?? null,
+    };
+  });
+  const prompt = s.fallbackPrompt
+    ? { ...s.fallbackPrompt, behindOps: behindByUrl[s.fallbackPrompt.url] ?? s.fallbackPrompt.behindOps }
+    : null;
   return {
     enabled: true,
     hubCount: hubs.length,
     mode,
     ...s,
+    hubs: merged,
+    fallbackPrompt: prompt,
     pendingOps,
     state: s.state === "synced" && pendingOps > 0 ? "pending" : s.state,
   };
@@ -306,7 +593,14 @@ export async function gatherSyncStatus(): Promise<FullSyncStatus> {
   const hub = hubs[Math.min(Math.max(s.activeHubIndex, 0), hubs.length - 1)];
   const cursor = await readCursor(hub.url);
   const pendingOps = await pendingCount(cursor.push);
-  return buildSyncStatus(hubs.map((h) => h.url), s, pendingOps, await readSyncMode());
+  // The freshness gap, per hub, from cursors that already exist — no new
+  // protocol, which is why ADR-210 needs no wire change for this half.
+  const behindByUrl: Record<string, number> = {};
+  for (const h of hubs) {
+    const c = h.url === hub.url ? cursor : await readCursor(h.url);
+    behindByUrl[h.url] = h.url === hub.url ? pendingOps : await pendingCount(c.push);
+  }
+  return buildSyncStatus(hubs, s, pendingOps, await readSyncMode(), behindByUrl);
 }
 
 // ── Guardrail 2: first-push size guard (pure, tested directly) ─────────────
@@ -410,6 +704,25 @@ export function selectPushOps(opts: {
   return { ops: opts.candidateOps, holdReason: null, heldOpsCount: null, firstPushDoneAfter: true };
 }
 
+/**
+ * The push decision FOR ONE HUB, reading and writing that hub's own guard
+ * state. This exists as its own function because the trap it closes was real
+ * (ADR-210): the first-push flag and the learned skew used to be single
+ * global readings, so a slow emergency hub with a day of ops queued would
+ * trip a hold that then blocked the healthy mirror hub too. Keyed state makes
+ * "held" a property of one uplink instead of the whole process.
+ */
+export function pushSelectionForHub(
+  runtime: Record<string, HubRuntime>,
+  url: string,
+  opts: Omit<Parameters<typeof selectPushOps>[0], "firstPushDone" | "skewMs">
+): PushSelection {
+  const rt = (runtime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0 });
+  const sel = selectPushOps({ ...opts, firstPushDone: rt.firstPushDone, skewMs: rt.skewMs });
+  rt.firstPushDone = sel.firstPushDoneAfter;
+  return sel;
+}
+
 const PUSH_BATCH = 500;
 // How far past the cap a push batch extends to finish the last op's same-`at`
 // run (one local transaction) — see unpushedOps.
@@ -500,16 +813,46 @@ type PushGuard = {
   confirmLargePush: boolean;
   skewWarnMs: number;
   skewHoldMs: number;
+  // ADR-210: the "continuous" cadence interval (the loop's pull window), and
+  // how long every automatic hub must be failing before the owner is asked
+  // about an emergency hub.
+  continuousMs: number;
+  fallbackPromptMs: number;
 };
 
 // One full exchange with one hub: push until drained, pull until drained.
-// Throws on any transport/HTTP failure so the caller can walk the hub list.
+// Throws on any transport/HTTP failure so the caller can record it per hub.
 // Guardrails 1-3 all act at the same point: deciding what `ops` to send.
 // Pulling is never gated by any of them (holding a push cannot corrupt the
 // hub; holding a pull would just leave this peer stale).
-async function exchangeWith(hub: HubConfig, deviceId: string, guard: PushGuard): Promise<void> {
+//
+// ADR-210: `opts.pull` is the fallback-trust gate. When false we push and
+// deliberately do NOT pull — the hub is told so with `pull: false`, which
+// keeps it from serving (and charging us for) a batch we would discard, and
+// keeps its record of what we have pulled truthful. Guard state is read and
+// written PER HUB, so one hub's hold or bad clock never gates another's push.
+type ExchangeResult = {
+  // True when both halves ran to completion inside the bounded loop — the
+  // "brought up to speed" test the approval clear depends on.
+  drained: boolean;
+  pendingOps: number;
+  holdReason: HoldReason | null;
+  heldOpsCount: number | null;
+  skewMs: number | null;
+};
+
+async function exchangeWith(
+  hub: HubConfig,
+  deviceId: string,
+  guard: PushGuard,
+  opts: { pull: boolean }
+): Promise<ExchangeResult> {
+  const rt = hubRuntime(hub.url);
   const schemaVer = latestSchemaVer();
   let cursor = await readCursor(hub.url);
+  let drained = false;
+  let holdReason: HoldReason | null = null;
+  let heldOpsCount: number | null = null;
   // Bounded loop: worst case both sides hold deep backlogs; each round moves
   // at least one batch, and the caller reruns on the next tick anyway.
   for (let round = 0; round < 20; round++) {
@@ -518,22 +861,20 @@ async function exchangeWith(hub: HubConfig, deviceId: string, guard: PushGuard):
     // fetch — pull-only skips it outright since it can never be used.
     const pending = await pendingCount(cursor.push);
     const candidateOps = guard.mode === "pull-only" ? [] : await unpushedOps(cursor.push);
-    const sel = selectPushOps({
+    const sel = pushSelectionForHub(shared.hubRuntime, hub.url, {
       mode: guard.mode,
       candidateOps,
       pendingCount: pending,
-      firstPushDone: shared.firstPushDone,
       maxFirstPush: guard.maxFirstPush,
       confirmLargePush: guard.confirmLargePush,
-      skewMs: status.skewMs,
       skewWarnMs: guard.skewWarnMs,
       skewHoldMs: guard.skewHoldMs,
     });
-    shared.firstPushDone = sel.firstPushDoneAfter;
-    status.holdReason = sel.holdReason;
-    status.heldOpsCount = sel.heldOpsCount;
+    holdReason = sel.holdReason;
+    heldOpsCount = sel.heldOpsCount;
     if (sel.holdReason === "first_push_size") {
       log.warn("first push held: pending oplog exceeds the first-push limit", {
+        hub: hub.url,
         pending: sel.heldOpsCount,
         maxFirstPush: guard.maxFirstPush,
       });
@@ -546,7 +887,15 @@ async function exchangeWith(hub: HubConfig, deviceId: string, guard: PushGuard):
         authorization: `Bearer ${hub.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ deviceId, schemaVer, sinceSeq: cursor.pull, ops }),
+      body: JSON.stringify({
+        deviceId,
+        schemaVer,
+        sinceSeq: cursor.pull,
+        ops,
+        // Additive and optional: omitted on the ordinary pulling path, so an
+        // older hub is byte-for-byte unaffected.
+        ...(opts.pull ? {} : { pull: false }),
+      }),
     });
     if (res.status === 409) {
       const detail = (await res.json().catch(() => ({}))) as { localVer?: string };
@@ -586,51 +935,190 @@ async function exchangeWith(hub: HubConfig, deviceId: string, guard: PushGuard):
       hasMore: boolean;
       serverTime?: string;
     };
-    if (data.ops.length > 0) {
+    // Belt and suspenders for a hub that predates `pull: false` and answered
+    // with ops anyway: on a push-only round we never apply them, because the
+    // pull cursor deliberately does not advance and we would re-apply the
+    // same batch every round forever.
+    if (opts.pull && data.ops.length > 0) {
       await applySyncOps(data.ops);
     }
     if (data.serverTime) {
       const skewMs = Date.parse(data.serverTime) - Date.now();
-      if (Number.isFinite(skewMs)) {
-        status.skewMs = skewMs;
-        status.skewWarn = classifySkew(skewMs, guard.skewWarnMs, guard.skewHoldMs) !== "ok";
-      }
+      if (Number.isFinite(skewMs)) rt.skewMs = skewMs;
     }
     cursor = {
       push: ops.length > 0 ? ops[ops.length - 1].seq : cursor.push,
-      pull: Number(data.cursor ?? cursor.pull),
+      // A push-only round must never advance the pull cursor: we did not read
+      // those ops, and pretending we did is how a peer silently skips a hole.
+      pull: opts.pull ? Number(data.cursor ?? cursor.pull) : cursor.pull,
     };
     await writeCursor(hub.url, cursor);
-    if (!data.hasMore && ops.length < PUSH_BATCH) break;
+    if ((!opts.pull || !data.hasMore) && ops.length < PUSH_BATCH) {
+      drained = true;
+      break;
+    }
   }
-  status.pendingOps = await pendingCount(cursor.push);
+  return {
+    drained,
+    pendingOps: await pendingCount(cursor.push),
+    holdReason,
+    heldOpsCount,
+    skewMs: rt.skewMs,
+  };
 }
 
-async function exchange(hubs: HubConfig[], deviceId: string, guard: PushGuard): Promise<void> {
+// One round over the WHOLE hub list (ADR-210 replaced first-success-wins).
+//
+// The old walk returned on the first hub that succeeded, which is failover —
+// and is exactly why an archive hub received nothing as long as the primary
+// was up. Now every hub due on its own cadence gets an exchange: pushing to
+// all of them, pulling only from the ones trust allows.
+async function exchange(
+  hubs: HubConfig[],
+  deviceId: string,
+  guard: PushGuard,
+  approval: FallbackApproval | null
+): Promise<void> {
+  const now = Date.now();
   // Rebuild the per-hub view to the CURRENT list (it is GUI-editable between
   // ticks), carrying prior results forward by url so a hub that succeeded
   // earlier keeps its lastSyncAt while another is being attempted.
   const prior = new Map(status.hubs.map((h) => [h.url, h]));
-  status.hubs = hubs.map(
-    (h) => prior.get(h.url) ?? { url: h.url, lastSyncAt: null, lastError: null }
-  );
+  status.hubs = hubs.map((h) => {
+    const rt = hubRuntime(h.url);
+    return {
+      ...(prior.get(h.url) ?? {
+        lastSyncAt: null,
+        lastError: null,
+        holdReason: null,
+        heldOpsCount: null,
+        behindOps: null,
+      }),
+      url: h.url,
+      cadence: hubCadence(h),
+      fallback: hubFallback(h),
+      nextDueAt: rt.nextDueAt > now ? new Date(rt.nextDueAt).toISOString() : null,
+      pulling: shouldPullFrom(h, approval?.url ?? null),
+      skewMs: rt.skewMs,
+    } as HubStatus;
+  });
+
+  // Did an AUTOMATIC hub complete a fully drained exchange this round? That —
+  // not merely "answered" — is what clears a fallback approval, so a
+  // recovering primary is brought up to speed before we stop leaning on the
+  // backup (Brandon, 2026-08-23).
+  let automaticDrained = false;
+  let automaticAttempted = false;
+  let firstHealthyIndex = -1;
+
   for (let i = 0; i < hubs.length; i++) {
+    const hub = hubs[i];
+    const rt = hubRuntime(hub.url);
+    const isAutomatic = hubFallback(hub) === "automatic";
+    if (rt.nextDueAt > now) continue;
+    const cadence = effectiveCadence(hub, approval);
+    const cadenceMs = cadenceIntervalMs(cadence, guard.continuousMs);
+    const pull = shouldPullFrom(hub, approval?.url ?? null);
+    if (isAutomatic) automaticAttempted = true;
     try {
-      await exchangeWith(hubs[i], deviceId, guard);
-      status.hubs[i] = { url: hubs[i].url, lastSyncAt: new Date().toISOString(), lastError: null };
-      status.activeHubIndex = i;
-      status.lastSyncAt = new Date().toISOString();
-      status.lastError = null;
-      status.state = status.holdReason ? "held" : status.pendingOps > 0 ? "pending" : "synced";
-      return;
+      const r = await exchangeWith(hub, deviceId, guard, { pull });
+      rt.nextDueAt = nextDueAfter({ now, ok: true, cadenceMs, retryMs: guard.continuousMs });
+      status.hubs[i] = {
+        ...status.hubs[i],
+        lastSyncAt: new Date().toISOString(),
+        lastError: null,
+        nextDueAt: new Date(rt.nextDueAt).toISOString(),
+        holdReason: r.holdReason,
+        heldOpsCount: r.heldOpsCount,
+        skewMs: r.skewMs,
+        behindOps: r.pendingOps,
+      };
+      if (isAutomatic && r.drained) automaticDrained = true;
+      if (pull && firstHealthyIndex < 0) firstHealthyIndex = i;
+      // The blended top-level reading follows the highest-priority hub we
+      // actually pulled from — that is what "am I reading fresh data" means.
+      if (firstHealthyIndex === i) {
+        status.activeHubIndex = i;
+        status.pendingOps = r.pendingOps;
+        status.holdReason = r.holdReason;
+        status.heldOpsCount = r.heldOpsCount;
+        status.skewMs = r.skewMs;
+        status.skewWarn =
+          r.skewMs !== null &&
+          classifySkew(r.skewMs, guard.skewWarnMs, guard.skewHoldMs) !== "ok";
+        status.lastSyncAt = new Date().toISOString();
+        status.lastError = null;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      status.hubs[i] = { ...status.hubs[i], lastError: message };
+      rt.nextDueAt = nextDueAfter({ now, ok: false, cadenceMs, retryMs: guard.continuousMs });
+      status.hubs[i] = {
+        ...status.hubs[i],
+        lastError: message,
+        nextDueAt: new Date(rt.nextDueAt).toISOString(),
+      };
       status.lastError = message;
-      log.warn("hub exchange failed, walking the list", { hub: hubs[i].url, error: message });
+      log.warn("hub exchange failed", { hub: hub.url, automatic: isAutomatic, error: message });
     }
   }
-  status.state = "offline";
+
+  // The failing clock only moves on rounds where an automatic hub was
+  // actually attempted, so a daily hub that is simply not due yet never reads
+  // as "failing".
+  if (automaticDrained) {
+    shared.automaticFailingSince = null;
+    if (approval) {
+      log.info("automatic hub caught up; clearing the fallback approval", {
+        approvedHub: approval.url,
+      });
+      await writeFallbackApproval(null);
+      status.fallbackApproval = null;
+    }
+  } else if (automaticAttempted) {
+    shared.automaticFailingSince ??= now;
+  }
+
+  const emergency = hubs.filter((h) => hubFallback(h) === "prompt");
+  if (
+    shouldPromptFallback({
+      automaticFailingSince: shared.automaticFailingSince,
+      now,
+      thresholdMs: guard.fallbackPromptMs,
+      hasEmergency: emergency.length > 0,
+      approvedUrl: approval?.url ?? null,
+    })
+  ) {
+    // Priority ordering: offer the first emergency hub in list order.
+    const candidate = emergency[0];
+    const candidateStatus = status.hubs.find((h) => h.url === candidate.url);
+    status.fallbackPrompt = {
+      url: candidate.url,
+      cadence: hubCadence(candidate),
+      automaticErrors: hubs
+        .filter((h) => hubFallback(h) === "automatic")
+        .map((h) => ({
+          url: h.url,
+          error: status.hubs.find((s2) => s2.url === h.url)?.lastError ?? null,
+        })),
+      failingForMs: now - (shared.automaticFailingSince ?? now),
+      lastSyncAt: candidateStatus?.lastSyncAt ?? null,
+      behindOps: candidateStatus?.behindOps ?? null,
+    };
+  } else {
+    status.fallbackPrompt = null;
+  }
+
+  // Offline means no hub we are allowed to READ from answered: pushing to an
+  // archive while every readable hub is down still leaves this peer stale,
+  // and saying otherwise is the silent misreport Principle 9 forbids.
+  status.state =
+    firstHealthyIndex < 0
+      ? "offline"
+      : status.holdReason
+        ? "held"
+        : status.pendingOps > 0
+          ? "pending"
+          : "synced";
 }
 
 /**
@@ -662,6 +1150,11 @@ export function startSyncLoop(): void {
     confirmLargePush: /^(1|true)$/i.test(process.env.LEDGR_SYNC_CONFIRM_LARGE_PUSH ?? ""),
     skewWarnMs: envInt("LEDGR_SYNC_SKEW_WARN_MS", 5000),
     skewHoldMs: envInt("LEDGR_SYNC_SKEW_HOLD_MS", 60000),
+    continuousMs: pullMs,
+    // 15 minutes (Brandon, 2026-08-23): long enough that a network blip, a
+    // laptop lid or a cold start never nags; short enough that a real outage
+    // surfaces while the owner is still at the desk.
+    fallbackPromptMs: envInt("LEDGR_SYNC_FALLBACK_PROMPT_MS", 15 * 60 * 1000),
   };
 
   let deviceId: string | null = null;
@@ -678,13 +1171,16 @@ export function startSyncLoop(): void {
       // page's hub edits take effect on the next exchange, not the next
       // restart.
       guard.mode = await readSyncMode();
-      const storedConfirm = !shared.firstPushDone && (await readStoredConfirmLargePush());
+      const anyFirstPushDone = Object.values(shared.hubRuntime).some((r) => r.firstPushDone);
+      const storedConfirm = !anyFirstPushDone && (await readStoredConfirmLargePush());
       guard.confirmLargePush = effectiveConfirmLargePush(
         storedConfirm,
         process.env.LEDGR_SYNC_CONFIRM_LARGE_PUSH
       );
       const hubs = await readSyncHubs();
       if (hubs.length === 0) return;
+      const approval = await readFallbackApproval(hubs.map((h) => h.url));
+      status.fallbackApproval = approval;
       const head = await getDb()
         .select({ max: sql<string>`coalesce(max(${syncOps.seq}), 0)::text` })
         .from(syncOps)
@@ -693,13 +1189,13 @@ export function startSyncLoop(): void {
       const due = Date.now() - lastFullExchange >= pullMs;
       const wrote = lastSeenSeq >= 0 && maxSeq > lastSeenSeq;
       if (due || wrote || lastSeenSeq < 0) {
-        await exchange(hubs, deviceId, guard);
+        await exchange(hubs, deviceId, guard, approval);
         lastFullExchange = Date.now();
       }
       // One-shot: the stored release did its job the moment the first push
       // went through; clear it so it can never release a future process's
       // held push (a bad restore, for instance) by leftover accident.
-      if (storedConfirm && shared.firstPushDone) {
+      if (storedConfirm && Object.values(shared.hubRuntime).some((r) => r.firstPushDone)) {
         await writeStoredConfirmLargePush(false);
       }
       lastSeenSeq = maxSeq;

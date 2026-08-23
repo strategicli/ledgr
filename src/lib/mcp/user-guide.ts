@@ -851,14 +851,38 @@ The **Changelog** (\`/changelog\`) has the full history behind each version.
 hubs this instance syncs **to**, and the devices that sync **from** it.
 
 - **Hubs this instance syncs to.** Each hub with its state, when it last
-  synced, and whether it is the primary (first in the list; the rest are
-  fallbacks). **Add hub** asks for the hub's URL and a device token minted on
-  that hub — the mirror image of adding a device below. **Remove** stops
-  syncing to a hub; the data on both sides stays where it is. Changes take
-  effect within seconds, no restart. One thing that is deliberately not a
-  button: repointing this instance at a different primary hub needs its data
-  re-filled from the new hub first (\`npm run local:restore -- --from-url\`),
-  because changing the URL alone would merge two diverged databases.
+  synced, how far behind it is, and its place in the priority order (the list
+  order is the priority). **Add hub** asks for the hub's URL and a device
+  token minted on that hub — the mirror image of adding a device below.
+  **Remove** stops syncing to a hub; the data on both sides stays where it is.
+  Changes take effect within seconds, no restart. One thing that is
+  deliberately not a button: repointing this instance at a different primary
+  hub needs its data re-filled from the new hub first
+  (\`npm run local:restore -- --from-url\`), because changing the URL alone
+  would merge two diverged databases.
+- **Each hub has two settings, and they are independent.** **How often** is
+  the schedule: *continuously* (every few seconds — right for another machine
+  of yours) or *once a day* (right for a cloud archive, and it means that hub
+  can be up to a day behind). **Fall back to it** is trust: *automatic* means
+  this instance reads from that hub without asking; *ask first* means it only
+  deposits changes there, and if every automatic hub goes down it will ask
+  before it starts reading from this one. The arrows on each row change the
+  priority order. At least one hub always has to be automatic, or this
+  instance would sit waiting for you instead of syncing.
+- **Your changes always go to every hub.** Sending a copy somewhere can never
+  harm you, and a backup that stops receiving is not a backup, so every hub
+  gets your changes on its own schedule whatever its trust setting. Reading is
+  the half that gets gated, because reading from a stale hub quietly makes
+  everything look fresher than it is.
+- **When the usual hubs go down**, and they have all been failing for about
+  fifteen minutes, a **Needs your decision** block appears at the top of this
+  page (and the navigation dot turns amber). It shows what each usual hub
+  actually said, when the backup last exchanged, and how many of your changes
+  the backup has not received yet — then offers to start reading from it. If
+  the backup is on a daily schedule you can also ask for it to be checked
+  continuously while you are leaning on it. Either way it undoes itself: as
+  soon as one of the usual hubs is fully caught up again, the approval and any
+  speed-up clear on their own. **Stop reading from it now** ends it early.
 - **This instance's sync.** The connection state: mode (pull-only or full,
   with the toggle to allow or stop pushing), whether changes are waiting to
   go out, when the last exchange happened, and the last error. When a large

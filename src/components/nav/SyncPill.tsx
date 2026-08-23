@@ -50,15 +50,25 @@ export default function SyncPill({
   if (!status?.enabled) return null;
 
   const onBackup = status.activeHubIndex > 0;
+  // A decision the loop is waiting on (ADR-210) is the same class of thing as
+  // a hold: it must not be silent, and the page it links to is where it is
+  // answered.
+  const needsDecision = !!status.fallbackPrompt;
   // A silent guardrail is not a guardrail: any hold, or a warn-level clock
   // skew even without a hold, keeps the pill off green.
-  const amber = status.state === "pending" || status.state === "held" || onBackup || status.skewWarn;
+  const amber =
+    status.state === "pending" ||
+    status.state === "held" ||
+    onBackup ||
+    status.skewWarn ||
+    needsDecision;
   const color = status.state === "offline" ? "bg-rose-500" : amber ? "bg-amber-500" : "bg-emerald-500";
 
   const hubName = onBackup ? "backup hub" : "primary hub";
   const skewNote = status.skewWarn ? " · clock skew detected" : "";
-  const label =
-    status.state === "offline"
+  const label = needsDecision
+    ? `No usual hub has answered for a while. A backup is available — open Network to decide whether to read from it.`
+    : status.state === "offline"
       ? `Offline. No hub reachable${status.lastError ? `: ${status.lastError}` : ""}`
       : status.state === "held"
         ? status.holdReason === "first_push_size"

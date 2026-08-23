@@ -34,6 +34,12 @@ type SyncRequest = {
   schemaVer?: string;
   sinceSeq?: number;
   ops?: SyncOp[];
+  // ADR-210, additive and optional: `false` asks for a PUSH-ONLY exchange.
+  // A peer sends it for a hub it is not allowed to pull from yet (an
+  // emergency backup awaiting the owner's approval) — depositing changes is
+  // always safe, reading is what trust gates. Omitted means pull, so every
+  // caller written before this is byte-for-byte unaffected.
+  pull?: boolean;
 };
 
 export async function POST(request: Request) {
@@ -63,6 +69,7 @@ export async function POST(request: Request) {
 
   const ops = Array.isArray(body.ops) ? body.ops : [];
   const sinceSeq = Number.isFinite(body.sinceSeq) ? Number(body.sinceSeq) : 0;
+  const wantsPull = body.pull !== false;
 
   // Guardrail 1, hub side: a pull_only device is refused outright rather than
   // silently dropped, so the guarantee never depends on the spoke behaving
@@ -104,6 +111,24 @@ export async function POST(request: Request) {
         lastPushedSeq: sql`greatest(${syncPeers.lastPushedSeq}, ${maxPushed})`,
       })
       .where(eq(syncPeers.deviceId, peer.deviceId));
+
+    // A push-only exchange (ADR-210) stops here: no ops served, no
+    // lastPulledSeq advance — the retention hold has to keep reflecting what
+    // this peer has actually read — and no staleness refusal, since nothing
+    // was pulled to be stale. The peer learns it is falling behind from the
+    // freshness gap on its own Network page instead.
+    if (!wantsPull) {
+      return NextResponse.json({
+        ops: [],
+        cursor: sinceSeq,
+        hasMore: false,
+        schemaVer: localVer,
+        applied: result.actions,
+        rejected: result.rejected,
+        pulled: false,
+        serverTime: new Date().toISOString(),
+      });
+    }
 
     // The staleness refusal (ADR-208), AFTER the push half on purpose: a
     // waking peer's local edits still drain to the hub (they are ordinary

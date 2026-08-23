@@ -6,15 +6,27 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  cadenceIntervalMs,
+  effectiveCadence,
   effectiveConfirmLargePush,
+  effectiveFallbackApproval,
   effectiveHubs,
   effectiveSyncMode,
   getSyncStatus,
   checkFirstPush,
   classifySkew,
+  hubCadence,
+  hubFallback,
+  hubListRefusal,
+  nextDueAfter,
   parseHubs,
   parseSyncMode,
+  pushSelectionForHub,
   selectPushOps,
+  shouldPromptFallback,
+  shouldPullFrom,
+  CADENCE_DAILY_MS,
+  type HubRuntime,
   type SyncStatus,
 } from "../src/lib/sync/client";
 import {
@@ -247,7 +259,13 @@ const base: SyncStatus = {
   skewMs: null,
   skewWarn: false,
   hubs: [],
+  fallbackPrompt: null,
+  fallbackApproval: null,
 };
+
+// buildSyncStatus takes the CONFIGURED list since ADR-210, so the shape is
+// right for a hub added between ticks (config known, no attempt yet).
+const h = (url: string) => ({ url });
 
 {
   const disabled = buildSyncStatus([], base, 0, "full");
@@ -257,7 +275,7 @@ const base: SyncStatus = {
 }
 
 {
-  const s = buildSyncStatus(["h1", "h2"], base, 0, "full");
+  const s = buildSyncStatus([h("h1"), h("h2")], base, 0, "full");
   check(
     "enabled shape carries state/pendingOps/hub/mode fields",
     s.enabled === true &&
@@ -273,7 +291,7 @@ const base: SyncStatus = {
 
 {
   // Unpushed local writes between loop runs flip a stale "synced" to pending.
-  const s = buildSyncStatus(["h1"], base, 3, "full");
+  const s = buildSyncStatus([h("h1")], base, 3, "full");
   check(
     "on-demand pendingOps overrides the loop's stale count",
     s.enabled === true && s.pendingOps === 3 && s.state === "pending"
@@ -282,7 +300,7 @@ const base: SyncStatus = {
 
 {
   // Offline stays offline no matter the backlog; the count still reports.
-  const s = buildSyncStatus(["h1"], { ...base, state: "offline", lastError: "x" }, 7, "full");
+  const s = buildSyncStatus([h("h1")], { ...base, state: "offline", lastError: "x" }, 7, "full");
   check(
     "offline is not masked by the pending flip",
     s.enabled === true && s.state === "offline" && s.pendingOps === 7
@@ -292,7 +310,7 @@ const base: SyncStatus = {
 {
   // A held push is not masked or upgraded by the pendingOps recompute either.
   const s = buildSyncStatus(
-    ["h1"],
+    [h("h1")],
     { ...base, state: "held", holdReason: "first_push_size", heldOpsCount: 600 },
     600,
     "full"
@@ -308,13 +326,13 @@ const base: SyncStatus = {
 
 {
   // Pull-only mode is reported even while otherwise fully synced.
-  const s = buildSyncStatus(["h1"], base, 0, "pull-only");
+  const s = buildSyncStatus([h("h1")], base, 0, "pull-only");
   check("pull-only mode is carried into the response", s.enabled === true && s.mode === "pull-only");
 }
 
 {
   // A warn-level skew surfaces even when nothing is held.
-  const s = buildSyncStatus(["h1"], { ...base, skewMs: 8000, skewWarn: true }, 0, "full");
+  const s = buildSyncStatus([h("h1")], { ...base, skewMs: 8000, skewWarn: true }, 0, "full");
   check(
     "skew fields surface even when the state is otherwise synced",
     s.enabled === true && s.state === "synced" && s.skewWarn === true && s.skewMs === 8000
@@ -323,8 +341,390 @@ const base: SyncStatus = {
 
 {
   // Skew can be negative (hub behind spoke) and still reports as-is.
-  const s = buildSyncStatus(["h1"], { ...base, skewMs: -75000, skewWarn: true }, 0, "full");
+  const s = buildSyncStatus([h("h1")], { ...base, skewMs: -75000, skewWarn: true }, 0, "full");
   check("negative skew round-trips through the status shape", s.enabled === true && s.skewMs === -75000);
+}
+
+
+// ── ADR-210: per-hub cadence and fallback trust ──────────────────────────────
+//
+// Two INDEPENDENT axes. Conflating them into one `role` enum was the first
+// draft's mistake: a fast hub you would happily fall back to and a daily hub
+// you want to be asked about are the common pair, but the axes are genuinely
+// independent, so nothing here may derive one from the other.
+
+// Parse tolerance: an entry stored before these fields existed reads as
+// exactly what it was already doing.
+check("a hub with no cadence reads continuous", hubCadence({}) === "continuous");
+check("a hub with no fallback reads automatic", hubFallback({}) === "automatic");
+check("garbage cadence is not obeyed", hubCadence({ cadence: "hourly" as never }) === "continuous");
+check("garbage fallback is not obeyed", hubFallback({ fallback: "maybe" as never }) === "automatic");
+check("daily is recognized", hubCadence({ cadence: "daily" }) === "daily");
+check("prompt is recognized", hubFallback({ fallback: "prompt" }) === "prompt");
+
+{
+  // The axes must not be derived from each other — the whole point of two
+  // fields. A daily AUTOMATIC hub and a continuous ASK-FIRST hub are both
+  // legal and must survive a round trip.
+  const stored = [
+    { url: "https://a", token: "t", cadence: "daily", fallback: "automatic" },
+    { url: "https://b", token: "t", cadence: "continuous", fallback: "prompt" },
+  ];
+  const hubs = effectiveHubs(stored, undefined, undefined);
+  check(
+    "daily + automatic survives (cadence does not imply trust)",
+    hubCadence(hubs[0]) === "daily" && hubFallback(hubs[0]) === "automatic"
+  );
+  check(
+    "continuous + prompt survives (trust does not imply cadence)",
+    hubCadence(hubs[1]) === "continuous" && hubFallback(hubs[1]) === "prompt"
+  );
+}
+
+{
+  // An old stored entry (no axes at all) normalizes to the prior behavior.
+  const hubs = effectiveHubs([{ url: "https://a", token: "t" }], undefined, undefined);
+  check(
+    "a pre-ADR-210 stored hub normalizes to continuous + automatic",
+    hubs.length === 1 && hubs[0].cadence === "continuous" && hubs[0].fallback === "automatic"
+  );
+}
+
+{
+  // Env-configured hubs are automatic and continuous: that is what they did
+  // before the axes existed, and a config file cannot express anything else.
+  const hubs = effectiveHubs(undefined, "https://a,https://b", "tok");
+  check(
+    "env hubs are continuous + automatic",
+    hubs.length === 2 && hubs.every((x) => x.cadence === "continuous" && x.fallback === "automatic")
+  );
+}
+
+check("continuous cadence is the loop's own pull window", cadenceIntervalMs("continuous", 10000) === 10000);
+check("daily cadence is 24h", cadenceIntervalMs("daily", 10000) === CADENCE_DAILY_MS);
+
+// The one validation: with every hub set to ask first, the instance never
+// syncs unattended — a silently-not-syncing peer wearing a "synced" face.
+check("an empty hub list is fine (that just means no syncing)", hubListRefusal([]) === null);
+check(
+  "one automatic hub satisfies the rule",
+  hubListRefusal([{ fallback: "automatic" }, { fallback: "prompt" }]) === null
+);
+check(
+  "an all-prompt list is refused",
+  typeof hubListRefusal([{ fallback: "prompt" }, { fallback: "prompt" }]) === "string"
+);
+check(
+  "a list defaulting to automatic (no field) is not refused",
+  hubListRefusal([{}]) === null
+);
+
+// Pushing is always allowed; PULLING is what trust gates.
+check(
+  "an automatic hub is pulled from with no approval",
+  shouldPullFrom({ url: "https://a", fallback: "automatic" }, null) === true
+);
+check(
+  "an emergency hub is NOT pulled from without approval",
+  shouldPullFrom({ url: "https://b", fallback: "prompt" }, null) === false
+);
+check(
+  "an approval unlocks pulling from exactly that hub",
+  shouldPullFrom({ url: "https://b", fallback: "prompt" }, "https://b") === true
+);
+check(
+  "an approval for one hub does not unlock another",
+  shouldPullFrom({ url: "https://c", fallback: "prompt" }, "https://b") === false
+);
+
+// Cadence promotion lives on the APPROVAL, never on the config, so it reverts
+// by itself when the approval clears (Brandon's requirement).
+{
+  const daily = { url: "https://b", cadence: "daily" as const };
+  const approvedAt = "2026-08-23T00:00:00.000Z";
+  check(
+    "no approval leaves a daily hub daily",
+    effectiveCadence(daily, null) === "daily"
+  );
+  check(
+    "an approval WITHOUT promotion leaves the cadence alone",
+    effectiveCadence(daily, { url: "https://b", promoteCadence: false, approvedAt }) === "daily"
+  );
+  check(
+    "an approval WITH promotion makes it continuous",
+    effectiveCadence(daily, { url: "https://b", promoteCadence: true, approvedAt }) === "continuous"
+  );
+  check(
+    "a promotion for another hub does not promote this one",
+    effectiveCadence(daily, { url: "https://z", promoteCadence: true, approvedAt }) === "daily"
+  );
+}
+
+// A failed exchange retries on the normal pull window: a daily hub that
+// errors must not disappear for 24 hours.
+{
+  const now = 1_000_000;
+  check(
+    "a successful daily exchange waits the full day",
+    nextDueAfter({ now, ok: true, cadenceMs: CADENCE_DAILY_MS, retryMs: 10000 }) ===
+      now + CADENCE_DAILY_MS
+  );
+  check(
+    "a FAILED daily exchange retries on the pull window, not tomorrow",
+    nextDueAfter({ now, ok: false, cadenceMs: CADENCE_DAILY_MS, retryMs: 10000 }) === now + 10000
+  );
+  check(
+    "a continuous hub never waits longer than its cadence on failure",
+    nextDueAfter({ now, ok: false, cadenceMs: 10000, retryMs: 60000 }) === now + 10000
+  );
+}
+
+// The prompt threshold: 15 minutes by default, and none of the three other
+// preconditions may be skipped.
+{
+  const fifteen = 15 * 60 * 1000;
+  const now = 100 * 60 * 1000;
+  const base210 = {
+    now,
+    thresholdMs: fifteen,
+    hasEmergency: true,
+    approvedUrl: null as string | null,
+  };
+  check(
+    "no failure means no prompt",
+    shouldPromptFallback({ ...base210, automaticFailingSince: null }) === false
+  );
+  check(
+    "a 30-second blip does not prompt",
+    shouldPromptFallback({ ...base210, automaticFailingSince: now - 30_000 }) === false
+  );
+  check(
+    "failing just under the threshold does not prompt",
+    shouldPromptFallback({ ...base210, automaticFailingSince: now - fifteen + 1 }) === false
+  );
+  check(
+    "failing at the threshold prompts",
+    shouldPromptFallback({ ...base210, automaticFailingSince: now - fifteen }) === true
+  );
+  check(
+    "no emergency hub means nothing to offer, so no prompt",
+    shouldPromptFallback({
+      ...base210,
+      hasEmergency: false,
+      automaticFailingSince: now - fifteen * 4,
+    }) === false
+  );
+  check(
+    "an existing approval is not re-asked",
+    shouldPromptFallback({
+      ...base210,
+      approvedUrl: "https://b",
+      automaticFailingSince: now - fifteen * 4,
+    }) === false
+  );
+}
+
+// A stored approval that no longer names a configured hub is not honored:
+// removing a hub must not leave it silently approved.
+{
+  const stored = { url: "https://b", promoteCadence: true, approvedAt: "2026-08-23T00:00:00.000Z" };
+  check(
+    "an approval for a configured hub reads back",
+    effectiveFallbackApproval(stored, ["https://a", "https://b"])?.url === "https://b"
+  );
+  check(
+    "an approval for a removed hub is dropped",
+    effectiveFallbackApproval(stored, ["https://a"]) === null
+  );
+  check("nothing stored means no approval", effectiveFallbackApproval(undefined, ["https://a"]) === null);
+  check(
+    "promoteCadence defaults to false rather than true",
+    effectiveFallbackApproval({ url: "https://a", approvedAt: "x" }, ["https://a"])
+      ?.promoteCadence === false
+  );
+}
+
+// ── The recorded trap: guard state is PER HUB, not per process ──────────────
+//
+// The first-push size guard and the learned clock skew used to be single
+// global readings. A slow emergency hub with a day of ops queued would trip a
+// hold that then blocked the healthy mirror hub too — one bad uplink taking
+// the good one down with it. pushSelectionForHub is what the loop calls, so
+// collapsing that state back to one flag fails right here.
+{
+  const ops = [{ seq: 1 }, { seq: 2 }] as never[];
+  const runtime: Record<string, HubRuntime> = {
+    // The healthy mirror has already pushed once this process.
+    "https://mirror": { firstPushDone: true, skewMs: 0, nextDueAt: 0 },
+    // The emergency archive has not, and has a day of ops queued.
+    "https://archive": { firstPushDone: false, skewMs: 0, nextDueAt: 0 },
+  };
+  const common = {
+    mode: "full" as const,
+    candidateOps: ops,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  };
+  const archive = pushSelectionForHub(runtime, "https://archive", {
+    ...common,
+    pendingCount: 900,
+  });
+  const mirror = pushSelectionForHub(runtime, "https://mirror", {
+    ...common,
+    pendingCount: 900,
+  });
+  check(
+    "the emergency hub's first push is held on its own backlog",
+    archive.holdReason === "first_push_size" && archive.ops.length === 0
+  );
+  check(
+    "the healthy mirror still sends while the other hub is held",
+    mirror.holdReason === null && mirror.ops.length === 2
+  );
+  check(
+    "a held hub does not mark itself pushed",
+    runtime["https://archive"].firstPushDone === false
+  );
+  check(
+    "holding one hub never clears another's flag",
+    runtime["https://mirror"].firstPushDone === true
+  );
+}
+
+{
+  // Same isolation for clock skew: a hub whose clock is wrong holds only its
+  // own push.
+  const runtime: Record<string, HubRuntime> = {
+    "https://good": { firstPushDone: true, skewMs: 200, nextDueAt: 0 },
+    "https://badclock": { firstPushDone: true, skewMs: 300_000, nextDueAt: 0 },
+  };
+  const common = {
+    mode: "full" as const,
+    candidateOps: [{ seq: 1 }] as never[],
+    pendingCount: 1,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  };
+  check(
+    "a hub with a bad clock holds its own push",
+    pushSelectionForHub(runtime, "https://badclock", common).holdReason === "clock_skew"
+  );
+  check(
+    "the hub with a good clock is unaffected by the other's skew",
+    pushSelectionForHub(runtime, "https://good", common).ops.length === 1
+  );
+}
+
+{
+  // An unknown hub starts fresh rather than inheriting anyone's state.
+  const runtime: Record<string, HubRuntime> = {
+    "https://old": { firstPushDone: true, skewMs: 0, nextDueAt: 0 },
+  };
+  const sel = pushSelectionForHub(runtime, "https://new", {
+    mode: "full",
+    candidateOps: [{ seq: 1 }] as never[],
+    pendingCount: 900,
+    maxFirstPush: 500,
+    confirmLargePush: false,
+    skewWarnMs: 5000,
+    skewHoldMs: 60000,
+  });
+  check(
+    "a newly added hub gets its own first-push gate, not the neighbor's",
+    sel.holdReason === "first_push_size"
+  );
+}
+
+// ── The status shape carries the new per-hub and decision fields ────────────
+{
+  const s2 = buildSyncStatus(
+    [
+      { url: "https://a", cadence: "continuous", fallback: "automatic" },
+      { url: "https://b", cadence: "daily", fallback: "prompt" },
+    ],
+    base,
+    0,
+    "full",
+    { "https://a": 0, "https://b": 42 }
+  );
+  check(
+    "every configured hub appears with its axes, in list order",
+    s2.enabled === true &&
+      s2.hubs.length === 2 &&
+      s2.hubs[0].url === "https://a" &&
+      s2.hubs[1].cadence === "daily" &&
+      s2.hubs[1].fallback === "prompt"
+  );
+  check(
+    "an automatic hub reads as pulling and an emergency hub does not",
+    s2.enabled === true && s2.hubs[0].pulling === true && s2.hubs[1].pulling === false
+  );
+  check(
+    "the freshness gap per hub comes through",
+    s2.enabled === true && s2.hubs[1].behindOps === 42
+  );
+}
+
+{
+  // A pending decision survives into the response, with its evidence, and the
+  // backup's freshness gap is filled in from the cursors.
+  const prompt = {
+    url: "https://b",
+    cadence: "daily" as const,
+    automaticErrors: [{ url: "https://a", error: "fetch failed" }],
+    failingForMs: 20 * 60 * 1000,
+    lastSyncAt: "2026-08-22T10:00:00.000Z",
+    behindOps: null,
+  };
+  const s2 = buildSyncStatus(
+    [
+      { url: "https://a", fallback: "automatic" },
+      { url: "https://b", fallback: "prompt" },
+    ],
+    { ...base, state: "offline", fallbackPrompt: prompt },
+    5,
+    "full",
+    { "https://b": 42 }
+  );
+  check(
+    "the pending fallback decision reaches the client with its evidence",
+    s2.enabled === true &&
+      s2.fallbackPrompt?.url === "https://b" &&
+      s2.fallbackPrompt.automaticErrors[0].error === "fetch failed" &&
+      s2.fallbackPrompt.behindOps === 42
+  );
+  check(
+    "an approved hub reads back through the status shape",
+    buildSyncStatus(
+      [{ url: "https://b", fallback: "prompt" }],
+      {
+        ...base,
+        fallbackApproval: { url: "https://b", promoteCadence: true, approvedAt: "x" },
+      },
+      0,
+      "full"
+    ).enabled === true
+  );
+}
+
+{
+  // An emergency hub becomes readable the moment an approval names it, with
+  // no config change — the approval is the only difference.
+  const hubs = [{ url: "https://b", fallback: "prompt" as const }];
+  const approved = buildSyncStatus(
+    hubs,
+    { ...base, fallbackApproval: { url: "https://b", promoteCadence: false, approvedAt: "x" } },
+    0,
+    "full"
+  );
+  check(
+    "approval alone flips an emergency hub to pulling",
+    approved.enabled === true && approved.hubs[0].pulling === true
+  );
 }
 
 // ── The effective push mode: a stored override beats the env default ────────
@@ -359,7 +759,12 @@ const base: SyncStatus = {
   const stored = [{ url: "https://a.example", token: "ta" }];
   check(
     "a stored hub list wins over env",
-    JSON.stringify(effectiveHubs(stored, "https://env.example", "tenv")) === JSON.stringify(stored)
+    JSON.stringify(effectiveHubs(stored, "https://env.example", "tenv")) ===
+      // The ADR-210 axes are filled in on read, so the stored entry comes back
+      // normalized rather than byte-identical.
+      JSON.stringify([
+        { url: "https://a.example", token: "ta", cadence: "continuous", fallback: "automatic" },
+      ])
   );
   check(
     "an EMPTY stored list means no hubs, not env fallback",
@@ -369,8 +774,8 @@ const base: SyncStatus = {
     "no stored list falls back to env, same token on each",
     JSON.stringify(effectiveHubs(undefined, "https://a.example, https://b.example", "t1")) ===
       JSON.stringify([
-        { url: "https://a.example", token: "t1" },
-        { url: "https://b.example", token: "t1" },
+        { url: "https://a.example", token: "t1", cadence: "continuous", fallback: "automatic" },
+        { url: "https://b.example", token: "t1", cadence: "continuous", fallback: "automatic" },
       ])
   );
   check("env hubs without a token arm nothing", effectiveHubs(undefined, "https://a.example", undefined).length === 0);
