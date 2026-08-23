@@ -38,6 +38,10 @@ import {
   pruneSyncOps,
   SYNC_OPS_RETENTION_DAYS,
   SYNC_PRUNED_THROUGH_KEY,
+  holdState,
+  parseHoldMode,
+  effectiveGraceDays,
+  HOLD_GRACE_DAYS_DEFAULT,
 } from "../src/lib/sync/peers";
 
 let failures = 0;
@@ -796,6 +800,135 @@ async function tierB(): Promise<void> {
 }
 
 await tierB();
+
+// ── Retention holds, per device (ADR-213) ───────────────────────────────────
+//
+// The bind this fixes: pruneSyncOps keeps every op above min(last_pulled_seq)
+// across non-revoked peers, so a peer merely ASLEEP pinned the oplog forever,
+// while revoking — the only way to free the floor — is also what destroys that
+// peer's ability to resume. hold_mode is the third option, and it governs
+// RETENTION ONLY: access stays with `revoked` and `pullOnly`.
+
+const DAY = 24 * 60 * 60 * 1000;
+const NOW = Date.UTC(2026, 7, 23, 12, 0, 0);
+const daysAgo = (n: number) => new Date(NOW - n * DAY);
+
+// Parse tolerance, and the direction of the tolerance matters: an unreadable
+// setting must fall back to the BOUNDED mode, never to an unbounded hold.
+check("auto is the default mode", parseHoldMode(undefined) === "auto");
+check("garbage reads as auto, never warm", parseHoldMode("forever") === "auto");
+check("null reads as auto", parseHoldMode(null) === "auto");
+check("warm is recognized", parseHoldMode("warm") === "warm");
+check("cold is recognized", parseHoldMode("cold") === "cold");
+
+check("no window set means the default", effectiveGraceDays(null) === HOLD_GRACE_DAYS_DEFAULT);
+check("a set window is honored", effectiveGraceDays(60) === 60);
+check("zero is not a window", effectiveGraceDays(0) === HOLD_GRACE_DAYS_DEFAULT);
+check("a negative window is refused", effectiveGraceDays(-5) === HOLD_GRACE_DAYS_DEFAULT);
+check("a fractional window floors", effectiveGraceDays(30.9) === 30);
+check(
+  "the default window matches the op retention window, so a sleeper gets exactly one",
+  HOLD_GRACE_DAYS_DEFAULT === SYNC_OPS_RETENTION_DAYS
+);
+
+{
+  // A device seen today: holds, no warning, nothing to say.
+  const h = holdState({ mode: "auto", graceDays: null, lastSeenAt: daysAgo(0), createdAt: daysAgo(90), now: NOW });
+  check("a device seen today holds the log", h.holds && !h.warn && !h.lapsed);
+  check("and reports its full window remaining", h.daysLeft === 14);
+}
+{
+  // 9 of 14 days: under 0.7, still quiet. A daily-syncing device must never nag.
+  const h = holdState({ mode: "auto", graceDays: null, lastSeenAt: daysAgo(9), createdAt: daysAgo(90), now: NOW });
+  check("9 days into a 14-day window does not warn yet", h.holds && !h.warn);
+}
+{
+  // 10 of 14 days = 0.71 — the warning Brandon asked for.
+  const h = holdState({ mode: "auto", graceDays: null, lastSeenAt: daysAgo(10), createdAt: daysAgo(90), now: NOW });
+  check("10 days into a 14-day window warns", h.holds && h.warn && !h.lapsed);
+  check("and says how long is left", h.daysLeft === 4);
+}
+{
+  // Past the window: the hold is gone and the state SAYS so, which is the
+  // whole point — the alternative is discovering it at an ADR-208 refusal.
+  const h = holdState({ mode: "auto", graceDays: null, lastSeenAt: daysAgo(15), createdAt: daysAgo(90), now: NOW });
+  check("past its window a device stops holding", !h.holds && h.lapsed);
+  check("a lapsed device does not also 'warn' (it is past warning)", !h.warn);
+  check("and reports zero days left", h.daysLeft === 0);
+}
+{
+  // Exactly at the boundary counts as lapsed: >= is the same comparison the
+  // SQL makes, so the UI can never claim a hold the prune has already dropped.
+  const h = holdState({ mode: "auto", graceDays: null, lastSeenAt: daysAgo(14), createdAt: daysAgo(90), now: NOW });
+  check("exactly at the window is lapsed, matching the SQL", h.lapsed && !h.holds);
+}
+{
+  // The warning threshold is a FRACTION, so it still arrives usefully early on
+  // a long window rather than always at 10 days.
+  const long = holdState({ mode: "auto", graceDays: 60, lastSeenAt: daysAgo(30), createdAt: daysAgo(90), now: NOW });
+  check("30 days into a 60-day window does not warn", long.holds && !long.warn);
+  const later = holdState({ mode: "auto", graceDays: 60, lastSeenAt: daysAgo(45), createdAt: daysAgo(90), now: NOW });
+  check("45 days into a 60-day window does warn", later.holds && later.warn);
+  check("a per-device window is reported back", later.graceDays === 60);
+}
+{
+  // "warm" is the owner's deliberate unbounded hold.
+  const h = holdState({ mode: "warm", graceDays: null, lastSeenAt: daysAgo(400), createdAt: daysAgo(500), now: NOW });
+  check("a warm device holds however long it has been away", h.holds && !h.lapsed);
+  check("and never nags, because the owner already decided", !h.warn);
+  check("with no countdown, because there is none", h.daysLeft === null);
+}
+{
+  // "cold" is the owner releasing it now.
+  const h = holdState({ mode: "cold", graceDays: null, lastSeenAt: daysAgo(0), createdAt: daysAgo(1), now: NOW });
+  check("a cold device holds nothing even if it synced seconds ago", !h.holds);
+  check("and is not described as lapsed — it was a choice, not a timeout", !h.lapsed);
+}
+{
+  // THE SAME BUG IN DIFFERENT CLOTHES: a token minted and never used sits at
+  // cursor 0, so before this it pinned the ENTIRE oplog indefinitely. Its
+  // clock has to be created_at.
+  const fresh = holdState({ mode: "auto", graceDays: null, lastSeenAt: null, createdAt: daysAgo(2), now: NOW });
+  check("a device minted 2 days ago and never used still holds", fresh.holds);
+  const stale = holdState({ mode: "auto", graceDays: null, lastSeenAt: null, createdAt: daysAgo(30), now: NOW });
+  check(
+    "a device minted 30 days ago and NEVER used stops holding (it pinned everything before)",
+    !stale.holds && stale.lapsed
+  );
+}
+{
+  // Data we cannot reason about must not cause deletion.
+  const h = holdState({ mode: "auto", graceDays: null, lastSeenAt: null, createdAt: null, now: NOW });
+  check("a device with no timestamps at all is assumed to hold, not dropped", h.holds);
+  const bad = holdState({ mode: "auto", graceDays: null, lastSeenAt: "not a date", createdAt: null, now: NOW });
+  check("an unparseable timestamp is assumed to hold too", bad.holds);
+}
+
+// The prune SQL has to agree with the pure logic, or the UI promises a hold the
+// prune has already released. These are text checks on the one statement.
+{
+  const peersSrc = readFileSync("src/lib/sync/peers.ts", "utf8");
+  check(
+    "the prune floor excludes cold devices",
+    /hold_mode <> 'cold'/.test(peersSrc)
+  );
+  check(
+    "the prune floor always keeps warm devices",
+    /hold_mode = 'warm'/.test(peersSrc)
+  );
+  check(
+    "the prune floor ages an auto device from last_seen_at, falling back to created_at",
+    /coalesce\(last_seen_at, created_at\)/.test(peersSrc)
+  );
+  check(
+    "the per-device window is honored in SQL, with the shared default",
+    /coalesce\(grace_days, \$\{HOLD_GRACE_DAYS_DEFAULT\}\)/.test(peersSrc)
+  );
+  check(
+    "revoked devices still never set the floor",
+    /revoked = false/.test(peersSrc)
+  );
+}
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -11,7 +11,7 @@ import { useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import { badgeCount } from "@/lib/format-count";
 import { relativeTime } from "@/lib/relative-time";
-import type { PeerSummary } from "@/lib/sync/peers";
+import type { HoldMode, PeerSummary } from "@/lib/sync/peers";
 
 type Minted = { name: string; token: string };
 
@@ -88,11 +88,85 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
       body: JSON.stringify({ pullOnly }),
     });
 
+  // ADR-213: the retention hold. NOT access — it decides only whether this
+  // device's cursor keeps the hub's oplog alive.
+  const setHold = (deviceId: string, patch: { holdMode?: HoldMode; graceDays?: number | null }) =>
+    mutate(deviceId, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+
+  // Devices worth telling the owner about right now: approaching their window,
+  // or already past it. A device that syncs daily never appears here.
+  const needsAttention = peers.filter((p) => !p.revoked && (p.hold.warn || p.hold.lapsed));
+
   const rowButton =
     "rounded-card border border-line-strong bg-surface-2 px-2.5 py-1 text-xs text-ink hover:bg-surface-3";
 
   return (
     <div>
+      {/* The warning Brandon asked for: said before it happens, with both
+          answers to hand, rather than discovered at a refusal weeks later. */}
+      {needsAttention.length > 0 && (
+        <div className="mb-4 rounded-card border border-amber-700/60 bg-amber-950/20 p-3">
+          <p className="text-sm font-medium text-amber-300">
+            {needsAttention.some((p) => p.hold.lapsed)
+              ? "A device has been away too long to come back the easy way"
+              : "A device has nearly been away too long"}
+          </p>
+          <ul className="mt-2 space-y-2">
+            {needsAttention.map((p) => (
+              <li key={p.deviceId} className="text-sm text-ink-muted">
+                <span className="text-ink">{p.name}</span>{" "}
+                {p.hold.lapsed ? (
+                  <>
+                    has not checked in for over {p.hold.graceDays} days, so this instance stopped
+                    keeping the history it missed. It can still come back, but it will need a
+                    full re-fill from this one rather than just reconnecting.
+                  </>
+                ) : (
+                  <>
+                    has not checked in for a while. In about {p.hold.daysLeft}{" "}
+                    {p.hold.daysLeft === 1 ? "day" : "days"} this instance stops keeping the
+                    history it missed, and after that it would need a full re-fill to return
+                    instead of just reconnecting.
+                  </>
+                )}
+                <span className="mt-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={rowButton}
+                    onClick={() =>
+                      void setHold(p.deviceId, { holdMode: "warm" }).catch((err) =>
+                        setError(err instanceof Error ? err.message : String(err))
+                      )
+                    }
+                  >
+                    Keep its history (it is coming back)
+                  </button>
+                  <button
+                    type="button"
+                    className={rowButton}
+                    onClick={() =>
+                      void setHold(p.deviceId, { holdMode: "cold" }).catch((err) =>
+                        setError(err instanceof Error ? err.message : String(err))
+                      )
+                    }
+                  >
+                    Let it go
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="ui-meta mt-2 text-ink-subtle">
+            Keeping a device&apos;s history costs this instance a little storage that can never be
+            cleaned up while it waits — a few tens of megabytes a month. Letting it go frees that
+            immediately, and the device can still be brought back with a re-fill.
+          </p>
+        </div>
+      )}
       {peers.length === 0 ? (
         <p className="text-sm text-ink-muted">
           No devices sync against this instance yet.
@@ -114,6 +188,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                 <th className="py-1.5 pr-4 font-normal">Device</th>
                 <th className="py-1.5 pr-4 font-normal">Last seen</th>
                 <th className="py-1.5 pr-4 font-normal">Behind</th>
+                <th className="py-1.5 pr-4 font-normal">History kept</th>
                 <th className="py-1.5 font-normal" />
               </tr>
             </thead>
@@ -141,6 +216,55 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                       "up to date"
                     ) : (
                       <>{badgeCount(p.opsBehind, 999)} ops behind</>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4 text-ink-muted">
+                    {p.hold.mode === "warm" ? (
+                      <>
+                        <span className="text-ink">Always</span>
+                        {p.bindingHold && <span className="ui-meta block text-ink-subtle">holding the log</span>}
+                      </>
+                    ) : p.hold.mode === "cold" ? (
+                      <>
+                        <span className="text-amber-400">Not kept</span>
+                        <span className="ui-meta block text-ink-subtle">re-fill to return</span>
+                      </>
+                    ) : p.hold.lapsed ? (
+                      <>
+                        <span className="text-amber-400">Lapsed</span>
+                        <span className="ui-meta block text-ink-subtle">re-fill to return</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className={p.hold.warn ? "text-amber-400" : undefined}>
+                          {p.hold.daysLeft} {p.hold.daysLeft === 1 ? "day" : "days"} left
+                        </span>
+                        {p.bindingHold && <span className="ui-meta block text-ink-subtle">holding the log</span>}
+                      </>
+                    )}
+                    {!p.revoked && (
+                      <select
+                        className="ui-meta mt-1 block rounded-card border border-line bg-surface-0 px-1 py-0.5 text-ink"
+                        aria-label={`How long to keep history for ${p.name}`}
+                        value={p.hold.mode === "auto" ? String(p.hold.graceDays) : p.hold.mode}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const patch =
+                            v === "warm" || v === "cold"
+                              ? { holdMode: v as HoldMode }
+                              : { holdMode: "auto" as HoldMode, graceDays: Number(v) };
+                          void setHold(p.deviceId, patch).catch((err) =>
+                            setError(err instanceof Error ? err.message : String(err))
+                          );
+                        }}
+                      >
+                        <option value="14">14 days</option>
+                        <option value="30">30 days</option>
+                        <option value="60">60 days</option>
+                        <option value="90">90 days</option>
+                        <option value="warm">Always keep</option>
+                        <option value="cold">Do not keep</option>
+                      </select>
                     )}
                   </td>
                   <td className="py-2">
