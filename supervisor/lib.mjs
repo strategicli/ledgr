@@ -139,6 +139,45 @@ export function signalPath(dataDir) {
   return join(dataDir, "update-requested");
 }
 
+// ── Single-instance ownership ────────────────────────────────────────────────
+//
+// One supervisor per dataDir, because two of them fight over everything that
+// matters: they race for the update signal file (whoever polls first wins and
+// the other never learns), they both try to bind appPort and dbPort, and they
+// both drive the same Postgres cluster and the same live.json. Found the hard
+// way on 2026-08-23: three had accumulated on one machine (stopping
+// `npm run local:supervisor` kills npm and orphans the node child), an orphan
+// ate an update signal, and the update failed where nobody could see it.
+//
+// This is not an exotic state. supervisor/README.md step 5 says run it in a
+// terminal and step 7 says register it at boot; doing both, as intended,
+// produces exactly two.
+
+export function lockPath(dataDir) {
+  return join(dataDir, "supervisor.lock");
+}
+
+/**
+ * What to do when the lock file already exists.
+ *
+ * ponytail: identity is the pid alone, so a recycled pid reads as a live
+ * owner and refuses a legitimate start. The cost is one manual delete of
+ * supervisor.lock, the alternative is storing and comparing process start
+ * times per platform, and the window needs a reboot plus a pid wrap to open.
+ *
+ * @param {number} recordedPid pid read from the lock file (NaN when garbage)
+ * @param {number} ownPid this process
+ * @param {boolean} alive whether recordedPid is a running process
+ * @returns {"take" | "steal" | "mine" | "refuse"} take = no valid owner
+ *   recorded, steal = the recorded owner is gone, mine = we already hold it,
+ *   refuse = someone else is alive and owns this dataDir
+ */
+export function lockVerdict(recordedPid, ownPid, alive) {
+  if (!Number.isInteger(recordedPid) || recordedPid <= 0) return "take";
+  if (recordedPid === ownPid) return "mine";
+  return alive ? "refuse" : "steal";
+}
+
 /** Tolerant parse: any malformed pointer reads as "no live build". */
 export function parseLivePointer(text) {
   try {

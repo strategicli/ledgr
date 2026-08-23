@@ -36,6 +36,8 @@ import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
 import {
   assembleAppEnv,
   buildDbUrl,
+  lockPath,
+  lockVerdict,
   buildsDir,
   decideFlip,
   livePointerPath,
@@ -338,6 +340,66 @@ if (cfg.update.mode === "auto") {
 
 // ── Boot + shutdown ──────────────────────────────────────────────────────────
 
+// One supervisor per dataDir (see lib.mjs lockVerdict for why). Taken BEFORE
+// Postgres starts, so the loser exits without touching the cluster, the live
+// pointer, or the ports.
+const lock = lockPath(cfg.dataDir);
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM means it exists and belongs to someone else: alive for our
+    // purposes. ESRCH is the only "gone".
+    return err?.code === "EPERM";
+  }
+}
+
+function acquireLock() {
+  try {
+    // wx is the atomic part: create-or-fail, so two supervisors starting in
+    // the same instant cannot both believe they took it.
+    writeFileSync(lock, String(process.pid), { flag: "wx" });
+    return;
+  } catch (err) {
+    if (err?.code !== "EEXIST") throw err;
+  }
+  let recorded = NaN;
+  try {
+    recorded = Number.parseInt(readFileSync(lock, "utf8").trim(), 10);
+  } catch {
+    // unreadable counts as garbage, handled by the verdict below
+  }
+  const verdict = lockVerdict(recorded, process.pid, Number.isInteger(recorded) && pidAlive(recorded));
+  if (verdict === "refuse") {
+    log("another supervisor already owns this data directory; exiting", {
+      dataDir: cfg.dataDir,
+      ownerPid: recorded,
+      lock,
+    });
+    console.error(
+      `
+A supervisor is already running for ${cfg.dataDir} (pid ${recorded}).
+` +
+        `Stop that one first, or delete ${lock} if you are certain it is dead.
+`
+    );
+    process.exit(1);
+  }
+  if (verdict === "steal") log("taking over a stale lock", { stalePid: recorded });
+  writeFileSync(lock, String(process.pid));
+}
+
+function releaseLock() {
+  try {
+    if (Number.parseInt(readFileSync(lock, "utf8").trim(), 10) === process.pid) unlinkSync(lock);
+  } catch {
+    // never block shutdown on the lock file
+  }
+}
+
+
 async function shutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -349,11 +411,13 @@ async function shutdown(sig) {
   } catch (err) {
     log("postgres stop failed", { error: String(err) });
   }
+  releaseLock();
   process.exit(0);
 }
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+acquireLock();
 await startPostgres();
 const ptr = liveBuild();
 if (ptr) {
