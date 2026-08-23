@@ -107,6 +107,25 @@ device identity is simply this peer's own (never the hub's) either way. If
 this peer syncs against a hub, its first pull/push cycle reconciles
 everything newer than the fill.
 
+### Parking a peer, and why you cannot simply revoke it
+
+**Known gap, do not rely on a long absence working cleanly yet** (tracked in
+`next_steps.md`). Pruning keeps every op above `min(last_pulled_seq)` across
+non-revoked peers, so:
+
+- **Leave a parked device registered** and the hub's oplog grows for as long as
+  it sleeps, holding whole body text per op. It can rejoin and catch up.
+- **Revoke it** and the prune is free to delete exactly the ops it had not
+  pulled. It is inert while parked, which is what you wanted, but it can no
+  longer catch up by pulling — and **nothing detects that**: the hub answers
+  "ops newer than your cursor", the peer gets a partial stream and reports
+  itself synced.
+
+Until the staleness refusal lands, treat a revoked-and-parked peer as needing a
+**re-fill** when it returns (`npm run local:restore -- --from-url <hub db>`,
+~4 minutes for a full copy), not a resume. That is a fine outcome; the problem
+is only that today you have to know it rather than be told.
+
 ### After an update, check what a PUSHING peer is about to send
 
 Reads are safe: six real pages (Today, Tasks, search, an item, Build, home)
