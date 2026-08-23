@@ -16,12 +16,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
-import { relativeTime } from "@/lib/relative-time";
-import { gatherSyncStatus, type FullSyncStatus } from "@/lib/sync/client";
-import { listPeers, type PeerSummary } from "@/lib/sync/peers";
 import { getUpdateReport } from "@/lib/updates";
-import SyncedDevices from "@/components/updates/SyncedDevices";
-import SyncModeToggle from "@/components/updates/SyncModeToggle";
 import UpdateButton from "@/components/updates/UpdateButton";
 
 export const dynamic = "force-dynamic";
@@ -51,23 +46,6 @@ export default async function Updates() {
   if (!owner) redirect("/sign-in");
 
   const { instance, code, schema, canApply, blockedReason } = await getUpdateReport();
-
-  // Sync surfaces (ADR-206 phase 3). gatherSyncStatus is {enabled: false} with
-  // zero queries when this instance isn't a spoke; the peers list renders on
-  // every instance (any instance CAN be a hub) but fails quiet if the sync
-  // tables aren't migrated in yet.
-  let sync: FullSyncStatus = { enabled: false };
-  try {
-    sync = await gatherSyncStatus();
-  } catch {
-    // An unreadable cursor must not take the page down; the pill/API surface it.
-  }
-  let peers: PeerSummary[] = [];
-  try {
-    peers = await listPeers();
-  } catch {
-    // Same posture: a database without the sync tables just shows the empty state.
-  }
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -321,101 +299,18 @@ export default async function Updates() {
         </Card>
       </section>
 
-      {/* ── Sync (spoke side; only when this instance syncs to a hub) ──── */}
-      {sync.enabled && (
-        <section className="mt-8">
-          <h2 className="ui-section-label">Sync</h2>
-          <Card>
-            <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[9rem_1fr]">
-              <dt className="ui-meta text-ink-subtle">Mode</dt>
-              <dd className="text-sm text-ink">
-                {sync.mode === "pull-only"
-                  ? "Pull-only — this instance never pushes changes to the hub"
-                  : "Full — pushes and pulls"}
-                <SyncModeToggle mode={sync.mode} />
-              </dd>
-
-              <dt className="ui-meta text-ink-subtle">State</dt>
-              <dd className="flex items-center gap-2 text-sm text-ink">
-                <StatusDot
-                  tone={
-                    sync.state === "synced" && sync.activeHubIndex === 0
-                      ? "ok"
-                      : sync.state === "offline" || sync.state === "held"
-                        ? "warn"
-                        : "info"
-                  }
-                />
-                {sync.state === "synced"
-                  ? "Synced"
-                  : sync.state === "pending"
-                    ? "Changes waiting to sync"
-                    : sync.state === "held"
-                      ? "Push held (pulling still works)"
-                      : "Offline (no hub reachable)"}
-              </dd>
-
-              {sync.state === "held" && (
-                <>
-                  <dt className="ui-meta text-ink-subtle">Why</dt>
-                  <dd className="text-sm text-amber-400">
-                    {sync.holdReason === "first_push_size"
-                      ? `${sync.heldOpsCount} pending change${sync.heldOpsCount === 1 ? "" : "s"} exceed the first-push limit. Raise maxFirstPush in supervisor/config.json, or set confirmLargePush: true, then restart to release it.`
-                      : `This device's clock differs from the hub's by about ${Math.round(Math.abs(sync.skewMs ?? 0) / 1000)}s, too far to trust which edit is newer. Fix the clock, then restart.`}
-                  </dd>
-                </>
-              )}
-
-              {sync.state !== "held" && sync.skewWarn && (
-                <>
-                  <dt className="ui-meta text-ink-subtle">Clock skew</dt>
-                  <dd className="text-sm text-amber-400">
-                    About {Math.round(Math.abs(sync.skewMs ?? 0) / 1000)}s off from the hub. Still
-                    syncing, but worth fixing the clock.
-                  </dd>
-                </>
-              )}
-
-              <dt className="ui-meta text-ink-subtle">Hub</dt>
-              <dd className="text-sm text-ink">
-                {sync.activeHubIndex === 0
-                  ? "Primary"
-                  : `Backup (hub ${sync.activeHubIndex + 1} of ${sync.hubCount})`}
-                {sync.hubCount > 1 && sync.activeHubIndex === 0 && (
-                  <span className="ui-meta ml-2 text-ink-subtle">
-                    ({sync.hubCount - 1} backup configured)
-                  </span>
-                )}
-              </dd>
-
-              <dt className="ui-meta text-ink-subtle">Pending</dt>
-              <dd className="text-sm text-ink tabular-nums">
-                {sync.pendingOps === 0
-                  ? "Nothing waiting"
-                  : `${sync.pendingOps} change${sync.pendingOps === 1 ? "" : "s"} not yet pushed`}
-              </dd>
-
-              <dt className="ui-meta text-ink-subtle">Last sync</dt>
-              <dd className="text-sm text-ink">
-                {sync.lastSyncAt ? relativeTime(sync.lastSyncAt) : "Not yet this session"}
-              </dd>
-
-              {sync.lastError && (
-                <>
-                  <dt className="ui-meta text-ink-subtle">Last error</dt>
-                  <dd className="text-sm text-amber-400">{sync.lastError}</dd>
-                </>
-              )}
-            </dl>
-          </Card>
-        </section>
-      )}
-
-      {/* ── Synced devices (hub side; any instance can be a hub) ────────── */}
+      {/* ── Sync surfaces moved to Build → Network (ADR-209) ───────────── */}
       <section className="mt-8">
-        <h2 className="ui-section-label">Synced devices</h2>
+        <h2 className="ui-section-label">Sync</h2>
         <Card>
-          <SyncedDevices initialPeers={peers} />
+          <p className="text-sm text-ink-muted">
+            The sync topology — the hubs this instance syncs to and the devices
+            that sync from it — moved to its own page:{" "}
+            <Link href="/build/network" className="text-ink hover:underline">
+              Network
+            </Link>
+            .
+          </p>
         </Card>
       </section>
 

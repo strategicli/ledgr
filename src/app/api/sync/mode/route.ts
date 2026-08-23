@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
-import { readSyncMode, syncEnabled, writeSyncMode } from "@/lib/sync/client";
+import { readSyncHubs, readSyncMode, writeSyncMode } from "@/lib/sync/client";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,9 @@ export const dynamic = "force-dynamic";
 export async function PATCH(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
-  if (!syncEnabled()) {
+  // The effective list (stored ?? env, ADR-209), so a hub added from
+  // Build → Network counts without a restart.
+  if ((await readSyncHubs()).length === 0) {
     return NextResponse.json({ error: "this instance does not sync to a hub" }, { status: 400 });
   }
   try {

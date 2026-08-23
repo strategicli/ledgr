@@ -31,6 +31,15 @@ export type SyncMode = "full" | "pull-only";
 
 export type HoldReason = "first_push_size" | "clock_skew";
 
+// Per-hub view of the exchange walk (ADR-209): one entry per configured hub,
+// in hub-list order, updated on every attempt — so the Network page can show
+// which uplink is healthy and which is failing, not just the blended state.
+export type HubStatus = {
+  url: string;
+  lastSyncAt: string | null;
+  lastError: string | null;
+};
+
 export type SyncStatus = {
   state: SyncState;
   pendingOps: number;
@@ -48,6 +57,8 @@ export type SyncStatus = {
   skewMs: number | null;
   // True once |skewMs| has reached the warn threshold, independent of hold.
   skewWarn: boolean;
+  // Per-hub attempt results (additive, ADR-209).
+  hubs: HubStatus[];
 };
 
 // In-memory status for the SyncPill / /build/updates, plus the loop's
@@ -78,6 +89,7 @@ const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgr
     heldOpsCount: null,
     skewMs: null,
     skewWarn: false,
+    hubs: [],
   },
   // Guardrail 2's "only the FIRST push is gated" boundary: once a real push
   // attempt has been let through (or found nothing to send), this never gates
@@ -154,6 +166,65 @@ export async function writeSyncMode(mode: SyncMode): Promise<void> {
     .onConflictDoUpdate({ target: jobState.key, set: { value: { mode }, updatedAt: new Date() } });
 }
 
+// ── The hub list (GUI-editable, per instance — ADR-209) ─────────────────────
+//
+// Supervisor config (env LEDGR_SYNC_HUBS + the single LEDGR_SYNC_TOKEN) is
+// only the INITIAL value, exactly like the mode above. The owner manages hubs
+// from Build → Network, which needs (a) a per-instance store — job_state, so
+// one peer's hub list never replicates to another — and (b) a token PER hub,
+// which the single env token cannot express. The loop re-reads the list every
+// tick, so add/remove takes effect on the next exchange with no restart.
+//
+// The stored token is this device's credential FOR that hub, held in the
+// local database — the same trust boundary as the plaintext deviceToken in
+// supervisor/config.json on the same disk.
+export type HubConfig = { url: string; token: string };
+
+const SYNC_HUBS_KEY = "sync:hubs";
+
+/** The precedence rule, pure: a stored list wins (even an empty one — the
+ * owner removing every hub means "stop syncing", not "fall back to config");
+ * absent falls back to the env pair. Malformed stored entries are dropped. */
+export function effectiveHubs(
+  stored: unknown,
+  envHubs: string | undefined,
+  envToken: string | undefined
+): HubConfig[] {
+  if (Array.isArray(stored)) {
+    return stored.filter(
+      (h): h is HubConfig =>
+        !!h &&
+        typeof h === "object" &&
+        typeof (h as HubConfig).url === "string" &&
+        (h as HubConfig).url.length > 0 &&
+        typeof (h as HubConfig).token === "string" &&
+        (h as HubConfig).token.length > 0
+    );
+  }
+  const token = (envToken ?? "").trim();
+  if (!token) return [];
+  return parseHubs(envHubs).map((url) => ({ url, token }));
+}
+
+export async function readSyncHubs(): Promise<HubConfig[]> {
+  const rows = await getDb()
+    .select({ value: jobState.value })
+    .from(jobState)
+    .where(eq(jobState.key, SYNC_HUBS_KEY));
+  const stored = (rows[0]?.value as { hubs?: unknown } | undefined)?.hubs;
+  return effectiveHubs(stored, process.env.LEDGR_SYNC_HUBS, process.env.LEDGR_SYNC_TOKEN);
+}
+
+export async function writeSyncHubs(hubs: HubConfig[]): Promise<void> {
+  await getDb()
+    .insert(jobState)
+    .values({ key: SYNC_HUBS_KEY, value: { hubs } })
+    .onConflictDoUpdate({
+      target: jobState.key,
+      set: { value: { hubs }, updatedAt: new Date() },
+    });
+}
+
 export type FullSyncStatus =
   | { enabled: false }
   | ({ enabled: true; hubCount: number; mode: SyncMode } & SyncStatus);
@@ -181,16 +252,19 @@ export function buildSyncStatus(
 }
 
 // The /api/sync/status read: cheap `{enabled: false}` with zero queries when
-// the loop isn't armed, otherwise the live status with pendingOps computed
-// from the oplog (max local seq past the active hub's push cursor).
+// this instance can't sync at all, otherwise the live status with pendingOps
+// computed from the oplog (max local seq past the active hub's push cursor).
+// The effective hub list (stored ?? env) decides enabled-ness, so a hub added
+// from Build → Network counts without a restart.
 export async function gatherSyncStatus(): Promise<FullSyncStatus> {
-  const hubs = parseHubs(process.env.LEDGR_SYNC_HUBS);
+  if (!syncEnabled() && !process.env.LEDGR_SUPERVISOR_DIR) return { enabled: false };
+  const hubs = await readSyncHubs();
   if (hubs.length === 0) return { enabled: false };
   const s = getSyncStatus();
   const hub = hubs[Math.min(Math.max(s.activeHubIndex, 0), hubs.length - 1)];
-  const cursor = await readCursor(hub);
+  const cursor = await readCursor(hub.url);
   const pendingOps = await pendingCount(cursor.push);
-  return buildSyncStatus(hubs, s, pendingOps, await readSyncMode());
+  return buildSyncStatus(hubs.map((h) => h.url), s, pendingOps, await readSyncMode());
 }
 
 // ── Guardrail 2: first-push size guard (pure, tested directly) ─────────────
@@ -390,9 +464,9 @@ type PushGuard = {
 // Guardrails 1-3 all act at the same point: deciding what `ops` to send.
 // Pulling is never gated by any of them (holding a push cannot corrupt the
 // hub; holding a pull would just leave this peer stale).
-async function exchangeWith(hub: string, deviceId: string, token: string, guard: PushGuard): Promise<void> {
+async function exchangeWith(hub: HubConfig, deviceId: string, guard: PushGuard): Promise<void> {
   const schemaVer = latestSchemaVer();
-  let cursor = await readCursor(hub);
+  let cursor = await readCursor(hub.url);
   // Bounded loop: worst case both sides hold deep backlogs; each round moves
   // at least one batch, and the caller reruns on the next tick anyway.
   for (let round = 0; round < 20; round++) {
@@ -423,10 +497,10 @@ async function exchangeWith(hub: string, deviceId: string, token: string, guard:
     }
     const ops = sel.ops;
 
-    const res = await fetch(`${hub.replace(/\/$/, "")}/api/machine/sync`, {
+    const res = await fetch(`${hub.url.replace(/\/$/, "")}/api/machine/sync`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${token}`,
+        authorization: `Bearer ${hub.token}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({ deviceId, schemaVer, sinceSeq: cursor.pull, ops }),
@@ -465,24 +539,34 @@ async function exchangeWith(hub: string, deviceId: string, token: string, guard:
       push: ops.length > 0 ? ops[ops.length - 1].seq : cursor.push,
       pull: Number(data.cursor ?? cursor.pull),
     };
-    await writeCursor(hub, cursor);
+    await writeCursor(hub.url, cursor);
     if (!data.hasMore && ops.length < PUSH_BATCH) break;
   }
   status.pendingOps = await pendingCount(cursor.push);
 }
 
-async function exchange(hubs: string[], deviceId: string, token: string, guard: PushGuard): Promise<void> {
+async function exchange(hubs: HubConfig[], deviceId: string, guard: PushGuard): Promise<void> {
+  // Rebuild the per-hub view to the CURRENT list (it is GUI-editable between
+  // ticks), carrying prior results forward by url so a hub that succeeded
+  // earlier keeps its lastSyncAt while another is being attempted.
+  const prior = new Map(status.hubs.map((h) => [h.url, h]));
+  status.hubs = hubs.map(
+    (h) => prior.get(h.url) ?? { url: h.url, lastSyncAt: null, lastError: null }
+  );
   for (let i = 0; i < hubs.length; i++) {
     try {
-      await exchangeWith(hubs[i], deviceId, token, guard);
+      await exchangeWith(hubs[i], deviceId, guard);
+      status.hubs[i] = { url: hubs[i].url, lastSyncAt: new Date().toISOString(), lastError: null };
       status.activeHubIndex = i;
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
       status.state = status.holdReason ? "held" : status.pendingOps > 0 ? "pending" : "synced";
       return;
     } catch (err) {
-      status.lastError = err instanceof Error ? err.message : String(err);
-      log.warn("hub exchange failed, walking the list", { hub: hubs[i], error: status.lastError });
+      const message = err instanceof Error ? err.message : String(err);
+      status.hubs[i] = { ...status.hubs[i], lastError: message };
+      status.lastError = message;
+      log.warn("hub exchange failed, walking the list", { hub: hubs[i].url, error: message });
     }
   }
   status.state = "offline";
@@ -498,9 +582,15 @@ async function exchange(hubs: string[], deviceId: string, token: string, guard: 
  */
 export function startSyncLoop(): void {
   if (shared.loopArmed) return;
-  const hubs = parseHubs(process.env.LEDGR_SYNC_HUBS);
-  const token = process.env.LEDGR_SYNC_TOKEN;
-  if (hubs.length === 0 || !token) return;
+  // Armed when the supervisor configured hubs via env, OR on any
+  // supervisor-managed peer at all (LEDGR_SUPERVISOR_DIR) — the hub list is
+  // GUI-editable now (ADR-209), so a peer whose first hub is added from
+  // Build → Network must already have the loop ticking. A tick with an empty
+  // effective list does nothing but one cheap local job_state read. Cloud
+  // deploys set neither, so hubs stay passive (decision 11).
+  const envArmed =
+    parseHubs(process.env.LEDGR_SYNC_HUBS).length > 0 && !!process.env.LEDGR_SYNC_TOKEN;
+  if (!envArmed && !process.env.LEDGR_SUPERVISOR_DIR) return;
   shared.loopArmed = true;
 
   const pushDebounceMs = envInt("LEDGR_SYNC_PUSH_DEBOUNCE_MS", 2000);
@@ -523,9 +613,12 @@ export function startSyncLoop(): void {
     running = true;
     try {
       deviceId ??= await localDeviceId();
-      // Re-read every tick so the /build/updates toggle takes effect on the
-      // next exchange rather than the next restart.
+      // Re-read every tick so the /build/updates toggle and the Network
+      // page's hub edits take effect on the next exchange, not the next
+      // restart.
       guard.mode = await readSyncMode();
+      const hubs = await readSyncHubs();
+      if (hubs.length === 0) return;
       const head = await getDb()
         .select({ max: sql<string>`coalesce(max(${syncOps.seq}), 0)::text` })
         .from(syncOps)
@@ -534,7 +627,7 @@ export function startSyncLoop(): void {
       const due = Date.now() - lastFullExchange >= pullMs;
       const wrote = lastSeenSeq >= 0 && maxSeq > lastSeenSeq;
       if (due || wrote || lastSeenSeq < 0) {
-        await exchange(hubs, deviceId, token, guard);
+        await exchange(hubs, deviceId, guard);
         lastFullExchange = Date.now();
       }
       lastSeenSeq = maxSeq;
@@ -547,7 +640,7 @@ export function startSyncLoop(): void {
     }
   };
 
-  log.info("sync loop armed", { hubs: hubs.length, pushDebounceMs, pullMs });
+  log.info("sync loop armed", { envArmed, pushDebounceMs, pullMs });
   const timer = setInterval(() => void tick(), pushDebounceMs);
   // Never hold the process open just to sync; the app server does that.
   timer.unref?.();

@@ -90,7 +90,16 @@ export const BUILD_NAV: BuildGroup[] = [
         label: "Updates",
         href: "/build/updates",
         icon: "repeat",
-        keywords: ["update", "upgrade", "version", "sync", "migrate", "latest"],
+        keywords: ["update", "upgrade", "version", "migrate", "latest"],
+      },
+      // Network (ADR-209): the sync topology — hubs this instance syncs TO,
+      // devices that sync FROM it. Split out of Updates the moment a third
+      // node made two buried sections illegible.
+      {
+        label: "Network",
+        href: "/build/network",
+        icon: "affiliate",
+        keywords: ["sync", "hub", "spoke", "device", "peer", "topology", "replication"],
       },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
       // Loose Ends (ADR-127 Phase 3): under-connected items + their top
