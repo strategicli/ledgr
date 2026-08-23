@@ -209,9 +209,10 @@ if (role === "spoke") {
   });
 }
 
-// Initial data fill. Restore is the fast path for a real dataset; seed makes
-// a valid empty database (a syncing spoke then reconciles by its first full
-// pull, which for a large dataset is much slower than restoring the dump).
+// Initial data fill. Restore or pull is the ONLY correct choice for a spoke
+// that holds real data: seed makes a valid EMPTY database, and sync cannot
+// fill it, because the protocol ships oplog rows and the oplog is pruned on a
+// time floor (supervisor/README.md has the long version).
 let fill;
 try {
   fill = decideFill({ fill: flags.fill, backup: flags.backup, fromUrl: flags["from-url"] });
@@ -225,9 +226,11 @@ if (flags.fill === undefined && flags.backup === undefined && flags["from-url"] 
       "needs the Postgres client tools). 'pull' connects straight to the live\n" +
       "Neon database instead — it's the freshest option, needs no extra tools at\n" +
       "all, and takes any connection string (the pooled one the app itself uses\n" +
-      "works fine). 'seed' starts empty (a spoke then pulls everything from the\n" +
-      "hub on first sync — correct, but slow for large data); 'skip' leaves the\n" +
-      "database alone (re-running the wizard on an existing peer).\n"
+      "works fine). 'seed' starts EMPTY and stays that way: sync ships\n" +
+      "only the oplog, which is pruned on a time floor, so a spoke that starts\n" +
+      "empty gets a partial database and no warning. Pick it for a hub, or when\n" +
+      "you will fill it yourself. 'skip' leaves the database alone\n" +
+      "(re-running the wizard on an existing peer).\n"
   );
   fill = await answer("Initial data (restore, pull, seed, or skip)", {
     flagValue: undefined,
