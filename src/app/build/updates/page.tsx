@@ -18,6 +18,8 @@ import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getUpdateReport } from "@/lib/updates";
 import UpdateButton from "@/components/updates/UpdateButton";
+import StartupToggle from "@/components/updates/StartupToggle";
+import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,12 @@ export default async function Updates() {
   if (!owner) redirect("/sign-in");
 
   const { instance, code, schema, canApply, blockedReason } = await getUpdateReport();
+
+  // The same reader the client island polls through /api/startup, so the first
+  // paint and every refresh can never disagree about it.
+  const startup = await readStartupReport(instance.supervisorDir).catch(
+    () => STARTUP_UNAVAILABLE
+  );
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -298,6 +306,30 @@ export default async function Updates() {
           )}
         </Card>
       </section>
+
+      {/* ── This device: does it come back after a reboot? (ADR-211) ───── */}
+      {startup.available && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Start with the computer</h2>
+          <Card>
+            <p className="text-sm text-ink-muted">
+              Ledgr runs on this machine as a local service. Unless it starts on
+              its own, a reboot leaves it down until someone starts it by hand —
+              and anything pointed at it (your phone, Claude, your other devices)
+              stays down with it.
+            </p>
+            <div className="mt-3">
+              <StartupToggle initial={startup} />
+            </div>
+            <p className="ui-meta mt-3 text-ink-subtle">
+              From a terminal on this machine: <Mono>npm run local:status</Mono>{" "}
+              answers &ldquo;is it running?&rdquo;, <Mono>npm run local:stop</Mono>{" "}
+              stops it cleanly, and <Mono>npm run local:startup</Mono> shows or
+              changes this same setting.
+            </p>
+          </Card>
+        </section>
+      )}
 
       {/* ── Sync surfaces moved to Build → Network (ADR-209) ───────────── */}
       <section className="mt-8">

@@ -72,7 +72,10 @@ Flags (each replaces one prompt; --yes answers the rest with defaults):
   --fill restore|pull|seed|skip  initial data fill (default seed = start empty)
   --config <path>         where to write config.json (default supervisor/config.json)
   --force                 overwrite an existing config.json
-  --register-service      win32: run the schtasks registration without asking
+  --register-service      win32: register at boot without asking (logon scope,
+                          or always-on for a hub)
+  --startup=logon|always|none
+                          win32: choose the boot scope outright (unattended)
   --yes                   no prompts; fail if a required flag is missing
 `;
 
@@ -433,30 +436,62 @@ console.log(
 
 const supervisorScript = join(repoDir, "supervisor", "ledgr-supervisor.mjs");
 if (process.platform === "win32") {
+  // "Start when Windows starts" — a real choice, asked plainly (ADR-211).
+  // The two scopes are genuinely different promises, and the wizard used to
+  // hardcode the one that demands elevation.
+  console.log(
+    "\nStart Ledgr when Windows starts?\n" +
+      "  1  when I sign in       — no Administrator prompt. The peer comes up after\n" +
+      "                            you log in, which is right for a laptop or desktop.\n" +
+      "  2  at boot, always on   — what a 24/7 hub needs: your phone and Claude reach\n" +
+      "                            it whether or not anyone is signed in. Expect an\n" +
+      "                            Administrator prompt, and a stored password in Task\n" +
+      "                            Scheduler if nobody will be logged in.\n" +
+      "  3  no, I will start it myself"
+  );
+
+  // --startup=logon|always|none for an unattended install; --register-service
+  // stays meaningful and now means "logon" unless a hub says otherwise.
+  let choice = flags.startup ?? null;
+  if (!choice && flags["register-service"]) choice = role === "hub" ? "always" : "logon";
+  if (!choice && rl) {
+    const answer = (await rl.question(`Which? [1/2/3] (default ${role === "hub" ? "2" : "1"}) `)).trim();
+    choice = answer === "2" ? "always" : answer === "3" ? "none" : answer === "1" ? "logon" : role === "hub" ? "always" : "logon";
+  }
+  choice = choice === "always" || choice === "logon" || choice === "none" ? choice : "none";
+
   const args = schtasksCreateArgs({
     username: userInfo().username,
     nodePath: process.execPath,
     supervisorScript,
     configPath,
+    scope: choice === "always" ? "always" : "logon",
   });
-  console.log("\nRegister the supervisor to run at boot (Task Scheduler):\n  " + formatSchtasks(args));
-  let runIt = flags["register-service"];
-  if (!runIt && rl) {
-    runIt = /^y/i.test((await rl.question("Run it now? [y/N] ")).trim());
-  }
-  if (runIt) {
+
+  if (choice === "none") {
+    console.log(
+      "\nSkipped. You can turn it on later from the app (Build → Updates) or with\n" +
+        "  npm run local:startup -- --logon      (or --always)"
+    );
+  } else {
+    console.log("\nRegistering:\n  " + formatSchtasks(args));
     const res = spawnSync("schtasks", args, { stdio: "inherit" });
     if (res.status === 0) {
-      console.log('Registered. Start it without rebooting: schtasks /Run /TN "Ledgr Supervisor"');
+      console.log(
+        choice === "always"
+          ? 'Registered to start at boot. Start it now: schtasks /Run /TN "Ledgr Supervisor"\n' +
+              "  If nobody will be signed in, give the task a stored password in Task\n" +
+              "  Scheduler — without one Windows will not run it while logged out."
+          : 'Registered to start when you sign in. Start it now: schtasks /Run /TN "Ledgr Supervisor"'
+      );
     } else {
       console.log(
-        "schtasks failed — it may need an elevated prompt. Copy the command above\n" +
-          "into an Administrator PowerShell, or skip it and start the supervisor by hand."
+        "schtasks failed — the always-on scope generally needs elevation. Copy the\n" +
+          "command above into an Administrator PowerShell, or start the supervisor by hand."
       );
     }
-  } else {
-    console.log("Skipped. Run the command above whenever you want boot registration.");
   }
+  console.log("Check it any time with: npm run local:status");
 } else if (process.platform === "darwin") {
   console.log(
     "\nTo run at boot on macOS (launchd), create\n" +

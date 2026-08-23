@@ -48,6 +48,14 @@ import {
   pruneList,
   serializeLivePointer,
   signalPath,
+  formatSchtasks,
+  parseStartupRequest,
+  schtasksCreateArgs,
+  schtasksDeleteArgs,
+  serializeStartupState,
+  startupSignalPath,
+  startupStatePath,
+  STARTUP_TASK_NAME,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -325,6 +333,90 @@ setInterval(() => {
     return; // mid-write; next tick gets it
   }
   void applyUpdate(target ? `signal (target ${target.slice(0, 7)})` : "signal");
+}, 2000).unref?.();
+
+// ── "Start when Windows starts" (ADR-211) ────────────────────────────────────
+//
+// The app's toggle cannot register a scheduled task itself, so it writes a
+// request here and this — a local process the owner started — carries it out.
+// Deliberately the SAME signal-file mechanism as the update above rather than
+// a second pattern.
+//
+// The outcome is recorded either way, because the failure is expected: the
+// always-on scope generally needs elevation, and this process usually is not
+// elevated. An owner who ticks a box and is not told it failed believes their
+// hub survives a reboot when it does not.
+const startupSignal = startupSignalPath(cfg.dataDir);
+
+function applyStartupRequest(req) {
+  const script = join(here, "ledgr-supervisor.mjs");
+  const args = req.enabled
+    ? schtasksCreateArgs({
+        username: process.env.USERNAME || process.env.USER || "",
+        nodePath: process.execPath,
+        supervisorScript: script,
+        configPath,
+        scope: req.scope,
+      })
+    : schtasksDeleteArgs();
+
+  if (!isWin) {
+    writeFileSync(
+      startupStatePath(cfg.dataDir),
+      serializeStartupState({
+        enabled: req.enabled,
+        scope: req.scope,
+        ok: false,
+        detail:
+          "Boot registration is only automated on Windows so far. On macOS use a " +
+          "launchd plist, on Linux a systemd user unit — see supervisor/README.md.",
+      }),
+      "utf8"
+    );
+    log("startup request not automated on this platform", { platform: process.platform });
+    return;
+  }
+
+  const res = run("schtasks", args);
+  const ok = res.ok;
+  writeFileSync(
+    startupStatePath(cfg.dataDir),
+    serializeStartupState({
+      enabled: req.enabled,
+      scope: req.scope,
+      ok,
+      detail: ok
+        ? null
+        : (res.stderr || res.stdout || "schtasks failed").trim().split("\n")[0] ||
+          "schtasks failed",
+      // The escape hatch, given verbatim: the owner can paste this into an
+      // Administrator prompt and get the same result.
+      command: ok ? null : formatSchtasks(args),
+    }),
+    "utf8"
+  );
+  log(ok ? "startup registration updated" : "startup registration FAILED", {
+    task: STARTUP_TASK_NAME,
+    enabled: req.enabled,
+    scope: req.scope,
+  });
+}
+
+setInterval(() => {
+  if (!existsSync(startupSignal)) return;
+  let raw = "";
+  try {
+    raw = readFileSync(startupSignal, "utf8");
+    unlinkSync(startupSignal);
+  } catch {
+    return; // mid-write; next tick gets it
+  }
+  const req = parseStartupRequest(raw);
+  if (!req) {
+    log("ignoring an unreadable startup request");
+    return;
+  }
+  applyStartupRequest(req);
 }, 2000).unref?.();
 
 if (cfg.update.mode === "auto") {

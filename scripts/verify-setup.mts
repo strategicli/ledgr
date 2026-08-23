@@ -24,6 +24,10 @@ import {
   parseSetupArgs,
   redactConnectionString,
   schtasksCreateArgs,
+  schtasksDeleteArgs,
+  schtasksQueryArgs,
+  parseSchtasksScope,
+  startupScope,
   validateEmail,
   validateHubUrl,
   validatePort,
@@ -215,17 +219,65 @@ check("a fresh config (no existing) has no diff markers", configSummary(hubCfg).
 
 // ── (7) The schtasks command ─────────────────────────────────────────────────
 
-const args = schtasksCreateArgs({
+const taskPaths = {
   username: "brandon",
   nodePath: "C:\\Program Files\\nodejs\\node.exe",
   supervisorScript: "C:\\ledgr\\supervisor\\ledgr-supervisor.mjs",
   configPath: "C:\\ledgr\\supervisor\\config.json",
-});
+};
+const args = schtasksCreateArgs({ ...taskPaths, scope: "always" });
 const cmd = formatSchtasks(args);
 check(
   "schtasks: ONSTART task named Ledgr Supervisor (the README command)",
   args.includes("/SC") && args.includes("ONSTART") && cmd.includes('"Ledgr Supervisor"')
 );
+
+// ── The two boot scopes (ADR-211) ────────────────────────────────────────────
+//
+// This was hardcoded ONSTART, which quietly demanded elevation on every
+// install even on a laptop nobody wants running Ledgr before sign-in. The two
+// scopes are different promises and the wizard now asks; these guards keep the
+// mapping from drifting, in either direction.
+check(
+  "the always-on scope maps to ONSTART (before anyone signs in)",
+  schtasksCreateArgs({ ...taskPaths, scope: "always" }).includes("ONSTART")
+);
+check(
+  "the logon scope maps to ONLOGON (no elevation needed)",
+  schtasksCreateArgs({ ...taskPaths, scope: "logon" }).includes("ONLOGON")
+);
+check(
+  "the logon scope is NOT ONSTART",
+  !schtasksCreateArgs({ ...taskPaths, scope: "logon" }).includes("ONSTART")
+);
+check(
+  "an absent scope defaults to the safe one (logon), never to elevation",
+  schtasksCreateArgs({ ...taskPaths }).includes("ONLOGON")
+);
+check(
+  "an unrecognized scope also defaults to logon rather than guessing",
+  schtasksCreateArgs({ ...taskPaths, scope: "whenever" }).includes("ONLOGON")
+);
+check("startupScope normalizes", startupScope("always") === "always" && startupScope("logon") === "logon");
+check("startupScope refuses to invent a scope", startupScope(undefined) === "logon" && startupScope("boot") === "logon");
+
+// Delete/query argv, and reading the registered scope back OUT of Windows —
+// `status` reports what the machine holds, not what we last asked for.
+check("delete targets the same task, forced", schtasksDeleteArgs().join(" ") === '/Delete /TN Ledgr Supervisor /F');
+check("query asks for LIST output", schtasksQueryArgs().includes("/FO") && schtasksQueryArgs().includes("LIST"));
+check(
+  "a registered ONSTART task reads back as always",
+  parseSchtasksScope("TaskName:  \\Ledgr Supervisor\nSchedule Type:  At system startup\nStatus: Ready") === "always"
+);
+check(
+  "a registered ONLOGON task reads back as logon",
+  parseSchtasksScope("TaskName:  \\Ledgr Supervisor\nSchedule Type:  At logon time\nStatus: Ready") === "logon"
+);
+check(
+  "an unrecognized schedule reads as null rather than a wrong guess",
+  parseSchtasksScope("Schedule Type:  Daily") === null
+);
+
 check(
   "schtasks: node, the supervisor script, and the config are all in /TR, each quoted",
   args[args.indexOf("/TR") + 1] === '"C:\\Program Files\\nodejs\\node.exe" "C:\\ledgr\\supervisor\\ledgr-supervisor.mjs" "C:\\ledgr\\supervisor\\config.json"'

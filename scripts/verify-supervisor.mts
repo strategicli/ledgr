@@ -25,6 +25,13 @@ import {
   parseLivePointer,
   pruneList,
   serializeLivePointer,
+  parseStartupRequest,
+  serializeStartupRequest,
+  parseStartupState,
+  serializeStartupState,
+  startupScope,
+  startupSignalPath,
+  startupStatePath,
 } from "../supervisor/lib.mjs";
 import { chooseAuthProvider } from "../src/lib/auth/local";
 
@@ -378,6 +385,64 @@ check(
   supervisorSrc.includes('err?.code === "EPERM"')
 );
 check("the lock is released on shutdown", supervisorSrc.includes("releaseLock()"));
+
+
+// ── (N) The startup signal file — the in-app toggle's channel (ADR-211) ──────
+//
+// Same signal-file pattern as update-requested, deliberately. A malformed or
+// truncated file must read as "no request" — acting on a half-written file is
+// how a toggle turns into a surprise.
+check(
+  "a request round-trips",
+  JSON.stringify(parseStartupRequest(serializeStartupRequest(true, "always"))) ===
+    JSON.stringify({ enabled: true, scope: "always" })
+);
+check(
+  "a disable request round-trips",
+  parseStartupRequest(serializeStartupRequest(false, "logon"))?.enabled === false
+);
+check("a truncated request is ignored", parseStartupRequest('{"enabled":tr') === null);
+check("an empty file is ignored", parseStartupRequest("") === null);
+check("a request without enabled is ignored", parseStartupRequest('{"scope":"always"}') === null);
+check(
+  "a request with a junk scope still parses, defaulting to logon",
+  parseStartupRequest('{"enabled":true,"scope":"whenever"}')?.scope === "logon"
+);
+
+// The recorded outcome. ok:false is a NORMAL state (elevation refused), so it
+// has to survive the round trip with its detail and its escape-hatch command —
+// an owner who ticks a box and is not told it failed believes their hub comes
+// back after a reboot.
+{
+  const failed = parseStartupState(
+    serializeStartupState({
+      enabled: true,
+      scope: "always",
+      ok: false,
+      detail: "Access is denied.",
+      command: "schtasks /Create ...",
+    })
+  );
+  check(
+    "a failed registration round-trips with its reason and command",
+    failed?.ok === false && failed.detail === "Access is denied." && !!failed.command
+  );
+  const good = parseStartupState(
+    serializeStartupState({ enabled: true, scope: "logon", ok: true })
+  );
+  check("a successful registration round-trips", good?.ok === true && good.scope === "logon");
+  check(
+    "state defaults to NOT ok when the flag is missing, never to success",
+    parseStartupState('{"enabled":true,"scope":"logon"}')?.ok === false
+  );
+  check("unreadable state is null", parseStartupState("nonsense") === null);
+}
+
+check(
+  "the startup signal and state files live in the data dir, beside update-requested",
+  startupSignalPath("/data/ledgr").endsWith("startup-requested") &&
+    startupStatePath("/data/ledgr").endsWith("startup-state.json")
+);
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -24,7 +24,11 @@ const OPTIONS = {
   config: { type: "string" }, // where config.json is written (default supervisor/config.json)
   yes: { type: "boolean", default: false },
   force: { type: "boolean", default: false }, // allow overwriting an existing config.json
-  "register-service": { type: "boolean", default: false }, // win32: run schtasks without asking
+  "register-service": { type: "boolean", default: false }, // win32: register at boot without asking
+  // win32 boot scope, chosen outright for an unattended install (ADR-211):
+  // logon (no elevation, starts after sign-in) | always (ONSTART, 24/7 hub) |
+  // none. Absent means ask.
+  startup: { type: "string" },
   help: { type: "boolean", default: false },
 };
 
@@ -198,28 +202,17 @@ export function configSummary(next, existing = null) {
 }
 
 // ── Service registration (win32) ─────────────────────────────────────────────
-// The exact schtasks command from supervisor/README.md, built from real paths.
-// One source of truth: the args array is what spawnSync runs, and the display
-// string is derived from it.
-
-export function schtasksCreateArgs({ username, nodePath, supervisorScript, configPath }) {
-  return [
-    "/Create",
-    "/TN",
-    "Ledgr Supervisor",
-    "/SC",
-    "ONSTART",
-    "/RU",
-    username,
-    "/TR",
-    `"${nodePath}" "${supervisorScript}" "${configPath}"`,
-    "/F", // idempotent: re-running the wizard replaces the task instead of erroring
-  ];
-}
-
-export function formatSchtasks(args) {
-  return (
-    "schtasks " +
-    args.map((a) => (/[\s"]/.test(a) ? `"${a.replaceAll('"', '\\"')}"` : a)).join(" ")
-  );
-}
+// The argv builders moved to supervisor/lib.mjs (ADR-211), because the
+// SUPERVISOR now registers the task too — the app's in-app toggle writes a
+// signal file and the supervisor acts on it, so the wizard cannot be the only
+// place that knows the command. Re-exported here so the wizard and
+// verify-setup.mts keep their existing imports.
+export {
+  schtasksCreateArgs,
+  schtasksDeleteArgs,
+  schtasksQueryArgs,
+  parseSchtasksScope,
+  formatSchtasks,
+  startupScope,
+  STARTUP_TASK_NAME,
+} from "../supervisor/lib.mjs";
