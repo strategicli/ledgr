@@ -6,6 +6,7 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  getSyncStatus,
   checkFirstPush,
   classifySkew,
   parseHubs,
@@ -320,6 +321,32 @@ const base: SyncStatus = {
   // Skew can be negative (hub behind spoke) and still reports as-is.
   const s = buildSyncStatus(["h1"], { ...base, skewMs: -75000, skewWarn: true }, 0, "full");
   check("negative skew round-trips through the status shape", s.enabled === true && s.skewMs === -75000);
+}
+
+// ── The loop's status must live on globalThis, not in module scope ──────────
+//
+// The bug this guards (2026-08-22, first real spoke): /api/sync/status and
+// /build/updates reported "Offline, never synced" while the database proved
+// the peer was pulling. Next emits the instrumentation hook and the route
+// handlers as separate server chunks, each carrying its own copy of
+// src/lib/sync/client.ts, so the loop mutated one module instance's status
+// object and every reader read another's, permanently at its defaults.
+// A second instance can only see the loop's writes if the state lives
+// somewhere both instances reach.
+{
+  const holder = (globalThis as { __ledgrSync?: { status: SyncStatus } }).__ledgrSync;
+  check("the loop's status is held on globalThis, reachable from a second module instance", !!holder);
+  if (holder) {
+    // Mutating the holder is what the loop does; getSyncStatus is what a
+    // route handler in the other chunk calls. They have to be the same object.
+    const stamp = "2026-08-22T00:00:00.000Z";
+    holder.status.lastSyncAt = stamp;
+    check("getSyncStatus reads that same object, not a module-private copy", getSyncStatus().lastSyncAt === stamp);
+    holder.status.lastSyncAt = null;
+  }
+  // getSyncStatus still hands out a COPY, so a reader cannot write the loop's
+  // state by accident.
+  check("getSyncStatus still returns a copy", getSyncStatus() !== getSyncStatus());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
