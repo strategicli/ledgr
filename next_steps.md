@@ -34,6 +34,37 @@ Built and proven on the dev rig. `HubConfig` carries two independent fields (`ca
 **Left open, recorded in ADR-210 rather than fixed:** foreign-origin ops are still not forwarded (a change that reached only one hub travels to the other via its own origin device, which holds in the star topology but not if that device is lost); a hub we push to but never pull from pins its own oplog (section C's problem, now reachable by configuration too); and the first pull after a long-unread archive is approved may hit ADR-208's 410 and want a re-fill. `cadence: "manual"` was not built — the two values cover the real topology.
 
 
+### A2. Performance and efficiency, done properly — local AND remote (Brandon, 2026-08-23). NOT a patch-as-you-trip-over-it slice.
+
+**Brandon's framing, and it is the point: be VERY THOROUGH.** Brainstorm many ways to improve speed and efficiency across both the local peers and the cloud deployment, get creative, and treat it as one deliberate pass rather than fixing whatever was last stumbled over. The measurements below are the starting evidence, not the scope.
+
+**How this was found.** On a local spoke holding real production data, `/list/task` loaded fine on the default "recent" lens, but switching to "Most linked" took several seconds — while the same lens on Vercel/Neon was near-instant. The expectation was the opposite: local should be faster.
+
+**What was measured (2026-08-23, on the prod spoke's local Postgres, 798MB database, 23,470 items / 18,780 relations). Do not re-derive:**
+
+| Lens on `/list/task` | Buffers touched | Warm runtime |
+| --- | --- | --- |
+| recent (`updated_at`) | 3,082 | 24ms |
+| title | 3,082 | 14ms |
+| **Most linked** | **23,379** | 48ms |
+
+- **`shared_buffers` is 128MB = 16,384 buffers.** One execution of Most linked touches **23,379** — more than the whole cache holds, so it evicts itself every run and can never stay warm. That is arithmetic, not a theory, and it is the primary cause.
+- **Statistics had NEVER been gathered on the restored copy**: `last_analyze` / `last_autoanalyze` / `last_autovacuum` all NULL, so the planner believed `items` held **7 rows** (real: 23,470) and `relations` **0** (real: 18,780). A manual `ANALYZE` (2.8s) dropped the estimated cost 158k → 56k. It did not change the warm runtime — this query is I/O-bound, not plan-bound — but every other plan on that database was being chosen blind. **`local-restore.mjs` never analyzes**, which is the actual bug there.
+- **`random_page_cost` is 4**, the spinning-disk default, so the planner systematically overprices the index scans these queries depend on. On SSD it should be ~1.1.
+- `work_mem` 4MB; `items` is 454MB and `revisions` 170MB on this instance.
+- **The lever is easy:** `embedded-postgres` accepts `postgresFlags: string[]`, so tuning is a `supervisor/config.json` block passed through `assembleAppEnv`'s sibling, not a code redesign.
+
+**Candidate directions — raw material for the brainstorm, deliberately NOT a plan:**
+- **Local Postgres tuning as a first-class part of the supervisor**: `shared_buffers` sized from the machine's RAM rather than a constant, `random_page_cost` for SSD, `work_mem`, `effective_cache_size`. Sized *automatically* is better than a number in a config file nobody revisits.
+- **`ANALYZE` (and a first `VACUUM`) at the end of every fill path** — restore, `--from-url`, and after a large import. Cheap, and its absence is silent.
+- **`mostLinked` is O(every matching row) on any backend** — a correlated `count(*)` per candidate. The cloud's larger cache hides it. A maintained relation count (denormalized column, or a trigger-updated counter) would make it O(limit). That is a schema change and wants its own ADR; it is also the only item here that helps the CLOUD as much as local.
+- **The other lenses and views** deserve the same buffer-count treatment — this was found by accident on one lens, so measure them all rather than assuming the rest are fine.
+- **The cloud side has its own axis**: the neon-http driver is hundreds of round trips per batch (the measured 8.46s for a 500-op sync batch is a *cloud* number). Where does that dominate outside sync?
+- **A repeatable way to measure**, so this is not re-derived by hand next time: a script that reports buffers touched and runtime for the standard surfaces, local vs cloud, and can be re-run after a change.
+- Revisit the runbook §5 performance rules against what is actually observed, rather than trusting they are still the right rules.
+
+**Why it is queued rather than done:** found late on 2026-08-23 while Brandon was using the local spoke for real work. Nothing here is blocked by the Vercel build cap (all local), it is queued because it deserves one thorough pass instead of three reflexive patches.
+
 ### B. Install and onboarding a non-technical owner (Brandon, 2026-08-23)
 
 The goal Brandon stated: **the install should not be technical, and where it unavoidably is, a locally-installed AI agent should be able to do it for the owner.** Three sub-items.
