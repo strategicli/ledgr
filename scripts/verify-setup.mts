@@ -460,5 +460,25 @@ check(
   ["maxRetries", "retryDelay"].every((k) => readFileSync("supervisor/rm-dir.mjs", "utf8").includes(k))
 );
 
+// The CI harness spawns tsx directly (perf, 2026-08-22). `npx tsx` re-resolved
+// the package on every one of the 67 scripts (4719ms per script against
+// 1194ms) and needed `shell: true` on win32 to find the .cmd shim, which
+// spends a cmd.exe per spawn and trips DEP0190. A regression here is silent:
+// the suite still passes, just several times slower, so nothing would catch
+// it except this check.
+{
+  // Comment lines are stripped first: the file explains what it stopped doing,
+  // and the words it uses to explain it must not read as the thing itself.
+  const code = readFileSync("scripts/verify-ci.mjs", "utf8")
+    .split("\n")
+    .filter((l) => !l.trimStart().startsWith("//"))
+    .join("\n");
+  check(
+    "verify-ci spawns tsx with this node, not through npx",
+    code.includes("spawnSync(process.execPath") && !code.includes("npx")
+  );
+  check("verify-ci spawns no shell (a cmd.exe per script, plus DEP0190)", !code.includes("shell:"));
+}
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);
