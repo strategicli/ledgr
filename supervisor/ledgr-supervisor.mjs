@@ -18,7 +18,7 @@
 // which is also why this works on Windows (you cannot swap files a process
 // is serving from). Kept to node builtins + the repo's own embedded-postgres.
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -30,6 +30,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
@@ -57,6 +58,12 @@ import {
   startupStatePath,
   stopSignalPath,
   STARTUP_TASK_NAME,
+  cronStatePath,
+  initialDueAt,
+  nextRunAt,
+  parseCronState,
+  serializeCronState,
+  tunedPostgresFlags,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -125,6 +132,10 @@ const pg = new EmbeddedPostgres({
   // See scripts/local-restore.mjs: a Windows-default cluster is WIN1252 and
   // cannot hold real body text. UTF8 is not optional here.
   initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
+  // RAM-sized server settings (ADR-215): the stock 128MB shared_buffers could
+  // not hold a real Ledgr database, so page-heavy queries evicted themselves
+  // every run. tunePostgres:false in config restores stock behavior.
+  postgresFlags: tunedPostgresFlags(cfg, totalmem()),
 });
 
 async function startPostgres() {
@@ -157,9 +168,23 @@ function liveBuild() {
   return ptr;
 }
 
+// The supervisor's own cron credential (ADR-214). Minted per process, kept in
+// memory, never written to disk: only its sha256 reaches the app child's env,
+// as one more entry in LEDGR_API_TOKENS. So the scheduled calls below walk
+// through the same machine-token door as Vercel cron and GitHub Actions rather
+// than getting a bypass, and the credential dies with this process.
+const CRON_TOKEN = cfg.crons.length > 0 ? randomBytes(32).toString("hex") : null;
+const CRON_TOKEN_HASH = CRON_TOKEN ? createHash("sha256").update(CRON_TOKEN).digest("hex") : null;
+
 function startApp(ptr) {
   const nextBin = join(ptr.dir, "node_modules", "next", "dist", "bin", "next");
-  const env = { ...process.env, ...assembleAppEnv(cfg, ptr.sha) };
+  const env = {
+    ...process.env,
+    ...assembleAppEnv(cfg, ptr.sha, {
+      cronTokenHash: CRON_TOKEN_HASH,
+      inheritedApiTokens: process.env.LEDGR_API_TOKENS,
+    }),
+  };
   appChild = spawn(process.execPath, [nextBin, "start", "-p", String(cfg.appPort)], {
     cwd: ptr.dir,
     env,
@@ -443,6 +468,157 @@ setInterval(() => {
   applyStartupRequest(req);
 }, 2000).unref?.();
 
+// ── Local crons: the scheduler seam on this peer (ADR-214) ───────────────────
+//
+// vercel.json points Vercel cron at three endpoints and GitHub Actions hits the
+// sub-daily ones, so a LOCAL peer has no scheduler at all: on a self-hosted hub
+// none of it runs. The seam already exists at the HTTP layer (both external
+// triggers just GET /api/machine/<job> with a cron-scoped token), so what is
+// missing is a trigger — and this process is already long-running, already has
+// timers, and already knows the app's port.
+//
+// The load-bearing one is `purge`: it calls pruneSyncOps, so without it a local
+// peer's oplog never prunes and ADR-213's retention holds decide nothing.
+//
+// Which jobs, and why only two default on, is the LOCAL_JOBS table in lib.mjs.
+
+// Generous: relatedness and export both declare maxDuration 60 and an
+// attachment-heavy export pass uses all of it.
+const CRON_TIMEOUT_MS = 120_000;
+
+/** name -> { dueAt, lastRunAt, lastOkAt, ok, detail, runs, fails } */
+const cronEntries = {};
+let cronBusy = false;
+
+function writeCronState() {
+  try {
+    writeFileSync(cronStatePath(cfg.dataDir), serializeCronState(cfg.crons, cronEntries), "utf8");
+  } catch (err) {
+    log("could not write cron state", { error: String(err) });
+  }
+}
+
+function primeCronState() {
+  // Written even with no jobs configured, so "this peer runs nothing" and
+  // "this peer has no supervisor" never look the same to the app.
+  const prior = {};
+  try {
+    const p = cronStatePath(cfg.dataDir);
+    if (existsSync(p)) {
+      for (const j of parseCronState(readFileSync(p, "utf8"))?.jobs ?? []) prior[j.name] = j;
+    }
+  } catch {
+    // an unreadable record is the same as no record
+  }
+  const now = Date.now();
+  for (const job of cfg.crons) {
+    const p = prior[job.name];
+    cronEntries[job.name] = {
+      lastRunAt: p?.lastRunAt ?? null,
+      lastOkAt: p?.lastOkAt ?? null,
+      ok: p?.ok ?? null,
+      detail: p?.detail ?? null,
+      runs: p?.runs ?? 0,
+      fails: p?.fails ?? 0,
+      dueAt: initialDueAt(job, p?.lastOkAt ?? null, now),
+    };
+  }
+  writeCronState();
+  if (cfg.crons.length > 0) {
+    log("local crons scheduled", {
+      jobs: cfg.crons.map((j) => `${j.name}@${j.at ?? `${Math.round(j.intervalMs / 60_000)}m`}`),
+      exclusive: cfg.crons.filter((j) => !j.shared).map((j) => j.name),
+    });
+  }
+}
+
+/**
+ * Tell the app about a failed run, exactly the way the GitHub Actions
+ * workflows do (POST /api/machine/report-error): the failure lands in
+ * error_log, /health counts it, and it surfaces wherever captured errors
+ * already surface. No new reporting mechanism for a local trigger.
+ *
+ * Best-effort by nature — when the reason the job failed is that the app is
+ * not answering, this cannot answer either, and the state file plus the log
+ * are what remain.
+ */
+async function reportCronFailure(job, detail) {
+  try {
+    await fetch(`http://127.0.0.1:${cfg.appPort}/api/machine/report-error`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${CRON_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        // The route prefixes this with the calling token's name ("local-cron"),
+        // so the recorded source is local-cron:<job>. Naming it here too gave
+        // "local-cron:local-cron:export" — seen on the rig.
+        source: job.name,
+        message: `local cron ${job.name} failed: ${detail}`,
+        detail: { path: job.path, dataDir: cfg.dataDir },
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    // see above
+  }
+}
+
+async function runCronJob(job) {
+  const started = Date.now();
+  let ok = false;
+  let detail = null;
+  try {
+    const res = await fetch(`http://127.0.0.1:${cfg.appPort}${job.path}`, {
+      headers: { Authorization: `Bearer ${CRON_TOKEN}` },
+      signal: AbortSignal.timeout(CRON_TIMEOUT_MS),
+    });
+    ok = res.ok;
+    if (!ok) {
+      const body = await res.text().catch(() => "");
+      detail = `HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`;
+    }
+  } catch (err) {
+    detail = String(err?.message ?? err).slice(0, 300);
+  }
+
+  const now = Date.now();
+  const e = cronEntries[job.name];
+  e.lastRunAt = new Date(now).toISOString();
+  e.runs += 1;
+  e.ok = ok;
+  e.detail = detail;
+  if (ok) e.lastOkAt = e.lastRunAt;
+  else e.fails += 1;
+  e.dueAt = nextRunAt(job, now, ok);
+  writeCronState();
+
+  log(ok ? "cron job ok" : "cron job FAILED", {
+    job: job.name,
+    ms: now - started,
+    nextAt: new Date(e.dueAt).toISOString(),
+    ...(detail ? { detail } : {}),
+  });
+  if (!ok) await reportCronFailure(job, detail ?? "unknown");
+}
+
+async function cronTick() {
+  if (cronBusy || updating) return; // an update in flight takes the app down
+  const now = Date.now();
+  const due = cfg.crons.filter((j) => cronEntries[j.name]?.dueAt <= now);
+  if (due.length === 0) return;
+  cronBusy = true;
+  try {
+    // Serially: these are the same endpoints a single-threaded cron calls, and
+    // two 60s database jobs at once on one local Postgres helps nobody.
+    for (const job of due) await runCronJob(job);
+  } finally {
+    cronBusy = false;
+  }
+}
+
+if (cfg.crons.length > 0) {
+  setInterval(() => void cronTick(), 60_000).unref?.();
+}
+
 if (cfg.update.mode === "auto") {
   setInterval(() => {
     if (updating) return;
@@ -573,6 +749,9 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 acquireLock();
+// Before the app starts, so the state file exists (and says "nothing due yet")
+// from the first moment the app can be asked about it.
+primeCronState();
 await startPostgres();
 const ptr = liveBuild();
 if (ptr) {

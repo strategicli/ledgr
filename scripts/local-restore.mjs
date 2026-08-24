@@ -49,13 +49,14 @@
 import { spawnSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
+import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(here, "..");
-const { normalizeConfig, buildDbUrl } = await import(new URL("../supervisor/lib.mjs", import.meta.url));
+const { normalizeConfig, buildDbUrl, tunedPostgresFlags } = await import(new URL("../supervisor/lib.mjs", import.meta.url));
 const { redactConnectionString } = await import(new URL("./local-setup-lib.mjs", import.meta.url));
 const { copyAllTables } = await import(new URL("./lib/pg-copy.mjs", import.meta.url));
 
@@ -92,6 +93,9 @@ async function startCluster(cfg) {
     // The libc --locale stays C because Windows libc locales are codepage
     // based; ICU owns collation, so that no longer costs anything.
     initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
+    // Same RAM-sized settings the supervisor runs with (ADR-215), so the
+    // restore's own VACUUM ANALYZE and bulk copy get the tuned memory too.
+    postgresFlags: tunedPostgresFlags(cfg, totalmem()),
   });
   if (!existsSync(join(pgDir, "PG_VERSION"))) {
     console.log("First run: initdb…");
@@ -201,6 +205,7 @@ async function restoreFromFile(dumpPath, cfg) {
     // SOURCE's values. A cloned cursor makes a spoke skip ops; a cloned mode
     // silently arms or disarms push on a peer that never asked for it.
     await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
+    await analyzeAfterFill(db);
     await db.end();
 
     console.log(
@@ -215,6 +220,20 @@ async function restoreFromFile(dumpPath, cfg) {
       // best-effort
     }
   }
+}
+
+/**
+ * A bulk fill leaves the planner blind and the visibility map empty: with no
+ * statistics it believed a 23,470-row items table held 7 rows and chose plans
+ * accordingly (the A2 finding — the related panel alone cost 11× the buffers
+ * it should have), and with no VACUUM the index-only scans the counts rely on
+ * fall back to heap fetches. Autovacuum gets there eventually; a restore that
+ * hands over a database that plans correctly from minute one is deterministic
+ * plumbing (Principle 3). Measured at 2.4s on a 186MB fill.
+ */
+async function analyzeAfterFill(db) {
+  console.log("VACUUM ANALYZE (planner statistics + visibility map)…");
+  await db.query("vacuum analyze");
 }
 
 /**
@@ -270,6 +289,7 @@ async function pullFromUrl(url, cfg) {
     // Same reasoning as the dump path above: per-instance job_state must not
     // be inherited from the source. `sync:mode` is the GUI push-mode override.
     await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
+    await analyzeAfterFill(db);
     await db.end();
 
     console.log(

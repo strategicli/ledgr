@@ -13,6 +13,7 @@
 // (modules.ts resolvers fall back for any unregistered type), so the builder
 // never touches code — it writes label/icon/property_schema, and the registry
 // owns code behavior (ADR-043).
+import { cache } from "react";
 import { eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
@@ -356,10 +357,13 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
 // Soft-deleted types always drop out. Hidden types (ADR-059) drop out of the
 // everyday surfaces too — pass includeHidden:true on the Build → Types page,
 // where the whole point is to see and un-hide them.
-export async function listTypes(
-  opts: { includeHidden?: boolean } = {}
-): Promise<TypeDefinition[]> {
-  const where = opts.includeHidden
+// The cached inner is keyed on a PRIMITIVE (cache() compares arguments by
+// identity, so an options object literal would never hit). Nav and pages both
+// list types on every render; cache() folds those into one query per request,
+// the resolveOwnerState pattern (owner.ts). Passthrough in route handlers, so
+// type mutations never read stale.
+const listTypesCached = cache(async (includeHidden: boolean): Promise<TypeDefinition[]> => {
+  const where = includeHidden
     ? isNull(types.deletedAt)
     : sql`${types.deletedAt} is null and ${types.hidden} = false`;
   const rows = await getDb().select().from(types).where(where);
@@ -370,6 +374,12 @@ export async function listTypes(
         Number(b.isSystem) - Number(a.isSystem) ||
         a.label.localeCompare(b.label)
     );
+});
+
+export async function listTypes(
+  opts: { includeHidden?: boolean } = {}
+): Promise<TypeDefinition[]> {
+  return listTypesCached(opts.includeHidden === true);
 }
 
 export async function getType(key: string): Promise<TypeDefinition> {

@@ -378,6 +378,25 @@ export const items = pgTable(
       .where(sql`${t.inbox} and ${t.deletedAt} is null`),
     index("items_properties_gin").using("gin", t.properties),
     index("items_search_gin").using("gin", t.search),
+    // The list-read indexes (ADR-215, the perf pass). Every list surface used
+    // to seq-scan-and-sort ALL of an owner's live rows (3,015 heap pages per
+    // render on real data) because nothing indexed updated_at. Both are
+    // partial on exactly the live-list predicate every such query carries, so
+    // they also serve count(*) badges as index-only scans; both order
+    // `desc nulls last` because that is the ORDER BY the query layer emits
+    // (listOrderExpr) — a plain `desc` index (nulls first) would NOT match it,
+    // and the column being NOT NULL does not make the planner forgive the
+    // difference (measured: it didn't).
+    index("items_live_updated_idx")
+      .on(t.ownerId, sql`${t.updatedAt} desc nulls last`)
+      .where(sql`${t.deletedAt} is null and ${t.isTemplate} = false`),
+    index("items_live_type_updated_idx")
+      .on(t.ownerId, t.type, sql`${t.updatedAt} desc nulls last`)
+      .where(sql`${t.deletedAt} is null and ${t.isTemplate} = false`),
+    // Trigram GIN on title: the picker/typeahead ILIKE '%word%' filter
+    // (listItemsQuery), which ran per keystroke as a full scan. pg_trgm is
+    // installed since 0004 (similarity() already leans on it).
+    index("items_title_trgm_idx").using("gin", sql`${t.title} gin_trgm_ops`),
   ]
 );
 

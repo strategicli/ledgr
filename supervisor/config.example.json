@@ -10,6 +10,9 @@
   "deviceToken": "",
   "syncMode": "full",
   "update": { "mode": "prompted", "pollIntervalMs": 900000 },
+  "crons": { "purge": true, "relatedness": true },
+  "tunePostgres": true,
+  "postgresFlags": [],
   "cadence": { "pushDebounceMs": 2000, "pullMs": 10000 },
   "syncGuardrails": {
     "maxFirstPush": 500,

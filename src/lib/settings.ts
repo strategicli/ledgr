@@ -3,6 +3,7 @@
 // partial blob always yields a complete, safe object. Owner-scoped like
 // everything else. Surfaces: the highlight-accent color (themed via a CSS var),
 // the Trash retention window, and the nav position.
+import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
@@ -770,13 +771,18 @@ export function effectiveDisplayName(settings: UserSettings, email: string): str
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
-export async function getSettings(ownerId: string): Promise<UserSettings> {
+// Wrapped in React cache() the way resolveOwnerState is (owner.ts): the Nav
+// and the page each read settings on every render, which was two identical
+// queries per navigation — two extra HTTP round trips on the neon-http driver.
+// cache() makes every caller in one request await the same promise; in route
+// handlers it is a passthrough, so updateSettings below never reads stale.
+export const getSettings = cache(async (ownerId: string): Promise<UserSettings> => {
   const [row] = await getDb()
     .select({ settings: users.settings })
     .from(users)
     .where(eq(users.id, ownerId));
   return parseSettings(row?.settings);
-}
+});
 
 export async function updateSettings(
   ownerId: string,
