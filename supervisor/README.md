@@ -66,7 +66,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 
 | Key | Meaning |
 | --- | --- |
-| `role` | `hub` or `spoke`. Informational for now; hub duties (crons, Funnel) land in phase 5. |
+| `role` | `hub` or `spoke`. Informational: it changes no behavior on its own. What a hub actually does differently is turn on the exclusive scheduled jobs (`crons` below) and get published (the Funnel). |
 | `dataDir` | Where everything lives: `pg/` (the database cluster), `builds/` (app builds), `live.json` (which build serves), `update-requested` (the signal file). Outside the repo. |
 | `repoDir` | The git clone the supervisor pulls and builds from. Defaults to the repo this file lives in. |
 | `branch` | Branch to track (default `main`). |
@@ -75,11 +75,72 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | `hubs` / `deviceToken` | Ordered hub URLs plus this device's sync token (minted on the hub). Both set arms the in-app sync loop; either missing leaves sync off. |
 | `syncMode` | The **initial** push mode only: `full` (default) pushes and pulls, `pull-only` never sends this device's own changes. Threaded through as `LEDGR_SYNC_MODE`. Once the app is running, the owner changes it from **/build/updates → Sync → Mode**, which stores an override in `job_state` that the sync loop re-reads every tick — so arming or disarming a peer needs no config edit and no restart, and this key stops being consulted. See "Arming sync safely" below. |
 | `update.mode` | `prompted` (default): updates apply only when the app's Update button writes the signal file. `auto`: the supervisor also polls git every `pollIntervalMs` and applies on its own. |
+| `crons` | Which scheduled jobs this peer triggers for itself (ADR-214). Defaults to `purge` + `relatedness`, the two that are safe when more than one peer runs them. See "Scheduled jobs" below. |
 | `cadence` | Sync knobs, passed through as `LEDGR_SYNC_PUSH_DEBOUNCE_MS` / `LEDGR_SYNC_PULL_MS`. |
 | `syncGuardrails.maxFirstPush` | This device's very first push (this process's lifetime) is held rather than sent if the pending oplog exceeds this count (default 500) — the guard against a bad restore or bug dumping the whole database at the hub as edits. Only the first push is gated; a busy device that's been syncing fine is never throttled. Threaded as `LEDGR_SYNC_MAX_FIRST_PUSH`. |
 | `syncGuardrails.confirmLargePush` | Set `true` (after looking at what's pending) to release a held first push without raising the limit. Threaded as `LEDGR_SYNC_CONFIRM_LARGE_PUSH`. Usually unnecessary now: a held push shows a **"Send anyway (N changes)"** button on Build → Network, which releases one-shot with no config edit or restart. |
 | `syncGuardrails.skewWarnMs` / `skewHoldMs` | Clock-skew thresholds (ms) against the hub's reported time. Past `skewWarnMs` (default 5000) the Sync section and pill turn amber but syncing continues; past `skewHoldMs` (default 60000) pushes are held — last-writer-wins can't be trusted at that much drift — while pulling keeps working. Threaded as `LEDGR_SYNC_SKEW_WARN_MS` / `LEDGR_SYNC_SKEW_HOLD_MS`. |
 | `extraEnv` | Any additional env for the app (R2 keys, Graph secrets, machine tokens), passed through verbatim. |
+
+### Scheduled jobs (ADR-214)
+
+Every scheduled job in Ledgr is triggered from **outside** the app: `vercel.json`
+points Vercel cron at three endpoints, GitHub Actions hits the sub-daily ones,
+and both just `GET /api/machine/<job>` with a cron-scoped token. A local peer has
+no scheduler at all, so the supervisor is it: one 60s timer calls the same
+endpoints over loopback. It mints its own cron token per process (in memory,
+appended to the app's `LEDGR_API_TOKENS`, never written to disk), so there is
+nothing to configure and no second auth path.
+
+**The one that matters is `purge`** — it runs `pruneSyncOps`, and only the
+instance it runs on. A peer that never purges never prunes its own sync log, and
+the per-device retention holds (ADR-213) decide nothing.
+
+| Job | Default | Safe on more than one peer? |
+| --- | --- | --- |
+| `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
+| `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
+| `export` | off | **No.** One OneDrive folder, and `items.exported_at` is synced. |
+| `calendar-sync` | off | **No.** Two peers match the same event into two rows, and sync propagates both. |
+| `email-import` | off | **No.** Consumes the mailbox: the second peer silently imports nothing. |
+| `todoist-sync` | off | **No.** Bidirectional against one account. |
+| `transcription-poll` | off | **No.** Two pollers race for one job. |
+| `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
+
+Turning an exclusive job on is a deliberate statement that **this** peer is the
+one that does it — so on a hub, once production is no longer running them:
+
+```json
+"crons": {
+  "purge": true,
+  "relatedness": true,
+  "export": { "at": "04:10" },
+  "calendar-sync": { "everyMinutes": 240 },
+  "email-import": { "everyMinutes": 240 }
+}
+```
+
+A value is `true` (the job's own default schedule), `false` (off), or an override
+of `{ "at": "HH:MM" }` (daily, **local** time) or `{ "everyMinutes": N }`. Absent
+keys keep the default. `"crons": false` turns everything off, which is what a dev
+rig wants. A mistyped job name **fails at startup** rather than silently
+scheduling nothing. Deliberately no cron expressions: the weekday shaping in the
+GitHub workflows exists to cut Neon compute by sharing wake windows, and a local
+Postgres that is already running has nothing to save.
+
+**When a job fails**, three things happen and none of them is silence: the
+outcome is written to `<dataDir>/cron-state.json`, the failure is POSTed to
+`/api/machine/report-error` so it lands in `error_log` and counts on `/health`
+exactly like a cloud failure, and the job is retried in 10 minutes (clamped to
+its next slot, so a failing job never runs more often than its schedule allows).
+Nothing fires while an update is in flight. A job overdue by more than its own
+period runs a few minutes after startup rather than waiting for a slot it keeps
+missing — a laptop asleep every night at 03:10 would otherwise never purge.
+
+**Where to look:** `Build → Updates` → "Scheduled jobs on this machine" shows
+each job's state, last success, next run and any failure detail, and flags an
+exclusive job as one only this device should run. `npm run local:status` prints
+the same list (`--json` for an install agent).
 
 ### Arming sync safely
 

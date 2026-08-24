@@ -20,12 +20,25 @@ import { getUpdateReport } from "@/lib/updates";
 import UpdateButton from "@/components/updates/UpdateButton";
 import StartupToggle from "@/components/updates/StartupToggle";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
+import {
+  jobCadence,
+  readLocalJobsReport,
+  worstJobState,
+  LOCAL_JOBS_UNAVAILABLE,
+  type LocalJobState,
+} from "@/lib/local-jobs";
 
 export const dynamic = "force-dynamic";
 
-function StatusDot({ tone }: { tone: "ok" | "warn" | "info" }) {
+function StatusDot({ tone }: { tone: "ok" | "warn" | "bad" | "info" }) {
   const color =
-    tone === "ok" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : "bg-neutral-500";
+    tone === "ok"
+      ? "bg-emerald-500"
+      : tone === "warn"
+        ? "bg-amber-500"
+        : tone === "bad"
+          ? "bg-rose-500"
+          : "bg-neutral-500";
   return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${color}`} aria-hidden />;
 }
 
@@ -43,6 +56,41 @@ function Mono({ children }: { children: React.ReactNode }) {
   );
 }
 
+// The three read-only bits of vocabulary the jobs list needs. Local to this
+// page on purpose: nothing else renders a job row yet.
+function jobTone(state: LocalJobState): "ok" | "warn" | "bad" | "info" {
+  return state === "ok" ? "ok" : state === "failing" ? "bad" : state === "late" ? "warn" : "info";
+}
+
+function jobLine(state: LocalJobState): string {
+  switch (state) {
+    case "ok":
+      return "Running.";
+    case "failing":
+      return "The last run failed.";
+    case "late":
+      return "Overdue — it has not succeeded in a while.";
+    default:
+      return "Scheduled, not run yet.";
+  }
+}
+
+/** Coarse relative time, both directions. Good enough for a daily job. */
+function when(iso: string): string {
+  const ms = Date.parse(iso) - Date.now();
+  if (!Number.isFinite(ms)) return "at an unknown time";
+  const mins = Math.round(Math.abs(ms) / 60_000);
+  const span =
+    mins < 1 ? "less than a minute" : mins < 90 ? `${mins} min` : mins < 60 * 36 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / 1440)}d`;
+  return ms < 0 ? `${span} ago` : `in ${span}`;
+}
+
+/** A due time already past is "due now", never "next 40 seconds ago". */
+function nextRunLine(iso: string): string {
+  const ms = Date.parse(iso) - Date.now();
+  return Number.isFinite(ms) && ms <= 0 ? "Due now." : `Next ${when(iso)}.`;
+}
+
 export default async function Updates() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
@@ -54,6 +102,13 @@ export default async function Updates() {
   const startup = await readStartupReport(instance.supervisorDir).catch(
     () => STARTUP_UNAVAILABLE
   );
+
+  // Scheduled jobs on this machine (ADR-214). Only a supervised peer has any:
+  // a cloud deploy's scheduler is Vercel cron plus GitHub Actions.
+  const localJobs = await readLocalJobsReport(instance.supervisorDir).catch(
+    () => LOCAL_JOBS_UNAVAILABLE
+  );
+  const worstJob = worstJobState(localJobs.jobs);
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -326,6 +381,79 @@ export default async function Updates() {
               answers &ldquo;is it running?&rdquo;, <Mono>npm run local:stop</Mono>{" "}
               stops it cleanly, and <Mono>npm run local:startup</Mono> shows or
               changes this same setting.
+            </p>
+          </Card>
+        </section>
+      )}
+
+      {/* ── Scheduled jobs on this machine (ADR-214) ───────────────────── */}
+      {localJobs.available && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Scheduled jobs on this machine</h2>
+          <Card>
+            <p className="text-sm text-ink-muted">
+              A cloud deployment gets its scheduled work from outside: the
+              platform&rsquo;s own timer plus a few workflow runners. This machine
+              has neither, so the local service triggers the same jobs itself.
+            </p>
+            {localJobs.jobs.length === 0 ? (
+              <p className="mt-3 flex items-start gap-2 text-sm text-ink-muted">
+                <span className="mt-1.5">
+                  <StatusDot tone="warn" />
+                </span>
+                <span>
+                  No jobs are scheduled here. Trash never empties and the sync
+                  log never prunes on this machine until at least{" "}
+                  <Mono>purge</Mono> is on &mdash; see{" "}
+                  <Mono>crons</Mono> in <Mono>supervisor/config.json</Mono>.
+                </span>
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-line">
+                {localJobs.jobs.map((job) => (
+                  <li key={job.name} className="flex items-start gap-2 py-2">
+                    <span className="mt-1.5">
+                      <StatusDot tone={jobTone(job.state)} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="ui-row text-ink">
+                        {job.label}{" "}
+                        <span className="ui-meta text-ink-subtle">
+                          &middot; {jobCadence(job)}
+                        </span>
+                      </p>
+                      <p className="ui-meta mt-0.5 text-ink-subtle">
+                        {jobLine(job.state)}
+                        {job.lastOkAt
+                          ? ` Last success ${when(job.lastOkAt)}.`
+                          : " No successful run recorded yet."}
+                        {job.dueAt ? ` ${nextRunLine(job.dueAt)}` : ""}
+                      </p>
+                      {job.ok === false && job.detail && (
+                        <p className="ui-meta mt-0.5 text-ink-muted">{job.detail}</p>
+                      )}
+                      {!job.shared && (
+                        <p className="ui-meta mt-0.5 text-ink-faint">
+                          Only one device should run this one &mdash; it writes
+                          somewhere shared.
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {worstJob && worstJob !== "ok" && (
+              <p className="ui-meta mt-3 text-ink-muted">
+                A failure is also written to this instance&rsquo;s error log, so it
+                counts on the health report rather than passing quietly.
+              </p>
+            )}
+            <p className="ui-meta mt-3 text-ink-subtle">
+              Which jobs run, and how often, is the <Mono>crons</Mono> block in{" "}
+              <Mono>supervisor/config.json</Mono>.{" "}
+              <Mono>npm run local:status</Mono> shows this same list from a
+              terminal.
             </p>
           </Card>
         </section>

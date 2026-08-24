@@ -38,6 +38,8 @@ import {
   stopSignalPath,
   parseStartupState,
   STARTUP_TASK_NAME,
+  cronStatePath,
+  parseCronState,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -110,6 +112,13 @@ function recordedStartupState() {
   return existsSync(p) ? parseStartupState(readFileSync(p, "utf8")) : null;
 }
 
+/** The scheduled jobs this peer triggers for itself, and how they are doing
+ * (ADR-214). What the supervisor recorded, not what the config asked for. */
+function recordedCronState() {
+  const p = cronStatePath(cfg.dataDir);
+  return existsSync(p) ? parseCronState(readFileSync(p, "utf8")) : null;
+}
+
 // ── status ───────────────────────────────────────────────────────────────────
 
 async function doStatus() {
@@ -119,6 +128,7 @@ async function doStatus() {
   const http = running ? await appAnswers() : null;
   const boot = registeredScope();
   const recorded = recordedStartupState();
+  const crons = recordedCronState();
 
   const report = {
     running,
@@ -141,6 +151,9 @@ async function doStatus() {
       // the honest record of whether that request actually worked.
       lastRequest: recorded,
     },
+    // Scheduled work this peer triggers itself. `jobs: []` means it triggers
+    // none, which is a real answer and a different one from "no record".
+    crons: crons ? { at: crons.at, jobs: crons.jobs } : null,
   };
 
   if (flags.has("--json")) {
@@ -169,6 +182,18 @@ async function doStatus() {
   if (recorded && !recorded.ok) {
     console.log(`  last change FAILED: ${recorded.detail ?? "unknown"}`);
     if (recorded.command) console.log(`              run this elevated: ${recorded.command}`);
+  }
+  if (!crons) {
+    console.log("  jobs        no record yet (an older supervisor, or one that has not started)");
+  } else if (crons.jobs.length === 0) {
+    console.log("  jobs        none scheduled here — trash never empties and the sync log");
+    console.log("              never prunes on this machine (see crons in config.json)");
+  } else {
+    for (const j of crons.jobs) {
+      const mark = j.state === "ok" ? "ok     " : j.state === "failing" ? "FAILING" : j.state === "late" ? "LATE   " : "pending";
+      console.log(`  job         ${mark} ${j.name}${j.shared ? "" : " (exclusive)"}`);
+      if (j.detail && j.ok === false) console.log(`                      ${j.detail}`);
+    }
   }
   return running ? 0 : 1;
 }

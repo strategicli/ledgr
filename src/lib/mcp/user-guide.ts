@@ -857,6 +857,19 @@ task if nobody will be signed in). If the change does not take effect, the page
 says so and shows the exact command to run instead — it will not quietly let you
 believe a reboot is covered when it is not.
 
+**Scheduled jobs on this machine.** An instance in the cloud gets its nightly
+work from the platform it runs on. One on your own machine has no such timer, so
+it runs its own — and Updates lists them: what each job is, how often it runs,
+when it last succeeded, when it runs next, and the reason if the last attempt
+failed. Two are on by default, because every copy of Ledgr needs to do them for
+itself: emptying expired Trash (which is also what keeps the sync log from
+growing forever) and refreshing the connection suggestions behind Discover and
+Loose Ends. The rest — the OneDrive export, calendar sync, email-in, Todoist —
+are off unless you turn them on, because each writes somewhere shared and only
+one device should be doing it. A job marked as one only this device should run is
+labelled as such in the list. A failure is also recorded in this instance's error
+log, so it counts on the health report rather than passing quietly.
+
 # The sync network
 
 **Network** (\`/build/network\`) is the whole sync topology on one page: the
