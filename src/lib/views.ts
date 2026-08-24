@@ -3,9 +3,10 @@
 // columns store exactly these shapes, so today's hardcoded list pages become
 // stored system views later without a query rewrite. Same discipline as
 // every list read: owner-scoped, body-free listColumns, live items only.
-import { and, asc, desc, eq, inArray, isNull, lt, gte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, sql, type SQL } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 import { getDb } from "@/db";
-import { items, views } from "@/db/schema";
+import { items, relations, views } from "@/db/schema";
 import { type ItemStatus, type Urgency } from "@/lib/item-enums";
 import { toPriority } from "@/lib/priority";
 import { ItemError, listColumns } from "@/lib/items";
@@ -438,12 +439,13 @@ const NUMERIC_RE = "^-?[0-9]+(\\.[0-9]+)?$";
 // relation count (the relatedTo EXISTS subquery's count sibling, served by
 // relations_source_idx / relations_target_idx); "property" orders by
 // items.properties->>key with an optional numeric cast.
-function listOrderExpr(sort: ListSort): SQL {
+function listOrderExpr(sort: Exclude<ListSort, { field: "mostLinked" }>): SQL {
   const asc = sort.dir === "asc";
-  if (sort.field === "mostLinked") {
-    const cnt = sql`(select count(*) from relations r where r.match_state = 'confirmed' and (r.source_id = ${items.id} or r.target_id = ${items.id}))`;
-    return asc ? sql`${cnt} asc` : sql`${cnt} desc`;
-  }
+  // "mostLinked" is handled structurally in viewItemsQuery (the aggregate
+  // join), never here: a correlated per-row count(*) probes the relations
+  // indexes once per candidate item, O(every matching row) on any backend.
+  // Measured on the prod spoke (23k items / 19k relations): 122,194 buffers,
+  // 186ms — 7× the whole shared_buffers cache, so it evicted itself every run.
   if (sort.field === "property") {
     const val = sql`(${items.properties} ->> ${sort.propertyKey})`;
     const expr = sort.numeric
@@ -467,14 +469,59 @@ export function viewItemsQuery(
   limit = VIEW_LIMIT
 ) {
   const where = viewWhere(ownerId, filter);
+  const db = getDb();
+  const capped = Math.min(Math.max(limit, 1), VIEW_MAX);
+
+  // "Most linked" aggregates the relations table ONCE and joins the counts,
+  // instead of running a correlated count(*) per candidate row. Same counts:
+  // each confirmed edge contributes to both endpoints, a self-edge to its item
+  // exactly once (the ne() guard on the second half — the correlated version
+  // counted it once too). Measured on the prod spoke: 122,194 → 3,448 buffers,
+  // 186ms → 37ms for the all-types list (perf-audit.mts reproduces this).
+  if (sort.field === "mostLinked") {
+    const halves = unionAll(
+      db
+        .select({ otherId: relations.sourceId })
+        .from(relations)
+        .where(eq(relations.matchState, "confirmed")),
+      db
+        .select({ otherId: relations.targetId })
+        .from(relations)
+        .where(
+          and(
+            eq(relations.matchState, "confirmed"),
+            ne(relations.targetId, relations.sourceId)
+          )
+        )
+    ).as("linked");
+    const rc = db
+      .select({
+        otherId: halves.otherId,
+        linkCount: sql<number>`count(*)`.as("link_count"),
+      })
+      .from(halves)
+      .groupBy(halves.otherId)
+      .as("rc");
+    const cnt = sql`coalesce(${rc.linkCount}, 0)`;
+    return db
+      .select(listColumns)
+      .from(items)
+      .leftJoin(rc, eq(rc.otherId, items.id))
+      .where(and(...where))
+      .orderBy(
+        sort.dir === "asc" ? sql`${cnt} asc` : sql`${cnt} desc`,
+        sql`${items.updatedAt} desc`
+      )
+      .limit(capped);
+  }
 
   // updated_at breaks ties so the order is stable across renders.
-  return getDb()
+  return db
     .select(listColumns)
     .from(items)
     .where(and(...where))
     .orderBy(listOrderExpr(sort), sql`${items.updatedAt} desc`)
-    .limit(Math.min(Math.max(limit, 1), VIEW_MAX));
+    .limit(capped);
 }
 
 export async function queryViewItems(

@@ -11,6 +11,7 @@
 // refuses to create or delete them — a manually deleted mention edge would
 // silently resurrect on the next body save.
 import { and, asc, desc, eq, inArray, ne, isNull, or, sql, type SQL } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
@@ -32,25 +33,46 @@ export type RelatedItem = Awaited<
   : never;
 
 // Exposed as a query builder (items.ts pattern) so verification can assert
-// the generated SQL carries owner_id and selects no body. The separate
-// relations source/target indexes make the OR join two bitmap index scans
-// (schema.md index plan).
+// the generated SQL carries owner_id and selects no body.
+//
+// Shape matters here: this reads the edges FIRST (two index probes, one per
+// direction, UNION ALL) and joins items onto that small set — O(edges of this
+// item). The previous OR-join (`(source=X and i.id=target) or (target=X and
+// i.id=source)`) gave the planner no index path from either side, so it
+// scanned and sorted ALL the owner's items and probed relations per row:
+// measured at 26,653 buffers / 127ms on the prod spoke for ONE item page
+// open, vs 3,241 / 23ms for this form (perf-audit.mts reproduces it).
 export function relatedItemsQuery(ownerId: string, itemId: string) {
-  return getDb()
+  const db = getDb();
+  const edges = unionAll(
+    db
+      .select({
+        otherId: relations.targetId,
+        role: relations.role,
+        matchState: relations.matchState,
+        home: relations.home,
+      })
+      .from(relations)
+      .where(eq(relations.sourceId, itemId)),
+    db
+      .select({
+        otherId: relations.sourceId,
+        role: relations.role,
+        matchState: relations.matchState,
+        home: relations.home,
+      })
+      .from(relations)
+      .where(eq(relations.targetId, itemId))
+  ).as("edges");
+  return db
     .select({
       ...listColumns,
-      role: relations.role,
-      matchState: relations.matchState,
-      home: relations.home,
+      role: edges.role,
+      matchState: edges.matchState,
+      home: edges.home,
     })
-    .from(relations)
-    .innerJoin(
-      items,
-      or(
-        and(eq(relations.sourceId, itemId), eq(items.id, relations.targetId)),
-        and(eq(relations.targetId, itemId), eq(items.id, relations.sourceId))
-      )
-    )
+    .from(edges)
+    .innerJoin(items, eq(items.id, edges.otherId))
     .where(
       and(
         eq(items.ownerId, ownerId),

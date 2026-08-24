@@ -80,9 +80,69 @@ export function normalizeConfig(raw, baseDir) {
     // against LOCAL_JOBS below, so a mistyped job name throws here rather than
     // silently running nothing.
     crons: normalizeCrons(cfg.crons),
+    // Local Postgres tuning (ADR-215). `tunePostgres: false` turns the
+    // auto-sizing off; `postgresFlags` appends raw flags AFTER the tuned set,
+    // and for a repeated -c the last occurrence wins, so a manual flag always
+    // overrides the automatic one.
+    tunePostgres: cfg.tunePostgres !== false,
+    postgresFlags: Array.isArray(cfg.postgresFlags)
+      ? cfg.postgresFlags.filter((f) => typeof f === "string" && f.length > 0)
+      : [],
     // Extra env passed through to the app verbatim (R2 keys, Graph secrets…).
     extraEnv: cfg.extraEnv && typeof cfg.extraEnv === "object" ? { ...cfg.extraEnv } : {},
   };
+}
+
+// ── Local Postgres tuning (ADR-215) ──────────────────────────────────────────
+//
+// embedded-postgres ships stock defaults sized for a machine from 2005:
+// shared_buffers 128MB (the prod spoke's whole 798MB database cannot stay
+// cached, so any page-heavy query evicts itself every run — the A2 finding),
+// random_page_cost 4 (the spinning-disk number; it made the planner overprice
+// the index scans every list depends on), work_mem 4MB. The supervisor knows
+// the machine's RAM, so size these automatically rather than leaving a number
+// in a config file nobody revisits.
+//
+// Every value here is a session-safe, restart-applied server GUC; none of them
+// change what is on disk, so a peer can flip tunePostgres off and restart back
+// to stock at any time.
+
+/** Format bytes as a Postgres memory setting (whole MB). */
+function asMB(bytes) {
+  return `${Math.max(1, Math.floor(bytes / (1024 * 1024)))}MB`;
+}
+
+/**
+ * The tuned flag set for a machine with `totalMemBytes` of RAM. Pure so the
+ * verify suite can sweep sizes. Returns [] when tuning is off.
+ *
+ *   shared_buffers        RAM/8, clamped [128MB, 1GB] — enough that a real
+ *                         Ledgr database (798MB measured) fits entirely, small
+ *                         enough to be invisible on an 8GB laptop.
+ *   effective_cache_size  RAM/2 — planner-only (allocates nothing); tells it
+ *                         the OS cache exists, which stock 4GB already said,
+ *                         but keep it honest on small machines.
+ *   random_page_cost      1.1 — the SSD number. A peer genuinely on spinning
+ *                         rust overrides via postgresFlags.
+ *   work_mem              16MB — sorts of 200-row list pages never spill.
+ *   maintenance_work_mem  RAM/32 clamped [64MB, 256MB] — VACUUM and
+ *                         CREATE INDEX during restores/migrations.
+ */
+export function tunedPostgresFlags(cfg, totalMemBytes) {
+  if (!cfg.tunePostgres) return [...cfg.postgresFlags];
+  const mem = Number(totalMemBytes) || 0;
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const MB = 1024 * 1024;
+  const flags = [
+    "-c", `shared_buffers=${asMB(clamp(mem / 8, 128 * MB, 1024 * MB))}`,
+    "-c", `effective_cache_size=${asMB(Math.max(mem / 2, 512 * MB))}`,
+    "-c", "random_page_cost=1.1",
+    "-c", "work_mem=16MB",
+    "-c", `maintenance_work_mem=${asMB(clamp(mem / 32, 64 * MB, 256 * MB))}`,
+  ];
+  // Owner overrides append last: for a repeated -c, postgres takes the last
+  // occurrence, so a manual flag beats its tuned counterpart.
+  return [...flags, ...cfg.postgresFlags];
 }
 
 // ── Env assembly ─────────────────────────────────────────────────────────────

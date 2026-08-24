@@ -370,6 +370,11 @@ Back-end (cheap compute/storage/traffic):
 - No N+1: fetch relations and embedded-view rows in bulk per page.
 - Bounded growth: cap revision snapshots with a prune step.
 - Cold starts (Vercel + Neon scale-to-zero) are an accepted ~1s lag; the health ping can double as keep-warm if needed.
+- **Measure with `npx tsx scripts/perf-audit.mts` before and after any perf-adjacent change (ADR-215).** Buffers touched + runtime per standard surface, read-only, pointable at any peer or the cloud pooler via `--url`. A tuning change with no number attached is a guess.
+- **No correlated per-row subqueries in ORDER BY.** A `(select count(*) …)` sort key runs once per candidate row — O(every matching row) on any backend; the cloud's larger cache only hides it (the mostLinked lesson: 122k buffers → 3.4k as a single aggregate join).
+- **A list's ORDER BY must match an index it can use, byte for byte.** listOrderExpr emits `desc nulls last`; a plain `desc` index (nulls first) does NOT satisfy it, even on a NOT NULL column. The live-list indexes are partial on `deleted_at is null and is_template = false` on purpose — that predicate is what lets counts run as index-only scans.
+- **Every bulk fill ends with `VACUUM ANALYZE`** (restore does this itself now). A never-analyzed database plans blind — the planner believed 23,470 items were 7 — and no visibility map means no index-only scans.
+- **Request-level dedupe for reads every page repeats:** wrap them in React `cache()` (getSettings / listTypes / resolveOwnerState are the pattern), keyed on primitives — cache() compares arguments by identity, so an options object literal never hits.
 
 ---
 

@@ -798,5 +798,141 @@ check(
   );
 }
 
+
+// ── (11) The performance pass (ADR-215) ──────────────────────────────────────
+//
+// Local Postgres tuning: RAM-sized flags, an off switch, and manual overrides
+// that always win. The stock embedded-postgres defaults (128MB shared_buffers,
+// random_page_cost 4) could not hold a real Ledgr database and overpriced the
+// index scans every list depends on.
+{
+  const { tunedPostgresFlags } = await import("../supervisor/lib.mjs");
+  const GB = 1024 * 1024 * 1024;
+  const base = normalizeConfig({ dataDir: "/d", ownerEmail: "a@b.c" }, "/x");
+  const flags32 = tunedPostgresFlags(base, 32 * GB);
+  const text32 = flags32.join(" ");
+  check(
+    "32GB machine: shared_buffers clamps at 1GB (RAM/8 would be 4GB)",
+    text32.includes("shared_buffers=1024MB"),
+    text32
+  );
+  check("SSD random_page_cost is set", text32.includes("random_page_cost=1.1"));
+  check("work_mem raised from the 4MB stock", text32.includes("work_mem=16MB"));
+  const flags8 = tunedPostgresFlags(base, 8 * GB).join(" ");
+  check("8GB machine: shared_buffers = RAM/8 = 1024MB", flags8.includes("shared_buffers=1024MB"));
+  const flags1 = tunedPostgresFlags(base, 1 * GB).join(" ");
+  check(
+    "tiny machine: shared_buffers never sizes below the 128MB stock",
+    flags1.includes("shared_buffers=128MB"),
+    flags1
+  );
+  check(
+    "garbage RAM input still yields safe floors, never NaN flags",
+    !tunedPostgresFlags(base, NaN).join(" ").includes("NaN")
+  );
+  const off = normalizeConfig(
+    { dataDir: "/d", ownerEmail: "a@b.c", tunePostgres: false, postgresFlags: ["-c", "work_mem=64MB"] },
+    "/x"
+  );
+  check(
+    "tunePostgres:false passes ONLY the owner's own flags (stock otherwise)",
+    JSON.stringify(tunedPostgresFlags(off, 32 * GB)) === JSON.stringify(["-c", "work_mem=64MB"])
+  );
+  const both = normalizeConfig(
+    { dataDir: "/d", ownerEmail: "a@b.c", postgresFlags: ["-c", "shared_buffers=64MB"] },
+    "/x"
+  );
+  const merged = tunedPostgresFlags(both, 32 * GB);
+  check(
+    "a manual flag comes AFTER its tuned counterpart, so it wins (postgres takes the last -c)",
+    merged.lastIndexOf("shared_buffers=64MB") > merged.indexOf("shared_buffers=1024MB")
+  );
+  check(
+    "non-string junk in postgresFlags is dropped, not passed to the server",
+    normalizeConfig(
+      { dataDir: "/d", ownerEmail: "a@b.c", postgresFlags: ["-c", 5, null, "x=1"] },
+      "/x"
+    ).postgresFlags.join(",") === "-c,x=1"
+  );
+}
+
+// A restore that hands over a database with no statistics is the A2 bug: the
+// planner believed items held 7 rows against 23,470 real, and the related
+// panel alone cost 11× the buffers it should have. Both fill paths must end
+// with VACUUM ANALYZE.
+{
+  const restoreSrc = readFileSync("scripts/local-restore.mjs", "utf8");
+  check(
+    "local-restore actually RUNS vacuum analyze (the query call, not just a log line)",
+    restoreSrc.includes('db.query("vacuum analyze")') && restoreSrc.includes("analyzeAfterFill")
+  );
+  check(
+    "BOTH fill paths analyze (the dump restore and --from-url)",
+    (restoreSrc.match(/await analyzeAfterFill\(/g) ?? []).length >= 2
+  );
+  check(
+    "the restore cluster starts with the same tuned flags the supervisor uses",
+    restoreSrc.includes("tunedPostgresFlags")
+  );
+}
+
+// The supervisor's cluster gets the tuned flags too.
+check(
+  "the supervisor passes tuned postgresFlags to embedded-postgres",
+  supervisorSrc.includes("postgresFlags: tunedPostgresFlags(cfg, totalmem())")
+);
+
+// The two query rewrites are structural, so guard the structure: each one
+// regressed means an O(all items) plan comes back on every item-page open /
+// Most-linked render (26,653 and 122,194 buffers respectively, measured).
+{
+  const relationsSrc = readFileSync("src/lib/relations.ts", "utf8");
+  check(
+    "relatedItemsQuery reads the edges first (UNION ALL), not an OR-join over items",
+    relationsSrc.includes("unionAll(") &&
+      !/innerJoin\(\s*items,\s*or\(/.test(relationsSrc)
+  );
+  const viewsSrc = readFileSync("src/lib/views.ts", "utf8");
+  check(
+    "mostLinked aggregates relations once — the correlated per-row count(*) is gone",
+    viewsSrc.includes('sort.field === "mostLinked"') &&
+      viewsSrc.includes("unionAll(") &&
+      !/select count\(\*\) from relations r where/.test(viewsSrc)
+  );
+}
+
+// Request-level dedupe on the two reads every page repeats (Nav + page each
+// re-queried settings and types per navigation: two extra HTTP round trips
+// per click on the neon-http driver).
+{
+  const settingsSrc = readFileSync("src/lib/settings.ts", "utf8");
+  check(
+    "getSettings is wrapped in React cache()",
+    /export const getSettings = cache\(/.test(settingsSrc)
+  );
+  const typesSrc = readFileSync("src/lib/types.ts", "utf8");
+  check(
+    "listTypes dedupes through a cache() keyed on a PRIMITIVE (an object arg never hits)",
+    /cache\(async \(includeHidden: boolean\)/.test(typesSrc) &&
+      typesSrc.includes("listTypesCached(opts.includeHidden === true)")
+  );
+}
+
+// The measurement itself stays runnable and read-only: the audit script must
+// refuse anything that is not a SELECT, so it stays safe to point at the live
+// spoke or the cloud pooler.
+{
+  const auditSrc = readFileSync("scripts/perf-audit.mts", "utf8");
+  check(
+    "perf-audit guards every statement through assertSelectOnly",
+    auditSrc.includes("assertSelectOnly(q.sql)") &&
+      auditSrc.includes('startsWith("select")')
+  );
+  check(
+    "perf-audit measures buffers, not just wall clock",
+    auditSrc.includes("ANALYZE, BUFFERS")
+  );
+}
+
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

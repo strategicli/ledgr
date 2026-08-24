@@ -30,6 +30,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
@@ -62,6 +63,7 @@ import {
   nextRunAt,
   parseCronState,
   serializeCronState,
+  tunedPostgresFlags,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -130,6 +132,10 @@ const pg = new EmbeddedPostgres({
   // See scripts/local-restore.mjs: a Windows-default cluster is WIN1252 and
   // cannot hold real body text. UTF8 is not optional here.
   initdbFlags: ["--encoding=UTF8", "--locale-provider=icu", "--icu-locale=en-US", "--locale=C"],
+  // RAM-sized server settings (ADR-215): the stock 128MB shared_buffers could
+  // not hold a real Ledgr database, so page-heavy queries evicted themselves
+  // every run. tunePostgres:false in config restores stock behavior.
+  postgresFlags: tunedPostgresFlags(cfg, totalmem()),
 });
 
 async function startPostgres() {
