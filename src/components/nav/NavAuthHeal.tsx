@@ -1,6 +1,7 @@
 // Self-heal for stale signed-out chrome (ADR-216, the third door into the
 // ADR-184/ADR-203 "vanished nav" symptom). The login flow's LAST document
-// render happens while signed out — /sign-in, then the Microsoft SSO callback —
+// render happens while signed out — /sign-in, then the OAuth SSO callback
+// (Google on Tyler's instance, Microsoft on Brandon's; the flow is identical) —
 // so the root layout (accent, body padding) and Nav render their signed-out
 // forms. Clerk then completes the session entirely client-side and soft-
 // navigates to "/": the App Router keeps the shared root layout from that
