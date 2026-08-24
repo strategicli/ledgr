@@ -6,6 +6,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
+import NavAuthHeal from "@/components/nav/NavAuthHeal";
 import NavShell, {
   type ShellDest,
   type ShellSlot,
@@ -13,7 +14,7 @@ import NavShell, {
 import { countInbox } from "@/lib/items";
 import { countUnread } from "@/lib/notifications";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
-import { resolveOwner } from "@/lib/owner";
+import { resolveOwnerState } from "@/lib/owner";
 import {
   getSettings,
   type NavBadge,
@@ -33,8 +34,24 @@ export default async function Nav() {
   // the unrecognized-session case (src/lib/owner.ts), and the middleware refuses
   // to serve a deployment with no auth configured (src/proxy.ts). If you are
   // looking at a nav-less page, check those two before suspecting the nav.
-  const owner = await resolveOwner();
-  if (!owner) return null;
+  // A THIRD door (ADR-216): the post-sign-in soft navigation reuses the root
+  // layout from its signed-out render, so the nav is missing even though auth
+  // and the owner row are fine. NavAuthHeal (mounted below on signed-out
+  // renders) detects that and router.refresh()es the chrome back.
+  const state = await resolveOwnerState();
+  if (state.kind !== "owner") {
+    // A signed-out render additionally mounts the self-heal (ADR-216): if the
+    // client-side Clerk session turns out to disagree — the post-sign-in soft
+    // navigation that keeps this stale signed-out layout — it refreshes the
+    // router once so the real chrome takes over. "unrecognized" deliberately
+    // does NOT mount it: that state is signed-in on both sides, so a heal
+    // refresh would loop without ever changing anything.
+    return state.kind === "signed-out" &&
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
+      <NavAuthHeal />
+    ) : null;
+  }
+  const owner = state.owner;
 
   // Quick-capture types are data-driven and opt-in (type-and-kind-ux §2): only
   // types flagged show_in_quick_capture appear, so a custom type can be
