@@ -54,13 +54,32 @@ export default async function ViewLensBody({
     ownerId && !rowActions
       ? await projectCardsForView(ownerId, data.view, data.items)
       : null;
+  // A BOARD lens drags its cards between columns exactly as /views/[id] does.
+  // Reproduce that page's guard rather than a looser version of it:
+  // boardDropPatch writes a SCALAR, so only a status/urgency field grouping or a
+  // single-select property is safe (a multi_select would be corrupted into a
+  // string). Off when the related panel drives this body (`rowActions`) — those
+  // rows carry relation controls, not board interaction.
+  const g = data.view.grouping;
+  const fieldGroup = !g || "field" in g ? (g?.field ?? "status") : null;
+  const boardDraggable =
+    data.view.layout === "board" &&
+    !rowActions &&
+    (fieldGroup === "status" ||
+      fieldGroup === "urgency" ||
+      data.groupPropKind === "select");
   // Anchor "Open beside" to this saved view — but only on an interactive lens
   // (`today` set). When the related panel drives this body (rowActions), the
   // rows carry no send menu, and the view isn't the reading context, so no host.
   const renderer = (
     <DeskHostProvider
       host={
-        today ? { kind: "view", viewId: data.view.id, title: data.view.name } : null
+        // `hostable === false` = a synthetic lens (board/completed): its view id
+        // has no row in the views table, so anchoring "Open beside" to it would
+        // link to a dead /views/<id> route.
+        today && data.hostable !== false
+          ? { kind: "view", viewId: data.view.id, title: data.view.name }
+          : null
       }
     >
       <ViewRenderer
@@ -69,6 +88,8 @@ export default async function ViewLensBody({
         groupOrder={data.groupOrder}
         propertyLabels={data.propertyLabels}
         propertyKinds={data.propertyKinds}
+        statuses={data.statuses}
+        boardDraggable={boardDraggable}
         selectable={bulkConfig != null}
         rowActions={rowActions}
         rollups={rollups}

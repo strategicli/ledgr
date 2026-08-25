@@ -20,10 +20,11 @@ import { contactLink } from "@/lib/contact-links";
 import type { Progress } from "@/lib/subtasks";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { groupValuesFor, orderedGroups, type GroupEdges } from "@/lib/view-grouping";
+import BoardColumn from "@/components/views/BoardColumn";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
-import type { StatusDef } from "@/lib/status";
+import { isTerminalCategory, type StatusDef } from "@/lib/status";
 
 // Structural shape of a listColumns row, narrowed to what the layouts use.
 // properties rides along so a board can group by a custom select field (the
@@ -596,6 +597,7 @@ function BoardLayout({
       <BoardDnd
         cards={cards}
         grouping={view.grouping}
+        boardKey={view.id}
         groupOrder={groupOrder}
         statuses={statuses}
         cardBodies={cardBodies}
@@ -611,34 +613,24 @@ function BoardLayout({
   );
   const columns = orderedGroups(view.grouping, present, groupOrder);
   return (
-    <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+    // Snap-scroll on a phone (one column per swipe), free scrolling on desktop.
+    // No drag on this read-only path, so unlike BoardDnd it can snap always.
+    <div className="mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 sm:snap-none">
       {columns.map((col) => {
         const colItems = items.filter((i) =>
           groupValuesFor(i, view.grouping, now, groupEdges).includes(col)
         );
+        const sdef = statusBoard ? statuses?.find((s) => s.key === col) : undefined;
         return (
-          <div
+          <BoardColumn
             key={col}
-            className="flex w-60 shrink-0 flex-col rounded-lg border border-neutral-800 bg-neutral-900/40"
+            col={col}
+            boardKey={view.id}
+            label={sdef?.label ?? col}
+            color={sdef?.color}
+            count={colItems.length}
+            defaultCollapsed={sdef ? isTerminalCategory(sdef.category) : false}
           >
-            <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-              {(() => {
-                const sdef = statusBoard ? statuses?.find((s) => s.key === col) : undefined;
-                return (
-                  <span className="flex items-center gap-1.5 truncate">
-                    {sdef?.color && (
-                      <span
-                        aria-hidden
-                        className="inline-block h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: sdef.color }}
-                      />
-                    )}
-                    {sdef?.label ?? col}
-                  </span>
-                );
-              })()}
-              <span className="text-neutral-600">{colItems.length}</span>
-            </div>
             <ul className="flex flex-col gap-1.5 p-2">
               {colItems.map((item) => {
                 const rich = projectCards ? boardProjectCard(item, projectCards) : null;
@@ -664,7 +656,7 @@ function BoardLayout({
                 );
               })}
             </ul>
-          </div>
+          </BoardColumn>
         );
       })}
     </div>

@@ -22,7 +22,7 @@ import {
 } from "@/lib/dashboard-tree";
 import { getItem, ItemError, type ItemListRow } from "@/lib/items";
 import { relatedSummaryFor } from "@/lib/relations";
-import { resolveStatusSchema } from "@/lib/status";
+import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
 import { getType } from "@/lib/types";
 import { countViewItems, getView, queryViewItems, type ViewDefinition } from "@/lib/views";
 
@@ -53,7 +53,8 @@ async function groupingFor(view: ViewDefinition) {
     // BoardDnd falls back to the built-in open/done/archived, and on a type with
     // custom statuses a drop into one of those spurious columns would write a
     // status the type never defined (the payload parser only slug-checks it).
-    groupOrder = statuses.map((s) => s.key);
+    // Category order, not the raw authored order (see view-render.ts).
+    groupOrder = orderedStatuses(statuses).map((s) => s.key);
   }
   const propertyLabels: Record<string, string> = {};
   const propertyKinds: Record<string, string> = {};

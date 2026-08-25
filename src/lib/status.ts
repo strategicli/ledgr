@@ -252,6 +252,13 @@ export function initialStatusKey(schema: StatusDef[]): string {
 export const isActiveCategory = (c: StatusCategory) => ACTIVE_CATEGORIES.includes(c);
 export const isDoneCategory = (c: StatusCategory) => c === "done";
 
+// The TERMINAL buckets — finished work, the columns you don't work out of. A
+// kanban collapses these to a rail by default (board-prefs.ts) so a board reads
+// as live work on arrival. Not the same question as isActiveCategory: `archived`
+// is neither active nor done, and belongs on this side of the line.
+export const isTerminalCategory = (c: StatusCategory) =>
+  c === "done" || c === "archived";
+
 // Statuses in canonical display order: by category order, preserving the
 // author's order within a category. The order a kanban shows columns and a
 // dropdown lists options.
