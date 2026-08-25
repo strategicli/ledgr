@@ -938,6 +938,52 @@ export const syncDevice = pgTable("sync_device", {
   name: text("name"),
 });
 
+// ── The roster: one row per copy of Ledgr the owner runs (ADR-220) ──────────
+//
+// WHY THIS TABLE EXISTS. Two id spaces never met: an install knows its own
+// `sync_device.id`, while a hub's list of OTHER installs (`sync_peers`) is keyed
+// by a uuid the hub minted at add-device time and never reconciled with it. So
+// no install could name another one, which made "run the backup over there" and
+// "which of my copies is behind?" both unanswerable from anywhere but the hub.
+//
+// The fix is the smallest thing that reconciles them: every install writes ONE
+// row, keyed by its OWN id, into a table that syncs. The key is what makes it
+// safe — two installs never write the same row, so the field-level
+// last-writer-wins merge has nothing to fight over. A roster kept inside
+// `users.settings` would have been cheaper (no migration) and wrong: settings is
+// a single jsonb column, so it is ONE field to the merge, and two installs
+// announcing themselves would clobber each other's entries wholesale.
+//
+// DELIBERATELY NOT `sync_peers`. That table is access control: tokens, revoked,
+// pull-only, retention. This one is identity. A copy can exist in the roster
+// without connecting to this particular node, and merging the two would tangle
+// "who may connect to me" with "what copies exist".
+export const installs = pgTable(
+  "installs",
+  {
+    // The install's own sync_device.id. Never a hub-minted id.
+    id: uuid("id").primaryKey(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    // What the owner calls this machine. Set once when the copy is set up and
+    // owner-editable thereafter, from any device. A periodic announce must
+    // NEVER overwrite it, or a rename would silently revert.
+    label: text("label").notNull(),
+    // "cloud" | "local". The install knows which it is; nobody else can tell.
+    kind: text("kind").notNull().default("local"),
+    // The build this copy is running, so "the laptop is behind" is visible
+    // without opening the laptop.
+    appVersion: text("app_version"),
+    // Written by the install itself, so it means "this copy was RUNNING then",
+    // not "it reached me then" — the stronger fact, and the one that makes a
+    // job silently not running visible from every device.
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("installs_owner_idx").on(t.ownerId)]
+);
+
 // The wire format's schema-version stamp, read by the oplog trigger. One row,
 // holding the migration tag as of the last SYNC-TOUCHING migration (seeded
 // '0054_sync_spine'; any future migration that changes a synced table's shape

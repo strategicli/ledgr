@@ -24,6 +24,8 @@ import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
 import JobOwnerControl from "@/components/updates/JobOwnerControl";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
 import { readJobOwners, installLabel } from "@/lib/job-owners-store";
+import { listInstalls } from "@/lib/installs";
+import { duplicateLabels, installHealthLine } from "@/lib/installs-plan";
 import { readLocalDeviceId } from "@/lib/sync/client";
 import {
   MOVABLE_JOBS,
@@ -158,7 +160,12 @@ export default async function Updates() {
   // only local peers show the answer.
   const jobOwners = await readJobOwners(owner.id);
   const selfDeviceId = await readLocalDeviceId();
-  const thisMachine = installLabel();
+  // The roster (ADR-220) is what turns the picker from "run it here" into "run
+  // it on that machine over there": one row per copy, keyed by the same ids the
+  // scheduler compares against.
+  const roster = await listInstalls(owner.id);
+  const thisMachine = roster.find((i) => i.isSelf)?.label ?? installLabel();
+  const dupeLabels = duplicateLabels(roster);
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -524,12 +531,69 @@ export default async function Updates() {
             This machine is <span className="text-ink">{thisMachine}</span>.
           </p>
 
+          {/* The roster: every copy, so the dropdowns below can name any of
+              them and so "which of my copies is quiet?" is answerable here. */}
+          {roster.length > 0 && (
+            <details className="mt-3 rounded-card border border-line bg-surface-2 p-3">
+              <summary className="ui-meta cursor-pointer text-ink-subtle">
+                Your copies of Ledgr ({roster.length})
+              </summary>
+              <ul className="mt-2 divide-y divide-line">
+                {roster.map((i) => (
+                  <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-1.5">
+                    <span className="ui-row min-w-0 flex-1 text-ink">
+                      {i.label}
+                      {i.isSelf && (
+                        <span className="ui-meta ml-2 text-ink-subtle">this one</span>
+                      )}
+                      {i.kind === "cloud" && (
+                        <span className="ui-meta ml-2 text-ink-faint">in the cloud</span>
+                      )}
+                    </span>
+                    <span className="ui-meta shrink-0 text-ink-subtle">
+                      {installHealthLine(i, new Date())}
+                    </span>
+                    {i.appVersion && (
+                      <span className="ui-meta shrink-0 font-mono text-ink-faint">
+                        {i.appVersion.slice(0, 7)}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="ui-meta mt-2 text-ink-faint">
+                Each copy adds itself to this list and checks in once a day.
+                Renaming one, or removing one you are done with, is on{" "}
+                <Link href="/build/network#copies" className="underline decoration-dotted">
+                  Network
+                </Link>
+                .
+              </p>
+            </details>
+          )}
+
+          {dupeLabels.length > 0 && (
+            <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+              <span className="mt-1.5">
+                <StatusDot tone="warn" />
+              </span>
+              <span>
+                More than one copy is called{" "}
+                <strong className="font-medium">{dupeLabels.join(", ")}</strong>, so the
+                list below cannot tell you which machine a job is on. Rename one on{" "}
+                <Link href="/build/network#copies" className="hover:underline">
+                  Network
+                </Link>
+                .
+              </span>
+            </p>
+          )}
+
           <ul className="mt-4 divide-y divide-line">
             {MOVABLE_JOB_NAMES.map((name) => {
               const def = MOVABLE_JOBS[name];
               const state = ownershipOf(jobOwners, name);
               const warning = ownershipWarning({ owners: jobOwners, job: name, now: new Date() });
-              const isOwner = state.state === "claimed" && state.claim.deviceId === selfDeviceId;
               return (
                 <li key={name} className="py-3">
                   <div className="flex items-start gap-2">
@@ -554,8 +618,11 @@ export default async function Updates() {
                         job={name}
                         jobLabel={def.label}
                         consequence={def.consequence}
-                        isOwner={isOwner}
-                        claimed={state.state !== "unset"}
+                        installs={roster}
+                        currentDeviceId={
+                          state.state === "claimed" ? state.claim.deviceId : null
+                        }
+                        isUnset={state.state === "unset"}
                         blocked={def.movable ? undefined : def.blocked}
                       />
                     </div>

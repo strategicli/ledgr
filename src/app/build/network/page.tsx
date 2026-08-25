@@ -35,11 +35,13 @@ import {
 import { summarizeSync } from "@/lib/sync/summary";
 import { listPeers, type PeerSummary } from "@/lib/sync/peers";
 import { readJobOwners } from "@/lib/job-owners-store";
+import { listInstalls } from "@/lib/installs";
 import { MOVABLE_JOB_NAMES, ownershipWarning } from "@/lib/job-owners";
 import SyncedDevices from "@/components/updates/SyncedDevices";
 import SyncModeToggle from "@/components/updates/SyncModeToggle";
 import { AddHub, HubSettings, RemoveHub } from "@/components/network/HubActions";
 import CopyAddress from "@/components/network/CopyAddress";
+import CopiesList from "@/components/network/CopiesList";
 import {
   readLanIps,
   readTailscaleState,
@@ -129,6 +131,7 @@ export default async function Network() {
   // not have to visit two pages to learn either.
   const now = new Date();
   const jobOwners = await readJobOwners(owner.id);
+  const roster = await listInstalls(owner.id);
   const jobWarnings = MOVABLE_JOB_NAMES.flatMap((job) => {
     const w = ownershipWarning({ owners: jobOwners, job, now });
     return w ? [w.text] : [];
@@ -463,6 +466,31 @@ export default async function Network() {
           </Card>
         </section>
       )}
+
+      {/* ── The roster: every copy the owner runs (ADR-220) ─────────────── */}
+      <section className="mt-8" id="copies">
+        <h2 className="ui-section-label">Your copies of Ledgr</h2>
+        <Card>
+          <CopiesList installs={roster} />
+          <WhatIsThis>
+            <p>
+              Every copy of Ledgr you run adds itself to this list and checks in
+              once a day, so this is the one place that knows about all of them at
+              once. It is how the scheduled-work picker on{" "}
+              <Link href="/build/updates#scheduled-work" className="hover:underline">
+                Updates
+              </Link>{" "}
+              can send a job to a machine you are not sitting at.
+            </p>
+            <p>
+              Names are yours to set. Each machine is named when it is set up, and
+              you can rename any of them from here, including ones that are
+              switched off. Removing a copy only removes it from this list; if that
+              machine is still running Ledgr it will add itself back tomorrow.
+            </p>
+          </WhatIsThis>
+        </Card>
+      </section>
 
       {/* ── Devices that sync from this copy (hub side) ─────────────────── */}
       <section className="mt-8" id="devices">

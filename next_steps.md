@@ -312,6 +312,20 @@ The person picture box (ADR-202 addendum 4, `src/components/people/PersonImageBo
 >
 > **🟡 TYLER'S INSTANCE IS MISSING ONE AUTH SECRET — was two (updated 2026-08-13).** Found while building ADR-179: `tylerjaycollins-projects/ledgr` had **none** of the `LEDGR_*` auth vars set. **Now set:** `LEDGR_APP_SECRET` and `LEDGR_API_TOKENS` (Build → API Tokens works), plus `LEDGR_OAUTH_SECRET` and `LEDGR_MCP_OWNER_UPN` as of 2026-08-10, so the MCP Generate button works and MCP runs over OAuth on the cloud instance. **Still unset: `LEDGR_CLIPPER_SECRET`,** which means the web-clipper Generate button renders as nothing on that instance — the invisible-feature trap ADR-179 was written about. Fix when wanted: `openssl rand -hex 32` → `vercel env add LEDGR_CLIPPER_SECRET production` → redeploy. Not needed for Overtone.
 
+## ✅ Recently done — The roster: any copy can name any other (2026-08-25, ADR-220, CORE, **Tyler acked**)
+
+The follow-up ADR-218 said would restore the exploration doc's design, built the same day after Brandon weighed four options and picked the expensive one for the right reason: its payoff is much wider than the dropdown it was asked for.
+
+**What it is.** `installs` (migration `0058_installs_roster`) joins the ADR-206 synced set: one row per copy of Ledgr, **keyed by that copy's own `sync_device.id`** — the same id space the scheduler's gate compares against, which is exactly what the old design lacked. Each copy writes only its own row, which is what makes the field-level merge safe and is why this earned a table rather than a key in `users.settings` (that blob is ONE field to the merge, so two copies announcing themselves would clobber each other). Announced daily from `purge`, the one job ADR-214 says every instance runs, so no new scheduler and the cloud joins like a local peer.
+
+**What it bought, beyond the dropdown:** per-copy health ("has not been heard from in over a month") and build visibility on every copy rather than only a hub; a name the owner sets at setup (the wizard now ASKS rather than taking the hostname, which is the collision guard) and can change from any copy; and the fix for a flaw ADR-218 shipped — **a re-fill used to orphan claimed jobs**, because `local:restore` deliberately assigns a fresh `sync_device` id. Both fill paths now carry the identity forward.
+
+**Rollout, and it is not free:** the journal tag moves, so **sync pauses between peers until each takes this update** (same shape as ADR-213/ADR-215).
+
+**Two things found by testing it rather than by reading it:** `announceOwnInstall` resolved the owner as the earliest `users` row, but a database can hold several (a dev branch accumulates throwaway owners from the verify suites) — so the roster row was attributed to a test owner while the page showed an empty list. It resolves the owner like every other scheduled job now, and both roster reads log instead of swallowing, because an empty list and a broken read looked identical. And the duplicate-name warning said "cloud" for machines named "Cloud"; it reports the name as typed now.
+
+**Still open from the exploration doc:** §3 (hub/spoke vocabulary) and §4 (real cadence options) — and the roster is the foundation both of them wanted, so they are cheaper now than when they were written. §4's shape is already decided if it gets picked up: store an interval, keep the presets as UI sugar, and refuse or warn on a cadence longer than the retention window.
+
 ## ✅ Recently done — Sync-node maturity §1/§1b/§2 (2026-08-25, ADR-218 + ADR-219)
 
 From `explorations/sync-node-maturity.md`, which is now marked BUILT for those sections. §3 (hub/spoke vocabulary) and §4 (real cadence options) are **still open**, and the options list is untouched except #2, which §1 delivered.

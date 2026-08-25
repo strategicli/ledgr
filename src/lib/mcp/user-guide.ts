@@ -884,11 +884,19 @@ mailbox, one Todoist account. Exactly one of your machines may do each of them,
 so this is where you say which one. Every device shows the same answer, because
 two machines doing the same job is the mistake worth catching.
 
-Press **Run it here** on the machine you want to do the work. That takes it away
-from wherever it was, everywhere, within seconds. You can hand it back or pause
-it from any device, which is what saves you when the machine holding a job is
-switched off or gone. If the machine holding a job stops doing it, the page says
-so rather than looking fine.
+Each job has a **Runs on** dropdown listing every copy of Ledgr you have, so you
+can send a job to a machine you are not sitting at. Changing it takes the job away
+from wherever it was, everywhere, within seconds. You can also pause a job
+everywhere, or hand it back to running wherever it is switched on. If the machine
+holding a job stops doing it, the page says so rather than looking fine.
+
+**Your copies of Ledgr** is the list behind that dropdown. Every copy adds itself
+and checks in once a day, so this is the one place that knows about all of them at
+once: which is which, which has gone quiet, and which is running a different
+version. You name a machine when you set it up, and you can rename any of them
+later from any device (on Network, under "Your copies of Ledgr"). Two copies
+sharing a name is called out, because then the dropdown cannot tell you which
+machine a job is on.
 
 Today only the **offline backup** can be moved. The others each show why not:
 each of them keeps its own place in a queue on the machine that runs it, so

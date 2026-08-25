@@ -5,9 +5,9 @@
 // Split for the same reason snapshot-settings.ts is split from snapshots.ts: the
 // pure half has to stay importable by a verify script that runs with no
 // database.
-import { hostname } from "node:os";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { readLocalDeviceId } from "@/lib/sync/client";
+import { listInstalls, seedLabel } from "@/lib/installs";
 import {
   claimFor,
   MOVABLE_JOBS,
@@ -18,17 +18,15 @@ import {
 } from "@/lib/job-owners";
 
 /**
- * What this machine goes by, in one phrase, for the claim it writes.
+ * What this machine goes by, for the claim it writes.
  *
- * A hostname is the right answer on a machine under a desk (it is what the
- * owner already calls it, and what `npm run local:status` prints). A Vercel
- * deploy has a meaningless container hostname, so it says "Cloud" — which is
- * also exactly the word the owner uses for it.
+ * Delegates to the roster's own seed (ADR-220) so a claim and a roster row can
+ * never disagree about the same machine's name. Note this is only the SEED: once
+ * the roster row exists, the owner's chosen name lives there and `assign` reads
+ * it from the row rather than from here.
  */
 export function installLabel(): string {
-  if (process.env.VERCEL_ENV) return "Cloud";
-  const name = (process.env.LEDGR_INSTALL_LABEL ?? hostname() ?? "").trim();
-  return name || "This machine";
+  return seedLabel();
 }
 
 export async function readJobOwners(ownerId: string): Promise<JobOwners> {
@@ -76,22 +74,28 @@ export async function stampJobRun(ownerId: string, job: MovableJob, now = new Da
   });
 }
 
-export type ClaimAction = "claim" | "nobody" | "default";
+export type ClaimAction = "claim" | "assign" | "nobody" | "default";
 
 /**
- * Move a job, from the machine the request is running on.
+ * Move a job to any copy the owner runs.
  *
- * `claim` is deliberately only ever "run it HERE": the slot has to carry a real
- * `sync_device` id, and this install only knows its own (see job-owners.ts's
- * header on the two id spaces). `nobody` and `default` work from anywhere,
- * which is what makes a job recoverable when the machine holding it is gone.
+ * `assign` is what the roster bought (ADR-220): before it existed, no install
+ * could name another one, so the only expressible move was "run it HERE". Now
+ * the target comes from the roster, whose rows are keyed by each install's OWN
+ * id — the same id space the gate compares against — so pointing a job at
+ * another machine from anywhere finally type-checks in the real sense.
+ *
+ * `claim` is kept as the shorthand for "here" (it needs no target), and `nobody`
+ * / `default` still work from anywhere, which is what makes a job recoverable
+ * when the machine holding it is gone for good.
  */
 export async function setJobOwner(
   ownerId: string,
   job: MovableJob,
   action: ClaimAction,
-  now = new Date()
+  opts: { deviceId?: string; now?: Date } = {}
 ): Promise<{ owners: JobOwners; error?: string }> {
+  const now = opts.now ?? new Date();
   const owners = await readJobOwners(ownerId);
   if (action === "default") {
     // Absent, not null: "as before this feature existed".
@@ -106,18 +110,31 @@ export async function setJobOwner(
   if (!MOVABLE_JOBS[job].movable) {
     return { owners, error: MOVABLE_JOBS[job].blocked ?? "This one cannot be moved yet." };
   }
-  const deviceId = await readLocalDeviceId();
-  if (!deviceId) {
-    return {
-      owners,
-      error:
-        "This copy has no device identity yet, so it cannot take the job. It gets one the first time it syncs.",
-    };
+  // The target: another copy from the roster, or this one.
+  let deviceId: string | null;
+  let label: string;
+  if (action === "assign") {
+    const target = (await listInstalls(ownerId)).find((i) => i.id === opts.deviceId);
+    if (!target) {
+      return { owners, error: "That copy is not in the list any more. Pick one that is." };
+    }
+    deviceId = target.id;
+    label = target.label;
+  } else {
+    deviceId = await readLocalDeviceId();
+    label = installLabel();
+    if (!deviceId) {
+      return {
+        owners,
+        error:
+          "This copy has no device identity yet, so it cannot take the job. It gets one the first time it syncs.",
+      };
+    }
   }
   const previous = owners[job] ?? null;
   const next: JobOwners = {
     ...owners,
-    [job]: claimFor({ deviceId, label: installLabel(), now, previous }),
+    [job]: claimFor({ deviceId, label, now, previous }),
   };
   return { owners: (await updateSettings(ownerId, { jobOwners: next })).jobOwners };
 }

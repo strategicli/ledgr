@@ -23,7 +23,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { homedir, userInfo } from "node:os";
+import { homedir, hostname, userInfo } from "node:os";
 import { stdin, stdout } from "node:process";
 import * as readline from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -42,6 +42,7 @@ import {
   schtasksCreateArgs,
   validateEmail,
   validateHubUrl,
+  validateMachineName,
   validatePort,
   validateRole,
 } from "./local-setup-lib.mjs";
@@ -65,6 +66,7 @@ Flags (each replaces one prompt; --yes answers the rest with defaults):
   --port <n>              app port (default 3000)
   --db-port <n>           Postgres port (default 5433)
   --owner-email <email>   the local owner identity (must match the users row)
+  --machine-name <name>   what to call this machine in the app (default: hostname)
   --hub-url <url>         spoke only: the hub to sync against
   --hub-token <token>     spoke only: the one-time device token minted on the hub
   --backup <path>         restore this pg_dump as the initial data (implies --fill restore)
@@ -190,6 +192,26 @@ const ownerEmail = await answer("Owner email", {
   validate: validateEmail,
 });
 
+if (!flags["machine-name"] && rl) {
+  console.log(
+    "\nThis machine needs a name. It is how you will recognise this copy in the\n" +
+      "app: which one holds the nightly backup, which one has gone quiet. We ask\n" +
+      "rather than taking the computer's own hostname, because two machines\n" +
+      "answering to one name makes those questions unanswerable. You can rename\n" +
+      "it later from any device.\n"
+  );
+}
+const machineName = await answer("Name for this machine", {
+  flagValue: flags["machine-name"],
+  flagName: "--machine-name",
+  def: hostname() || undefined,
+  validate: (v) => {
+    const problem = validateMachineName(v);
+    if (problem) throw new Error(problem);
+    return String(v).trim();
+  },
+});
+
 /** Ask the local Tailscale CLI, if it is there. Not installed is a normal
  * answer, so nothing here throws. */
 function readTailscale() {
@@ -297,7 +319,7 @@ if (fill === "pull" && !fromUrl) {
 // ── Write supervisor/config.json ─────────────────────────────────────────────
 
 const configPath = flags.config ? resolve(flags.config) : join(repoDir, "supervisor", "config.json");
-const config = buildPeerConfig({ role, dataDir, ownerEmail, appPort, dbPort, hubUrl, hubToken });
+const config = buildPeerConfig({ role, dataDir, ownerEmail, appPort, dbPort, hubUrl, hubToken, machineName });
 // The validator of record: the exact parse the supervisor does at boot.
 const normalized = normalizeConfig(config, dirname(configPath));
 
