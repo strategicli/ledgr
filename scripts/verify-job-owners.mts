@@ -11,6 +11,7 @@
 //
 // Run: npx tsx scripts/verify-job-owners.mts
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   claimFor,
   isMovableJob,
@@ -62,14 +63,33 @@ ok("the catalog covers the six exclusive jobs and nothing else", () => {
   assert.equal(isMovableJob("snapshot"), false, "snapshots are purely local");
 });
 
-ok("only export is claimable today, and every other row says why not", () => {
-  assert.equal(MOVABLE_JOBS.export.movable, true);
+ok("a movable row states its trade, and a blocked row says why not", () => {
+  // Written as an invariant rather than a list, because the list moves: jobs
+  // become claimable one at a time as each handoff is proven (ADR-218's plan,
+  // ADR-221's first two). What must never move is that the owner is told
+  // something either way. A movable row that says nothing is the silent
+  // surface Principle 9 forbids, and `export` is the one honest exception:
+  // its trade IS that there is no trade.
   for (const name of MOVABLE_JOB_NAMES) {
     const def = MOVABLE_JOBS[name];
-    if (name === "export") continue;
-    assert.equal(def.movable, false, `${name} claims to be movable`);
-    assert.ok(def.blocked && def.blocked.length > 20, `${name} is blocked without a reason`);
+    if (def.movable) {
+      assert.ok(!def.blocked, `${name} is movable but still carries a blocked reason`);
+      assert.ok(
+        def.consequence && def.consequence.length > 20,
+        `${name} is movable without saying what moving it costs`
+      );
+    } else {
+      assert.ok(def.blocked && def.blocked.length > 20, `${name} is blocked without a reason`);
+    }
   }
+});
+
+ok("export, calendar sync and email capture are the proven three", () => {
+  // A guard on the SIZE of the claimable set, not a restatement of it: flipping
+  // a fourth job on is a deliberate act that should have to touch this line and
+  // ADR the reason, never something that rides along in an unrelated diff.
+  const claimable = MOVABLE_JOB_NAMES.filter((n) => MOVABLE_JOBS[n].movable).sort();
+  assert.deepEqual(claimable, ["calendar-sync", "email-import", "export"]);
 });
 
 ok("no row explains itself in engineering vocabulary", () => {
@@ -88,6 +108,58 @@ ok("no row explains itself in engineering vocabulary", () => {
       assert.ok(!text.includes("—"), `${name}.${field} has an em dash: "${text}"`);
     }
   }
+});
+
+// ── What makes a handoff safe ───────────────────────────────────────────────
+//
+// A job is claimable only because the answer to "have I already done this one?"
+// lives somewhere EVERY copy can read: a synced table, or the outside system
+// itself. Where that answer instead sits in per-copy `job_state`, a new owner
+// starts blind and either duplicates work or silently skips it.
+//
+// That is a structural fact, so it is checked structurally. These three greps
+// are the tripwires under ADR-221's proofs: each one names the specific line
+// whose removal would make a shipped, claimable job unsafe while every
+// behavioral suite still passed, because the behavioral suites run against ONE
+// database and a handoff is by definition two.
+
+const SRC = (p: string) => readFileSync(p, "utf8");
+
+ok("email capture recognizes a message from SYNCED item rows, not a local record", () => {
+  // `alreadyImported` is the guard that survives a handoff. It must read
+  // `items` (synced) and key on internetMessageId, which is stable across the
+  // mailbox move that the volatile per-message id is not.
+  const src = SRC("src/lib/email/sync.ts");
+  const guard = src.slice(src.indexOf("async function alreadyImported"));
+  assert.match(guard.slice(0, 900), /from items/, "the guard no longer reads the items table");
+  assert.match(guard.slice(0, 900), /internetMessageId/, "the guard no longer keys on the stable id");
+});
+
+ok("email capture moves a message out of the folder only AFTER it is filed", () => {
+  // The mailbox folder is the real cross-copy record: a message a new owner can
+  // still see is a message nobody has filed. That only holds while the move
+  // follows the write. Reversed, a crash between them loses the message for
+  // every copy at once.
+  const src = SRC("src/lib/email/sync.ts");
+  const create = src.indexOf("await createItem(ownerId, {");
+  // lastIndexOf: the FIRST markImported is the skip branch (a message filed on
+  // a previous run, moved now), which legitimately precedes the create.
+  const move = src.lastIndexOf("await source.markImported(");
+  assert.ok(create > 0, "the import path no longer calls createItem");
+  assert.ok(move > create, "markImported no longer follows createItem");
+});
+
+ok("calendar sync recognizes a meeting from the SYNCED item column", () => {
+  // Dedup keys on items.msEventId. The `calendar_events` cache beside it is
+  // per-copy and deliberately so; if the dedup ever moved onto that table, a
+  // new owner with an empty cache would duplicate every promoted meeting.
+  const src = SRC("src/lib/calendar/sync.ts");
+  assert.match(src, /inArray\(items\.msEventId, ids\)/, "dedup no longer keys on items.msEventId");
+  assert.doesNotMatch(
+    src,
+    /inArray\(calendarEvents\.msEventId/,
+    "dedup moved onto the per-copy cache, which does not survive a handoff"
+  );
 });
 
 // ── Reading the stored slot ─────────────────────────────────────────────────

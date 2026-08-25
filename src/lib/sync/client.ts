@@ -17,6 +17,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState, syncDevice, syncOps } from "@/db/schema";
 import { applySyncOps } from "./apply";
+import { HOLD_GRACE_DAYS_DEFAULT } from "./peers";
 import { latestSchemaVer } from "./version";
 import type { SyncOp } from "./engine";
 import { createLogger } from "@/lib/log";
@@ -51,10 +52,53 @@ export type HoldReason = "first_push_size" | "clock_skew";
 //     a system that has not heard from your other machines in a day while the
 //     UI says "synced". That is the Principle 9 failure the staleness refusal
 //     fixed from the other direction.
-export type HubCadence = "continuous" | "daily";
+/**
+ * How often to exchange with a hub, in MINUTES. 0 means "every normal round",
+ * which is what the two-value enum called "continuous".
+ *
+ * ADR-221 replaced that enum ("continuous" | "daily") with the number it was
+ * already reducing to. The enum was not a simplification, it was a missing
+ * feature wearing one: the owner's ladder is continuous, a few minutes, a
+ * quarter hour, hourly, daily, weekly, and each of those was expressible as an
+ * interval all along (`cadenceIntervalMs` existed to turn the enum INTO one).
+ * Storing the number removes the translation rather than widening it.
+ *
+ * READS ARE TOLERANT, so nothing has to be migrated: a hub stored before this
+ * change carries the string "continuous" or "daily" and reads as 0 or 1440,
+ * which is exactly what it was doing (the same additive move ADR-210 used when
+ * it introduced the field).
+ */
+export type HubCadence = number;
 export type HubFallback = "automatic" | "prompt";
 
 export const CADENCE_DAILY_MS = 24 * 60 * 60 * 1000;
+export const CADENCE_CONTINUOUS = 0;
+export const CADENCE_DAILY_MINUTES = 1440;
+export const CADENCE_WEEKLY_MINUTES = 10_080;
+
+/**
+ * The ladder the owner picks from. Presets, not free entry: a text box invites
+ * "every 3 minutes on a Tuesday" and nothing in the loop rewards that
+ * precision. The supervisor's job config made the same call and says why.
+ */
+export const CADENCE_PRESETS: { minutes: number; label: string }[] = [
+  { minutes: CADENCE_CONTINUOUS, label: "Continuously" },
+  { minutes: 1, label: "Every minute" },
+  { minutes: 5, label: "Every 5 minutes" },
+  { minutes: 15, label: "Every 15 minutes" },
+  { minutes: 60, label: "Every hour" },
+  { minutes: CADENCE_DAILY_MINUTES, label: "Once a day" },
+  { minutes: CADENCE_WEEKLY_MINUTES, label: "Once a week" },
+];
+
+/** How a cadence reads in a sentence, for any value including stored ones. */
+export function cadenceLabel(minutes: HubCadence): string {
+  const preset = CADENCE_PRESETS.find((p) => p.minutes === minutes);
+  if (preset) return preset.label;
+  if (minutes < 60) return `Every ${minutes} minutes`;
+  if (minutes < CADENCE_DAILY_MINUTES) return `Every ${Math.round(minutes / 60)} hours`;
+  return `Every ${Math.round(minutes / CADENCE_DAILY_MINUTES)} days`;
+}
 
 // Per-hub view of the exchange round (ADR-209, extended by ADR-210): one
 // entry per configured hub, in hub-list order, updated on every attempt — so
@@ -328,22 +372,79 @@ export async function writeStoredConfirmLargePush(confirm: boolean): Promise<voi
 export type HubConfig = {
   url: string;
   token: string;
-  cadence?: HubCadence;
+  // Minutes since ADR-221. The two legacy strings are part of the STORED
+  // shape, not a compatibility shim in the readers: an entry written before
+  // that change still says "daily", and typing it honestly is what keeps every
+  // reader going through `hubCadence` instead of quietly assuming a number.
+  cadence?: HubCadence | "continuous" | "daily";
   fallback?: HubFallback;
 };
 
-/** The defaults, applied in one place so every reader agrees. */
+/** The defaults, applied in one place so every reader agrees. Tolerant of the
+ * pre-ADR-221 strings, and of anything unreadable, which reads as continuous:
+ * a mangled setting must sync too often rather than too rarely, because the
+ * cost of the first is a few wasted round trips and of the second is a peer
+ * that quietly falls outside the retention window. */
 export function hubCadence(h: Pick<HubConfig, "cadence">): HubCadence {
-  return h.cadence === "daily" ? "daily" : "continuous";
+  const raw = h.cadence;
+  if (raw === "daily") return CADENCE_DAILY_MINUTES;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.min(Math.floor(raw), CADENCE_WEEKLY_MINUTES);
+  }
+  return CADENCE_CONTINUOUS;
 }
 export function hubFallback(h: Pick<HubConfig, "fallback">): HubFallback {
   return h.fallback === "prompt" ? "prompt" : "automatic";
 }
 
 /** How long between exchanges with a hub on this cadence. `continuousMs` is
- * the loop's own pull window, so "continuous" means "every normal round". */
+ * the loop's own pull window, so 0 means "every normal round" — and so does
+ * any cadence shorter than that window, which is why the max is here rather
+ * than in the picker. */
 export function cadenceIntervalMs(cadence: HubCadence, continuousMs: number): number {
-  return cadence === "daily" ? CADENCE_DAILY_MS : continuousMs;
+  return Math.max(cadence * 60_000, continuousMs);
+}
+
+/**
+ * THE GUARDRAIL, and the reason this is not just a longer dropdown.
+ *
+ * A hub prunes its change log (`pruneSyncOps`): ops older than the retention
+ * floor go, except those a still-holding peer has not read. A peer holds while
+ * the hub has heard from it inside its window (`grace_days`, defaulting to
+ * HOLD_GRACE_DAYS_DEFAULT). Fall outside that window and the next exchange is
+ * refused with a 410 (ADR-208) and the peer needs a full re-fill. That refusal
+ * is the safety working correctly; being walked into it by a dropdown is not.
+ *
+ * The rule: **you must be able to miss one sync and still be inside the
+ * window.** Two intervals, not one, because a machine that was switched off
+ * over a long weekend has missed exactly one, and that is the ordinary case
+ * rather than the exotic one. It falls out at weekly against the default
+ * 14-day window, which is why the preset ladder stops there.
+ *
+ * Note what this does NOT need: the window lives on the HUB (per remote
+ * device) and the cadence on the peer, opposite machines. It is checkable here
+ * anyway because both run the same build (the version gate refuses an exchange
+ * otherwise), so the default is a shared constant rather than a fact to fetch.
+ * A hub-side `grace_days` override can only widen the window, never narrow it
+ * below the default, so a local check can be wrong only in the safe direction.
+ */
+export function cadenceRefusal(minutes: HubCadence, graceDays = HOLD_GRACE_DAYS_DEFAULT): string | null {
+  if (minutes <= 0) return null;
+  // Weekly is a hard ceiling as well as the answer the window happens to give,
+  // so that a widened `grace_days` cannot open a gap wider than `hubCadence`
+  // will read back. Otherwise the picker would accept a value the reader
+  // silently clamps, which is the same class of quiet disagreement this whole
+  // guardrail exists to prevent.
+  const maxMinutes = Math.min(CADENCE_WEEKLY_MINUTES, (graceDays / 2) * 1440);
+  if (minutes <= maxMinutes) return null;
+  const maxDays = maxMinutes / 1440;
+  const gap = maxDays >= 1 ? `${Math.floor(maxDays)} days` : `${Math.round(maxDays * 24)} hours`;
+  return (
+    `"${cadenceLabel(minutes)}" leaves too long a gap. This device would only have to miss one ` +
+    `check to fall outside the ${graceDays} days of history the other copy keeps for it, and it ` +
+    `would then need a full copy of everything again instead of catching up. The longest gap ` +
+    `that stays safe is ${gap}.`
+  );
 }
 
 /**
@@ -384,7 +485,7 @@ export function effectiveCadence(
   hub: Pick<HubConfig, "url" | "cadence">,
   approval: FallbackApproval | null
 ): HubCadence {
-  if (approval?.promoteCadence && approval.url === hub.url) return "continuous";
+  if (approval?.promoteCadence && approval.url === hub.url) return CADENCE_CONTINUOUS;
   return hubCadence(hub);
 }
 
@@ -464,7 +565,7 @@ export function effectiveHubs(
   return parseHubs(envHubs).map((url) => ({
     url,
     token,
-    cadence: "continuous" as HubCadence,
+    cadence: CADENCE_CONTINUOUS as HubCadence,
     fallback: "automatic" as HubFallback,
   }));
 }

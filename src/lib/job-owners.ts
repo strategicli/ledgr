@@ -97,18 +97,35 @@ export const MOVABLE_JOBS: Record<MovableJob, JobDef> = {
   "calendar-sync": {
     label: "Calendar sync",
     what: "Turns your calendar events into meeting records here.",
-    movable: false,
-    blocked:
-      "Moving this needs one check first: the record of which events have already been matched is kept per machine, so a new one could create a second copy of the same meeting.",
-    consequence: null,
+    // PROVEN 2026-08-25 (ADR-221). The worry was a second copy of the same
+    // meeting, and it cannot happen: "have I already made a record for this
+    // event?" is answered from `items.ms_event_id`, which SYNCS, so a machine
+    // that has never run this job still knows every meeting every other copy
+    // made. There is no place-in-the-queue to lose either, because each run
+    // pulls the whole window fresh. `calendar_events` is a per-copy cache of
+    // what is on offer, and a new owner refills it on its first run
+    // (`verify-calendar-sync.mts` empties it and proves the next run creates
+    // nothing).
+    movable: true,
+    consequence:
+      "Meetings already brought in stay correct everywhere. The list of meetings waiting to be added only refreshes on the machine that runs it.",
   },
   "email-import": {
     label: "Email capture",
     what: "Turns messages you forward into items here.",
-    movable: false,
-    blocked:
-      "Moving this needs one check first: reading the mailbox consumes it, and the record of what has been read is kept per machine.",
-    consequence: null,
+    // PROVEN 2026-08-25 (ADR-221). "Reading the mailbox consumes it" was true;
+    // the conclusion drawn from it was not. What consumes a message is MOVING
+    // it out of the pickup folder, and that move happens in the mailbox itself,
+    // where every copy can see it. A new owner starting fresh lists the
+    // folder's current contents, which is exactly the messages nobody has
+    // brought in yet. The per-copy record is only an optimization on top of
+    // that. The second guard is `items.properties.email.internetMessageId`,
+    // which syncs, so even a message created but not yet moved is recognized
+    // elsewhere (`verify-email-in.mts` hands the job over mid-flight and proves
+    // it).
+    movable: true,
+    consequence:
+      "Nothing is missed while it waits. A forwarded message stays in the folder until it has been brought in.",
   },
   "todoist-sync": {
     label: "Todoist sync",

@@ -15,6 +15,7 @@
 // Run: npx tsx scripts/verify-sync-summary.mts
 import assert from "node:assert/strict";
 import { agoPhrase, hubName, summarizeSync } from "@/lib/sync/summary";
+import { CADENCE_CONTINUOUS, CADENCE_DAILY_MINUTES } from "@/lib/sync/client";
 import type { FullSyncStatus, HubStatus, SyncStatus } from "@/lib/sync/client";
 
 let checks = 0;
@@ -33,7 +34,7 @@ function ago(ms: number): string {
 function hub(over: Partial<HubStatus> = {}): HubStatus {
   return {
     url: "https://study-pc.example.com",
-    cadence: "continuous",
+    cadence: CADENCE_CONTINUOUS,
     fallback: "automatic",
     lastSyncAt: ago(2 * MIN),
     lastError: null,
@@ -87,7 +88,7 @@ ok("every state produces a real sentence, never a status code", () => {
     status({
       fallbackPrompt: {
         url: "https://backup.example.com",
-        cadence: "daily",
+        cadence: CADENCE_DAILY_MINUTES,
         automaticErrors: [{ url: "https://study-pc.example.com", error: "timeout" }],
         failingForMs: 20 * MIN,
         lastSyncAt: ago(60 * MIN),
@@ -193,7 +194,7 @@ ok("a pending decision outranks everything else", () => {
       heldOpsCount: 900,
       fallbackPrompt: {
         url: "https://backup.example.com",
-        cadence: "daily",
+        cadence: CADENCE_DAILY_MINUTES,
         automaticErrors: [],
         failingForMs: 20 * MIN,
         lastSyncAt: null,

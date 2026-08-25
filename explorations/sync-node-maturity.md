@@ -1,6 +1,6 @@
 # Exploration: sync-node maturity (export from a local peer, plainer vocabulary, real cadences)
 
-**Status:** raised 2026-08-25 (Brandon, brainstorm session on the two-peer rig). **§1 and §1b are BUILT (ADR-218); §2 is BUILT (ADR-219).** §3 and §4 remain exploration, as does the options list below except #2 (job-ownership legibility), which §1 delivered. Anything still open here that touches the sync engine, the export contract, or ADR-206 vocabulary graduates through an ADR before it is built.
+**Status: EVERY NUMBERED SECTION IS NOW BUILT.** §1 and §1b (ADR-218), §2 (ADR-219), and §3 + §4 (ADR-221, whose cadence half is CORE-adjacent and proposed pending Tyler). Of the options list below, #2 (job-ownership legibility) landed with §1 and #3 (local snapshots) landed as ADR-217. **What remains open is options #1, #4, #5, #6 and #7 only**, and this doc is kept for them plus the reasoning above. Anything still open here that touches the sync engine, the export contract, or ADR-206 vocabulary graduates through an ADR before it is built.
 
 > **UPDATE, same day: §1's missing half is BUILT (ADR-220, Tyler acked).** The registry below is no longer hypothetical — `installs` is a synced table keyed by each copy's own `sync_device.id`, so the dropdown this doc asked for exists, and §3 and §4 are both cheaper than when they were written because the roster is the foundation they wanted. The paragraph below is kept because the id-space trap it records is the reason the first attempt could not work.
 >
@@ -94,7 +94,7 @@ When this pass happens, the ideas to explore, roughly in order:
 - **Explain-on-first-sight.** Each section keeps one collapsible "what is this?" written for a non-technical owner (the tooltip standard, or a details fold), so the page teaches itself instead of assuming ADR knowledge.
 - **Resist a second page** until a real task can't be done on one screen; splitting status from configuration is the fallback shape if one screen genuinely fails.
 
-## 3. Hub/spoke may be one layer of vocabulary too many
+## 3. Hub/spoke may be one layer of vocabulary too many — BUILT (ADR-221)
 
 **Brandon's instinct:** "Really, it's just sync nodes and we determine which pushes and pulls to what."
 
@@ -106,7 +106,9 @@ When this pass happens, the ideas to explore, roughly in order:
 
 So the simplification is mostly words, not wire: keep the initiator/listener protocol exactly as is, and let "hub" dissolve into "a peer that others point at." The Network page already speaks this language ("it can sync TO hubs, and other devices can sync FROM it"); the remaining hub/spoke vocabulary lives in docs, the wizard's role question, and ADR-206 prose. Renaming is cheap in UI copy, expensive in docs, and the docs can drift toward "peer" naturally as they are touched. One honest counterpoint before dropping the words entirely: "hub" compresses a real bundle (published + always-on + runs the exclusive jobs + others point at it), and a name for that bundle keeps the wizard's first question answerable by a non-technical owner. Candidate resolution: the wizard asks "will other devices sync from this machine?" instead of "hub or spoke?", and the word hub survives only as a label the UI derives, never a mode the owner sets.
 
-## 4. Real cadence options (continuous/daily is too coarse)
+**Built exactly that way (ADR-221).** Code identifiers, config fields and docs keep hub/spoke; the wizard asks the yes/no question and derives the role, with `--role hub|spoke` still working verbatim for unattended runs. The remaining owner-facing "hub" strings were the CONTROLS, since ADR-219 had already done the status half: Add a copy, "Web address of that copy", "Stop syncing to this copy?", "What your usual copies said". The residual "instance" leaks in the same files went with them.
+
+## 4. Real cadence options (continuous/daily is too coarse) — BUILT (ADR-221, cadence half PROPOSED pending Tyler)
 
 `HubCadence` is a two-value enum today ("continuous" | "daily", `src/lib/sync/client.ts`). Brandon wants the ordinary ladder: continuous, 1 min, 5 min, 15 min, hourly, daily, weekly.
 
@@ -119,13 +121,20 @@ So the simplification is mostly words, not wire: keep the initiator/listener pro
 
 **Also worth deciding then:** anchored vs relative. "Daily" today means "24h after the last exchange," which drifts. An anchored form ("daily at 03:00", like the supervisor's `{ at: "HH:MM" }` jobs) is what people expect from the word; the interval form is what "every 15 minutes" expects. Supporting `{ everyMinutes }` OR `{ at }` per hub mirrors the jobs config exactly, one grammar across both systems.
 
+**BUILT (ADR-221), and here is what the build changed about this section's own plan.** The interval shipped as proposed, tolerant of the stored strings. The two interactions resolved differently from the sketch:
+
+- **Staleness became the cap rather than a warning.** The rule is "you must be able to miss ONE sync and still be inside the retention window", two intervals not one, because a machine off over a long weekend has missed exactly one. Against the default 14 days that lands on weekly, so the ladder stops there and anything longer is refused with the reason. No warning state was needed, because the picker cannot produce an unsafe value.
+- **Retention did NOT need `grace_days` derived from cadence, and could not have had it cheaply.** The window lives on the HUB, per remote device; the cadence lives on the peer. Opposite machines, so deriving one from the other is a wire change, the same shape of finding as ADR-218's id-space trap. It is also moot while the cap holds: every offered cadence already fits the default window. **The trigger for revisiting is a preset longer than weekly.**
+- **Anchored was decided AGAINST.** Sync is about how stale you are willing to be, not about when work is cheap, and the interval form self-heals across a sleeping laptop where an anchored one silently skips a day. The case that would justify it is "only sync overnight" for bandwidth, and that wants a window rather than an instant.
+- **No wire field was needed at all**, because both peers run the same build (the version gate refuses otherwise), so the default window is a shared constant rather than a fact to fetch, and a hub-side override can only widen it. A local check can be wrong only in the safe direction.
+
 ## Other maturity options to weigh (the brainstorm answer)
 
 Ordered roughly by value-for-effort as of today:
 
 1. **A per-hub "Sync now" button.** The single most-wanted control on any sync UI, and it makes long cadences livable (weekly hub + one click before a trip). Cheap: the loop already knows how to exchange with one hub.
 2. **Job-ownership legibility.** The exclusive-jobs table (ADR-214) is the quiet contract that prevents double-export and mailbox races. Surface it: each instance's Updates page already lists its own jobs; a small "nobody runs export" / "two peers claim export" detection would catch the misconfiguration that hurts. (The `exported_at`-is-synced fact makes double-export corrupting, not just wasteful.)
-3. **Local snapshot + restore drill.** The supervisor already has `snapshot` (hourly pg_dump to local disk, off by default). A documented quarterly restore drill ("prove the dump restores") is the difference between having backups and believing in them. Pairs with #1 in a "this machine owns the data safety" story.
+3. **Local snapshot + restore drill.** The snapshot half is **BUILT (ADR-217)**: hourly `pg_dump` thinned into a tiered spread, browse-only recovery, a Snapshot-now button. The DRILL is still open, and it is the half that matters most: a documented quarterly "prove the dump restores" is the difference between having backups and believing in them. Pairs with #1 in a "this machine owns the data safety" story.
 4. **Staleness alerting on the owner's terms.** The weekly cloud health check exists; a local analog ("push me if any peer hasn't synced in N x its cadence") turns the quiet-hold problem into a notification instead of a page to remember to visit.
 5. **Conflict visibility.** LWW merges are deterministic and silent by design; the "merged offline, check revisions" flag exists in the model but has no surface. A small "recent merges" list (item, when, which device lost) closes the loop without changing semantics.
 6. **Attachment strategy for peers.** Blobs are R2-only through cutover (ADR-206 decision 8). When that reopens (the "Netflix model"), cadence and retention thinking from #4 above applies to blobs too; keep one vocabulary.

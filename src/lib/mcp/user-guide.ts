@@ -890,6 +890,14 @@ from wherever it was, everywhere, within seconds. You can also pause a job
 everywhere, or hand it back to running wherever it is switched on. If the machine
 holding a job stops doing it, the page says so rather than looking fine.
 
+**Offline backup, Calendar sync and Email capture can be moved today.** Each one
+picks up cleanly wherever it left off, whichever machine takes it. A job that
+cannot be moved yet says so in its own row, with the reason, instead of offering a
+dropdown that would quietly lose track of something. Moving a job to a machine
+asks you to confirm, and tells you the trade first: the job only runs while that
+machine is switched on, so a calendar event or a forwarded message shows up late
+if it sleeps. Nothing is lost either way.
+
 **Your copies of Ledgr** is the list behind that dropdown. Every copy adds itself
 and checks in once a day, so this is the one place that knows about all of them at
 once: which is which, which has gone quiet, and which is running a different
@@ -938,52 +946,55 @@ it, so on a normal day you can read the first line and leave. Each section has a
 "what is this?" fold if you want the concepts, and each row's settings fold away
 until you open them.
 
-- **Hubs this instance syncs to.** Each hub with its state, when it last
-  synced, how far behind it is, and its place in the priority order (the list
-  order is the priority). **Add hub** asks for the hub's URL and a device
-  token minted on that hub — the mirror image of adding a device below.
-  **Remove** stops syncing to a hub; the data on both sides stays where it is.
-  Changes take effect within seconds, no restart. One thing that is
-  deliberately not a button: repointing this instance at a different primary
-  hub needs its data re-filled from the new hub first
-  (\`npm run local:restore -- --from-url\`), because changing the URL alone
+- **Where your changes go.** Every other copy this one sends to, with its
+  state, when it last synced, how far behind it is, and its place in the
+  priority order (the list order is the priority). **Add a copy** asks for that
+  copy's web address and a one-time code you get there — the mirror image of
+  adding a device below. **Remove** stops syncing to it; the data on both sides
+  stays where it is. Changes take effect within seconds, no restart. One thing
+  that is deliberately not a button: pointing this machine at a different main
+  copy needs its data re-filled from that copy first
+  (\`npm run local:restore -- --from-url\`), because changing the address alone
   would merge two diverged databases.
-- **Each hub has two settings, and they are independent.** **How often** is
-  the schedule: *continuously* (every few seconds — right for another machine
-  of yours) or *once a day* (right for a cloud archive, and it means that hub
-  can be up to a day behind). **Fall back to it** is trust: *automatic* means
-  this instance reads from that hub without asking; *ask first* means it only
-  deposits changes there, and if every automatic hub goes down it will ask
-  before it starts reading from this one. The arrows on each row change the
-  priority order. At least one hub always has to be automatic, or this
-  instance would sit waiting for you instead of syncing.
-- **Your changes always go to every hub.** Sending a copy somewhere can never
-  harm you, and a backup that stops receiving is not a backup, so every hub
+- **Each copy has two settings, and they are independent.** **How often** is
+  the schedule, and it is the ordinary ladder: continuously (every few
+  seconds — right for another machine of yours), every minute, every 5, every
+  15, hourly, once a day, or once a week. A longer gap suits a copy you keep as
+  an archive, and means it can be that far behind. Once a week is the longest
+  gap offered, and a longer one is refused with the reason: a copy that misses
+  two checks in a row falls outside the history the other side keeps for it, and
+  then it needs everything sent again instead of catching up. **Fall back to
+  it** is trust: *automatically* means this machine reads from that copy without
+  asking; *ask me first* means it only sends changes there, and if every
+  automatic copy goes down it will ask before it starts reading from this one.
+  The arrows on each row change the priority order. At least one copy always has
+  to be automatic, or this machine would sit waiting for you instead of syncing.
+- **Your changes always go to every copy.** Sending a copy somewhere can never
+  harm you, and a backup that stops receiving is not a backup, so every one
   gets your changes on its own schedule whatever its trust setting. Reading is
-  the half that gets gated, because reading from a stale hub quietly makes
+  the half that gets gated, because reading from a stale copy quietly makes
   everything look fresher than it is.
-- **When the usual hubs go down**, and they have all been failing for about
+- **When the usual copies go down**, and they have all been failing for about
   fifteen minutes, a **Needs your decision** block appears at the top of this
-  page (and the navigation dot turns amber). It shows what each usual hub
+  page (and the navigation dot turns amber). It shows what each usual copy
   actually said, when the backup last exchanged, and how many of your changes
-  the backup has not received yet — then offers to start reading from it. If
-  the backup is on a daily schedule you can also ask for it to be checked
-  continuously while you are leaning on it. Either way it undoes itself: as
-  soon as one of the usual hubs is fully caught up again, the approval and any
-  speed-up clear on their own. **Stop reading from it now** ends it early.
-- **This instance's sync.** The connection state: mode (pull-only or full,
-  with the toggle to allow or stop pushing), whether changes are waiting to
-  go out, when the last exchange happened, and the last error. When a large
-  first push is being held (the guard against a bad restore), a **Send
-  anyway** button releases it one-shot after you confirm the pending changes
-  are real. A syncing
-  instance also carries a small dot in the navigation with the same state at
-  a glance — green when synced, amber while changes are waiting or while on a
-  backup hub, red when no hub is reachable; clicking it opens this page. A
-  device that has been away so long that a hub no longer holds the history it
-  missed is refused rather than left silently incomplete: this section says
-  "too far behind, re-fill required", its own recent changes still reach the
-  hub, and the remedy is re-filling from the hub
+  the backup has not received yet — then offers to start reading from it. If the
+  backup is on anything slower than continuous you can also ask for it to be
+  checked continuously while you are leaning on it. Either way it undoes itself:
+  as soon as one of the usual copies is fully caught up again, the approval and
+  any speed-up clear on their own. **Stop reading from it now** ends it early.
+- **This device.** The connection state: whether this machine sends its own
+  changes or only receives, whether changes are waiting to go out, when the
+  last exchange happened, and the last problem. When a large first send is
+  being held (the guard against a bad restore), a **Send anyway** button
+  releases it one-shot after you confirm the pending changes are real. A
+  syncing machine also carries a small dot in the navigation with the same
+  state at a glance — green when synced, amber while changes are waiting or
+  while on a backup, red when nothing is answering; clicking it opens this
+  page. A device that has been away so long that the other copy no longer
+  holds the history it missed is refused rather than left silently incomplete:
+  this section says "too far behind, re-fill required", its own recent changes
+  still get through, and the remedy is re-filling from that copy
   (\`npm run local:restore -- --from-url\`, documented in the supervisor
   README).
 - **Other devices reach this instance at.** On an instance running on your own

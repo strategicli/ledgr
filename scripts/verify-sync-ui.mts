@@ -27,6 +27,12 @@ import {
   selectPushOps,
   shouldPromptFallback,
   shouldPullFrom,
+  CADENCE_PRESETS,
+  CADENCE_WEEKLY_MINUTES,
+  cadenceLabel,
+  cadenceRefusal,
+  CADENCE_CONTINUOUS,
+  CADENCE_DAILY_MINUTES,
   CADENCE_DAILY_MS,
   type HubRuntime,
   type SyncStatus,
@@ -357,11 +363,11 @@ const h = (url: string) => ({ url });
 
 // Parse tolerance: an entry stored before these fields existed reads as
 // exactly what it was already doing.
-check("a hub with no cadence reads continuous", hubCadence({}) === "continuous");
+check("a hub with no cadence reads continuous", hubCadence({}) === CADENCE_CONTINUOUS);
 check("a hub with no fallback reads automatic", hubFallback({}) === "automatic");
-check("garbage cadence is not obeyed", hubCadence({ cadence: "hourly" as never }) === "continuous");
+check("garbage cadence is not obeyed", hubCadence({ cadence: "hourly" as never }) === CADENCE_CONTINUOUS);
 check("garbage fallback is not obeyed", hubFallback({ fallback: "maybe" as never }) === "automatic");
-check("daily is recognized", hubCadence({ cadence: "daily" }) === "daily");
+check("daily is recognized", hubCadence({ cadence: "daily" }) === CADENCE_DAILY_MINUTES);
 check("prompt is recognized", hubFallback({ fallback: "prompt" }) === "prompt");
 
 {
@@ -369,17 +375,17 @@ check("prompt is recognized", hubFallback({ fallback: "prompt" }) === "prompt");
   // fields. A daily AUTOMATIC hub and a continuous ASK-FIRST hub are both
   // legal and must survive a round trip.
   const stored = [
-    { url: "https://a", token: "t", cadence: "daily", fallback: "automatic" },
-    { url: "https://b", token: "t", cadence: "continuous", fallback: "prompt" },
+    { url: "https://a", token: "t", cadence: CADENCE_DAILY_MINUTES, fallback: "automatic" },
+    { url: "https://b", token: "t", cadence: CADENCE_CONTINUOUS, fallback: "prompt" },
   ];
   const hubs = effectiveHubs(stored, undefined, undefined);
   check(
     "daily + automatic survives (cadence does not imply trust)",
-    hubCadence(hubs[0]) === "daily" && hubFallback(hubs[0]) === "automatic"
+    hubCadence(hubs[0]) === CADENCE_DAILY_MINUTES && hubFallback(hubs[0]) === "automatic"
   );
   check(
     "continuous + prompt survives (trust does not imply cadence)",
-    hubCadence(hubs[1]) === "continuous" && hubFallback(hubs[1]) === "prompt"
+    hubCadence(hubs[1]) === CADENCE_CONTINUOUS && hubFallback(hubs[1]) === "prompt"
   );
 }
 
@@ -388,7 +394,7 @@ check("prompt is recognized", hubFallback({ fallback: "prompt" }) === "prompt");
   const hubs = effectiveHubs([{ url: "https://a", token: "t" }], undefined, undefined);
   check(
     "a pre-ADR-210 stored hub normalizes to continuous + automatic",
-    hubs.length === 1 && hubs[0].cadence === "continuous" && hubs[0].fallback === "automatic"
+    hubs.length === 1 && hubs[0].cadence === CADENCE_CONTINUOUS && hubs[0].fallback === "automatic"
   );
 }
 
@@ -398,12 +404,63 @@ check("prompt is recognized", hubFallback({ fallback: "prompt" }) === "prompt");
   const hubs = effectiveHubs(undefined, "https://a,https://b", "tok");
   check(
     "env hubs are continuous + automatic",
-    hubs.length === 2 && hubs.every((x) => x.cadence === "continuous" && x.fallback === "automatic")
+    hubs.length === 2 && hubs.every((x) => x.cadence === CADENCE_CONTINUOUS && x.fallback === "automatic")
   );
 }
 
-check("continuous cadence is the loop's own pull window", cadenceIntervalMs("continuous", 10000) === 10000);
-check("daily cadence is 24h", cadenceIntervalMs("daily", 10000) === CADENCE_DAILY_MS);
+check("continuous cadence is the loop's own pull window", cadenceIntervalMs(CADENCE_CONTINUOUS, 10000) === 10000);
+check("daily cadence is 24h", cadenceIntervalMs(CADENCE_DAILY_MINUTES, 10000) === CADENCE_DAILY_MS);
+
+// ── The cadence ladder (ADR-221) ────────────────────────────────────────────
+//
+// The enum became an interval, so the tolerance and the guardrail are the two
+// things worth pinning. The guardrail is the important one: it is what keeps a
+// dropdown from walking the owner into the ADR-208 refusal, which is a full
+// re-fill rather than an error message.
+
+check("the ladder is the ordinary one, ordered, no duplicates",
+  JSON.stringify(CADENCE_PRESETS.map((p) => p.minutes)) ===
+    JSON.stringify([0, 1, 5, 15, 60, 1440, 10080]));
+
+check("every preset the picker offers is one the guardrail accepts",
+  CADENCE_PRESETS.every((p) => cadenceRefusal(p.minutes) === null));
+
+check("a minute is a minute", cadenceIntervalMs(1, 10000) === 60000);
+check("a cadence shorter than the loop's own window cannot outpace it",
+  cadenceIntervalMs(1, 90000) === 90000);
+
+// The rule: you must be able to MISS ONE and still be inside the window the
+// hub keeps history for. Weekly against the default 14 days is the boundary,
+// which is why the ladder stops there.
+check("weekly is allowed against the default window", cadenceRefusal(CADENCE_WEEKLY_MINUTES) === null);
+check("a fortnight is refused, and says why",
+  (cadenceRefusal(CADENCE_WEEKLY_MINUTES * 2) ?? "").includes("full copy of everything"));
+check("a narrower window tightens the refusal", cadenceRefusal(CADENCE_WEEKLY_MINUTES, 6) !== null);
+check("a narrow window still allows a short cadence", cadenceRefusal(60, 6) === null);
+// A WIDER window must not open a gap past weekly, because `hubCadence` clamps
+// there on read: a picker that accepted what the reader silently rewrites is
+// the quiet disagreement this guardrail exists to prevent.
+check("a wider window never opens a gap past weekly",
+  cadenceRefusal(CADENCE_WEEKLY_MINUTES, 90) === null &&
+    cadenceRefusal(CADENCE_WEEKLY_MINUTES + 1, 90) !== null);
+check("the refusal names the longest gap that is actually safe",
+  (cadenceRefusal(CADENCE_WEEKLY_MINUTES * 2) ?? "").includes("7 days"));
+check("continuous is never refused, whatever the window", cadenceRefusal(CADENCE_CONTINUOUS, 1) === null);
+
+// Tolerance, in both directions: an entry stored before ADR-221 reads as what
+// it was doing, and an entry from a LATER version that somehow exceeds the cap
+// is clamped rather than obeyed (never refused at read time, because refusing
+// to read is refusing to sync).
+check("a stored \"continuous\" still reads continuous", hubCadence({ cadence: "continuous" }) === CADENCE_CONTINUOUS);
+check("a stored number reads as itself", hubCadence({ cadence: 15 }) === 15);
+check("a fractional stored value is floored, not rejected", hubCadence({ cadence: 15.9 }) === 15);
+check("a stored value beyond the cap is clamped to weekly",
+  hubCadence({ cadence: 999_999 }) === CADENCE_WEEKLY_MINUTES);
+check("a negative stored value reads continuous, never backwards", hubCadence({ cadence: -5 }) === CADENCE_CONTINUOUS);
+
+check("every preset reads back as a sentence, not a number",
+  CADENCE_PRESETS.every((p) => cadenceLabel(p.minutes) === p.label));
+check("an off-ladder value still reads as a sentence", cadenceLabel(120) === "Every 2 hours");
 
 // The one validation: with every hub set to ask first, the instance never
 // syncs unattended — a silently-not-syncing peer wearing a "synced" face.
@@ -446,19 +503,19 @@ check(
   const approvedAt = "2026-08-23T00:00:00.000Z";
   check(
     "no approval leaves a daily hub daily",
-    effectiveCadence(daily, null) === "daily"
+    effectiveCadence(daily, null) === CADENCE_DAILY_MINUTES
   );
   check(
     "an approval WITHOUT promotion leaves the cadence alone",
-    effectiveCadence(daily, { url: "https://b", promoteCadence: false, approvedAt }) === "daily"
+    effectiveCadence(daily, { url: "https://b", promoteCadence: false, approvedAt }) === CADENCE_DAILY_MINUTES
   );
   check(
     "an approval WITH promotion makes it continuous",
-    effectiveCadence(daily, { url: "https://b", promoteCadence: true, approvedAt }) === "continuous"
+    effectiveCadence(daily, { url: "https://b", promoteCadence: true, approvedAt }) === CADENCE_CONTINUOUS
   );
   check(
     "a promotion for another hub does not promote this one",
-    effectiveCadence(daily, { url: "https://z", promoteCadence: true, approvedAt }) === "daily"
+    effectiveCadence(daily, { url: "https://z", promoteCadence: true, approvedAt }) === CADENCE_DAILY_MINUTES
   );
 }
 
@@ -678,8 +735,8 @@ check(
 {
   const s2 = buildSyncStatus(
     [
-      { url: "https://a", cadence: "continuous", fallback: "automatic" },
-      { url: "https://b", cadence: "daily", fallback: "prompt" },
+      { url: "https://a", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
+      { url: "https://b", cadence: CADENCE_DAILY_MINUTES, fallback: "prompt" },
     ],
     base,
     0,
@@ -691,7 +748,7 @@ check(
     s2.enabled === true &&
       s2.hubs.length === 2 &&
       s2.hubs[0].url === "https://a" &&
-      s2.hubs[1].cadence === "daily" &&
+      s2.hubs[1].cadence === CADENCE_DAILY_MINUTES &&
       s2.hubs[1].fallback === "prompt"
   );
   check(
@@ -709,7 +766,7 @@ check(
   // backup's freshness gap is filled in from the cursors.
   const prompt = {
     url: "https://b",
-    cadence: "daily" as const,
+    cadence: CADENCE_DAILY_MINUTES,
     automaticErrors: [{ url: "https://a", error: "fetch failed" }],
     failingForMs: 20 * 60 * 1000,
     lastSyncAt: "2026-08-22T10:00:00.000Z",
@@ -798,7 +855,7 @@ check(
       // The ADR-210 axes are filled in on read, so the stored entry comes back
       // normalized rather than byte-identical.
       JSON.stringify([
-        { url: "https://a.example", token: "ta", cadence: "continuous", fallback: "automatic" },
+        { url: "https://a.example", token: "ta", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
       ])
   );
   check(
@@ -809,8 +866,8 @@ check(
     "no stored list falls back to env, same token on each",
     JSON.stringify(effectiveHubs(undefined, "https://a.example, https://b.example", "t1")) ===
       JSON.stringify([
-        { url: "https://a.example", token: "t1", cadence: "continuous", fallback: "automatic" },
-        { url: "https://b.example", token: "t1", cadence: "continuous", fallback: "automatic" },
+        { url: "https://a.example", token: "t1", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
+        { url: "https://b.example", token: "t1", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
       ])
   );
   check("env hubs without a token arm nothing", effectiveHubs(undefined, "https://a.example", undefined).length === 0);

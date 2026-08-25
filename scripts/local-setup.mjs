@@ -147,13 +147,17 @@ async function answer(question, { flagValue, flagName, def, validate = (v) => v 
 
 if (!flags.role && rl) {
   console.log(
-    "A HUB is the always-on machine other devices sync against; it holds the\n" +
-      "device registry and, after cutover, serves your phone and MCP. A SPOKE is\n" +
-      "any other machine: it runs the same full app locally and syncs its data\n" +
-      "against a hub using a device token you mint there.\n"
+    "Say yes if this machine stays on and your other devices (a laptop, your\n" +
+      "phone, Claude) should reach it and sync from it. That is the copy the\n" +
+      "others point at, and the one that hands out their access codes.\n" +
+      "\n" +
+      "Say no for an ordinary machine: it runs the same full app locally and\n" +
+      "syncs its own data against one of those, using a code you get there.\n" +
+      "\n" +
+      "(Yes means --role hub, no means --role spoke, if you already knew that.)\n"
   );
 }
-const role = await answer("Role (hub or spoke)", {
+const role = await answer("Will other devices sync from this machine? (y/n)", {
   flagValue: flags.role,
   flagName: "--role",
   validate: validateRole,

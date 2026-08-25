@@ -45,8 +45,18 @@ export function parseSetupArgs(argv) {
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // same shape seed.mjs refuses on
 
+// Exploration §3, settled in ADR-221: "hub" and "spoke" stay as code
+// identifiers (the config field, supervisor/lib.mjs, every doc) because they
+// name a real bundle — published, always-on, others point at it. What they are
+// NOT is a question a non-technical owner can answer. So the wizard asks the
+// question behind the word ("will other devices sync from this machine?") and
+// derives the role, while --role keeps working verbatim for unattended runs
+// and for anyone who already knows which one they want.
 export function validateRole(v) {
-  if (v !== "hub" && v !== "spoke") throw new Error(`role must be "hub" or "spoke", got ${JSON.stringify(v)}`);
+  const yesNo = String(v).trim().toLowerCase();
+  if (yesNo === "y" || yesNo === "yes") return "hub";
+  if (yesNo === "n" || yesNo === "no") return "spoke";
+  if (v !== "hub" && v !== "spoke") throw new Error(`answer y or n (or pass --role hub|spoke), got ${JSON.stringify(v)}`);
   return v;
 }
 

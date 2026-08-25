@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import { CADENCE_CONTINUOUS, CADENCE_PRESETS } from "@/lib/sync/client";
 import type { HubCadence, HubFallback } from "@/lib/sync/client";
 
 const button =
@@ -21,16 +22,16 @@ const tooltip =
 // you only reach once a day is by definition up to a day behind, so falling
 // back to it loses everything since its last exchange.
 const CADENCE_HELP =
-  "Continuous exchanges every few seconds — right for another machine of yours. Daily is right for a cloud archive, and means that hub can be up to a day behind, so falling back to it loses everything since its last exchange.";
+  "Continuously exchanges every few seconds, which is right for another machine of yours. A longer gap suits a copy you keep as an archive, and means it can be that far behind: falling back to it loses everything since its last exchange. Once a week is the longest gap offered, because a copy that misses two checks in a row can no longer catch up and needs everything sent to it again.";
 const FALLBACK_HELP =
-  "Automatic means this instance reads from that hub without asking. Ask first means it only deposits changes there; if every automatic hub goes down it will ask before it starts reading from this one, because a stale source makes everything look fresher than it is.";
+  "Automatically means this machine reads from that copy without asking. Ask me first means it only sends changes there; if every automatic copy goes down it will ask before it starts reading from this one, because reading a stale copy makes everything look fresher than it is.";
 
 export function AddHub() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
-  const [cadence, setCadence] = useState<HubCadence>("continuous");
+  const [cadence, setCadence] = useState<HubCadence>(CADENCE_CONTINUOUS);
   const [fallback, setFallback] = useState<HubFallback>("automatic");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +47,7 @@ export function AddHub() {
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? "The hub could not be added.");
+        throw new Error(data.error ?? "That copy could not be added.");
       }
       setOpen(false);
       setUrl("");
@@ -62,7 +63,7 @@ export function AddHub() {
   if (!open) {
     return (
       <button type="button" className={button} onClick={() => setOpen(true)}>
-        + Add hub
+        + Add a copy
       </button>
     );
   }
@@ -70,17 +71,17 @@ export function AddHub() {
   return (
     <div className="mt-2 rounded-card border border-line bg-surface-2 p-3">
       <label className="ui-meta block text-ink-subtle">
-        Hub URL
+        Web address of that copy
         <input
           className="mt-1 w-full rounded-card border border-line bg-surface-0 px-2 py-1.5 text-sm text-ink"
-          placeholder="https://hub.example.com"
+          placeholder="https://ledgr.example.com"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           autoFocus
         />
       </label>
       <label className="ui-meta mt-3 block text-ink-subtle">
-        Device token, minted on that hub
+        One-time code from that copy
         <input
           className="mt-1 w-full rounded-card border border-line bg-surface-0 px-2 py-1.5 font-mono text-sm text-ink"
           placeholder="paste the token its Add-device showed once"
@@ -94,10 +95,13 @@ export function AddHub() {
           <select
             className={select + " mt-1 block"}
             value={cadence}
-            onChange={(e) => setCadence(e.target.value as HubCadence)}
+            onChange={(e) => setCadence(Number(e.target.value) as HubCadence)}
           >
-            <option value="continuous">Continuously</option>
-            <option value="daily">Once a day</option>
+            {CADENCE_PRESETS.map((p) => (
+              <option key={p.minutes} value={p.minutes}>
+                {p.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="ui-meta block text-ink-subtle">
@@ -116,13 +120,13 @@ export function AddHub() {
         {CADENCE_HELP} {FALLBACK_HELP}
       </p>
       <p className="ui-meta mt-2 text-ink-subtle">
-        On the other instance: Build → Network → Devices → Add device, then
-        paste the one-time token here. New devices start pull-only there;
-        allow push from that side when you are ready.
+        On the other copy: Build → Network → Devices → Add device, then paste
+        the one-time code here. A new device starts out able to receive only;
+        allow it to send from that side when you are ready.
       </p>
       <div className="mt-3 flex items-center gap-2">
         <button type="button" className={button} disabled={busy || !url.trim() || !token.trim()} onClick={() => void add()}>
-          {busy ? "Adding…" : "Add hub"}
+          {busy ? "Adding…" : "Add it"}
         </button>
         <button type="button" className="ui-meta text-ink-subtle hover:text-ink" onClick={() => setOpen(false)}>
           Cancel
@@ -146,7 +150,7 @@ export function RemoveHub({ url }: { url: string }) {
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(data.error ?? "The hub could not be removed.");
+      setError(data.error ?? "That copy could not be removed.");
       return;
     }
     router.refresh();
@@ -155,9 +159,9 @@ export function RemoveHub({ url }: { url: string }) {
   return (
     <span className="inline-flex items-center gap-2">
       <ConfirmButton
-        title="Stop syncing to this hub?"
-        description="This instance keeps all its data; it just stops exchanging changes with that hub. The hub keeps its copy too, and they drift apart from here."
-        confirmLabel="Remove hub"
+        title="Stop syncing to this copy?"
+        description="This machine keeps all its data; it just stops exchanging changes with that copy. The other copy keeps its data too, and the two drift apart from here."
+        confirmLabel="Stop syncing to it"
         panelClassName="w-72"
         trigger={<span>Remove</span>}
         triggerClassName="ui-meta text-ink-subtle hover:text-rose-400"
@@ -216,11 +220,14 @@ export function HubSettings({
           className={select}
           value={cadence}
           disabled={busy}
-          aria-label="How often to exchange with this hub"
-          onChange={(e) => void patch({ cadence: e.target.value })}
+          aria-label="How often to check this copy"
+          onChange={(e) => void patch({ cadence: Number(e.target.value) })}
         >
-          <option value="continuous">Continuously</option>
-          <option value="daily">Once a day</option>
+          {CADENCE_PRESETS.map((p) => (
+            <option key={p.minutes} value={p.minutes}>
+              {p.label}
+            </option>
+          ))}
         </select>
         <span role="tooltip" className={tooltip}>
           {CADENCE_HELP}
@@ -231,7 +238,7 @@ export function HubSettings({
           className={select}
           value={fallback}
           disabled={busy}
-          aria-label="Whether to fall back to this hub without asking"
+          aria-label="Whether to read from this copy without asking"
           onChange={(e) => void patch({ fallback: e.target.value })}
         >
           <option value="automatic">Automatic</option>
