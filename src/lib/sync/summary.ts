@@ -45,7 +45,9 @@ export function agoPhrase(iso: string | null, now: Date): string {
   if (mins < 60) return `${mins} minutes ago`;
   const hours = Math.round(mins / 60);
   if (hours === 1) return "an hour ago";
-  if (hours < 36) return `${hours} hours ago`;
+  // 24h is "yesterday", not "24 hours ago": this is a point in the past, not a
+  // duration, and a person crossing a day boundary says the day.
+  if (hours < 24) return `${hours} hours ago`;
   const days = Math.round(hours / 24);
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
@@ -160,8 +162,10 @@ export function summarizeSync(opts: {
     const one = failing.length === 1;
     return {
       tone: "bad",
+      // Never sentence-initial: a hostname cannot be capitalised, and
+      // "Hub.example.com is not answering" is worse than the wording it fixes.
       headline: one
-        ? `${hubName(failing[0].url)} is not answering.`
+        ? `Ledgr cannot reach ${hubName(failing[0].url)}.`
         : "None of your other copies are answering.",
       detail:
         "Your work is safe here and will send itself when the connection comes back. If this lasts more than an hour, check the internet on this machine.",
