@@ -50,6 +50,12 @@ import {
   serializeLivePointer,
   signalPath,
   formatSchtasks,
+  elevatedCmdScript,
+  elevatedPowershellArgs,
+  ELEVATION_CANCELLED,
+  parseSchtasksLogonMode,
+  schtasksQueryArgs,
+  startupCaveat,
   parseStartupRequest,
   schtasksCreateArgs,
   schtasksDeleteArgs,
@@ -95,7 +101,12 @@ function run(cmd, args, opts = {}) {
     shell: isWin && cmd === "npm", // npm is npm.cmd on Windows
     ...opts,
   });
-  return { ok: res.status === 0, stdout: (res.stdout ?? "").trim(), stderr: (res.stderr ?? "").trim() };
+  return {
+    ok: res.status === 0,
+    code: res.status,
+    stdout: (res.stdout ?? "").trim(),
+    stderr: (res.stderr ?? "").trim(),
+  };
 }
 
 function git(args, cwd = cfg.repoDir) {
@@ -426,8 +437,51 @@ function applyStartupRequest(req) {
     return;
   }
 
-  const res = run("schtasks", args);
+  // Try unelevated first: the logon scope succeeds that way, and an owner who
+  // never needs the consent dialog should never see one.
+  let res = run("schtasks", args);
+  let elevated = false;
+  let cancelled = false;
+
+  // Access denied (the always-on scope, normally) — ask for elevation rather
+  // than handing the owner a command to paste. Requires an interactive desktop:
+  // with nobody signed in there is nowhere to show a dialog, and Start-Process
+  // fails, which lands back on the printed-command fallback below.
+  if (!res.ok) {
+    const script = join(cfg.dataDir, "elevate-schtasks.cmd");
+    try {
+      writeFileSync(script, elevatedCmdScript(args), "utf8");
+      // ponytail: spawnSync, so the supervisor is frozen while the dialog is up.
+      // Windows auto-dismisses an unanswered prompt after ~2 minutes, which caps
+      // it; make this async if that pause ever costs something real.
+      log("startup registration needs elevation; asking", { scope: req.scope });
+      const asked = run("powershell", elevatedPowershellArgs(script));
+      cancelled = asked.code === ELEVATION_CANCELLED;
+      if (asked.ok) {
+        res = asked;
+        elevated = true;
+      }
+    } catch (err) {
+      log("elevation attempt failed to start", { detail: String(err?.message || err) });
+    } finally {
+      try {
+        unlinkSync(script);
+      } catch {
+        // Best effort: a leftover temp .cmd is harmless and gets overwritten.
+      }
+    }
+  }
+
   const ok = res.ok;
+
+  // A create can succeed and still not do what the scope promised, so ask
+  // Windows what it actually registered rather than trusting our own request.
+  let caveat = null;
+  if (ok && req.enabled) {
+    const q = run("schtasks", schtasksQueryArgs());
+    caveat = q.ok ? startupCaveat(req.scope, parseSchtasksLogonMode(q.stdout)) : null;
+  }
+
   writeFileSync(
     startupStatePath(cfg.dataDir),
     serializeStartupState({
@@ -436,11 +490,14 @@ function applyStartupRequest(req) {
       ok,
       detail: ok
         ? null
-        : (res.stderr || res.stdout || "schtasks failed").trim().split("\n")[0] ||
-          "schtasks failed",
+        : cancelled
+          ? "You dismissed the Windows permission prompt. Tick the box again to retry, or run the command below in an Administrator prompt."
+          : (res.stderr || res.stdout || "schtasks failed").trim().split("\n")[0] ||
+            "schtasks failed",
       // The escape hatch, given verbatim: the owner can paste this into an
       // Administrator prompt and get the same result.
       command: ok ? null : formatSchtasks(args),
+      caveat,
     }),
     "utf8"
   );
@@ -448,8 +505,11 @@ function applyStartupRequest(req) {
     task: STARTUP_TASK_NAME,
     enabled: req.enabled,
     scope: req.scope,
+    elevated,
+    caveat: caveat ? "interactive-only" : null,
   });
 }
+
 
 setInterval(() => {
   if (!existsSync(startupSignal)) return;

@@ -179,6 +179,11 @@ async function doStatus() {
       `  at boot     registered (${boot.scope === "always" ? "at system start" : boot.scope === "logon" ? "at sign-in" : "unrecognized schedule"})`
     );
   }
+  // A successful registration that will not survive a logged-out boot is worse
+  // than a failed one: it reads as done. Say so wherever we say "registered".
+  if (recorded?.ok && recorded.caveat) {
+    console.log(`  heads up    ${recorded.caveat}`);
+  }
   if (recorded && !recorded.ok) {
     console.log(`  last change FAILED: ${recorded.detail ?? "unknown"}`);
     if (recorded.command) console.log(`              run this elevated: ${recorded.command}`);

@@ -11,6 +11,9 @@ export type StartupState = {
   // needs elevation, which a background process does not have.
   ok: boolean;
   detail: string | null;
+  // Set when the registration SUCCEEDED but will not do what the scope
+  // promised (an always-on task Windows will only run while signed in).
+  caveat: string | null;
   // The equivalent command, for running in an elevated prompt by hand.
   command: string | null;
   at: string | null;
@@ -48,6 +51,7 @@ export async function readStartupReport(dir: string | null): Promise<StartupRepo
         ok: raw.ok === true,
         detail: typeof raw.detail === "string" ? raw.detail : null,
         command: typeof raw.command === "string" ? raw.command : null,
+        caveat: typeof raw.caveat === "string" ? raw.caveat : null,
         at: typeof raw.at === "string" ? raw.at : null,
       };
     }
