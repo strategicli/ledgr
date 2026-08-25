@@ -798,6 +798,26 @@ async function localDeviceId(): Promise<string> {
   return rows[0].id;
 }
 
+/**
+ * This install's own stable identity, or null when it has none.
+ *
+ * The throwing form above is right for the sync loop, which cannot work without
+ * an identity. Job ownership is different: it is read before every scheduled
+ * run, and an install with no `sync_device` row must fall back to the old
+ * behavior rather than fail the job. Same row, softer contract.
+ *
+ * NOTE this is the install's OWN id, which is a different id space from
+ * `sync_peers.device_id` (that one is minted by a hub when a device is added
+ * and is never reconciled back). See the header of src/lib/job-owners.ts.
+ */
+export async function readLocalDeviceId(): Promise<string | null> {
+  try {
+    return await localDeviceId();
+  } catch {
+    return null;
+  }
+}
+
 // Original local writes not yet pushed. Foreign-origin ops (echoes we applied)
 // are excluded from push — the hub already has them.
 async function unpushedOps(afterSeq: number): Promise<SyncOp[]> {

@@ -21,7 +21,17 @@ import UpdateButton from "@/components/updates/UpdateButton";
 import StartupToggle from "@/components/updates/StartupToggle";
 import SnapshotKeep from "@/components/updates/SnapshotKeep";
 import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
+import JobOwnerControl from "@/components/updates/JobOwnerControl";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
+import { readJobOwners, installLabel } from "@/lib/job-owners-store";
+import { readLocalDeviceId } from "@/lib/sync/client";
+import {
+  MOVABLE_JOBS,
+  MOVABLE_JOB_NAMES,
+  ownerLine,
+  ownershipOf,
+  ownershipWarning,
+} from "@/lib/job-owners";
 import { databaseBytes, readSnapshotKeep } from "@/lib/snapshot-settings";
 import { estimateSnapshotBytes, humanBytes } from "@/lib/snapshots-plan";
 import {
@@ -141,6 +151,14 @@ export default async function Updates() {
     instance.supervisorDir && snapshots.length === 0 && !findPgTool("pg_dump")
   );
   const snapshotBytes = snapshots.reduce((n, s) => n + s.bytes, 0);
+
+  // Which install runs each exclusive job (exploration sync-node-maturity §1).
+  // Rendered on EVERY instance, cloud included: the misconfiguration that hurts
+  // is two writers on one folder, and you cannot see that from one machine if
+  // only local peers show the answer.
+  const jobOwners = await readJobOwners(owner.id);
+  const selfDeviceId = await readLocalDeviceId();
+  const thisMachine = installLabel();
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -490,6 +508,89 @@ export default async function Updates() {
           </Card>
         </section>
       )}
+
+      {/* ── Scheduled work: which machine runs each shared job ──────────── */}
+      <section className="mt-8" id="scheduled-work">
+        <h2 className="ui-section-label">Scheduled work</h2>
+        <Card>
+          <p className="text-sm text-ink-muted">
+            Some jobs write somewhere shared &mdash; one OneDrive folder, one
+            mailbox, one Todoist account &mdash; so exactly one of your machines
+            may do each of them. This is where you say which. Everything here is
+            visible from every device, because two machines doing the same job is
+            the mistake worth catching.
+          </p>
+          <p className="ui-meta mt-2 text-ink-subtle">
+            This machine is <span className="text-ink">{thisMachine}</span>.
+          </p>
+
+          <ul className="mt-4 divide-y divide-line">
+            {MOVABLE_JOB_NAMES.map((name) => {
+              const def = MOVABLE_JOBS[name];
+              const state = ownershipOf(jobOwners, name);
+              const warning = ownershipWarning({ owners: jobOwners, job: name, now: new Date() });
+              const isOwner = state.state === "claimed" && state.claim.deviceId === selfDeviceId;
+              return (
+                <li key={name} className="py-3">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-1.5">
+                      <StatusDot tone={warning ? "warn" : state.state === "claimed" ? "ok" : "info"} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="ui-row text-ink">
+                        {def.label}{" "}
+                        <span className="ui-meta text-ink-subtle">
+                          &middot; {ownerLine({ owners: jobOwners, job: name, selfDeviceId })}
+                        </span>
+                      </p>
+                      <p className="ui-meta mt-0.5 text-ink-subtle">{def.what}</p>
+                      {warning && <p className="ui-meta mt-1 text-amber-400">{warning.text}</p>}
+                      {state.state === "claimed" && state.claim.lastRunAt && (
+                        <p className="ui-meta mt-0.5 text-ink-faint">
+                          Last ran {when(state.claim.lastRunAt)}.
+                        </p>
+                      )}
+                      <JobOwnerControl
+                        job={name}
+                        jobLabel={def.label}
+                        consequence={def.consequence}
+                        isOwner={isOwner}
+                        claimed={state.state !== "unset"}
+                        blocked={def.movable ? undefined : def.blocked}
+                      />
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <details className="mt-4 rounded-card border border-line bg-surface-2 p-3">
+            <summary className="ui-meta cursor-pointer text-ink-subtle">
+              What happens when I move one?
+            </summary>
+            <div className="mt-2 space-y-2 text-sm text-ink-muted">
+              <p>
+                The choice is stored with your data, so it reaches your other
+                devices the same way a note does, and each one checks it before it
+                starts work. There is only ever one answer, so two machines cannot
+                both think the job is theirs.
+              </p>
+              <p>
+                If the machine holding a job is switched off, the job simply does
+                not happen, and this page says so rather than looking fine. You can
+                hand it back from any device, including this one.
+              </p>
+              <p>
+                The offline backup is the one worth moving. In the cloud it has to
+                finish inside a one-minute limit, so it copies about 30 items a
+                night; on your own machine there is no limit and it clears the whole
+                queue in one pass.
+              </p>
+            </div>
+          </details>
+        </Card>
+      </section>
 
       {/* ── Snapshots: point-in-time recovery on this machine ──────────── */}
       {instance.supervisorDir && (
