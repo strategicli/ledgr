@@ -549,6 +549,31 @@ export type FullSyncStatus =
 // hasn't pushed yet flip a "synced" reading to "pending" — the loop only
 // refreshes its own copy when it runs, and the status endpoint reads between
 // runs. A "held" reading is never downgraded by the pendingOps recompute.
+/**
+ * Which state to report after a round of exchanges.
+ *
+ * The distinction that matters: a hub that was NOT DUE was never asked, and
+ * that is not the same as a hub that did not answer. A daily hub spends 23h59m
+ * of every day not due, so treating -1 as offline turned the normal condition
+ * of a daily archive into an alarm — the owner saw "Offline (no hub reachable)"
+ * beside a green hub row reading "synced 5 minutes ago", both technically
+ * derived from the same healthy round. (automaticFailingSince already draws
+ * this line for the fallback clock; this is the same rule for the state.)
+ *
+ * Offline is therefore reserved for two honest cases: a readable hub was
+ * ASKED and failed, or this peer has never completed a sync at all.
+ */
+export function resolveSyncState(o: {
+  readHealthy: boolean;
+  readAttempted: boolean;
+  everSynced: boolean;
+  holdReason: string | null;
+  pendingOps: number;
+}): SyncState {
+  const settled: SyncState = o.holdReason ? "held" : o.pendingOps > 0 ? "pending" : "synced";
+  if (o.readHealthy) return settled;
+  return o.readAttempted || !o.everSynced ? "offline" : settled;
+}
 export function buildSyncStatus(
   hubs: Pick<HubConfig, "url" | "cadence" | "fallback">[],
   s: SyncStatus,
@@ -1030,6 +1055,8 @@ async function exchange(
   let automaticDrained = false;
   let automaticAttempted = false;
   let firstHealthyIndex = -1;
+  // Asked-and-failed is offline; never-asked is not. See resolveSyncState.
+  let readAttempted = false;
 
   for (let i = 0; i < hubs.length; i++) {
     const hub = hubs[i];
@@ -1042,6 +1069,7 @@ async function exchange(
     if (rt.nextDueAt > now) continue;
     const pull = shouldPullFrom(hub, approval?.url ?? null);
     if (isAutomatic) automaticAttempted = true;
+    if (pull) readAttempted = true;
     try {
       const r = await exchangeWith(hub, deviceId, guard, { pull });
       rt.nextDueAt = nextDueAfter({ now, ok: true, cadenceMs, retryMs: guard.continuousMs });
@@ -1130,17 +1158,18 @@ async function exchange(
     status.fallbackPrompt = null;
   }
 
-  // Offline means no hub we are allowed to READ from answered: pushing to an
-  // archive while every readable hub is down still leaves this peer stale,
-  // and saying otherwise is the silent misreport Principle 9 forbids.
-  status.state =
-    firstHealthyIndex < 0
-      ? "offline"
-      : status.holdReason
-        ? "held"
-        : status.pendingOps > 0
-          ? "pending"
-          : "synced";
+  // Offline means a hub we are allowed to READ from was ASKED and did not
+  // answer: pushing to an archive while every readable hub is down still
+  // leaves this peer stale, and saying otherwise is the silent misreport
+  // Principle 9 forbids. A hub that was not due was never asked, which is a
+  // different fact and no longer reported as the same one.
+  status.state = resolveSyncState({
+    readHealthy: firstHealthyIndex >= 0,
+    readAttempted,
+    everSynced: !!status.lastSyncAt,
+    holdReason: status.holdReason,
+    pendingOps: status.pendingOps,
+  });
 }
 
 /**
