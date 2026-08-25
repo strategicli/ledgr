@@ -70,11 +70,18 @@ function Ensure-Tool([string]$Cmd, [string]$WingetId, [string]$ManualUrl, [bool]
 
 Ensure-Tool "git" "Git.Git" "https://git-scm.com/download/win"
 Ensure-Tool "node" "OpenJS.NodeJS.LTS" "https://nodejs.org"
-# Only restoring from a BACKUP FILE (npm run local:restore, the pg_dump-format
-# path) needs the Postgres client tools, for pg_restore. The live database
-# pull is native (scripts/lib/pg-copy.mjs copies rows with the `pg` driver the
-# app already ships) and starting empty needs neither, so this is non-fatal:
-# don't block either of those on a tool they don't use.
+# Two things need the Postgres client tools, and the embedded-postgres package
+# ships the SERVER only (postgres/initdb/pg_ctl and nothing else), so they are a
+# real dependency rather than a nicety:
+#
+#   • restoring from a BACKUP FILE (npm run local:restore), which needs pg_restore
+#   • local SNAPSHOTS (ADR-217), which need pg_dump to take one and pg_restore to
+#     open one — the hourly restore points on Build → Updates
+#
+# Still non-fatal: the live database pull is native (scripts/lib/pg-copy.mjs
+# copies rows with the `pg` driver the app already ships), starting empty needs
+# neither, and snapshots are off by default. Don't block a working install on a
+# tool the chosen path doesn't use; say clearly what is given up instead.
 #
 # Unlike Git and Node, the PostgreSQL Windows installer does NOT add itself to
 # PATH — that gap, not a missing install, is what broke the first real
@@ -94,7 +101,7 @@ if (-not (Test-Cmd "pg_restore")) {
     }
 }
 if (-not (Test-Cmd "pg_restore")) {
-    Write-Host "Warning: pg_restore not found. This is only needed to restore from a backup FILE; the live database pull needs no extra tools at all."
+    Write-Host "Warning: the Postgres client tools were not found. The live database pull needs no extra tools, so setup continues - but two things stay unavailable until you install them (winget install PostgreSQL.PostgreSQL.18): restoring from a backup FILE, and local snapshots (the hourly restore points on Build - Updates)."
 }
 
 # Clone fresh, or bring an existing clone current. --ff-only so a locally

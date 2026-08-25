@@ -278,6 +278,16 @@ The roster lives in **`instances.local.json`** (gitignored, holds connection str
 
 A **local peer** is Ledgr running entirely on the owner's own machine: embedded Postgres + `next start`, both owned by one supervisor process (`npm run local:supervisor`, config in `supervisor/config.json`). First fill is a restore of the weekly backup (`npm run local:restore -- <dump>`; needs `pg_restore` on PATH), which also resets the sync identity so the peer joins as a fresh device. Updates apply through the same `/build/updates` button: on a local peer it writes a signal file and the supervisor pulls, builds into a fresh directory, migrates, and swaps — any failure keeps the previous build serving. Full detail, config reference, and the Windows bring-up checklist: **`supervisor/README.md`**.
 
+## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
+
+On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>/snapshots/`, thinned into a tiered spread (dense recent, sparse old) so a fixed file count covers weeks. It fills the gap between `revisions` (one item's body history) and the weekly OneDrive dump (§4 — exact, but weekly); the nightly markdown export stays the lossy Sunday-proof fire escape, not a restore path.
+
+- **Turn it on:** `"crons": { "snapshot": true }` in `supervisor/config.json` (off by default; safe on every peer since it is purely local).
+- **Configure it:** **Build → Updates → Snapshots**, one number ("restore points to keep", default 30). Stored in `job_state`, so no config edit and no restart. The page shows the computed spread in words, the disk cost, what is on disk, and every restore point, and carries a **Snapshot now** button (`POST /api/snapshots`, the same `runSnapshot` the hourly job calls) for the moment before something risky.
+- **Needs the Postgres client tools** (`pg_dump`), like the restore-from-file path: the embedded binaries ship the server only. Not required on PATH (`C:\Program Files\PostgreSQL\*\bin` is checked); `install.ps1` already installs them. Missing tools are reported in the section, not swallowed.
+- **Recover from one, read-only:** `npm run local:snapshot -- list`, then `npm run local:snapshot -- browse <time>` opens it in a throwaway cluster on `dbPort + 1000` and deletes it on Ctrl+C. **Never restore a snapshot over the live cluster on an armed peer** — every write fires the `sync_ops` triggers, so an in-place rewind replays old rows to the hub as fresh edits. In-place restore is `npm run local:restore` (§1l), which resets the sync identity.
+- Failures land in `cron-state.json`, `error_log` (source `snapshot`) and `/health`, like any local cron (§2a). Full detail: **`supervisor/README.md`** → "Snapshots".
+
 ---
 
 ## 2. Health and monitoring
@@ -348,6 +358,7 @@ A **local peer** is Ledgr running entirely on the owner's own machine: embedded 
   3. `pg_restore --no-owner --no-privileges --exit-on-error -d "<direct url>" ledgr-<date>.dump` (client major version must be ≥ server's).
   4. Point `DATABASE_URL` (the **pooler** URL of the new DB) at it in Vercel, redeploy.
   5. Verify `/health`, spot-check recent items, confirm the nightly export resumes (`lastExportRunAt` advances).
+- **On a local peer, snapshots are the everyday layer under all of this (§1m):** hourly `pg_dump`s of the peer's own cluster on a tiered spread, browsable read-only. The weekly dump above stays the off-machine copy of record; a snapshot is what you reach for when the mistake was an hour ago.
 - **An untested backup is a hope, not a backup.** The first test ran 2026-06-12; keep it green.
 
 ---

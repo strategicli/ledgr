@@ -656,6 +656,21 @@ export const LOCAL_JOBS = {
       "synced-table list, so a local peer's Discover and Loose Ends stay empty until " +
       "it computes its own. Two peers filling their own caches is not a conflict.",
   },
+  snapshot: {
+    path: "/api/machine/snapshot",
+    label: "Local snapshots (restore points)",
+    everyMinutes: 60,
+    shared: true,
+    on: false,
+    // A dump of a real database takes longer than an API call; the default
+    // 120s ceiling would report a false failure and leave a partial file.
+    timeoutMs: 15 * 60_000,
+    why:
+      "Purely local: it dumps THIS peer's own cluster to THIS peer's own disk, so " +
+      "two peers snapshotting is two independent backups rather than a conflict. Off " +
+      "by default because it costs disk, and because a peer that is not the one " +
+      "holding the data does not need restore points of it.",
+  },
   export: {
     path: "/api/machine/export",
     label: "OneDrive export",
@@ -807,6 +822,9 @@ export function normalizeCrons(raw) {
       intervalMs,
       at,
       periodMs: intervalMs ?? DAY_MS,
+      // Null = the runner's own default. Only a job that genuinely runs longer
+      // than an HTTP call (a pg_dump) sets one.
+      timeoutMs: def.timeoutMs ?? null,
     });
   }
   return out;

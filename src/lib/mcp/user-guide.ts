@@ -818,6 +818,9 @@ at \`/build/navigation\`, Home and Today at \`/dashboards\`, type visibility at
 - **Bodies are versioned** as you write, and can be restored.
 - **Undo** appears after destructive actions and survives a refresh.
 - **The database is backed up** weekly, with daily snapshots.
+- **On an instance running on your own machine,** the whole database can also be
+  snapshotted every hour and kept on a thinning schedule, so recent mistakes have
+  a recent restore point (see Snapshots under "Staying up to date").
 - **\`/health\`** reports whether everything is running.
 
 # Staying up to date
@@ -875,6 +878,27 @@ are off unless you turn them on, because each writes somewhere shared and only
 one device should be doing it. A job marked as one only this device should run is
 labelled as such in the list. A failure is also recorded in this instance's error
 log, so it counts on the health report rather than passing quietly.
+
+**Snapshots.** Also on your own machine: a complete copy of the database, taken
+every hour, so a mistake bigger than one item can be answered by looking at how
+things were an hour ago instead of waiting for the weekly backup. You set one
+number, *how many restore points to keep*, and Ledgr works out the spread: many
+recent ones, fewer old ones, thinning out over weeks. The page says the spread
+in plain words, estimates the disk it will use, shows what is actually on disk,
+and lists every restore point with its time. Snapshots are off until you turn
+them on, since they cost disk space.
+
+**Snapshot now** takes one immediately, which is what you want before anything
+you might need to undo: a large import, a bulk edit, a change you are unsure
+about. It takes a few seconds to a minute and tells you the size of what it
+saved.
+
+Opening one never replaces your live database, on purpose: on a machine that
+syncs, rewinding in place would send weeks-old versions to your other devices as
+if you had just typed them. Instead, a terminal command
+(\`npm run local:snapshot -- browse <time>\`) opens the chosen snapshot as a
+separate read-only copy, so you (or Claude) can look through it and copy out what
+you need. The page names the command.
 
 # The sync network
 

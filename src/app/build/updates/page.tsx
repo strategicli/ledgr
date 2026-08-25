@@ -19,7 +19,18 @@ import { resolveOwner } from "@/lib/owner";
 import { getUpdateReport } from "@/lib/updates";
 import UpdateButton from "@/components/updates/UpdateButton";
 import StartupToggle from "@/components/updates/StartupToggle";
+import SnapshotKeep from "@/components/updates/SnapshotKeep";
+import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
+import { databaseBytes, readSnapshotKeep } from "@/lib/snapshot-settings";
+import { estimateSnapshotBytes, humanBytes } from "@/lib/snapshots-plan";
+import {
+  averageSnapshotBytes,
+  findPgTool,
+  listSnapshots,
+  PG_TOOLS_MISSING,
+  snapshotsDir,
+} from "@/lib/snapshots";
 import {
   jobCadence,
   readLocalJobsReport,
@@ -109,6 +120,27 @@ export default async function Updates() {
     () => LOCAL_JOBS_UNAVAILABLE
   );
   const worstJob = worstJobState(localJobs.jobs);
+
+  // Snapshots (restore points) on this machine. A cloud deployment has no disk
+  // and no local cluster to dump, so the whole section renders only on a peer
+  // with a supervisor — the same test every other local-only surface uses.
+  const snapshots = instance.supervisorDir
+    ? listSnapshots(snapshotsDir(instance.supervisorDir))
+    : [];
+  const snapshotJob = localJobs.jobs.find((j) => j.name === "snapshot") ?? null;
+  const snapshotKeep = instance.supervisorDir ? await readSnapshotKeep() : 0;
+  const measuredBytes = averageSnapshotBytes(snapshots);
+  // Only ask the database its size when there is nothing real to average, and
+  // only look for pg_dump when nothing has been dumped — a snapshot on disk is
+  // already proof the tools are there.
+  const dbBytes =
+    instance.supervisorDir && measuredBytes === null ? await databaseBytes() : null;
+  const perSnapshotBytes =
+    measuredBytes ?? (dbBytes === null ? null : estimateSnapshotBytes(dbBytes));
+  const pgToolsMissing = Boolean(
+    instance.supervisorDir && snapshots.length === 0 && !findPgTool("pg_dump")
+  );
+  const snapshotBytes = snapshots.reduce((n, s) => n + s.bytes, 0);
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -454,6 +486,120 @@ export default async function Updates() {
               <Mono>supervisor/config.json</Mono>.{" "}
               <Mono>npm run local:status</Mono> shows this same list from a
               terminal.
+            </p>
+          </Card>
+        </section>
+      )}
+
+      {/* ── Snapshots: point-in-time recovery on this machine ──────────── */}
+      {instance.supervisorDir && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Snapshots</h2>
+          <Card>
+            <p className="text-sm text-ink-muted">
+              A snapshot is a complete copy of this machine&rsquo;s database at one
+              moment. Keeping a spread of them means a mistake bigger than one
+              item&rsquo;s history &mdash; a bad import, a batch delete, a wrong bulk
+              edit &mdash; can be answered by looking at how things were an hour
+              ago, rather than waiting for the weekly backup.
+            </p>
+
+            {!snapshotJob && (
+              <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+                <span className="mt-1.5">
+                  <StatusDot tone="warn" />
+                </span>
+                <span>
+                  Snapshots are not running on this machine. Add{" "}
+                  <Mono>&quot;snapshot&quot;: true</Mono> to the <Mono>crons</Mono>{" "}
+                  block in <Mono>supervisor/config.json</Mono> and restart the
+                  local service.
+                </span>
+              </p>
+            )}
+
+            {pgToolsMissing && (
+              <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+                <span className="mt-1.5">
+                  <StatusDot tone="bad" />
+                </span>
+                <span>{PG_TOOLS_MISSING}</span>
+              </p>
+            )}
+
+            <div className="mt-4">
+              <SnapshotKeep
+                keep={snapshotKeep}
+                perSnapshotBytes={perSnapshotBytes}
+                measured={measuredBytes !== null}
+              />
+            </div>
+
+            <dl className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-[9rem_1fr]">
+              <dt className="ui-meta text-ink-subtle">On disk now</dt>
+              <dd className="text-sm text-ink">
+                {snapshots.length === 0 ? (
+                  <span className="text-ink-subtle">None yet</span>
+                ) : (
+                  <>
+                    {snapshots.length} restore point
+                    {snapshots.length === 1 ? "" : "s"}, {humanBytes(snapshotBytes)}
+                    {/* "oldest" says nothing when it is also the newest. */}
+                    {snapshots.length > 1 &&
+                      `, oldest ${when(snapshots[snapshots.length - 1].at)}`}
+                  </>
+                )}
+              </dd>
+
+              <dt className="ui-meta text-ink-subtle">Last snapshot</dt>
+              <dd className="text-sm text-ink">
+                {snapshots.length > 0 ? (
+                  when(snapshots[0].at)
+                ) : (
+                  <span className="text-ink-subtle">Never</span>
+                )}
+                {snapshotJob?.ok === false && snapshotJob.detail && (
+                  <span className="ui-meta ml-2 text-amber-400">
+                    Last attempt failed: {snapshotJob.detail}
+                  </span>
+                )}
+              </dd>
+
+              <dt className="ui-meta text-ink-subtle">Next snapshot</dt>
+              <dd className="text-sm text-ink">
+                {snapshotJob?.dueAt ? (
+                  nextRunLine(snapshotJob.dueAt)
+                ) : (
+                  <span className="text-ink-subtle">Not scheduled</span>
+                )}
+              </dd>
+            </dl>
+
+            <SnapshotNowButton disabled={pgToolsMissing} />
+
+            {snapshots.length > 0 && (
+              <ul className="mt-4 max-h-72 divide-y divide-line overflow-y-auto border-y border-line">
+                {snapshots.map((s) => (
+                  <li key={s.name} className="flex items-baseline gap-3 py-1.5">
+                    <span className="ui-row min-w-0 flex-1 text-ink">
+                      {new Date(s.at).toLocaleString()}
+                    </span>
+                    <span className="ui-meta shrink-0 text-ink-subtle">{when(s.at)}</span>
+                    <span className="ui-meta shrink-0 tabular-nums text-ink-subtle">
+                      {humanBytes(s.bytes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="ui-meta mt-3 text-ink-subtle">
+              Opening one is read-only, and deliberately never replaces the live
+              database: from a terminal on this machine,{" "}
+              <Mono>npm run local:snapshot -- browse &lt;time&gt;</Mono> starts a
+              throwaway copy on a spare port so you can look through it and copy
+              what you need back out.{" "}
+              <Mono>npm run local:snapshot -- list</Mono> names them.
             </p>
           </Card>
         </section>
