@@ -4,7 +4,7 @@
 // project type's default lens strip. Pure (no DB), so it runs fast and offline.
 // Run: npx tsx scripts/verify-project-done.mts
 import { defaultLenses } from "../src/lib/list-lenses";
-import { describeSweep } from "../src/lib/project-completion";
+import { describeSweep, sweepDecision } from "../src/lib/project-completion";
 import {
   isTerminalCategory,
   orderedStatuses,
@@ -125,6 +125,73 @@ check(
 check(
   "ties break alphabetically (stable wording run to run)",
   describeSweep([{ type: "task" }, { type: "milestone" }]) === "1 milestone, 1 task"
+);
+
+// --- The sweep is GENERIC over types (Tyler, 2026-08-25) --------------------
+// The contract: nothing about which types get completed is hardcoded. The rule
+// asks the TYPE two questions — do you track completion, and what do you call
+// done — so a type that gains a Done checkbox later is swept from that moment
+// with no code change. These assertions exist so nobody "optimizes" the rule
+// into an allowlist of task/milestone, which would silently drop every type
+// invented after today.
+
+// A brand-new custom type nobody has written code for, with a plain Done
+// checkbox. This is the case Tyler was actually asking about.
+check(
+  "a FUTURE type with a done checkbox is completed",
+  sweepDecision({ type: "purchase_order" }, { mode: "checkbox", doneKey: "done" }).action ===
+    "complete"
+);
+// ...and it completes to ITS OWN done key, not a hardcoded "done".
+const custom = sweepDecision(
+  { type: "shipment" },
+  { mode: "select", doneKey: "delivered" }
+);
+check(
+  "it completes to the type's OWN done status, not a literal 'done'",
+  custom.action === "complete" && custom.nextStatus === "delivered"
+);
+// Completion turned off = skipped, and reported as such rather than dropped.
+check(
+  "a type with completion off is skipped as no_completion",
+  sweepDecision({ type: "note" }, { mode: "none", doneKey: "done" }).action === "skip"
+);
+check(
+  "an UNKNOWN type is skipped, never guessed at",
+  sweepDecision({ type: "who_knows" }, undefined).action === "skip"
+);
+// A type that tracks completion but defines no done status can't be written to.
+check(
+  "checkbox mode with no done key is skipped",
+  sweepDecision({ type: "odd" }, { mode: "checkbox", doneKey: null }).action === "skip"
+);
+// Recurrence wins over completability: the item COULD be completed, but
+// completing it would advance it instead of closing it.
+// A real stored rule needs BOTH an rrule and a YYYY-MM-DD dtstart — a rule
+// missing its anchor is not a recurring task (parseRecurrence returns null), so
+// the fixture has to carry both or this asserts nothing.
+const rec = sweepDecision(
+  {
+    type: "task",
+    properties: { recurrence: { rrule: "FREQ=WEEKLY;BYDAY=MO", dtstart: "2026-08-24" } },
+  },
+  { mode: "checkbox", doneKey: "done" }
+);
+check(
+  "a repeating task is skipped as recurring, not completed",
+  rec.action === "skip" && rec.reason === "recurring"
+);
+check(
+  "an rrule with no dtstart is NOT treated as recurring",
+  sweepDecision(
+    { type: "task", properties: { recurrence: { rrule: "FREQ=WEEKLY;BYDAY=MO" } } },
+    { mode: "checkbox", doneKey: "done" }
+  ).action === "complete"
+);
+check(
+  "a non-repeating task of the same type IS completed",
+  sweepDecision({ type: "task", properties: { focus: {} } }, { mode: "checkbox", doneKey: "done" })
+    .action === "complete"
 );
 
 // --- The project type's default tabs ---------------------------------------

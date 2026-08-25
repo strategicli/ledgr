@@ -37,7 +37,7 @@ import { inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, types } from "@/db/schema";
 import { updateItem } from "@/lib/item-mutations";
-import { parseRecurrence } from "@/lib/recurrence";
+import { isRecurring } from "@/lib/recurrence";
 import {
   defaultStatusKey,
   parseStatusSchema,
@@ -113,12 +113,47 @@ async function openContainedItems(
   }));
 }
 
+// What the sweep needs to know about ONE type to decide whether its items can be
+// completed: how it presents completion, and the status key "done" means for it.
+export type TypeCompletion = { mode: string; doneKey: string | null };
+
+// The per-item rule, pure and exported so it can be asserted directly.
+//
+// THE CONTRACT THIS ENCODES (Tyler, 2026-08-25): the sweep is generic over
+// types, with NO allowlist anywhere. Whether an item is completable is decided
+// entirely by looking its type up at plan time and asking two questions — does
+// this type track completion, and what status key does it call done. So a type
+// that gains a Done checkbox LATER (a Receipt, a Purchase, a type that doesn't
+// exist yet) starts being swept the moment it does, with no code change, no
+// registration, and no edit to this file. That is the point: hardcoding
+// task/milestone here would mean every future type silently fell out of the
+// sweep, and nobody would notice until a finished project quietly kept a tail of
+// open work.
+export function sweepDecision(
+  item: { type: string; properties?: unknown },
+  meta: TypeCompletion | undefined
+): { action: "complete"; nextStatus: string } | { action: "skip"; reason: "no_completion" | "recurring" } {
+  // No completion concept (statusMode "none", or no done status to write):
+  // writing "done" would be a no-op no surface can show or reverse.
+  if (!meta || meta.mode === "none" || !meta.doneKey) {
+    return { action: "skip", reason: "no_completion" };
+  }
+  // A repeating task ADVANCES on completion (ADR-073) rather than closing, so
+  // sweeping it would quietly reschedule a chore instead of finishing it.
+  const props = item.properties as Record<string, unknown> | null;
+  if (isRecurring(props?.recurrence)) {
+    return { action: "skip", reason: "recurring" };
+  }
+  return { action: "complete", nextStatus: meta.doneKey };
+}
+
 // The completion metadata for a set of types, in ONE query (the sweep touches
-// several types at once; a per-item lookup would be N round trips).
+// several types at once; a per-item lookup would be N round trips). Read fresh
+// on every plan, which is what makes the contract above hold over time.
 async function completionByType(
   typeKeys: string[]
-): Promise<Map<string, { mode: string; doneKey: string | null }>> {
-  const out = new Map<string, { mode: string; doneKey: string | null }>();
+): Promise<Map<string, TypeCompletion>> {
+  const out = new Map<string, TypeCompletion>();
   if (typeKeys.length === 0) return out;
   const rows = await getDb()
     .select({ key: types.key, schema: types.statusSchema, mode: types.statusMode })
@@ -161,17 +196,14 @@ export async function planProjectCompletion(
       title: row.title,
       status: row.status,
     };
-    const m = meta.get(row.type);
-    if (!m || m.mode === "none" || !m.doneKey) {
-      plan.skippedNoCompletion.push(bare);
-      continue;
-    }
-    const props = row.properties as Record<string, unknown> | null;
-    if (parseRecurrence(props?.recurrence)) {
+    const decision = sweepDecision(row, meta.get(row.type));
+    if (decision.action === "complete") {
+      plan.completable.push({ ...bare, nextStatus: decision.nextStatus });
+    } else if (decision.reason === "recurring") {
       plan.skippedRecurring.push(bare);
-      continue;
+    } else {
+      plan.skippedNoCompletion.push(bare);
     }
-    plan.completable.push({ ...bare, nextStatus: m.doneKey });
   }
   return plan;
 }
