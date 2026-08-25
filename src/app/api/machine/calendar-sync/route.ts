@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { standDownIfNotOwner } from "@/lib/job-owner-guard";
+import { stampJobRun } from "@/lib/job-owners-store";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { getGraphCalendarSource } from "@/lib/calendar/graph-source";
 import { resolveMailboxOwner } from "@/lib/calendar/owner";
@@ -32,6 +34,8 @@ export async function GET(request: Request) {
 
   try {
     const ownerId = await resolveMailboxOwner(upn);
+    const standDown = ownerId ? await standDownIfNotOwner("calendar-sync", ownerId) : null;
+    if (standDown) return standDown;
     if (!ownerId) throw new Error(`no users row matches mailbox UPN ${upn}`);
     const eventErrors: { eventId: string; message: string }[] = [];
     // Promotion is MANUAL (ADR-123): the cron only caches events into the feed;
@@ -49,6 +53,7 @@ export async function GET(request: Request) {
         detail: { eventErrors },
       });
     }
+    await stampJobRun(ownerId, "calendar-sync");
     return NextResponse.json({ ok: true, correlationId: log.correlationId, ...result });
   } catch (err) {
     // A 403 means Calendars.Read / the Application Access Policy isn't in place

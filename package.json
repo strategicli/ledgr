@@ -24,6 +24,7 @@
     "local:stop": "node supervisor/ledgr-ctl.mjs stop",
     "local:startup": "node supervisor/ledgr-ctl.mjs startup",
     "local:restore": "node scripts/local-restore.mjs",
+    "local:snapshot": "tsx scripts/local-snapshot.mts",
     "local:setup": "node scripts/local-setup.mjs"
   },
   "dependencies": {

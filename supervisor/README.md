@@ -102,12 +102,22 @@ the per-device retention holds (ADR-213) decide nothing.
 | --- | --- | --- |
 | `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
 | `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
+| `snapshot` | off, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Off by default because it costs disk. See "Snapshots" below. |
 | `export` | off | **No.** One OneDrive folder, and `items.exported_at` is synced. |
 | `calendar-sync` | off | **No.** Two peers match the same event into two rows, and sync propagates both. |
 | `email-import` | off | **No.** Consumes the mailbox: the second peer silently imports nothing. |
 | `todoist-sync` | off | **No.** Bidirectional against one account. |
 | `transcription-poll` | off | **No.** Two pollers race for one job. |
 | `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
+
+**Since ADR-218, `crons` decides whether this peer's timer FIRES; the app decides
+whether the work happens.** Which install owns an exclusive job is one slot in
+the synced settings, edited at **Build → Updates → Scheduled work**, and every
+install re-reads it before each run. So turning `export` on here and claiming it
+there are two different acts, and both are needed: the timer has to fire, and
+this machine has to be the owner. A peer whose timer fires without owning the job
+answers `200 {ok, skipped}` and does nothing, which is why leaving `crons.export`
+on across a handoff is harmless rather than a double write.
 
 Turning an exclusive job on is a deliberate statement that **this** peer is the
 one that does it — so on a hub, once production is no longer running them:
@@ -143,6 +153,62 @@ missing — a laptop asleep every night at 03:10 would otherwise never purge.
 each job's state, last success, next run and any failure detail, and flags an
 exclusive job as one only this device should run. `npm run local:status` prints
 the same list (`--json` for an install agent).
+
+### Snapshots: point-in-time recovery on this machine (ADR-217)
+
+Between the `revisions` table (one item's body history) and the weekly OneDrive
+`pg_dump` (exact, but weekly) there was nothing. `snapshot` fills it: a
+custom-format `pg_dump` of this peer's own cluster, hourly, thinned into a tiered
+spread so a fixed number of files covers weeks.
+
+Turn it on the way any job is turned on, then forget it:
+
+```json
+"crons": { "snapshot": true }
+```
+
+**One setting, and it lives in the app**, not here: **Build → Updates →
+Snapshots** sets *how many restore points to keep* (default 30). The spread is
+computed from that number — dense recent, sparse old — and the page says it in
+words, alongside the disk it costs, what is on disk now, and every restore point
+with its timestamp, plus a **Snapshot now** button for the moment before
+something risky. It is stored in `job_state` like the sync-mode override, so
+changing it needs no config edit and no restart. The section renders only on a
+local peer; a cloud deployment has no disk to write to.
+
+Files land in `<dataDir>/snapshots/<timestamp>.dump`. The dump runs against the
+**running** cluster (`pg_dump` is consistent by design, so nothing stops), never
+while an update is in flight, and a failure reports itself through the ordinary
+cron path: `cron-state.json`, `POST /api/machine/report-error`, `/health`.
+
+**`pg_dump` is a real external dependency here.** The embedded-postgres packages
+ship the server only (`postgres`, `initdb`, `pg_ctl`), so snapshots need the
+Postgres client tools, the same ones the restore-from-file path already needs
+(`winget install PostgreSQL.PostgreSQL.18`, or `brew install libpq`). They do not
+have to be on PATH: the lookup also checks `C:\Program Files\PostgreSQL\*\bin`,
+which is where winget leaves them, and `install.ps1` installs them already. When
+they are genuinely missing, the Snapshots section says so instead of quietly
+never snapshotting.
+
+**Restoring is browse-only, deliberately.** From a terminal on the machine:
+
+```
+npm run local:snapshot -- list                        # what there is, and what the next prune keeps
+npm run local:snapshot -- now                         # take one right now, before something risky
+npm run local:snapshot -- browse 2026-08-25T14        # open one in a throwaway cluster
+```
+
+`browse` starts a second, disposable Postgres on `dbPort + 1000`, restores the
+dump into it, prints the connection string, and deletes the whole thing when you
+press Ctrl+C. If a session ended some other way (the window closed, a reboot, a
+crash), the next `browse` stops the orphaned postmaster with `pg_ctl` and removes
+its directory before starting — deleting the directory alone is not enough, since
+the orphan still holds files inside it. Nothing here ever restores **over** the live cluster, and that is
+the load-bearing part: on an armed peer every write fires the `sync_ops`
+triggers, so rewinding in place would replay weeks-old rows to the hub as fresh
+edits and last-writer-wins would let them win. In-place restore stays what it
+already is: the deliberate `npm run local:restore`, which resets this peer's sync
+identity on the way through and is gated by `maxFirstPush`.
 
 ### Arming sync safely
 
@@ -361,10 +427,14 @@ by hand, then `npm run local:setup`).
 > `next_steps.md`), the **live pull is the only fill that is both complete
 > and current**, because the newest weekly dump can be older than the oplog.
 
-Only the restore-from-file path needs the Postgres client tools (`pg_restore`)
-on PATH — `winget install PostgreSQL.PostgreSQL.18` on Windows,
+Of the three, only the restore-from-file path needs the Postgres client tools
+(`pg_restore`) — `winget install PostgreSQL.PostgreSQL.18` on Windows,
 `brew install libpq` on macOS. The wizard's data-fill step says so if it's
-missing; the live pull needs nothing beyond `npm ci`.
+missing; the live pull needs nothing beyond `npm ci`. **Snapshots** need the same
+tools (`pg_dump` to take one, `pg_restore` to open one), so a peer that will keep
+restore points wants them installed whichever fill it used. They do not have to
+be on PATH for snapshots: the lookup also checks `C:\Program
+Files\PostgreSQL\*\bin`.
 
 ## Windows bring-up checklist (manual fallback; also what install.ps1 does)
 
@@ -373,11 +443,13 @@ Run these on the always-on PC, in order:
 1. **Install the tools** (PowerShell, admin not required for winget):
    - `winget install Git.Git`
    - `winget install OpenJS.NodeJS.LTS`
-   - `winget install PostgreSQL.PostgreSQL.18` (client tools only needed for
-     restoring from a backup FILE, via `pg_restore`; the live database pull
-     needs none of this. The installer does NOT add itself to PATH — unlike
-     Git and Node — so add its `bin` folder yourself if you go this route;
-     `install.ps1` also finds and uses it automatically)
+   - `winget install PostgreSQL.PostgreSQL.18` (the client tools. Needed for
+     restoring from a backup FILE via `pg_restore`, and for **snapshots**,
+     which need `pg_dump` to take one and `pg_restore` to open one — the
+     embedded package ships the server only. The live database pull needs
+     none of this. The installer does NOT add itself to PATH — unlike Git and
+     Node — so add its `bin` folder yourself if you go this route;
+     `install.ps1` and the snapshot lookup both also find it automatically)
 2. **Clone and install:**
    - `git clone https://github.com/strategicli/ledgr.git C:\ledgr`
    - `cd C:\ledgr && npm ci`

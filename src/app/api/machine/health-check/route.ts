@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { standDownIfNotOwner } from "@/lib/job-owner-guard";
+import { stampJobRun } from "@/lib/job-owners-store";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { runHealthCheck } from "@/lib/health-check";
 import { resolveNotifyOwner } from "@/lib/push/owner";
@@ -27,6 +29,8 @@ export async function GET(request: Request) {
   try {
     const ownerId = await resolveNotifyOwner();
     if (!ownerId) throw new Error("no users row matches the notify owner UPN");
+    const standDown = await standDownIfNotOwner("health-check", ownerId);
+    if (standDown) return standDown;
     const sender = getWebPushSender(); // may be null (VAPID unset) — run anyway
     const result = await runHealthCheck(ownerId, sender);
     log.info("health check finished", {
@@ -35,6 +39,7 @@ export async function GET(request: Request) {
       delivered: result.delivered,
       pushConfigured: !!sender,
     });
+    await stampJobRun(ownerId, "health-check");
     return NextResponse.json({ ok: true, correlationId: log.correlationId, ...result });
   } catch (err) {
     await captureError("health-check", err, { correlationId: log.correlationId });

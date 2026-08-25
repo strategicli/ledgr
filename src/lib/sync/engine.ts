@@ -89,6 +89,11 @@ export const SYNCED_TABLES: Record<string, { pk: string }> = {
   views: { pk: "id" },
   templates: { pk: "id" },
   users: { pk: "id" },
+  // The roster (ADR-220). Safe to merge by the ordinary field-level rule
+  // BECAUSE of the key: each install only ever writes its own row, so two
+  // installs never contend for one. That property is what earned it a table
+  // rather than a key in users.settings, which is one field to this merge.
+  installs: { pk: "id" },
 };
 
 // The version gate /api/machine/sync applies FIRST: peers exchange ops only

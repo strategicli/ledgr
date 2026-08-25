@@ -99,6 +99,9 @@ check(
 // ── (2) Validators ───────────────────────────────────────────────────────────
 
 check("role hub/spoke pass", validateRole("hub") === "hub" && validateRole("spoke") === "spoke");
+// ADR-221: the wizard asks the question behind the word, so y/n are the
+// interactive answers and map onto the same two roles.
+check("yes means hub, no means spoke", validateRole("y") === "hub" && validateRole("YES") === "hub" && validateRole("n") === "spoke" && validateRole(" No ") === "spoke");
 check("role anything else throws", throws(() => validateRole("both")) && throws(() => validateRole("")));
 check("email validates", validateEmail("a@b.com") === "a@b.com" && throws(() => validateEmail("not-an-email")));
 check(

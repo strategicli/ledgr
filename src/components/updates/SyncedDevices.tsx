@@ -129,7 +129,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                   <>
                     has not checked in for a while. In about {p.hold.daysLeft}{" "}
                     {p.hold.daysLeft === 1 ? "day" : "days"} this instance stops keeping the
-                    history it missed, and after that it would need a full re-fill to return
+                    history it missed, and after that it would need a full needs a fresh copy to return
                     instead of just reconnecting.
                   </>
                 )}
@@ -186,9 +186,9 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
             <thead>
               <tr className="ui-meta text-ink-subtle">
                 <th className="py-1.5 pr-4 font-normal">Device</th>
-                <th className="py-1.5 pr-4 font-normal">Last seen</th>
-                <th className="py-1.5 pr-4 font-normal">Behind</th>
-                <th className="py-1.5 pr-4 font-normal">History kept</th>
+                <th className="py-1.5 pr-4 font-normal">Last heard from</th>
+                <th className="py-1.5 pr-4 font-normal">Not received yet</th>
+                <th className="py-1.5 pr-4 font-normal">Changes kept for it</th>
                 <th className="py-1.5 font-normal" />
               </tr>
             </thead>
@@ -204,7 +204,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                     )}
                     {p.pullOnly && (
                       <span className="ui-meta ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-ink-subtle">
-                        pull-only
+                        receives only
                       </span>
                     )}
                   </td>
@@ -215,31 +215,31 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                     {p.opsBehind === 0 ? (
                       "up to date"
                     ) : (
-                      <>{badgeCount(p.opsBehind, 999)} ops behind</>
+                      <>{badgeCount(p.opsBehind, 999)} changes</>
                     )}
                   </td>
                   <td className="py-2 pr-4 text-ink-muted">
                     {p.hold.mode === "warm" ? (
                       <>
                         <span className="text-ink">Always</span>
-                        {p.bindingHold && <span className="ui-meta block text-ink-subtle">holding the log</span>}
+                        {p.bindingHold && <span className="ui-meta block text-ink-subtle">using storage here</span>}
                       </>
                     ) : p.hold.mode === "cold" ? (
                       <>
                         <span className="text-amber-400">Not kept</span>
-                        <span className="ui-meta block text-ink-subtle">re-fill to return</span>
+                        <span className="ui-meta block text-ink-subtle">needs a fresh copy to return</span>
                       </>
                     ) : p.hold.lapsed ? (
                       <>
                         <span className="text-amber-400">Lapsed</span>
-                        <span className="ui-meta block text-ink-subtle">re-fill to return</span>
+                        <span className="ui-meta block text-ink-subtle">needs a fresh copy to return</span>
                       </>
                     ) : (
                       <>
                         <span className={p.hold.warn ? "text-amber-400" : undefined}>
                           {p.hold.daysLeft} {p.hold.daysLeft === 1 ? "day" : "days"} left
                         </span>
-                        {p.bindingHold && <span className="ui-meta block text-ink-subtle">holding the log</span>}
+                        {p.bindingHold && <span className="ui-meta block text-ink-subtle">using storage here</span>}
                       </>
                     )}
                     {!p.revoked && (
@@ -332,7 +332,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
                                 )
                               }
                             >
-                              Make pull-only
+                              Stop it sending
                             </button>
                           )}
                           <ConfirmButton
@@ -407,7 +407,7 @@ export default function SyncedDevices({ initialPeers }: { initialPeers: PeerSumm
             checked={pullOnlyNew}
             onChange={(e) => setPullOnlyNew(e.target.checked)}
           />
-          Pull-only (safe default for a new device)
+          Receive only, do not send (the safe way to start)
         </label>
         <button
           type="button"

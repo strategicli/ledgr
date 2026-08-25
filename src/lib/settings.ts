@@ -12,6 +12,7 @@ import { parseListTabs, type Lens } from "@/lib/list-lenses";
 import { parseTocByType, type TocConfig } from "@/lib/toc";
 import { parseCardsByType, type ProjectCardConfig } from "@/lib/project-card-config";
 import { sanitizeLayout, type DeskLayout } from "@/lib/desk/layout";
+import { parseJobOwners, type JobOwners } from "@/lib/job-owners";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
 // straight into the `--accent` CSS variable.
@@ -377,6 +378,13 @@ export type UserSettings = {
   // a time, only when a search actually misses. Same no-migration posture as
   // listTabs/tocByType.
   searchSynonyms: Record<string, string[]>;
+  // Which install runs each EXCLUSIVE scheduled job (src/lib/job-owners.ts).
+  // Lives here rather than in per-machine config precisely BECAUSE settings
+  // sync (ADR-206): one slot per job means two owners cannot be represented,
+  // and every install reads the same answer. Absent = every install behaves as
+  // it did before this existed, so an owner who never touches it changes
+  // nothing. Same no-migration posture as listTabs/searchSynonyms.
+  jobOwners: JobOwners;
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -479,6 +487,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   toggleBlocksEnabled: true,
   deskWorkspaces: [],
   searchSynonyms: {},
+  jobOwners: {},
 };
 
 const SETTINGS_UUID_RE =
@@ -721,6 +730,7 @@ export function parseSettings(raw: unknown): UserSettings {
       : DEFAULT_SETTINGS.toggleBlocksEnabled;
   const deskWorkspaces = parseDeskWorkspaces(r.deskWorkspaces);
   const searchSynonyms = parseSearchSynonyms(r.searchSynonyms);
+  const jobOwners = parseJobOwners(r.jobOwners);
   return {
     highlightColor,
     highlightGradient,
@@ -759,6 +769,7 @@ export function parseSettings(raw: unknown): UserSettings {
     toggleBlocksEnabled,
     deskWorkspaces,
     searchSynonyms,
+    jobOwners,
   };
 }
 

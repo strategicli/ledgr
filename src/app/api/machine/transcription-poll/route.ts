@@ -7,6 +7,8 @@
 // Deterministic plumbing (Principle 3): it only polls the speech-to-text
 // service and fills bodies; no model in the loop.
 import { NextResponse } from "next/server";
+import { standDownIfNotOwner } from "@/lib/job-owner-guard";
+import { stampJobRun } from "@/lib/job-owners-store";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import {
@@ -33,6 +35,8 @@ export async function GET(request: Request) {
   try {
     const ownerId = await resolveMachineOwner();
     if (!ownerId) throw new Error("no users row matches the machine owner UPN");
+    const standDown = await standDownIfNotOwner("transcription-poll", ownerId);
+    if (standDown) return standDown;
     const pending = await listPendingTranscriptions(ownerId);
     let completed = 0;
     let errored = 0;
@@ -42,6 +46,7 @@ export async function GET(request: Request) {
       if (changed && status === "error") errored += 1;
     }
     log.info("transcription poll finished", { pending: pending.length, completed, errored });
+    await stampJobRun(ownerId, "transcription-poll");
     return NextResponse.json({
       ok: true,
       correlationId: log.correlationId,

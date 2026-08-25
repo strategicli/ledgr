@@ -629,7 +629,7 @@ async function runCronJob(job) {
   try {
     const res = await fetch(`http://127.0.0.1:${cfg.appPort}${job.path}`, {
       headers: { Authorization: `Bearer ${CRON_TOKEN}` },
-      signal: AbortSignal.timeout(CRON_TIMEOUT_MS),
+      signal: AbortSignal.timeout(job.timeoutMs ?? CRON_TIMEOUT_MS),
     });
     ok = res.ok;
     if (!ok) {
