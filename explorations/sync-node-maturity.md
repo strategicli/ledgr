@@ -1,10 +1,14 @@
 # Exploration: sync-node maturity (export from a local peer, plainer vocabulary, real cadences)
 
-**Status:** exploration, raised 2026-08-25 (Brandon, brainstorm session on the two-peer rig). Not intent, not a decision. Anything here that touches the sync engine, the export contract, or ADR-206 vocabulary graduates through an ADR before it is built.
+**Status:** raised 2026-08-25 (Brandon, brainstorm session on the two-peer rig). **§1 and §1b are BUILT (ADR-218); §2 is BUILT (ADR-219).** §3 and §4 remain exploration, as does the options list below except #2 (job-ownership legibility), which §1 delivered. Anything still open here that touches the sync engine, the export contract, or ADR-206 vocabulary graduates through an ADR before it is built.
+
+> **§1 shipped with one correction to its own design, and it is worth reading before building §3 or §4.** The dropdown this doc proposes ("Runs on: [this machine / BC-EDGEWOOD / Cloud / Nowhere], editable from any install") **cannot be built as written.** It rests on "every install already has a stable device identity from `sync_device`" — true — but the hub's list of *other* installs (`sync_peers`) is keyed by a uuid the **hub minted** at add-device time, which is never reconciled with that peer's own `sync_device.id`. The two id spaces never meet, so "assign the job to that row over there" needs either a new synced table or a wire change, both core. What shipped instead: the slot carries the claiming machine's own id **and its label**, so claiming is per-machine ("Run it here") while pausing and handing back work from anywhere. Exactly-one is unaffected. **A cross-install device registry is the follow-up that would restore this doc's shape, and it is core.**
+>
+> Also shipped, because moving the job without it would have been ceremony: export's per-run caps (30 items / 45s, sized for the 60s lambda) lift to 500 items / 20 minutes when the job runs on a supervised peer.
 
 **Where it came from:** the first days of running two local peers (a prod-data hub and a dev-data hub on one machine) alongside the cloud. Four observations, then a list of maturity options worth weighing when this work is picked up.
 
-## 1. The OneDrive export should run from a local peer
+## 1. The OneDrive export should run from a local peer — BUILT (ADR-218)
 
 **The itch.** The cloud export runs in a 60-second Vercel lambda, capped at 30 items and 45 seconds per run (`src/lib/export/engine.ts`). Measured on 2026-08-25: the queue no longer drains. About 30 items export per night while more than 30 change per day, so `remaining` climbed from 24 to 38 in two days and `lastSuccessAt` (zero errors AND nothing remaining) stopped advancing. Nothing is failing; throughput fell behind the edit rate, which is exactly the ceiling the `ponytail:` comment in the engine predicted.
 
@@ -55,7 +59,7 @@ That second option exists because the export engine already knows how to write p
 
 **Recommendation when picked up:** ship the card with just the move-ownership button first (the synced-ownership flag is the one real piece of engineering); add the folder option inside Details second. The exclusivity rule is the whole safety story, and the card's design *is* the exclusivity rule made visible.
 
-## 1b. The same feature covers every exclusive job
+## 1b. The same feature covers every exclusive job — BUILT (ADR-218), export claimable, the other five read-only until each handoff is proven
 
 Once the single-slot ownership exists, "which install runs the backup" and "which install reads the mailbox" are the same control. One **Scheduled work** card, one row per movable job, one dropdown each — and the exactly-one guarantee comes from the mechanism in §1, identically for all of them. For scale, measured from `vercel.json` and `.github/workflows/` on 2026-08-25, a weekday wakes the cloud database in **seven distinct windows** (autosuspend is 5 minutes, so each cron is its own wake unless two share a minute):
 
@@ -75,7 +79,7 @@ Four of those seven windows exist only for **exclusive** jobs — the ones ADR-2
 
 **The honest trade the picker should say out loud for calendar and email:** those jobs stop happening when the chosen machine is off. Today the cloud runs them whether or not any machine of Brandon's is awake. That is a reliability judgement the owner makes per job — which is exactly why the control is a per-job dropdown rather than a wholesale mode. The dropdown's row for a job can carry the one-line consequence ("runs only while BC-EDGEWOOD is on"), and the liveness warning from §1 layer 3 is the safety net when the judgement goes stale. Export is the safe first move because a late backup is recoverable; a missed email import silently consumes the mailbox.
 
-## 2. The Network page needs a user-friendliness pass, not just decluttering
+## 2. The Network page needs a user-friendliness pass, not just decluttering — BUILT (ADR-219)
 
 ADR-209 moved sync here; ADR-210 added per-hub cadence and fallback trust; ADR-212 added the addresses section; ADR-213 added retention holds to the devices table. Each earned its place, and together they are getting dense — but density is the smaller half of the problem. The page currently explains itself in the system's vocabulary (hubs, cursors, oplog, fallback trust, retention holds), and the owner's questions are simpler than that: *is my stuff safe, is everything talking, and what do I do if not?*
 

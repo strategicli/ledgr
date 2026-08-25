@@ -311,6 +311,9 @@ On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>
 ---
 
 ## 2a. Scheduled jobs
+
+**Which machine runs an EXCLUSIVE job is a setting now (ADR-218), not a config file.** **Build → Updates → Scheduled work** lists one row per exclusive job with its owner; `Run it here` claims it for the machine you are on, and `Pause it everywhere` / `Hand it back` work from any device. Ownership is a single slot in `users.settings.jobOwners`, which **syncs**, so two owners cannot be represented; every install re-reads it before each run (`standDownIfNotOwner`) and a machine that lost the job answers `200 {ok, skipped}` rather than failing. **Absent = exactly the old behavior**, so nothing changed for an owner who never opens the picker. Only `export` is claimable so far; the other five state why not (each keeps its place in the queue in unsynced `job_state`). A claimed job stamps its own runs, so "set to run on X, last ran 9 days ago" surfaces on Updates *and* in the Network page headline instead of a job silently not happening. Export also lifts its 30-item/45s lambda caps to 500/20min when it runs on a supervised peer, which is the point of moving it.
+
 | Job | Schedule | Endpoint | Auth |
 |---|---|---|---|
 | Trash purge (hard-deletes items in Trash > 30 days; child rows cascade; also reclaims expired audio, archived notifications, and prunes the sync oplog) | daily 08:00 UTC (`vercel.json`) | `GET /api/machine/purge` | Vercel sends `Bearer $CRON_SECRET`; `CRON_SECRET` holds the raw `vercel-cron` token (`cron` scope) so platform crons use the ADR-004 machine-token scheme (ADR-005) |

@@ -110,6 +110,15 @@ the per-device retention holds (ADR-213) decide nothing.
 | `transcription-poll` | off | **No.** Two pollers race for one job. |
 | `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
 
+**Since ADR-218, `crons` decides whether this peer's timer FIRES; the app decides
+whether the work happens.** Which install owns an exclusive job is one slot in
+the synced settings, edited at **Build → Updates → Scheduled work**, and every
+install re-reads it before each run. So turning `export` on here and claiming it
+there are two different acts, and both are needed: the timer has to fire, and
+this machine has to be the owner. A peer whose timer fires without owning the job
+answers `200 {ok, skipped}` and does nothing, which is why leaving `crons.export`
+on across a handoff is harmless rather than a double write.
+
 Turning an exclusive job on is a deliberate statement that **this** peer is the
 one that does it — so on a hub, once production is no longer running them:
 

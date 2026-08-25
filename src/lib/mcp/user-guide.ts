@@ -879,6 +879,24 @@ one device should be doing it. A job marked as one only this device should run i
 labelled as such in the list. A failure is also recorded in this instance's error
 log, so it counts on the health report rather than passing quietly.
 
+**Scheduled work.** Some jobs write somewhere shared: one OneDrive folder, one
+mailbox, one Todoist account. Exactly one of your machines may do each of them,
+so this is where you say which one. Every device shows the same answer, because
+two machines doing the same job is the mistake worth catching.
+
+Press **Run it here** on the machine you want to do the work. That takes it away
+from wherever it was, everywhere, within seconds. You can hand it back or pause
+it from any device, which is what saves you when the machine holding a job is
+switched off or gone. If the machine holding a job stops doing it, the page says
+so rather than looking fine.
+
+Today only the **offline backup** can be moved. The others each show why not:
+each of them keeps its own place in a queue on the machine that runs it, so
+moving one needs a check first, and the page names the check. Moving the backup
+is worth it if you run Ledgr on your own machine: in the cloud it has to finish
+inside a one-minute limit, so it copies about 30 items a night, and on your own
+machine there is no limit and it clears the whole queue at once.
+
 **Snapshots.** Also on your own machine: a complete copy of the database, taken
 every hour, so a mistake bigger than one item can be answered by looking at how
 things were an hour ago instead of waiting for the weekly backup. You set one
@@ -902,8 +920,15 @@ you need. The page names the command.
 
 # The sync network
 
-**Network** (\`/build/network\`) is the whole sync topology on one page: the
-hubs this instance syncs **to**, and the devices that sync **from** it.
+**Network** (\`/build/network\`) is every copy of your data on one page: where
+this device sends its changes, and which devices sync from it.
+
+**It opens with the answer.** One sentence at the top says whether everything is
+in step, and when it is not, it says what is wrong in plain words and gives you
+the one thing that fixes it. Everything below that sentence is the evidence for
+it, so on a normal day you can read the first line and leave. Each section has a
+"what is this?" fold if you want the concepts, and each row's settings fold away
+until you open them.
 
 - **Hubs this instance syncs to.** Each hub with its state, when it last
   synced, how far behind it is, and its place in the priority order (the list
