@@ -32,7 +32,11 @@ After clicking, the same card reads:
 
 And on every *other* instance (the cloud, another peer), the card is one status line, no controls: "Offline backup runs from BC-EDGEWOOD · up to date." Nobody trips over a control that isn't theirs, and everybody can see who owns the job — which is the misconfiguration that actually hurts (two writers on one folder).
 
-**What the button does under the hood (so "graceful" is real, not a euphemism for config editing):** ownership is a synced setting ("the export runs on device X"), stored where the peers already share settings. The cloud's nightly job keeps firing, checks ownership, sees it isn't the owner, and quietly does nothing — so moving the job never requires touching the deployment, and moving it back is the same one click. No `vercel.json` edit, no supervisor config edit, reversible from the couch.
+**What the button does under the hood (so "graceful" is real, not a euphemism for config editing):** ownership is a synced setting ("the scheduled work runs on device X"), stored where the peers already share settings. The local supervisor reads it and starts running the job; every other instance reads it and renders the read-only line.
+
+**What it must NOT do, and the first draft got this backwards (Brandon, 2026-08-25).** The first version had the cloud's cron keep firing, check ownership, and quietly no-op — which sounds elegant and directly fights the point of the whole exercise. Neon autosuspends five minutes after the last query, so **the cost of a cron is the wake, not the work**: a daily job that fires only to discover it has nothing to do still spins the cloud database up, every day, forever. Worse, it leaves the cloud doing *scheduled work of its own*, which is precisely what "the cloud becomes a backup peer" (ADR-206 decision 4) is supposed to end.
+
+So the cloud's export cron comes **out of `vercel.json` in the same slice**, and the ownership flag is what the local peers read among themselves. The honest consequence, worth stating plainly rather than designing around: **moving the job back to the cloud is then not a one-click operation** — it needs the cron restored and a deploy. That asymmetry is correct. Moving work off the cloud is the direction of travel and should be easy; moving it back is a rare recovery act (the PC died) and deserves deliberateness. For the one-off case, a "Run backup now" button on any instance covers it without a scheduled wake, because a human clicking is a wake worth paying for.
 
 **One collapsed detail, for exactly one person.** Behind a "Details" fold on that card, a single choice with honest labels:
 
@@ -42,6 +46,28 @@ And on every *other* instance (the cloud, another peer), the card is one status 
 That second option exists because the export engine already knows how to write plain files to a folder (it's how the test suite runs it); pointing it at the folder the OneDrive app watches means no tokens, no rate limits, and the backup lands on disk *and* in the cloud. It's collapsed because Brandon is likely its only user — defer-by-hiding, but findable and explained where it lives.
 
 **Recommendation when picked up:** ship the card with just the move-ownership button first (the synced-ownership flag is the one real piece of engineering); add the folder option inside Details second. The exclusivity rule is the whole safety story, and the card's design *is* the exclusivity rule made visible.
+
+## 1b. The real prize: every wake window the cloud stops needing
+
+The export is one job among several, and once ownership exists as a concept it should not be export-shaped. Measured from `vercel.json` and `.github/workflows/` on 2026-08-25, a weekday wakes the cloud database in **seven distinct windows** (autosuspend is 5 minutes, so each cron is its own wake unless two share a minute):
+
+| Time | Job | Scheduled from | Exclusive? |
+| --- | --- | --- | --- |
+| 06:30 | export | Vercel | yes |
+| 07:00 | neon-snapshot | Actions | cloud-specific |
+| 08:00 | purge | Vercel | no — every instance must run its own |
+| 09:00 | relatedness | Vercel | no — per-instance cache |
+| 13:00 | calendar-sync + email-import | Actions | yes (both) |
+| 18:00 | calendar-sync | Actions | yes |
+| 22:00 | calendar-sync + email-import | Actions | yes |
+
+(The 13:00 and 22:00 pairing is deliberate — the runbook notes the weekday shaping exists to share wake windows. `todoist-sync` and `transcription-poll` fire often but are config-gated no-ops that return before touching the database, so they are not wakes today.)
+
+Four of those seven windows exist only for **exclusive** jobs — the ones ADR-214 already says exactly one peer may run. Moving all of them to the always-on local machine, and deleting their cloud schedules in the same slices, leaves the cloud waking for its own housekeeping (purge, relatedness, its snapshot) plus whenever a peer syncs to it or a human opens it. That is what "the cloud is a backup peer" actually looks like in the billing, and it is a far bigger lever than the export alone.
+
+**So build ownership once, generically.** One synced setting naming the machine that runs the scheduled work, one card that lists the movable jobs with their current owner, and one rule enforced everywhere: a job may have exactly one owner, and an instance that is not the owner does not schedule it at all (rather than scheduling it and declining). Export is simply the first job to move, because it is the one already failing.
+
+**The honest trade to weigh before moving calendar and email:** those jobs stop happening when the PC is off. Today the cloud runs them whether or not any machine of Brandon's is awake. That is the actual argument for keeping some work in the cloud, and it is a reliability judgement, not a cost one — which is why ADR-214 made each job opt-in per peer rather than moving them wholesale. Export is the safe first move because a late backup is recoverable; a missed email import silently consumes the mailbox.
 
 ## 2. The Network page needs a user-friendliness pass, not just decluttering
 
