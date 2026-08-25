@@ -3276,7 +3276,7 @@ The one that matters most is `purge`, because it calls `pruneSyncOps`: without i
 
 ## ADR-221: Two more jobs move, cadence becomes an interval, and "hub" stops being a word the owner reads
 **Date:** 2026-08-25
-**Status:** accepted for the job half (solo, a continuation of ADR-218's stated plan) and the vocabulary half (solo, UI copy); **the cadence half is CORE-adjacent (the sync engine, ADR-206/ADR-210) and is PROPOSED pending Tyler.** Nothing here moves a migration or the wire, so a peer on an older build is unaffected either way.
+**Status:** accepted in full. The job half and the vocabulary half were solo (a continuation of ADR-218's stated plan, and UI copy); **the cadence half is CORE-adjacent (the sync engine, ADR-206/ADR-210) and is ACKED by Tyler (relayed via Brandon, 2026-08-25)**. Nothing here moves a migration or the wire, so a peer on an older build is unaffected either way.
 **Context:** three of the four things `explorations/sync-node-maturity.md` still had open, taken in the order Brandon ranked them. ADR-218 shipped the job picker with only `export` claimable and wrote the next slice down verbatim: prove one handoff at a time and flip `movable: true` per job. ADR-210 shipped a two-value cadence enum that §4 called "too coarse" the moment it met a real archive peer. ADR-219 did the plain-language pass on the Network page's *status* half and left the *controls* still saying hub.
 
 ### 1. `email-import` and `calendar-sync` become claimable

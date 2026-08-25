@@ -1,6 +1,6 @@
 # Exploration: sync-node maturity (export from a local peer, plainer vocabulary, real cadences)
 
-**Status: EVERY NUMBERED SECTION IS NOW BUILT.** §1 and §1b (ADR-218), §2 (ADR-219), and §3 + §4 (ADR-221, whose cadence half is CORE-adjacent and proposed pending Tyler). Of the options list below, #2 (job-ownership legibility) landed with §1 and #3 (local snapshots) landed as ADR-217. **What remains open is options #1, #4, #5, #6 and #7 only**, and this doc is kept for them plus the reasoning above. Anything still open here that touches the sync engine, the export contract, or ADR-206 vocabulary graduates through an ADR before it is built.
+**Status: EVERY NUMBERED SECTION IS NOW BUILT.** §1 and §1b (ADR-218), §2 (ADR-219), and §3 + §4 (ADR-221, whose cadence half is CORE-adjacent and acked by Tyler). Of the options list below, #2 (job-ownership legibility) landed with §1 and #3 (local snapshots) landed as ADR-217. **What remains open is options #1, #4, #5, #6 and #7 only**, and this doc is kept for them plus the reasoning above. Anything still open here that touches the sync engine, the export contract, or ADR-206 vocabulary graduates through an ADR before it is built.
 
 > **UPDATE, same day: §1's missing half is BUILT (ADR-220, Tyler acked).** The registry below is no longer hypothetical — `installs` is a synced table keyed by each copy's own `sync_device.id`, so the dropdown this doc asked for exists, and §3 and §4 are both cheaper than when they were written because the roster is the foundation they wanted. The paragraph below is kept because the id-space trap it records is the reason the first attempt could not work.
 >
@@ -108,7 +108,7 @@ So the simplification is mostly words, not wire: keep the initiator/listener pro
 
 **Built exactly that way (ADR-221).** Code identifiers, config fields and docs keep hub/spoke; the wizard asks the yes/no question and derives the role, with `--role hub|spoke` still working verbatim for unattended runs. The remaining owner-facing "hub" strings were the CONTROLS, since ADR-219 had already done the status half: Add a copy, "Web address of that copy", "Stop syncing to this copy?", "What your usual copies said". The residual "instance" leaks in the same files went with them.
 
-## 4. Real cadence options (continuous/daily is too coarse) — BUILT (ADR-221, cadence half PROPOSED pending Tyler)
+## 4. Real cadence options (continuous/daily is too coarse) — BUILT (ADR-221, CORE-adjacent, Tyler acked)
 
 `HubCadence` is a two-value enum today ("continuous" | "daily", `src/lib/sync/client.ts`). Brandon wants the ordinary ladder: continuous, 1 min, 5 min, 15 min, hourly, daily, weekly.
 
