@@ -17,3 +17,13 @@ export function relativeTime(iso: string): string {
   if (Math.abs(days) < 30) return rel.format(days, "day");
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
+
+// "· next in 19 hours" for a scheduled-in-the-future timestamp, and "" for one
+// already past or absent. Lives here rather than in the component because the
+// now-comparison is impure and calling Date.now() during render is (rightly)
+// refused by the compiler lint; relativeTime has always read the clock the same
+// way, just one call deeper.
+export function nextDueSuffix(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).getTime() > Date.now() ? ` · next ${relativeTime(iso)}` : "";
+}

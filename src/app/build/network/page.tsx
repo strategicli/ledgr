@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
-import { relativeTime } from "@/lib/relative-time";
+import { nextDueSuffix, relativeTime } from "@/lib/relative-time";
 import {
   gatherSyncStatus,
   hubCadence,
@@ -145,6 +145,10 @@ export default async function Network() {
                           : "sending only, until you approve reading"}
                         {" · "}
                         {h?.lastSyncAt ? `synced ${relativeTime(h.lastSyncAt)}` : "no sync yet"}
+                        {/* A daily hub is idle almost all the time. Saying when it
+                            next runs is what makes the quiet legible instead of
+                            looking like something is wrong. */}
+                        {nextDueSuffix(h?.nextDueAt)}
                         {h?.behindOps !== null && h?.behindOps !== undefined && h.behindOps > 0
                           ? ` · ${h.behindOps} of your changes not delivered`
                           : ""}

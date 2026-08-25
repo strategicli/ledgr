@@ -6,6 +6,7 @@
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
+  resolveSyncState,
   cadenceIntervalMs,
   clampNextDue,
   effectiveCadence,
@@ -851,4 +852,54 @@ if (failures > 0) {
   console.error(`\n${failures} FAILURE${failures === 1 ? "" : "S"}`);
   process.exit(1);
 }
+// ── "Not due yet" is not "unreachable" (2026-08-25) ──────────────────────────
+//
+// A hub on the daily cadence is skipped before any attempt for 23h59m of every
+// day. That used to read as "Offline (no hub reachable)" beside a green hub row
+// saying "synced 5 minutes ago" — two conclusions from one healthy round, one of
+// them false. These pin the four cases apart.
+{
+  const base = { holdReason: null, pendingOps: 0 };
+  check(
+    "a readable hub answered: synced",
+    resolveSyncState({ ...base, readHealthy: true, readAttempted: true, everSynced: true }) ===
+      "synced"
+  );
+  check(
+    "asked and did not answer: offline",
+    resolveSyncState({ ...base, readHealthy: false, readAttempted: true, everSynced: true }) ===
+      "offline"
+  );
+  check(
+    "nothing was DUE, and we have synced before: NOT offline",
+    resolveSyncState({ ...base, readHealthy: false, readAttempted: false, everSynced: true }) ===
+      "synced"
+  );
+  check(
+    "never synced at all: offline, even with nothing due",
+    resolveSyncState({ ...base, readHealthy: false, readAttempted: false, everSynced: false }) ===
+      "offline"
+  );
+  check(
+    "an idle round still reports work waiting rather than hiding it",
+    resolveSyncState({
+      holdReason: null,
+      pendingOps: 4,
+      readHealthy: false,
+      readAttempted: false,
+      everSynced: true,
+    }) === "pending"
+  );
+  check(
+    "a hold outranks both, idle or not",
+    resolveSyncState({
+      holdReason: "first_push_size",
+      pendingOps: 9,
+      readHealthy: true,
+      readAttempted: true,
+      everSynced: true,
+    }) === "held"
+  );
+}
+
 console.log("\nAll sync-ui checks passed.");
