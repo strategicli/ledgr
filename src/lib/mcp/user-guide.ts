@@ -852,10 +852,16 @@ starts it by hand, and anything pointed at it — your phone, Claude, your other
 devices — stays down with it. Two choices, and the difference is real: *when I
 sign in* needs no administrator prompt but waits for you to log in, which suits
 a laptop; *at boot, always on* is what a machine other devices rely on needs,
-and Windows will ask for an administrator prompt (plus a saved password for the
-task if nobody will be signed in). If the change does not take effect, the page
-says so and shows the exact command to run instead — it will not quietly let you
-believe a reboot is covered when it is not.
+and Windows asks your permission in the ordinary consent dialog — click Yes and it
+registers, with no terminal involved. Two things it tells you rather than let you
+assume. Dismiss that prompt and it says so, so you can tick the box again. And if
+the task registered but Windows will only run it while you are signed in, it says
+that too — a reboot nobody logs into is the exact case *always on* exists for, and
+covering it needs your Windows password stored with the task, which only you can
+do: open Task Scheduler, find *Ledgr Supervisor*, and set *Run whether user is
+logged on or not*. If a change cannot be applied at all, the page still shows the
+exact command to run instead. It will not quietly let you believe a reboot is
+covered when it is not.
 
 **Scheduled jobs on this machine.** An instance in the cloud gets its nightly
 work from the platform it runs on. One on your own machine has no such timer, so

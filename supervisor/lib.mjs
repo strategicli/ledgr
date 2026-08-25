@@ -288,10 +288,10 @@ export function serializeStartupRequest(enabled, scope) {
  */
 /**
  * @param {{enabled: boolean, scope?: string, ok: boolean, detail?: string | null,
- *          command?: string | null, at?: string | null}} o
+ *          command?: string | null, at?: string | null, caveat?: string | null}} o
  */
 export function serializeStartupState(o) {
-  const { enabled, scope, ok, detail = null, command = null, at = null } = o;
+  const { enabled, scope, ok, detail = null, command = null, at = null, caveat = null } = o;
   return (
     JSON.stringify(
       {
@@ -300,6 +300,7 @@ export function serializeStartupState(o) {
         ok: !!ok,
         detail: detail ?? null,
         command: command ?? null,
+        caveat: caveat ?? null,
         at: at ?? new Date().toISOString(),
       },
       null,
@@ -319,6 +320,7 @@ export function parseStartupState(text) {
       ok: v.ok === true,
       detail: typeof v.detail === "string" ? v.detail : null,
       command: typeof v.command === "string" ? v.command : null,
+      caveat: typeof v.caveat === "string" ? v.caveat : null,
       at: typeof v.at === "string" ? v.at : null,
     };
   } catch {
@@ -442,7 +444,7 @@ export function schtasksDeleteArgs() {
 }
 
 export function schtasksQueryArgs() {
-  return ["/Query", "/TN", STARTUP_TASK_NAME, "/FO", "LIST"];
+  return ["/Query", "/TN", STARTUP_TASK_NAME, "/FO", "LIST", "/V"];
 }
 
 /**
@@ -456,6 +458,45 @@ export function parseSchtasksScope(text) {
   return null;
 }
 
+// ── Registered, but will it actually run? (the ADR-211 honesty rule) ─────────
+//
+// schtasks /Create with /RU <user> and no /RP <password> succeeds and then
+// quietly downgrades to "Interactive only": Windows runs the task ONLY while
+// that user is signed in. On the always-on scope that is the exact failure the
+// scope exists to prevent — the owner ticks a box, the registration reports
+// success, and the hub does not come back from a boot nobody logged into.
+//
+// We cannot fix it for them: running with nobody signed in needs a stored
+// credential, and asking for a Windows password is not ours to do. Windows'
+// own Task Scheduler dialog collects it safely. So we report the truth and
+// say where to go.
+
+/** "interactive" (logged-on only), "background" (runs logged out), or null. */
+export function parseSchtasksLogonMode(text) {
+  const m = /^s*Logon Mode:s*(.+)$/im.exec(text);
+  if (!m) return null;
+  const v = m[1].trim().toLowerCase();
+  if (v.startsWith("interactive only")) return "interactive";
+  if (v.includes("background")) return "background";
+  return null;
+}
+
+/**
+ * The caveat to show beside a SUCCESSFUL registration, or null when there is
+ * nothing to warn about. Only the always-on scope can be undercut this way:
+ * the logon scope is interactive-only by definition and that is what it says.
+ */
+export function startupCaveat(scope, logonMode) {
+  if (startupScope(scope) !== "always") return null;
+  if (logonMode !== "interactive") return null;
+  return (
+    "Registered, but Windows will only run it while you are signed in — so a " +
+    "reboot nobody logs into still leaves this peer down. Running with nobody " +
+    "signed in needs your Windows password stored with the task, which only you " +
+    "can enter: open Task Scheduler, find \"" + STARTUP_TASK_NAME + "\", and set " +
+    "\"Run whether user is logged on or not\"."
+  );
+}
 export function formatSchtasks(args) {
   return (
     "schtasks " +
@@ -892,4 +933,51 @@ export function parseCronState(text) {
  */
 export function localCronTokenEntry(hash) {
   return `local-cron:cron:${hash}`;
+}
+
+// ── Elevation: ask, rather than give up (ADR-211 follow-up) ──────────────────
+//
+// The "always" scope (/SC ONSTART) needs Administrator, and the supervisor runs
+// unelevated, so schtasks returns access-denied. That used to be the end of it:
+// the owner got the command to paste into an Administrator prompt themselves,
+// which is a terminal in the middle of a GUI flow.
+//
+// A background process may not elevate SILENTLY, but it may ASK: ShellExecute's
+// "runas" verb (Start-Process -Verb RunAs) raises the ordinary Windows consent
+// dialog on the interactive desktop. So on failure we ask, and the owner clicks
+// Yes in the same dialog every installer uses.
+//
+// The schtasks line goes through a temp .cmd file rather than being embedded in
+// the PowerShell string. /TR already carries a fully-quoted command line, and
+// threading those quotes through Node's argv escaping AND PowerShell's parser
+// AND Start-Process's -ArgumentList is three layers of Windows quoting to get
+// wrong. A file has no quoting problem at all.
+
+/** ERROR_CANCELLED: the owner dismissed the consent dialog. Not a failure of ours. */
+export const ELEVATION_CANCELLED = 1223;
+
+/**
+ * Contents of the temp .cmd that the elevated shell runs. Propagates schtasks'
+ * exit code so the caller learns whether the task was actually created.
+ * @param {string[]} args — the schtasks argv (schtasksCreateArgs/DeleteArgs)
+ */
+export function elevatedCmdScript(args) {
+  return ["@echo off", formatSchtasks(args), "exit /b %ERRORLEVEL%", ""].join("\r\n");
+}
+
+/**
+ * powershell argv that runs `scriptPath` elevated and exits with its code.
+ * Only the path is interpolated, and a dataDir path cannot contain a single
+ * quote on Windows (' is legal in a filename, so double it anyway rather than
+ * trust that).
+ * @param {string} scriptPath
+ */
+export function elevatedPowershellArgs(scriptPath) {
+  const quoted = `'${scriptPath.replaceAll("'", "''")}'`;
+  return [
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    `try { $p = Start-Process -FilePath ${quoted} -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit ${ELEVATION_CANCELLED} }`,
+  ];
 }
