@@ -13,18 +13,48 @@
 - The supervisor's job runner already knows the export job and already treats it as exclusive: `crons.export` is off by default with the reason recorded in the README table ("One OneDrive folder, and `items.exported_at` is synced"). Turning it on is a config line: `"export": { "at": "04:10" }`.
 - The engine already writes through an `ExportTarget` interface (`src/lib/export/target.ts`), and a `LocalExportTarget` (`local.ts`) already implements it against a plain folder. The Graph/OneDrive target is just the production binding.
 
-**The two shapes, smallest first:**
+**The GUI (the actual proposal).** One card, plain words, no new page. It lives on Build → Updates on a machine that could do the work (the same gating the other local sections already use), and the whole design goal is: the owner reads a sentence, clicks one button, and never learns the words "cron", "target", or "Graph".
 
-- **A. Local peer runs the same Graph export.** Flip `crons.export` on in the hub's `supervisor/config.json`, remove the export cron from the cloud (one `vercel.json` line). Same code, same OneDrive folder, same tokens (the Graph secrets go in `extraEnv`). The 60-second lambda ceiling disappears because the supervisor has no such ceiling, so the batch cap can be raised or removed for local runs and the backlog drains in one night. UI cost: zero. The Updates page already lists local scheduled jobs.
-- **B. Local peer writes the OneDrive *folder* instead of the OneDrive *API*.** The PC already runs the OneDrive sync client. Pointing `LocalExportTarget` at the local OneDrive directory makes every export a plain file write: no Graph tokens, no rate limits, no upload sessions, and OneDrive's own client handles the cloud copy. This is also the Phase 4 story the target interface was built for. Costs: the export becomes machine-dependent (that PC must be on for files to reach the cloud), and two writers must never share the folder, same exclusivity rule as today.
+The card, on the local machine:
 
-**Recommendation when picked up:** A first (a config flip, reversible in an evening), B when the local hub is trusted as the always-on machine. Either way the cloud cron turns off in the same change; the exclusivity rule is the whole safety story.
+> **Offline backup**
+> Every night, Ledgr writes a copy of everything to your OneDrive as plain files. That copy is what you'd open if the internet were down.
+>
+> Runs from: **the cloud** · 38 items behind, catching up ~30 per night
+>
+> This machine has no time limit, so it can keep the backup fully current.
+> **[ Move the nightly backup to this machine ]**
 
-**"Don't clutter the UI" is already satisfied.** This is a supervisor-config decision surfaced on the existing Updates jobs list, not a new surface. Defer-by-hiding: no new settings page. The one UI nicety worth considering: the health page could say "exports run on [machine]" so the owner remembers which instance owns the job.
+After clicking, the same card reads:
 
-## 2. The Network page is growing past glanceable (a note, not a plan)
+> Runs from: **this machine (BC-EDGEWOOD)** · up to date · last night: 412 items, 0 errors
+> **[ Move it back to the cloud ]**
 
-ADR-209 moved sync here; ADR-210 added per-hub cadence and fallback trust; ADR-212 added the addresses section; ADR-213 added retention holds to the devices table. Each earned its place, and together they are getting dense. Nothing needs doing yet. When it starts to hurt, the likely shape is progressive disclosure rather than a split: the page keeps three glanceable strips (state pill, hub rows, device rows) and everything per-row (cadence, fallback, retention, remove) folds behind the row the way RowMenu already works elsewhere. Resist a second page until a real task can't be done on one screen.
+And on every *other* instance (the cloud, another peer), the card is one status line, no controls: "Offline backup runs from BC-EDGEWOOD · up to date." Nobody trips over a control that isn't theirs, and everybody can see who owns the job — which is the misconfiguration that actually hurts (two writers on one folder).
+
+**What the button does under the hood (so "graceful" is real, not a euphemism for config editing):** ownership is a synced setting ("the export runs on device X"), stored where the peers already share settings. The cloud's nightly job keeps firing, checks ownership, sees it isn't the owner, and quietly does nothing — so moving the job never requires touching the deployment, and moving it back is the same one click. No `vercel.json` edit, no supervisor config edit, reversible from the couch.
+
+**One collapsed detail, for exactly one person.** Behind a "Details" fold on that card, a single choice with honest labels:
+
+- **Upload to OneDrive over the internet** (default — works the same way the cloud does it today)
+- **Write straight into the OneDrive folder on this PC** — fastest; the OneDrive app on this computer finishes the upload. Only makes sense on a machine that runs the OneDrive app. [folder path field]
+
+That second option exists because the export engine already knows how to write plain files to a folder (it's how the test suite runs it); pointing it at the folder the OneDrive app watches means no tokens, no rate limits, and the backup lands on disk *and* in the cloud. It's collapsed because Brandon is likely its only user — defer-by-hiding, but findable and explained where it lives.
+
+**Recommendation when picked up:** ship the card with just the move-ownership button first (the synced-ownership flag is the one real piece of engineering); add the folder option inside Details second. The exclusivity rule is the whole safety story, and the card's design *is* the exclusivity rule made visible.
+
+## 2. The Network page needs a user-friendliness pass, not just decluttering
+
+ADR-209 moved sync here; ADR-210 added per-hub cadence and fallback trust; ADR-212 added the addresses section; ADR-213 added retention holds to the devices table. Each earned its place, and together they are getting dense — but density is the smaller half of the problem. The page currently explains itself in the system's vocabulary (hubs, cursors, oplog, fallback trust, retention holds), and the owner's questions are simpler than that: *is my stuff safe, is everything talking, and what do I do if not?*
+
+When this pass happens, the ideas to explore, roughly in order:
+
+- **Answer-first layout.** The top of the page is one plain sentence, not a status grid: "Everything is syncing normally. Last change reached your other devices 2 minutes ago." Amber and red states swap in an equally plain sentence *plus the one action that fixes it* ("The cloud copy hasn't answered since 4pm. It usually fixes itself; if this persists past an hour, check your internet or [use the backup]"). The existing pill/dot grammar stays, but as decoration on the sentence, not the message itself.
+- **Task-shaped flows over settings-shaped forms.** The real tasks are countable: add a device, retire a device, check on a device, move to a new primary. Each deserves a short guided flow (the add-device flow already half-exists via the token mint); the settings grid is what's left over for the rare manual tweak.
+- **Progressive disclosure per row.** Cadence, fallback trust, retention, remove — fold behind the row (the RowMenu pattern the rest of the app already uses), so a row at rest is name + one status phrase + one timestamp.
+- **A plain-language pass on every string**, applying the existing house rule ("standardized, generic language in the tool's UI") to sync: "fallback trust" becomes something like "use this backup automatically / ask me first"; "retention hold" becomes "keep changes for this device while it's away"; "pull-only" becomes "receive changes but never send". The concepts are fine; the words are engineering.
+- **Explain-on-first-sight.** Each section keeps one collapsible "what is this?" written for a non-technical owner (the tooltip standard, or a details fold), so the page teaches itself instead of assuming ADR knowledge.
+- **Resist a second page** until a real task can't be done on one screen; splitting status from configuration is the fallback shape if one screen genuinely fails.
 
 ## 3. Hub/spoke may be one layer of vocabulary too many
 
