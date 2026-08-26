@@ -3,6 +3,7 @@
 // scripts/verify-supervisor.mts; the process/spawn shell lives in
 // ledgr-supervisor.mjs and stays thin. Node builtins only.
 import { join, resolve, isAbsolute } from "node:path";
+import { createHash } from "node:crypto";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -253,6 +254,157 @@ export function startupSignalPath(dataDir) {
 export function startupStatePath(dataDir) {
   return join(dataDir, "startup-state.json");
 }
+
+// ── Restarting the peer from the app (ADR-227) ───────────────────────────────
+//
+// THE PROBLEM. The supervisor owns the app, so the app cannot restart the
+// supervisor: killing your own parent leaves nobody to start you again. Every
+// change to the supervisor's own code therefore ended in "now go restart the
+// local service", which is a builder's gesture asked of the person using the
+// product — the rule ADR-222 wrote down.
+//
+// THE MECHANISM is the one already proven twice here: the app writes a REQUEST
+// FILE, a local process that can actually do the thing carries it out, and the
+// outcome is written back for the app to read (stop-requested, ADR-211;
+// startup-requested, ADR-211). Restart is the same shape with one twist — the
+// process carrying it out is the one going away, so before it exits it spawns
+// its successor and hands it its own pid to wait for.
+//
+// WHAT MAKES IT RELIABLE, which is the whole requirement (Brandon, 2026-08-26:
+// a button he can be confident reaches healthy again, whatever the reason):
+//
+//   1. the successor WAITS for the outgoing pid to exit before claiming the
+//      lock, so the two never fight over Postgres or the port;
+//   2. Postgres start RETRIES. Windows keeps a shared-memory segment attached
+//      until the last orphaned backend goes, and a start into that window fails
+//      with "pre-existing shared memory block is still in use" — one instant
+//      failure and the peer stays down. Observed live on 2026-08-26 after a
+//      hard kill;
+//   3. every phase is written to supervisor-state.json, so a peer that did NOT
+//      come back can say why instead of just being absent.
+
+export function restartSignalPath(dataDir) {
+  return join(dataDir, "restart-requested");
+}
+
+/** What the supervisor is, and what it last did. Written only by it. */
+export function supervisorStatePath(dataDir) {
+  return join(dataDir, "supervisor-state.json");
+}
+
+/** Env var carrying the pid a starting supervisor must outlive. */
+export const AWAIT_PID_ENV = "LEDGR_SUPERVISOR_AWAIT_PID";
+
+export function serializeRestartRequest(o = {}) {
+  return JSON.stringify(
+    { reason: typeof o.reason === "string" && o.reason ? o.reason : "asked from the app", at: o.at ?? new Date().toISOString() },
+    null,
+    2
+  );
+}
+
+/**
+ * Tolerant read. A request that cannot be parsed still RESTARTS — the file's
+ * existence is the instruction and its contents are only the reason, so a
+ * half-written or hand-made file must not leave the owner pressing a dead
+ * button.
+ */
+export function parseRestartRequest(text) {
+  try {
+    const v = JSON.parse(text);
+    if (v && typeof v === "object") {
+      return {
+        reason: typeof v.reason === "string" && v.reason ? v.reason : "asked from the app",
+        at: typeof v.at === "string" ? v.at : null,
+      };
+    }
+  } catch {
+    // fall through
+  }
+  return { reason: "asked from the app", at: null };
+}
+
+/**
+ * The phases, in order. `handing-off` is the last thing the OUTGOING process
+ * writes, so a state stuck there means the successor never started — which is
+ * exactly the failure the owner needs told, and it cannot be written by the
+ * process that would have to report it.
+ */
+export const RESTART_PHASES = ["requested", "stopping", "handing-off", "healthy", "failed"];
+
+export function serializeSupervisorState(o) {
+  return JSON.stringify(
+    {
+      pid: Number.isInteger(o?.pid) ? o.pid : null,
+      startedAt: typeof o?.startedAt === "string" ? o.startedAt : null,
+      // The supervisor's own code, as it is RUNNING vs as it sits on disk.
+      // Different means an update landed that this process predates, which is
+      // the one case the owner has to press the button for.
+      runningCode: typeof o?.runningCode === "string" ? o.runningCode : null,
+      installedCode: typeof o?.installedCode === "string" ? o.installedCode : null,
+      restart: o?.restart
+        ? {
+            phase: RESTART_PHASES.includes(o.restart.phase) ? o.restart.phase : "failed",
+            at: typeof o.restart.at === "string" ? o.restart.at : new Date().toISOString(),
+            reason: typeof o.restart.reason === "string" ? o.restart.reason : null,
+            detail: typeof o.restart.detail === "string" ? o.restart.detail : null,
+            fromPid: Number.isInteger(o.restart.fromPid) ? o.restart.fromPid : null,
+          }
+        : null,
+    },
+    null,
+    2
+  );
+}
+
+export function parseSupervisorState(text) {
+  try {
+    const v = JSON.parse(text);
+    if (!v || typeof v !== "object") return null;
+    const r = v.restart && typeof v.restart === "object" ? v.restart : null;
+    return {
+      pid: Number.isInteger(v.pid) ? v.pid : null,
+      startedAt: typeof v.startedAt === "string" ? v.startedAt : null,
+      runningCode: typeof v.runningCode === "string" ? v.runningCode : null,
+      installedCode: typeof v.installedCode === "string" ? v.installedCode : null,
+      restart: r
+        ? {
+            phase: RESTART_PHASES.includes(r.phase) ? r.phase : "failed",
+            at: typeof r.at === "string" ? r.at : null,
+            reason: typeof r.reason === "string" ? r.reason : null,
+            detail: typeof r.detail === "string" ? r.detail : null,
+            fromPid: Number.isInteger(r.fromPid) ? r.fromPid : null,
+          }
+        : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A short, stable fingerprint of the supervisor's own source. Deliberately not
+ * a git sha: the supervisor runs from the checkout as it is on disk, and what
+ * matters is whether the FILES changed under the running process.
+ */
+export function codeFingerprint(contents) {
+  const h = createHash("sha256");
+  for (const c of contents) h.update(String(c ?? ""), "utf8");
+  return h.digest("hex").slice(0, 12);
+}
+
+/**
+ * How long to wait before Postgres start attempt N (1-based). Zero first, then
+ * a widening pause: the thing being waited for is Windows releasing a shared
+ * memory segment or a port, which takes seconds, not minutes.
+ */
+export const PG_START_ATTEMPTS = 4;
+export function pgStartDelayMs(attempt) {
+  return [0, 2000, 5000, 10000][Math.min(Math.max(attempt, 1), PG_START_ATTEMPTS) - 1];
+}
+
+/** How long a successor waits for the outgoing supervisor to exit. */
+export const AWAIT_PID_TIMEOUT_MS = 90_000;
 
 export const STARTUP_TASK_NAME = "Ledgr Supervisor";
 

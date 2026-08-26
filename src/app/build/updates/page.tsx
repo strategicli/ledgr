@@ -22,6 +22,12 @@ import StartupToggle from "@/components/updates/StartupToggle";
 import SnapshotKeep from "@/components/updates/SnapshotKeep";
 import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
 import JobOwnerControl from "@/components/updates/JobOwnerControl";
+import RestartServiceButton from "@/components/updates/RestartServiceButton";
+import {
+  lastRestartLine,
+  readLocalServiceReport,
+  serviceLine,
+} from "@/lib/local-service";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
 import { readJobOwners, installLabel } from "@/lib/job-owners-store";
 import { listInstalls } from "@/lib/installs";
@@ -160,6 +166,9 @@ export default async function Updates() {
   // is two writers on one folder, and you cannot see that from one machine if
   // only local peers show the answer.
   const jobOwners = await readJobOwners(owner.id);
+  const service = await readLocalServiceReport(
+    process.env.VERCEL_ENV ? null : (process.env.LEDGR_SUPERVISOR_DIR ?? null)
+  );
   const selfDeviceId = await readLocalDeviceId();
   // The roster (ADR-220) is what turns the picker from "run it here" into "run
   // it on that machine over there": one row per copy, keyed by the same ids the
@@ -440,6 +449,56 @@ export default async function Updates() {
               stops it cleanly, and <Mono>npm run local:startup</Mono> shows or
               changes this same setting.
             </p>
+          </Card>
+        </section>
+      )}
+
+      {/* ── The local service itself (ADR-227) ──────────────────────────── */}
+      {service.available && (
+        <section className="mt-8" id="local-service">
+          <h2 className="ui-section-label">This machine&rsquo;s Ledgr service</h2>
+          <Card>
+            <p className="text-sm text-ink-muted">
+              The service is what keeps Ledgr running on this machine: it holds the
+              database, serves the app, and triggers the scheduled work below. It
+              starts itself with the computer, so most of the time there is nothing
+              to do here.
+            </p>
+            {(() => {
+              const line = serviceLine(service);
+              const last = lastRestartLine(service);
+              return (
+                <>
+                  {line && (
+                    <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+                      <span className="mt-1.5">
+                        <StatusDot tone={service.staleCode ? "warn" : service.known ? "ok" : "info"} />
+                      </span>
+                      <span>{line}</span>
+                    </p>
+                  )}
+                  {service.startedAt && (
+                    <p className="ui-meta mt-1 text-ink-subtle">
+                      Started {when(service.startedAt)}
+                      {service.pid ? ` (process ${service.pid})` : ""}.
+                    </p>
+                  )}
+                  {last && (
+                    <p
+                      className={`ui-meta mt-1 ${last.tone === "warn" ? "text-amber-400" : "text-ink-subtle"}`}
+                    >
+                      {last.text}
+                    </p>
+                  )}
+                  <RestartServiceButton staleCode={service.staleCode} />
+                  <p className="ui-meta mt-3 text-ink-subtle">
+                    An update to Ledgr itself is applied here without a restart. A
+                    restart is only needed when the update changes the service &mdash;
+                    which is when this page says so, rather than leaving you to guess.
+                  </p>
+                </>
+              );
+            })()}
           </Card>
         </section>
       )}

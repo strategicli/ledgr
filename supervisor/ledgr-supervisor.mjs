@@ -23,6 +23,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   statSync,
@@ -70,6 +71,16 @@ import {
   parseCronState,
   serializeCronState,
   standDownDetailOf,
+  restartSignalPath,
+  supervisorStatePath,
+  parseRestartRequest,
+  parseSupervisorState,
+  serializeSupervisorState,
+  codeFingerprint,
+  AWAIT_PID_ENV,
+  AWAIT_PID_TIMEOUT_MS,
+  PG_START_ATTEMPTS,
+  pgStartDelayMs,
   tunedPostgresFlags,
 } from "./lib.mjs";
 
@@ -150,12 +161,43 @@ const pg = new EmbeddedPostgres({
   postgresFlags: tunedPostgresFlags(cfg, totalmem()),
 });
 
+/**
+ * Start Postgres, retrying a few times before giving up (ADR-227).
+ *
+ * One attempt was enough right up until it wasn't. A supervisor that goes away
+ * without a clean shutdown — a hard kill, a crash, a power cut — can leave an
+ * orphaned backend holding the cluster's shared memory, and Windows keeps that
+ * segment attached until the last one exits. A start into that window fails
+ * instantly with "pre-existing shared memory block is still in use", which took
+ * this peer down for ten minutes on 2026-08-26: every restart attempt died on
+ * it, including the one the owner ran.
+ *
+ * The window is seconds long, so waiting through it is the entire fix. Failing
+ * loudly after four tries is still the right ending — the alternative is a
+ * process that looks alive with no database under it.
+ */
 async function startPostgres() {
   if (firstRun && !existsSync(join(pgDir, "PG_VERSION"))) {
     log("initdb (first run)", { pgDir });
     await pg.initialise();
   }
-  await pg.start();
+  for (let attempt = 1; ; attempt += 1) {
+    const wait = pgStartDelayMs(attempt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      await pg.start();
+      if (attempt > 1) log("postgres started after retrying", { attempt });
+      break;
+    } catch (err) {
+      const detail = String(err?.message ?? err).slice(0, 300);
+      if (attempt >= PG_START_ATTEMPTS) {
+        log("postgres would not start", { attempt, detail });
+        writeSupervisorState({ phase: "failed", detail: `Postgres would not start: ${detail}` });
+        throw err;
+      }
+      log("postgres start failed; retrying", { attempt, detail });
+    }
+  }
   try {
     await pg.createDatabase("ledgr");
     log("created database ledgr");
@@ -163,6 +205,58 @@ async function startPostgres() {
     // already exists — the normal case after the first boot
   }
   log("postgres up", { port: cfg.dbPort });
+}
+
+// ── This supervisor's own identity and state (ADR-227) ───────────────────────
+//
+// One file, written only here, so the app can answer three questions it cannot
+// answer for itself: is the local service running, is it running the code that
+// is on disk, and how did the last restart end. The third one matters most: the
+// process that would report "the successor never came up" is the one that went
+// away, so the record has to survive it.
+const SUPERVISOR_FILES = ["ledgr-supervisor.mjs", "lib.mjs"];
+
+function installedCodeFingerprint() {
+  try {
+    return codeFingerprint(SUPERVISOR_FILES.map((n) => readFileSync(join(here, n), "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+const RUNNING_CODE = installedCodeFingerprint();
+const STARTED_AT = new Date().toISOString();
+
+/** The restart block carried forward across writes, so phases accumulate. */
+let restartBlock = null;
+
+function writeSupervisorState(restart) {
+  if (restart) {
+    restartBlock = {
+      phase: restart.phase,
+      at: new Date().toISOString(),
+      reason: restart.reason ?? restartBlock?.reason ?? null,
+      detail: restart.detail ?? null,
+      fromPid: restart.fromPid ?? restartBlock?.fromPid ?? null,
+    };
+  }
+  try {
+    writeFileSync(
+      supervisorStatePath(cfg.dataDir),
+      serializeSupervisorState({
+        pid: process.pid,
+        startedAt: STARTED_AT,
+        runningCode: RUNNING_CODE,
+        // Re-read every write: this is how "an update landed under me" becomes
+        // visible without the owner comparing anything by hand.
+        installedCode: installedCodeFingerprint(),
+        restart: restartBlock,
+      }),
+      "utf8"
+    );
+  } catch (err) {
+    log("could not write supervisor state", { error: String(err?.message ?? err) });
+  }
 }
 
 // ── The app child ────────────────────────────────────────────────────────────
@@ -418,6 +512,39 @@ setInterval(() => {
     return; // mid-write; next tick gets it
   }
   void shutdown("stop-requested");
+}, 2000).unref?.();
+
+// A RESTART, asked for the same way (ADR-227): the app writes the file, this
+// process shuts down cleanly and then starts its successor. The app cannot do
+// this itself at any price — it is the child — and the owner should not have to
+// type it, so the button writes a file and the file is honoured here.
+const restartSignal = restartSignalPath(cfg.dataDir);
+setInterval(() => {
+  if (!existsSync(restartSignal)) return;
+  let reason = "asked from the app";
+  try {
+    reason = parseRestartRequest(readFileSync(restartSignal, "utf8")).reason;
+  } catch {
+    // unreadable: the file's existence is the instruction, its contents the
+    // reason. Restart anyway rather than leave a dead button.
+  }
+  try {
+    unlinkSync(restartSignal);
+  } catch {
+    return; // mid-write; next tick gets it
+  }
+  if (updating) {
+    // An update is mid-flight and already takes the app down and back up. Doing
+    // both at once is how a build gets abandoned half-swapped, so let the update
+    // finish; whatever it changed, the restart below still applies it.
+    log("restart requested during an update; deferring", { reason });
+    writeFileSync(restartSignal, serializeRestartRequest({ reason }), "utf8");
+    return;
+  }
+  log("restart requested", { reason });
+  restartAfterShutdown = true;
+  writeSupervisorState({ phase: "stopping", reason, fromPid: process.pid });
+  void shutdown("restart-requested");
 }, 2000).unref?.();
 
 // ── "Start when Windows starts" (ADR-211) ────────────────────────────────────
@@ -819,6 +946,40 @@ function stopPostgresGracefully() {
   return res.ok;
 }
 
+let restartAfterShutdown = false;
+
+/**
+ * Start the successor and leave. Called after Postgres is confirmed down, so
+ * the new process is never racing this one for the cluster — and it is handed
+ * this pid to outlive as well, because "confirmed down" is about Postgres, not
+ * about this process's own exit.
+ *
+ * Detached with its stdio pointed at the peer's log files: a supervisor started
+ * by Task Scheduler has nowhere to write, which is exactly why the failure that
+ * prompted all this took a foreground rerun to see.
+ */
+function spawnSuccessor() {
+  const script = join(here, "ledgr-supervisor.mjs");
+  let out = "ignore";
+  let err = "ignore";
+  try {
+    out = openSync(join(cfg.dataDir, "supervisor.log"), "a");
+    err = openSync(join(cfg.dataDir, "supervisor.err.log"), "a");
+  } catch {
+    // no log files: still restart, just blind
+  }
+  const child = spawn(process.execPath, [script, configPath], {
+    detached: true,
+    stdio: ["ignore", out, err],
+    env: { ...process.env, [AWAIT_PID_ENV]: String(process.pid) },
+    cwd: cfg.repoDir,
+  });
+  child.unref();
+  log("successor started", { pid: child.pid });
+  writeSupervisorState({ phase: "handing-off", detail: null, fromPid: process.pid });
+  return child.pid;
+}
+
 async function shutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -836,10 +997,52 @@ async function shutdown(sig) {
   }
   log("postgres stopped", { clean });
   releaseLock();
+  if (restartAfterShutdown) {
+    try {
+      spawnSuccessor();
+    } catch (err) {
+      // Nothing else can report this: the app is down and this process is
+      // leaving. The record is what the next surface reads.
+      const detail = String(err?.message ?? err).slice(0, 300);
+      log("could not start the successor", { detail });
+      writeSupervisorState({ phase: "failed", detail: `Could not start the replacement: ${detail}` });
+    }
+  }
   process.exit(0);
 }
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+// Run from the repo whatever launched us. Task Scheduler has no "start in"
+// field on the action it registers, so a boot-started supervisor inherits
+// System32 as its working directory; nothing depends on cwd today, and this
+// keeps it that way by construction rather than by luck.
+try {
+  process.chdir(cfg.repoDir);
+} catch {
+  // a repoDir that is gone is a bigger problem, reported elsewhere
+}
+
+// Handing off from a previous supervisor (ADR-227): wait for it to actually be
+// gone before claiming the lock. Bounded — if it never exits, taking the lock
+// from a live process is worse than reporting the failure.
+const awaitPid = Number(process.env[AWAIT_PID_ENV] ?? "");
+if (Number.isInteger(awaitPid) && awaitPid > 0) {
+  const deadline = Date.now() + AWAIT_PID_TIMEOUT_MS;
+  log("waiting for the outgoing supervisor to exit", { pid: awaitPid });
+  while (Date.now() < deadline && pidAlive(awaitPid)) {
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  if (pidAlive(awaitPid)) {
+    log("the outgoing supervisor is still running; not taking over", { pid: awaitPid });
+    writeSupervisorState({
+      phase: "failed",
+      detail: `The previous local service (pid ${awaitPid}) never exited, so this one stood aside.`,
+    });
+    process.exit(1);
+  }
+  log("the outgoing supervisor is gone; taking over", { pid: awaitPid });
+}
 
 acquireLock();
 // Before the app starts, so the state file exists (and says "nothing due yet")
@@ -860,6 +1063,72 @@ if (ptr) {
     log("first build failed; supervisor stays up (fix the repo, then touch the signal file)");
   }
 }
+// "Healthy" means the app ANSWERS, not that a build exists (ADR-227). The
+// weaker reading was the first version of this and it was the same class of
+// half-truth the rest of this feature exists to delete: a peer whose port never
+// opened would have recorded a clean restart.
+//
+// Reported by the process that achieved it, never predicted by the one that
+// asked for it — which is why the outgoing supervisor's last word is
+// "handing-off" and only this one can write "healthy".
+{
+  const prior = (() => {
+    try {
+      return parseSupervisorState(readFileSync(supervisorStatePath(cfg.dataDir), "utf8"));
+    } catch {
+      return null;
+    }
+  })();
+  const wasRestart = prior?.restart?.phase === "handing-off" || prior?.restart?.phase === "stopping";
+  if (wasRestart) {
+    restartBlock = { ...prior.restart, fromPid: prior.restart.fromPid ?? prior.pid ?? null };
+  }
+  writeSupervisorState(null); // pid + code fingerprints, whatever happens next
+
+  if (wasRestart) {
+    void (async () => {
+      const detail = await waitForOwnPort();
+      writeSupervisorState(
+        detail === null
+          ? { phase: "healthy", detail: null }
+          : { phase: "failed", detail }
+      );
+    })();
+  }
+}
+
+/**
+ * Wait for this peer's own app to answer. Returns null when it did, or the
+ * reason it did not — which is the sentence the owner reads on a page served by
+ * some OTHER copy, because this one never came back.
+ */
+async function waitForOwnPort() {
+  const deadline = Date.now() + 90_000;
+  let last = "it never answered";
+  while (Date.now() < deadline) {
+    if (!liveBuild()) {
+      last = "there is no usable build to serve";
+    } else {
+      try {
+        const res = await fetch(`http://127.0.0.1:${cfg.appPort}/`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        // Any answer at all means the server is up; a redirect to sign-in is a
+        // perfectly healthy Ledgr.
+        if (res.status > 0) return null;
+      } catch (err) {
+        last = String(err?.message ?? err).slice(0, 160);
+      }
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return `Came back up, but nothing answered on port ${cfg.appPort}: ${last}.`;
+}
+
+// The supervisor's own state, refreshed on the same beat as the cron record, so
+// "an update landed under the running service" surfaces without a restart.
+setInterval(() => writeSupervisorState(null), 60_000).unref?.();
+
 // The interval timers are unref'd; the postgres + app children keep the
 // process alive. A bare interval pins the event loop for the no-child window
 // between a crash and its restart.

@@ -156,6 +156,31 @@ Nothing fires while an update is in flight. A job overdue by more than its own
 period runs a few minutes after startup rather than waiting for a slot it keeps
 missing — a laptop asleep every night at 03:10 would otherwise never purge.
 
+### Restarting it (ADR-227)
+
+`npm run local:restart`, or the **Restart** button in Build → Updates. Both use
+the same mechanism, because the app cannot restart its own parent: the request is
+a file (`restart-requested`), the supervisor honours it by shutting down cleanly
+and then **spawning its successor**, and the successor waits for the outgoing pid
+to exit before claiming the lock. Neither reports success until something is
+actually serving again — a changed pid answering on the app port, not merely a
+request that was accepted.
+
+Two failure modes are handled rather than hoped about. Postgres start **retries**
+(0/2/5/10s), because a supervisor that died without a clean shutdown can leave an
+orphaned backend holding the cluster's shared memory and Windows keeps that
+segment attached until the last one exits; a single attempt into that window
+fails with *pre-existing shared memory block is still in use*, which is exactly
+how one hard kill kept a peer down for ten minutes. And every phase is written to
+`supervisor-state.json` — `handing-off` is the outgoing process's last word, so
+a state stuck there is the evidence that a successor never came up.
+
+**When a restart is actually needed:** an update to Ledgr itself is applied to the
+app without one. A restart is only required when the update changed the
+supervisor's own files, because a running process holds the code it started with.
+It fingerprints its own source and Build → Updates says so when they differ, so
+this is not something to keep in your head.
+
 **Where to look:** `Build → Updates` → "Scheduled jobs on this machine" shows
 each job's state, last success, next run and any failure detail, and flags an
 exclusive job as one only this device should run. `npm run local:status` prints
