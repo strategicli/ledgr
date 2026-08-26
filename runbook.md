@@ -210,7 +210,12 @@ The whole app runs on your own machine — Next.js + the codebase on disk, the D
 
 ## 1j. Deploying to production (the release flow)
 
-**`main` is the shared integration line and deploys nobody — merging to `main` is safe.** Brandon and Tyler run separate single-tenant instances, so each has their **own Vercel production branch** (`prod-brandon` / `prod-tyler`), a pure pointer to `main` that is what Vercel actually deploys. A PR merged to `main` just lands code on the integration branch; there is no production build triggered and nothing to "verify READY" from the merge itself. (Never commit directly to a `prod-*` branch — it's a pointer, not a work branch.)
+**`main` is the shared integration line, but whether merging to it is a release DEPENDS ON WHOSE INSTANCE YOU MEAN. Check which flow you are on before you merge.** This section used to say flatly that `main` deploys nobody, which is true of Brandon's instance and false of Tyler's; the wrong half of that sentence was read as global on 2026-08-26 and used to tell Tyler a merge was safe when it was in fact a production deploy plus a production migration.
+
+- **Brandon (and Miles): a release branch, so merging to `main` is safe.** `prod-brandon` / `prod-miles` are pure pointers to `main`, and those are what Vercel deploys. A PR merged to `main` just lands code on the integration branch: no production build, nothing to "verify READY" from the merge itself. Deploy with `release:prod` below. (Never commit directly to a `prod-*` branch, it's a pointer, not a work branch.)
+- **Tyler: `main` IS the production branch, so merging to `main` IS the release.** There is no `prod-tyler` branch (the `release:prod` comment offers one via `RELEASE_TARGET_BRANCH`, but it was never adopted). The `tylerjaycollins-projects/ledgr` project deploys production straight from `main`, and its **Build Command is `npm run build:satellite`** (`node scripts/migrate.mjs && next build`), so **the migration runs against production during the build**. Consequences worth naming: a merge to `main` deploys his production ~60-90s later; a pending migration reaches his production DB the moment anything merges, whether or not that PR is the one that added it; and this path **skips the dev-canary ordering** that `release:prod` step 3 exists to provide, so a migration that would fail the gates gets no gate. Verify a merge the way a release is verified (below), not the way an integration push is.
+
+**Before merging anything to `main`, know which of those two you are.** For Tyler that means treating every merge as a production event: check `git diff origin/main --name-only -- drizzle/` for a migration first, and prefer merging when someone is watching.
 
 **Deploy with `npm run release:prod`** (`scripts/release-prod.mjs`), which does the whole thing in order and aborts before prod on any red gate:
 
@@ -228,7 +233,7 @@ Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `
 
 **What happened, so nobody re-discovers it:** a single evening of ordinary work (4 PRs, several pushes each, 4 merges) exhausted the account's daily deployment cap. Every Vercel check then failed with *"Deployment rate limited — retry in 24 hours"* — a **quota** failure, not a code failure, and it says nothing about the diff.
 
-**What it does and does not block.** Per §1j, `main` deploys nobody, so **production is never waiting on this**: `prod-brandon` only moves when you run `npm run release:prod`. What the cap actually stops is (a) the dev deployment that tracks `main`, and (b) **PR preview builds** — and (b) is the real consumer, because *every push to a PR branch rebuilds a preview in every project connected to the repo*. Three commits on one branch is six builds across two projects, for one PR.
+**What it does and does not block.** Per §1j, `main` deploys nobody *on Brandon's flow*, so **his production is never waiting on this**: `prod-brandon` only moves when you run `npm run release:prod`. On Tyler's flow `main` IS production, so a rate-limited window does stall his releases. What the cap actually stops is (a) the dev deployment that tracks `main`, and (b) **PR preview builds** — and (b) is the real consumer, because *every push to a PR branch rebuilds a preview in every project connected to the repo*. Three commits on one branch is six builds across two projects, for one PR.
 
 **The cheapest fix needs no Vercel change: squash locally before pushing.** One push per PR instead of four cuts builds fourfold. Do this by default.
 
