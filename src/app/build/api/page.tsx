@@ -1,14 +1,22 @@
-// API Tokens (ADR-179). The findable home for "give an external app a token so
-// it can push data into Ledgr" — the case the ADR-160 minters didn't cover: the
-// MCP button is for AI clients, and the clipper button lives under User Settings
-// → Save from the web, which nobody reads as "our API".
+// API Tokens (ADR-179, rewritten for ADR-224). The reference page for "give an
+// outside app or an AI assistant access to my data over HTTP": what the
+// credential paths are, what they open, and how to authenticate. The *issuing*
+// now happens in User Settings → API credentials, because that is where a
+// credential can be listed, its last use read, and one of them revoked
+// individually; this page points there rather than duplicating the form.
 //
-// Everything is read from server-side libs directly (no fetch), the same way the
-// AI & MCP page reads its status: appConfigured/clipperConfigured for the minted
-// paths, hasScopedToken("api") for the static env path.
+// The CLI + env path stays documented, deliberately: an entry in
+// LEDGR_API_TOKENS is the credential a job needs before the app can serve a
+// page (CRON_SECRET, a bootstrap script, a restore), and it is the one path
+// that works when the database does not.
+//
+// Everything is read from server-side libs directly (no fetch), the same way
+// the AI & MCP page reads its status.
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { hasScopedToken } from "@/lib/auth/machine";
+import { hasActiveCredential } from "@/lib/auth/credentials";
 import { appConfigured, clipperConfigured } from "@/lib/auth/oauth";
 import AppTokenMinter from "@/components/build/AppTokenMinter";
 import CopyField from "@/components/build/CopyField";
@@ -27,8 +35,8 @@ function StatusDot({ ok }: { ok: boolean }) {
   );
 }
 
-// The api-scoped surface an app token opens. Kept in step with the four routes
-// that call verifyApiToken (oauth.ts) — if a fifth is added, list it here.
+// The api-scoped surface a credential opens. Kept in step with the four routes
+// that call verifyApiRequest (credentials.ts) — if a fifth is added, list it here.
 const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "GET / POST / PATCH",
@@ -66,45 +74,79 @@ export default async function ApiTokens() {
   const appReady = appConfigured();
   const clipperReady = clipperConfigured();
   const staticApiToken = hasScopedToken("api");
+  const mintedApiCredential = await hasActiveCredential("api");
 
-  const curl = `curl -X POST ${origin}/api/machine/items \\
-  -H "Authorization: Bearer <token>" \\
+  const curl = `curl -u "<keyID>:<secret>" ${origin}/api/machine/items`;
+  const curlWrite = `curl -X POST ${origin}/api/machine/items \\
+  -u "<keyID>:<secret>" \\
   -H "Content-Type: application/json" \\
   -d '{"type":"note","title":"Hello from your app"}'`;
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
-      <h1 className="ui-title">API Tokens</h1>
+      <h1 className="ui-title">API</h1>
       <p className="mt-2 max-w-2xl text-sm text-ink-muted">
-        Tokens that let an outside app read and write your Ledgr data over HTTP,
-        with no sign-in. Generate one per app and paste it into that app as a{" "}
-        <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
-          Bearer
-        </code>{" "}
-        token. Generating takes effect immediately — no redeploy.
+        How an outside app, a script, or an AI assistant reads and writes your
+        Ledgr data over HTTP, with no sign-in. Each one gets its own credential,
+        holding only the permissions you ticked.
       </p>
 
-      {/* Generate */}
+      {/* Where to get one */}
       <section className="mt-8">
-        <h2 className="ui-section-label">Generate a token</h2>
+        <h2 className="ui-section-label">Get a credential</h2>
         <div className="mt-3 rounded-card border border-line bg-surface-1 p-4">
-          <AppTokenMinter
-            disabled={!appReady}
-            disabledHint="Set LEDGR_APP_SECRET on your host and redeploy to generate tokens here (runbook §3c)."
-          />
+          <p className="ui-row text-ink-muted">
+            Credentials are created in{" "}
+            <Link
+              href="/settings"
+              className="font-medium text-[var(--accent)] hover:underline"
+            >
+              User Settings → API credentials
+            </Link>
+            . Name it, tick what it may do, and you get back a{" "}
+            <strong className="text-ink">key ID</strong> and a{" "}
+            <strong className="text-ink">secret</strong>. The key ID is public
+            and stays visible in the list; the secret is shown once and is not
+            recoverable.
+          </p>
+          <p className="mt-2 ui-row text-ink-muted">
+            The same page lists every credential with its permissions, when it
+            was created, and when it was last used, and revokes any one of them
+            on its own. Creating and revoking both take effect on the next
+            request, with no redeploy.
+          </p>
         </div>
       </section>
 
-      {/* What the token opens */}
+      {/* How to authenticate */}
       <section className="mt-8">
-        <h2 className="ui-section-label">What a token can reach</h2>
+        <h2 className="ui-section-label">Authenticating</h2>
         <p className="mt-2 text-sm text-ink-muted">
-          An app token carries the{" "}
+          Send both parts as HTTP Basic auth. That is the documented path, and
+          it is what every HTTP client already knows how to do.
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+          Authorization: Basic base64(keyID:secret)
+        </pre>
+        <p className="mt-3 text-sm text-ink-muted">
+          A client that can only send a bearer token may send the pair as one,
+          separated by a colon:
+        </p>
+        <pre className="mt-2 overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+          Authorization: Bearer keyID:secret
+        </pre>
+      </section>
+
+      {/* What the credential opens */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">What the api permission reaches</h2>
+        <p className="mt-2 text-sm text-ink-muted">
+          A credential carrying{" "}
           <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
             api
           </code>{" "}
-          scope, which opens these four routes and nothing else. It acts as you,
-          so anything it writes lands in your items.
+          opens these four routes and nothing else. It acts as you, so anything
+          it writes lands in your items.
         </p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[34rem] border-collapse text-left">
@@ -131,57 +173,109 @@ export default async function ApiTokens() {
           </table>
         </div>
         <div className="mt-4">
-          <p className="mb-1.5 ui-meta">Try it</p>
+          <p className="mb-1.5 ui-meta">Read</p>
           <pre className="overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
             {curl}
           </pre>
         </div>
+        <div className="mt-3">
+          <p className="mb-1.5 ui-meta">Write</p>
+          <pre className="overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+            {curlWrite}
+          </pre>
+        </div>
+        <p className="mt-3 ui-meta">
+          A credential may also carry{" "}
+          <code className="font-mono">mcp</code> (the MCP endpoint, for AI
+          clients),{" "}
+          <code className="font-mono">cron</code> (scheduled jobs), or{" "}
+          <code className="font-mono">diag</code> (the ping endpoint only).
+          Permissions are checked on every request, server-side, and a
+          credential can never widen its own.
+        </p>
       </section>
 
-      {/* Revocation — the one thing that surprises people */}
+      {/* Revocation — the one thing that used to surprise people */}
       <section className="mt-8">
         <h2 className="ui-section-label">Revoking</h2>
         <div className="mt-3 rounded-card border border-line bg-surface-1 p-4">
           <p className="ui-row text-ink-muted">
-            Tokens are signed, not stored, so there is no list of active tokens
-            and no way to revoke one individually. Generating a new token never
-            invalidates an older one.
+            Revoke a credential from{" "}
+            <Link
+              href="/settings"
+              className="font-medium text-[var(--accent)] hover:underline"
+            >
+              User Settings
+            </Link>
+            . It stops working on its very next request, and nothing else is
+            affected: other credentials, the MCP connection, and your phone
+            connector keep going.
           </p>
           <p className="mt-2 ui-row text-ink-muted">
-            To revoke, rotate{" "}
-            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
-              LEDGR_APP_SECRET
-            </code>{" "}
-            on your host and redeploy. ⚠️ That kills{" "}
-            <strong className="text-ink">every app token at once</strong>, so
-            every app has to be handed a fresh one. It leaves MCP, the phone
-            connector, and the web clipper untouched — those sign with their own
-            secrets.
+            The two older minted-token paths (below) are signed rather than
+            stored, so they have no list and no individual revocation: rotating
+            their secret kills every token of that kind at once. That is the
+            reason credentials exist, and the reason to prefer one.
           </p>
         </div>
       </section>
 
-      {/* Status of the three api-credential paths */}
+      {/* Status of every credential path */}
       <section className="mt-8">
         <h2 className="ui-section-label">Credential paths</h2>
         <p className="mt-2 text-sm text-ink-muted">
-          Three kinds of credential open the{" "}
+          Several kinds of credential open the{" "}
           <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
             api
           </code>{" "}
-          scope. They coexist; a token verifies under the one secret that signed
-          it.
+          permission. They coexist, and each one verifies only under the thing
+          that issued it.
         </p>
         <ul className="mt-3 flex flex-col gap-2.5">
+          <li className="flex items-start gap-2.5 ui-row text-ink-muted">
+            <span className="mt-1.5">
+              <StatusDot ok={mintedApiCredential} />
+            </span>
+            <span>
+              <strong className="text-ink">Credentials</strong> — key ID +
+              secret, created in User Settings, stored hashed on a row.
+              Individually revocable, no redeploy. <em>Prefer this one.</em>{" "}
+              {mintedApiCredential
+                ? "At least one active api credential exists."
+                : "None created yet."}
+            </span>
+          </li>
           <li className="flex items-start gap-2.5 ui-row text-ink-muted">
             <span className="mt-1.5">
               <StatusDot ok={appReady} />
             </span>
             <span>
-              <strong className="text-ink">App tokens</strong> — generated above,
-              signed with{" "}
-              <code className="font-mono text-xs">LEDGR_APP_SECRET</code>.{" "}
-              {appReady ? "Configured." : "Not configured yet."}
+              <strong className="text-ink">App tokens</strong> (ADR-179, legacy)
+              — signed with{" "}
+              <code className="font-mono text-xs">LEDGR_APP_SECRET</code>,
+              stateless, revoked only by rotating that secret.{" "}
+              {appReady ? "Configured." : "Not configured."}
+              {/* Kept reachable rather than removed (defer by hiding, not
+                  deleting): an app already holding one of these should be able
+                  to be handed a replacement, and the intent stays visible. New
+                  callers want a credential instead, which is why this is folded
+                  away. */}
+              <details className="mt-2">
+                <summary className="cursor-pointer ui-meta hover:text-ink">
+                  Generate a legacy app token anyway
+                </summary>
+                <div className="mt-2 rounded-card border border-line bg-surface-2 p-3">
+                  <p className="mb-2 text-xs text-ink-subtle">
+                    Prefer a credential in User Settings. This exists for an app
+                    already built against an app token: it cannot be listed and
+                    cannot be revoked on its own.
+                  </p>
+                  <AppTokenMinter
+                    disabled={!appReady}
+                    disabledHint="Set LEDGR_APP_SECRET on your host and redeploy to generate one here (runbook §3)."
+                  />
+                </div>
+              </details>
             </span>
           </li>
           <li className="flex items-start gap-2.5 ui-row text-ink-muted">
@@ -192,7 +286,7 @@ export default async function ApiTokens() {
               <strong className="text-ink">Clipper tokens</strong> — User
               Settings → Save from the web, signed with{" "}
               <code className="font-mono text-xs">LEDGR_CLIPPER_SECRET</code>.{" "}
-              {clipperReady ? "Configured." : "Not configured yet."}
+              {clipperReady ? "Configured." : "Not configured."}
             </span>
           </li>
           <li className="flex items-start gap-2.5 ui-row text-ink-muted">
@@ -205,9 +299,12 @@ export default async function ApiTokens() {
                 scripts/make-token.mjs
               </code>{" "}
               CLI, hashed into{" "}
-              <code className="font-mono text-xs">LEDGR_API_TOKENS</code>{" "}
-              (needs a redeploy per token; individually revocable by removing its
-              entry).{" "}
+              <code className="font-mono text-xs">LEDGR_API_TOKENS</code>. A
+              redeploy per token, and per revocation. Still the right choice for
+              a credential that has to exist before the app can serve a page, or
+              that must work when the database does not:{" "}
+              <code className="font-mono text-xs">CRON_SECRET</code>, a
+              bootstrap script, a restore. See runbook §3.{" "}
               {staticApiToken
                 ? "At least one api-scoped entry is set."
                 : "No api-scoped entry set."}
@@ -217,9 +314,11 @@ export default async function ApiTokens() {
       </section>
 
       <p className="mt-8 ui-meta">
-        For AI clients (Claude and other MCP-speaking apps), use Build → AI &amp;
-        MCP instead — those tokens carry the{" "}
-        <code className="font-mono">mcp</code> scope.
+        For AI clients (Claude and other MCP-speaking apps), Build → AI &amp; MCP
+        covers connecting over OAuth, which is what claude.ai and the phone apps
+        need. A credential carrying{" "}
+        <code className="font-mono">mcp</code> works for clients that take a
+        static credential, such as Claude Code.
       </p>
 
       {origin && (

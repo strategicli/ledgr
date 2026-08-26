@@ -39,7 +39,7 @@
 // default — from anywhere, because the label travels with the slot. The
 // exactly-one guarantee is untouched; only the gesture changed.
 //
-// ABSENT MEANS "THE CLOUD DOES IT" (ADR-223). An absent slot used to mean
+// ABSENT MEANS "THE CLOUD DOES IT" (ADR-225). An absent slot used to mean
 // "behave exactly as before this feature existed": every install runs the job on
 // its own schedule, which was survivable only because a local peer's supervisor
 // left every exclusive job switched OFF in `supervisor/config.json`. That made
@@ -168,7 +168,7 @@ export const MOVABLE_JOB_NAMES = Object.keys(MOVABLE_JOBS) as MovableJob[];
 /**
  * How the absent slot reads to a person, everywhere it is named. One string
  * because it is one fact, and it stopped being "wherever it is switched on" the
- * moment there was nothing left to switch on by hand (ADR-223).
+ * moment there was nothing left to switch on by hand (ADR-225).
  */
 export const DEFAULT_OWNER_LABEL = "Leave it to the cloud";
 const DEFAULT_SUFFIX = "(the default)";
@@ -237,7 +237,7 @@ export function parseJobOwners(raw: unknown): JobOwners {
  *
  * `unset-standby` is the one that is neither a fault nor a choice the owner
  * made: nobody was named, so the cloud copy has it and this peer is
- * deliberately idle. It must never read as an error (ADR-223).
+ * deliberately idle. It must never read as an error (ADR-225).
  */
 export type Verdict = "unset" | "unset-standby" | "owner" | "not-owner" | "nobody";
 
@@ -291,7 +291,7 @@ export function shouldRunHere(opts: {
   selfDeviceId: string | null;
   /**
    * True on an install that is SCHEDULED to fire these jobs but must not run
-   * them unasked: a supervised local peer (ADR-223). Since the supervisor now
+   * them unasked: a supervised local peer (ADR-225). Since the supervisor now
    * schedules them unconditionally, an unnamed job would otherwise run on the
    * peer AND in the cloud, which is the double-writer this feature exists to
    * make impossible.

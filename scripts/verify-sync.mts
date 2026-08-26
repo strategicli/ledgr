@@ -333,7 +333,7 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   check("the sync client never advances the pull cursor on 410", client.includes("NEVER the pull"));
 }
 
-// (17) users.settings merges PER KEY (ADR-224).
+// (17) users.settings merges PER KEY (ADR-226).
 //
 // The regression this locks down cost a live job assignment. `settings` is one
 // jsonb column holding every preference, so whole-blob LWW meant any settings
@@ -456,7 +456,7 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   // changed keys. A migration that went back to shipping the whole blob would
   // pass every check above and silently restore the bug.
   {
-    const sql = readFileSync("drizzle/0059_users_settings_perkey.sql", "utf8");
+    const sql = readFileSync("drizzle/0060_users_settings_perkey.sql", "utf8");
     check(
       "the trigger diffs settings against OLD rather than sending the blob",
       sql.includes("jsonb_each(coalesce(v_row -> 'settings'") &&
@@ -707,7 +707,7 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
       (await opCount(A)) === beforeA && (await opCount(B)) === beforeB
     );
 
-    // ── Per-key settings, end to end (ADR-224) ─────────────────────────────
+    // ── Per-key settings, end to end (ADR-226) ─────────────────────────────
     //
     // The live failure this closes: the cloud names a machine for a job while a
     // peer, whose copy of settings is up to an hour old, saves an unrelated

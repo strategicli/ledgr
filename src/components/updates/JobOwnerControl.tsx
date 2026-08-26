@@ -16,7 +16,7 @@
 // job back never confirms: putting a safety catch on should not need a second
 // click (the same asymmetry SyncModeToggle uses).
 //
-// The confirm says WHEN, not just what (ADR-223). It used to promise the move
+// The confirm says WHEN, not just what (ADR-225). It used to promise the move
 // took effect "everywhere within seconds", which is true only between copies
 // that sync continuously: a copy on an hourly schedule picks the change up at
 // its next check-in, and the first version of this control cheerfully said

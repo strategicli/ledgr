@@ -1,4 +1,4 @@
--- Per-KEY settings ops (ADR-224).
+-- Per-KEY settings ops (ADR-226).
 --
 -- `users.settings` is one jsonb column holding every per-owner preference, and
 -- the sync merge is per-FIELD, so the whole blob was a single last-writer-wins

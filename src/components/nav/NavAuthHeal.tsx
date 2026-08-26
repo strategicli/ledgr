@@ -21,9 +21,9 @@
 // reaching the server).
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useClientSession } from "@/lib/auth/client";
 
 // Module-level (not a ref): survives a remount of this component within the
 // same document, so even a refresh that re-renders back into the signed-out
@@ -32,7 +32,7 @@ let lastHealAt = 0;
 const HEAL_THROTTLE_MS = 5000;
 
 export default function NavAuthHeal() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useClientSession();
   const pathname = usePathname();
   const router = useRouter();
 

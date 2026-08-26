@@ -66,7 +66,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 
 | Key | Meaning |
 | --- | --- |
-| `role` | `hub` or `spoke`. Informational: it changes no behavior on its own. What a hub actually does differently is get published (the Funnel); which copy runs the shared scheduled jobs is set in the app, not by this field (ADR-223). |
+| `role` | `hub` or `spoke`. Informational: it changes no behavior on its own. What a hub actually does differently is get published (the Funnel); which copy runs the shared scheduled jobs is set in the app, not by this field (ADR-225). |
 | `dataDir` | Where everything lives: `pg/` (the database cluster), `builds/` (app builds), `live.json` (which build serves), `update-requested` (the signal file). Outside the repo. |
 | `repoDir` | The git clone the supervisor fetches and builds from. Defaults to the repo this file lives in. It only ever **fetches** and adds detached worktrees, so sharing the clone with a checkout somebody develops in is safe: the working tree, the current branch and any staged changes are never touched or read. |
 | `branch` | Branch to track (default `main`). The supervisor builds **`origin/<branch>`**, not the clone's `HEAD` — so a peer tracking a release branch (`prod-brandon`) keeps serving that release while the shared clone sits on `main`. Also passed to the app as `GITHUB_BRANCH`, so Build → Updates asks "am I current?" about the same ref. |
@@ -75,7 +75,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | `hubs` / `deviceToken` | Ordered hub URLs plus this device's sync token (minted on the hub). Both set arms the in-app sync loop; either missing leaves sync off. |
 | `syncMode` | The **initial** push mode only: `full` (default) pushes and pulls, `pull-only` never sends this device's own changes. Threaded through as `LEDGR_SYNC_MODE`. Once the app is running, the owner changes it from **/build/updates → Sync → Mode**, which stores an override in `job_state` that the sync loop re-reads every tick — so arming or disarming a peer needs no config edit and no restart, and this key stops being consulted. See "Arming sync safely" below. |
 | `update.mode` | `prompted` (default): updates apply only when the app's Update button writes the signal file. `auto`: the supervisor also polls git every `pollIntervalMs` and applies on its own. Pair `auto` with a **release** branch rather than `main` if you want the peer to move only when you deliberately ship — `branch: "prod-brandon"` + `mode: "auto"` makes a local peer track the same commits as the cloud deployment, arriving within `pollIntervalMs` of each `npm run release:prod`. Keep-last-good still applies: a failed migrate or build leaves the previous build serving. |
-| `crons` | Which scheduled jobs this peer triggers for itself (ADR-214). The default set is right for every install and needs no entry here; the app decides which machine actually does the shared ones (ADR-223). A testing escape hatch, not the owner's switch. See "Scheduled jobs" below. |
+| `crons` | Which scheduled jobs this peer triggers for itself (ADR-214). The default set is right for every install and needs no entry here; the app decides which machine actually does the shared ones (ADR-225). A testing escape hatch, not the owner's switch. See "Scheduled jobs" below. |
 | `tunePostgres` | RAM-sized Postgres settings (ADR-215), on by default: `shared_buffers` = RAM/8 clamped 128MB–1GB (a real Ledgr database fits entirely, so page-heavy queries stop evicting themselves), SSD `random_page_cost` 1.1, `work_mem` 16MB. `false` restores the library's stock settings on the next restart; nothing on disk changes either way. |
 | `postgresFlags` | Extra raw server flags, appended AFTER the tuned set (e.g. `["-c", "random_page_cost=4"]` on a spinning disk). For a repeated `-c`, Postgres takes the last one, so a manual flag always beats its tuned counterpart. |
 | `cadence` | Sync knobs, passed through as `LEDGR_SYNC_PUSH_DEBOUNCE_MS` / `LEDGR_SYNC_PULL_MS`. |
@@ -103,14 +103,14 @@ the per-device retention holds (ADR-213) decide nothing.
 | `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
 | `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
 | `snapshot` | **scheduled**, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Scheduled always, but it does nothing until restore points are switched on **in the app** (ADR-222) — see "Snapshots" below. |
-| `export` | **scheduled**, 04:10 | **No.** One OneDrive folder, and `items.exported_at` is synced. Scheduled always; it runs only on the copy named in the app (ADR-223). |
+| `export` | **scheduled**, 04:10 | **No.** One OneDrive folder, and `items.exported_at` is synced. Scheduled always; it runs only on the copy named in the app (ADR-225). |
 | `calendar-sync` | **scheduled**, every 240 min | **No.** Two peers match the same event into two rows, and sync propagates both. Scheduled always; owner decided in the app. |
 | `email-import` | **scheduled**, every 240 min | **No.** Consumes the mailbox: the second peer silently imports nothing. Scheduled always; owner decided in the app. |
 | `todoist-sync` | off | **No.** Bidirectional against one account. |
 | `transcription-poll` | off | **No.** Two pollers race for one job. |
 | `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
 
-**The app decides whether the work happens, and since ADR-223 it decides alone.**
+**The app decides whether the work happens, and since ADR-225 it decides alone.**
 Which install owns an exclusive job is one slot in the synced settings, edited at
 **Build → Updates → Scheduled work**, and every install re-reads it before each
 run. This used to be two switches: the timer here and the slot there, both

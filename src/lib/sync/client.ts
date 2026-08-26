@@ -259,7 +259,7 @@ export function getSyncStatus(): SyncStatus {
  * A cadence is a promise about the WORST case, and until this existed it was
  * also the best case: a peer set to hourly held its own writes for up to an
  * hour and could not be told to hurry, so a change made on another copy — a job
- * assignment, most sharply (ADR-223) — arrived whenever it arrived. One button
+ * assignment, most sharply (ADR-225) — arrived whenever it arrived. One button
  * turns that into a bounded wait the owner controls.
  *
  * Deliberately a flag rather than an exchange call: the loop already serializes

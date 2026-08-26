@@ -652,7 +652,7 @@ export function nextBackoffMs(consecutiveCrashes) {
  *                     it is a conflict rather than a harmless repeat.
  *
  * `on` is the default, and for an exclusive job it no longer means "this peer
- * does it" (ADR-223). It means SCHEDULED: the trigger fires and the endpoint's
+ * does it" (ADR-225). It means SCHEDULED: the trigger fires and the endpoint's
  * own ownership gate decides, exactly as ADR-222 does for snapshots. An
  * exclusive job nobody has named stands down on a supervised peer and runs in
  * the cloud, which is what it did before this change — the difference is that
@@ -714,7 +714,7 @@ export const LOCAL_JOBS = {
       "One OneDrive folder. Two peers writing it would fight over the files and over " +
       "items.exported_at — so the endpoint runs only on the copy named under Scheduled " +
       "work, and stands down everywhere else. Scheduled here always so that naming this " +
-      "machine is all it takes (ADR-223).",
+      "machine is all it takes (ADR-225).",
   },
   "calendar-sync": {
     path: "/api/machine/calendar-sync",
@@ -725,7 +725,7 @@ export const LOCAL_JOBS = {
     why:
       "Creates items from Graph events. Two peers matching the same event would create " +
       "two rows and sync would propagate both — so the endpoint runs only on the copy " +
-      "named under Scheduled work. Scheduled here always (ADR-223).",
+      "named under Scheduled work. Scheduled here always (ADR-225).",
   },
   "email-import": {
     path: "/api/machine/email-import",
@@ -736,7 +736,7 @@ export const LOCAL_JOBS = {
     why:
       "Consumes the mailbox: whichever peer reads a message first is the only one that " +
       "sees it — so the endpoint runs only on the copy named under Scheduled work. " +
-      "Scheduled here always (ADR-223).",
+      "Scheduled here always (ADR-225).",
   },
   "todoist-sync": {
     path: "/api/machine/todoist-sync",
@@ -818,7 +818,7 @@ export function nextDailyAt(at, from) {
  * the work.
  *
  * Two shapes in the wild and both are honoured: `{skipped: true, detail}` from
- * the ownership gate (ADR-223) and `{skipped: "why"}` from the snapshot switch
+ * the ownership gate (ADR-225) and `{skipped: "why"}` from the snapshot switch
  * (ADR-222). Tolerant by design: a non-JSON or unexpected body means "it ran",
  * because inventing a stand-down from a parse failure would hide a real run —
  * the opposite of the failure this whole record exists to prevent.

@@ -601,7 +601,7 @@ check(
   const defaults = normalizeCrons(undefined).map((j) => j.name).sort();
   check(
     // `snapshot` joined this list in ADR-222 and the three movable exclusive
-    // jobs joined it in ADR-223, for the same reason both times: the job is
+    // jobs joined it in ADR-225, for the same reason both times: the job is
     // scheduled everywhere and the ENDPOINT decides whether to do the work,
     // which is what lets the owner's answer be a GUI choice instead of a config
     // edit plus a service restart. Before that, ownership was two switches and
@@ -670,7 +670,7 @@ check(
     .join(",") === "relatedness"
 );
 check(
-  // The escape hatch, and only that. Since ADR-223 the owner's lever is the
+  // The escape hatch, and only that. Since ADR-225 the owner's lever is the
   // GUI picker, so this block exists to take a job OUT of the schedule while
   // testing — never to be the documented way anything is turned on.
   "an exclusive job can still be forced off per machine for testing",
@@ -720,7 +720,7 @@ check(
 // A failure costs a short retry, not a whole day — and cannot make a job run
 // more often than its own schedule allows.
 {
-  // By name, never by position: the default set grows (ADR-222, ADR-223) and a
+  // By name, never by position: the default set grows (ADR-222, ADR-225) and a
   // positional pick silently starts testing a different job.
   const named = (crons: Record<string, unknown>, name: string) =>
     normalizeCrons(crons).find((j) => j.name === name)!;
@@ -926,7 +926,7 @@ check(
   );
   {
     // Both shapes an endpoint uses to say "I deliberately did nothing": the
-    // ownership gate's {skipped, detail} (ADR-223) and the snapshot switch's
+    // ownership gate's {skipped, detail} (ADR-225) and the snapshot switch's
     // {skipped: "why"} (ADR-222). Anything else has to read as a real run,
     // because inventing a stand-down would hide one.
     const gate = standDownDetailOf(
@@ -953,7 +953,7 @@ check(
     );
   }
   check(
-    // ADR-223: an exclusive job is scheduled on every machine and the endpoint
+    // ADR-225: an exclusive job is scheduled on every machine and the endpoint
     // decides, so a run that deliberately did nothing must not be recorded as
     // "the backup ran". The endpoint says which machine has it; carry that
     // through to the record rather than flattening it into a plain ok.

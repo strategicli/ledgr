@@ -26,7 +26,7 @@ import {
  * answers exactly the question that matters: is something out there about to
  * call these endpoints on a timer? A cloud deploy has no supervisor (its timers
  * are the platform's), and a dev checkout run by hand has none either, so both
- * keep the old "absent means run it" behavior (ADR-223).
+ * keep the old "absent means run it" behavior (ADR-225).
  */
 export function isSupervisedPeer(): boolean {
   return !!process.env.LEDGR_SUPERVISOR_DIR && !process.env.VERCEL_ENV;

@@ -664,7 +664,7 @@ async function runCronJob(job) {
     } else {
       // A job can succeed by deliberately doing NOTHING: an exclusive job is
       // scheduled on every peer now and the endpoint's ownership gate decides
-      // (ADR-223). Recording that as a bare "ok" would tell the owner the
+      // (ADR-225). Recording that as a bare "ok" would tell the owner the
       // backup ran when another machine holds it, so carry the reason through
       // to cron-state.json and let the surfaces say which.
       detail = standDownDetailOf(body);

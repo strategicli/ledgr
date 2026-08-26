@@ -118,7 +118,7 @@ function jsonEq(a: unknown, b: unknown): boolean {
   return stableStringify(a ?? null) === stableStringify(b ?? null);
 }
 
-// ── users.settings is merged PER KEY, not as one blob (ADR-224) ─────────────
+// ── users.settings is merged PER KEY, not as one blob (ADR-226) ─────────────
 //
 // `settings` is a single jsonb column carrying every per-owner preference, so
 // per-field LWW made the whole blob one unit: an arriving op replaced every key

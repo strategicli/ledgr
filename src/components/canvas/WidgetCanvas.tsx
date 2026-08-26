@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import AddSectionButton from "@/components/canvas/AddSectionButton";
 import HeaderOverview from "@/components/canvas/HeaderOverview";
+import ProjectDoneCheckbox from "@/components/canvas/widgets/ProjectDoneCheckbox";
 import SectionGrid from "@/components/canvas/SectionGrid";
 import TasksWidget from "@/components/canvas/widgets/TasksWidget";
 import NotesWidget from "@/components/canvas/widgets/NotesWidget";
@@ -413,6 +414,21 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
   const peopleData = headerWidgets.find((d) => d.def.id === "people");
   const progressData = headerWidgets.find((d) => d.def.id === "progress");
   const overviewData = headerWidgets.find((d) => d.def.id === "overview");
+  // NEVER let written text be invisible. The canvas used to render the Overview
+  // only when the composition carried the widget — but the 2026-07-01 project
+  // redesign dropped `overview` from the default project layout, so every
+  // project whose description lived in its body silently stopped showing it
+  // (the text was still in the DB the whole time, just unreachable). The rule is
+  // now: show the Overview when the layout asks for it, OR whenever the body has
+  // content and the owner hasn't deliberately hidden the section. The `hidden`
+  // check keeps defer-by-hiding intact — turning the section off still turns it
+  // off — while an absent section can no longer swallow real text. Self-healing,
+  // so no migration touches records.
+  const overviewHidden = composition.widgets.some(
+    (w) => w.defId === "overview" && w.hidden
+  );
+  const hasOverviewText = bodyMarkdown(item.body).trim().length > 0;
+  const showOverview = Boolean(overviewData) || (hasOverviewText && !overviewHidden);
 
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const statusMode = typeDef?.statusMode ?? "checkbox";
@@ -437,12 +453,12 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
       {/* Overview sits directly under the title (Tyler, 2026-08-17): rendered
           only when written; empty, it collapses to a small lines-glyph button
           that expands the editor (HeaderOverview). */}
-      {overviewData && (
+      {showOverview && (
         <div className="mb-4 min-w-0">
           <HeaderOverview
             itemId={item.id}
             body={item.body}
-            hasContent={bodyMarkdown(item.body).trim().length > 0}
+            hasContent={hasOverviewText}
           />
         </div>
       )}
@@ -463,7 +479,20 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
                 )}
               </div>
               {showStatus && (
-                <div className="shrink-0">
+                // The completion checkbox rides ABOVE the status pill, both
+                // right-aligned: the checkbox is the one-gesture "this is
+                // finished" (it also completes what's open inside — see
+                // ProjectDoneCheckbox), the pill is the full stage picker. Only
+                // shown when the type actually defines a Done status, since the
+                // checkbox has nothing to complete to otherwise.
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  {statuses.some((st) => st.category === "done") && (
+                    <ProjectDoneCheckbox
+                      itemId={item.id}
+                      statuses={statuses}
+                      status={item.status}
+                    />
+                  )}
                   <ProjectStatusChip itemId={item.id} statuses={statuses} initial={item.status} />
                 </div>
               )}

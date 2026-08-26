@@ -208,7 +208,7 @@ ok("an unset slot changes nothing anywhere (the whole back-compat story)", () =>
   }
 });
 
-// ── One switch, not two (ADR-223) ───────────────────────────────────────────
+// ── One switch, not two (ADR-225) ───────────────────────────────────────────
 //
 // The supervisor now SCHEDULES every movable job on every peer and lets this
 // gate decide, because ownership plus a per-machine config switch meant a job
@@ -412,7 +412,7 @@ ok("the status line names a place, never an id", () => {
     `Runs in the cloud (the default)`
   );
   // The retired phrase. It described a per-machine config switch that no
-  // longer exists (ADR-223), so no surface may reintroduce it.
+  // longer exists (ADR-225), so no surface may reintroduce it.
   for (const owners of [{}, { export: null }, { export: claim() }] as JobOwners[]) {
     for (const self of ["dev-pc", "dev-cloud", null]) {
       assert.ok(

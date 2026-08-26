@@ -17,7 +17,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
-import { resolveStatusSchema } from "@/lib/status";
+import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems } from "@/lib/views";
 import { projectCardsForView } from "@/lib/project-cards";
 import { outgoingRelationsBySource } from "@/lib/relations";
@@ -93,7 +93,8 @@ export default async function ViewPage({ params, searchParams }: Context) {
     )?.options;
   } else if (!grouping || ("field" in grouping && grouping.field === "status")) {
     // A status board shows every status as a column, in the type's schema order.
-    groupOrder = statuses.map((s) => s.key);
+    // Category order, not the raw authored order (see view-render.ts).
+    groupOrder = orderedStatuses(statuses).map((s) => s.key);
   }
 
   // A board's cards can be dragged between columns only when a drop maps to a

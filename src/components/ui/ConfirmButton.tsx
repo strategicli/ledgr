@@ -23,6 +23,8 @@ export default function ConfirmButton({
   align = "left",
   disabled = false,
   panelClassName = "w-64",
+  onOpen,
+  tone = "danger",
 }: {
   onConfirm: () => void | Promise<void>;
   title: string;
@@ -39,6 +41,16 @@ export default function ConfirmButton({
   // Panel width utility. Defaults to w-64; widen it when the description
   // carries more than a one-line consequence.
   panelClassName?: string;
+  // Fired when the popover OPENS. For a confirm whose consequence isn't known
+  // until it's looked up ("complete this project and its N open items?"), so the
+  // count can be fetched lazily on open instead of on every page render.
+  onOpen?: () => void;
+  // The confirm button's tone. This component started as the delete
+  // confirmation, so "danger" (red) stays the default and every existing call
+  // site is unchanged; "primary" is for a confirm that is consequential and
+  // worth pausing on but not destructive — completing a project, not deleting
+  // one. Red on a non-destructive action teaches the owner to ignore red.
+  tone?: "danger" | "primary";
 }) {
   const [open, setOpen] = useState(false);
   // Which way the popover opens. Measured from the trigger when it opens so a
@@ -109,6 +121,7 @@ export default function ConfirmButton({
             // ponytail: fixed 220px estimate of the panel's height rather than
             // measuring it post-render; good enough for a w-64 confirm box.
             setSide(r && window.innerHeight - r.bottom < 220 ? "top" : "bottom");
+            onOpen?.();
           }
           setOpen((o) => !o);
         }}
@@ -143,7 +156,11 @@ export default function ConfirmButton({
               type="button"
               onClick={() => void confirm()}
               disabled={busy}
-              className="rounded bg-red-600 px-2.5 py-1 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              className={`rounded px-2.5 py-1 text-sm font-medium text-white disabled:opacity-50 ${
+                tone === "danger"
+                  ? "bg-red-600 hover:bg-red-500"
+                  : "bg-[var(--accent)] hover:opacity-90"
+              }`}
             >
               {busy ? "Working…" : confirmLabel}
             </button>

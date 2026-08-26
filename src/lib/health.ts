@@ -6,6 +6,7 @@
 // routing itself is the problem).
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { hasActiveCredential } from "@/lib/auth/credentials";
 import { hasScopedToken } from "@/lib/auth/machine";
 import { resolveMcpOwner } from "@/lib/mcp/owner";
 import { getCalendarState } from "@/lib/calendar/sync";
@@ -188,7 +189,10 @@ export async function gatherHealth(): Promise<HealthReport> {
       // same posture as the export state read.
     }
     try {
-      const hasToken = hasScopedToken("mcp");
+      // Either credential path counts as "a token exists" (ADR-224): the
+      // static env entry, or a live minted credential carrying `mcp`.
+      const hasToken =
+        hasScopedToken("mcp") || (await hasActiveCredential("mcp"));
       const ownerResolves = !!(await resolveMcpOwner());
       mcp = { configured: hasToken && ownerResolves, hasToken, ownerResolves };
     } catch {

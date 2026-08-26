@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 //
 // The cadence is a ceiling on how long a change may take to travel, and it used
 // to be the floor as well: nothing anywhere could ask this peer to sync sooner,
-// so a job assignment made on another copy (ADR-223) landed whenever the clock
+// so a job assignment made on another copy (ADR-225) landed whenever the clock
 // said. This is the "sooner" lever, and it is the whole reason a slow cadence is
 // a reasonable choice rather than a trap.
 export async function POST() {
