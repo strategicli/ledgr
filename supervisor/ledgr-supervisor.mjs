@@ -235,24 +235,48 @@ function stopApp() {
 
 let updating = false;
 
-async function applyUpdate(reason, { pull = true } = {}) {
+/**
+ * The commit this install should be serving: `origin/<branch>`, never `HEAD`.
+ *
+ * WHY THIS IS NOT A PULL. `repoDir` defaults to the checkout the supervisor
+ * itself lives in, which on a builder's machine is the working repo somebody
+ * develops in — so `HEAD` is whatever branch was last checked out there. The
+ * old path (`git pull --ff-only origin <branch>`, then `rev-parse HEAD`) only
+ * tracked the branch while HEAD happened to be sitting on it. Point it at a
+ * release branch while the checkout is on `main` and the pull is a silent
+ * no-op, because the release branch is an ancestor of `main` — and the build
+ * then takes `main`'s tip, so the install serves UNRELEASED code and says
+ * nothing. Reading the remote-tracking ref makes the checkout's branch,
+ * working tree and staged changes all irrelevant, which is why nothing on this
+ * path touches the working tree any more.
+ */
+function targetSha({ fetch = true } = {}) {
+  if (fetch) {
+    const fetched = git(["fetch", "origin", cfg.branch]);
+    if (!fetched.ok) return { ok: false, error: `git fetch: ${fetched.stderr}` };
+  }
+  const ref = git(["rev-parse", `origin/${cfg.branch}`]);
+  if (ref.ok && ref.stdout) return { ok: true, sha: ref.stdout };
+  // No remote-tracking ref yet: a first boot with no network, or a clone
+  // fetched under a different refspec. HEAD is the honest answer there, and it
+  // is what this did before.
+  const head = git(["rev-parse", "HEAD"]);
+  return head.ok && head.stdout
+    ? { ok: true, sha: head.stdout }
+    : { ok: false, error: `rev-parse: ${head.stderr || ref.stderr}` };
+}
+
+async function applyUpdate(reason, { fetch = true } = {}) {
   if (updating) return;
   updating = true;
   try {
-    log("update starting", { reason });
-    if (pull) {
-      const pulled = git(["pull", "--ff-only", "origin", cfg.branch]);
-      if (!pulled.ok) {
-        log("update FAILED: git pull", { stderr: pulled.stderr });
-        return;
-      }
-    }
-    const head = git(["rev-parse", "HEAD"]);
-    if (!head.ok) {
-      log("update FAILED: rev-parse", { stderr: head.stderr });
+    log("update starting", { reason, branch: cfg.branch });
+    const target = targetSha({ fetch });
+    if (!target.ok) {
+      log("update FAILED: could not resolve the target commit", { error: target.error });
       return;
     }
-    const sha = head.stdout;
+    const sha = target.sha;
     const live = liveBuild();
     if (live?.sha === sha) {
       log("already serving this commit; nothing to do", { sha: sha.slice(0, 7) });
@@ -682,11 +706,11 @@ if (cfg.crons.length > 0) {
 if (cfg.update.mode === "auto") {
   setInterval(() => {
     if (updating) return;
-    const fetch = git(["fetch", "origin", cfg.branch]);
-    if (!fetch.ok) return;
-    const local = git(["rev-parse", "HEAD"]).stdout;
-    const remote = git(["rev-parse", `origin/${cfg.branch}`]).stdout;
-    if (local && remote && local !== remote) void applyUpdate("auto poll");
+    const target = targetSha();
+    // Against what we are SERVING, not against the checkout's HEAD: "am I
+    // running the branch's tip?" is the actual question, and the old form
+    // asked it of a ref this install does not control.
+    if (target.ok && liveBuild()?.sha !== target.sha) void applyUpdate("auto poll");
   }, cfg.update.pollIntervalMs).unref?.();
 }
 
@@ -817,10 +841,12 @@ const ptr = liveBuild();
 if (ptr) {
   startApp(ptr);
 } else {
-  // No pull on first boot: a fresh clone is already current, and an origin
+  // No fetch on first boot: a fresh clone is already current, and an origin
   // hiccup must not block the very first build.
-  log("no live build yet; building the repo's current HEAD");
-  await applyUpdate("first run", { pull: false });
+  log("no live build yet; building the target branch as already fetched", {
+    branch: cfg.branch,
+  });
+  await applyUpdate("first run", { fetch: false });
   if (!liveBuild()) {
     log("first build failed; supervisor stays up (fix the repo, then touch the signal file)");
   }
