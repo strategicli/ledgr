@@ -173,6 +173,11 @@ export function assembleAppEnv(cfg, buildSha, opts = {}) {
     LEDGR_LOCAL_OWNER_EMAIL: cfg.ownerEmail,
     LEDGR_SUPERVISOR_DIR: cfg.dataDir,
     LEDGR_SELF_UPDATE: "on",
+    // The branch this install actually tracks, so Build → Updates asks "am I
+    // current?" about the same ref the supervisor builds from. Without it the
+    // page defaults to `main` and reports a peer that tracks a release branch
+    // as behind every time main moves ahead of a release.
+    GITHUB_BRANCH: cfg.branch,
     LEDGR_SYNC_PUSH_DEBOUNCE_MS: String(cfg.cadence.pushDebounceMs),
     LEDGR_SYNC_PULL_MS: String(cfg.cadence.pullMs),
     ...cfg.extraEnv,
