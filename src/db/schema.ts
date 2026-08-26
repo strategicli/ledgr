@@ -1083,3 +1083,48 @@ export const errorLog = pgTable("error_log", {
     .notNull()
     .defaultNow(),
 });
+
+// Minted API credentials (ADR-224). The DB-backed half of machine auth: a
+// two-part credential (public key id + hashed secret) the owner creates from
+// User Settings and hands to an app or an AI assistant. Same sha256 hash +
+// timingSafeEqual compare as the env tokens in src/lib/auth/machine.ts, but
+// the hash lives on a row — so issuing and revoking are inserts and row
+// flips, not an env edit + redeploy (the sync_peers precedent, plan decision
+// 15). The env path (LEDGR_API_TOKENS) keeps working alongside this.
+//
+// key_id is PUBLIC and stored in plaintext: it identifies the credential, and
+// it is the single indexed lookup that replaces walking every entry. Only the
+// SECRET is hashed, so a leaked table yields no usable credential.
+export const apiCredentials = pgTable(
+  "api_credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Multi-user-ready, not multi-user (Principle 7): the row records who
+    // minted it, and the Settings list is owner-scoped. The machine routes
+    // still act for the single resolveMachineOwner; a multi-user build would
+    // read the acting owner off this column instead.
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    name: text("name").notNull(),
+    keyId: text("key_id").notNull(),
+    secretHash: text("secret_hash").notNull(),
+    // The scope strings this credential carries ("api", "mcp", "cron", …),
+    // the same vocabulary the env entries use. jsonb rather than a text[] to
+    // keep the column types in this schema to the set already in use.
+    scopes: jsonb("scopes").$type<string[]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Advanced on successful auth, throttled and off the request path, so the
+    // list can answer "is this one still in use?" before revoking it.
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    // Revocation is this timestamp, not a delete: the row stays so the list
+    // still shows what the credential was and when it stopped working.
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("api_credentials_key_id_uq").on(t.keyId),
+    index("api_credentials_owner_idx").on(t.ownerId),
+  ]
+);

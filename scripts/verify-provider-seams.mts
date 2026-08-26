@@ -32,6 +32,11 @@ const CLERK_ALLOWED = new Set([
   "src/proxy.ts",
   "src/lib/auth/clerk.ts",
   "src/lib/auth/provider.tsx",
+  // The client half of the seam: the one hook reporting whether the BROWSER
+  // thinks a session exists, for the server/client disagreement check
+  // (NavAuthHeal, ADR-216). It landed importing Clerk directly and tripped
+  // this guard; the fix was a seam file, not a wider allowlist.
+  "src/lib/auth/client.ts",
   "src/app/sign-in/[[...sign-in]]/page.tsx",
 ]);
 const clerkImporters = files.filter((p) => /from\s+["']@clerk\/nextjs/.test(read(p)));
@@ -78,14 +83,20 @@ check("StorageProvider interface exists", existsSync("src/lib/storage/types.ts")
 // afford, so it was taught); and `verifySyncDevice()` (the sync spine's
 // DB-backed device tokens, src/lib/sync/auth.ts — same sha256 +
 // timingSafeEqual as machine.ts, hash stored on a revocable sync_peers row per
-// the plan's decision 15). Accept exactly these three names, nothing looser:
-// a new machine route must use one of them or extend this list deliberately.
+// the plan's decision 15). ADR-224 added the last two: `verifyMachineRequest()`
+// and `verifyApiRequest()` (src/lib/auth/credentials.ts), the async resolvers
+// that try the env token first and then a minted api_credentials row — the
+// routes now call these, and the two sync names remain because /api/mcp and
+// the sync route still call them directly. Accept exactly these names, nothing
+// looser: a new machine route must use one of them or extend this list
+// deliberately.
 //
 // Checked PER EXPORTED HANDLER rather than per file, which is stricter than
 // before: the old file-level grep would pass a file whose GET was gated and whose
 // newly-added POST was not. Segmenting on `export async function` is enough
 // because each machine handler authenticates inline, at its top.
-const AUTH_HELPER = /verifyMachineToken\s*\(|verifyApiToken\s*\(|verifySyncDevice\s*\(/;
+const AUTH_HELPER =
+  /verifyMachineRequest\s*\(|verifyApiRequest\s*\(|verifyMachineToken\s*\(|verifyApiToken\s*\(|verifySyncDevice\s*\(/;
 const machineRoutes = files.filter((p) => /^src\/app\/api\/machine\/.*\/route\.ts$/.test(p));
 const unauthedHandlers: string[] = [];
 let handlerCount = 0;

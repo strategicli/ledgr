@@ -60,6 +60,12 @@ function seat(defId: string, options?: Record<string, unknown>): RecordWidget {
 
 const PROJECT_DEFAULT_WIDGETS: RecordWidget[] = [
   // Header (no card chrome, no titles) — see WidgetCanvas HEADER_WIDGETS.
+  // Overview is back in the default (it was dropped in the 2026-07-01 redesign,
+  // which is what made project descriptions vanish). It costs nothing when
+  // empty: HeaderOverview collapses to a small lines glyph until something is
+  // written, so a brand-new project shows a place to describe itself rather than
+  // hiding the affordance entirely.
+  seat("overview"),
   seat("status"),
   seat("people"),
   seat("progress"),

@@ -226,6 +226,25 @@ The public resolve joins token→item in one query so it only ever yields a live
 
 ---
 
+## `api_credentials` (ADR-224; minted machine credentials)
+One row per API credential the owner creates in User Settings, replacing "edit `LEDGR_API_TOKENS` and redeploy" as the way to issue and revoke machine access. Two parts, the Planning Center / Stripe / AWS shape: a **public** `key_id` stored in plaintext (the lookup handle, and what the UI displays) and a **secret** whose sha256 is all that persists. Auth is `Authorization: Basic base64(keyId:secret)`, with `Bearer <keyId>:<secret>` also accepted. Same hashing and constant-time compare as the env tokens (`src/lib/auth/machine.ts`), the same row-not-env arrangement as `sync_peers` (plan decision 15): revocation is a `revoked_at` stamp, effective on the caller's next request, with no redeploy. Migration 0058.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `owner_id` | uuid | FK `users.id`; who minted it. Multi-user-ready (Principle 7) — the machine routes still act for the single `resolveMachineOwner`, a multi-user build would read the acting owner here |
+| `name` | text | free-form, ≤60 chars; shown in the list and echoed as the caller's identity in machine-route logs |
+| `key_id` | text | **unique**, PUBLIC, plaintext. `lgrk_` + 12 random bytes hex |
+| `secret_hash` | text | sha256 hex of the secret (`lgrs_` + 24 random bytes hex). The secret itself is returned once at creation and never stored |
+| `scopes` | jsonb | `string[]` of scope strings (`api`, `mcp`, `cron`, `diag`) — the same vocabulary the env entries use, validated server-side against the offered set |
+| `created_at` | timestamptz | |
+| `last_used_at` | timestamptz | nullable; advanced on successful auth, off the request path and throttled to one write a minute |
+| `revoked_at` | timestamptz | nullable; set on revoke. Not a delete, so the list still shows what the credential was and when it stopped working |
+
+Verification is one indexed fetch by `key_id` then one `timingSafeEqual` on the hash, versus the env scheme's walk over every entry. Unique index on `key_id` (the lookup), index on `owner_id` (the owner-scoped list). Caps enforced in the lib, not the schema: 25 active credentials and 10 created per hour, both counted in SQL because a serverless instance's memory resets on every cold start.
+
+---
+
 ## `error_log` (Phase 1; or use a free Sentry tier)
 No silent failures. Failed crons/webhooks captured here and surfaced through `/health` and the UI.
 

@@ -146,7 +146,8 @@ waiting, and clears only when you actually triage.
   becomes a note in your Inbox. Start the subject with **\`task:\`** and it becomes
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
-- **From your own app:** mint a token at \`/build/api\` and post to the HTTP API.
+- **From your own app:** create a credential in **User Settings → API
+  credentials** and post to the HTTP API. \`/build/api\` has the details.
 
 ## Templates
 
@@ -317,7 +318,11 @@ Build your own kinds of item at \`/build/types\`.
   view, with the right keyboard on a phone. Type the number however you like —
   it is stored exactly as you enter it, extension and all.
 - **Statuses are yours per type.** Name your own stages and colours. Or choose no
-  status at all, or a plain done/undone checkbox.
+  status at all, or a plain done/undone checkbox. Each stage sits in one of four
+  fixed groups (Not Started, In Progress, Done, Closed), and the arrows on each
+  row reorder stages **within** their group — which is exactly the left-to-right
+  order a board's columns read in, so a stage you add later doesn't have to stay
+  stuck at the end.
 - **Hide a type you do not use.** It disappears from capture, "+ New", tabs and
   pickers without deleting anything.
 - **Deleting a type is undoable.** It goes to Trash as a restorable unit, and can
@@ -444,6 +449,23 @@ Add a Tool menu everywhere — so a "Chapter" type becomes a Chapters card on
 your Book, with its own "+ Add chapter" and a full-page drill-down. Build the
 shape your work actually has.
 
+**Finishing a project.** The record header carries a **Mark this project done**
+checkbox beside the status pill. It does two things at once: sets the project to
+its Done status, and completes everything still open inside it, so a finished
+project stops trailing open tasks through your task lists and its progress bar
+actually reaches 100%. Because that is a lot of writes, it asks first and names
+the real numbers — "completes this project and 18 tasks, 3 milestones" — and
+raises an **Undo** toast afterwards that puts every one of them back exactly as
+it was. Two things it deliberately leaves alone, and says so in the box:
+**repeating tasks** (completing one advances it to its next date instead of
+closing it) and items of a type with no done state (a note, link, event or
+receipt — give that type a Done checkbox in Build and it starts being included).
+Unchecking the box later reopens the **project only** and leaves its tasks done;
+the Undo toast is the way to take a whole sweep back.
+
+You can still set Done from the status pill alone if you only want to move the
+project and leave its contents untouched.
+
 **Rename any tool card.** Every card's hover gear has a **Rename** box: call
 the Docs card "Sermon research" on one project without touching any other.
 The rename is per record, the card's full drill-down page follows it, and
@@ -556,6 +578,16 @@ Every type has a list page, reachable from \`/list\`.
 - **Tabs (lenses)** across the top: Recent, Newest, A→Z, Most linked, each
   reversible. Add your own — a field, a property, or a whole saved view as a tab.
   Configure them on the type's edit page.
+- **Projects open on a Board.** The project list leads with a status kanban:
+  a column per status, ordered left to right the way the statuses are ordered,
+  with cards you drag between columns to change status (long-press to drag on a
+  phone). On a phone the columns are full-width and swipe one at a time.
+- **Finished columns collapse.** Done (and anything archived) starts as a narrow
+  rail showing just its count, so a board reads as live work — click it to
+  expand, and drop a card on the rail to complete it without expanding. Any
+  column collapses; each board remembers what you left collapsed.
+- **A Completed tab** closes the project strip: every finished project, with a
+  search box for finding one again by name months later.
 - **Select mode** is a toggle above the list. It reveals checkboxes (shift-click
   for a range) and a floating bar: delete to Trash, set a status, property or
   date, or move items under a parent.
@@ -740,11 +772,34 @@ provider configured. Audio is purged 30 days after its transcript exists.
 
 ## Giving another app access
 
-\`/build/api\` mints a token for an outside app. It can read and write items, link
-them, upload files, and capture a URL into your Inbox. It acts as you.
+**User Settings → API credentials** is where you hand something access to your
+data over HTTP, with no sign-in: an outside app, a script on your own machine,
+or an AI client that takes a static credential.
 
-**Worth knowing:** tokens cannot be revoked one at a time. Rotating the secret
-kills every app token at once.
+Name it, tick what it is allowed to do, and submit. You get two things back:
+
+- A **key ID**, which is public. It stays in the list so you can always tell
+  which credential is which.
+- A **secret**, which is shown once and cannot be read back. Copy it then. If
+  you lose it, revoke that credential and create another.
+
+The app sends both, as HTTP Basic auth. With curl that is
+\`-u "keyID:secret"\`; a client that only understands bearer tokens can send
+\`Bearer keyID:secret\` instead.
+
+Tick only what the thing actually needs. The permissions are: read and write
+your items (the HTTP API), act as an AI assistant (MCP), run scheduled jobs, and
+a ping-only permission for checking that a credential works. Nothing is ticked
+for you, and a credential can never grant itself more than you gave it.
+
+The same page lists every credential you have created, with its permissions,
+when you made it, and when it was last used, so you can tell a live one from a
+forgotten one. **Revoke** stops that one credential on its very next request and
+leaves everything else alone: your other credentials, your MCP connection, and
+your phone connector all keep working.
+
+\`/build/api\` is the reference page: what each permission reaches, the exact
+headers, and worked examples.
 
 # Working with an AI
 

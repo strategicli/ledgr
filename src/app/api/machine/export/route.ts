@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { runExport } from "@/lib/export/engine";
@@ -41,7 +41,7 @@ async function resolveExportOwner(upn: string): Promise<string | null> {
 }
 
 export async function GET(request: Request) {
-  const identity = verifyMachineToken(
+  const identity = await verifyMachineRequest(
     request.headers.get("authorization"),
     "cron"
   );

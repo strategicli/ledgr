@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { standDownIfNotOwner } from "@/lib/job-owner-guard";
 import { stampJobRun } from "@/lib/job-owners-store";
-import { verifyMachineToken } from "@/lib/auth/machine";
 import { getGraphCalendarSource } from "@/lib/calendar/graph-source";
 import { resolveMailboxOwner } from "@/lib/calendar/owner";
 import { runCalendarSync } from "@/lib/calendar/sync";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "cron");
+  const identity = await verifyMachineRequest(request.headers.get("authorization"), "cron");
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
