@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { isTodoistAdapterActive } from "@/lib/tasks/provider";
 import { getTodoistClient } from "@/lib/todoist/client";
 import { resolveTodoistOwner } from "@/lib/todoist/owner";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "cron");
+  const identity = await verifyMachineRequest(request.headers.get("authorization"), "cron");
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

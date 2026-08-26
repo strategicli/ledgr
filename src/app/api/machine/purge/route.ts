@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { captureError, createLogger } from "@/lib/log";
 import { purgeExpiredTrash } from "@/lib/item-mutations";
 import { purgeExpiredAudio } from "@/lib/attachments";
@@ -15,7 +15,7 @@ import { pruneSyncOps } from "@/lib/sync/peers";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const identity = verifyMachineToken(
+  const identity = await verifyMachineRequest(
     request.headers.get("authorization"),
     "cron"
   );

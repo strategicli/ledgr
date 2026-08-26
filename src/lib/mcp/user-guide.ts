@@ -146,7 +146,8 @@ waiting, and clears only when you actually triage.
   becomes a note in your Inbox. Start the subject with **\`task:\`** and it becomes
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
-- **From your own app:** mint a token at \`/build/api\` and post to the HTTP API.
+- **From your own app:** create a credential in **User Settings → API
+  credentials** and post to the HTTP API. \`/build/api\` has the details.
 
 ## Templates
 
@@ -771,11 +772,34 @@ provider configured. Audio is purged 30 days after its transcript exists.
 
 ## Giving another app access
 
-\`/build/api\` mints a token for an outside app. It can read and write items, link
-them, upload files, and capture a URL into your Inbox. It acts as you.
+**User Settings → API credentials** is where you hand something access to your
+data over HTTP, with no sign-in: an outside app, a script on your own machine,
+or an AI client that takes a static credential.
 
-**Worth knowing:** tokens cannot be revoked one at a time. Rotating the secret
-kills every app token at once.
+Name it, tick what it is allowed to do, and submit. You get two things back:
+
+- A **key ID**, which is public. It stays in the list so you can always tell
+  which credential is which.
+- A **secret**, which is shown once and cannot be read back. Copy it then. If
+  you lose it, revoke that credential and create another.
+
+The app sends both, as HTTP Basic auth. With curl that is
+\`-u "keyID:secret"\`; a client that only understands bearer tokens can send
+\`Bearer keyID:secret\` instead.
+
+Tick only what the thing actually needs. The permissions are: read and write
+your items (the HTTP API), act as an AI assistant (MCP), run scheduled jobs, and
+a ping-only permission for checking that a credential works. Nothing is ticked
+for you, and a credential can never grant itself more than you gave it.
+
+The same page lists every credential you have created, with its permissions,
+when you made it, and when it was last used, so you can tell a live one from a
+forgotten one. **Revoke** stops that one credential on its very next request and
+leaves everything else alone: your other credentials, your MCP connection, and
+your phone connector all keep working.
+
+\`/build/api\` is the reference page: what each permission reaches, the exact
+headers, and worked examples.
 
 # Working with an AI
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyMachineToken } from "@/lib/auth/machine";
+import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { runHealthCheck } from "@/lib/health-check";
 import { resolveNotifyOwner } from "@/lib/push/owner";
 import { getWebPushSender } from "@/lib/push/web-push";
@@ -18,7 +18,7 @@ import { captureError, createLogger } from "@/lib/log";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const identity = verifyMachineToken(request.headers.get("authorization"), "cron");
+  const identity = await verifyMachineRequest(request.headers.get("authorization"), "cron");
   if (!identity) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
