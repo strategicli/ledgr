@@ -85,14 +85,38 @@ export function summarizeSync(opts: {
   now: Date;
   /** Devices syncing FROM here that need attention (ADR-213 warn/lapsed). */
   devicesNeedingAttention?: number;
+  /**
+   * Live devices that PUSH into this copy — the inbound half.
+   *
+   * `sync.enabled` only ever measured the outbound half (does this copy send
+   * its changes anywhere?), which made a hub read as an island: the cloud copy
+   * announced "this device is not syncing with anything" while a local peer was
+   * actively pushing into it every ten seconds. Sync has two directions and the
+   * headline has to know about both, or the copy that RECEIVES everything is
+   * the one that claims to be alone.
+   */
+  inboundDevices?: number;
   /** Jobs whose owner has gone missing (see src/lib/job-owners.ts). */
   jobWarnings?: string[];
 }): SyncSummary {
   const { sync, now } = opts;
+  const inbound = opts.inboundDevices ?? 0;
 
-  // Not syncing at all is a legitimate, common state: one machine, no copies.
-  // It is not a fault, and saying "offline" about it would be a lie.
+  // No outbound copies. That is two different situations, and only one of them
+  // is "alone": a cloud copy that every other device pushes INTO sends its
+  // changes nowhere and is still the busiest node on the network.
   if (!sync.enabled) {
+    if (inbound > 0) {
+      return {
+        tone: "ok",
+        headline: `${inbound} ${plural(inbound, "device sends", "devices send")} changes here.`,
+        detail:
+          "This copy receives from them and sends to nothing, which is what a main copy looks like. Everything written on any of them arrives here.",
+        action: { label: "See which", href: "#devices" },
+      };
+    }
+    // Genuinely one machine, no copies. A legitimate, common state and not a
+    // fault, so saying "offline" about it would be a lie.
     return {
       tone: "info",
       headline: "This device is not syncing with anything.",
@@ -214,13 +238,20 @@ export function summarizeSync(opts: {
       action: { label: "See which", href: "#devices" },
     };
   }
+  // Both directions in one sentence when both exist: an owner looking at a copy
+  // in the middle of the network should not have to scroll to learn that things
+  // arrive here as well as leave.
+  const inboundClause = inbound
+    ? ` ${inbound} ${plural(inbound, "device also sends", "devices also send")} changes here.`
+    : "";
   return {
     tone: "ok",
     headline: "Everything is syncing normally.",
     detail:
-      sync.mode === "pull-only"
+      (sync.mode === "pull-only"
         ? `This device only receives; it never sends. Last change arrived ${agoPhrase(sync.lastSyncAt, now)}.`
-        : `Your last change reached your other devices ${agoPhrase(sync.lastSyncAt, now)}.`,
+        : `Your last change reached your other devices ${agoPhrase(sync.lastSyncAt, now)}.`) +
+      inboundClause,
     action: null,
   };
 }

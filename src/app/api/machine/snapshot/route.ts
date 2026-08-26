@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyMachineToken } from "@/lib/auth/machine";
 import { captureError, createLogger } from "@/lib/log";
-import { runSnapshot, snapshotTarget } from "@/lib/snapshot-settings";
+import { readSnapshotsEnabled, runSnapshot, snapshotTarget } from "@/lib/snapshot-settings";
 
 // Hourly local snapshot (the "time machine"). Triggered by the supervisor's own
 // scheduler over loopback, through the same machine-token door as every other
@@ -27,6 +27,14 @@ export async function GET(request: Request) {
       { error: "snapshots are a local-peer feature (no supervisor directory here)" },
       { status: 400 }
     );
+  }
+
+  // The owner's switch (ADR-222). The supervisor schedules this every hour
+  // regardless; whether it does anything is a setting the owner can flip from
+  // the GUI, so turning restore points on never means editing a config file.
+  // Not an error and not a failure — the scheduler should record a clean run.
+  if (!(await readSnapshotsEnabled())) {
+    return NextResponse.json({ ok: true, skipped: "snapshots are switched off" });
   }
 
   const log = createLogger("snapshot");

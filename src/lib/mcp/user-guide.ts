@@ -915,12 +915,16 @@ machine there is no limit and it clears the whole queue at once.
 
 **Snapshots.** Also on your own machine: a complete copy of the database, taken
 every hour, so a mistake bigger than one item can be answered by looking at how
-things were an hour ago instead of waiting for the weekly backup. You set one
-number, *how many restore points to keep*, and Ledgr works out the spread: many
-recent ones, fewer old ones, thinning out over weeks. The page says the spread
-in plain words, estimates the disk it will use, shows what is actually on disk,
-and lists every restore point with its time. Snapshots are off until you turn
-them on, since they cost disk space.
+things were an hour ago instead of waiting for the weekly backup.
+
+They are **off until you switch them on**, since they cost disk space, and the
+switch is a checkbox on this page: *Keep hourly restore points on this machine*.
+Ticking it takes effect at the next hourly snapshot, and unticking it stops
+taking new ones without deleting the ones you already have. Underneath it you
+set one number, *how many restore points to keep*, and Ledgr works out the
+spread: many recent ones, fewer old ones, thinning out over weeks. The page says
+the spread in plain words, estimates the disk it will use, shows what is
+actually on disk, and lists every restore point with its time.
 
 **Snapshot now** takes one immediately, which is what you want before anything
 you might need to undo: a large import, a bulk edit, a change you are unsure
@@ -945,6 +949,13 @@ the one thing that fixes it. Everything below that sentence is the evidence for
 it, so on a normal day you can read the first line and leave. Each section has a
 "what is this?" fold if you want the concepts, and each row's settings fold away
 until you open them.
+
+**Both directions are on the page, on every copy.** Syncing has two halves and
+they are not the same question: *where your changes go* from here, and *which
+devices send their changes here*. A main copy usually sends its changes nowhere
+— everything pushes into it instead — so on that one the opening sentence tells
+you how many devices send here rather than pretending it is on its own. On a copy
+in the middle you get both in one line.
 
 - **Where your changes go.** Every other copy this one sends to, with its
   state, when it last synced, how far behind it is, and its place in the

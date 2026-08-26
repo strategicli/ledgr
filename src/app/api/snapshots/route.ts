@@ -3,9 +3,11 @@ import { errorResponse, requireOwner } from "@/lib/api";
 import { captureError, createLogger } from "@/lib/log";
 import {
   readSnapshotKeep,
+  readSnapshotsEnabled,
   runSnapshot,
   snapshotTarget,
   writeSnapshotKeep,
+  writeSnapshotsEnabled,
 } from "@/lib/snapshot-settings";
 import { MAX_KEEP, MIN_KEEP } from "@/lib/snapshots-plan";
 
@@ -13,8 +15,9 @@ export const dynamic = "force-dynamic";
 
 // The owner's own snapshot surface, both verbs local-peer only:
 //
-//   PATCH {keep}  how many restore points this machine keeps
-//   POST          take one right now
+//   PATCH {enabled?, keep?}  whether this machine takes them, and how many it
+//                            keeps. Either field alone; both are optional.
+//   POST                     take one right now
 //
 // Stored in job_state so PATCH applies to the next run with no restart, and
 // never synced: each machine has its own disk and its own answer.
@@ -31,19 +34,36 @@ export async function PATCH(request: Request) {
   const target = requireLocalPeer();
   if (target instanceof NextResponse) return target;
   try {
-    const body = (await request.json()) as { keep?: unknown };
-    const keep = Number(body.keep);
-    if (!Number.isFinite(keep) || keep < MIN_KEEP || keep > MAX_KEEP) {
-      return NextResponse.json(
-        { error: `keep must be a number between ${MIN_KEEP} and ${MAX_KEEP}` },
-        { status: 400 }
-      );
+    const body = (await request.json()) as { keep?: unknown; enabled?: unknown };
+
+    if (body.enabled !== undefined) {
+      if (typeof body.enabled !== "boolean") {
+        return NextResponse.json({ error: "enabled must be true or false" }, { status: 400 });
+      }
+      // Switching OFF never deletes the restore points already on disk: the
+      // point of a safety net is that turning off the machine that fills it
+      // does not take away what it caught (defer-by-hiding, not deleting).
+      await writeSnapshotsEnabled(body.enabled);
     }
-    await writeSnapshotKeep(keep);
-    // Deliberately does NOT prune here. Lowering the number deletes history,
-    // and that belongs on the scheduled path where it always happens, not on a
-    // click in a settings form. The section says when it takes effect.
-    return NextResponse.json({ keep: await readSnapshotKeep() });
+
+    if (body.keep !== undefined) {
+      const keep = Number(body.keep);
+      if (!Number.isFinite(keep) || keep < MIN_KEEP || keep > MAX_KEEP) {
+        return NextResponse.json(
+          { error: `keep must be a number between ${MIN_KEEP} and ${MAX_KEEP}` },
+          { status: 400 }
+        );
+      }
+      // Deliberately does NOT prune here. Lowering the number deletes history,
+      // and that belongs on the scheduled path where it always happens, not on
+      // a click in a settings form. The section says when it takes effect.
+      await writeSnapshotKeep(keep);
+    }
+
+    return NextResponse.json({
+      enabled: await readSnapshotsEnabled(),
+      keep: await readSnapshotKeep(),
+    });
   } catch (err) {
     if (err instanceof SyntaxError) {
       return NextResponse.json({ error: "invalid JSON" }, { status: 400 });

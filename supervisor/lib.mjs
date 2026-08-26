@@ -661,15 +661,17 @@ export const LOCAL_JOBS = {
     label: "Local snapshots (restore points)",
     everyMinutes: 60,
     shared: true,
-    on: false,
+    on: true,
     // A dump of a real database takes longer than an API call; the default
     // 120s ceiling would report a false failure and leave a partial file.
     timeoutMs: 15 * 60_000,
     why:
       "Purely local: it dumps THIS peer's own cluster to THIS peer's own disk, so " +
-      "two peers snapshotting is two independent backups rather than a conflict. Off " +
-      "by default because it costs disk, and because a peer that is not the one " +
-      "holding the data does not need restore points of it.",
+      "two peers snapshotting is two independent backups rather than a conflict. " +
+      "SCHEDULED here, but switched on in the app (ADR-222): the endpoint asks " +
+      "`snapshots:enabled` and returns without dumping when the owner has not " +
+      "turned restore points on, which is the default. Scheduling it always is " +
+      "what lets that switch be a checkbox instead of a config edit and a restart.",
   },
   export: {
     path: "/api/machine/export",
