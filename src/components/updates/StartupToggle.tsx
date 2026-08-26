@@ -119,6 +119,13 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
         {error && <span className="ui-meta text-rose-400">{error}</span>}
       </div>
 
+      {report.state?.ok && report.state.caveat && !report.pending && (
+        <div className="mt-3 rounded-card border border-amber-700/60 bg-amber-950/20 p-3">
+          <p className="text-sm text-amber-300">Registered — with one catch.</p>
+          <p className="ui-meta mt-1 text-ink-muted">{report.state.caveat}</p>
+        </div>
+      )}
+
       {report.state && !report.state.ok && !report.pending && (
         <div className="mt-3 rounded-card border border-amber-700/60 bg-amber-950/20 p-3">
           <p className="text-sm text-amber-300">That did not take effect.</p>

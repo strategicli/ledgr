@@ -25,7 +25,7 @@ export default function ReleasePushButton({ heldOpsCount }: { heldOpsCount: numb
   return (
     <span className="mt-1.5 inline-flex flex-wrap items-center gap-2">
       <ConfirmButton
-        title={`Send these ${heldOpsCount} changes to the hub?`}
+        title={`Send these ${heldOpsCount} changes to the other copy?`}
         description="This guard exists because a bad restore can look like thousands of edits. Only release it if you know what these pending changes are — a real import, a bulk edit you made on purpose."
         confirmLabel={`Send anyway (${heldOpsCount})`}
         panelClassName="w-80"

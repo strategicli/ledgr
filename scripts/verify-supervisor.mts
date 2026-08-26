@@ -151,6 +151,14 @@ check(
   env.LEDGR_SELF_UPDATE === "on"
 );
 check(
+  "the tracked branch reaches the app, so Updates asks about the ref we build",
+  env.GITHUB_BRANCH === cfg.branch &&
+    (assembleAppEnv(
+      normalizeConfig({ ...goodRaw, branch: "prod-brandon" }, "/x"),
+      "s"
+    ) as Record<string, string>).GITHUB_BRANCH === "prod-brandon"
+);
+check(
   "sync vars arrive from config",
   env.LEDGR_SYNC_HUBS === "https://hub.example.com" && env.LEDGR_SYNC_TOKEN === "tok"
 );
@@ -290,6 +298,25 @@ check(
 // ── (8) Structural guards ────────────────────────────────────────────────────
 
 check("the supervisor entrypoint exists", existsSync("supervisor/ledgr-supervisor.mjs"));
+
+// The update path is in the untested spawn shell, so this is a structural
+// tripwire rather than a behavioral test — but the regression it guards is one
+// that ships unreleased code silently, which is worth a grep. `repoDir`
+// defaults to the checkout the supervisor lives in, so on a builder's machine
+// HEAD is whatever branch somebody last checked out. Resolving the target from
+// `origin/<branch>` is what makes that irrelevant; a `git pull` followed by
+// `rev-parse HEAD` is the shape that only worked by coincidence.
+{
+  const shell = readFileSync("supervisor/ledgr-supervisor.mjs", "utf8");
+  check(
+    "the update target is the tracked branch's remote ref, never the checkout's HEAD",
+    shell.includes("`origin/${cfg.branch}`") && !shell.includes('"pull", "--ff-only"')
+  );
+  check(
+    "the auto poll compares against what is being SERVED, not against HEAD",
+    /liveBuild\(\)\?\.sha !== target\.sha/.test(shell)
+  );
+}
 check("the config template is tracked", existsSync("supervisor/config.example.json"));
 check(
   "the real config (device token) is gitignored",
@@ -514,8 +541,11 @@ check(
 {
   const defaults = normalizeCrons(undefined).map((j) => j.name).sort();
   check(
-    "only purge and relatedness run by default",
-    JSON.stringify(defaults) === JSON.stringify(["purge", "relatedness"]),
+    // `snapshot` joined this list in ADR-222: the job is scheduled everywhere
+    // and the ENDPOINT decides whether to dump, which is what lets the owner's
+    // on/off be a checkbox instead of a config edit plus a service restart.
+    "purge, relatedness and the hourly snapshot check run by default",
+    JSON.stringify(defaults) === JSON.stringify(["purge", "relatedness", "snapshot"]),
     defaults.join(",")
   );
   check(
@@ -546,7 +576,7 @@ check(
 check("crons: false turns everything off", normalizeCrons(false).length === 0);
 check(
   "a job can be turned off individually",
-  normalizeCrons({ purge: false }).map((j) => j.name).join(",") === "relatedness"
+  normalizeCrons({ purge: false, snapshot: false }).map((j) => j.name).join(",") === "relatedness"
 );
 check(
   "an exclusive job runs only when asked for explicitly",
@@ -600,6 +630,7 @@ check(
   const [fast] = normalizeCrons({
     purge: false,
     relatedness: false,
+    snapshot: false,
     "transcription-poll": { everyMinutes: 5 },
   });
   const now = new Date(2026, 7, 23, 12, 0, 0, 0).getTime();
@@ -669,7 +700,9 @@ check(
 // The state file is the whole surfacing mechanism (Build → Updates, /health,
 // local:status), so it has to survive being half-written or absent.
 {
-  const jobs = normalizeCrons(undefined);
+  // Two jobs, so the round-trip count below stays about serialization rather
+  // than about how many jobs happen to default on.
+  const jobs = normalizeCrons({ snapshot: false });
   const now = Date.now();
   const text = serializeCronState(
     jobs,

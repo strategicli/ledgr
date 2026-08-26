@@ -26,6 +26,13 @@ import {
   parseSetupArgs,
   redactConnectionString,
   schtasksCreateArgs,
+  elevatedCmdScript,
+  parseSchtasksLogonMode,
+  parseStartupState,
+  serializeStartupState,
+  startupCaveat,
+  elevatedPowershellArgs,
+  ELEVATION_CANCELLED,
   schtasksDeleteArgs,
   schtasksQueryArgs,
   parseSchtasksScope,
@@ -92,6 +99,9 @@ check(
 // ── (2) Validators ───────────────────────────────────────────────────────────
 
 check("role hub/spoke pass", validateRole("hub") === "hub" && validateRole("spoke") === "spoke");
+// ADR-221: the wizard asks the question behind the word, so y/n are the
+// interactive answers and map onto the same two roles.
+check("yes means hub, no means spoke", validateRole("y") === "hub" && validateRole("YES") === "hub" && validateRole("n") === "spoke" && validateRole(" No ") === "spoke");
 check("role anything else throws", throws(() => validateRole("both")) && throws(() => validateRole("")));
 check("email validates", validateEmail("a@b.com") === "a@b.com" && throws(() => validateEmail("not-an-email")));
 check(
@@ -629,6 +639,91 @@ for (const rel of clusterFiles.filter((f) => f.includes("verify-"))) {
   const [a, b] = await freePorts(2);
   check("freePorts hands back two distinct ports", a !== b, `${a}, ${b}`);
   check("freePorts stays out of the reserved range", a > 1024 && b > 1024);
+}
+
+// ── Elevation: the consent dialog, not a command to paste ────────────────────
+//
+// The always-on scope needs Administrator and the supervisor is unelevated, so
+// it asks via Start-Process -Verb RunAs. These guard the two halves that are
+// easy to break silently: the temp .cmd must propagate schtasks' exit code (or
+// a refused registration reads as success), and the PowerShell one-liner must
+// keep the RunAs verb and the cancel code (or the owner's "No" reads as a
+// crash).
+{
+  const script = elevatedCmdScript(schtasksCreateArgs({ ...taskPaths, scope: "always" }));
+  check(
+    "elevated .cmd runs schtasks and propagates its exit code",
+    script.includes("schtasks /Create") && script.includes("exit /b %ERRORLEVEL%")
+  );
+  const ps = elevatedPowershellArgs("C:/ledgr-data/elevate-schtasks.cmd").join(" ");
+  check("elevation asks for consent via the RunAs verb", ps.includes("-Verb RunAs"));
+  check(
+    "elevation waits and reports the real exit code",
+    ps.includes("-Wait") && ps.includes("-PassThru") && ps.includes("exit $p.ExitCode")
+  );
+  check(
+    "a dismissed prompt is distinguishable from a failure",
+    ps.includes(String(ELEVATION_CANCELLED)) && ELEVATION_CANCELLED === 1223
+  );
+  const quoted = elevatedPowershellArgs("C:/x's/y.cmd").join(" ");
+  check("a path containing a quote is escaped, not broken", quoted.includes("'C:/x''s/y.cmd'"));
+}
+
+
+// ── Registered is not the same as it-will-run (ADR-211 honesty rule) ─────────
+//
+// schtasks succeeds with /RU and no password, then downgrades to running only
+// while that user is signed in. Reported as plain success, that is a worse lie
+// than a failure, so these pin the read-back.
+{
+  check(
+    "the scope query asks for verbose output (Schedule Type only appears with /V)",
+    schtasksQueryArgs().includes("/V")
+  );
+  const real = `TaskName: Ledgr Supervisor
+Logon Mode:  Interactive only
+Schedule Type: At system start up`;
+  check(
+    "a real /V query parses as interactive-only",
+    parseSchtasksLogonMode(real) === "interactive"
+  );
+  check(
+    "the same output still yields the always scope",
+    parseSchtasksScope(real) === "always"
+  );
+  check(
+    "an always-on task that only runs signed-in gets a caveat",
+    (startupCaveat("always", "interactive") ?? "").includes("only run it while you are signed in")
+  );
+  check(
+    "the caveat names Task Scheduler, where the password can be set safely",
+    (startupCaveat("always", "interactive") ?? "").includes("Run whether user is logged on or not")
+  );
+  check(
+    "a task that runs logged-out gets NO caveat",
+    startupCaveat("always", "background") === null
+  );
+  check(
+    "the logon scope is never caveated (interactive is what it promises)",
+    startupCaveat("logon", "interactive") === null
+  );
+  check(
+    "an unreadable logon mode is not guessed at",
+    parseSchtasksLogonMode("TaskName: x") === null &&
+      startupCaveat("always", null) === null
+  );
+}
+
+// The caveat has to survive the round trip. It was written by the serializer
+// and dropped by this parser once already, which showed up as a status line
+// that silently went missing — the exact class of quiet the caveat exists for.
+{
+  const round = parseStartupState(
+    serializeStartupState({ enabled: true, scope: "always", ok: true, caveat: "WATCH OUT" })
+  );
+  check("a caveat survives serialize -> parse", round?.caveat === "WATCH OUT");
+  const none = parseStartupState(serializeStartupState({ enabled: true, scope: "logon", ok: true }));
+  check("no caveat round-trips as null, never undefined", none?.caveat === null);
 }
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);

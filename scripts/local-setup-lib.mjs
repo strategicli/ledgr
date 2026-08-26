@@ -14,6 +14,7 @@ const OPTIONS = {
   role: { type: "string" }, // hub | spoke
   "data-dir": { type: "string" },
   "owner-email": { type: "string" },
+  "machine-name": { type: "string" },
   "hub-url": { type: "string" },
   "hub-token": { type: "string" },
   port: { type: "string" }, // app port
@@ -44,8 +45,18 @@ export function parseSetupArgs(argv) {
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // same shape seed.mjs refuses on
 
+// Exploration §3, settled in ADR-221: "hub" and "spoke" stay as code
+// identifiers (the config field, supervisor/lib.mjs, every doc) because they
+// name a real bundle — published, always-on, others point at it. What they are
+// NOT is a question a non-technical owner can answer. So the wizard asks the
+// question behind the word ("will other devices sync from this machine?") and
+// derives the role, while --role keeps working verbatim for unattended runs
+// and for anyone who already knows which one they want.
 export function validateRole(v) {
-  if (v !== "hub" && v !== "spoke") throw new Error(`role must be "hub" or "spoke", got ${JSON.stringify(v)}`);
+  const yesNo = String(v).trim().toLowerCase();
+  if (yesNo === "y" || yesNo === "yes") return "hub";
+  if (yesNo === "n" || yesNo === "no") return "spoke";
+  if (v !== "hub" && v !== "spoke") throw new Error(`answer y or n (or pass --role hub|spoke), got ${JSON.stringify(v)}`);
   return v;
 }
 
@@ -150,7 +161,18 @@ export function redactConnectionString(text, url) {
  * list and no token. A hub that later becomes a spoke of another hub edits
  * hubs/deviceToken in config.json by hand.
  */
-export function buildPeerConfig({ role, dataDir, ownerEmail, appPort, dbPort, hubUrl, hubToken }) {
+export function buildPeerConfig({
+  role,
+  dataDir,
+  ownerEmail,
+  appPort,
+  dbPort,
+  // Optional, and defaulted so the shape stays callable with just the basics
+  // (verify-setup does exactly that). Empty is falsy in every use below.
+  hubUrl = "",
+  hubToken = "",
+  machineName = "",
+}) {
   const spoke = role === "spoke";
   return {
     role,
@@ -164,8 +186,25 @@ export function buildPeerConfig({ role, dataDir, ownerEmail, appPort, dbPort, hu
     deviceToken: spoke && hubToken ? hubToken : "",
     update: { mode: "prompted", pollIntervalMs: 900000 },
     cadence: { pushDebounceMs: 2000, pullMs: 10000 },
-    extraEnv: {},
+    // The name this machine goes by in the roster (ADR-220). ASKED rather than
+    // taken silently from the hostname, because two machines answering to one
+    // name is what makes "which copy runs the backup?" unanswerable. It only
+    // SEEDS the roster row: once the row exists the owner can rename the machine
+    // from any device, and this value is never re-applied over that.
+    extraEnv: machineName ? { LEDGR_INSTALL_LABEL: machineName } : {},
   };
+}
+
+/**
+ * A machine name that will not collide by accident. Empty is refused (the
+ * wizard asks again), because "" would fall back to the hostname and reopen the
+ * exact hole asking was meant to close.
+ */
+export function validateMachineName(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "Give this machine a name, e.g. Study PC or Office Desktop.";
+  if (s.length > 60) return "That name is too long (60 characters at most).";
+  return null;
 }
 
 /**
@@ -214,7 +253,14 @@ export {
   schtasksDeleteArgs,
   schtasksQueryArgs,
   parseSchtasksScope,
+  parseSchtasksLogonMode,
+  startupCaveat,
+  parseStartupState,
+  serializeStartupState,
   formatSchtasks,
+  elevatedCmdScript,
+  elevatedPowershellArgs,
+  ELEVATION_CANCELLED,
   startupScope,
   STARTUP_TASK_NAME,
 } from "../supervisor/lib.mjs";

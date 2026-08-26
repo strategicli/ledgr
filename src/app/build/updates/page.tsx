@@ -19,7 +19,30 @@ import { resolveOwner } from "@/lib/owner";
 import { getUpdateReport } from "@/lib/updates";
 import UpdateButton from "@/components/updates/UpdateButton";
 import StartupToggle from "@/components/updates/StartupToggle";
+import SnapshotKeep from "@/components/updates/SnapshotKeep";
+import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
+import JobOwnerControl from "@/components/updates/JobOwnerControl";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
+import { readJobOwners, installLabel } from "@/lib/job-owners-store";
+import { listInstalls } from "@/lib/installs";
+import { duplicateLabels, installHealthLine } from "@/lib/installs-plan";
+import { readLocalDeviceId } from "@/lib/sync/client";
+import {
+  MOVABLE_JOBS,
+  MOVABLE_JOB_NAMES,
+  ownerLine,
+  ownershipOf,
+  ownershipWarning,
+} from "@/lib/job-owners";
+import { databaseBytes, readSnapshotKeep, readSnapshotsEnabled } from "@/lib/snapshot-settings";
+import { estimateSnapshotBytes, humanBytes } from "@/lib/snapshots-plan";
+import {
+  averageSnapshotBytes,
+  findPgTool,
+  listSnapshots,
+  PG_TOOLS_MISSING,
+  snapshotsDir,
+} from "@/lib/snapshots";
 import {
   jobCadence,
   readLocalJobsReport,
@@ -109,6 +132,41 @@ export default async function Updates() {
     () => LOCAL_JOBS_UNAVAILABLE
   );
   const worstJob = worstJobState(localJobs.jobs);
+
+  // Snapshots (restore points) on this machine. A cloud deployment has no disk
+  // and no local cluster to dump, so the whole section renders only on a peer
+  // with a supervisor — the same test every other local-only surface uses.
+  const snapshots = instance.supervisorDir
+    ? listSnapshots(snapshotsDir(instance.supervisorDir))
+    : [];
+  const snapshotJob = localJobs.jobs.find((j) => j.name === "snapshot") ?? null;
+  const snapshotKeep = instance.supervisorDir ? await readSnapshotKeep() : 0;
+  const snapshotsEnabled = instance.supervisorDir ? await readSnapshotsEnabled() : false;
+  const measuredBytes = averageSnapshotBytes(snapshots);
+  // Only ask the database its size when there is nothing real to average, and
+  // only look for pg_dump when nothing has been dumped — a snapshot on disk is
+  // already proof the tools are there.
+  const dbBytes =
+    instance.supervisorDir && measuredBytes === null ? await databaseBytes() : null;
+  const perSnapshotBytes =
+    measuredBytes ?? (dbBytes === null ? null : estimateSnapshotBytes(dbBytes));
+  const pgToolsMissing = Boolean(
+    instance.supervisorDir && snapshots.length === 0 && !findPgTool("pg_dump")
+  );
+  const snapshotBytes = snapshots.reduce((n, s) => n + s.bytes, 0);
+
+  // Which install runs each exclusive job (exploration sync-node-maturity §1).
+  // Rendered on EVERY instance, cloud included: the misconfiguration that hurts
+  // is two writers on one folder, and you cannot see that from one machine if
+  // only local peers show the answer.
+  const jobOwners = await readJobOwners(owner.id);
+  const selfDeviceId = await readLocalDeviceId();
+  // The roster (ADR-220) is what turns the picker from "run it here" into "run
+  // it on that machine over there": one row per copy, keyed by the same ids the
+  // scheduler compares against.
+  const roster = await listInstalls(owner.id);
+  const thisMachine = roster.find((i) => i.isSelf)?.label ?? installLabel();
+  const dupeLabels = duplicateLabels(roster);
 
   const commitUrl =
     instance.sha && instance.deployRepo
@@ -454,6 +512,268 @@ export default async function Updates() {
               <Mono>supervisor/config.json</Mono>.{" "}
               <Mono>npm run local:status</Mono> shows this same list from a
               terminal.
+            </p>
+          </Card>
+        </section>
+      )}
+
+      {/* ── Scheduled work: which machine runs each shared job ──────────── */}
+      <section className="mt-8" id="scheduled-work">
+        <h2 className="ui-section-label">Scheduled work</h2>
+        <Card>
+          <p className="text-sm text-ink-muted">
+            Some jobs write somewhere shared &mdash; one OneDrive folder, one
+            mailbox, one Todoist account &mdash; so exactly one of your machines
+            may do each of them. This is where you say which. Everything here is
+            visible from every device, because two machines doing the same job is
+            the mistake worth catching.
+          </p>
+          <p className="ui-meta mt-2 text-ink-subtle">
+            This machine is <span className="text-ink">{thisMachine}</span>.
+          </p>
+
+          {/* The roster: every copy, so the dropdowns below can name any of
+              them and so "which of my copies is quiet?" is answerable here. */}
+          {roster.length > 0 && (
+            <details className="mt-3 rounded-card border border-line bg-surface-2 p-3">
+              <summary className="ui-meta cursor-pointer text-ink-subtle">
+                Your copies of Ledgr ({roster.length})
+              </summary>
+              <ul className="mt-2 divide-y divide-line">
+                {roster.map((i) => (
+                  <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-1.5">
+                    <span className="ui-row min-w-0 flex-1 text-ink">
+                      {i.label}
+                      {i.isSelf && (
+                        <span className="ui-meta ml-2 text-ink-subtle">this one</span>
+                      )}
+                      {i.kind === "cloud" && (
+                        <span className="ui-meta ml-2 text-ink-faint">in the cloud</span>
+                      )}
+                    </span>
+                    <span className="ui-meta shrink-0 text-ink-subtle">
+                      {installHealthLine(i, new Date())}
+                    </span>
+                    {i.appVersion && (
+                      <span className="ui-meta shrink-0 font-mono text-ink-faint">
+                        {i.appVersion.slice(0, 7)}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="ui-meta mt-2 text-ink-faint">
+                Each copy adds itself to this list and checks in once a day.
+                Renaming one, or removing one you are done with, is on{" "}
+                <Link href="/build/network#copies" className="underline decoration-dotted">
+                  Network
+                </Link>
+                .
+              </p>
+            </details>
+          )}
+
+          {dupeLabels.length > 0 && (
+            <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+              <span className="mt-1.5">
+                <StatusDot tone="warn" />
+              </span>
+              <span>
+                More than one copy is called{" "}
+                <strong className="font-medium">{dupeLabels.join(", ")}</strong>, so the
+                list below cannot tell you which machine a job is on. Rename one on{" "}
+                <Link href="/build/network#copies" className="hover:underline">
+                  Network
+                </Link>
+                .
+              </span>
+            </p>
+          )}
+
+          <ul className="mt-4 divide-y divide-line">
+            {MOVABLE_JOB_NAMES.map((name) => {
+              const def = MOVABLE_JOBS[name];
+              const state = ownershipOf(jobOwners, name);
+              const warning = ownershipWarning({ owners: jobOwners, job: name, now: new Date() });
+              return (
+                <li key={name} className="py-3">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-1.5">
+                      <StatusDot tone={warning ? "warn" : state.state === "claimed" ? "ok" : "info"} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="ui-row text-ink">
+                        {def.label}{" "}
+                        <span className="ui-meta text-ink-subtle">
+                          &middot; {ownerLine({ owners: jobOwners, job: name, selfDeviceId })}
+                        </span>
+                      </p>
+                      <p className="ui-meta mt-0.5 text-ink-subtle">{def.what}</p>
+                      {warning && <p className="ui-meta mt-1 text-amber-400">{warning.text}</p>}
+                      {state.state === "claimed" && state.claim.lastRunAt && (
+                        <p className="ui-meta mt-0.5 text-ink-faint">
+                          Last ran {when(state.claim.lastRunAt)}.
+                        </p>
+                      )}
+                      <JobOwnerControl
+                        job={name}
+                        jobLabel={def.label}
+                        consequence={def.consequence}
+                        installs={roster}
+                        currentDeviceId={
+                          state.state === "claimed" ? state.claim.deviceId : null
+                        }
+                        isUnset={state.state === "unset"}
+                        blocked={def.movable ? undefined : def.blocked}
+                      />
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <details className="mt-4 rounded-card border border-line bg-surface-2 p-3">
+            <summary className="ui-meta cursor-pointer text-ink-subtle">
+              What happens when I move one?
+            </summary>
+            <div className="mt-2 space-y-2 text-sm text-ink-muted">
+              <p>
+                The choice is stored with your data, so it reaches your other
+                devices the same way a note does, and each one checks it before it
+                starts work. There is only ever one answer, so two machines cannot
+                both think the job is theirs.
+              </p>
+              <p>
+                If the machine holding a job is switched off, the job simply does
+                not happen, and this page says so rather than looking fine. You can
+                hand it back from any device, including this one.
+              </p>
+              <p>
+                The offline backup is the one worth moving. In the cloud it has to
+                finish inside a one-minute limit, so it copies about 30 items a
+                night; on your own machine there is no limit and it clears the whole
+                queue in one pass.
+              </p>
+            </div>
+          </details>
+        </Card>
+      </section>
+
+      {/* ── Snapshots: point-in-time recovery on this machine ──────────── */}
+      {instance.supervisorDir && (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Snapshots</h2>
+          <Card>
+            <p className="text-sm text-ink-muted">
+              A snapshot is a complete copy of this machine&rsquo;s database at one
+              moment. Keeping a spread of them means a mistake bigger than one
+              item&rsquo;s history &mdash; a bad import, a batch delete, a wrong bulk
+              edit &mdash; can be answered by looking at how things were an hour
+              ago, rather than waiting for the weekly backup.
+            </p>
+
+            {/* Switched on here but never scheduled: the local service has not
+                restarted since this became a scheduled job (ADR-222), so the
+                switch above is set and nothing is calling it. */}
+            {snapshotsEnabled && !snapshotJob && (
+              <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+                <span className="mt-1.5">
+                  <StatusDot tone="warn" />
+                </span>
+                <span>
+                  Restore points are switched on, but nothing on this machine is
+                  scheduled to take them yet. Restart the local Ledgr service and
+                  this will start on the hour.
+                </span>
+              </p>
+            )}
+
+            {pgToolsMissing && (
+              <p className="mt-3 flex items-start gap-2 text-sm text-ink">
+                <span className="mt-1.5">
+                  <StatusDot tone="bad" />
+                </span>
+                <span>{PG_TOOLS_MISSING}</span>
+              </p>
+            )}
+
+            <div className="mt-4">
+              <SnapshotKeep
+                enabled={snapshotsEnabled}
+                keep={snapshotKeep}
+                perSnapshotBytes={perSnapshotBytes}
+                measured={measuredBytes !== null}
+              />
+            </div>
+
+            <dl className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-[9rem_1fr]">
+              <dt className="ui-meta text-ink-subtle">On disk now</dt>
+              <dd className="text-sm text-ink">
+                {snapshots.length === 0 ? (
+                  <span className="text-ink-subtle">None yet</span>
+                ) : (
+                  <>
+                    {snapshots.length} restore point
+                    {snapshots.length === 1 ? "" : "s"}, {humanBytes(snapshotBytes)}
+                    {/* "oldest" says nothing when it is also the newest. */}
+                    {snapshots.length > 1 &&
+                      `, oldest ${when(snapshots[snapshots.length - 1].at)}`}
+                  </>
+                )}
+              </dd>
+
+              <dt className="ui-meta text-ink-subtle">Last snapshot</dt>
+              <dd className="text-sm text-ink">
+                {snapshots.length > 0 ? (
+                  when(snapshots[0].at)
+                ) : (
+                  <span className="text-ink-subtle">Never</span>
+                )}
+                {snapshotJob?.ok === false && snapshotJob.detail && (
+                  <span className="ui-meta ml-2 text-amber-400">
+                    Last attempt failed: {snapshotJob.detail}
+                  </span>
+                )}
+              </dd>
+
+              <dt className="ui-meta text-ink-subtle">Next snapshot</dt>
+              <dd className="text-sm text-ink">
+                {!snapshotsEnabled ? (
+                  <span className="text-ink-subtle">Switched off</span>
+                ) : snapshotJob?.dueAt ? (
+                  nextRunLine(snapshotJob.dueAt)
+                ) : (
+                  <span className="text-ink-subtle">Not scheduled</span>
+                )}
+              </dd>
+            </dl>
+
+            <SnapshotNowButton disabled={pgToolsMissing} />
+
+            {snapshots.length > 0 && (
+              <ul className="mt-4 max-h-72 divide-y divide-line overflow-y-auto border-y border-line">
+                {snapshots.map((s) => (
+                  <li key={s.name} className="flex items-baseline gap-3 py-1.5">
+                    <span className="ui-row min-w-0 flex-1 text-ink">
+                      {new Date(s.at).toLocaleString()}
+                    </span>
+                    <span className="ui-meta shrink-0 text-ink-subtle">{when(s.at)}</span>
+                    <span className="ui-meta shrink-0 tabular-nums text-ink-subtle">
+                      {humanBytes(s.bytes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="ui-meta mt-3 text-ink-subtle">
+              Opening one is read-only, and deliberately never replaces the live
+              database: from a terminal on this machine,{" "}
+              <Mono>npm run local:snapshot -- browse &lt;time&gt;</Mono> starts a
+              throwaway copy on a spare port so you can look through it and copy
+              what you need back out.{" "}
+              <Mono>npm run local:snapshot -- list</Mono> names them.
             </p>
           </Card>
         </section>

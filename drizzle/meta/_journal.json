@@ -411,8 +411,15 @@
     {
       "idx": 58,
       "version": "7",
-      "when": 1787718308253,
-      "tag": "0058_api_credentials",
+      "when": 1787682239949,
+      "tag": "0058_installs_roster",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1787719662426,
+      "tag": "0059_api_credentials",
       "breakpoints": true
     }
   ]

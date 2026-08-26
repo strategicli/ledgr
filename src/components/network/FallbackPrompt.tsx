@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { relativeTime } from "@/lib/relative-time";
+import { CADENCE_CONTINUOUS, cadenceLabel } from "@/lib/sync/client";
 import type { FallbackApproval, FallbackPrompt as Prompt } from "@/lib/sync/client";
 
 const button =
@@ -52,15 +53,15 @@ export function FallbackPromptBlock({ prompt }: { prompt: Prompt }) {
   return (
     <div className="mt-3 rounded-card border border-amber-700/60 bg-amber-950/20 p-4">
       <h3 className="text-sm font-medium text-amber-300">
-        Use a backup hub while the others are down?
+        Use a backup copy while the others are down?
       </h3>
       <p className="mt-2 text-sm text-ink-muted">
-        Every hub this instance normally reads from has been unreachable for{" "}
+        Every copy this machine normally reads from has been unreachable for{" "}
         {minutes(prompt.failingForMs)}. Your changes are still being kept safely
         on the backup below, but nothing new from your other devices is arriving.
       </p>
 
-      <p className="ui-section-label mt-4">What the usual hubs said</p>
+      <p className="ui-section-label mt-4">What your usual copies said</p>
       <ul className="mt-1 space-y-1">
         {prompt.automaticErrors.map((e) => (
           <li key={e.url} className="text-sm">
@@ -83,8 +84,8 @@ export function FallbackPromptBlock({ prompt }: { prompt: Prompt }) {
         {prompt.behindOps !== null && prompt.behindOps > 0
           ? ` · ${prompt.behindOps} of your change${prompt.behindOps === 1 ? "" : "s"} not delivered to it yet`
           : ""}
-        {prompt.cadence === "daily"
-          ? ". It is set to exchange once a day, so reading from it can be up to a day behind your other devices."
+        {prompt.cadence > CADENCE_CONTINUOUS
+          ? `. It is set to check ${cadenceLabel(prompt.cadence).toLowerCase()}, so reading from it can be that far behind your other devices.`
           : ""}
       </p>
 
@@ -97,7 +98,7 @@ export function FallbackPromptBlock({ prompt }: { prompt: Prompt }) {
         >
           Read from this backup
         </button>
-        {prompt.cadence === "daily" && (
+        {prompt.cadence > CADENCE_CONTINUOUS && (
           <button
             type="button"
             className={button}
@@ -110,7 +111,7 @@ export function FallbackPromptBlock({ prompt }: { prompt: Prompt }) {
         {error && <span className="ui-meta text-rose-400">{error}</span>}
       </div>
       <p className="ui-meta mt-2 text-ink-subtle">
-        This lasts until one of the usual hubs is fully caught up again, then it
+        This lasts until one of the usual copies is fully caught up again, then it
         clears itself (along with any speed-up). Nothing about your data changes
         either way: newer edits always win over older ones.
       </p>
@@ -131,12 +132,12 @@ export function FallbackApprovalBlock({ approval }: { approval: FallbackApproval
 
   return (
     <div className="mt-3 rounded-card border border-amber-700/60 bg-amber-950/20 p-4">
-      <h3 className="text-sm font-medium text-amber-300">Reading from a backup hub</h3>
+      <h3 className="text-sm font-medium text-amber-300">Reading from a backup copy</h3>
       <p className="mt-2 text-sm text-ink-muted">
         You approved reading from <span className="font-mono text-xs">{approval.url}</span>{" "}
         {relativeTime(approval.approvedAt)}
         {approval.promoteCadence ? ", and asked for it to be checked continuously" : ""}. This
-        clears itself as soon as one of the usual hubs is caught up again.
+        clears itself as soon as one of the usual copies is caught up again.
       </p>
       <button
         type="button"

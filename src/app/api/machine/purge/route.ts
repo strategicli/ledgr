@@ -5,6 +5,7 @@ import { purgeExpiredTrash } from "@/lib/item-mutations";
 import { purgeExpiredAudio } from "@/lib/attachments";
 import { purgeArchivedNotifications } from "@/lib/notifications";
 import { pruneSyncOps } from "@/lib/sync/peers";
+import { announceOwnInstall } from "@/lib/installs";
 
 // Daily Trash purge (vercel.json cron). Vercel sends GET with
 // `Authorization: Bearer $CRON_SECRET`; CRON_SECRET holds a raw machine
@@ -32,6 +33,11 @@ export async function GET(request: Request) {
     // Sync oplog retention (ADR-206): the row-level triggers append forever,
     // so drop ops every live peer has pulled that are past the time floor.
     const syncOps = await pruneSyncOps();
+    // The roster heartbeat rides here (ADR-220) because `purge` is the one job
+    // ADR-214 says EVERY instance runs itself, daily — so a cloud deploy and a
+    // local peer both announce with no new scheduler and no new schedule to
+    // forget. Day granularity is all any surface reads.
+    await announceOwnInstall();
     log.info("purge run finished", { ...result, ...audio, ...notifications, ...syncOps });
     return NextResponse.json({
       ok: true,

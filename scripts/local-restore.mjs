@@ -111,6 +111,93 @@ async function startCluster(cfg) {
   return { cluster, pg };
 }
 
+/**
+ * What this machine WAS, read before the fill wipes it.
+ *
+ * A fill gives this peer a brand-new `sync_device` identity, deliberately — it
+ * must not inherit the source's. But job ownership (ADR-218) and the roster
+ * (ADR-220) are keyed by that identity, so without this the machine comes back
+ * as a STRANGER: its claimed jobs point at an id nothing answers to, and the
+ * roster shows a ghost beside a newcomer. Re-filling a peer is a documented,
+ * expected operation, so it must not quietly cost the owner their settings.
+ *
+ * Best-effort: no database yet (a first fill) means there is nothing to carry.
+ */
+async function readPriorIdentity(pg, cfg) {
+  const db = new pg.Client({ connectionString: buildDbUrl(cfg), connectionTimeoutMillis: 4000 });
+  try {
+    await db.connect();
+    const dev = await db.query("select id from sync_device limit 1");
+    const deviceId = dev.rows[0]?.id ?? null;
+    if (!deviceId) return null;
+    let label = null;
+    try {
+      const row = await db.query("select label from installs where id = $1", [deviceId]);
+      label = row.rows[0]?.label ?? null;
+    } catch {
+      // A database from before the roster existed. The id alone is still worth
+      // carrying: it is what job ownership points at.
+    }
+    return { deviceId, label };
+  } catch {
+    return null;
+  } finally {
+    await db.end().catch(() => {});
+  }
+}
+
+/**
+ * Re-attach this machine's identity after a fill: keep its name in the roster,
+ * and re-point any job it owned at its new id.
+ *
+ * Rewriting the roster row's id (rather than inserting a second row) is what
+ * makes the list show continuity instead of a ghost plus a newcomer.
+ */
+async function carryIdentityForward(db, prior) {
+  if (!prior) return;
+  const dev = await db.query("select id from sync_device limit 1");
+  const newId = dev.rows[0]?.id;
+  if (!newId || newId === prior.deviceId) return;
+
+  let movedRoster = false;
+  try {
+    const res = await db.query("update installs set id = $1 where id = $2", [
+      newId,
+      prior.deviceId,
+    ]);
+    movedRoster = res.rowCount > 0;
+  } catch {
+    // No installs table on this database yet; nothing to move.
+  }
+
+  // Job ownership lives in users.settings.jobOwners, keyed by device id.
+  const users = await db.query("select id, settings from users");
+  let movedJobs = 0;
+  for (const row of users.rows) {
+    const settings = row.settings;
+    const owners = settings?.jobOwners;
+    if (!owners || typeof owners !== "object") continue;
+    let changed = false;
+    for (const [job, claim] of Object.entries(owners)) {
+      if (claim && typeof claim === "object" && claim.deviceId === prior.deviceId) {
+        owners[job] = { ...claim, deviceId: newId };
+        changed = true;
+        movedJobs += 1;
+      }
+    }
+    if (changed) {
+      await db.query("update users set settings = $1 where id = $2", [settings, row.id]);
+    }
+  }
+
+  if (movedRoster || movedJobs > 0) {
+    console.log(
+      `Kept this machine's identity: ${movedRoster ? `name "${prior.label}"` : "roster row not found"}` +
+        `${movedJobs > 0 ? `, and ${movedJobs} scheduled job(s) still assigned here` : ""}.`
+    );
+  }
+}
+
 /** Clean slate: drop and recreate the local `ledgr` database so a fill never
  * merges into leftovers. Shared by both fill modes. */
 async function resetLocalDatabase(pg, cfg) {
@@ -172,6 +259,7 @@ async function restoreFromFile(dumpPath, cfg) {
 
   try {
     const dbUrl = buildDbUrl(cfg);
+    const prior = await readPriorIdentity(pg, cfg);
     await resetLocalDatabase(pg, cfg);
 
     console.log("pg_restore…");
@@ -205,6 +293,7 @@ async function restoreFromFile(dumpPath, cfg) {
     // SOURCE's values. A cloned cursor makes a spoke skip ops; a cloned mode
     // silently arms or disarms push on a peer that never asked for it.
     await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
+    await carryIdentityForward(db, prior);
     await analyzeAfterFill(db);
     await db.end();
 
@@ -256,6 +345,7 @@ async function pullFromUrl(url, cfg) {
 
   const { cluster, pg } = await startCluster(cfg);
   try {
+    const prior = await readPriorIdentity(pg, cfg);
     await resetLocalDatabase(pg, cfg);
     const dbUrl = buildDbUrl(cfg);
 
@@ -289,6 +379,7 @@ async function pullFromUrl(url, cfg) {
     // Same reasoning as the dump path above: per-instance job_state must not
     // be inherited from the source. `sync:mode` is the GUI push-mode override.
     await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
+    await carryIdentityForward(db, prior);
     await analyzeAfterFill(db);
     await db.end();
 

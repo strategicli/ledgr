@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import {
+  CADENCE_CONTINUOUS,
+  CADENCE_DAILY_MINUTES,
+  cadenceRefusal,
   hubCadence,
   hubFallback,
   hubListRefusal,
@@ -40,10 +43,21 @@ function normalizeHubUrl(raw: unknown): string {
 
 // The two ADR-210 axes, validated the same way on every write path. Absent
 // means "leave as is" on PATCH and "the default" on POST.
+// ADR-221: minutes, not an enum. The two old strings still parse so that a
+// caller (or a stored entry being echoed back) keeps working; anything outside
+// the safe range is refused with the reason, not clamped, because silently
+// syncing more often than asked is the kind of "helpful" the owner cannot see.
 function parseCadence(raw: unknown): HubCadence | undefined {
   if (raw === undefined || raw === null) return undefined;
-  if (raw === "continuous" || raw === "daily") return raw;
-  throw new Error("cadence must be \"continuous\" or \"daily\"");
+  if (raw === "continuous") return CADENCE_CONTINUOUS;
+  if (raw === "daily") return CADENCE_DAILY_MINUTES;
+  const minutes = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(minutes) || minutes < 0 || !Number.isInteger(minutes)) {
+    throw new Error("how often to check must be a whole number of minutes");
+  }
+  const refusal = cadenceRefusal(minutes);
+  if (refusal) throw new Error(refusal);
+  return minutes;
 }
 function parseFallback(raw: unknown): HubFallback | undefined {
   if (raw === undefined || raw === null) return undefined;
@@ -114,7 +128,7 @@ export async function POST(request: Request) {
     }
     const next = [
       ...current,
-      { url, token, cadence: cadence ?? "continuous", fallback: fallback ?? "automatic" },
+      { url, token, cadence: cadence ?? CADENCE_CONTINUOUS, fallback: fallback ?? "automatic" },
     ];
     const refused = refuseList(next);
     if (refused) return refused;
