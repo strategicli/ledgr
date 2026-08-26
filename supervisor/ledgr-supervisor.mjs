@@ -69,6 +69,7 @@ import {
   nextRunAt,
   parseCronState,
   serializeCronState,
+  standDownDetailOf,
   tunedPostgresFlags,
 } from "./lib.mjs";
 
@@ -646,6 +647,7 @@ async function reportCronFailure(job, detail) {
   }
 }
 
+
 async function runCronJob(job) {
   const started = Date.now();
   let ok = false;
@@ -656,9 +658,16 @@ async function runCronJob(job) {
       signal: AbortSignal.timeout(job.timeoutMs ?? CRON_TIMEOUT_MS),
     });
     ok = res.ok;
+    const body = await res.text().catch(() => "");
     if (!ok) {
-      const body = await res.text().catch(() => "");
       detail = `HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`;
+    } else {
+      // A job can succeed by deliberately doing NOTHING: an exclusive job is
+      // scheduled on every peer now and the endpoint's ownership gate decides
+      // (ADR-223). Recording that as a bare "ok" would tell the owner the
+      // backup ran when another machine holds it, so carry the reason through
+      // to cron-state.json and let the surfaces say which.
+      detail = standDownDetailOf(body);
     }
   } catch (err) {
     detail = String(err?.message ?? err).slice(0, 300);
@@ -675,7 +684,7 @@ async function runCronJob(job) {
   e.dueAt = nextRunAt(job, now, ok);
   writeCronState();
 
-  log(ok ? "cron job ok" : "cron job FAILED", {
+  log(ok ? (detail ? "cron job stood down" : "cron job ok") : "cron job FAILED", {
     job: job.name,
     ms: now - started,
     nextAt: new Date(e.dueAt).toISOString(),

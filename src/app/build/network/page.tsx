@@ -49,6 +49,7 @@ import {
   TAILSCALE_ABSENT,
 } from "@/lib/network-addresses";
 import ReleasePushButton from "@/components/network/ReleasePushButton";
+import CheckInButton from "@/components/network/CheckInButton";
 import {
   FallbackApprovalBlock,
   FallbackPromptBlock,
@@ -292,9 +293,17 @@ export default async function Network() {
               })}
             </ul>
           )}
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <AddHub />
+            {hubs.length > 0 && <CheckInButton />}
           </div>
+          {hubs.length > 0 && (
+            <p className="ui-meta mt-2 text-ink-subtle">
+              A schedule works both ways: between check-ins, your changes wait here
+              and changes made on another copy have not arrived yet. Checking in now
+              settles both immediately, whatever the schedule says.
+            </p>
+          )}
 
           <WhatIsThis>
             <p>

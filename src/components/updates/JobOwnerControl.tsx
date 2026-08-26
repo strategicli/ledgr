@@ -15,11 +15,19 @@
 // trade differs per job and the owner is the one who should weigh it. Handing a
 // job back never confirms: putting a safety catch on should not need a second
 // click (the same asymmetry SyncModeToggle uses).
+//
+// The confirm says WHEN, not just what (ADR-223). It used to promise the move
+// took effect "everywhere within seconds", which is true only between copies
+// that sync continuously: a copy on an hourly schedule picks the change up at
+// its next check-in, and the first version of this control cheerfully said
+// otherwise while the owner watched the other machine disagree with it. What a
+// copy can honestly state from here is the target's own last check-in, which
+// travels with the roster, so that is what it states.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
-import type { MovableJob } from "@/lib/job-owners";
-import type { Install } from "@/lib/installs-plan";
+import { DEFAULT_OWNER_OPTION, type MovableJob } from "@/lib/job-owners";
+import { installHealth, installHealthLine, type Install } from "@/lib/installs-plan";
 
 const NOBODY = "__nobody__";
 const DEFAULT = "__default__";
@@ -41,7 +49,7 @@ export default function JobOwnerControl({
   installs: Install[];
   /** The copy holding the job now, or null when nobody does. */
   currentDeviceId: string | null;
-  /** True when the slot is absent: "wherever it is switched on". */
+  /** True when the slot is absent: nobody named, so the cloud copy does it. */
   isUnset: boolean;
   /** Set when the job cannot be moved yet; the reason is shown instead. */
   blocked?: string;
@@ -52,6 +60,9 @@ export default function JobOwnerControl({
   const [pending, setPending] = useState<Install | null>(null);
 
   const value = isUnset ? DEFAULT : (currentDeviceId ?? NOBODY);
+  // A machine nobody has heard from cannot pick the job up, and assigning it
+  // there anyway is how a job ends up running nowhere at all.
+  const stale = !!pending && !pending.isSelf && installHealth(pending, new Date()) !== "here";
 
   async function send(body: Record<string, unknown>) {
     setBusy(true);
@@ -102,7 +113,7 @@ export default function JobOwnerControl({
           disabled={busy}
           onChange={(e) => onPick(e.target.value)}
         >
-          <option value={DEFAULT}>Wherever it is switched on</option>
+          <option value={DEFAULT}>{DEFAULT_OWNER_OPTION}</option>
           {installs.map((i) => (
             <option key={i.id} value={i.id}>
               {i.isSelf ? `${i.label} (this one)` : i.label}
@@ -118,7 +129,11 @@ export default function JobOwnerControl({
         <div className="mt-2">
           <ConfirmButton
             title={`Run ${jobLabel.toLowerCase()} on ${pending.label}?`}
-            description="Only one machine may do this, so moving it here stops it running anywhere else. That takes effect everywhere within seconds."
+            description={
+              pending.isSelf
+                ? "Only one machine may do this, so moving it here stops it running anywhere else. This machine takes it over on its next scheduled run."
+                : `Only one machine may do this, so moving it here stops it running anywhere else. This copy stops as soon as you confirm; ${pending.label} takes it over when it next checks in with your other copies.`
+            }
             confirmLabel={`Move it to ${pending.label}`}
             panelClassName="w-80"
             trigger={<span>Confirm the move</span>}
@@ -128,6 +143,17 @@ export default function JobOwnerControl({
             <ul className="ui-meta list-disc space-y-1 pl-4 text-ink-muted">
               <li>It only runs while {pending.label} is switched on.</li>
               {consequence && <li>{consequence}</li>}
+              {/* The handover gap, said out loud. It is short for a copy that
+                  syncs often and can be a whole cadence for one that does not,
+                  and either way the owner should hear it from here rather than
+                  from a job that quietly did not run. */}
+              {!pending.isSelf && (
+                <li>
+                  {stale
+                    ? `${pending.label}: ${installHealthLine(pending, new Date()).toLowerCase()}. Until it checks in, this job runs nowhere. "Check in now" on that machine's Network page settles it at once.`
+                    : `Between this copy stopping and ${pending.label} starting there is a gap of up to one of its check-ins. "Check in now" on that machine's Network page closes it at once.`}
+                </li>
+              )}
               <li>You can move it again, or pause it, from any of your devices.</li>
             </ul>
           </ConfirmButton>

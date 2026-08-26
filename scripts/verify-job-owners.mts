@@ -14,7 +14,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   claimFor,
+  DEFAULT_OWNER_OPTION,
   isMovableJob,
+  standDownDetail,
   MOVABLE_JOBS,
   MOVABLE_JOB_NAMES,
   OWNER_STALE_DAYS,
@@ -206,6 +208,75 @@ ok("an unset slot changes nothing anywhere (the whole back-compat story)", () =>
   }
 });
 
+// ── One switch, not two (ADR-223) ───────────────────────────────────────────
+//
+// The supervisor now SCHEDULES every movable job on every peer and lets this
+// gate decide, because ownership plus a per-machine config switch meant a job
+// assigned to a peer whose config had it off ran nowhere at all. The invariant
+// that replaces the config default: for an unnamed job, the cloud runs it and a
+// supervised peer stands down — never both, never neither.
+
+ok("an unnamed job runs in the cloud and stands down on a supervised peer", () => {
+  for (const job of MOVABLE_JOB_NAMES) {
+    const cloud = shouldRunHere({ owners: {}, job, selfDeviceId: "dev-cloud" });
+    const peer = shouldRunHere({
+      owners: {},
+      job,
+      selfDeviceId: "dev-pc",
+      standDownWhenUnset: true,
+    });
+    assert.deepEqual(cloud, { run: true, reason: "unset" }, job);
+    assert.deepEqual(peer, { run: false, reason: "unset-standby" }, job);
+    // The double-writer this whole feature exists to prevent, restated as the
+    // arithmetic the scheduler change could have broken: exactly one runs.
+    assert.equal([cloud, peer].filter((v) => v.run).length, 1, job);
+  }
+});
+
+ok("naming a peer moves the job there and only there", () => {
+  const owners: JobOwners = { export: claim({ deviceId: "dev-pc", label: "BrandonECC" }) };
+  const peer = shouldRunHere({
+    owners,
+    job: "export",
+    selfDeviceId: "dev-pc",
+    standDownWhenUnset: true,
+  });
+  const cloud = shouldRunHere({ owners, job: "export", selfDeviceId: "dev-cloud" });
+  assert.deepEqual(peer, { run: true, reason: "owner" });
+  assert.deepEqual(cloud, { run: false, reason: "not-owner" });
+});
+
+ok("standing down when unnamed changes nothing about the other three answers", () => {
+  // The flag resolves ABSENCE and nothing else: a named or paused job reads the
+  // same on every install, which is what keeps one slot the single answer.
+  const cases: JobOwners[] = [{ export: null }, { export: claim({ deviceId: "dev-pc" }) }];
+  for (const owners of cases) {
+    for (const self of ["dev-pc", "dev-cloud", null]) {
+      assert.deepEqual(
+        shouldRunHere({ owners, job: "export", selfDeviceId: self, standDownWhenUnset: true }),
+        shouldRunHere({ owners, job: "export", selfDeviceId: self }),
+        `self=${self}`
+      );
+    }
+  }
+});
+
+ok("a peer that stands down for want of an owner is not reporting a fault", () => {
+  // It must read as "the cloud has this", never as an error: the supervisor
+  // records the endpoint's answer, and a nightly red mark on every peer that is
+  // not the owner is Principle 9 inverted into noise.
+  const v = shouldRunHere({
+    owners: {},
+    job: "export",
+    selfDeviceId: "dev-pc",
+    standDownWhenUnset: true,
+  });
+  assert.equal(v.reason, "unset-standby");
+  const detail = standDownDetail(v.reason, null);
+  assert.ok(detail.includes("cloud"), detail);
+  assert.ok(/scheduled work/i.test(detail), "the sentence does not point at the one lever");
+});
+
 ok("exactly one install runs a claimed job", () => {
   const owners: JobOwners = { export: claim() };
   assert.equal(shouldRunHere({ owners, job: "export", selfDeviceId: "dev-pc" }).run, true);
@@ -338,7 +409,21 @@ ok("the status line names a place, never an id", () => {
   );
   assert.equal(
     ownerLine({ owners: {}, job: "export", selfDeviceId: "dev-pc" }),
-    "Runs wherever it is switched on"
+    `Runs in the cloud (the default)`
+  );
+  // The retired phrase. It described a per-machine config switch that no
+  // longer exists (ADR-223), so no surface may reintroduce it.
+  for (const owners of [{}, { export: null }, { export: claim() }] as JobOwners[]) {
+    for (const self of ["dev-pc", "dev-cloud", null]) {
+      assert.ok(
+        !ownerLine({ owners, job: "export", selfDeviceId: self }).includes("switched on"),
+        "a surface still says the job runs wherever it is switched on"
+      );
+    }
+  }
+  assert.ok(
+    DEFAULT_OWNER_OPTION.includes("cloud") && !DEFAULT_OWNER_OPTION.includes("switched on"),
+    "the picker's default option still describes a switch"
   );
   // Even a label-less claim must not leak a raw id into the sentence.
   const bare = parseJobOwners({ export: { deviceId: "0123456789abcdef" } });

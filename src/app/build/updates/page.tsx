@@ -460,10 +460,12 @@ export default async function Updates() {
                   <StatusDot tone="warn" />
                 </span>
                 <span>
-                  No jobs are scheduled here. Trash never empties and the sync
-                  log never prunes on this machine until at least{" "}
-                  <Mono>purge</Mono> is on &mdash; see{" "}
-                  <Mono>crons</Mono> in <Mono>supervisor/config.json</Mono>.
+                  No jobs are scheduled here at all, which is not the normal
+                  state: trash never empties and the sync log never prunes on
+                  this machine. Either the local service has not written its
+                  first record yet, or scheduling was switched off on this
+                  machine for testing. Restarting the service restores the
+                  standard set.
                 </span>
               </p>
             ) : (
@@ -487,13 +489,17 @@ export default async function Updates() {
                           : " No successful run recorded yet."}
                         {job.dueAt ? ` ${nextRunLine(job.dueAt)}` : ""}
                       </p>
-                      {job.ok === false && job.detail && (
+                      {job.detail && (
                         <p className="ui-meta mt-0.5 text-ink-muted">{job.detail}</p>
                       )}
                       {!job.shared && (
                         <p className="ui-meta mt-0.5 text-ink-faint">
-                          Only one device should run this one &mdash; it writes
-                          somewhere shared.
+                          Only one machine may do this one &mdash; it writes
+                          somewhere shared, so it runs here only while{" "}
+                          <Link href="#scheduled-work" className="underline decoration-dotted">
+                            Scheduled work
+                          </Link>{" "}
+                          names this machine.
                         </p>
                       )}
                     </div>
@@ -508,8 +514,9 @@ export default async function Updates() {
               </p>
             )}
             <p className="ui-meta mt-3 text-ink-subtle">
-              Which jobs run, and how often, is the <Mono>crons</Mono> block in{" "}
-              <Mono>supervisor/config.json</Mono>.{" "}
+              Every job is scheduled on every machine; which one actually does
+              the shared ones is <Link href="#scheduled-work" className="underline decoration-dotted">Scheduled work</Link>{" "}
+              below, and it needs nothing on disk changed.{" "}
               <Mono>npm run local:status</Mono> shows this same list from a
               terminal.
             </p>
@@ -563,7 +570,7 @@ export default async function Updates() {
                 ))}
               </ul>
               <p className="ui-meta mt-2 text-ink-faint">
-                Each copy adds itself to this list and checks in once a day.
+                Each copy adds itself to this list and reports in once a day.
                 Renaming one, or removing one you are done with, is on{" "}
                 <Link href="/build/network#copies" className="underline decoration-dotted">
                   Network
@@ -643,6 +650,17 @@ export default async function Updates() {
                 devices the same way a note does, and each one checks it before it
                 starts work. There is only ever one answer, so two machines cannot
                 both think the job is theirs.
+              </p>
+              <p>
+                It reaches them on their own schedule, though, not instantly: the
+                copy you are on stops right away, and the machine you chose picks
+                the job up the next time it checks in. Between those two moments
+                the job does not run &mdash; harmlessly for these jobs, which all
+                catch up on their next run.{" "}
+                <Link href="/build/network#hubs" className="underline decoration-dotted">
+                  Check in now
+                </Link>{" "}
+                on that machine closes the gap immediately.
               </p>
               <p>
                 If the machine holding a job is switched off, the job simply does

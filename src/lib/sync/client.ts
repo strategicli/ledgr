@@ -215,6 +215,8 @@ type SyncShared = {
   loopArmed: boolean;
   hubRuntime: Record<string, HubRuntime>;
   automaticFailingSince: number | null;
+  // Set by requestCheckIn(); cleared by the next tick. See below.
+  checkInRequestedAt: number | null;
 };
 const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgrSync ??= {
   status: {
@@ -239,6 +241,7 @@ const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgr
   loopArmed: false,
   hubRuntime: {},
   automaticFailingSince: null,
+  checkInRequestedAt: null,
 });
 const status = shared.status;
 
@@ -248,6 +251,25 @@ function hubRuntime(url: string): HubRuntime {
 
 export function getSyncStatus(): SyncStatus {
   return { ...status };
+}
+
+/**
+ * "Check in now": exchange with every hub on the next tick, cadence ignored.
+ *
+ * A cadence is a promise about the WORST case, and until this existed it was
+ * also the best case: a peer set to hourly held its own writes for up to an
+ * hour and could not be told to hurry, so a change made on another copy — a job
+ * assignment, most sharply (ADR-223) — arrived whenever it arrived. One button
+ * turns that into a bounded wait the owner controls.
+ *
+ * Deliberately a flag rather than an exchange call: the loop already serializes
+ * exchanges behind its own guard, and a second entry point that could run one
+ * concurrently would race the cursors for no gain. The tick interval is the
+ * push debounce (2s by default), so "now" means within a couple of seconds.
+ */
+export function requestCheckIn(): { armed: boolean } {
+  shared.checkInRequestedAt = Date.now();
+  return { armed: shared.loopArmed };
 }
 
 // The hub list, parsed the one way everywhere (loop arming, status endpoint,
@@ -1360,7 +1382,15 @@ export function startSyncLoop(): void {
       const maxSeq = Number(head[0]?.max ?? 0);
       const due = Date.now() - lastFullExchange >= pullMs;
       const wrote = lastSeenSeq >= 0 && maxSeq > lastSeenSeq;
-      if (due || wrote || lastSeenSeq < 0) {
+      // An owner-requested check-in overrides BOTH schedules: this outer gate,
+      // and each hub's own cadence (a hub whose next-due is an hour out would
+      // otherwise be skipped inside exchange()).
+      const forced = shared.checkInRequestedAt !== null;
+      if (forced) {
+        shared.checkInRequestedAt = null;
+        for (const rt of Object.values(shared.hubRuntime)) rt.nextDueAt = 0;
+      }
+      if (due || wrote || forced || lastSeenSeq < 0) {
         await exchange(hubs, deviceId, guard, approval);
         lastFullExchange = Date.now();
       }

@@ -12,6 +12,7 @@
 //
 // Run: npx tsx scripts/verify-supervisor.mts
 import { existsSync, readFileSync } from "node:fs";
+import { MOVABLE_JOBS, type MovableJob } from "@/lib/job-owners";
 import { resolve } from "node:path";
 import {
   assembleAppEnv,
@@ -29,6 +30,9 @@ import {
   serializeStartupRequest,
   parseStartupState,
   serializeStartupState,
+  parseSchtasksLogonMode,
+  schtasksCreateArgs,
+  startupCaveat,
   startupSignalPath,
   startupStatePath,
   stopSignalPath,
@@ -40,6 +44,7 @@ import {
   initialDueAt,
   jobStaleness,
   serializeCronState,
+  standDownDetailOf,
   parseCronState,
   localCronTokenEntry,
   CRON_RETRY_MS,
@@ -484,6 +489,60 @@ check(
 );
 check("the stop request lives there too", stopSignalPath("/data/ledgr").endsWith("stop-requested"));
 
+// ── "Start with the computer" asks the owner for no password at all ──────────
+//
+// The always-on scope used to register /RU with no credential flag, which
+// Windows accepts and then silently downgrades to interactive-only: the owner
+// ticks "at boot, always on", is told it worked, and the peer still does not
+// come back from a boot nobody signs into. /NP (Task Scheduler's "Do not store
+// password", an S4U logon) is what closes that without ever asking for a
+// Windows password — which a Microsoft-account login does not readily give.
+{
+  const of = (scope: string) =>
+    schtasksCreateArgs({
+      username: "colli",
+      nodePath: "C:\\node.exe",
+      supervisorScript: "C:\\s.mjs",
+      configPath: "C:\\c.json",
+      scope,
+    });
+  const always = of("always");
+  const logon = of("logon");
+
+  check(
+    "the always-on task is registered passwordless (/NP), right after its /RU account",
+    always.includes("/NP") && always[always.indexOf("/RU") + 2] === "/NP"
+  );
+  check(
+    "the logon scope stays credential-free: no /RU, and so no /NP to pair with it",
+    !logon.includes("/RU") && !logon.includes("/NP")
+  );
+  check(
+    "neither scope ever passes a password (/RP)",
+    !always.includes("/RP") && !logon.includes("/RP")
+  );
+
+  // The honesty rule still has to fire if Windows hands back something weaker
+  // than we asked for, and must NOT fire on the S4U mode /NP produces.
+  const modeOf = (v: string) => parseSchtasksLogonMode(`TaskName: X\nLogon Mode:    ${v}\n`);
+  check("an S4U registration reads as background", modeOf("Interactive/Background") === "background");
+  check("a downgraded registration reads as interactive", modeOf("Interactive only") === "interactive");
+  check(
+    "the logon-mode regex tolerates indented schtasks output",
+    parseSchtasksLogonMode("   Logon Mode:    Interactive only\n") === "interactive"
+  );
+  check(
+    "no caveat when always-on actually runs in the background",
+    startupCaveat("always", "background") === null
+  );
+  check(
+    "a downgraded always-on task still says so, and no longer asks for a password",
+    (startupCaveat("always", "interactive") ?? "").includes("only run it while you are signed in") &&
+      !(startupCaveat("always", "interactive") ?? "").toLowerCase().includes("your windows password")
+  );
+  check("the logon scope is never caveated", startupCaveat("logon", "interactive") === null);
+}
+
 // ── Stopping has to be GRACEFUL, and on Windows a signal cannot be (ADR-211) ─
 //
 // `process.kill(pid, "SIGTERM")` from another process does not deliver a
@@ -541,20 +600,50 @@ check(
 {
   const defaults = normalizeCrons(undefined).map((j) => j.name).sort();
   check(
-    // `snapshot` joined this list in ADR-222: the job is scheduled everywhere
-    // and the ENDPOINT decides whether to dump, which is what lets the owner's
-    // on/off be a checkbox instead of a config edit plus a service restart.
-    "purge, relatedness and the hourly snapshot check run by default",
-    JSON.stringify(defaults) === JSON.stringify(["purge", "relatedness", "snapshot"]),
+    // `snapshot` joined this list in ADR-222 and the three movable exclusive
+    // jobs joined it in ADR-223, for the same reason both times: the job is
+    // scheduled everywhere and the ENDPOINT decides whether to do the work,
+    // which is what lets the owner's answer be a GUI choice instead of a config
+    // edit plus a service restart. Before that, ownership was two switches and
+    // a job assigned to a peer whose config had it off ran nowhere at all.
+    "the shared jobs and the three movable exclusive ones run by default",
+    JSON.stringify(defaults) ===
+      JSON.stringify([
+        "calendar-sync",
+        "email-import",
+        "export",
+        "purge",
+        "relatedness",
+        "snapshot",
+      ]),
     defaults.join(",")
   );
+  // THE INVARIANT THAT REPLACED "exclusive jobs are off by default".
+  //
+  // Scheduling an exclusive job on every peer is only safe because the endpoint
+  // refuses to do the work unless the owner named this machine. So a default-on
+  // exclusive job must be one the picker can actually move, AND its route must
+  // call the gate. Either half missing is a double writer on one OneDrive folder
+  // or one mailbox, which is corrupting rather than merely wasteful.
+  for (const [name, job] of Object.entries(LOCAL_JOBS)) {
+    if (job.shared || !job.on) continue;
+    const def = MOVABLE_JOBS[name as MovableJob];
+    check(
+      `${name} is scheduled everywhere, so the picker must be able to move it`,
+      !!def && def.movable === true
+    );
+    const route = readFileSync(`src/app/api/machine/${name}/route.ts`, "utf8");
+    check(
+      `${name} is scheduled everywhere, so its route must stand down when it is not the owner`,
+      route.includes("standDownIfNotOwner(")
+    );
+  }
   check(
-    "every default-on job is one that is safe on more than one peer at once",
-    Object.values(LOCAL_JOBS).every((j) => !j.on || j.shared === true)
-  );
-  check(
-    "every job that writes somewhere shared is off by default",
-    Object.values(LOCAL_JOBS).every((j) => j.shared || !j.on)
+    "an exclusive job the picker refuses to move is never scheduled here",
+    Object.entries(LOCAL_JOBS).every(
+      ([name, j]) =>
+        j.shared || !j.on || MOVABLE_JOBS[name as MovableJob]?.movable === true
+    )
   );
   check(
     "purge is in the catalog and defaults on — it is the one that prunes the oplog",
@@ -576,12 +665,17 @@ check(
 check("crons: false turns everything off", normalizeCrons(false).length === 0);
 check(
   "a job can be turned off individually",
-  normalizeCrons({ purge: false, snapshot: false }).map((j) => j.name).join(",") === "relatedness"
+  normalizeCrons({ purge: false, snapshot: false, export: false, "calendar-sync": false, "email-import": false })
+    .map((j) => j.name)
+    .join(",") === "relatedness"
 );
 check(
-  "an exclusive job runs only when asked for explicitly",
-  normalizeCrons({ export: true }).some((j) => j.name === "export") &&
-    !normalizeCrons({}).some((j) => j.name === "export")
+  // The escape hatch, and only that. Since ADR-223 the owner's lever is the
+  // GUI picker, so this block exists to take a job OUT of the schedule while
+  // testing — never to be the documented way anything is turned on.
+  "an exclusive job can still be forced off per machine for testing",
+  !normalizeCrons({ export: false }).some((j) => j.name === "export") &&
+    normalizeCrons({}).some((j) => j.name === "export")
 );
 check(
   "an override is validated, not trusted",
@@ -626,13 +720,12 @@ check(
 // A failure costs a short retry, not a whole day — and cannot make a job run
 // more often than its own schedule allows.
 {
-  const [purge] = normalizeCrons({ purge: true, relatedness: false });
-  const [fast] = normalizeCrons({
-    purge: false,
-    relatedness: false,
-    snapshot: false,
-    "transcription-poll": { everyMinutes: 5 },
-  });
+  // By name, never by position: the default set grows (ADR-222, ADR-223) and a
+  // positional pick silently starts testing a different job.
+  const named = (crons: Record<string, unknown>, name: string) =>
+    normalizeCrons(crons).find((j) => j.name === name)!;
+  const purge = named({ purge: true }, "purge");
+  const fast = named({ "transcription-poll": { everyMinutes: 5 } }, "transcription-poll");
   const now = new Date(2026, 7, 23, 12, 0, 0, 0).getTime();
   check(
     "a failed daily job retries in minutes, not tomorrow",
@@ -702,7 +795,14 @@ check(
 {
   // Two jobs, so the round-trip count below stays about serialization rather
   // than about how many jobs happen to default on.
-  const jobs = normalizeCrons({ snapshot: false });
+  // Two jobs, named explicitly, so the default set can grow without rewriting
+  // the expectations below.
+  const jobs = normalizeCrons({
+    snapshot: false,
+    export: false,
+    "calendar-sync": false,
+    "email-import": false,
+  });
   const now = Date.now();
   const text = serializeCronState(
     jobs,
@@ -822,7 +922,44 @@ check(
   );
   check(
     "every run is recorded, pass or fail",
-    /writeCronState\(\);/.test(supervisorSrc) && supervisorSrc.includes('log(ok ? "cron job ok"')
+    /writeCronState\(\);/.test(supervisorSrc) && supervisorSrc.includes('"cron job FAILED"')
+  );
+  {
+    // Both shapes an endpoint uses to say "I deliberately did nothing": the
+    // ownership gate's {skipped, detail} (ADR-223) and the snapshot switch's
+    // {skipped: "why"} (ADR-222). Anything else has to read as a real run,
+    // because inventing a stand-down would hide one.
+    const gate = standDownDetailOf(
+      JSON.stringify({ ok: true, skipped: true, detail: "this job runs on Cloud, not here." })
+    );
+    check(
+      "a gated job's own words reach the record, as a sentence",
+      gate === "This job runs on Cloud, not here."
+    );
+    check(
+      "a switched-off job says which switch",
+      standDownDetailOf(JSON.stringify({ ok: true, skipped: "snapshots are switched off" })) ===
+        "Snapshots are switched off"
+    );
+    check(
+      "a bare skip still says something rather than nothing",
+      standDownDetailOf(JSON.stringify({ ok: true, skipped: true })) === "Stood down."
+    );
+    check(
+      "real work is never reported as a stand-down",
+      standDownDetailOf(JSON.stringify({ ok: true, exported: 12 })) === null &&
+        standDownDetailOf("<html>a proxy ate it</html>") === null &&
+        standDownDetailOf("") === null
+    );
+  }
+  check(
+    // ADR-223: an exclusive job is scheduled on every machine and the endpoint
+    // decides, so a run that deliberately did nothing must not be recorded as
+    // "the backup ran". The endpoint says which machine has it; carry that
+    // through to the record rather than flattening it into a plain ok.
+    "a run that stood down is recorded as such, not as work done",
+    supervisorSrc.includes("standDownDetailOf(body)") &&
+      supervisorSrc.includes('"cron job stood down"')
   );
   const ctlSrc2 = readFileSync("supervisor/ledgr-ctl.mjs", "utf8");
   check(

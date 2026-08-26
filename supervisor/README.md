@@ -66,7 +66,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 
 | Key | Meaning |
 | --- | --- |
-| `role` | `hub` or `spoke`. Informational: it changes no behavior on its own. What a hub actually does differently is turn on the exclusive scheduled jobs (`crons` below) and get published (the Funnel). |
+| `role` | `hub` or `spoke`. Informational: it changes no behavior on its own. What a hub actually does differently is get published (the Funnel); which copy runs the shared scheduled jobs is set in the app, not by this field (ADR-223). |
 | `dataDir` | Where everything lives: `pg/` (the database cluster), `builds/` (app builds), `live.json` (which build serves), `update-requested` (the signal file). Outside the repo. |
 | `repoDir` | The git clone the supervisor fetches and builds from. Defaults to the repo this file lives in. It only ever **fetches** and adds detached worktrees, so sharing the clone with a checkout somebody develops in is safe: the working tree, the current branch and any staged changes are never touched or read. |
 | `branch` | Branch to track (default `main`). The supervisor builds **`origin/<branch>`**, not the clone's `HEAD` — so a peer tracking a release branch (`prod-brandon`) keeps serving that release while the shared clone sits on `main`. Also passed to the app as `GITHUB_BRANCH`, so Build → Updates asks "am I current?" about the same ref. |
@@ -75,7 +75,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | `hubs` / `deviceToken` | Ordered hub URLs plus this device's sync token (minted on the hub). Both set arms the in-app sync loop; either missing leaves sync off. |
 | `syncMode` | The **initial** push mode only: `full` (default) pushes and pulls, `pull-only` never sends this device's own changes. Threaded through as `LEDGR_SYNC_MODE`. Once the app is running, the owner changes it from **/build/updates → Sync → Mode**, which stores an override in `job_state` that the sync loop re-reads every tick — so arming or disarming a peer needs no config edit and no restart, and this key stops being consulted. See "Arming sync safely" below. |
 | `update.mode` | `prompted` (default): updates apply only when the app's Update button writes the signal file. `auto`: the supervisor also polls git every `pollIntervalMs` and applies on its own. Pair `auto` with a **release** branch rather than `main` if you want the peer to move only when you deliberately ship — `branch: "prod-brandon"` + `mode: "auto"` makes a local peer track the same commits as the cloud deployment, arriving within `pollIntervalMs` of each `npm run release:prod`. Keep-last-good still applies: a failed migrate or build leaves the previous build serving. |
-| `crons` | Which scheduled jobs this peer triggers for itself (ADR-214). Defaults to `purge` + `relatedness`, the two that are safe when more than one peer runs them. See "Scheduled jobs" below. |
+| `crons` | Which scheduled jobs this peer triggers for itself (ADR-214). The default set is right for every install and needs no entry here; the app decides which machine actually does the shared ones (ADR-223). A testing escape hatch, not the owner's switch. See "Scheduled jobs" below. |
 | `tunePostgres` | RAM-sized Postgres settings (ADR-215), on by default: `shared_buffers` = RAM/8 clamped 128MB–1GB (a real Ledgr database fits entirely, so page-heavy queries stop evicting themselves), SSD `random_page_cost` 1.1, `work_mem` 16MB. `false` restores the library's stock settings on the next restart; nothing on disk changes either way. |
 | `postgresFlags` | Extra raw server flags, appended AFTER the tuned set (e.g. `["-c", "random_page_cost=4"]` on a spinning disk). For a repeated `-c`, Postgres takes the last one, so a manual flag always beats its tuned counterpart. |
 | `cadence` | Sync knobs, passed through as `LEDGR_SYNC_PUSH_DEBOUNCE_MS` / `LEDGR_SYNC_PULL_MS`. |
@@ -103,32 +103,39 @@ the per-device retention holds (ADR-213) decide nothing.
 | `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
 | `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
 | `snapshot` | **scheduled**, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Scheduled always, but it does nothing until restore points are switched on **in the app** (ADR-222) — see "Snapshots" below. |
-| `export` | off | **No.** One OneDrive folder, and `items.exported_at` is synced. |
-| `calendar-sync` | off | **No.** Two peers match the same event into two rows, and sync propagates both. |
-| `email-import` | off | **No.** Consumes the mailbox: the second peer silently imports nothing. |
+| `export` | **scheduled**, 04:10 | **No.** One OneDrive folder, and `items.exported_at` is synced. Scheduled always; it runs only on the copy named in the app (ADR-223). |
+| `calendar-sync` | **scheduled**, every 240 min | **No.** Two peers match the same event into two rows, and sync propagates both. Scheduled always; owner decided in the app. |
+| `email-import` | **scheduled**, every 240 min | **No.** Consumes the mailbox: the second peer silently imports nothing. Scheduled always; owner decided in the app. |
 | `todoist-sync` | off | **No.** Bidirectional against one account. |
 | `transcription-poll` | off | **No.** Two pollers race for one job. |
 | `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
 
-**Since ADR-218, `crons` decides whether this peer's timer FIRES; the app decides
-whether the work happens.** Which install owns an exclusive job is one slot in
-the synced settings, edited at **Build → Updates → Scheduled work**, and every
-install re-reads it before each run. So turning `export` on here and claiming it
-there are two different acts, and both are needed: the timer has to fire, and
-this machine has to be the owner. A peer whose timer fires without owning the job
-answers `200 {ok, skipped}` and does nothing, which is why leaving `crons.export`
-on across a handoff is harmless rather than a double write.
+**The app decides whether the work happens, and since ADR-223 it decides alone.**
+Which install owns an exclusive job is one slot in the synced settings, edited at
+**Build → Updates → Scheduled work**, and every install re-reads it before each
+run. This used to be two switches: the timer here and the slot there, both
+needed. That combination could hand a job to nobody — name a peer whose `crons`
+had the job off and the cloud stood down while the peer was never called, so the
+backup ran on neither machine — so the three movable exclusive jobs
+(`export`, `calendar-sync`, `email-import`) are now scheduled on **every** peer
+and the endpoint's ownership gate is the only switch. A peer that is not the owner
+answers `200 {ok, skipped}` with which machine has it, and the supervisor records
+that as a stand-down rather than as work done.
 
-Turning an exclusive job on is a deliberate statement that **this** peer is the
-one that does it — so on a hub, once production is no longer running them:
+A slot nobody has set means the **cloud copy does it** and a supervised peer
+stands down, which is exactly where an owner who never opens the picker already
+was. The three jobs the picker refuses to move (`todoist-sync`,
+`transcription-poll`, `health-check`) are still unscheduled here, because
+scheduling a job that can never be named on this machine would only ever fire an
+endpoint that stands down.
+
+So there is normally **nothing to put in `crons`**. It remains an escape hatch for
+taking a job out of this machine's schedule while testing:
 
 ```json
 "crons": {
-  "purge": true,
-  "relatedness": true,
-  "export": { "at": "04:10" },
-  "calendar-sync": { "everyMinutes": 240 },
-  "email-import": { "everyMinutes": 240 }
+  "export": false,
+  "calendar-sync": { "everyMinutes": 60 }
 }
 ```
 
@@ -483,13 +490,16 @@ Run these on the always-on PC, in order:
    directory, but Windows will surface any violation here, not on the Mac).
 7. **Register at boot (Task Scheduler):**
    ```
-   schtasks /Create /TN "Ledgr Supervisor" /SC ONSTART /RU "%USERNAME%" ^
+   schtasks /Create /TN "Ledgr Supervisor" /SC ONSTART /RU "%USERNAME%" /NP ^
      /TR "\"C:\Program Files\nodejs\node.exe\" C:\ledgr\supervisor\ledgr-supervisor.mjs C:\ledgr\supervisor\config.json"
    ```
    Then `schtasks /Run /TN "Ledgr Supervisor"` to start it without rebooting.
-   Watch: the task runs whether or not you're logged in only if you set a
-   stored credential (`/RP`); scheduled tasks get no firewall prompt, so do
-   step 5 in a terminal first.
+   `/NP` is the "Do not store password" option: the task runs with nobody
+   signed in and needs no Windows credential, which matters because a
+   Microsoft-account login has no password Task Scheduler will accept anyway.
+   It trades away NETWORK credentials only, and this peer uses none (public
+   HTTPS git remote, localhost job calls). Scheduled tasks get no firewall
+   prompt, so do step 5 in a terminal first.
 8. **Reboot once** and confirm the app comes back on its own.
 
 Windows-specific unknowns to watch overall: file locks during the build swap

@@ -15,7 +15,22 @@ import {
   shouldRunHere,
   type JobOwners,
   type MovableJob,
+  type Verdict,
 } from "@/lib/job-owners";
+
+/**
+ * Is this install one whose scheduler fires the exclusive jobs without being
+ * asked — i.e. a supervised local peer?
+ *
+ * `LEDGR_SUPERVISOR_DIR` is set by the supervisor and by nothing else, so it
+ * answers exactly the question that matters: is something out there about to
+ * call these endpoints on a timer? A cloud deploy has no supervisor (its timers
+ * are the platform's), and a dev checkout run by hand has none either, so both
+ * keep the old "absent means run it" behavior (ADR-223).
+ */
+export function isSupervisedPeer(): boolean {
+  return !!process.env.LEDGR_SUPERVISOR_DIR && !process.env.VERCEL_ENV;
+}
 
 /**
  * What this machine goes by, for the claim it writes.
@@ -43,10 +58,15 @@ export async function readJobOwners(ownerId: string): Promise<JobOwners> {
 export async function jobRunVerdict(
   ownerId: string,
   job: MovableJob
-): Promise<{ run: boolean; reason: "unset" | "owner" | "not-owner" | "nobody"; ownerLabel: string | null }> {
+): Promise<{ run: boolean; reason: Verdict; ownerLabel: string | null }> {
   const owners = await readJobOwners(ownerId);
   const selfDeviceId = await readLocalDeviceId();
-  const verdict = shouldRunHere({ owners, job, selfDeviceId });
+  const verdict = shouldRunHere({
+    owners,
+    job,
+    selfDeviceId,
+    standDownWhenUnset: isSupervisedPeer(),
+  });
   const state = ownershipOf(owners, job);
   return {
     ...verdict,
@@ -98,7 +118,8 @@ export async function setJobOwner(
   const now = opts.now ?? new Date();
   const owners = await readJobOwners(ownerId);
   if (action === "default") {
-    // Absent, not null: "as before this feature existed".
+    // Absent, not null: the cloud copy does it and supervised peers stand down,
+    // which is where an owner who never opened this picker already was.
     const next = { ...owners };
     delete next[job];
     return { owners: (await updateSettings(ownerId, { jobOwners: next })).jobOwners };

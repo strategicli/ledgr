@@ -6,6 +6,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb, dbSupportsTransactions } from "@/db";
 import {
   mergeOps,
+  opFieldKeys,
   SYNCED_TABLES,
   stableStringify,
   type LocalRow,
@@ -111,7 +112,7 @@ async function readLocalState(db: SyncDb, ops: SyncOp[]): Promise<LocalState> {
       const local = state.rows.get(`${tbl}:${o.row_id}`);
       if (!local) continue;
       const stamp = { at: o.at, deviceId: o.origin_device_id ?? o.device_id };
-      for (const f of Object.keys(o.changed)) local.fields[f] = stamp;
+      for (const f of opFieldKeys(tbl, o.changed)) local.fields[f] = stamp;
     }
   }
 
