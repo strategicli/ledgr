@@ -102,14 +102,51 @@ export async function announceOwnInstall(now = new Date()): Promise<void> {
   }
 }
 
+/**
+ * How stale this copy's own roster row may get before a READ refreshes it.
+ *
+ * The daily announce is the right cadence for hearing about the OTHER copies,
+ * and it was the only writer — which meant a copy that had not yet run its
+ * 03:10 purge was missing from its own roster, and the job picker on that
+ * machine offered no machines to pick. A feature that looks broken for its
+ * first day is indistinguishable from one that is broken.
+ *
+ * So a roster read also refreshes this copy's own row when it is absent or
+ * older than this. Twelve hours holds it to at most two extra synced ops a day
+ * — the whole reason announce is not per-request — while making the roster
+ * correct the moment anybody looks at it.
+ */
+const SELF_REFRESH_MS = 12 * 60 * 60 * 1000;
+
 export async function listInstalls(ownerId: string): Promise<Install[]> {
   const selfId = await ownDeviceId();
   try {
-    const rows = await getDb()
+    let rows = await getDb()
       .select()
       .from(installs)
       .where(eq(installs.ownerId, ownerId))
       .orderBy(installs.label);
+
+    if (selfId) {
+      const self = rows.find((r) => r.id === selfId);
+      const stale =
+        !self || !self.lastSeenAt || Date.now() - self.lastSeenAt.getTime() > SELF_REFRESH_MS;
+      // Best-effort: a failed refresh must never turn a readable roster into an
+      // empty page, so the rows already in hand stand.
+      if (stale) {
+        try {
+          await announceInstall(ownerId);
+          rows = await getDb()
+            .select()
+            .from(installs)
+            .where(eq(installs.ownerId, ownerId))
+            .orderBy(installs.label);
+        } catch {
+          // keep what we read
+        }
+      }
+    }
+
     return rows.map((r) => ({
       id: r.id,
       label: r.label,

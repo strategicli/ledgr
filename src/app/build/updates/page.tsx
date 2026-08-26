@@ -34,7 +34,7 @@ import {
   ownershipOf,
   ownershipWarning,
 } from "@/lib/job-owners";
-import { databaseBytes, readSnapshotKeep } from "@/lib/snapshot-settings";
+import { databaseBytes, readSnapshotKeep, readSnapshotsEnabled } from "@/lib/snapshot-settings";
 import { estimateSnapshotBytes, humanBytes } from "@/lib/snapshots-plan";
 import {
   averageSnapshotBytes,
@@ -141,6 +141,7 @@ export default async function Updates() {
     : [];
   const snapshotJob = localJobs.jobs.find((j) => j.name === "snapshot") ?? null;
   const snapshotKeep = instance.supervisorDir ? await readSnapshotKeep() : 0;
+  const snapshotsEnabled = instance.supervisorDir ? await readSnapshotsEnabled() : false;
   const measuredBytes = averageSnapshotBytes(snapshots);
   // Only ask the database its size when there is nothing real to average, and
   // only look for pg_dump when nothing has been dumped — a snapshot on disk is
@@ -672,16 +673,18 @@ export default async function Updates() {
               ago, rather than waiting for the weekly backup.
             </p>
 
-            {!snapshotJob && (
+            {/* Switched on here but never scheduled: the local service has not
+                restarted since this became a scheduled job (ADR-222), so the
+                switch above is set and nothing is calling it. */}
+            {snapshotsEnabled && !snapshotJob && (
               <p className="mt-3 flex items-start gap-2 text-sm text-ink">
                 <span className="mt-1.5">
                   <StatusDot tone="warn" />
                 </span>
                 <span>
-                  Snapshots are not running on this machine. Add{" "}
-                  <Mono>&quot;snapshot&quot;: true</Mono> to the <Mono>crons</Mono>{" "}
-                  block in <Mono>supervisor/config.json</Mono> and restart the
-                  local service.
+                  Restore points are switched on, but nothing on this machine is
+                  scheduled to take them yet. Restart the local Ledgr service and
+                  this will start on the hour.
                 </span>
               </p>
             )}
@@ -697,6 +700,7 @@ export default async function Updates() {
 
             <div className="mt-4">
               <SnapshotKeep
+                enabled={snapshotsEnabled}
                 keep={snapshotKeep}
                 perSnapshotBytes={perSnapshotBytes}
                 measured={measuredBytes !== null}
@@ -735,7 +739,9 @@ export default async function Updates() {
 
               <dt className="ui-meta text-ink-subtle">Next snapshot</dt>
               <dd className="text-sm text-ink">
-                {snapshotJob?.dueAt ? (
+                {!snapshotsEnabled ? (
+                  <span className="text-ink-subtle">Switched off</span>
+                ) : snapshotJob?.dueAt ? (
                   nextRunLine(snapshotJob.dueAt)
                 ) : (
                   <span className="text-ink-subtle">Not scheduled</span>

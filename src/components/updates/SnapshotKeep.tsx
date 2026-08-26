@@ -1,7 +1,14 @@
 "use client";
 
-// "How many restore points to keep" — the whole snapshot configuration, one
-// number. The spread it buys (dense recent, sparse old) and the disk it costs
+// The whole snapshot configuration: an on/off switch and one number.
+//
+// BOTH LIVE HERE AND ONLY HERE (ADR-222). Turning restore points on used to
+// mean editing `supervisor/config.json` and restarting a service, which is a
+// builder's gesture asked of the person using the product. The supervisor now
+// schedules the job unconditionally and the switch is a setting in the
+// database, so this checkbox is the feature.
+//
+// The spread the number buys (dense recent, sparse old) and the disk it costs
 // both update as you type, because a bare number would be a blind bet: nobody
 // can tell from "30" whether that is a day of history or a month.
 import { useState } from "react";
@@ -14,10 +21,13 @@ import {
 } from "@/lib/snapshots-plan";
 
 export default function SnapshotKeep({
+  enabled,
   keep,
   perSnapshotBytes,
   measured,
 }: {
+  /** Whether the hourly snapshot actually does anything on this machine. */
+  enabled: boolean;
   keep: number;
   /** Average of the real dumps, or an estimate from the database size. */
   perSnapshotBytes: number | null;
@@ -33,14 +43,14 @@ export default function SnapshotKeep({
   const valid = Number.isFinite(n) && n >= MIN_KEEP && n <= MAX_KEEP;
   const dirty = valid && Math.round(n) !== keep;
 
-  async function save() {
+  async function send(body: Record<string, unknown>) {
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/snapshots", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ keep: Math.round(n) }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -54,9 +64,31 @@ export default function SnapshotKeep({
     }
   }
 
+  const save = () => send({ keep: Math.round(n) });
+
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3">
+      {/* The switch. No confirm in either direction: switching off keeps every
+          restore point already on disk, so neither way loses anything. */}
+      <label className="flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-emerald-500"
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => void send({ enabled: e.target.checked })}
+        />
+        <span>
+          <span className="block text-sm text-ink">Keep hourly restore points on this machine</span>
+          <span className="ui-meta block text-ink-subtle">
+            {enabled
+              ? "On. Takes effect at the next hourly snapshot."
+              : "Off. Nothing is being saved beyond the weekly backup and each item's own history."}
+          </span>
+        </span>
+      </label>
+
+      <div className={`mt-4 flex flex-wrap items-center gap-3 ${enabled ? "" : "opacity-60"}`}>
         <label className="group relative ui-meta cursor-help text-ink-subtle" htmlFor="snapshot-keep">
           <span className="underline decoration-dotted decoration-neutral-600 underline-offset-2">
             Restore points to keep

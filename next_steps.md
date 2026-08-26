@@ -312,6 +312,20 @@ The person picture box (ADR-202 addendum 4, `src/components/people/PersonImageBo
 >
 > **🟡 TYLER'S INSTANCE IS MISSING ONE AUTH SECRET — was two (updated 2026-08-13).** Found while building ADR-179: `tylerjaycollins-projects/ledgr` had **none** of the `LEDGR_*` auth vars set. **Now set:** `LEDGR_APP_SECRET` and `LEDGR_API_TOKENS` (Build → API Tokens works), plus `LEDGR_OAUTH_SECRET` and `LEDGR_MCP_OWNER_UPN` as of 2026-08-10, so the MCP Generate button works and MCP runs over OAuth on the cloud instance. **Still unset: `LEDGR_CLIPPER_SECRET`,** which means the web-clipper Generate button renders as nothing on that instance — the invisible-feature trap ADR-179 was written about. Fix when wanted: `openssl rand -hex 32` → `vercel env add LEDGR_CLIPPER_SECRET production` → redeploy. Not needed for Overtone.
 
+## ✅ Recently done — Three surfaces stopped lying, and the config file stopped being a lever (2026-08-25, ADR-222)
+
+Brandon opened what ADR-217 through ADR-221 shipped and found three things that were not so. Nothing here is core: no migration, no wire change, no seam change, and nobody who ignores the new checkbox sees any difference.
+
+**The rule this produced, now a working convention in `CLAUDE.md`: the config file is never the end user's lever.** Every setting a person is expected to change lives in the GUI. `supervisor/config.json`, env vars and JSON blocks are for standing an install up and for testing. If the answer to "how do I turn this on?" is "edit this file and restart the service", the feature has a builder attached and has not really shipped.
+
+- **Restore points are a checkbox now.** ADR-217 put the *keep* number in the app and left the *switch* in `crons.snapshot`. The fix inverts which layer decides: the supervisor schedules `snapshot` hourly on every peer and the endpoint asks `job_state` whether to dump (absent or false → `{ok, skipped}`, recorded as a clean run). Off is still the default; the default just moved into the database. Switching off never deletes what is already on disk. `"crons": {"snapshot": false}` still un-schedules it entirely, as a testing lever.
+- **The roster filled a day late, which read as broken.** ADR-220's announce rides `purge` at 03:10 and was the only writer, so a copy that had not run its first purge was missing from its own roster and the "Runs on" picker offered nothing but the two non-machine options. A roster READ now also refreshes this copy's own row when it is absent or older than twelve hours, best-effort. Two extra synced ops a day at worst, which is the constraint that kept announce off the request path.
+- **A copy that only RECEIVES was told it syncs with nothing.** `summarizeSync` keyed on `sync.enabled`, which only ever meant "has somewhere to send". A main copy has nowhere: everything pushes into it. So the cloud install opened with *"This device is not syncing with anything"* while a local peer pushed into it every ten seconds. The headline reads both directions now, and "Where your changes go" says the same in its empty state.
+
+**Proven live** against the dev branch: the roster self-heal created this machine's row on a page read and the picker rendered it; the Network page on a peered instance now opens with "2 devices send changes here / It is a main copy" where it used to claim isolation. **Not yet proven on hardware:** an actual hourly dump after the switch is ticked, which needs the local service restarted to pick up the new schedule.
+
+**One follow-up left deliberately undone.** The *Scheduled jobs on this machine* section still points at `crons` in `supervisor/config.json` for which jobs run at all. That is the same rule as above and wants the same treatment, but moving the whole catalog into the GUI is its own slice rather than a footnote on this one. Snapshots was the one the owner actually needed.
+
 ## ✅ Recently done — Two more jobs move, real cadences, and the last of the hub vocabulary (2026-08-25, ADR-221)
 
 Three of the four things `explorations/sync-node-maturity.md` still had open. **Nothing here touches a migration or the wire**, so it is safe beside a peer on an older build, and the only gated piece is §4.

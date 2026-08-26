@@ -137,7 +137,16 @@ export default async function Network() {
     return w ? [w.text] : [];
   });
   const devicesNeedingAttention = peers.filter((p) => !p.revoked && p.hold.warn).length;
-  const summary = summarizeSync({ sync, now, devicesNeedingAttention, jobWarnings });
+  // The inbound half. A revoked peer is shut out and a pull-only one never
+  // sends, so neither counts as a device that pushes changes into this copy.
+  const inboundDevices = peers.filter((p) => !p.revoked && !p.pullOnly).length;
+  const summary = summarizeSync({
+    sync,
+    now,
+    devicesNeedingAttention,
+    jobWarnings,
+    inboundDevices,
+  });
 
   // The engine's blended `state` calls a hub that is merely NOT DUE "offline".
   // Presentation-only correction, the same distinction summarizeSync makes:
@@ -199,9 +208,23 @@ export default async function Network() {
         <Card>
           {hubs.length === 0 ? (
             <p className="text-sm text-ink-muted">
-              Nothing yet. Everything you write stays on this device only. Add
-              another copy of Ledgr and the two keep each other up to date; you
-              will need a one-time code from that copy&apos;s Devices list.
+              Nothing. This copy sends its changes nowhere.{" "}
+              {inboundDevices > 0 ? (
+                <>
+                  It is a main copy: {inboundDevices}{" "}
+                  {inboundDevices === 1 ? "device sends" : "devices send"} their changes{" "}
+                  <a href="#devices" className="underline decoration-dotted underline-offset-2">
+                    here
+                  </a>{" "}
+                  instead, and everything written on any of them arrives here.
+                </>
+              ) : (
+                <>
+                  Everything you write stays on this device only. Add another copy of
+                  Ledgr and the two keep each other up to date; you will need a
+                  one-time code from that copy&apos;s Devices list.
+                </>
+              )}
             </p>
           ) : (
             <ul className="divide-y divide-line">

@@ -322,26 +322,59 @@ ok("a missing snapshots directory is none, not a crash", () => {
 
 // ── Wiring that has to stay true ────────────────────────────────────────────
 
-ok("the supervisor's job catalog carries snapshot, hourly, shared, off by default", async () => {
+// ADR-222 moved the SWITCH out of here. The job is scheduled on every peer that
+// asked for nothing, and the endpoint decides whether to dump — which is the
+// only way the owner's on/off can be a checkbox rather than a config edit plus a
+// service restart. Off-by-default still holds; it just lives in the database.
+ok("the supervisor's job catalog carries snapshot, hourly, shared, always scheduled", async () => {
   const lib = await import("../supervisor/lib.mjs");
   const job = lib.LOCAL_JOBS.snapshot;
   assert.ok(job, "no snapshot job in LOCAL_JOBS");
   assert.equal(job.path, "/api/machine/snapshot");
   assert.equal(job.everyMinutes, 60);
   assert.equal(job.shared, true, "a purely local dump is safe on every peer");
-  assert.equal(job.on, false, "snapshots cost disk; they are opt-in");
+  assert.equal(job.on, true, "the GUI switch only works if the job is scheduled to ask");
   assert.ok(job.timeoutMs > 120_000, "a pg_dump needs longer than an API call");
-  // Off by default means a peer that asked for nothing schedules nothing.
+  const def = lib
+    .normalizeCrons(undefined)
+    .find((j: { name: string }) => j.name === "snapshot");
+  assert.ok(def, "a peer that asked for nothing must still schedule the hourly check");
+  assert.equal(def.intervalMs, 60 * 60_000);
+  assert.equal(def.timeoutMs, job.timeoutMs, "the runner must see the longer timeout");
+  // The testing lever survives: an explicit false still schedules nothing.
   assert.equal(
-    lib.normalizeCrons(undefined).some((j: { name: string }) => j.name === "snapshot"),
+    lib.normalizeCrons({ snapshot: false }).some((j: { name: string }) => j.name === "snapshot"),
     false
   );
-  const asked = lib
-    .normalizeCrons({ snapshot: true })
-    .find((j: { name: string }) => j.name === "snapshot");
-  assert.ok(asked, "asking for snapshot scheduled nothing");
-  assert.equal(asked.intervalMs, 60 * 60_000);
-  assert.equal(asked.timeoutMs, job.timeoutMs, "the runner must see the longer timeout");
+});
+
+ok("the endpoint, not the scheduler, is what the owner's switch reaches", () => {
+  const src = readFileSync(resolve("src/app/api/machine/snapshot/route.ts"), "utf8");
+  assert.match(
+    src,
+    /readSnapshotsEnabled/,
+    "the hourly job must ask whether snapshots are switched on before dumping"
+  );
+  // The switch is read BEFORE the dump, or it is decoration.
+  assert.ok(
+    src.indexOf("readSnapshotsEnabled") < src.indexOf("runSnapshot("),
+    "the gate must come before the work"
+  );
+
+  const api = readFileSync(resolve("src/app/api/snapshots/route.ts"), "utf8");
+  assert.match(api, /writeSnapshotsEnabled/, "no way to flip the switch from the app");
+
+  // The whole point: the Snapshots section never sends the owner to a config
+  // file. Everything between its heading and the next one is fair game.
+  const page = readFileSync(resolve("src/app/build/updates/page.tsx"), "utf8");
+  const from = page.indexOf("Snapshots</h2>");
+  assert.ok(from > 0, "no Snapshots section on the Updates page");
+  const section = page.slice(from);
+  assert.doesNotMatch(
+    section,
+    /config\.json|&quot;snapshot&quot;|"snapshot": true/,
+    "the owner must never be sent to a config file to switch restore points on"
+  );
 });
 
 ok("the cron runner honors a job's own timeout", () => {

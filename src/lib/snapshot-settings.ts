@@ -16,6 +16,38 @@ import { clampKeep, DEFAULT_KEEP } from "@/lib/snapshots-plan";
 import { pruneSnapshots, snapshotsDir, takeSnapshot } from "@/lib/snapshots";
 
 const SNAPSHOT_KEEP_KEY = "snapshots:keep";
+const SNAPSHOT_ENABLED_KEY = "snapshots:enabled";
+
+/**
+ * Is the hourly snapshot switched on here?
+ *
+ * THE SWITCH LIVES HERE, NOT IN THE SUPERVISOR CONFIG (ADR-222). It used to be
+ * `crons.snapshot` in `supervisor/config.json`, which meant turning restore
+ * points on required editing a file and restarting a service — a builder's
+ * gesture asked of the person using the product. The supervisor now schedules
+ * the job unconditionally and this answers whether it does any work, so the
+ * whole setting is a checkbox that takes effect on the next hour with no
+ * restart.
+ *
+ * Absent = OFF, deliberately: snapshots cost real disk, and scheduling the job
+ * for everyone must not start filling anyone's drive until they ask.
+ */
+export async function readSnapshotsEnabled(): Promise<boolean> {
+  const rows = await getDb()
+    .select({ value: jobState.value })
+    .from(jobState)
+    .where(eq(jobState.key, SNAPSHOT_ENABLED_KEY));
+  return (rows[0]?.value as { enabled?: unknown } | undefined)?.enabled === true;
+}
+
+export async function writeSnapshotsEnabled(enabled: boolean): Promise<boolean> {
+  const value = { enabled };
+  await getDb()
+    .insert(jobState)
+    .values({ key: SNAPSHOT_ENABLED_KEY, value })
+    .onConflictDoUpdate({ target: jobState.key, set: { value, updatedAt: new Date() } });
+  return enabled;
+}
 
 /** How many restore points to keep. Absent = the default, not "off". */
 export async function readSnapshotKeep(): Promise<number> {

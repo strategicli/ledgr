@@ -102,7 +102,7 @@ the per-device retention holds (ADR-213) decide nothing.
 | --- | --- | --- |
 | `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
 | `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
-| `snapshot` | off, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Off by default because it costs disk. See "Snapshots" below. |
+| `snapshot` | **scheduled**, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Scheduled always, but it does nothing until restore points are switched on **in the app** (ADR-222) — see "Snapshots" below. |
 | `export` | off | **No.** One OneDrive folder, and `items.exported_at` is synced. |
 | `calendar-sync` | off | **No.** Two peers match the same event into two rows, and sync propagates both. |
 | `email-import` | off | **No.** Consumes the mailbox: the second peer silently imports nothing. |
@@ -161,14 +161,15 @@ Between the `revisions` table (one item's body history) and the weekly OneDrive
 custom-format `pg_dump` of this peer's own cluster, hourly, thinned into a tiered
 spread so a fixed number of files covers weeks.
 
-Turn it on the way any job is turned on, then forget it:
+**Both settings live in the app, not here (ADR-222).** The supervisor schedules
+this job hourly on every peer and the endpoint asks the database whether to do
+anything, so **Build → Updates → Snapshots** owns the whole feature: an on/off
+switch (default **off**, because it costs disk) and *how many restore points to
+keep* (default 30). Nothing in `config.json` is involved, and neither setting
+needs a restart. Setting `"crons": { "snapshot": false }` still stops the job
+being scheduled at all, which is a testing lever rather than the owner's switch.
 
-```json
-"crons": { "snapshot": true }
-```
-
-**One setting, and it lives in the app**, not here: **Build → Updates →
-Snapshots** sets *how many restore points to keep* (default 30). The spread is
+The keep number is the interesting one. The spread is
 computed from that number — dense recent, sparse old — and the page says it in
 words, alongside the disk it costs, what is on disk now, and every restore point
 with its timestamp, plus a **Snapshot now** button for the moment before

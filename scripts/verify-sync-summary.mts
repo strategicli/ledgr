@@ -224,6 +224,30 @@ ok("a single-device install is told what that means, not warned about it", () =>
   assert.ok(r.action, "no way offered to add a second copy");
 });
 
+// THE BUG THIS PAIR EXISTS FOR: the cloud copy sends its changes nowhere, so
+// `enabled` was false and the page announced "this device is not syncing with
+// anything" while a local peer pushed into it every ten seconds. Sync has two
+// directions; a headline that reads only the outbound one calls the busiest
+// node on the network an island.
+ok("a copy that only RECEIVES is not called an island", () => {
+  const r = sum({ enabled: false }, { inboundDevices: 2 });
+  assert.equal(r.tone, "ok");
+  assert.match(r.headline, /2 devices send changes here/i);
+  assert.doesNotMatch(`${r.headline} ${r.detail}`, /not syncing with anything|stays here/i);
+  assert.equal(r.action?.href, "#devices");
+});
+
+ok("one inbound device is singular, and zero still reads as alone", () => {
+  assert.match(sum({ enabled: false }, { inboundDevices: 1 }).headline, /1 device sends/i);
+  assert.match(sum({ enabled: false }, { inboundDevices: 0 }).detail, /stays here/i);
+});
+
+ok("a copy in the middle reports both directions at once", () => {
+  const r = sum(status(), { inboundDevices: 3 });
+  assert.match(r.detail, /reached your other devices/i);
+  assert.match(r.detail, /3 devices also send changes here/i);
+});
+
 ok("a receive-only device says so instead of claiming it sent anything", () => {
   const receiveOnly = status();
   assert.ok(receiveOnly.enabled, "fixture is not an enabled status");
