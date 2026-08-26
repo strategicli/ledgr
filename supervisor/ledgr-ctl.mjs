@@ -17,8 +17,8 @@
 // A separate entry point from ledgr-supervisor.mjs on purpose: that file boots
 // Postgres and the app on import-and-run, so it cannot answer a question
 // without becoming the thing it is being asked about.
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -31,6 +31,13 @@ import {
   schtasksCreateArgs,
   schtasksDeleteArgs,
   schtasksQueryArgs,
+  parseSchtasksLogonMode,
+  startupCaveat,
+  restartSignalPath,
+  supervisorStatePath,
+  serializeRestartRequest,
+  parseSupervisorState,
+  AWAIT_PID_ENV,
   serializeStartupRequest,
   startupScope,
   startupSignalPath,
@@ -101,10 +108,32 @@ async function appAnswers() {
 
 /** What Windows actually holds, not what we last asked for. */
 function registeredScope() {
-  if (!isWin) return { supported: false, registered: false, scope: null };
+  if (!isWin) return { supported: false, registered: false, scope: null, mode: null };
   const res = spawnSync("schtasks", schtasksQueryArgs(), { encoding: "utf8" });
-  if (res.status !== 0) return { supported: true, registered: false, scope: null };
-  return { supported: true, registered: true, scope: parseSchtasksScope(res.stdout ?? "") };
+  if (res.status !== 0) return { supported: true, registered: false, scope: null, mode: null };
+  const text = res.stdout ?? "";
+  // The logon mode comes from the SAME query, so the caveat below can be
+  // computed from what Windows holds right now. It used to be printed from
+  // startup-state.json — a string recorded at registration time and never
+  // re-checked — so a task later upgraded to run with nobody signed in kept
+  // being reported as if it could not (found live 2026-08-26: schtasks said
+  // Interactive/Background while this said the opposite, and the advice it gave
+  // was for a password Ledgr no longer uses).
+  return {
+    supported: true,
+    registered: true,
+    scope: parseSchtasksScope(text),
+    mode: parseSchtasksLogonMode(text),
+  };
+}
+
+/** This peer's own service state, as the supervisor last wrote it. */
+function supervisorState() {
+  try {
+    return parseSupervisorState(readFileSync(supervisorStatePath(cfg.dataDir), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function recordedStartupState() {
@@ -181,12 +210,27 @@ async function doStatus() {
   }
   // A successful registration that will not survive a logged-out boot is worse
   // than a failed one: it reads as done. Say so wherever we say "registered".
-  if (recorded?.ok && recorded.caveat) {
-    console.log(`  heads up    ${recorded.caveat}`);
+  // Live when we could ask Windows, recorded only as the fallback.
+  const liveCaveat = boot.registered ? startupCaveat(boot.scope, boot.mode) : null;
+  const caveat = boot.registered ? liveCaveat : recorded?.ok ? recorded.caveat : null;
+  if (caveat) {
+    console.log(`  heads up    ${caveat}`);
   }
   if (recorded && !recorded.ok) {
     console.log(`  last change FAILED: ${recorded.detail ?? "unknown"}`);
     if (recorded.command) console.log(`              run this elevated: ${recorded.command}`);
+  }
+  const self = supervisorState();
+  if (self?.runningCode && self.installedCode && self.runningCode !== self.installedCode) {
+    console.log("  code        the running service predates the code on disk — restart to apply it");
+    console.log(`              (running ${self.runningCode}, installed ${self.installedCode}); npm run local:restart`);
+  }
+  if (self?.restart) {
+    const r = self.restart;
+    const when = r.at ? ` (${r.at})` : "";
+    if (r.phase === "healthy") console.log(`  last restart came back healthy${when}`);
+    else if (r.phase === "failed") console.log(`  last restart FAILED${when}: ${r.detail ?? "unknown"}`);
+    else console.log(`  last restart left mid-flight at "${r.phase}"${when} — this peer may not have come back`);
   }
   if (!crons) {
     console.log("  jobs        no record yet (an older supervisor, or one that has not started)");
@@ -201,6 +245,91 @@ async function doStatus() {
     }
   }
   return running ? 0 : 1;
+}
+
+// ── restart ──────────────────────────────────────────────────────────────────
+//
+// The CLI twin of the app's Restart button (ADR-227), and deliberately the same
+// mechanism: write the request, let the supervisor hand off to its successor,
+// then WATCH until something is actually serving again. "Restarted" that means
+// "the request was filed" is the kind of half-truth this project keeps deleting.
+async function doRestart() {
+  const pid = ownerPid();
+  const alive = pid !== null && pidAlive(pid);
+
+  if (!alive) {
+    // Nothing to hand off from: start one. Detached, with its output appended
+    // to the peer's logs, because a supervisor with nowhere to write is how a
+    // startup failure becomes invisible.
+    if (pid !== null) clearStaleLock(pid);
+    console.log("No local service running — starting one.");
+    const child = spawnDetachedSupervisor();
+    if (!child) return 1;
+    console.log(`Started (pid ${child}). Waiting for it to serve…`);
+    return (await waitForServing(child)) ? 0 : 1;
+  }
+
+  writeFileSync(restartSignalPath(cfg.dataDir), serializeRestartRequest({ reason: "asked from the command line" }), "utf8");
+  console.log(`Asked pid ${pid} to restart; waiting for the replacement to serve…`);
+  return (await waitForServing(null, pid)) ? 0 : 1;
+}
+
+function spawnDetachedSupervisor() {
+  const script = join(here, "ledgr-supervisor.mjs");
+  let out = "ignore";
+  let err = "ignore";
+  try {
+    out = openSync(join(cfg.dataDir, "supervisor.log"), "a");
+    err = openSync(join(cfg.dataDir, "supervisor.err.log"), "a");
+  } catch {
+    // still start it, just blind
+  }
+  try {
+    const child = spawn(process.execPath, [script, configPath], {
+      detached: true,
+      stdio: ["ignore", out, err],
+      cwd: cfg.repoDir,
+      env: { ...process.env, [AWAIT_PID_ENV]: "" },
+    });
+    child.unref();
+    return child.pid ?? null;
+  } catch (err2) {
+    console.error(`Could not start the local service: ${String(err2?.message ?? err2)}`);
+    return null;
+  }
+}
+
+/**
+ * Wait for a peer to be genuinely back: a live supervisor that is NOT the one
+ * we asked to leave, and an app answering on the port. Two minutes, because a
+ * restart stops Postgres cleanly and starts it again.
+ */
+async function waitForServing(expectPid, replacingPid = null) {
+  const deadline = Date.now() + 120_000;
+  let lastPhase = null;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const self = supervisorState();
+    const phase = self?.restart?.phase ?? null;
+    if (phase && phase !== lastPhase) {
+      lastPhase = phase;
+      if (phase === "failed") {
+        console.error(`Restart failed: ${self.restart.detail ?? "unknown"}`);
+        return false;
+      }
+    }
+    const now = ownerPid();
+    const fresh = now !== null && pidAlive(now) && now !== replacingPid;
+    if (fresh && (await appAnswers())) {
+      console.log(`Healthy: pid ${now} is serving on :${cfg.appPort}.`);
+      return true;
+    }
+  }
+  console.error(
+    "It has not come back within two minutes. npm run local:status shows what it\n" +
+      "is doing; the supervisor's own log is in the peer's data directory."
+  );
+  return false;
 }
 
 // ── stop ─────────────────────────────────────────────────────────────────────
@@ -351,6 +480,7 @@ function doRequest() {
 
 const verbs = {
   status: doStatus,
+  restart: doRestart,
   stop: doStop,
   startup: doStartup,
   request: doRequest,

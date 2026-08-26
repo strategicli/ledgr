@@ -935,6 +935,24 @@ one device should be doing it. A job marked as one only this device should run i
 labelled as such in the list. A failure is also recorded in this instance's error
 log, so it counts on the health report rather than passing quietly.
 
+**This machine's Ledgr service** (only on a machine you run yourself). The
+service is what holds the database, serves the app and triggers the scheduled
+work below. It starts with the computer, so most of the time there is nothing to
+do here. Two things it will tell you. If an update has arrived that the running
+service predates — an update can change the service itself, and a running one
+keeps the version it started with — it says so, because until it restarts, part
+of what you installed is not in effect. And after a restart it says whether that
+came back healthy.
+
+**Restart it** is a button, not a command to type. It asks first, tells you what
+it costs (Ledgr on that machine is unreachable for about half a minute, from your
+phone and from Claude too), and then waits until a *different* copy of the
+service is answering before it says it worked — so "restarted" means the machine
+came back, not that the request was filed. Nothing is lost: the database is shut
+down cleanly and started again, and scheduled work waits rather than being
+skipped. If it has not come back in two minutes the page says so instead of
+spinning, and names the one terminal command that reports where it is stuck.
+
 **Scheduled work.** Some jobs write somewhere shared: one OneDrive folder, one
 mailbox, one Todoist account. Exactly one of your machines may do each of them,
 so this is where you say which one. Every device shows the same answer, because
