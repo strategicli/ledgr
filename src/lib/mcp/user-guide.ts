@@ -911,13 +911,14 @@ devices — stays down with it. Two choices, and the difference is real: *when I
 sign in* needs no administrator prompt but waits for you to log in, which suits
 a laptop; *at boot, always on* is what a machine other devices rely on needs,
 and Windows asks your permission in the ordinary consent dialog — click Yes and it
-registers, with no terminal involved. Two things it tells you rather than let you
-assume. Dismiss that prompt and it says so, so you can tick the box again. And if
-the task registered but Windows will only run it while you are signed in, it says
-that too — a reboot nobody logs into is the exact case *always on* exists for, and
-covering it needs your Windows password stored with the task, which only you can
-do: open Task Scheduler, find *Ledgr Supervisor*, and set *Run whether user is
-logged on or not*. If a change cannot be applied at all, the page still shows the
+registers, with no terminal involved. You are never asked for your Windows
+password, and none is stored: Ledgr registers the task the passwordless way, so
+it runs with nobody signed in on its own. Two things it tells you rather than let
+you assume. Dismiss the consent prompt and it says so, so you can tick the box
+again. And if the task registered but Windows will only run it while you are
+signed in, it says that too — a reboot nobody logs into is the exact case *always
+on* exists for, so it should not happen, and if it does the page tells you what to
+try. If a change cannot be applied at all, the page still shows the
 exact command to run instead. It will not quietly let you believe a reboot is
 covered when it is not.
 
@@ -940,10 +941,17 @@ so this is where you say which one. Every device shows the same answer, because
 two machines doing the same job is the mistake worth catching.
 
 Each job has a **Runs on** dropdown listing every copy of Ledgr you have, so you
-can send a job to a machine you are not sitting at. Changing it takes the job away
-from wherever it was, everywhere, within seconds. You can also pause a job
-everywhere, or hand it back to running wherever it is switched on. If the machine
-holding a job stops doing it, the page says so rather than looking fine.
+can send a job to a machine you are not sitting at. Naming a machine is all it
+takes: there is nothing to switch on over there, and nothing to restart. The
+default is **leave it to the cloud**, which is what every job does until you say
+otherwise, and you can also pause a job everywhere. If the machine holding a job
+stops doing it, the page says so rather than looking fine.
+
+**It moves at your sync schedule, not instantly.** The copy you are looking at
+stops doing the job the moment you confirm, and the machine you chose picks it up
+the next time it checks in with your other copies. For these jobs that gap is
+harmless, because each one catches up on its next run. If you want it closed now,
+**Check in now** on that machine's Network page does it immediately.
 
 **Offline backup, Calendar sync and Email capture can be moved today.** Each one
 picks up cleanly wherever it left off, whichever machine takes it. A job that
@@ -951,7 +959,9 @@ cannot be moved yet says so in its own row, with the reason, instead of offering
 dropdown that would quietly lose track of something. Moving a job to a machine
 asks you to confirm, and tells you the trade first: the job only runs while that
 machine is switched on, so a calendar event or a forwarded message shows up late
-if it sleeps. Nothing is lost either way.
+if it sleeps. Nothing is lost either way. If you point a job at a copy nothing has
+heard from in days, the confirmation says so, because that is how a job ends up
+running nowhere at all.
 
 **Your copies of Ledgr** is the list behind that dropdown. Every copy adds itself
 and checks in once a day, so this is the one place that knows about all of them at
@@ -961,12 +971,10 @@ later from any device (on Network, under "Your copies of Ledgr"). Two copies
 sharing a name is called out, because then the dropdown cannot tell you which
 machine a job is on.
 
-Today only the **offline backup** can be moved. The others each show why not:
-each of them keeps its own place in a queue on the machine that runs it, so
-moving one needs a check first, and the page names the check. Moving the backup
-is worth it if you run Ledgr on your own machine: in the cloud it has to finish
-inside a one-minute limit, so it copies about 30 items a night, and on your own
-machine there is no limit and it clears the whole queue at once.
+Moving the **offline backup** is the one worth doing if you run Ledgr on your own
+machine: in the cloud it has to finish inside a one-minute limit, so it copies
+about 30 items a night, and on your own machine there is no limit and it clears
+the whole queue at once.
 
 **Snapshots.** Also on your own machine: a complete copy of the database, taken
 every hour, so a mistake bigger than one item can be answered by looking at how
@@ -1035,6 +1043,11 @@ in the middle you get both in one line.
   automatic copy goes down it will ask before it starts reading from this one.
   The arrows on each row change the priority order. At least one copy always has
   to be automatic, or this machine would sit waiting for you instead of syncing.
+- **Check in now** exchanges with every copy immediately, whatever the schedule
+  says. A schedule works in both directions: between check-ins your changes are
+  waiting here, and changes made on another copy have not arrived yet. This is
+  the button for when you do not want to wait for either — after moving a
+  scheduled job to this machine, for instance.
 - **Your changes always go to every copy.** Sending a copy somewhere can never
   harm you, and a backup that stops receiving is not a backup, so every one
   gets your changes on its own schedule whatever its trust setting. Reading is

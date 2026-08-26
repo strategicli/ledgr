@@ -7,7 +7,7 @@
 // is precisely the "no silent failures" rule inverted into noise.
 import { NextResponse } from "next/server";
 import { jobRunVerdict } from "@/lib/job-owners-store";
-import type { MovableJob } from "@/lib/job-owners";
+import { standDownDetail, type MovableJob } from "@/lib/job-owners";
 
 /**
  * Returns a 200 "skipped" response when this install must NOT run the job, or
@@ -29,9 +29,6 @@ export async function standDownIfNotOwner(
     reason: verdict.reason,
     // Said plainly, because this response is what a person sees when they poke
     // the endpoint by hand wondering why nothing is exporting.
-    detail:
-      verdict.reason === "nobody"
-        ? "Nothing is set to run this job."
-        : `This job runs on ${verdict.ownerLabel ?? "another machine"}, not here.`,
+    detail: standDownDetail(verdict.reason, verdict.ownerLabel),
   });
 }

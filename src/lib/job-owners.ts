@@ -39,11 +39,23 @@
 // default — from anywhere, because the label travels with the slot. The
 // exactly-one guarantee is untouched; only the gesture changed.
 //
-// ABSENT IS NOT "NOBODY". An absent slot means "behave exactly as before this
-// feature existed": every install runs the job on its own schedule, which for a
-// local peer means the supervisor's `crons` default (off for every exclusive
-// job) and for the cloud means its Vercel/Actions schedule. So an owner who
-// never opens the picker changes nothing, and Tyler's instance is untouched.
+// ABSENT MEANS "THE CLOUD DOES IT" (ADR-225). An absent slot used to mean
+// "behave exactly as before this feature existed": every install runs the job on
+// its own schedule, which was survivable only because a local peer's supervisor
+// left every exclusive job switched OFF in `supervisor/config.json`. That made
+// ownership TWO switches — this slot granted permission, the config file granted
+// the trigger — so assigning a job to a peer whose config had it off handed the
+// job to nobody at all. Found live on 2026-08-26: the backup, calendar sync and
+// email capture were all pointed at the local peer and then ran on neither
+// machine, because the cloud stood down and the peer was never triggered.
+//
+// So the supervisor now schedules the movable jobs unconditionally, exactly as
+// ADR-222 does for snapshots, and THIS GATE is the only switch. To leave an
+// owner who never opens the picker precisely where they were, absent resolves
+// per install kind: the cloud runs it (as it always did) and a supervised peer
+// stands down (as it always did, by way of that config default). Same behavior,
+// one lever, and the lever is the GUI.
+//
 // `null` is different and deliberate: it means the owner said NOBODY, and the
 // surfaces say so out loud.
 //
@@ -153,6 +165,15 @@ export const MOVABLE_JOBS: Record<MovableJob, JobDef> = {
 
 export const MOVABLE_JOB_NAMES = Object.keys(MOVABLE_JOBS) as MovableJob[];
 
+/**
+ * How the absent slot reads to a person, everywhere it is named. One string
+ * because it is one fact, and it stopped being "wherever it is switched on" the
+ * moment there was nothing left to switch on by hand (ADR-225).
+ */
+export const DEFAULT_OWNER_LABEL = "Leave it to the cloud";
+const DEFAULT_SUFFIX = "(the default)";
+export const DEFAULT_OWNER_OPTION = `${DEFAULT_OWNER_LABEL} ${DEFAULT_SUFFIX}`;
+
 export function isMovableJob(name: string): name is MovableJob {
   return Object.hasOwn(MOVABLE_JOBS, name);
 }
@@ -211,6 +232,34 @@ export function parseJobOwners(raw: unknown): JobOwners {
   return out;
 }
 
+/**
+ * Why a job did or did not run here.
+ *
+ * `unset-standby` is the one that is neither a fault nor a choice the owner
+ * made: nobody was named, so the cloud copy has it and this peer is
+ * deliberately idle. It must never read as an error (ADR-225).
+ */
+export type Verdict = "unset" | "unset-standby" | "owner" | "not-owner" | "nobody";
+
+/**
+ * What a stood-down job says for itself, in the response the supervisor records
+ * and a person sees when they poke the endpoint by hand wondering why nothing is
+ * exporting.
+ *
+ * `unset-standby` is the sentence that matters: it is not a fault, so it has to
+ * read as "the cloud has this" and point at the one place that changes it.
+ */
+export function standDownDetail(reason: Verdict, ownerLabel: string | null): string {
+  switch (reason) {
+    case "nobody":
+      return "Nothing is set to run this job.";
+    case "unset-standby":
+      return "Nobody is named for this job, so the cloud copy does it. Name this machine under Scheduled work to move it here.";
+    default:
+      return `This job runs on ${ownerLabel ?? "another machine"}, not here.`;
+  }
+}
+
 /** What the record says about one job. */
 export type Ownership =
   | { state: "unset" } // as before this feature: everyone runs it on their own schedule
@@ -231,17 +280,30 @@ export function ownershipOf(owners: JobOwners, job: MovableJob): Ownership {
  * anybody reconfiguring it.
  *
  * Note this can only ever REDUCE the set of installs that run a job, never
- * expand it — an unset slot is "as today" — which is why it is safe to apply
- * uniformly to every exclusive job, including the ones not yet claimable.
+ * expand it — an unset slot never turns a job ON anywhere it was off — which is
+ * why it is safe to apply uniformly to every exclusive job, including the ones
+ * not yet claimable.
  */
 export function shouldRunHere(opts: {
   owners: JobOwners;
   job: MovableJob;
   /** This install's own `sync_device` id. Null when it has none. */
   selfDeviceId: string | null;
-}): { run: boolean; reason: "unset" | "owner" | "not-owner" | "nobody" } {
+  /**
+   * True on an install that is SCHEDULED to fire these jobs but must not run
+   * them unasked: a supervised local peer (ADR-225). Since the supervisor now
+   * schedules them unconditionally, an unnamed job would otherwise run on the
+   * peer AND in the cloud, which is the double-writer this feature exists to
+   * make impossible.
+   */
+  standDownWhenUnset?: boolean;
+}): { run: boolean; reason: Verdict } {
   const owner = ownershipOf(opts.owners, opts.job);
-  if (owner.state === "unset") return { run: true, reason: "unset" };
+  if (owner.state === "unset") {
+    return opts.standDownWhenUnset
+      ? { run: false, reason: "unset-standby" }
+      : { run: true, reason: "unset" };
+  }
   if (owner.state === "nobody") return { run: false, reason: "nobody" };
   return owner.claim.deviceId === opts.selfDeviceId
     ? { run: true, reason: "owner" }
@@ -335,7 +397,7 @@ export function ownerLine(opts: {
   selfDeviceId: string | null;
 }): string {
   const owner = ownershipOf(opts.owners, opts.job);
-  if (owner.state === "unset") return "Runs wherever it is switched on";
+  if (owner.state === "unset") return `Runs in the cloud ${DEFAULT_SUFFIX}`;
   if (owner.state === "nobody") return "Not running anywhere";
   return owner.claim.deviceId === opts.selfDeviceId
     ? "Runs on this machine"

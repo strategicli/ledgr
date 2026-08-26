@@ -317,9 +317,10 @@ function doStartup() {
   if (res.status === 0) {
     console.log(
       scope === "always"
-        ? "Registered to start at system boot. If nobody will be signed in, give the task a\n" +
-            "  stored password in Task Scheduler (or re-run schtasks with /RP) — without one\n" +
-            "  Windows will not run it while logged out."
+        ? "Registered to start at system boot, and to run with nobody signed in — no\n" +
+            "  Windows password is stored or needed (/NP, the \"Do not store password\"\n" +
+            "  option). The task gets no network credential, which costs this peer nothing:\n" +
+            "  it reads a public git remote over HTTPS and calls its own localhost port."
         : "Registered to start when you sign in."
     );
     console.log(`Start it now without rebooting: schtasks /Run /TN "${STARTUP_TASK_NAME}"`);

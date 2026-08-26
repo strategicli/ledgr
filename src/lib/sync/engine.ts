@@ -118,6 +118,40 @@ function jsonEq(a: unknown, b: unknown): boolean {
   return stableStringify(a ?? null) === stableStringify(b ?? null);
 }
 
+// ── users.settings is merged PER KEY, not as one blob (ADR-226) ─────────────
+//
+// `settings` is a single jsonb column carrying every per-owner preference, so
+// per-field LWW made the whole blob one unit: an arriving op replaced every key
+// with the writer's view, reverting anything the writer had not yet pulled. Job
+// ownership lives in `settings.jobOwners` and the assigned machine stamps a run
+// into it, so an hourly peer was reverting the cloud's other settings — and the
+// cloud's assignment — on a schedule.
+//
+// So a settings op's stamped FIELDS are its top-level keys (`settings.jobOwners`,
+// `settings.accent`, …), and the winners are merged into the local blob. The
+// trigger sends only the keys that changed (migration 0059), which is what makes
+// the stamps meaningful; a legacy op carrying the whole blob still merges
+// correctly, just with every key stamped at once.
+const SETTINGS_PREFIX = "settings.";
+
+function plainObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * The field names an op stamps. Shared by the merge and by apply's reading of
+ * the LOCAL oplog, because a stamp written under one convention and read under
+ * another is a silent LWW coin-flip.
+ */
+export function opFieldKeys(tbl: string, changed: Record<string, unknown>): string[] {
+  if (tbl !== "users") return Object.keys(changed);
+  const settings = plainObject(changed.settings);
+  if (!settings) return Object.keys(changed);
+  return Object.keys(settings).map((k) => SETTINGS_PREFIX + k);
+}
+
 // LWW comparison: positive when a beats b. Timestamps first, device id as the
 // deterministic tiebreak (any total order works; string compare is one).
 export function cmpStamp(a: FieldStamp, b: FieldStamp): number {
@@ -200,7 +234,7 @@ export function mergeOps(ops: SyncOp[], state: LocalState): MergeResult {
       }
       const stamp = opStamp(op);
       const fields: Record<string, FieldStamp> = {};
-      for (const f of Object.keys(op.changed)) fields[f] = stamp;
+      for (const f of opFieldKeys(op.tbl, op.changed)) fields[f] = stamp;
       actions.push({
         kind: "insert",
         tbl: op.tbl,
@@ -209,6 +243,11 @@ export function mergeOps(ops: SyncOp[], state: LocalState): MergeResult {
         row: op.changed,
       });
       state.rows.set(key, { ...local, row: { ...op.changed }, fields });
+      continue;
+    }
+
+    if (op.tbl === "users") {
+      mergeSettingsOp(op, state, key, local, actions);
       continue;
     }
 
@@ -282,6 +321,48 @@ export function mergeOps(ops: SyncOp[], state: LocalState): MergeResult {
   }
 
   return { actions, rejected };
+}
+
+/**
+ * A settings op: LWW each top-level key on its own, then write the merged blob.
+ *
+ * Writing the whole merged column rather than a jsonb patch keeps apply's
+ * executor unchanged, and is equivalent — the merge base is the row we just
+ * read, exactly as it is for every other field.
+ */
+function mergeSettingsOp(
+  op: SyncOp,
+  state: LocalState,
+  key: string,
+  local: LocalRow,
+  actions: WriteAction[]
+): void {
+  const row = local.row;
+  if (!row) return;
+  const incoming = plainObject(op.changed.settings);
+  if (!incoming) return; // nothing usable; never fabricate a settings blob
+  const current = plainObject(row.settings) ?? {};
+  const merged: Record<string, unknown> = { ...current };
+  let changed = false;
+  for (const [k, value] of Object.entries(incoming)) {
+    if (jsonEq(current[k], value)) continue;
+    const stamp = local.fields[SETTINGS_PREFIX + k];
+    if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
+    merged[k] = value;
+    local.fields[SETTINGS_PREFIX + k] = opStamp(op);
+    changed = true;
+  }
+  if (!changed) return;
+  actions.push({
+    kind: "update",
+    tbl: "users",
+    ownerId: op.ownerId,
+    origin: opDevice(op),
+    pkCol: "id",
+    pkVal: String(row.id),
+    fields: { settings: merged },
+  });
+  state.rows.set(key, { ...local, row: { ...row, settings: merged } });
 }
 
 // relations are a SET keyed by (source_id, target_id, role): two devices

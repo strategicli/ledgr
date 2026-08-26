@@ -25,6 +25,7 @@ import { freePorts } from "./lib/free-port.mjs";
 import {
   cmpStamp,
   mergeOps,
+  opFieldKeys,
   stableStringify,
   versionGate,
   type LocalState,
@@ -332,6 +333,138 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   check("the sync client never advances the pull cursor on 410", client.includes("NEVER the pull"));
 }
 
+// (17) users.settings merges PER KEY (ADR-226).
+//
+// The regression this locks down cost a live job assignment. `settings` is one
+// jsonb column holding every preference, so whole-blob LWW meant any settings
+// write carried the writer's entire view and, on arrival, reverted every key the
+// writer had not yet pulled. The assigned machine stamps its last run into
+// `settings.jobOwners` after every run, so an hourly peer was doing exactly that
+// on a schedule — undoing the cloud's assignment with nothing in any log.
+{
+  const USER = OWNER;
+  const settingsState = (
+    settings: Record<string, unknown>,
+    fields: Record<string, { at: string; deviceId: string }> = {}
+  ): LocalState => ({
+    ownerIds: new Set([OWNER]),
+    rows: new Map([[`users:${USER}`, { row: { id: USER, settings }, fields }]]),
+    relationByKey: new Map(),
+  });
+  const settingsOp = (settings: Record<string, unknown>, o: Partial<SyncOp> = {}) =>
+    op({ tbl: "users", rowId: USER, kind: "update", changed: { settings }, ...o });
+
+  check(
+    "a settings op stamps its keys, not the column",
+    JSON.stringify(opFieldKeys("users", { settings: { accent: "#dc2626", jobOwners: {} } })) ===
+      JSON.stringify(["settings.accent", "settings.jobOwners"])
+  );
+  check(
+    "every other table keeps stamping plain columns",
+    JSON.stringify(opFieldKeys("items", { title: "x", body: null })) ===
+      JSON.stringify(["title", "body"])
+  );
+
+  // THE BUG, as the two writes that produced it: the cloud names a machine for
+  // the backup; the peer changes an unrelated preference from a copy of settings
+  // that predates it. Both must survive, in either arrival order.
+  const owners = { export: { deviceId: "dev-pc", label: "BrandonECC" } };
+  const fromCloud = settingsOp(
+    { jobOwners: owners },
+    { deviceId: DEV_A, at: "2026-08-22T10:00:01+00:00" }
+  );
+  const fromPeer = settingsOp(
+    { accent: "#0d9488" },
+    { deviceId: DEV_B, at: "2026-08-22T10:00:02+00:00" }
+  );
+  for (const [order, ops] of [
+    ["assignment first", [fromCloud, fromPeer]],
+    ["preference first", [fromPeer, fromCloud]],
+  ] as const) {
+    const base = { accent: "#2563eb", jobOwners: {}, textSize: "base" };
+    const { actions } = mergeOps([...ops], settingsState({ ...base }));
+    const merged = actions.reduce<Record<string, unknown>>(
+      (acc, a) => (a.kind === "update" ? { ...acc, ...(a.fields.settings as object) } : acc),
+      {}
+    );
+    check(
+      `both keys survive (${order})`,
+      stableStringify(merged.jobOwners) === stableStringify(owners) &&
+        merged.accent === "#0d9488" &&
+        merged.textSize === "base",
+      JSON.stringify(merged)
+    );
+  }
+
+  // The same key genuinely contested is still LWW, and a stale arrival is left
+  // on the floor rather than rewritten.
+  {
+    const { actions } = mergeOps(
+      [settingsOp({ accent: "#older" }, { deviceId: DEV_A, at: "2026-08-22T09:00:00+00:00" })],
+      settingsState(
+        { accent: "#newer" },
+        { "settings.accent": { at: "2026-08-22T10:00:00+00:00", deviceId: DEV_B } }
+      )
+    );
+    check("a stale key loses and writes nothing", actions.length === 0);
+  }
+  {
+    const { actions } = mergeOps(
+      [settingsOp({ accent: "#newer" }, { deviceId: DEV_A, at: "2026-08-22T11:00:00+00:00" })],
+      settingsState(
+        { accent: "#older" },
+        { "settings.accent": { at: "2026-08-22T10:00:00+00:00", deviceId: DEV_B } }
+      )
+    );
+    check(
+      "a fresher key wins",
+      actions.length === 1 &&
+        (actions[0] as unknown as { fields: { settings: { accent: string } } }).fields.settings.accent ===
+          "#newer"
+    );
+  }
+
+  // A whole-blob op — what an oplog written before migration 0059 holds — must
+  // still merge, just coarsely. Back-compat, not a special case.
+  {
+    const { actions } = mergeOps(
+      [settingsOp({ accent: "#dc2626", textSize: "lg", jobOwners: {} })],
+      settingsState({ accent: "#dc2626", textSize: "base", jobOwners: {} })
+    );
+    const fields = (actions[0] as unknown as { fields: { settings: Record<string, unknown> } }).fields;
+    check(
+      "a legacy whole-blob op still merges",
+      actions.length === 1 &&
+        fields.settings.textSize === "lg" &&
+        fields.settings.accent === "#dc2626"
+    );
+  }
+
+  // Idempotence, the property every other table already has here.
+  {
+    const state = settingsState({ accent: "#dc2626" });
+    const one = settingsOp({ accent: "#0d9488" }, { at: "2026-08-22T11:00:00+00:00" });
+    const first = mergeOps([one], state);
+    const again = mergeOps([one], state);
+    check(
+      "applying a settings op twice is a no-op",
+      first.actions.length === 1 && again.actions.length === 0
+    );
+  }
+
+  // Structural: the merge above only means anything if the TRIGGER sends the
+  // changed keys. A migration that went back to shipping the whole blob would
+  // pass every check above and silently restore the bug.
+  {
+    const sql = readFileSync("drizzle/0060_users_settings_perkey.sql", "utf8");
+    check(
+      "the trigger diffs settings against OLD rather than sending the blob",
+      sql.includes("jsonb_each(coalesce(v_row -> 'settings'") &&
+        sql.includes("to_jsonb(OLD) -> 'settings'")
+    );
+  }
+}
+
 // ── Tier (b): two real databases, offline edits, convergence ────────────────
 
 type Peer = {
@@ -573,6 +706,68 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
       "the oplog stops growing (echo terminates)",
       (await opCount(A)) === beforeA && (await opCount(B)) === beforeB
     );
+
+    // ── Per-key settings, end to end (ADR-226) ─────────────────────────────
+    //
+    // The live failure this closes: the cloud names a machine for a job while a
+    // peer, whose copy of settings is up to an hour old, saves an unrelated
+    // preference. Under whole-blob LWW the peer's later write reverted the
+    // assignment and nothing anywhere said so. Both halves are proved here
+    // because the pure merge is only half the fix — the trigger has to send the
+    // changed keys for the stamps to mean anything.
+    {
+      const jobOwners = { export: { deviceId: A.deviceId, label: "PeerA" } };
+      await A.query(`update users set settings = $1 where id = $2`, [
+        JSON.stringify({ accent: "#2563eb", jobOwners: {} }),
+        OWNER,
+      ]);
+      await B.query(`update users set settings = $1 where id = $2`, [
+        JSON.stringify({ accent: "#2563eb", jobOwners: {} }),
+        OWNER,
+      ]);
+      const before = await opCount(A);
+      await A.query(`update users set settings = $1 where id = $2`, [
+        JSON.stringify({ accent: "#2563eb", jobOwners }),
+        OWNER,
+      ]);
+      const logged = await A.query(
+        `select changed from sync_ops where tbl = 'users' order by seq desc limit 1`
+      );
+      const changed = (logged.rows[0]?.changed ?? {}) as { settings?: Record<string, unknown> };
+      check(
+        "a settings write logs only the key that moved",
+        (await opCount(A)) === before + 1 &&
+          JSON.stringify(Object.keys(changed.settings ?? {})) === JSON.stringify(["jobOwners"]),
+        JSON.stringify(changed)
+      );
+
+      // B, still unaware, changes a different preference LATER — the exact
+      // shape that used to win the whole blob and undo the assignment.
+      await sleep(50);
+      await B.query(`update users set settings = $1 where id = $2`, [
+        JSON.stringify({ accent: "#0d9488", jobOwners: {} }),
+        OWNER,
+      ]);
+      await exchangeOnce(A, B);
+      await exchangeOnce(B, A);
+      const settingsOf = async (p: Peer) => {
+        const r = await p.query(`select settings from users where id = $1`, [OWNER]);
+        return r.rows[0].settings as { accent?: string; jobOwners?: unknown };
+      };
+      const sa = await settingsOf(A);
+      const sb = await settingsOf(B);
+      check(
+        "the assignment survives an unrelated preference written later elsewhere",
+        stableStringify(sa.jobOwners) === stableStringify(jobOwners) &&
+          stableStringify(sb.jobOwners) === stableStringify(jobOwners),
+        `A=${stableStringify(sa.jobOwners)} B=${stableStringify(sb.jobOwners)}`
+      );
+      check(
+        "and the preference survives too, on both copies",
+        sa.accent === "#0d9488" && sb.accent === "#0d9488",
+        `A=${sa.accent} B=${sb.accent}`
+      );
+    }
 
     // ── FK-inversion family delete (ADR-206 addendum 7) ────────────────────
     // The hub hard-deletes a parent and its child in ONE statement; its row

@@ -433,11 +433,21 @@ export function schtasksCreateArgs(o) {
     // Chosen deliberately (ADR-211). This used to be hardcoded ONSTART, which
     // quietly demanded elevation on every install.
     always ? "ONSTART" : "ONLOGON",
-    // /RU only for the always-on scope, where the account has to be named
-    // because the task runs with nobody signed in. For the logon scope the
-    // default IS the current user, and naming them can pull in a password
+    // /RU + /NP only for the always-on scope, where the account has to be
+    // named because the task runs with nobody signed in. For the logon scope
+    // the default IS the current user, and naming them can pull in a password
     // requirement the scope exists to avoid.
-    ...(always ? ["/RU", username] : []),
+    //
+    // /NP is exactly the "Do not store password" checkbox in Task Scheduler's
+    // own dialog: an S4U logon that runs with nobody signed in and asks the
+    // owner for no credential at all. Without it, /RU with no /RP silently
+    // downgrades to interactive-only (the honesty rule below) and the box the
+    // owner ticked does not do what it says. The cost is that the task gets no
+    // NETWORK credential: local files, the local Postgres, the local app port
+    // and outbound HTTPS all work, but an authenticated SMB share or a mapped
+    // drive would not. The supervisor wants none of those — its git remote is
+    // a public HTTPS fetch and every job it fires is a localhost call.
+    ...(always ? ["/RU", username, "/NP"] : []),
     "/TR",
     `"${nodePath}" "${supervisorScript}" "${configPath}"`,
     "/F", // idempotent: re-running replaces the task instead of erroring
@@ -465,20 +475,27 @@ export function parseSchtasksScope(text) {
 
 // ── Registered, but will it actually run? (the ADR-211 honesty rule) ─────────
 //
-// schtasks /Create with /RU <user> and no /RP <password> succeeds and then
-// quietly downgrades to "Interactive only": Windows runs the task ONLY while
-// that user is signed in. On the always-on scope that is the exact failure the
-// scope exists to prevent — the owner ticks a box, the registration reports
-// success, and the hub does not come back from a boot nobody logged into.
+// schtasks /Create with /RU <user> and neither /RP <password> nor /NP succeeds
+// and then quietly downgrades to "Interactive only": Windows runs the task ONLY
+// while that user is signed in. On the always-on scope that is the exact
+// failure the scope exists to prevent — the owner ticks a box, the registration
+// reports success, and the hub does not come back from a boot nobody logged
+// into.
 //
-// We cannot fix it for them: running with nobody signed in needs a stored
-// credential, and asking for a Windows password is not ours to do. Windows'
-// own Task Scheduler dialog collects it safely. So we report the truth and
-// say where to go.
+// /NP now fixes that for them (see schtasksCreateArgs), so this should no
+// longer fire. It stays as the honesty rule: if Windows ever registers
+// something weaker than we asked for, the owner hears it from us rather than
+// from a reboot. The old advice — go type your Windows password into Task
+// Scheduler — is gone, because no password is involved any more. A downgrade
+// now means the account lacks the batch-logon right, which an elevated retry
+// resolves.
 
 /** "interactive" (logged-on only), "background" (runs logged out), or null. */
 export function parseSchtasksLogonMode(text) {
-  const m = /^s*Logon Mode:s*(.+)$/im.exec(text);
+  // The \s escapes matter: schtasks /FO LIST does not indent today, but the
+  // sibling parseSchtasksScope above has always had them and this one lost
+  // them, so a `s*` here was matching a literal "s" and only working by luck.
+  const m = /^\s*Logon Mode:\s*(.+)$/im.exec(text);
   if (!m) return null;
   const v = m[1].trim().toLowerCase();
   if (v.startsWith("interactive only")) return "interactive";
@@ -496,10 +513,12 @@ export function startupCaveat(scope, logonMode) {
   if (logonMode !== "interactive") return null;
   return (
     "Registered, but Windows will only run it while you are signed in — so a " +
-    "reboot nobody logs into still leaves this peer down. Running with nobody " +
-    "signed in needs your Windows password stored with the task, which only you " +
-    "can enter: open Task Scheduler, find \"" + STARTUP_TASK_NAME + "\", and set " +
-    "\"Run whether user is logged on or not\"."
+    "reboot nobody logs into still leaves this peer down. We asked for a " +
+    "no-password (S4U) task and Windows registered a weaker one, which usually " +
+    "means this account lacks the \"Log on as a batch job\" right. Tick the box " +
+    "again and accept the Administrator prompt; if it keeps happening, open " +
+    "Task Scheduler, find \"" + STARTUP_TASK_NAME + "\", and set \"Run whether " +
+    "user is logged on or not\" with \"Do not store password\" ticked."
   );
 }
 export function formatSchtasks(args) {
@@ -630,13 +649,20 @@ export function nextBackoffMs(consecutiveCrashes) {
  *   `shared: false` — EXCLUSIVE. It writes into a shared external system
  *                     (OneDrive, the Graph mailbox, Todoist, the transcription
  *                     provider) or creates items from one, so two peers doing
- *                     it is a conflict rather than a harmless repeat. Off by
- *                     default; turning one on is a deliberate statement that
- *                     this peer is the one that does it.
+ *                     it is a conflict rather than a harmless repeat.
  *
- * `on` is the default. Only the two `shared` jobs default on, which is exactly
- * the set that is safe to run while the cloud deployment still runs everything
- * (alongside operation, ADR-206).
+ * `on` is the default, and for an exclusive job it no longer means "this peer
+ * does it" (ADR-225). It means SCHEDULED: the trigger fires and the endpoint's
+ * own ownership gate decides, exactly as ADR-222 does for snapshots. An
+ * exclusive job nobody has named stands down on a supervised peer and runs in
+ * the cloud, which is what it did before this change — the difference is that
+ * naming this machine in Build → Scheduled work is now enough to move it, with
+ * no config edit and no restart. That is the whole point: the config file must
+ * not be the lever the owner reaches for.
+ *
+ * The three still `on: false` are the ones the picker refuses to move at all
+ * (`movable: false` in src/lib/job-owners.ts). Scheduling a job that can never
+ * be named here would fire an endpoint that can only ever stand down.
  */
 export const LOCAL_JOBS = {
   purge: {
@@ -683,24 +709,34 @@ export const LOCAL_JOBS = {
     label: "OneDrive export",
     at: "04:10",
     shared: false,
-    on: false,
-    why: "One OneDrive folder. Two peers writing it would fight over the files and over items.exported_at.",
+    on: true,
+    why:
+      "One OneDrive folder. Two peers writing it would fight over the files and over " +
+      "items.exported_at — so the endpoint runs only on the copy named under Scheduled " +
+      "work, and stands down everywhere else. Scheduled here always so that naming this " +
+      "machine is all it takes (ADR-225).",
   },
   "calendar-sync": {
     path: "/api/machine/calendar-sync",
     label: "Calendar sync",
     everyMinutes: 240,
     shared: false,
-    on: false,
-    why: "Creates items from Graph events. Two peers matching the same event create two rows, and sync then propagates both.",
+    on: true,
+    why:
+      "Creates items from Graph events. Two peers matching the same event would create " +
+      "two rows and sync would propagate both — so the endpoint runs only on the copy " +
+      "named under Scheduled work. Scheduled here always (ADR-225).",
   },
   "email-import": {
     path: "/api/machine/email-import",
     label: "Email-in",
     everyMinutes: 240,
     shared: false,
-    on: false,
-    why: "Consumes the mailbox: whichever peer reads a message first is the only one that sees it, so the other silently imports nothing.",
+    on: true,
+    why:
+      "Consumes the mailbox: whichever peer reads a message first is the only one that " +
+      "sees it — so the endpoint runs only on the copy named under Scheduled work. " +
+      "Scheduled here always (ADR-225).",
   },
   "todoist-sync": {
     path: "/api/machine/todoist-sync",
@@ -777,6 +813,35 @@ export function nextDailyAt(at, from) {
  *
  * Returns the resolved list the runner works from.
  */
+/**
+ * The endpoint's own words when a scheduled job stood down, or null when it did
+ * the work.
+ *
+ * Two shapes in the wild and both are honoured: `{skipped: true, detail}` from
+ * the ownership gate (ADR-225) and `{skipped: "why"}` from the snapshot switch
+ * (ADR-222). Tolerant by design: a non-JSON or unexpected body means "it ran",
+ * because inventing a stand-down from a parse failure would hide a real run —
+ * the opposite of the failure this whole record exists to prevent.
+ */
+export function standDownDetailOf(body) {
+  if (!body) return null;
+  let j;
+  try {
+    j = JSON.parse(body);
+  } catch {
+    return null; // not JSON; nothing to report
+  }
+  if (!j || !j.skipped) return null;
+  const why =
+    typeof j.detail === "string" && j.detail
+      ? j.detail
+      : typeof j.skipped === "string" && j.skipped
+        ? j.skipped
+        : "Stood down.";
+  // It goes straight into a sentence on the owner's page.
+  return why.charAt(0).toUpperCase() + why.slice(1);
+}
+
 export function normalizeCrons(raw) {
   if (raw === false) return [];
   if (raw !== undefined && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
