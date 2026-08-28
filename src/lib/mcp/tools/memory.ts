@@ -11,6 +11,7 @@ import {
   MEMORY_KINDS,
   MEMORY_TYPE,
   getMemoryStumps,
+  renderStumpIndex,
 } from "@/lib/memory";
 import { assertOwnedItems, relateItems } from "@/lib/relations";
 import { optBodyMarkdown, optEnum, optInt, optUuidArray, reqString } from "./args";
@@ -28,21 +29,22 @@ export const memoryTools: McpTool[] = [
     name: "get_memory_stumps",
     title: "Get memory stumps",
     description:
-      "Load the owner's AI-memory \"stumps\": a compact, body-free index of the " +
-      "durable facts they've chosen to remember, each with the people / projects / " +
-      "notes it's linked to. CALL THIS AT THE START OF A SESSION so you know what " +
-      "exists. A stump is only a pointer — when one is relevant to the current " +
-      "conversation, get_item it (and follow the promising `linked` items) to pull " +
-      "the detail. By default returns the always-on set (evergreen + pinned + " +
-      "recently-touched); pass includeAll to browse the whole store. Read the " +
-      "memory-protocol resource for how to recall and when to remember.",
+      "Load the owner's always-on AI memory: the standing rules they need you to " +
+      "have in front of you on every run. CALL THIS AT THE START OF A SESSION. " +
+      "It returns the `pinned` memories only, one compact line each, with the date " +
+      "and age of each. This is NOT the whole store: everything else is found on " +
+      "demand with search_items(<name>, type: \"memory\") once a task names a " +
+      "person, project, or system. Pass includeAll to browse the full store (audit " +
+      "and cleanup work). A stump is only a pointer — get_item its id for the " +
+      "detail and its links. Read the memory-protocol resource for how to recall " +
+      "and when to remember.",
     inputSchema: {
       type: "object",
       properties: {
         includeAll: {
           type: "boolean",
           description:
-            "Return every memory, not just the always-on set (evergreen/pinned/recent). Default false.",
+            "Return every memory, not just the pinned always-on set. For audit and browse. Default false.",
         },
         limit: {
           type: "integer",
@@ -55,12 +57,11 @@ export const memoryTools: McpTool[] = [
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
-      const includeAll = args.includeAll === true;
-      const stumps = await getMemoryStumps(ownerId, {
-        includeAll,
+      const { stumps, total } = await getMemoryStumps(ownerId, {
+        includeAll: args.includeAll === true,
         limit: optInt(args, "limit"),
       });
-      return { count: stumps.length, includeAll, stumps };
+      return renderStumpIndex(stumps, total);
     },
   },
   {
@@ -71,10 +72,12 @@ export const memoryTools: McpTool[] = [
       "memory item and links it to the people / projects / notes it's about (pass " +
       "their item ids in `about`). Use this whenever you learn something worth " +
       "keeping — a working preference, a fact about a person, a project decision. " +
-      "Keep the title a short, self-contained \"stump\" (it's what loads always-on); " +
-      "put the detail, and a why / how-to-apply, in bodyMarkdown. Set kind + " +
-      "horizon so the stump ages correctly; pin only the few that must always " +
-      "load. Prefer linking over restating: a memory about Roger should link to " +
+      "Keep the title a short, self-contained \"stump\" (it's what a future agent " +
+      "reads in a search result); put the detail, and a why / how-to-apply, in " +
+      "bodyMarkdown. `horizon` and `pinned` are independent: horizon says how long " +
+      "the claim stays TRUE, pinned says whether it must load every run. Pin only " +
+      "the few standing rules that must always load. Prefer linking over " +
+      "restating: a memory about Roger should link to " +
       "the Roger person (search_items for the id) rather than repeat what Ledgr " +
       "already holds.",
     inputSchema: {
@@ -83,7 +86,7 @@ export const memoryTools: McpTool[] = [
         title: {
           type: "string",
           description:
-            "The stump: a short, self-contained reminder (this is what loads always-on).",
+            "The stump: a short, self-contained reminder. This is what a future agent sees in a search result, so make it specific enough to judge relevance without opening the memory.",
         },
         bodyMarkdown: {
           type: "string",
@@ -100,12 +103,12 @@ export const memoryTools: McpTool[] = [
           type: "string",
           enum: [...MEMORY_HORIZONS],
           description:
-            "How long it stays true: evergreen (always) | seasonal (a while) | episodic (a moment). Seasonal/episodic age out of the always-on set.",
+            "How long this stays TRUE, independent of how often it's needed. evergreen = a claim that stays true indefinitely (\"the owner has two kids\"). seasonal = true for a season and expected to stop being true (\"the church is searching for a campus pastor\"). episodic = true of a single moment. Never edit a seasonal memory to keep it accurate: file a new one when the situation changes, and the rendered dates will show which is current. This does NOT control whether the memory loads into context; that's `pinned`. Rule of thumb: kind=project is usually seasonal; kind=reference or user is usually evergreen.",
         },
         pinned: {
           type: "boolean",
           description:
-            "Force this stump always-on regardless of horizon/age. Use sparingly.",
+            "Load this stump into every session's context. Independent of `horizon`: a fact can be permanently true and rarely needed (evergreen, unpinned), or temporary and needed constantly (seasonal, pinned). Pin ONLY standing behavioural rules that have no entity to search on, e.g. \"always hand the owner PowerShell, never bash\". A fact about a person, project, or system stays unpinned and is found via search_items(type: \"memory\"). Target: under 15 pinned memories total.",
         },
         about: {
           type: "array",

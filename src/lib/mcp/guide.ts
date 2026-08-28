@@ -210,100 +210,101 @@ clean, portable product.
 // the shape, how to recall (the rising-bar graph walk), and when/how to write.
 export const MEMORY_PROTOCOL_GUIDE = `# Working with the owner's memory
 
-The owner keeps durable memories in Ledgr so you — and any AI they connect — act
-like you know them. This is that contract: how to recall what's stored, and when
-and how to store something new. It's deterministic plumbing: you decide what
-matters, Ledgr just holds it.
+The owner keeps durable memories in Ledgr so you, and any AI they connect, act
+like you know them. This is that contract: what loads on every run, how to reach
+the rest, and when to write something new.
 
-## The shape
+## Two axes, often confused
 
-A **memory** is a small item: a one-line *stump* (its title) plus optional detail
-in its body, filed under a \`kind\` and a \`horizon\`, and *linked* to the people,
-projects, and notes it's about. The links are the point — a memory about a person
-is a doorway into everything related to that person.
+- **\`horizon\` is a truth property.** Does this claim stay true as time passes?
+  \`evergreen\` = true indefinitely. \`seasonal\` = true for a season, expected to
+  stop being true. \`episodic\` = true of a single moment. **Horizon never decides
+  what loads.**
+- **\`pinned\` is a load property.** Must you have this in front of you on every
+  single run? That is the only question pinning answers.
 
-Two layers:
-- **Stumps (always-on):** call \`get_memory_stumps\` at the start of a session. It
-  returns a compact, body-free index (titles + links, no detail). Cheap to carry.
-  It exists so you *know what exists*, not so you act on all of it.
-- **Bodies + graph (on demand):** when a stump is relevant, \`get_item\` it for the
-  detail, and follow its \`linked\` items into the wider graph.
+They are independent. A fact can be permanently true and almost never needed
+(evergreen, unpinned). A fact can be temporary and needed constantly (seasonal,
+pinned).
 
-## Recall: follow the graph, with a rising bar
+## Tier 1: pinned, always loaded
 
-When something in the conversation matches a stump, pull it. Then decide how far
-to walk:
+\`get_memory_stumps\` returns the pinned set by default, a handful of items.
+This is the CLAUDE.md equivalent: standing behavioral rules with **no
+entity to search on**, so search can never reach them. Three of the current ones:
 
-- Follow a link only when the linked item looks likely to **change what you'd say
-  or do** about the current objective.
-- That bar **rises with each hop** out from the first memory: hop one is cheap,
-  hop two needs a clearer reason, hop three a strong one.
-- **Relevance outranks distance:** a dead-on item two hops away beats an off-topic
-  neighbour one hop away.
-- **Stop at diminishing returns** — when the next item repeats or drifts, not at a
-  fixed count. A rich thread may be worth five pulls; a thin one, none.
+- On Windows, hand the owner PowerShell commands, never cmd.exe or bash syntax.
+- The owner's tool map: which system holds documents, which holds calendar and
+  email, which holds tasks and notes.
+- The owner's writing style guide.
 
-Loading a stump is not a reason to use it. If the owner mentions someone about a
-budget, a "they enjoy cycling" stump stays unused. Awareness is cheap; the pull
-is a judgment.
+What they share: you need them cold, on every run, and no search term would
+surface them. Keep the pinned set under 15. If a memory would come back from
+searching a person, project, or system by name, it belongs in Tier 2.
 
-## Remember: when and how
+## Tier 2: everything else, retrieved on demand
 
-Call \`remember\` whenever you learn something durable worth carrying into a later
-session: a working preference ("always put the logo on Word exports"), a fact
-about a person or a standing relationship, or a project decision that isn't
-obvious from the items themselves.
+Everything unpinned is found by search, anchored on whatever entity the current
+task mentions.
 
-Do it well:
-- **Title = a self-contained stump.** It loads always-on and often stands alone;
-  make it readable without opening anything.
-- **Body = the detail,** with a *why* and a *how to apply* when it helps.
+**When you meet an unfamiliar person, project, or system, run \`search_items\`
+for it by name with \`type: "memory"\` before assuming you know nothing about
+it.** Without the type filter, memories get buried under notes, transcripts, and
+commentaries.
+
+\`get_memory_stumps\` with \`includeAll: true\` returns the whole store in the same
+compact form when you want the full picture.
+
+## Reading a stump
+
+One compact line per memory: a short id, \`[kind/horizon]\` abbreviations, the
+date and relative age from \`updatedAt\`, then the title. A \`seasonal\` or
+\`episodic\` memory older than 90 days also renders \`STALE\` in that parenthetical.
+
+A stump is a body-free pointer. \`get_item\` its id for the detail and the people,
+projects, and notes it links to. Nothing is ever auto-deleted: "this was true
+once" is worth keeping.
+
+## Writing a memory
+
+Call \`remember\` when you learn something durable worth carrying into a later
+session: a working preference, a fact about a person or a standing relationship,
+or a project decision that is not obvious from the items themselves.
+
+- **Title = a self-contained stump.** Readable without opening anything.
+- **Body = the detail,** with a why and a how-to-apply when it helps.
 - **Set \`kind\` and \`horizon\`.** kind: user (who they are) | feedback (how to work
-  with them) | project (ongoing work) | reference (a pointer). horizon: evergreen
-  (always true) | seasonal (true for a while) | episodic (a moment). Seasonal and
-  episodic age out of the always-on set; evergreen stays.
+  with them) | project (ongoing work) | reference (a pointer). horizon by the
+  truth test above, not by how often you expect to need it.
 - **Link, don't restate.** Pass the item ids the memory is about in \`about\`
-  (search_items to find a person/project id) rather than repeating what Ledgr
-  already holds. The links are what make recall serendipitous.
-- **Pin sparingly.** \`pinned\` forces a stump always-on regardless of horizon —
-  reserve it for the few facts that must never be missed.
+  (\`search_items\` to find a person or project id) rather than repeating what
+  Ledgr already holds. The links are what make recall reach further.
+- **Pin only for Tier 1.** Needed cold, every run, unreachable by search.
 
-## Maintain the store: revise, don't pile up
+## File new, don't rewrite history
 
-A memory store is only useful while it stays clean. Before you \`remember\`
-something, check the stumps you already loaded: if one covers the same ground,
-**update it instead of filing a near-duplicate**. Updating is ordinary item
-work — the memory is a normal item.
+**Never edit an old seasonal memory to keep it accurate.** When the situation
+changes, file a NEW dated memory. Both surface with their ages rendered, and the
+reader works out which is current. Edit in place only to fix something that was
+wrong when it was written, not because the world moved on.
 
-- **Update over duplicate.** Found an existing memory on this topic? \`update_item\`
-  its title/body rather than creating a second one that says almost the same
-  thing. Two stumps on one subject is worse than one good stump.
-- **Enrich links as you learn.** When a memory turns out to be about a person or
-  project it isn't yet linked to, add the link (\`relate_items\`) rather than
-  restating the connection in prose.
-- **Keep a confirmed seasonal memory alive.** If a seasonal/episodic memory is
-  still true when it comes up, \`update_item\` it (even a no-op touch) so it stays
-  in the always-on set; let one that's genuinely gone quiet age out on its own.
-- **Correct what's wrong; flag what's stale.** If a memory is now inaccurate,
-  fix it in place. If a memory should be **removed** entirely, say so to the
-  owner and let them delete it — don't silently drop durable facts.
-- **Prefer few, dense memories.** One well-linked stump that captures a standing
-  relationship beats five thin ones. When you notice overlap, merge into the
-  strongest memory and update the rest away.
+Before filing, check for an existing memory covering the same ground: an
+evergreen fact that just needs sharpening is an \`update_item\`, not a second
+near-identical stump. Add a missing link with \`relate_items\` rather than
+restating the connection in prose.
 
-## What is *not* a memory
+## What is not a memory
 
-A one-time event ("met for coffee on the 3rd") is usually better as an ordinary
-item (a note or event with the person linked), not a memory. Memories are the
-durable distillations; the item stream is the record. File the event and let the
-relation graph resurface it. Don't remember what's already a well-linked item —
-link to it instead.
+A one-time event ("met for coffee on the 3rd") is an ordinary item with the
+person linked, not a memory. Memories are the durable distillations; the item
+stream is the record. Don't remember what is already a well-linked item, link to
+it instead.
 
 ## Routing
 
 This Ledgr is the memory store. When the owner asks you to remember something,
-\`remember\` it here — don't fall back to a local notes file or a provider's own
-memory. One store, reachable from every client the owner connects.
+\`remember\` it here, never a local notes file or a provider's own memory. One
+store, reachable from every client the owner connects.
 `;
 
 // resources/read: return the contents for a known guide URI, else null so the
