@@ -151,6 +151,41 @@ async function listPersonTitles(
 // once uploaded: one copy is done forever.
 type AttachmentFailure = { storageKey: string; status: number };
 
+// Rewrites the stable /files/<id> addresses in an exported body to the RELATIVE
+// path of the attachment copy sitting beside it in the export tree (ADR-228).
+//
+// This is what keeps the export Sunday-proof (principle 4). A body stores
+// /files/<id>, which resolves against the app — meaningless in a markdown file
+// on OneDrive. Rewriting to `../../_attachments/…` makes the exported tree
+// fully self-contained, so images render offline in Obsidian or any reader with
+// the app down and no internet. That is strictly better than the provider URLs
+// this replaced, which always needed the network.
+//
+// `desired` is the item's path under the export root; each `/` in it is one
+// level to climb back out of.
+// Exported for scripts/verify-attachment-urls.mts (pure glue stays node-testable,
+// the discipline image-markdown.ts follows).
+export function rewriteAttachmentPaths(
+  body: string,
+  desired: string,
+  attachmentPaths: string[]
+): string {
+  if (attachmentPaths.length === 0) return body;
+  const up = "../".repeat((desired.match(/\//g) ?? []).length);
+  let out = body;
+  for (const path of attachmentPaths) {
+    // exportAttachments builds `_attachments/{itemId}/{id8}-{filename}`, so the
+    // 8-char id prefix is what ties a path back to its /files/<id> address.
+    const id8 = path.split("/").pop()?.slice(0, 8);
+    if (!id8) continue;
+    out = out.replaceAll(
+      new RegExp(`/files/${id8}[0-9a-f-]{28}`, "gi"),
+      `${up}${path}`
+    );
+  }
+  return out;
+}
+
 async function exportAttachments(
   item: ItemRow,
   target: ExportTarget
@@ -308,7 +343,7 @@ export async function runExport(
       // nested at 2 spaces would otherwise flatten. spaceEmptyListItems: an empty
       // bullet flush under a paragraph is a setext heading to those same readers
       // (see list-markdown.ts). (Both passes markdown-render applies; see there.)
-      const content = `${buildFrontmatter(exportItem, people, atts.paths)}\n\n${normalizeListIndent(spaceEmptyListItems(bodyMarkdown(exportItem.body)))}\n`;
+      const content = `${buildFrontmatter(exportItem, people, atts.paths)}\n\n${rewriteAttachmentPaths(normalizeListIndent(spaceEmptyListItems(bodyMarkdown(exportItem.body))), desired, atts.paths)}\n`;
       await target.putFile(desired, content);
       // A rename, retype, or live<->archive move leaves a stale file at the
       // old path; the put above already wrote the replacement.

@@ -8,6 +8,7 @@ import { getDb } from "@/db";
 import { attachments, items } from "@/db/schema";
 import { ItemError } from "@/lib/items";
 import { getStorage, type StorageProvider } from "@/lib/storage";
+import { attachmentUrl } from "./attachment-url";
 
 // PRD §3.4: per-user quota ~10GB. Per-file cap keeps one paste from eating
 // the quota. Audio/video (meeting recording v1b, ADR-088) gets a larger cap —
@@ -28,6 +29,32 @@ export type AttachmentRequest = {
   contentType: string;
   sizeBytes: number;
 };
+
+// Stable attachment addresses (ADR-228) live in ./attachment-url — pure and
+// client-safe, since client components and the person-image helper need them and
+// must not pull the DB in. Re-exported here so server callers have one import.
+export {
+  attachmentUrl,
+  parseAttachmentUrl,
+  rewriteProviderUrlsInText,
+  stableAttachmentUrl,
+} from "./attachment-url";
+
+// One attachment by id, owner-scoped.
+export async function getAttachment(
+  ownerId: string,
+  id: string
+): Promise<{ filename: string; contentType: string } | null> {
+  const rows = await getDb()
+    .select({
+      filename: attachments.filename,
+      contentType: attachments.contentType,
+    })
+    .from(attachments)
+    .where(and(eq(attachments.id, id), eq(attachments.ownerId, ownerId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
 
 function sanitizeFilename(filename: string): string {
   // Object keys keep the real filename for OneDrive-export friendliness,
@@ -126,7 +153,9 @@ export async function createAttachment(
     req
   );
   const presigned = await storage.presignUpload(storageKey, req.contentType);
-  return { id, filename, storageKey, ...presigned };
+  // fileUrl is the one to put in a body; publicUrl stays for callers that read
+  // the bytes directly (export, share-claim) and for API back-compat.
+  return { id, filename, storageKey, fileUrl: attachmentUrl(id), ...presigned };
 }
 
 // Server-side attachment creation: the bytes are already in hand (no browser in
@@ -139,7 +168,13 @@ export async function createAttachment(
 export async function createAttachmentFromBytes(
   ownerId: string,
   req: { itemId: string; filename: string; contentType: string; bytes: Uint8Array }
-): Promise<{ id: string; filename: string; storageKey: string; publicUrl: string }> {
+): Promise<{
+  id: string;
+  filename: string;
+  storageKey: string;
+  publicUrl: string;
+  fileUrl: string;
+}> {
   const { storage, id, filename, storageKey } = await reserveAttachment(ownerId, {
     itemId: req.itemId,
     filename: req.filename,
@@ -147,7 +182,7 @@ export async function createAttachmentFromBytes(
     sizeBytes: req.bytes.byteLength,
   });
   const publicUrl = await storage.putObject(storageKey, req.bytes, req.contentType);
-  return { id, filename, storageKey, publicUrl };
+  return { id, filename, storageKey, publicUrl, fileUrl: attachmentUrl(id) };
 }
 
 export async function listAttachments(ownerId: string, itemId: string) {

@@ -18,13 +18,8 @@ for (const line of readFileSync(".env.local", "utf8")
   if (m && !(m[1] in process.env)) process.env[m[1]] = m[2];
 }
 
-const {
-  R2_ACCESS_KEY_ID,
-  R2_SECRET_ACCESS_KEY,
-  R2_BUCKET,
-  R2_ENDPOINT,
-  NEXT_PUBLIC_APP_URL,
-} = process.env;
+const { R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT } =
+  process.env;
 if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET || !R2_ENDPOINT) {
   console.error("R2_* vars missing; see runbook.md §1.");
   process.exit(1);
@@ -32,8 +27,19 @@ if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET || !R2_ENDPOINT) {
 
 // Only PUT needs CORS: presigned uploads. Image GETs go through the public
 // base URL as plain <img> requests, which never preflight.
+//
+// EVERY origin that shares this bucket must be listed here, because a PUT
+// ?cors REPLACES the whole policy — there is no per-origin append. This list
+// used to derive one entry from the running machine's NEXT_PUBLIC_APP_URL,
+// which meant applying it from any install silently dropped the others'
+// origins (the local install's Tailscale hostname was never in it at all, so
+// browser uploads from a phone died in preflight while localhost worked).
 const origins = [
-  NEXT_PUBLIC_APP_URL || "https://ledgr-teal.vercel.app",
+  // Cloud install (Vercel).
+  "https://ledgr-teal.vercel.app",
+  // Local install, reached over Tailscale (supervisor NEXT_PUBLIC_APP_URL).
+  "https://bc-edgewood.char-arcturus.ts.net",
+  // The local install and `npm run dev` on the machine itself.
   "http://localhost:3000",
 ];
 

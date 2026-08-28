@@ -19,7 +19,13 @@
 // source of truth (ADR-037).
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { imageToMarkdown } from "@/lib/editor/image-markdown";
-import { createAttachment, createAttachmentFromBytes } from "@/lib/attachments";
+import {
+  createAttachment,
+  createAttachmentFromBytes,
+  getAttachment,
+  parseAttachmentUrl,
+  stableAttachmentUrl,
+} from "@/lib/attachments";
 import { asUuid } from "@/lib/api";
 import { ItemError, getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
@@ -66,22 +72,28 @@ export function isImageByUrl(url: string): boolean {
 // any other file becomes a link. Escapes brackets in the label either way.
 // Exported (with the parsers below) so the pure glue is node-testable, the same
 // discipline image-markdown.ts follows.
+// Normalizes a storage-provider URL to the stable /files/<id> address before it
+// reaches a body (ADR-228). Done HERE rather than at each call site because
+// embed_attachment takes a URL from the caller: an AI that passes the provider
+// URL, or that reuses one it saw in an older body, still gets the stable form
+// stored. Any other URL (an externally hosted image) passes through untouched.
 export function embedMarkdown(
   isImage: boolean,
-  publicUrl: string,
+  url: string,
   label: string
 ): string {
+  const src = stableAttachmentUrl(url);
   return isImage
-    ? imageToMarkdown({ src: publicUrl, alt: label })
-    : `[${label.replace(/[[\]]/g, "\\$&")}](${publicUrl})`;
+    ? imageToMarkdown({ src, alt: label })
+    : `[${label.replace(/[[\]]/g, "\\$&")}](${src})`;
 }
 
 export function buildEmbedReference(
   contentType: string,
-  publicUrl: string,
+  url: string,
   label: string
 ): string {
-  return embedMarkdown(isImageContentType(contentType), publicUrl, label);
+  return embedMarkdown(isImageContentType(contentType), url, label);
 }
 
 // Append a markdown reference to an item's body without clobbering it: read the
@@ -300,7 +312,7 @@ export const attachmentTools: McpTool[] = [
       let embedded = false;
       if (embedInBody) {
         const label = alt || attachment.filename;
-        const ref = buildEmbedReference(contentType, attachment.publicUrl, label);
+        const ref = buildEmbedReference(contentType, attachment.fileUrl, label);
         await appendReferenceToBody(ownerId, itemId, ref);
         embedded = true;
       }
@@ -311,6 +323,7 @@ export const attachmentTools: McpTool[] = [
         filename: attachment.filename,
         contentType,
         sizeBytes: bytes.byteLength,
+        fileUrl: attachment.fileUrl,
         publicUrl: attachment.publicUrl,
         embedded,
       };
@@ -323,10 +336,10 @@ export const attachmentTools: McpTool[] = [
       "Step 1 of the two-step upload for a LOCAL or LARGE file (use this instead " +
       "of attach_file when the bytes are on the local disk or too big to inline as " +
       "base64). Reserves an attachment on the item and returns a short-lived " +
-      "presigned PUT `uploadUrl` plus the eventual `publicUrl`. You then PUT the " +
+      "presigned PUT `uploadUrl` plus the file's stable `fileUrl`. You then PUT the " +
       "raw file bytes straight to uploadUrl with header 'Content-Type: <the same " +
       "contentType>' (the bytes go directly to storage, never back through this " +
-      "tool), and finally call embed_attachment with the returned publicUrl to add " +
+      "tool), and finally call embed_attachment with the returned fileUrl to add " +
       "it to the note. Requires file storage configured; subject to the per-file " +
       "and ~10GB quota caps. The URL expires in ~15 minutes.",
     inputSchema: {
@@ -370,12 +383,13 @@ export const attachmentTools: McpTool[] = [
         filename: reserved.filename,
         storageKey: reserved.storageKey,
         uploadUrl: reserved.uploadUrl,
+        fileUrl: reserved.fileUrl,
         publicUrl: reserved.publicUrl,
         contentType,
         next:
           `PUT the file bytes to uploadUrl with header 'Content-Type: ${contentType}' ` +
           `(must match exactly), then call embed_attachment with itemId ${itemId} and ` +
-          `this publicUrl to add it to the note.`,
+          `this fileUrl to add it to the note.`,
       };
     },
   },
@@ -385,8 +399,9 @@ export const attachmentTools: McpTool[] = [
     description:
       "Step 2 of the two-step upload: after a successful PUT to a create_upload_url " +
       "uploadUrl, add the file to the item's markdown body — an image renders inline " +
-      "as ![alt](url), any other file as a [name](url) link. Pass the publicUrl that " +
-      "create_upload_url returned. Whether it renders as an image is inferred from " +
+      "as ![alt](url), any other file as a [name](url) link. Pass the fileUrl that " +
+      "create_upload_url returned (its publicUrl also works — either is normalized to " +
+      "the stable address before it is stored). Whether it renders as an image is inferred from " +
       "the URL's extension unless you set kind. Appends to the body without " +
       "disturbing the rest of it. (attach_file already embeds on its own; this is " +
       "only for the presigned-upload path.)",
@@ -415,12 +430,23 @@ export const attachmentTools: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     handler: async (ownerId, args) => {
       const itemId = asUuid(args.itemId, "itemId");
-      const publicUrl = reqString(args, "publicUrl");
+      const url = reqString(args, "publicUrl");
       const alt = optString(args, "alt");
       const kind = optEnum(args, "kind", ["image", "file"] as const);
-      const isImage = kind ? kind === "image" : isImageByUrl(publicUrl);
-      const label = alt || basenameFromUrl(publicUrl) || "attachment";
-      const ref = embedMarkdown(isImage, publicUrl, label);
+      // A stable /files/<id> address has no filename and no extension, so the
+      // two things normally read off the URL — is it an image, what is it
+      // called — come from the attachment row instead (ADR-228). Without this,
+      // every stable address embedded as a file link labelled with a UUID.
+      const stableId = parseAttachmentUrl(stableAttachmentUrl(url));
+      const row = stableId ? await getAttachment(ownerId, stableId) : null;
+      const isImage = kind
+        ? kind === "image"
+        : row
+          ? isImageContentType(row.contentType)
+          : isImageByUrl(url);
+      const label =
+        alt || row?.filename || basenameFromUrl(url) || "attachment";
+      const ref = embedMarkdown(isImage, url, label);
       await appendReferenceToBody(ownerId, itemId, ref);
       return { itemId, embedded: true, isImage, markdown: ref };
     },
