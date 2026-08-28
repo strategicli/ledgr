@@ -5,9 +5,14 @@ Raised by Brandon, 2026-08-28. Open. Needs both-agree + an ADR if we change
 
 ## What Brandon wants
 
-A task (or note, or meeting) that genuinely belongs to two projects, showing up
-in both projects' cards. Today attaching it to a second project takes it out of
-the first.
+An item that genuinely belongs to two projects, showing up in both projects'
+cards. Today attaching it to a second project takes it out of the first.
+
+Brandon's refinement (2026-08-28): this should not be one rule for every type.
+A **task** and a **milestone** should still live in exactly one project. A
+**note**, a **meeting**, a **link** and probably several other types should be
+free to belong to more than one. See "Brandon's recommendation" below, which
+turns out to line up with where the code's own danger line already sits.
 
 ## What the code actually does today
 
@@ -74,34 +79,89 @@ association-wide, already double-counts a related task today), the project
 markdown projection (ADR-197) and the project timeline (ADR-198), which both
 use the same home-agnostic association the cards use.
 
-## The two models
+## Brandon's recommendation: make it per type
 
-**A. Primary plus secondary (cheap).** Keep one home. A second project gets a
-plain `contains` edge with `home=false`. The item shows in both cards. The
-first project keeps the breadcrumb, the activity narration, Next Action
-eligibility, and the completion sweep. No migration, no index change, no ADR
-strictly required, since it is the meeting-note pattern applied on purpose.
+Not one rule for everything. Some types should stay in exactly one project,
+others should be free to belong to several:
 
-The honest cost: the second project is visibly a lesser member. Complete
-project B and the shared task is untouched. Whether that reads as correct or
-as a bug depends on what Brandon means by "belongs to both".
+| Type | Rule | Why |
+|---|---|---|
+| **task** | one project | It gets completed, it rolls up into progress, it drives Next Action and the breadcrumb chip. Every ambiguity below is a task ambiguity. |
+| **milestone** | one project | It carries a points share of one project's progress bar. A milestone in two projects is two different percentages of two different bars. |
+| **note** | many | A doc can legitimately serve two efforts. Nothing completes it or counts it. |
+| **event / meeting** | many | One meeting really does cover two projects. This is the case that started the conversation. |
+| **link** | many | Same reasoning as a note. |
+| custom types | probably many, but ask per type | A user type with a Done checkbox behaves like a task (see below). |
 
-**B. Peer memberships (real work).** Drop the singularity. Every row in the
-table above needs an answer, and the completion sweep needs a rule: does
-completing A close a task that also lives in B, ask, or skip it? Needs a
-migration, an ADR, and probably a "primary" tiebreak anyway for breadcrumbs and
-activity, which starts to look like model A wearing a different hat.
+### The code already agrees with this split
+
+The project-completion sweep is the one place where loosening `home` could
+destroy data, and it draws its line almost exactly where Brandon does. Two
+facts from src/lib/project-completion.ts:
+
+1. **A non-home `contains` edge IS swept.** The scope predicate is
+   `r.home or r.role in ('project','contains')` (:97-102). So model A's second
+   edge does not dodge the sweep by being `home=false`. This matters: it is the
+   opposite of what you would guess.
+
+2. **But a type with no completion concept is never swept.** Rule 3 in the
+   header comment: "a type with no completion concept (statusMode 'none': a
+   person, note, link, event, or receipt)" is skipped and reported, not
+   completed.
+
+Put those together: the types Brandon wants to keep single-project (task,
+milestone) are exactly the types the sweep touches. The types he wants to free
+(note, event, link) are exactly the ones the sweep already refuses to touch.
+The dangerous case and the wanted case do not overlap.
+
+The same holds for the other dependencies. Progress and points rollups are
+about tasks and milestones. Next Action advances a task. The breadcrumb chip
+is on a task row. Nothing downstream cares which project a note primarily
+lives in, except the activity log's subject line, which would narrate one of
+them.
+
+### The one edge to decide
+
+A user can give any type a Done checkbox in Build, and the sweep comment says
+so: "give the type a Done checkbox in Build and it starts being swept." So the
+rule should not be a hardcoded list of type keys. Two ways to say it:
+
+- **Derived:** a type may belong to many projects when it has no completion
+  concept (`statusMode: "none"`). Self-maintaining, and it means adding a Done
+  checkbox silently narrows the type to one project, which may surprise
+  someone who already put items in two.
+- **Declared:** a per-type flag in the type registry ("can live in multiple
+  records"), defaulting to the derived answer but overridable. More honest,
+  one more thing to configure.
+
+## What implementing it looks like
+
+Under the per-type rule, the change is small, because the read side already
+works (see above). Attach on a card would either call `setHome` (single-project
+types: task, milestone) or write a plain `contains` edge and leave the existing
+home alone (multi types: note, event, link). One branch, in one write path.
+
+The heavier alternative, true peer memberships with no primary at all, needs a
+migration to drop the partial unique index, plus an answer for `homeParentOf`
+(`.limit(1)`), the breadcrumb, and the activity subject. Under the per-type
+rule, none of that is needed, because the types that would have forced those
+answers are the ones staying single.
 
 ## The question for Tyler
 
 1. Was one-home a decision you would defend, or the path of least resistance
-   while building PJ1? (The ADR does not say, so only you know.)
-2. If we ship model A, does a `home=false` second project bother you, given you
-   already use exactly that edge for meeting notes?
-3. If we ship model B, what should the completion sweep do with a task that
-   lives in two projects? That is the only place we found where loosening
-   `home` could destroy data rather than just confuse a label.
-4. Anything you built downstream that assumes one home and is not in the table
+   while building PJ1? The ADR does not say, so only you know.
+2. Does the per-type split above read right to you: tasks and milestones stay
+   in one project, notes/meetings/links can belong to several?
+3. Derived from `statusMode: "none"`, or a declared per-type flag? Brandon
+   leans toward whatever needs the least configuration, but the derived version
+   means adding a Done checkbox to a type quietly changes its containment rule.
+4. The sweep predicate is `r.home or r.role in ('project','contains')`, so a
+   non-home `contains` edge is still swept. Under the per-type rule that never
+   bites, since the multi types are skipped for having no completion concept.
+   Is that reasoning airtight from where you sit, or is there a case we are
+   missing where a completable item picks up a second `contains` edge?
+5. Anything you built downstream that assumes one home and is not in the table
    above?
 
 Also worth knowing: several code comments cite **ADR-111** for containment
