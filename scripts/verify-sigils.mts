@@ -7,6 +7,7 @@
 //
 //   npx tsx scripts/verify-sigils.mts
 import {
+  parseMentionTokens,
   parseTagTokens,
   parseProjectToken,
   stripConsumedTokens,
@@ -105,6 +106,21 @@ check(
 check(
   "a title that is only tokens collapses to empty",
   stripConsumedTokens("#work", parseTagTokens("#work", TAGS), null) === ""
+);
+
+// "@name" in a PRE-FILLED title (the promote-to-task flow) — the typed capture
+// consumes these on pick, but promoted text never had a pick.
+check(
+  "pre-filled @tokens parse, expand dashes, and dedupe",
+  JSON.stringify(parseMentionTokens("Email @Roger and @elder-board again @roger")) ===
+    JSON.stringify([
+      { token: "@Roger", name: "Roger" },
+      { token: "@elder-board", name: "elder board" },
+    ])
+);
+check(
+  "an @ mid-word is not a mention (an email address stays text)",
+  parseMentionTokens("mail me at a@b.com").length === 0
 );
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

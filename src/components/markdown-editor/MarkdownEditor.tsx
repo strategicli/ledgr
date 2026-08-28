@@ -81,7 +81,7 @@ import { extractPromotable } from "@/lib/editor/block-anchor";
 import { withShortcut } from "@/lib/editor/shortcuts";
 import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import CommentPopover from "./CommentPopover";
-import PromoteLinePopup, { type PromoteDraft } from "./PromoteLinePopup";
+import PromoteLinePopup from "./PromoteLinePopup";
 import "./markdown-editor.css";
 
 export type MarkdownEditorProps = {
@@ -994,25 +994,13 @@ export default function MarkdownEditor({
       ? editor.chain().focus().liftListItem("taskItem").run()
       : editor.chain().focus().liftListItem("listItem").run();
 
-  // Create the task from the popup draft (ADR-090): flush the body save so the
-  // anchor is persisted, POST the promotion, then refresh so the new task shows
-  // in the prep panel and the promoted line gets its badge.
-  const submitPromote = async (draft: PromoteDraft) => {
-    const meetingId = promoteToMeetingId;
-    const blockRef = promote?.blockId;
-    if (!meetingId) return;
-    setPromote(null);
-    try {
-      await onRequestSaveRef.current?.();
-      await fetch(`/api/items/${meetingId}/promote-task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: draft.title, body: draft.body, blockRef }),
-      });
-      router.refresh();
-    } catch (err) {
-      console.error("promote failed", err);
-    }
+  // The popup owns the create now (it renders the ordinary task capture card, so
+  // the line's shorthand is parsed like any typed capture). This still flushes
+  // the body save first, so the line's ^id anchor is persisted before the task
+  // points at it; the card refreshes on its own once the task lands, which is
+  // what gives the promoted line its badge.
+  const flushBeforePromote = async () => {
+    await onRequestSaveRef.current?.();
   };
 
   // Open the hidden file picker behind the toolbar's Image button.
@@ -1404,7 +1392,13 @@ export default function MarkdownEditor({
         <PromoteLinePopup
           initialTitle={promote.title}
           initialBody={promote.body}
-          onSubmit={submitPromote}
+          meetingId={promoteToMeetingId!}
+          blockRef={promote.blockId}
+          onBeforeCreate={flushBeforePromote}
+          onDone={() => {
+            setPromote(null);
+            router.refresh();
+          }}
           onCancel={() => setPromote(null)}
         />
       )}

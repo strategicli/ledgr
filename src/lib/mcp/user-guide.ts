@@ -301,9 +301,19 @@ flashes it. The marker never appears on a printed or shared copy.
 
 ## Turning a note into tasks
 
-On a meeting's notes, hover any checkbox line for a **→ task** button. It creates
-a task pre-filled with that line and its sub-bullets, linked back to the meeting
-and to that exact line. The line then shows a **✓ task** badge that opens it.
+On a meeting's notes, hover any checkbox line for a **→ task** button. It opens
+the ordinary task add card, pre-filled with that line as the name and its
+sub-bullets as the description, and the task is linked back to the meeting, to
+everyone in it, and to that exact line. The line then shows a **✓ task** badge
+that opens it.
+
+Because it's the same add card, everything you can write in a quick capture
+works in an action line too: a due date in plain words ("Friday", "every other
+Tuesday"), a **p1**–**p6** priority, **#tag**, **+project**, and **@name** to
+link a person or any other item. Those get parsed out of the line and set on the
+task instead of sitting in its name. A multi-word name is written the way a
+multi-word tag is: **@Elder-Board**. Anything that matches nothing is left alone
+as plain words, and you can still edit every field in the card before creating.
 
 # Organizing
 

@@ -16,6 +16,7 @@ import { scheduleListRefresh } from "@/lib/list-refresh";
 import {
   TAG_TYPE,
   TAGS_ROLE,
+  parseMentionTokens,
   parseProjectToken,
   parseTagTokens,
   stripConsumedTokens,
@@ -119,6 +120,11 @@ export default function AddTaskCard({
   parentId,
   autoFocus = true,
   lockDestination = false,
+  initialTitle,
+  initialDescription,
+  createVia,
+  onBeforeCreate,
+  submitLabel,
   onDone,
   onCancel,
   onOptimisticAdd,
@@ -138,6 +144,20 @@ export default function AddTaskCard({
   // Destination is fixed to the host (e.g. a project's Tasks card): hide the
   // destination picker entirely and always file onto the host.
   lockDestination?: boolean;
+  // Pre-filled capture (the meeting "promote to task" flow): the line's text as
+  // the title, its sub-bullets as the description. Everything the typed capture
+  // parses out of a title — dates, "p2", "#tag", "+project", "@person" — is
+  // parsed out of a pre-filled one the same way, since it's the same card.
+  initialTitle?: string;
+  initialDescription?: string;
+  // Create through a different endpoint with extra fields merged into the POST
+  // body (promotion posts to the meeting's promote-task route so the task also
+  // gets its source anchor and the meeting's people).
+  createVia?: { url: string; extra?: Record<string, unknown> };
+  // Awaited before the POST (promotion flushes the meeting body save first, so
+  // the line's ^id anchor exists before the task points at it).
+  onBeforeCreate?: () => Promise<void> | void;
+  submitLabel?: string;
   onDone: () => void;
   onCancel: () => void;
   // When provided (inline list surfaces), the add is OPTIMISTIC: the card closes
@@ -152,9 +172,9 @@ export default function AddTaskCard({
   onOptimisticSettle?: (tmpId: string, realId: string) => void;
 }) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [showDesc, setShowDesc] = useState(false);
+  const [title, setTitle] = useState(initialTitle ?? "");
+  const [description, setDescription] = useState(initialDescription ?? "");
+  const [showDesc, setShowDesc] = useState(!!initialDescription);
   // due/scheduled hold an explicit PICK only. The defaultDueYmd is a fallback
   // (used when nothing is typed or picked) so a typed date ("…Saturday") always
   // wins over it; dateCleared lets the ✕ suppress that fallback too.
@@ -204,7 +224,7 @@ export default function AddTaskCard({
   // (The old "@name = assignee" shortcut was retired here — a dedicated assignee
   // picker can hang off the Assignee chip later.)
   const titleRef = useRef<HTMLTextAreaElement>(null);
-  const descRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
   const { glyph, typeLabel } = useTypeGlyphs();
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -226,6 +246,40 @@ export default function AddTaskCard({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setTags(Array.isArray(d?.items) ? d.items : []))
       .catch(() => {});
+  }, []);
+
+  // A pre-filled title's "@name" tokens (promotion): resolve each against an
+  // exact title match and turn it into the same linked chip a picked mention
+  // makes, stripping the token from the title. No match leaves the words alone
+  // — the "+project" rule: never delete a word and do nothing in its place.
+  useEffect(() => {
+    const tokens = parseMentionTokens(initialTitle ?? "");
+    if (tokens.length === 0) return;
+    let live = true;
+    void (async () => {
+      for (const t of tokens) {
+        const res = await fetch(
+          `/api/items?q=${encodeURIComponent(t.name)}&limit=8`
+        ).catch(() => null);
+        if (!res || !res.ok || !live) continue;
+        const d = (await res.json()) as { items: LinkedItem[] };
+        const hit = (d.items ?? []).find(
+          (i) => (i.title || "").trim().toLowerCase() === t.name.toLowerCase()
+        );
+        if (!hit || !live) continue;
+        setLinked((cur) =>
+          cur.some((l) => l.id === hit.id)
+            ? cur
+            : [...cur, { id: hit.id, title: hit.title, type: hit.type ?? null }]
+        );
+        setTitle((cur) => cur.split(t.token).join(" ").replace(/\s+/g, " ").trim());
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // Mount-only: initialTitle is the seed, not a controlled value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Person chip typeahead: a small debounced search over person items.
@@ -379,6 +433,7 @@ export default function AddTaskCard({
   async function create() {
     const raw = title.trim();
     if (!raw || busy) return;
+    await onBeforeCreate?.();
     const p = parseTaskTitle(raw, localTodayYmd());
     // Strip the sigil tokens that became structure — "#tag" and "+project" — since
     // each is now carried as a real relation rather than as words in the title.
@@ -444,13 +499,19 @@ export default function AddTaskCard({
       if (t.id) relateTo.push({ targetId: t.id, role: TAGS_ROLE });
     }
     if (relateTo.length > 0) body.relateTo = relateTo;
+    // Promotion rides the same body through the meeting's route, which adds the
+    // source anchor + the meeting's people on the server side.
+    // ponytail: the offline outbox replays every capture to /api/items, so a
+    // promotion queued while offline lands as a plain task; wire the outbox to
+    // per-entry endpoints if that ever bites.
+    if (createVia?.extra) Object.assign(body, createVia.extra);
     const newTags = pendingTags.filter((t) => t.id === null);
 
     // POST the task and wire up its destination/@-linked relations. Shared by
     // both paths below. Returns the created id so the optimistic path can settle
     // its provisional row into a real one (see onOptimisticSettle).
     const persist = async (): Promise<string> => {
-      const res = await fetch("/api/items", {
+      const res = await fetch(createVia?.url ?? "/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -658,17 +719,21 @@ export default function AddTaskCard({
       </div>
 
       {(showDesc || description) && (
-        <input
+        // A textarea, not an input: promoted lines bring their sub-bullets in as
+        // real markdown lines. Enter makes a newline here (the title field is
+        // where Enter submits); Cmd/Ctrl+Enter still submits from the field.
+        <textarea
           ref={descRef}
           value={description}
+          rows={Math.min(8, description.split("\n").length || 1)}
           onChange={(e) => setDescription(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); void create(); }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void create(); }
             if (e.key === "Escape") onCancel();
           }}
           placeholder="Description"
           aria-label="Description"
-          className="mt-1 w-full bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
+          className="mt-1 w-full resize-y bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
         />
       )}
 
@@ -967,7 +1032,7 @@ export default function AddTaskCard({
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancel} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700">Cancel</button>
           <button type="button" disabled={!title.trim() || busy} onClick={() => void create()} className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40">
-            {busy ? "Adding…" : parentId ? "Add subtask" : "Add task"}
+            {busy ? "Adding…" : submitLabel ?? (parentId ? "Add subtask" : "Add task")}
           </button>
         </div>
       </div>
