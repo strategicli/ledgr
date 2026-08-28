@@ -56,6 +56,34 @@ export function parseAttachmentUrl(url: string): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+// The query parameter that lets an ANONYMOUS viewer read an attachment
+// (ADR-231). The bucket is private and /files/<id> normally requires the
+// owner's session, but a share link has no session — so the share render
+// rewrites each address to carry the link's own token, and the route grants
+// access only if that token is live and belongs to the attachment's PARENT
+// item. Revoking the share therefore revokes its files in the same act, and a
+// token for one item can't read another item's attachments.
+export const SHARE_PARAM = "s";
+
+// A stable address embedded in body text. Mirrors STABLE_URL (anchored) the way
+// PROVIDER_URL_IN_TEXT mirrors PROVIDER_URL, and is kept beside it so the two
+// can't drift. The negative lookahead skips an address that already carries a
+// query, so re-running this is a no-op rather than appending a second token.
+const STABLE_URL_IN_TEXT = new RegExp(`/files/(${UUID})(?!\\?)`, "gi");
+
+export function attachmentUrlWithShare(id: string, token: string): string {
+  return `${attachmentUrl(id)}?${SHARE_PARAM}=${encodeURIComponent(token)}`;
+}
+
+// Rewrite every stable address in a block of text so it carries `token`. Pure,
+// so the share render can do this on the way out without touching what is
+// stored: the body in the database keeps the plain, token-free address.
+export function addShareTokenToAttachmentUrls(text: string, token: string): string {
+  return text.replace(STABLE_URL_IN_TEXT, (_whole, id: string) =>
+    attachmentUrlWithShare(id.toLowerCase(), token)
+  );
+}
+
 // Rewrite every provider URL in a block of text to its stable address. Used by
 // the one-time migration.
 //

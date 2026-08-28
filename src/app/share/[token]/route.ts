@@ -12,6 +12,8 @@ import { resolveMentions } from "@/lib/mentions";
 import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
+import { addShareTokenToAttachmentUrls } from "@/lib/attachment-url";
+import { makeMarkdownBody } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +60,16 @@ export async function GET(
   // comment is a private note to self, and a share is cached at the edge for up
   // to 60s, so a leak can't be taken back. If a "share with my comments" option
   // is ever wanted, it rides the token the way showIcons does above.
-  const html = renderPrintDocument(resolved.title, resolved.body, {
+  // Attachments are private (ADR-231): /files/<id> needs the owner's session,
+  // which an anonymous reader of this page does not have. Rewrite each address
+  // on the way out so it carries THIS link's token — the route then grants
+  // access only for attachments hanging off this very item. Nothing stored
+  // changes; revoking the link kills its images along with the page.
+  const shareBody = makeMarkdownBody(
+    addShareTokenToAttachmentUrls(bodyMarkdown(resolved.body), token)
+  );
+
+  const html = renderPrintDocument(resolved.title, shareBody, {
     footerHtml: "Shared from Ledgr · read-only",
     mentions,
   });

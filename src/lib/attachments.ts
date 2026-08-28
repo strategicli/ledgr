@@ -15,7 +15,61 @@ import { attachmentUrl } from "./attachment-url";
 // a multi-hour recording is hundreds of MB, and the audio-retention purge
 // (ADR-089) reclaims it after the transcript is produced, so it doesn't sit in
 // the quota forever. (R2 presigned single PUT supports up to 5GB.)
-const QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
+export const QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
+// Warn before the wall, not at it (2026-08-28, Tyler's ask). The 10GB cap above
+// happens to be exactly Cloudflare R2's free storage tier, so crossing it costs
+// real money rather than just failing — worth knowing at 80% instead of finding
+// out when an upload is refused. `critical` is the "stop and clear something
+// out" line; the audio-retention purge (ADR-089) is usually what frees the most.
+export const QUOTA_WARN_FRACTION = 0.8;
+export const QUOTA_CRITICAL_FRACTION = 0.95;
+
+export type StorageUsage = {
+  usedBytes: number;
+  quotaBytes: number;
+  fraction: number;
+  level: "ok" | "warn" | "critical";
+  // Ready-to-show text, or null while there is nothing worth saying. Built here
+  // so every surface (upload response, MCP tool, any future settings gauge)
+  // words it the same way.
+  message: string | null;
+};
+
+function gb(bytes: number): string {
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
+}
+
+// Pure so it is node-testable without a DB, the same discipline the attachment
+// URL helpers follow.
+export function storageUsageFrom(usedBytes: number): StorageUsage {
+  const fraction = usedBytes / QUOTA_BYTES;
+  const level =
+    fraction >= QUOTA_CRITICAL_FRACTION
+      ? "critical"
+      : fraction >= QUOTA_WARN_FRACTION
+        ? "warn"
+        : "ok";
+  const pct = Math.round(fraction * 100);
+  const message =
+    level === "ok"
+      ? null
+      : `${gb(usedBytes)} of ${gb(QUOTA_BYTES)} used (${pct}%)` +
+        (level === "critical"
+          ? " — almost full. Uploads stop at 100%, and this is also Cloudflare R2's free tier."
+          : " — approaching the limit, which is also Cloudflare R2's free tier.");
+  return { usedBytes, quotaBytes: QUOTA_BYTES, fraction, level, message };
+}
+
+// Current usage for one owner. Standalone for surfaces that want it without
+// uploading anything; the upload path does NOT call this, because
+// reserveAttachment already has the sum in hand.
+export async function getStorageUsage(ownerId: string): Promise<StorageUsage> {
+  const rows = await getDb()
+    .select({ total: sql<string>`coalesce(sum(${attachments.sizeBytes}), 0)` })
+    .from(attachments)
+    .where(eq(attachments.ownerId, ownerId));
+  return storageUsageFrom(Number(rows[0].total));
+}
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_AV_FILE_BYTES = 2 * 1024 * 1024 * 1024;
 
@@ -80,6 +134,7 @@ async function reserveAttachment(
   id: string;
   filename: string;
   storageKey: string;
+  usage: StorageUsage;
 }> {
   const storage = getStorage();
   if (!storage) {
@@ -122,9 +177,13 @@ async function reserveAttachment(
     .select({ total: sql<string>`coalesce(sum(${attachments.sizeBytes}), 0)` })
     .from(attachments)
     .where(eq(attachments.ownerId, ownerId));
-  if (Number(used[0].total) + req.sizeBytes > QUOTA_BYTES) {
+  const usedAfter = Number(used[0].total) + req.sizeBytes;
+  if (usedAfter > QUOTA_BYTES) {
     throw new ItemError("bad_request", "storage quota exceeded (~10GB)");
   }
+  // Computed from the sum already fetched above — no second query on the upload
+  // path just to say "you're getting close".
+  const usage = storageUsageFrom(usedAfter);
 
   const id = crypto.randomUUID();
   const filename = sanitizeFilename(req.filename);
@@ -141,21 +200,24 @@ async function reserveAttachment(
     storageKey,
   });
 
-  return { storage, id, filename, storageKey };
+  return { storage, id, filename, storageKey, usage };
 }
 
 export async function createAttachment(
   ownerId: string,
   req: AttachmentRequest
 ) {
-  const { storage, id, filename, storageKey } = await reserveAttachment(
+  const { storage, id, filename, storageKey, usage } = await reserveAttachment(
     ownerId,
     req
   );
   const presigned = await storage.presignUpload(storageKey, req.contentType);
-  // fileUrl is the one to put in a body; publicUrl stays for callers that read
-  // the bytes directly (export, share-claim) and for API back-compat.
-  return { id, filename, storageKey, fileUrl: attachmentUrl(id), ...presigned };
+  // fileUrl is the one to put in a body. publicUrl is kept as a FIELD purely
+  // for API/MCP back-compat (ADR-183 carve-out) and is now the same stable
+  // address — with a private bucket (ADR-231) there is no world-readable URL
+  // left for it to mean. Callers that need the bytes use presignDownload.
+  const fileUrl = attachmentUrl(id);
+  return { id, filename, storageKey, fileUrl, publicUrl: fileUrl, usage, ...presigned };
 }
 
 // Server-side attachment creation: the bytes are already in hand (no browser in
@@ -163,8 +225,8 @@ export async function createAttachment(
 // path the MCP attach_file tool uses (ADR-150) — an AI can't PUT to a presigned
 // URL, so it hands Ledgr the bytes and the server does the write. Same
 // validation/quota/owner checks as the presign path via reserveAttachment; the
-// row's sizeBytes is the actual byte length. Returns the row id + public CDN URL
-// for embedding in the item body.
+// row's sizeBytes is the actual byte length. Returns the row id + the stable
+// address for embedding in the item body.
 export async function createAttachmentFromBytes(
   ownerId: string,
   req: { itemId: string; filename: string; contentType: string; bytes: Uint8Array }
@@ -174,15 +236,36 @@ export async function createAttachmentFromBytes(
   storageKey: string;
   publicUrl: string;
   fileUrl: string;
+  usage: StorageUsage;
 }> {
-  const { storage, id, filename, storageKey } = await reserveAttachment(ownerId, {
+  const { storage, id, filename, storageKey, usage } = await reserveAttachment(ownerId, {
     itemId: req.itemId,
     filename: req.filename,
     contentType: req.contentType,
     sizeBytes: req.bytes.byteLength,
   });
-  const publicUrl = await storage.putObject(storageKey, req.bytes, req.contentType);
-  return { id, filename, storageKey, publicUrl, fileUrl: attachmentUrl(id) };
+  await storage.putObject(storageKey, req.bytes, req.contentType);
+  const fileUrl = attachmentUrl(id);
+  return { id, filename, storageKey, publicUrl: fileUrl, fileUrl, usage };
+}
+
+// One attachment by id for the /files route (ADR-231). NOT owner-scoped on
+// purpose — the route itself decides access, either by owner session or by a
+// share token — so this returns the owner and parent id it needs to make that
+// call, and the route must never skip it.
+export async function getAttachmentForRead(
+  id: string
+): Promise<{ ownerId: string; parentItemId: string; storageKey: string } | null> {
+  const rows = await getDb()
+    .select({
+      ownerId: attachments.ownerId,
+      parentItemId: attachments.parentItemId,
+      storageKey: attachments.storageKey,
+    })
+    .from(attachments)
+    .where(eq(attachments.id, id))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function listAttachments(ownerId: string, itemId: string) {

@@ -1,36 +1,46 @@
-// GET /files/[id] — the stable address of an attachment (ADR-228). Redirects to
-// wherever the bytes currently live, so item bodies never contain a storage
-// provider's URL and switching providers (or public base URLs) needs no body
-// rewrite. This is the indirection that keeps storage swappable.
+// GET /files/[id] — the stable address of an attachment (ADR-228), now access
+// controlled (ADR-231). Redirects to wherever the bytes currently live, so item
+// bodies never contain a storage provider's URL and switching providers needs
+// no body rewrite. This is the indirection that keeps storage swappable.
 //
 // A REDIRECT, not a proxy: bytes must never pass through the app server
 // (CLAUDE.md principle 8, src/lib/storage/types.ts). The browser follows the
-// 302 to the CDN and reads from there exactly as before.
+// 302 to R2 and reads from there.
 //
-// PUBLIC, like /share and /api/ics: the attachment's UUID is unguessable and is
-// the credential. It has to be public — a public share page renders an item body
-// whose images are now /files/<id>, and an anonymous viewer has no session. This
-// is not a privacy change: the provider URLs these addresses replace were
-// world-readable too. Short-lived presigned GETs are the upgrade path if a
-// privacy tier ever lands (the confidential-tier exploration, ADR-075 declined
-// for v1.0), and it would be a change here only.
+// WHO MAY READ. The bucket is private, so there is no unsigned URL to any
+// object and the UUID alone is no longer the credential. Two ways in, and
+// nothing else:
+//   - the OWNER, by Clerk session. This is the default and covers the app.
+//   - an ANONYMOUS viewer holding `?s=<share token>`, but only if that token is
+//     live and belongs to THIS attachment's parent item. A share page rewrites
+//     its body's addresses to carry its own token (src/app/share/[token]).
+// Both failures are a flat 404, never a 403: a wrong or revoked token must not
+// confirm that an id exists.
+//
+// This is what lets a private file (an SSN scan) and a public share of a
+// different item both be true at once — the earlier design could only have one.
+//
+// The route stays in the public matcher (proxy.ts) because the share path takes
+// no session; "public route" means Clerk does not REQUIRE a session here, not
+// that this handler skips its own check.
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { attachments } from "@/db/schema";
+import { getAttachmentForRead } from "@/lib/attachments";
+import { SHARE_PARAM } from "@/lib/attachment-url";
+import { resolveOwner } from "@/lib/owner";
+import { resolveShareToken } from "@/lib/share";
 import { getStorage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-// The id -> storage key mapping is immutable, so this is cacheable. One hour,
-// not a year, deliberately: the redirect TARGET changes when the public base
-// changes (the r2.dev -> custom domain move), and a long cache would serve the
-// old base until it expired.
-const CACHE_CONTROL = "public, max-age=3600";
+// Never cached. The redirect target is a signed URL that expires, so a cached
+// 302 would eventually hand out a dead link — and, worse, a cache shared
+// between viewers would hand one reader's signed URL to another. Re-signing is
+// one HMAC and no I/O; the bytes themselves still come off R2's CDN.
+const CACHE_CONTROL = "private, no-store";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: Context) {
+export async function GET(request: Request, context: Context) {
   const { id } = await context.params;
   // Not asUuid(): a malformed id here is a bad URL, not a bad API call, so it
   // gets the same 404 as an id that simply isn't ours.
@@ -43,17 +53,23 @@ export async function GET(_request: Request, context: Context) {
     return new NextResponse("File storage is not configured.", { status: 503 });
   }
 
-  // Not owner-scoped, matching the public-by-unguessable-id contract above.
-  const rows = await getDb()
-    .select({ storageKey: attachments.storageKey })
-    .from(attachments)
-    .where(eq(attachments.id, id))
-    .limit(1);
-  if (rows.length === 0) {
-    return new NextResponse("Not found", { status: 404 });
-  }
+  const att = await getAttachmentForRead(id);
+  if (!att) return new NextResponse("Not found", { status: 404 });
 
-  return NextResponse.redirect(storage.publicUrl(rows[0].storageKey), {
+  const token = new URL(request.url).searchParams.get(SHARE_PARAM);
+  let allowed = false;
+  if (token) {
+    // Scoped deliberately to the parent item: a live token for item A must not
+    // become a skeleton key for every attachment the owner has.
+    const shared = await resolveShareToken(token);
+    allowed = !!shared && shared.itemId === att.parentItemId;
+  } else {
+    const owner = await resolveOwner();
+    allowed = !!owner && owner.id === att.ownerId;
+  }
+  if (!allowed) return new NextResponse("Not found", { status: 404 });
+
+  return NextResponse.redirect(await storage.presignDownload(att.storageKey), {
     status: 302,
     headers: { "cache-control": CACHE_CONTROL },
   });

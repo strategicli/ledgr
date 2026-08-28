@@ -326,6 +326,9 @@ export const attachmentTools: McpTool[] = [
         fileUrl: attachment.fileUrl,
         publicUrl: attachment.publicUrl,
         embedded,
+        // Only present once usage crosses 80% — so it reads as a warning when
+        // it appears, rather than a number to tune out on every upload.
+        storageWarning: attachment.usage.message ?? undefined,
       };
     },
   },
@@ -386,6 +389,7 @@ export const attachmentTools: McpTool[] = [
         fileUrl: reserved.fileUrl,
         publicUrl: reserved.publicUrl,
         contentType,
+        storageWarning: reserved.usage.message ?? undefined,
         next:
           `PUT the file bytes to uploadUrl with header 'Content-Type: ${contentType}' ` +
           `(must match exactly), then call embed_attachment with itemId ${itemId} and ` +

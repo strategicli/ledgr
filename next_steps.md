@@ -2,6 +2,30 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — private attachments + a storage warning (2026-08-28, ADR-231)
+
+**Attachments work in production for the first time.** They never did: `vercel env ls production` had no `R2_*` vars at all, so `getStorage()` always returned `null` and every upload answered "file storage is not configured." R2 itself had never been provisioned.
+
+**Provisioned:** bucket `ledgr`, ENAM, **private**, on Tyler's personal Cloudflare account `92e683b7…`, via `~/.config/cloudflare/provision-ledgr-r2.py` (kept out of this repo — it reads `~/.config/cloudflare/personal-*` and is Tyler-specific). Four env vars, in `.env.local` and in Vercel production. Live round-trip **9/9** (`verify-storage-r2.mts`): 0-byte / 100-byte / 3MB put, read back at exact length through `presignDownload`, deleted — and an **unsigned GET refused (400)**, which is the standing canary for the bucket ever being made public again.
+
+**Access model (ADR-231, extends ADR-228):** the bucket is private, `publicUrl()` is gone from the provider, and `/files/<id>` grants a read only to the owner's session or to `?s=<share token>` scoped to that attachment's **parent item**. The share page rewrites addresses on the way out, so nothing stored changes and revoking a link revokes its images with it. This is what lets an SSN scan and a public share of a different item both be true at once. `R2_PUBLIC_BASE_URL` is deleted (five vars → four).
+
+**Storage warning (Tyler's ask):** `storageUsageFrom()` in `attachments.ts` is the one place the thresholds and wording live — silent below 80%, `warn` at 80%, `critical` at 95%. It reuses the sum the quota check already runs, so uploads pay no second query. Surfaces as `storageWarning` on both MCP upload tools and on the in-app upload response. Ledgr's 10GB per-owner cap is exactly R2's free storage tier, so hitting one means hitting the other. **Note:** the free tier is 10GB *stored*, not per month.
+
+**Not built (deliberate):** a settings gauge or a proactive notification. The warning currently only appears when you upload. If that turns out to be too passive, the pure helper is already there and a gauge is a UI-only change.
+
+**Two gotchas worth keeping.** (1) Right after enabling R2, `<account>.r2.cloudflarestorage.com` refuses TLS with alert 40 and presents no certificate while DNS and TCP look fine — it is edge propagation and clears in ~30 seconds. Don't debug TLS stacks. (2) `/opt/homebrew/bin` is not on the inherited PATH in agent shells, so `vercel`, `npx`, and `node` are all "command not found" until it is prepended.
+
+## 🐛 FLAKY — `verify-sync.mts` per-key settings check fails ~1 run in 3
+
+**Pre-existing, unrelated to the storage work, but it makes `verify:ci` red at random.** The check is *"the assignment survives an unrelated preference written later elsewhere"* (ADR-226 per-key settings merge): `jobOwners` comes back `{}` on both peers while `accent` converges correctly. The preceding check, that the trigger logged only the moved key, passes every time.
+
+**Measured, not argued:** same tree, same env, back to back — **4 pass / 2 fail**. It also fails on a branch off `main` containing none of the storage changes.
+
+**Don't repeat this mistake:** a first pass at it *looked* like storage configuration mattered, from a six-condition matrix built on ONE sample per condition. That was noise read as signal, twice. Sample it 6+ times per condition or don't draw the conclusion. What actually settles causality is the import graph: `verify-sync.mts` reaches only `sync/engine`, `sync/apply`, `@/db`, `@/lib/passages/refs` — nothing storage-related.
+
+**One probe worth keeping:** widening the deliberate `await sleep(50)` between the two competing writes to 500ms drops the rate (1 in 6) but does not eliminate it, so it is not simply the two stamps tying inside a too-tight window. Mechanism still unidentified. Worth chasing before the local-hub cutover leans harder on sync — this check guards a real reported failure, and one that cries wolf a third of the time is one people learn to skip.
+
 ## Queued — AI memory axis separation (ADR-230, built 2026-08-27, acked by Tyler 2026-08-28)
 
 Built and green: typecheck, lint, both live MCP suites (`verify-memory` 24/24, `verify-mcp` unchanged apart from one pre-existing failure noted below). `horizon` no longer decides what loads; the always-on set is `pinned` and nothing else, ages render at read time, and the stump index is compact text instead of pretty JSON. Full reasoning and the measured before-numbers are in ADR-230. Source brief: `_Drafts/ledgr-memory-axis-fix-SPEC.md` (keep it there, it names a confidential personnel memory as an example).

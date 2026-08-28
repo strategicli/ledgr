@@ -28,11 +28,6 @@ if (!haveR2) {
   process.exit(0);
 }
 
-// The provider's publicUrl needs R2_PUBLIC_BASE_URL; the round-trip below reads
-// back through a signed GET to the object endpoint instead, so an empty public
-// base (the current dev state) doesn't block verification.
-process.env.R2_PUBLIC_BASE_URL ||= "https://example.invalid";
-
 const { R2Provider } = await import("../src/lib/storage/r2");
 const { AwsClient } = await import("aws4fetch");
 
@@ -41,7 +36,6 @@ const provider = new R2Provider({
   secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   bucket: process.env.R2_BUCKET!,
   endpoint: process.env.R2_ENDPOINT!,
-  publicBaseUrl: process.env.R2_PUBLIC_BASE_URL!,
 });
 
 const client = new AwsClient({
@@ -78,6 +72,22 @@ for (const c of cases) {
       `${c.name}: stored bytes read back at exact length`,
       getRes.ok && got.byteLength === bytes.byteLength,
       `status=${getRes.status} put=${bytes.byteLength} got=${got.byteLength}`
+    );
+    const signedRes = await fetch(await provider.presignDownload(key));
+    const signedGot = new Uint8Array(await signedRes.arrayBuffer());
+    check(
+      `${c.name}: presignDownload serves the same bytes`,
+      signedRes.ok && signedGot.byteLength === bytes.byteLength,
+      `status=${signedRes.status} got=${signedGot.byteLength}`
+    );
+
+    // The canary for ADR-231: if this ever reads as OK, the bucket has been
+    // made public and every attachment is world-readable again.
+    const unsigned = await fetch(objectUrl(key));
+    check(
+      `${c.name}: unsigned GET is refused (bucket is private)`,
+      !unsigned.ok,
+      `status=${unsigned.status}`
     );
   } catch (e) {
     check(`${c.name}: putObject succeeds (no 411)`, false, (e as Error).message);

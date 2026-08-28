@@ -219,7 +219,7 @@ async function exportAttachments(
       // configured run copies it later. Don't list a file we didn't write.
       continue;
     }
-    const res = await fetch(storage.publicUrl(att.storageKey));
+    const res = await fetch(await storage.presignDownload(att.storageKey));
     if (!res.ok) {
       // A missing/unreadable object (e.g. bytes that never finished uploading)
       // must NOT block the item's body from exporting: the markdown is the
