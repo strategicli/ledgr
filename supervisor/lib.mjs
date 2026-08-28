@@ -2,7 +2,7 @@
 // ADR-206 decision 6). Everything here is side-effect free and imported by
 // scripts/verify-supervisor.mts; the process/spawn shell lives in
 // ledgr-supervisor.mjs and stays thin. Node builtins only.
-import { join, resolve, isAbsolute, dirname } from "node:path";
+import { join, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -619,10 +619,20 @@ export function schtasksCreateArgs(o) {
   ];
 }
 
-/** The control script sits beside the supervisor; every caller already has that
- * path, so nobody has to pass a second one. */
+/**
+ * The control script sits beside the supervisor; every caller already has that
+ * path, so nobody has to pass a second one.
+ *
+ * Deliberately not `join(dirname(...))`: those read the separator of the
+ * machine this code is RUNNING on, while the path handed in describes the
+ * machine being configured. The two are the same in production and different
+ * in the verify suite, which runs on Linux in CI and Windows on the rig — so
+ * the node-path version passed here and failed there. Swapping the last
+ * segment keeps the caller's own separator, whichever it is.
+ */
 export function ctlScriptFor(supervisorScript) {
-  return join(dirname(supervisorScript), "ledgr-ctl.mjs");
+  const cut = Math.max(supervisorScript.lastIndexOf("/"), supervisorScript.lastIndexOf("\\"));
+  return cut < 0 ? "ledgr-ctl.mjs" : supervisorScript.slice(0, cut + 1) + "ledgr-ctl.mjs";
 }
 
 export function schtasksDeleteArgs() {

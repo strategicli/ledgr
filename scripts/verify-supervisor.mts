@@ -535,9 +535,18 @@ check(
   check("the boot task runs the control script, not the supervisor directly", tr.includes("ledgr-ctl.mjs"));
   check("...with the boot verb", / boot /.test(tr));
   check("...and the config it was installed with", tr.includes("--config="));
+  // Both separators, because this path describes the machine being CONFIGURED
+  // and node's own join/dirname read the separator of the machine RUNNING the
+  // code. The first version used them and so passed on the Windows rig and
+  // failed in Linux CI — with the Windows case being the one that ships.
   check(
     "the control script is found beside the supervisor, so no caller passes a second path",
-    ctlScriptFor("/x/y/ledgr-supervisor.mjs").replace(/\\/g, "/") === "/x/y/ledgr-ctl.mjs"
+    ctlScriptFor("/x/y/ledgr-supervisor.mjs") === "/x/y/ledgr-ctl.mjs"
+  );
+  check(
+    "...and a Windows path keeps its backslashes, whatever platform is asking",
+    ctlScriptFor("C:\\dev\\ledgr\\supervisor\\ledgr-supervisor.mjs") ===
+      "C:\\dev\\ledgr\\supervisor\\ledgr-ctl.mjs"
   );
   check(
     "the whole task command stays inside schtasks's 261-character /TR limit",
