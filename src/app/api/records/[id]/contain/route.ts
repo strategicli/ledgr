@@ -3,7 +3,13 @@ import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { createItem } from "@/lib/item-mutations";
 import { getItem } from "@/lib/items";
 import { listTypes, mayLiveInManyRecords } from "@/lib/types";
-import { homeParentRecord, relateItems, setHome } from "@/lib/relations";
+import {
+  filedUnderRecords,
+  homeParentRecord,
+  relateItems,
+  setHome,
+  unrelateItems,
+} from "@/lib/relations";
 
 export const dynamic = "force-dynamic";
 
@@ -62,17 +68,40 @@ export async function POST(request: Request, context: Context) {
       if (existing.deletedAt) {
         return NextResponse.json({ error: "item not found" }, { status: 404 });
       }
+      const filedUnder = await filedUnderRecords(owner.id, itemId);
+      // Already filed here: nothing to do, and say so rather than writing a
+      // second edge to the same record.
+      if (filedUnder.includes(id)) {
+        return NextResponse.json({ item: existing, contained: true }, { status: 200 });
+      }
       // A resource type (no completion concept) may belong to several records
-      // at once (ADR-232): add a plain `related` edge and leave its home where
-      // it is. `related` rather than `contains` on purpose — the completion
-      // sweep scopes on `home or role in ('project','contains')`, so a
-      // contains edge would put a note that merely VISITS this project inside
-      // the project's completion net. Association should never be swept.
-      if (await mayLiveInManyRecords(existing.type)) {
+      // at once (ADR-232): add a plain `related` edge and leave its filing
+      // where it is. `related` rather than `contains` on purpose — the
+      // completion sweep scopes on `home or role in ('project','contains')`,
+      // so a contains edge would put a note that merely VISITS this project
+      // inside the project's completion net. Association is never swept.
+      //
+      // Unless it isn't filed anywhere yet: the FIRST record to take an
+      // unfiled resource adopts it. Otherwise a note attached to two projects
+      // would be a visitor in both and a resident of nowhere, and the visitor
+      // marker would say nothing (found in the browser check, 2026-08-28).
+      if ((await mayLiveInManyRecords(existing.type)) && filedUnder.length > 0) {
         await relateItems(owner.id, itemId, id, RELATED_ROLE);
         return NextResponse.json({ item: existing, contained: false }, { status: 200 });
       }
-      // A type that completes lives in exactly one record, so this MOVES it.
+      // Filed under exactly one record from here on. setHome only DEMOTES the
+      // previous home edge (home=false) and the cards are home-agnostic, so
+      // without this the item would keep rendering on its old record's card
+      // with no way to remove it — a completing type has no detach ✕. Drop the
+      // old filing edges first so "belongs to one record" is actually true.
+      // Both containment roles, not just this type's: the old edge was written
+      // by whatever filed it there. Role-scoped on purpose, so a deliberate
+      // `related` or `tags` edge to the old record survives the re-filing.
+      for (const old of filedUnder) {
+        for (const role of ["project", "contains"]) {
+          await unrelateItems(owner.id, itemId, old, { role });
+        }
+      }
       await setHome(owner.id, itemId, id, containRole(existing.type));
       return NextResponse.json({ item: existing, contained: true }, { status: 200 });
     }

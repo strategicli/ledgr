@@ -355,6 +355,33 @@ async function clearHomeEdges(childId: string) {
     .where(and(eq(relations.sourceId, childId), eq(relations.home, true)));
 }
 
+// The records this item is FILED UNDER: a home edge, or a `project`/`contains`
+// role, regardless of the home flag. The same predicate the completion sweep
+// and the record cards' contained/visitor split use.
+//
+// It exists because setHome DEMOTES a previous home edge (home=false) instead
+// of deleting it, and the typed collection cards are home-agnostic — so
+// re-filing a task under a second project left it rendered on BOTH projects'
+// Tasks cards, with the old one no longer marked as its home. Callers that
+// promise "this lives in exactly one record" have to clear the old edge
+// themselves; this tells them what to clear.
+export async function filedUnderRecords(
+  ownerId: string,
+  itemId: string
+): Promise<string[]> {
+  await assertOwned(ownerId, itemId);
+  const rows = await getDb()
+    .select({ targetId: relations.targetId })
+    .from(relations)
+    .where(
+      and(
+        eq(relations.sourceId, itemId),
+        or(eq(relations.home, true), inArray(relations.role, ["project", "contains"]))
+      )
+    );
+  return Array.from(new Set(rows.map((r) => r.targetId)));
+}
+
 // Containment (ADR-111): make `childId` live in `parentId` as its PRIMARY
 // residence (a child -> parent edge with home=true). This is how a Project
 // "contains" a note/task/milestone/typed record — relationships + the home bit,

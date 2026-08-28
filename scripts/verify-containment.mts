@@ -14,7 +14,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 const { getDb } = await import("../src/db");
 const { items, users, relations, activityEvents } = await import("../src/db/schema");
 const { createItem } = await import("../src/lib/item-mutations");
-const { setHome, relateItems, listRelatedItems } = await import("../src/lib/relations");
+const { setHome, relateItems, listRelatedItems, filedUnderRecords, unrelateItems } = await import("../src/lib/relations");
 const { homeParentOf, listActivity } = await import("../src/lib/activity");
 const { mayLiveInManyRecords } = await import("../src/lib/types");
 const { queryViewItems } = await import("../src/lib/views");
@@ -174,6 +174,44 @@ console.log("\n# a resource in two records keeps its home");
     );
     check(`the note shows in project ${name}'s Docs card`, rows.some((r) => r.id === note.id));
   }
+}
+
+console.log("\n# re-filing leaves no ghost on the old record");
+{
+  // setHome only DEMOTES the previous home edge, and the cards are
+  // home-agnostic, so the attach path has to clear the old filing itself or a
+  // re-filed task renders on both records' cards — and a completing type has
+  // no detach ✕ to get it off the old one. Found in a browser check.
+  const projA = await make("project", "ADR232 refile A");
+  const projB = await make("project", "ADR232 refile B");
+  const task = await make("task", "ADR232 refiled task");
+  await setHome(ownerId, task.id, projA.id, "project");
+
+  // What the attach route does for a type that files under one record.
+  for (const old of await filedUnderRecords(ownerId, task.id)) {
+    if (old === projB.id) continue;
+    for (const role of ["project", "contains"]) {
+      await unrelateItems(ownerId, task.id, old, { role });
+    }
+  }
+  await setHome(ownerId, task.id, projB.id, "project");
+
+  const filed = await filedUnderRecords(ownerId, task.id);
+  check("the task is filed under exactly one record", filed.length === 1 && filed[0] === projB.id, filed.join(", "));
+  const stale = await queryViewItems(
+    ownerId,
+    { type: "task", relatedTo: projA.id },
+    { field: "updatedAt", dir: "desc" },
+    50
+  );
+  check("the old record's card no longer lists it", !stale.some((r) => r.id === task.id));
+  const now = await queryViewItems(
+    ownerId,
+    { type: "task", relatedTo: projB.id },
+    { field: "updatedAt", dir: "desc" },
+    50
+  );
+  check("the new record's card lists it", now.some((r) => r.id === task.id));
 }
 
 // Cleanup: drop activity (cascade covers subject; be explicit anyway), then items.

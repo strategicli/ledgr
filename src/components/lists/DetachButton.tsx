@@ -44,11 +44,15 @@ export default function DetachButton({
         return;
       }
       router.refresh();
+      // Undo re-relates FROM the item, matching the direction the attach wrote
+      // (item -> record). The card query is direction-blind so either works,
+      // but flipping the stored orientation on every undo is the kind of drift
+      // that makes a later query surprising.
       showToast(`${name} detached`, () => {
-        void fetch(`/api/items/${recordId}/relations`, {
+        void fetch(`/api/items/${itemId}/relations`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ targetId: itemId, role: "related" }),
+          body: JSON.stringify({ targetId: recordId, role: "related" }),
         }).then(() => router.refresh());
       });
     } finally {
@@ -63,7 +67,11 @@ export default function DetachButton({
       disabled={busy}
       aria-label={`Detach ${name} from this record`}
       title="Related to this record, not filed in it. Click to detach."
-      className="shrink-0 rounded px-1 text-xs leading-none text-ink-faint hover:text-red-400 disabled:opacity-50"
+      // Always-visible controls have to be READABLE to earn the space: at
+      // text-ink-faint it read as a stray mark rather than a marker (browser
+      // check, 2026-08-28). -my-1 py-1 px-1.5 keeps the row height while
+      // giving the glyph a touch-sized box.
+      className="-my-1 shrink-0 rounded px-1.5 py-1 text-xs leading-none text-ink-subtle hover:bg-surface-2 hover:text-red-400 disabled:opacity-50"
     >
       ✕
     </button>
