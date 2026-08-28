@@ -9,10 +9,12 @@
 //   npm run local:status                 # is it up, which build, boot state
 //   npm run local:status -- --json       # the same, machine-readable
 //   npm run local:stop                   # graceful shutdown of the running peer
+//   npm run local:boot                   # start one if one is not already up
 //   npm run local:startup                # what Windows currently holds
 //   npm run local:startup -- --logon     # start at sign-in (no elevation)
 //   npm run local:startup -- --always    # start at boot (24/7 hub; elevation)
 //   npm run local:startup -- --disable
+//   npm run local:tray                   # the notification-area icon
 //
 // A separate entry point from ledgr-supervisor.mjs on purpose: that file boots
 // Postgres and the app on import-and-run, so it cannot answer a question
@@ -21,8 +23,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pidAlive, portListening, processCommandLine } from "./proc.mjs";
 import {
   formatSchtasks,
+  isSupervisorCommandLine,
+  lockVerdict,
   livePointerPath,
   lockPath,
   normalizeConfig,
@@ -69,15 +74,34 @@ const cfg = normalizeConfig(JSON.parse(readFileSync(configPath, "utf8")), dirnam
 
 // ── Shared readers ───────────────────────────────────────────────────────────
 
-function pidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // EPERM means it exists and belongs to someone else: alive for our
-    // purposes. ESRCH is the only "gone". Same rule as the supervisor's own.
-    return err?.code === "EPERM";
-  }
+/**
+ * Is the peer's lock owner a REAL supervisor, not just a live process number?
+ *
+ * The distinction is the whole reason this exists. Asking only "does that pid
+ * exist" said yes about a number Windows had recycled after the 2026-08-27
+ * reboot, so `status` reported a healthy peer that was serving nothing and
+ * `restart` refused to fix it. Identity comes from the process's command line;
+ * the Postgres port is the tie-break when that cannot be read. The rules
+ * themselves live in lib.mjs lockVerdict, so the supervisor and this script
+ * cannot drift apart on what counts as running.
+ *
+ * Costs a PowerShell start, so it answers the questions that DECIDE something.
+ * The wait loops below stay on plain `pidAlive`, which is the right question
+ * for them anyway: has the process I already identified gone away yet?
+ */
+async function supervisorAlive(pid) {
+  if (pid === null || !pidAlive(pid)) return false;
+  const cmdline = processCommandLine(pid);
+  const identified = cmdline === null ? null : isSupervisorCommandLine(cmdline);
+  return (
+    lockVerdict({
+      recordedPid: pid,
+      ownPid: process.pid,
+      alive: true,
+      identified,
+      serving: identified === null ? await portListening(cfg.dbPort) : false,
+    }) === "refuse"
+  );
 }
 
 function ownerPid() {
@@ -152,7 +176,7 @@ function recordedCronState() {
 
 async function doStatus() {
   const pid = ownerPid();
-  const running = pid !== null && pidAlive(pid);
+  const running = await supervisorAlive(pid);
   const live = liveBuild();
   const http = running ? await appAnswers() : null;
   const boot = registeredScope();
@@ -255,13 +279,13 @@ async function doStatus() {
 // "the request was filed" is the kind of half-truth this project keeps deleting.
 async function doRestart() {
   const pid = ownerPid();
-  const alive = pid !== null && pidAlive(pid);
+  const alive = await supervisorAlive(pid);
 
   if (!alive) {
     // Nothing to hand off from: start one. Detached, with its output appended
     // to the peer's logs, because a supervisor with nowhere to write is how a
     // startup failure becomes invisible.
-    if (pid !== null) clearStaleLock(pid);
+    if (pid !== null) await clearStaleLock(pid);
     console.log("No local service running — starting one.");
     const child = spawnDetachedSupervisor();
     if (!child) return 1;
@@ -340,9 +364,9 @@ async function doStop() {
     console.log("No supervisor lock — nothing to stop.");
     return 0;
   }
-  if (!pidAlive(pid)) {
+  if (!(await supervisorAlive(pid))) {
     console.log(`The lock names pid ${pid}, which is already gone — clearing the stale lock.`);
-    clearStaleLock(pid);
+    await clearStaleLock(pid);
     return 0;
   }
 
@@ -362,7 +386,7 @@ async function doStop() {
       // Postgres shutting down is the slow part, and it happens before the
       // lock is released, so a gone pid means the clean path completed.
       console.log("Stopped.");
-      clearStaleLock(pid);
+      await clearStaleLock(pid);
       return 0;
     }
   }
@@ -375,18 +399,59 @@ async function doStop() {
   return 1;
 }
 
-/** Remove a lock whose owner is provably gone. Never touches a live one. */
-function clearStaleLock(pid) {
+/**
+ * Remove a lock whose owner is provably not a running supervisor. Never touches
+ * a live one — the test is `supervisorAlive`, not "does that number exist", so
+ * a lock left behind on a pid Windows has since recycled clears like any other.
+ */
+async function clearStaleLock(pid) {
   try {
     const lock = lockPath(cfg.dataDir);
     if (!existsSync(lock)) return;
     if (Number.parseInt(readFileSync(lock, "utf8").trim(), 10) !== pid) return;
-    if (pidAlive(pid)) return;
+    if (await supervisorAlive(pid)) return;
     unlinkSync(lock);
   } catch {
     // A lock we cannot clear is not worth failing the stop over; the next
     // start steals it anyway (lockVerdict "steal").
   }
+}
+
+// ── boot (what Windows runs at startup) ──────────────────────────────────────
+
+/**
+ * Bring this peer up if it is not already up, and say so either way.
+ *
+ * This is what the scheduled task runs, instead of the supervisor itself, for
+ * two reasons the 2026-08-27 reboot made expensive:
+ *
+ *   A task action has no stdout. A supervisor Windows starts directly writes
+ *   its startup into nowhere, so the morning the database refused to start, the
+ *   only surviving evidence was the phrase "would not start" and none of the
+ *   reason. Going through here means the supervisor is spawned the same way
+ *   `restart` has always spawned it, with the peer's two log files attached.
+ *
+ *   And a peer that died badly has to be able to come back on its own. A stale
+ *   lock is cleared here rather than waiting for a person to delete a file,
+ *   which is what the outage actually required.
+ *
+ * Idempotent on purpose: running it when the peer is healthy does nothing, so
+ * it is safe to run from a schedule, from a shortcut, or twice by accident.
+ */
+async function doBoot() {
+  const pid = ownerPid();
+  if (await supervisorAlive(pid)) {
+    console.log(`Already running (pid ${pid}).`);
+    return 0;
+  }
+  if (pid !== null) {
+    console.log(`The lock names pid ${pid}, which is not a running supervisor — clearing it.`);
+    await clearStaleLock(pid);
+  }
+  const child = spawnDetachedSupervisor();
+  if (!child) return 1;
+  console.log(`Started (pid ${child}). Waiting for it to serve…`);
+  return (await waitForServing(child)) ? 0 : 1;
 }
 
 // ── startup (the boot registration) ──────────────────────────────────────────
@@ -455,12 +520,220 @@ function doStartup() {
     console.log(`Start it now without rebooting: schtasks /Run /TN "${STARTUP_TASK_NAME}"`);
     return 0;
   }
+  // The easier route first, because it is the one with nothing to mistype: the
+  // same command, elevated, registers the task through this script and no
+  // quoting passes through a shell at all. The raw schtasks line stays below it
+  // for the case where npm is not on the elevated PATH.
   console.error(
-    "schtasks failed — the always-on scope generally needs elevation. Run this in an\n" +
-      "Administrator PowerShell:\n  " +
-      formatSchtasks(args)
+    "schtasks failed — the always-on scope needs elevation.\n\n" +
+      "Easiest fix: open PowerShell as Administrator and run this same command there:\n" +
+      "  cd " +
+      cfg.repoDir +
+      "\n  npm run local:startup -- --always\n\n" +
+      "Or paste this line into an Administrator PowerShell (the --% matters; without\n" +
+      "it PowerShell eats the quotes and registers a task that breaks on any path\n" +
+      "containing a space):\n  " +
+      formatSchtasks(args, { shell: "powershell" })
   );
   return 1;
+}
+
+// ── tray (the notification-area icon) ────────────────────────────────────────
+
+const TRAY_SCRIPT = join(here, "ledgr-tray.ps1");
+const TRAY_SHORTCUT_NAME = "Ledgr.lnk";
+
+/** A value as a PowerShell single-quoted literal (doubling is the only escape). */
+const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+/** Run a PowerShell snippet and hand back its trimmed stdout, or null. */
+function psOut(script) {
+  const res = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+  });
+  if (res.error || res.status !== 0) return null;
+  return (res.stdout ?? "").trim();
+}
+
+/**
+ * The pids of any tray icons already running for this machine.
+ *
+ * The split string is not a style tic. This query runs inside a powershell.exe
+ * whose OWN command line therefore contains whatever pattern it searches for,
+ * so a literal "ledgr-tray.ps1" here makes the query match itself — which it
+ * did, reporting a different "tray pid" on every call and hiding the fact that
+ * the real icon was not running at all. Building the pattern from two halves
+ * means the contiguous string never appears in this process's command line.
+ */
+function runningTrayPids() {
+  const out = psOut(
+    "$pat = '*ledgr-' + 'tray.ps1*'; " +
+      "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | " +
+      "Where-Object { $_.CommandLine -like $pat } | " +
+      "ForEach-Object { $_.ProcessId }"
+  );
+  if (!out) return [];
+  return out
+    .split(/\r?\n/)
+    .map((l) => Number.parseInt(l.trim(), 10))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+function stopTray() {
+  const pids = runningTrayPids();
+  for (const pid of pids) {
+    try {
+      process.kill(pid);
+    } catch {
+      // already gone
+    }
+  }
+  return pids.length;
+}
+
+function trayArgs() {
+  return [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-WindowStyle",
+    "Hidden",
+    "-File",
+    TRAY_SCRIPT,
+    "-NodePath",
+    process.execPath,
+    "-CtlScript",
+    join(here, "ledgr-ctl.mjs"),
+    "-ConfigPath",
+    configPath,
+    "-AppPort",
+    String(cfg.appPort),
+    "-DbPort",
+    String(cfg.dbPort),
+    "-DataDir",
+    cfg.dataDir,
+  ];
+}
+
+/**
+ * Start the icon and hand back the pid it is ACTUALLY running as, or null if it
+ * did not come up.
+ *
+ * Launched through PowerShell's own Start-Process rather than Node's `spawn`,
+ * because spawning powershell.exe detached with no stdio does not survive here:
+ * it is a console host, and with no console and no handles it exits at once.
+ * Measured, not assumed — the direct spawn produced no icon at all, while this
+ * produces one that outlives the terminal that asked for it.
+ *
+ * The pid is then looked up rather than taken from the spawn, since the process
+ * we launch is not the process that ends up running. Reporting a number the
+ * owner cannot act on is worse than reporting none.
+ */
+async function startTray() {
+  const before = new Set(runningTrayPids());
+  const list = trayArgs().map(psQuote).join(", ");
+  psOut(`Start-Process -FilePath 'powershell.exe' -ArgumentList @(${list}) -WindowStyle Hidden`);
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 250));
+    const fresh = runningTrayPids().filter((p) => !before.has(p));
+    if (fresh.length > 0) return fresh[0];
+  }
+  return null;
+}
+
+function startupShortcutPath() {
+  const appData = process.env.APPDATA ?? "";
+  return appData
+    ? join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", TRAY_SHORTCUT_NAME)
+    : null;
+}
+
+/**
+ * The tray icon starts at SIGN-IN, from a Startup shortcut, and deliberately
+ * not from the scheduled task that starts the service. They answer to different
+ * lifetimes: the peer runs whether or not anyone is signed in, and an icon in
+ * the notification area only means anything while someone is looking at a
+ * desktop. Keeping them separate also means the icon can be turned off without
+ * touching whether Ledgr runs.
+ */
+function installTrayShortcut(lnk) {
+  // Two quoting layers, and they are not the same layer. The inner one is for
+  // the shortcut's own argument string, where a path with a space needs plain
+  // double quotes ("C:\Program Files\nodejs\node.exe"). The outer one is for
+  // the PowerShell literal carrying it, where only a single quote is special
+  // and doubling it is the whole escape. Getting the inner layer wrong writes a
+  // shortcut that fails only on machines whose paths have spaces in them.
+  const q = psQuote;
+  const argLine = trayArgs()
+    .map((a) => (a.includes(" ") ? `"${a}"` : a))
+    .join(" ");
+  const script =
+    `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(lnk)}); ` +
+    `$s.TargetPath = ${q("powershell.exe")}; ` +
+    `$s.Arguments = ${q(argLine)}; ` +
+    `$s.WorkingDirectory = ${q(here)}; ` +
+    `$s.WindowStyle = 7; ` +
+    `$s.Description = 'Ledgr status icon'; ` +
+    `$s.Save()`;
+  return psOut(script) !== null;
+}
+
+async function doTray() {
+  if (!isWin) {
+    console.log("The tray icon is Windows-only. On macOS and Linux, use npm run local:status.");
+    return 2;
+  }
+  const lnk = startupShortcutPath();
+
+  if (flags.has("--uninstall") || flags.has("--disable") || flags.has("--off")) {
+    const stopped = stopTray();
+    let removed = false;
+    if (lnk && existsSync(lnk)) {
+      unlinkSync(lnk);
+      removed = true;
+    }
+    console.log(
+      `Tray icon ${stopped > 0 ? "closed" : "was not running"}${removed ? " and removed from startup" : ""}.\n` +
+        "Ledgr itself is untouched and still running; check with npm run local:status."
+    );
+    return 0;
+  }
+
+  if (flags.has("--stop")) {
+    const stopped = stopTray();
+    console.log(stopped > 0 ? "Tray icon closed. Ledgr itself is untouched." : "No tray icon was running.");
+    return 0;
+  }
+
+  // Installing is the default, because an icon that vanishes at the next sign-in
+  // is not the thing anyone was asking for.
+  const skipInstall = flags.has("--once") || flags.has("--no-install");
+  if (!skipInstall && lnk) {
+    if (installTrayShortcut(lnk)) {
+      console.log("The icon will come back automatically when you sign in.");
+    } else {
+      console.error("Could not write the startup shortcut; starting the icon for this session only.");
+    }
+  }
+
+  // One icon, not one per invocation.
+  stopTray();
+  const pid = await startTray();
+  if (pid === null) {
+    console.error("Could not start the tray icon — nothing appeared within eight seconds.");
+    return 1;
+  }
+  console.log(
+    `Tray icon started (pid ${pid}). Look near the clock, at the right-hand end of\n` +
+      "the taskbar — you may need to click the ^ arrow and drag it out to pin it.\n" +
+      "  Green   Ledgr is running\n" +
+      "  Amber   starting up, or the app is down while the database is fine\n" +
+      "  Red     not running\n" +
+      "Right-click it to open Ledgr, check the ports, start, restart or stop.\n" +
+      "Turn it off with: npm run local:tray -- --uninstall"
+  );
+  return 0;
 }
 
 // ── request (what the app's toggle writes; exposed for testing the path) ─────
@@ -480,9 +753,11 @@ function doRequest() {
 
 const verbs = {
   status: doStatus,
+  boot: doBoot,
   restart: doRestart,
   stop: doStop,
   startup: doStartup,
+  tray: doTray,
   request: doRequest,
 };
 const fn = verbs[verb];
@@ -490,4 +765,11 @@ if (!fn) {
   console.error(`Unknown verb "${verb}". One of: ${Object.keys(verbs).join(", ")}`);
   process.exit(2);
 }
-process.exit((await fn()) ?? 0);
+// Set the code and let Node wind down on its own, rather than process.exit().
+// Calling exit() while the sockets from a health check are still closing trips
+// a libuv assertion on Windows and kills this process with status 127 — after
+// the work succeeded. Harmless from a terminal, not harmless from Task
+// Scheduler, which would record every successful boot as a failure. Winding
+// down naturally is also faster here (~160ms vs ~430ms), because the exit path
+// is not racing the teardown.
+process.exitCode = (await fn()) ?? 0;

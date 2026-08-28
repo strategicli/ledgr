@@ -13,6 +13,7 @@ import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, relations } from "@/db/schema";
 import { excerptLine } from "@/lib/excerpt";
+import { personImage } from "@/lib/person-image";
 import { TAGS_ROLE } from "@/lib/tags";
 
 // The role a task→project home edge carries (ADR-111/199).
@@ -99,7 +100,11 @@ export async function taskRowMeta(
       type: r.type,
       role: r.role,
       home: r.home ?? false,
-      image: r.type === "person" && r.image && /^https?:\/\//i.test(r.image) ? r.image : null,
+      // personImage, not an inline http test: it is the one place that decides
+      // what an avatar will render, and a stable /files address is valid too
+      // (ADR-228). The inline copy this replaced silently dropped every
+      // uploaded avatar from the connection strip.
+      image: r.type === "person" ? personImage({ image: r.image }) : null,
     });
   }
   // Tags lead the strip; everything else keeps the query's title order.

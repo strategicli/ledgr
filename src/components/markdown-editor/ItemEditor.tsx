@@ -43,14 +43,16 @@ async function uploadImage(itemId: string, file: File): Promise<string> {
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.error ?? `upload rejected (${res.status})`);
   }
-  const { uploadUrl, publicUrl } = await res.json();
+  // fileUrl, not publicUrl: the body stores the stable /files/<id> address, so
+  // it survives a change of storage provider or public base URL (ADR-228).
+  const { uploadUrl, fileUrl } = await res.json();
   const put = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
   if (!put.ok) throw new Error(`storage upload failed (${put.status})`);
-  return publicUrl;
+  return fileUrl;
 }
 
 export type ItemEditorProps = {

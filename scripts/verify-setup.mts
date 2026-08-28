@@ -299,8 +299,14 @@ check(
 );
 
 check(
-  "schtasks: node, the supervisor script, and the config are all in /TR, each quoted",
-  args[args.indexOf("/TR") + 1] === '"C:\\Program Files\\nodejs\\node.exe" "C:\\ledgr\\supervisor\\ledgr-supervisor.mjs" "C:\\ledgr\\supervisor\\config.json"'
+  // Windows runs the CONTROL script's `boot` verb, not the supervisor itself:
+  // a task action has no stdout, so a supervisor launched straight from
+  // Windows writes its startup into nowhere. `boot` spawns it with the peer's
+  // log files attached and clears a stale lock on the way past. See the
+  // 2026-08-27 note on lib.mjs schtasksCreateArgs.
+  "schtasks: node, the CONTROL script, the boot verb and the config are all in /TR, each quoted",
+  args[args.indexOf("/TR") + 1] ===
+    '"C:\\Program Files\\nodejs\\node.exe" "C:\\ledgr\\supervisor\\ledgr-ctl.mjs" boot --config="C:\\ledgr\\supervisor\\config.json"'
 );
 check("schtasks: /F so a re-run replaces the task (idempotent wizard)", args.includes("/F"));
 

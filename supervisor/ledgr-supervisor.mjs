@@ -35,11 +35,15 @@ import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
+import { pidAlive, portListening, processCommandLine, processImageName } from "./proc.mjs";
 import {
   assembleAppEnv,
   buildDbUrl,
+  isSupervisorCommandLine,
   lockPath,
   lockVerdict,
+  parsePostmasterPid,
+  postmasterVerdict,
   buildsDir,
   decideFlip,
   livePointerPath,
@@ -162,6 +166,76 @@ const pg = new EmbeddedPostgres({
 });
 
 /**
+ * Delete a leftover postmaster.pid, but only when it is provably a leftover.
+ *
+ * Returns true when a file was removed, so the caller knows the next attempt is
+ * into a genuinely different situation. Every uncertainty answers "leave it
+ * alone": an unreadable file, a Postgres actually listening, a pid that really
+ * does belong to a postmaster.
+ */
+async function clearStalePostmasterPid() {
+  const lockFile = join(pgDir, "postmaster.pid");
+  if (!existsSync(lockFile)) return false;
+  let recorded;
+  try {
+    recorded = parsePostmasterPid(readFileSync(lockFile, "utf8"));
+  } catch {
+    return false;
+  }
+  const verdict = postmasterVerdict({
+    recordedPid: recorded.pid,
+    alive: recorded.pid !== null && pidAlive(recorded.pid),
+    image: recorded.pid === null ? null : processImageName(recorded.pid),
+    portListening: await portListening(recorded.port ?? cfg.dbPort),
+  });
+  if (verdict !== "stale") return false;
+  try {
+    unlinkSync(lockFile);
+  } catch {
+    return false;
+  }
+  log("removed a stale postmaster.pid left by an unclean shutdown", {
+    file: lockFile,
+    recordedPid: recorded.pid,
+  });
+  return true;
+}
+
+/**
+ * A Postgres still listening from a supervisor that died without stopping it.
+ *
+ * The mirror image of the stale-lock case, and just as fatal: here the cluster
+ * is genuinely up, so nothing may be deleted, but the port is taken and a fresh
+ * start cannot have it. Left alone it is a peer that never comes back — the
+ * database is fine and the app can never reach it.
+ *
+ * Shutting the orphan down cleanly is the whole fix, and `pg_ctl stop -m fast`
+ * is already here for the ordinary shutdown path. Narrow on purpose: only when
+ * OUR port is busy, only when OUR data directory's lock file names the process
+ * holding it, and only when that process really is a postmaster. Anything else
+ * on that port is somebody else's and gets reported, not stopped.
+ */
+async function stopOrphanedPostgres() {
+  const lockFile = join(pgDir, "postmaster.pid");
+  if (!existsSync(lockFile)) return false;
+  if (!(await portListening(cfg.dbPort))) return false;
+  let recorded;
+  try {
+    recorded = parsePostmasterPid(readFileSync(lockFile, "utf8"));
+  } catch {
+    return false;
+  }
+  if (recorded.pid === null || !pidAlive(recorded.pid)) return false;
+  const image = processImageName(recorded.pid);
+  if (typeof image !== "string" || !image.includes("postgres")) return false;
+  log("a Postgres from a previous run is still listening; shutting it down cleanly", {
+    pid: recorded.pid,
+    port: cfg.dbPort,
+  });
+  return stopPostgresGracefully();
+}
+
+/**
  * Start Postgres, retrying a few times before giving up (ADR-227).
  *
  * One attempt was enough right up until it wasn't. A supervisor that goes away
@@ -175,27 +249,49 @@ const pg = new EmbeddedPostgres({
  * The window is seconds long, so waiting through it is the entire fix. Failing
  * loudly after four tries is still the right ending — the alternative is a
  * process that looks alive with no database under it.
+ *
+ * Waiting is not the whole fix any more, though. A reboot that did not shut
+ * Postgres down cleanly also leaves postmaster.pid behind, and if Windows has
+ * reissued the pid inside it — likeliest of all right after a boot — Postgres
+ * refuses to start and no amount of retrying changes that. That is what stopped
+ * this peer on 2026-08-27. So a failed attempt now also clears a postmaster.pid
+ * that is provably stale (see postmasterVerdict for the two guards that keep
+ * "provably" honest) before the next try.
  */
 async function startPostgres() {
   if (firstRun && !existsSync(join(pgDir, "PG_VERSION"))) {
     log("initdb (first run)", { pgDir });
     await pg.initialise();
   }
+  // Clear the way before trying, not after failing: an orphan holding the port
+  // fails every attempt identically, so retrying into it is pure delay.
+  await stopOrphanedPostgres();
+  // The stale-lock rescue is worth a fresh budget of attempts, and worth it
+  // exactly once: Postgres writes postmaster.pid itself before it decides it
+  // cannot run, so a cluster that is broken for some OTHER reason would
+  // otherwise leave a freshly stale lock on every pass and retry forever.
+  let rescued = false;
   for (let attempt = 1; ; attempt += 1) {
     const wait = pgStartDelayMs(attempt);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     try {
       await pg.start();
-      if (attempt > 1) log("postgres started after retrying", { attempt });
+      if (attempt > 1) log("postgres started after retrying", { attempt, rescued });
       break;
     } catch (err) {
+      // embedded-postgres rejects with nothing at all when the server exits
+      // before it says it is ready, so this is often the string "undefined".
+      // The reason itself went to the log as Postgres's own stderr.
       const detail = String(err?.message ?? err).slice(0, 300);
-      if (attempt >= PG_START_ATTEMPTS) {
+      const cleared = !rescued && (await clearStalePostmasterPid());
+      if (cleared) rescued = true;
+      if (attempt >= PG_START_ATTEMPTS && !cleared) {
         log("postgres would not start", { attempt, detail });
         writeSupervisorState({ phase: "failed", detail: `Postgres would not start: ${detail}` });
         throw err;
       }
-      log("postgres start failed; retrying", { attempt, detail });
+      log("postgres start failed; retrying", { attempt, detail, clearedStaleLock: cleared });
+      if (cleared) attempt = 0;
     }
   }
   try {
@@ -647,8 +743,10 @@ function applyStartupRequest(req) {
           : (res.stderr || res.stdout || "schtasks failed").trim().split("\n")[0] ||
             "schtasks failed",
       // The escape hatch, given verbatim: the owner can paste this into an
-      // Administrator prompt and get the same result.
-      command: ok ? null : formatSchtasks(args),
+      // Administrator PowerShell and get the same result. PowerShell-shaped
+      // because that is the prompt Windows 11 opens — the cmd form silently
+      // loses the quotes around the task command there (see formatSchtasks).
+      command: ok ? null : formatSchtasks(args, { shell: "powershell" }),
       caveat,
     }),
     "utf8"
@@ -857,18 +955,17 @@ if (cfg.update.mode === "auto") {
 // pointer, or the ports.
 const lock = lockPath(cfg.dataDir);
 
-function pidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // EPERM means it exists and belongs to someone else: alive for our
-    // purposes. ESRCH is the only "gone".
-    return err?.code === "EPERM";
-  }
+/**
+ * Is the pid in the lock file really a supervisor? true / false / null when the
+ * process cannot be read. Costs a PowerShell start, which is why it is asked
+ * once, here, and never in a wait loop.
+ */
+function identifySupervisor(pid) {
+  const cmdline = processCommandLine(pid);
+  return cmdline === null ? null : isSupervisorCommandLine(cmdline);
 }
 
-function acquireLock() {
+async function acquireLock() {
   try {
     // wx is the atomic part: create-or-fail, so two supervisors starting in
     // the same instant cannot both believe they took it.
@@ -883,7 +980,22 @@ function acquireLock() {
   } catch {
     // unreadable counts as garbage, handled by the verdict below
   }
-  const verdict = lockVerdict(recorded, process.pid, Number.isInteger(recorded) && pidAlive(recorded));
+  const alive = Number.isInteger(recorded) && pidAlive(recorded);
+  const identified = alive ? identifySupervisor(recorded) : null;
+  const verdict = lockVerdict({
+    recordedPid: recorded,
+    ownPid: process.pid,
+    alive,
+    identified,
+    // Only consulted when the process behind the pid could not be read at all.
+    serving: alive && identified === null ? await portListening(cfg.dbPort) : false,
+  });
+  if (verdict === "steal" && alive) {
+    log("the lock names a pid that is not a supervisor; taking it over", {
+      ownerPid: recorded,
+      lock,
+    });
+  }
   if (verdict === "refuse") {
     log("another supervisor already owns this data directory; exiting", {
       dataDir: cfg.dataDir,
@@ -1044,7 +1156,7 @@ if (Number.isInteger(awaitPid) && awaitPid > 0) {
   log("the outgoing supervisor is gone; taking over", { pid: awaitPid });
 }
 
-acquireLock();
+await acquireLock();
 // Before the app starts, so the state file exists (and says "nothing due yet")
 // from the first moment the app can be asked about it.
 primeCronState();

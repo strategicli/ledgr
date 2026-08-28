@@ -96,9 +96,11 @@ export default function PersonImageBox({
         }),
       });
       if (!reserve.ok) throw new Error(String(reserve.status));
-      const { uploadUrl, publicUrl } = (await reserve.json()) as {
+      // fileUrl, not publicUrl: the `image` property stores the stable
+      // /files/<id> address so it survives a storage change (ADR-228).
+      const { uploadUrl, fileUrl } = (await reserve.json()) as {
         uploadUrl: string;
-        publicUrl: string;
+        fileUrl: string;
       };
       const put = await fetch(uploadUrl, {
         method: "PUT",
@@ -106,7 +108,7 @@ export default function PersonImageBox({
         body: blob,
       });
       if (!put.ok) throw new Error(String(put.status));
-      await save(publicUrl);
+      await save(fileUrl);
     } catch {
       showToast("Image upload failed");
       setBusy(false);

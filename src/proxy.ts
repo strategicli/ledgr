@@ -39,6 +39,11 @@ const isPublicRoute = createRouteMatcher([
   // token-management route (/api/ics/token) still gates itself with
   // requireOwner, which 401s an anonymous caller, so this is safe.
   "/api/ics(.*)",
+  // Attachment addresses (ADR-228): /files/<id> redirects to the stored bytes,
+  // and the unguessable attachment UUID is the credential — the same contract as
+  // /share above. It MUST be public: a public share page renders an item body
+  // whose images are these addresses, and that viewer has no Clerk session.
+  "/files/(.*)",
   // PWA share target POST (ADR-191): a cold Android share arrives after the
   // 60s Clerk session JWT has expired. Clerk heals an expired token via a
   // redirect "handshake", but its SDK only allows that for GET
