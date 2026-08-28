@@ -953,6 +953,26 @@ down cleanly and started again, and scheduled work waits rather than being
 skipped. If it has not come back in two minutes the page says so instead of
 spinning, and names the one terminal command that reports where it is stuck.
 
+**Coming back from a bad shutdown.** A power cut, a crash, or a restart that did
+not let things close properly used to be able to leave the service unable to
+start at all — not broken, just blocked by leftover files naming processes that
+no longer exist. It now clears those on its own at startup and comes back
+unattended, usually in a few seconds. It is careful about it: it checks what a
+process actually *is* rather than trusting a number, so it will never start a
+second copy on top of a database that is genuinely running.
+
+**The dot near the clock** (Windows, on a machine you run yourself). The service
+has no window, which leaves an awkward gap: the one place that could tell you
+whether Ledgr is running is Ledgr, and that is exactly what is missing when the
+answer is no. So there is a small icon in the notification area, at the
+right-hand end of the taskbar. Green means Ledgr is running, amber means it is
+starting up or the app is down while its database is fine, red means nothing is
+running. Right-click it to open Ledgr, check what is answering, or start,
+restart and stop the service without a terminal. Stopping the *icon* and
+stopping *Ledgr* are deliberately worded as different things, because they are.
+Turn the icon on with \`npm run local:tray\`, off with the same command and
+\`-- --uninstall\`; either way the service itself is untouched.
+
 **Scheduled work.** Some jobs write somewhere shared: one OneDrive folder, one
 mailbox, one Todoist account. Exactly one of your machines may do each of them,
 so this is where you say which one. Every device shows the same answer, because

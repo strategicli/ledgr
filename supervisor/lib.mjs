@@ -2,7 +2,7 @@
 // ADR-206 decision 6). Everything here is side-effect free and imported by
 // scripts/verify-supervisor.mts; the process/spawn shell lives in
 // ledgr-supervisor.mjs and stays thin. Node builtins only.
-import { join, resolve, isAbsolute } from "node:path";
+import { join, resolve, isAbsolute, dirname } from "node:path";
 import { createHash } from "node:crypto";
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -601,9 +601,28 @@ export function schtasksCreateArgs(o) {
     // a public HTTPS fetch and every job it fires is a localhost call.
     ...(always ? ["/RU", username, "/NP"] : []),
     "/TR",
-    `"${nodePath}" "${supervisorScript}" "${configPath}"`,
+    // Windows starts the CONTROL script, not the supervisor, and the control
+    // script starts the supervisor (`boot`). Two things come free from that
+    // indirection, both of which the 2026-08-27 reboot needed and neither of
+    // which Windows can do for us:
+    //
+    //   1. Log files. A task action gets no stdout, so a supervisor launched
+    //      straight from Windows writes its startup into nowhere — which is why
+    //      that morning's Postgres failure left the phrase "would not start"
+    //      and not one word of the reason. `boot` spawns it with supervisor.log
+    //      and supervisor.err.log already attached, the same way `restart` has
+    //      always done.
+    //   2. Self-healing. `boot` clears a stale lock before starting, so a peer
+    //      that died badly still comes back on its own.
+    `"${nodePath}" "${ctlScriptFor(supervisorScript)}" boot --config="${configPath}"`,
     "/F", // idempotent: re-running replaces the task instead of erroring
   ];
+}
+
+/** The control script sits beside the supervisor; every caller already has that
+ * path, so nobody has to pass a second one. */
+export function ctlScriptFor(supervisorScript) {
+  return join(dirname(supervisorScript), "ledgr-ctl.mjs");
 }
 
 export function schtasksDeleteArgs() {
@@ -673,11 +692,35 @@ export function startupCaveat(scope, logonMode) {
     "user is logged on or not\" with \"Do not store password\" ticked."
   );
 }
-export function formatSchtasks(args) {
-  return (
-    "schtasks " +
-    args.map((a) => (/[\s"]/.test(a) ? `"${a.replaceAll('"', '\\"')}"` : a)).join(" ")
-  );
+/**
+ * The schtasks argv as one command line. **The shell matters**, so it is named
+ * rather than assumed — the two callers here run in different ones, and the
+ * difference is invisible until a path contains a space.
+ *
+ * `cmd` (default) is for the batch file the elevation path writes, where the
+ * backslash-quote escaping is parsed by schtasks itself and nothing else
+ * touches the line.
+ *
+ * `powershell` is for the line printed as "paste this into an Administrator
+ * PowerShell", and it needs `--%`, which is load-bearing rather than
+ * decoration. Without it PowerShell parses the rest of the line and re-quotes
+ * each argument on the way to the executable — and the `/TR` value is itself a
+ * command line made of quotes. Measured 2026-08-27, when Brandon pasted the
+ * un-prefixed version: it failed outright with "Invalid argument/option", and
+ * the two natural repairs (a single-quoted literal, or the value held in a
+ * variable) BOTH reported SUCCESS while registering a task whose command had
+ * lost every quote. That task runs today, because these paths have no spaces,
+ * and stops running the day one does. `--%` hands the rest of the line over
+ * verbatim, and Windows stores the quotes.
+ *
+ * @param {string[]} args
+ * @param {{shell?: "cmd" | "powershell"}} [opts]
+ */
+export function formatSchtasks(args, opts = {}) {
+  const quoted = args.map((a) => (/[\s"]/.test(a) ? `"${a.replaceAll('"', '\\"')}"` : a)).join(" ");
+  // --% is a PowerShell token. In a .cmd it would be passed to schtasks as a
+  // literal argument, which is why this is not simply always on.
+  return `schtasks ${opts.shell === "powershell" ? "--% " : ""}${quoted}`;
 }
 
 // ── Single-instance ownership ────────────────────────────────────────────────
@@ -701,22 +744,93 @@ export function lockPath(dataDir) {
 /**
  * What to do when the lock file already exists.
  *
- * ponytail: identity is the pid alone, so a recycled pid reads as a live
- * owner and refuses a legitimate start. The cost is one manual delete of
- * supervisor.lock, the alternative is storing and comparing process start
- * times per platform, and the window needs a reboot plus a pid wrap to open.
+ * A pid is not an identity. Windows reissues process numbers freely, and most
+ * freely right after a boot, which is exactly when this file is most likely to
+ * be stale. On 2026-08-27 that took the peer down: the lock named pid 4080, the
+ * supervisor behind it was dead, 4080 had been reissued to an unrelated
+ * process, and "is 4080 alive?" answered yes — so the peer reported itself
+ * healthy while serving nothing, and refused every attempt to start one.
+ * (The ponytail comment that used to sit here called this exact window, and
+ * judged it too narrow to be worth closing. It was not.)
  *
- * @param {number} recordedPid pid read from the lock file (NaN when garbage)
- * @param {number} ownPid this process
- * @param {boolean} alive whether recordedPid is a running process
+ * So aliveness alone never decides. `identified` carries the real answer, read
+ * from the running process's command line: true means it IS a supervisor,
+ * false means the number was reused by something else, null means we could not
+ * read it. Only the null case falls back to corroboration, and the corroborator
+ * is `serving` — a live supervisor has a Postgres accepting connections, a
+ * stale lock does not.
+ *
+ * @param {object} o
+ * @param {number} o.recordedPid pid read from the lock file (NaN when garbage)
+ * @param {number} o.ownPid this process
+ * @param {boolean} o.alive whether recordedPid is a running process
+ * @param {boolean|null} [o.identified] is that process a Ledgr supervisor?
+ *   null = could not tell
+ * @param {boolean} [o.serving] is the peer's Postgres port accepting
+ *   connections? Only consulted when identity is unknown.
  * @returns {"take" | "steal" | "mine" | "refuse"} take = no valid owner
- *   recorded, steal = the recorded owner is gone, mine = we already hold it,
- *   refuse = someone else is alive and owns this dataDir
+ *   recorded, steal = the recorded owner is gone or was never us, mine = we
+ *   already hold it, refuse = a supervisor really is alive on this dataDir
  */
-export function lockVerdict(recordedPid, ownPid, alive) {
+export function lockVerdict({ recordedPid, ownPid, alive, identified = null, serving = false }) {
   if (!Number.isInteger(recordedPid) || recordedPid <= 0) return "take";
   if (recordedPid === ownPid) return "mine";
-  return alive ? "refuse" : "steal";
+  if (!alive) return "steal";
+  if (identified === true) return "refuse";
+  if (identified === false) return "steal";
+  // Unknown identity: an unreadable process is usually not one of ours, but
+  // guessing wrong here would put two supervisors on one data directory. The
+  // port settles it.
+  return serving ? "refuse" : "steal";
+}
+
+/** Does this command line belong to a Ledgr supervisor? */
+export function isSupervisorCommandLine(cmdline) {
+  return typeof cmdline === "string" && /ledgr-supervisor\.mjs/i.test(cmdline);
+}
+
+/**
+ * Read Postgres's own lock file. Its format is positional and stable: line 1 is
+ * the postmaster's pid, line 4 is the port it bound.
+ */
+export function parsePostmasterPid(text) {
+  const lines = String(text ?? "").split(/\r?\n/);
+  const num = (i) => {
+    const v = Number.parseInt(lines[i] ?? "", 10);
+    return Number.isInteger(v) && v > 0 ? v : null;
+  };
+  return { pid: num(0), port: num(3) };
+}
+
+/**
+ * Whether a leftover postmaster.pid may be deleted.
+ *
+ * This is the other half of the same 2026-08-27 outage, and it is the half that
+ * actually stopped the peer. A machine that reboots without a clean shutdown
+ * leaves this file behind naming the pid Postgres last ran as. Postgres refuses
+ * to start when that pid is a live process — correct when the process really is
+ * a postmaster, a dead end when the number was simply reused, because the
+ * cluster then never starts again without a person deleting a file by hand.
+ *
+ * Removing it is Postgres's own documented recovery. Made automatic, it needs
+ * two guards to stay safe, because two postmasters on one data directory
+ * corrupts it: the port is checked first, so a Postgres that is genuinely up is
+ * never disturbed, and the file goes only when nothing is listening AND the
+ * process behind the pid is provably not a postmaster.
+ *
+ * @param {object} o
+ * @param {number|null} o.recordedPid pid from line 1
+ * @param {boolean} o.alive whether that pid is a running process
+ * @param {string|null} o.image its executable name, lowercased
+ * @param {boolean} o.portListening is anything accepting connections on the
+ *   port from line 4?
+ * @returns {"stale" | "live"} stale = safe to delete
+ */
+export function postmasterVerdict({ recordedPid, alive, image, portListening }) {
+  if (portListening) return "live";
+  if (!Number.isInteger(recordedPid) || recordedPid <= 0) return "stale";
+  if (!alive) return "stale";
+  return typeof image === "string" && image.includes("postgres") ? "live" : "stale";
 }
 
 /** Tolerant parse: any malformed pointer reads as "no live build". */

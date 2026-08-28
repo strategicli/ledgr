@@ -21,6 +21,8 @@
     "instances:sync": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/sync-instances.mjs",
     "local:supervisor": "node supervisor/ledgr-supervisor.mjs",
     "local:status": "node supervisor/ledgr-ctl.mjs status",
+    "local:boot": "node supervisor/ledgr-ctl.mjs boot",
+    "local:tray": "node supervisor/ledgr-ctl.mjs tray",
     "local:restart": "node supervisor/ledgr-ctl.mjs restart",
     "local:stop": "node supervisor/ledgr-ctl.mjs stop",
     "local:startup": "node supervisor/ledgr-ctl.mjs startup",

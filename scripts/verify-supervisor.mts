@@ -17,9 +17,15 @@ import { resolve } from "node:path";
 import {
   assembleAppEnv,
   buildDbUrl,
+  ctlScriptFor,
+  formatSchtasks,
+  elevatedCmdScript,
   decideFlip,
+  isSupervisorCommandLine,
   lockPath,
   lockVerdict,
+  parsePostmasterPid,
+  postmasterVerdict,
   needsNpmCi,
   nextBackoffMs,
   normalizeConfig,
@@ -388,6 +394,8 @@ check(
 );
 
 const supervisorSrc = readFileSync("supervisor/ledgr-supervisor.mjs", "utf8");
+const ctlSrc = readFileSync("supervisor/ledgr-ctl.mjs", "utf8");
+const procSrc = readFileSync("supervisor/proc.mjs", "utf8");
 check(
   "the supervisor watches the same signal file the updates route writes",
   supervisorSrc.includes("signalPath") &&
@@ -408,25 +416,217 @@ check(
 // is also the state README steps 5 and 7 produce on purpose (run it in a
 // terminal, then register it at boot), so the lock is the fix, not a warning.
 {
+  const v = (o: Parameters<typeof lockVerdict>[0]) => lockVerdict(o);
   check("the lock lives in the data dir, beside the other supervisor state", lockPath("/data").endsWith("supervisor.lock"));
-  check("no owner recorded (garbage or empty file) -> take it", lockVerdict(NaN, 42, false) === "take");
-  check("a zero/negative pid is garbage, not an owner", lockVerdict(0, 42, false) === "take");
-  check("the recorded owner is alive -> REFUSE, this is the whole point", lockVerdict(99, 42, true) === "refuse");
-  check("the recorded owner is gone -> steal the stale lock", lockVerdict(99, 42, false) === "steal");
-  check("our own pid -> already mine, never refuse ourselves", lockVerdict(42, 42, true) === "mine");
+  check("no owner recorded (garbage or empty file) -> take it", v({ recordedPid: NaN, ownPid: 42, alive: false }) === "take");
+  check("a zero/negative pid is garbage, not an owner", v({ recordedPid: 0, ownPid: 42, alive: false }) === "take");
+  check("the recorded owner is gone -> steal the stale lock", v({ recordedPid: 99, ownPid: 42, alive: false }) === "steal");
+  check("our own pid -> already mine, never refuse ourselves", v({ recordedPid: 42, ownPid: 42, alive: true }) === "mine");
+  check(
+    "a live process that IS a supervisor -> REFUSE, this is the whole point",
+    v({ recordedPid: 99, ownPid: 42, alive: true, identified: true }) === "refuse"
+  );
+
+  // The 2026-08-27 reboot, as three tests. The peer did not come back because
+  // the lock named pid 4080, the supervisor behind it was dead, and Windows had
+  // reissued 4080 to something else — so "alive" was true and every start was
+  // refused. Aliveness must never decide on its own again.
+  check(
+    "a live process that is NOT a supervisor (a reissued pid) -> steal, not refuse",
+    v({ recordedPid: 4080, ownPid: 42, alive: true, identified: false }) === "steal"
+  );
+  check(
+    "identity unreadable and nothing serving -> steal (the reboot case, uncorroborated)",
+    v({ recordedPid: 4080, ownPid: 42, alive: true, identified: null, serving: false }) === "steal"
+  );
+  check(
+    "identity unreadable but Postgres IS serving -> refuse; never two supervisors on one dataDir",
+    v({ recordedPid: 4080, ownPid: 42, alive: true, identified: null, serving: true }) === "refuse"
+  );
+  check(
+    "a command line naming the supervisor script is recognised, whatever the paths around it",
+    isSupervisorCommandLine('"C:\\dev\\node\\node.exe" "C:\\dev\\ledgr\\supervisor\\ledgr-supervisor.mjs" "cfg.json"') &&
+      !isSupervisorCommandLine('"C:\\dev\\node\\node.exe" "C:\\dev\\ledgr\\supervisor\\ledgr-ctl.mjs" status') &&
+      !isSupervisorCommandLine(null as unknown as string)
+  );
 }
 check(
   "the supervisor takes the lock BEFORE starting postgres (a loser must touch nothing)",
-  supervisorSrc.indexOf("acquireLock()") > 0 &&
-    supervisorSrc.indexOf("acquireLock()") < supervisorSrc.indexOf("await startPostgres()")
+  supervisorSrc.indexOf("await acquireLock()") > 0 &&
+    supervisorSrc.indexOf("await acquireLock()") < supervisorSrc.indexOf("await startPostgres()")
 );
+
+// ── Postgres's own lock, after an unclean shutdown ───────────────────────────
+//
+// The half of 2026-08-27 that actually stopped the peer. A reboot that did not
+// shut Postgres down leaves postmaster.pid naming the pid it last ran as; if
+// Windows has reissued that number — likeliest right after a boot — Postgres
+// refuses to start and retrying cannot help. Deleting the file is Postgres's
+// own documented recovery; these are the guards that keep the automatic version
+// from ever deleting a live cluster's lock.
+{
+  const sample = ["3144", "C:/ledgr-data-prod/pg", "1787763967", "5433", "", "localhost", "", "ready   "].join("\n");
+  const parsed = parsePostmasterPid(sample);
+  check("postmaster.pid line 1 is the pid, line 4 is the port", parsed.pid === 3144 && parsed.port === 5433);
+  check("a truncated or empty postmaster.pid parses to nulls rather than throwing", parsePostmasterPid("").pid === null);
+
+  const pv = postmasterVerdict;
+  check(
+    "something IS listening on the port -> live, hands off, whatever the pid says",
+    pv({ recordedPid: 3144, alive: false, image: null, portListening: true }) === "live"
+  );
+  check(
+    "the recorded pid is gone and nothing is listening -> stale",
+    pv({ recordedPid: 3144, alive: false, image: null, portListening: false }) === "stale"
+  );
+  check(
+    "the recorded pid is alive AND is a postmaster -> live, leave it alone",
+    pv({ recordedPid: 3144, alive: true, image: "postgres.exe", portListening: false }) === "live"
+  );
+  check(
+    "the recorded pid is alive but is some other program (a reissued pid) -> stale",
+    pv({ recordedPid: 3144, alive: true, image: "svchost.exe", portListening: false }) === "stale"
+  );
+  check(
+    "a garbage pid with nothing listening -> stale",
+    pv({ recordedPid: null, alive: false, image: null, portListening: false }) === "stale"
+  );
+}
+check(
+  "a cleared postgres lock buys a fresh set of attempts, but only once (no retry loop)",
+  supervisorSrc.includes("!rescued && (await clearStalePostmasterPid())") && supervisorSrc.includes("if (cleared) attempt = 0")
+);
+
+// The mirror image, and just as fatal: a supervisor that died without stopping
+// Postgres leaves it LISTENING. Nothing may be deleted there — the cluster is
+// genuinely up — but the port is taken, so a fresh peer can never have it.
+check(
+  "an orphaned Postgres is cleared BEFORE the attempts, not retried into",
+  supervisorSrc.indexOf("await stopOrphanedPostgres()") > 0 &&
+    supervisorSrc.indexOf("await stopOrphanedPostgres()") < supervisorSrc.indexOf("await pg.start()")
+);
+check(
+  "the orphan is stopped cleanly through pg_ctl, not killed (the existing shutdown path)",
+  /stopOrphanedPostgres[\s\S]*?return stopPostgresGracefully\(\);/.test(supervisorSrc)
+);
+check(
+  "only OUR postmaster is ever stopped: our port, our lock file, and really a postgres",
+  /stopOrphanedPostgres[\s\S]*?portListening\(cfg\.dbPort\)[\s\S]*?parsePostmasterPid[\s\S]*?image\.includes\("postgres"\)/.test(
+    supervisorSrc
+  )
+);
+
+// ── The boot path Windows actually runs ──────────────────────────────────────
+//
+// The scheduled task starts ledgr-ctl's `boot` verb, not the supervisor. A task
+// action has no stdout, so a supervisor Windows launches directly writes its
+// startup into nowhere: on 2026-08-27 that cost us every word of why Postgres
+// would not start. Going through `boot` attaches the peer's log files and
+// clears a stale lock on the way past.
+{
+  const taskArgs = schtasksCreateArgs({
+    username: "someone",
+    nodePath: "C:\\dev\\node\\node.exe",
+    supervisorScript: "C:\\dev\\ledgr\\supervisor\\ledgr-supervisor.mjs",
+    configPath: "C:\\dev\\ledgr\\supervisor\\config.json",
+    scope: "always",
+  });
+  const tr = taskArgs[taskArgs.indexOf("/TR") + 1];
+  check("the boot task runs the control script, not the supervisor directly", tr.includes("ledgr-ctl.mjs"));
+  check("...with the boot verb", / boot /.test(tr));
+  check("...and the config it was installed with", tr.includes("--config="));
+  check(
+    "the control script is found beside the supervisor, so no caller passes a second path",
+    ctlScriptFor("/x/y/ledgr-supervisor.mjs").replace(/\\/g, "/") === "/x/y/ledgr-ctl.mjs"
+  );
+  check(
+    "the whole task command stays inside schtasks's 261-character /TR limit",
+    tr.length <= 261,
+    `${tr.length} chars`
+  );
+  check("boot is a real verb the task can call", ctlSrc.includes("boot: doBoot"));
+
+  // The pasteable fallback, which every "schtasks failed" message tells the
+  // owner to run in PowerShell. Without --% PowerShell parses the line itself
+  // and re-quotes on the way to the executable, and the /TR value is a command
+  // line made of quotes. Brandon pasted the un-prefixed version on 2026-08-27
+  // and got "Invalid argument/option"; worse, the two natural repairs both
+  // reported SUCCESS while registering a task whose command had lost every
+  // quote — fine until a path has a space in it.
+  const line = formatSchtasks(taskArgs, { shell: "powershell" });
+  check("the pasteable command stops PowerShell parsing it (--%)", line.startsWith("schtasks --% "));
+  check(
+    "...and still escapes the inner quotes, which schtasks itself then parses",
+    line.includes('/TR "\\"C:\\dev\\node\\node.exe\\"')
+  );
+  // --% is a PowerShell token; in the elevation path's .cmd it would reach
+  // schtasks as a literal argument and break the registration the in-app
+  // consent dialog performs. Different shells, so the shell is named.
+  check(
+    "the cmd form does NOT carry --%, which only PowerShell understands",
+    formatSchtasks(taskArgs).startsWith("schtasks /Create") &&
+      !elevatedCmdScript(taskArgs).includes("--%")
+  );
+  check(
+    "both surfaces that ask the owner to paste use the PowerShell form",
+    ctlSrc.includes('formatSchtasks(args, { shell: "powershell" })') &&
+      supervisorSrc.includes('formatSchtasks(args, { shell: "powershell" })')
+  );
+  check(
+    "the message offers the elevated npm command first — nothing to mistype there",
+    ctlSrc.includes("npm run local:startup -- --always")
+  );
+  check(
+    "boot starts the supervisor with the log files attached (the invisible-failure fix)",
+    ctlSrc.includes("spawnDetachedSupervisor") && ctlSrc.includes('openSync(join(cfg.dataDir, "supervisor.log"), "a")')
+  );
+  check("boot clears a stale lock rather than waiting for a person", ctlSrc.includes("await clearStaleLock(pid)"));
+  check(
+    "status asks whether a SUPERVISOR is alive, not whether a pid exists",
+    ctlSrc.includes("const running = await supervisorAlive(pid)")
+  );
+}
+
+// ── The tray icon (the only surface that works when the app is down) ─────────
+{
+  const traySrc = readFileSync("supervisor/ledgr-tray.ps1", "utf8");
+  check(
+    "the tray's own process query cannot match itself — the pattern is built in halves",
+    ctlSrc.includes("'*ledgr-' + 'tray.ps1*'") && !/like '\*ledgr-tray\.ps1\*'/.test(ctlSrc)
+  );
+  check(
+    "the tray is launched through Start-Process; a bare detached spawn of powershell dies at once",
+    ctlSrc.includes("Start-Process -FilePath 'powershell.exe'") && !ctlSrc.includes('spawn("powershell", trayArgs()')
+  );
+  check(
+    "the tray never supervises anything itself — every action is a ledgr-ctl verb",
+    /Invoke-Ctl[\s\S]*?Start-Process -FilePath \$NodePath/.test(traySrc) &&
+      ["boot", "restart", "stop"].every((v) => traySrc.includes(`Invoke-Ctl "${v}"`))
+  );
+  check(
+    "the icon is drawn once, not per poll (GetHicon leaks a handle every call)",
+    /\$icons = @\{[\s\S]*?New-DotIcon/.test(traySrc) && !/add_Tick[\s\S]{0,200}New-DotIcon/.test(traySrc)
+  );
+  check(
+    "the tray starts at SIGN-IN from its own shortcut, separately from the service's boot task",
+    ctlSrc.includes("Startup") && ctlSrc.includes("Ledgr.lnk") && !ctlSrc.includes(`schtasksCreateArgs({ tray`)
+  );
+  check(
+    "stopping or hiding the icon is worded so it cannot be mistaken for stopping Ledgr",
+    traySrc.includes("Ledgr keeps running") && ctlSrc.includes("Ledgr itself is untouched")
+  );
+}
 check(
   "the lock file is created atomically (wx), so a simultaneous start cannot double-take",
   supervisorSrc.includes("writeFileSync(lock") && supervisorSrc.includes('flag: "wx"')
 );
 check(
   "EPERM counts as alive (the owner exists, it just is not ours); only ESRCH is gone",
-  supervisorSrc.includes('err?.code === "EPERM"')
+  procSrc.includes('err?.code === "EPERM"')
+);
+check(
+  "one pid check, shared: neither entry point carries a private copy to drift from",
+  !supervisorSrc.includes("function pidAlive") && !ctlSrc.includes("function pidAlive")
 );
 check("the lock is released on shutdown", supervisorSrc.includes("releaseLock()"));
 
@@ -556,7 +756,7 @@ check(
   supervisorSrc.includes("stopSignalPath") && /shutdown\("stop-requested"\)/.test(supervisorSrc)
 );
 {
-  const ctlSrc = readFileSync("supervisor/ledgr-ctl.mjs", "utf8");
+
   check(
     "stop asks through the file rather than signalling the pid",
     ctlSrc.includes("stopSignalPath") && !/process\.kill\([^)]*"SIGTERM"/.test(ctlSrc)

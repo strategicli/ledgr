@@ -19,6 +19,16 @@ The live, near-term work queue. Start here each session. When you finish a slice
 - [ ] **Slice 5 — Build read-only display + round-trip.** The type editor (`/build/types/[key]/edit`) preserves `targetFilter` on save and renders the read-only "Filtered: …" line on the property row. **This slice is not optional** — without it, any Build-side edit of a filtered type silently destroys the filter.
 - [ ] **Slice 6 — first real use (Tyler's instance, workspace config, no code).** Add a `facet` select (concept | label) to the `tag` type, backfill the ~50 existing tags, set `targetFilter: {property: "facet", values: ["concept"]}` on `song.themes`. This is the acceptance test: theming a song stops offering "AppleCare," searching "Christmas" still crosses every type.
 
+## Queued — finish the storage-address work (ADR-228, built 2026-08-26)
+
+Built, green (typecheck, lint, build, 75 verify scripts, 27 new pure checks, live 302→200 proven in a browser), **acked by Tyler 2026-08-27 and merged the same day** — it touches the canonical body format and the storage seam, so it is core. Bodies now store `/files/<attachmentId>` instead of the R2 URL, which makes a provider or base-URL change an env edit with no body rewrite.
+
+- [x] **Tyler's ack.** Given 2026-08-27, relayed by Brandon; recorded in `COLLAB.md` and on the ADR. Purely additive to the API surface (`publicUrl` unchanged, `fileUrl` added), no migration, no wire change.
+- [ ] **Run the one-time migration on each install.** `npx tsx scripts/migrate-attachment-urls.mts --apply` (dry-run by default, idempotent). Local install: 1,412 items, 9,854 URLs. Take a snapshot first — it writes no revisions on purpose, so a backup is the undo. It bumps `updated_at`, so expect an export pass over those items afterwards (markdown only; attachment bytes are already stamped exported) and a sizeable sync push.
+- [ ] **Then the custom domain,** which is the whole point of doing it in this order: procedure in `runbook.md` §1 ("Moving off the r2.dev development URL"). Doing the domain first would have meant rewriting every body twice.
+- [ ] **Verify the offline pin path on hardware.** Reasoned through and unchanged in behavior — the service worker's catch-all branch covers same-origin images with the same PIN_CACHE fallback, and `SaveOffline` already falls back to a `no-cors` fetch, which is the path an r2.dev image took anyway since the bucket allows no cross-origin GET. But it is Principle 4, so prove it rather than reason it: Save Offline on an item with images, then load it with the network off.
+- [ ] **Consider `R2_ACCOUNT_ID` cleanup.** It is documented in `.env.example` and `runbook.md` but **no code reads it** (confirmed by grep); the endpoint URL carries the account id already. Harmless, but it is a knob that looks required and is not.
+
 ## Queued — three found on Brandon's two-peer rig (2026-08-25)
 
 Raised while standing up a prod-data hub and a dev-data hub side by side on one machine. None blocks anything; all three are Principle 9 shaped (a surface saying something that is not so).
@@ -318,6 +328,34 @@ The person picture box (ADR-202 addendum 4, `src/components/people/PersonImageBo
 > **🟡 ROTATE THE CLERK SECRET KEY when convenient (2026-08-17).** While wiring the Preview environment (see below), Tyler's `sk_test_…` Clerk secret was pasted into a Claude Code conversation transcript. Dev-tier key, low blast radius, but it's the same Clerk instance production signs in through. Tidy fix: Clerk dashboard → API keys → regenerate secret, then update `CLERK_SECRET_KEY` in Vercel's **Production and Preview** envs and redeploy. Also from that session: **Preview deployments now work** — Preview env carries `DATABASE_URL` (pointed at the DEV database, deliberately not prod, so branch migrations can't touch live data) plus the three Clerk vars, which every branch preview needs since the Build Command became `build:satellite` (it migrates first, and ADR-184 fails closed without auth keys on any deployed env).
 >
 > **🟡 TYLER'S INSTANCE IS MISSING ONE AUTH SECRET — was two (updated 2026-08-13).** Found while building ADR-179: `tylerjaycollins-projects/ledgr` had **none** of the `LEDGR_*` auth vars set. **Now set:** `LEDGR_APP_SECRET` and `LEDGR_API_TOKENS` (Build → API Tokens works), plus `LEDGR_OAUTH_SECRET` and `LEDGR_MCP_OWNER_UPN` as of 2026-08-10, so the MCP Generate button works and MCP runs over OAuth on the cloud instance. **Still unset: `LEDGR_CLIPPER_SECRET`,** which means the web-clipper Generate button renders as nothing on that instance — the invisible-feature trap ADR-179 was written about. Fix when wanted: `openssl rand -hex 32` → `vercel env add LEDGR_CLIPPER_SECRET production` → redeploy. Not needed for Overtone.
+
+## ✅ Recently done — The peer comes back from a bad reboot on its own, and has a face (2026-08-27, ADR-229, not core)
+
+Brandon rebooted the PC and Ledgr did not come back. Three failures stacked: Postgres refused to start because an unclean shutdown left `pg/postmaster.pid` naming a pid Windows had reissued after the boot; nothing was logged, because a Task Scheduler action has no stdout and the supervisor only attached its log files when restarting itself; and no one could restart it, because `supervisor.lock` named pid 4080, Windows had reissued that too, and every check asked only "does that pid exist". `local:status` reported a healthy peer for the whole outage.
+
+Built and verified on the live rig, unmerged and local per the batch-work convention.
+
+- [x] **Identity, not process numbers.** `lockVerdict` takes an `identified` flag read from the running process's command line; aliveness alone never decides. New `supervisor/proc.mjs` does the asking, `lib.mjs` keeps the deciding pure. Unknown identity falls back to whether Postgres is listening, so two supervisors can never share a data directory.
+- [x] **A provably stale `postmaster.pid` is cleared automatically,** guarded on the port being free and the pid provably not a postmaster, and worth one fresh round of attempts, once.
+- [x] **An orphaned Postgres is stopped cleanly** through the `pg_ctl` path that already existed, instead of losing the port to it forever.
+- [x] **Windows runs `ledgr-ctl boot`, not the supervisor** — which attaches the log files and clears a stale lock on the way past. Idempotent, so it is safe from a schedule or a double-click.
+- [x] **`process.exitCode` instead of `process.exit()`** in the control script: exiting mid-teardown tripped a libuv assertion and returned 127 after succeeding, which Task Scheduler would have recorded as a failed boot.
+- [x] **A notification-area icon** (`npm run local:tray`): green/amber/red, right-click to open, check the ports, start, restart, stop. PowerShell + WinForms, so no new dependency. Every action shells out to the same `ledgr-ctl` verb.
+- [x] **Proof, not reasoning.** The outage reproduced deliberately (lock overwritten with a live non-supervisor pid, `postmaster.pid` left stale); `boot` recovered it unattended in 4.4s. The Windows path proved with a throwaway scheduled task: result 0, service still serving after the launcher exited. 22 new pure checks; typecheck, lint, `verify-supervisor`, `verify-setup`, `verify-restart`, `verify-user-guide` all green.
+
+**One thing Brandon must do himself, elevated.** Re-registering the boot task needs an Administrator prompt, so the task still runs the OLD command until then. Until it is re-registered, a reboot behaves exactly as it did on 2026-08-27. In an **Administrator** PowerShell:
+
+```
+cd C:\dev\ledgr
+npm run local:startup -- --always
+```
+
+Use that rather than a hand-typed `schtasks` line. Node passes the argument vector to `schtasks` directly, so the quoting cannot be mangled on the way. **The first attempt at this handed Brandon a `schtasks` command with cmd.exe escaping while telling him to run it in PowerShell, and it failed on paste** — see the finding below; `formatSchtasks` is now shell-aware and the printed fallback carries `--%`.
+
+**Open, deliberately not built:**
+- **A watchdog.** Nothing restarts the service if it dies *between* reboots; the tray goes red and offers Start, but nobody is watching a tray at 3am. A second scheduled task running the same idempotent `boot` every 10 minutes would cover it in two lines. Worth deciding on rather than drifting into.
+- **The tray on Tyler's instance** is meaningless (his is a cloud deploy) and the verb says so on non-Windows. No action, noted so it is not mistaken for an omission.
+- **Email import has been failing since 2026-08-27 17:44**, unrelated to any of this: Microsoft rejects the saved delta token with `410 The sync state generation is not found; generation=292 [highest=295]`. The stored position is older than what Graph still keeps. Fix is to clear that saved position so the next run starts fresh. Not touched here.
 
 ## ✅ Recently done — A Restart button that actually reaches healthy (2026-08-26, ADR-227, not core)
 
