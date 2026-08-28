@@ -117,9 +117,24 @@ check("invalid message -> -32600", errorOf(invalidRes)?.code === -32600);
 
 // --- resources (ADR-102): the workspace-shaping orientation guide -----------
 const GUIDE_URI = "ledgr://guide/workspace-shaping";
+const USER_GUIDE_URI = "ledgr://guide/using-ledgr";
+const MEMORY_PROTOCOL_URI = "ledgr://guide/memory-protocol";
 const resListRes = await handleMcpMessage({ jsonrpc: "2.0", id: 30, method: "resources/list" }, DUMMY);
 const resList = (resultOf(resListRes).resources ?? []) as { uri: string; name: string; mimeType?: string }[];
-check("resources/list returns the one shaping guide", resList.length === 1 && resList[0].uri === GUIDE_URI && resList[0].mimeType === "text/markdown");
+// The ungated set: the shaping guide (ADR-102) + the user guide (ADR-189). The
+// memory protocol is gated on AI Memory (ADR-137), which is off for the dummy
+// owner, so this is an exact set, not a membership test.
+check(
+  "resources/list returns exactly the two ungated guides",
+  resList.length === 2 &&
+    [GUIDE_URI, USER_GUIDE_URI].every((u) => resList.some((r) => r.uri === u)) &&
+    !resList.some((r) => r.uri === MEMORY_PROTOCOL_URI),
+  resList.map((r) => r.uri).join(", ")
+);
+check(
+  "the shaping guide is served as markdown",
+  resList.find((r) => r.uri === GUIDE_URI)?.mimeType === "text/markdown"
+);
 const resReadRes = await handleMcpMessage({ jsonrpc: "2.0", id: 31, method: "resources/read", params: { uri: GUIDE_URI } }, DUMMY);
 const resContents = (resultOf(resReadRes).contents ?? []) as { uri: string; text: string }[];
 check("resources/read returns the guide markdown", resContents[0]?.uri === GUIDE_URI && resContents[0].text.includes("Shaping a Ledgr workspace"));
