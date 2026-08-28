@@ -6,6 +6,7 @@
 // the full collection page renders the same rows). This wrapper adds the
 // "+ Milestone" box: title, optional date, optional points %, and an optional
 // completes-with task picker (InlineContainAdd).
+import AttachExistingButton from "@/components/canvas/widgets/AttachExistingButton";
 import InlineContainAdd from "@/components/canvas/widgets/InlineContainAdd";
 import MilestoneList, { type MilestoneRow } from "@/components/milestones/MilestoneList";
 
@@ -19,7 +20,10 @@ export default function MilestonesWidget({
   return (
     <div className="flex flex-col gap-2">
       <MilestoneList items={items} />
-      <InlineContainAdd recordId={recordId} type="milestone" label="Milestone" />
+      <div className="flex flex-wrap items-center gap-1">
+        <InlineContainAdd recordId={recordId} type="milestone" label="Milestone" />
+        <AttachExistingButton recordId={recordId} type="milestone" label="milestone" />
+      </div>
     </div>
   );
 }

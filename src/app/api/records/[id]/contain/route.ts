@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ id: string }> };
 
-// POST /api/records/[id]/contain — create an item and make it a HOME-contained
+// POST /api/records/[id]/contain — create an item (or attach an existing one,
+// `{ itemId }`) and make it a HOME-contained
 // child of this record (Project Type, ADR-111/PJ5). The one write path behind
 // the editable collection widgets: the Tasks widget's "add task", the Notes
 // capture bar, the Milestones "add". Tasks use the existing role "project"
@@ -27,12 +28,38 @@ type Context = { params: Promise<{ id: string }> };
 // into the registry check.
 const ALLOWED = new Set(["task", "note", "milestone", "event", "link", "mindmap"]);
 
+// The home-edge role a contained item gets. Tasks keep the existing "project"
+// role so the task→project field stays one mechanism; everything else is the
+// generic "contains". One function because BOTH branches below need it (create
+// and attach) and the widgets' read queries filter on exactly this — the two
+// deciding it separately is how they'd drift into an item that files fine and
+// then never shows up in its card.
+const containRole = (type: string) => (type === "task" ? "project" : "contains");
+
 export async function POST(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
     const id = asUuid((await context.params).id, "id");
     const raw = (await request.json()) as Record<string, unknown>;
+
+    // Attach an item that ALREADY exists instead of creating a blank one
+    // (Brandon, 2026-08-28 — the cards could only ever make something new). Same
+    // home + role write the create path does, so an attached item lands in the
+    // same card, read by the same query. The role comes from the item's OWN
+    // type, not the caller's `type` hint, so a mistyped hint can't file a note
+    // as a task. setHome clears any previous home edge: an item lives in
+    // one record, so attaching it here MOVES it out of wherever it was.
+    if (raw.itemId !== undefined) {
+      const itemId = asUuid(raw.itemId, "itemId");
+      const existing = await getItem(owner.id, itemId);
+      if (existing.deletedAt) {
+        return NextResponse.json({ error: "item not found" }, { status: 404 });
+      }
+      await setHome(owner.id, itemId, id, containRole(existing.type));
+      return NextResponse.json({ item: existing }, { status: 200 });
+    }
+
     const type = String(raw.type ?? "");
     if (!ALLOWED.has(type)) {
       const live = await listTypes(); // excludes hidden + deleted types
@@ -64,7 +91,7 @@ export async function POST(request: Request, context: Context) {
       ...(meetingAt ? { meetingAt } : {}),
       ...(properties ? { properties } : {}),
     });
-    await setHome(owner.id, item.id, id, type === "task" ? "project" : "contains");
+    await setHome(owner.id, item.id, id, containRole(type));
     if (type === "milestone") {
       let taskId = typeof raw.taskId === "string" && raw.taskId ? asUuid(raw.taskId, "taskId") : null;
       const newTaskTitle = typeof raw.newTaskTitle === "string" ? raw.newTaskTitle.trim() : "";

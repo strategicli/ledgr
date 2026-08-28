@@ -93,3 +93,23 @@ export function stripConsumedTokens(
   for (const tok of consumed) out = out.split(tok).join(" ");
   return out.replace(/\s+/g, " ").trim();
 }
+
+// Every distinct "@name" in a PRE-FILLED title (the promote-to-task flow). The
+// typed capture consumes an "@" the moment you pick a row from the typeahead,
+// but text that arrives already written never had a pick — so a promoted line's
+// "@Roger" would otherwise stay as literal words and link nothing. Same rules as
+// "#": one token, dashes expand to spaces, matching is exact and case-blind
+// (resolved by the caller against a search). Multi-word names are written
+// "@Elder-Board", the way a multi-word tag is.
+export function parseMentionTokens(text: string): { token: string; name: string }[] {
+  const out: { token: string; name: string }[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(/(?:^|\s)(@([\w-]+))/g)) {
+    const name = m[2].replace(/-/g, " ").trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ token: m[1], name });
+  }
+  return out;
+}

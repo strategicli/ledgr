@@ -29,6 +29,7 @@ import {
   type CreateTarget,
 } from "@/lib/mention-create";
 import { announceFloatingOpen } from "@/lib/floating";
+import { trailingAnchor } from "@/lib/editor/block-anchor";
 
 // `type` is the target's type key; it rides onto the inserted mention node's
 // attrs so the chip is glyphed instantly (the default Mention command copies the
@@ -341,7 +342,14 @@ export function createMentionSuggestion(
       // *inside* a query through ("@Elder Board"); those queries never BEGIN
       // with a space, so a leading space is the unambiguous "this isn't a
       // mention" signal.
-      const isLiteralAt = (query: string) => query.startsWith(" ");
+      //
+      // A trailing block anchor closes it for the same reason: with the caret
+      // after "@Roger-Tester ^1nr6v7" the user is at the end of the line, not
+      // editing the mention, and the anchor rode into the query — the picker
+      // offered to create an item literally named "Roger-Tester ^1nr6v7", and
+      // accepting it also swallowed the anchor into the mention's replace range.
+      const isLiteralAt = (query: string) =>
+        query.startsWith(" ") || trailingAnchor(query) !== null;
 
       return {
         onStart: (props: SuggestionProps<Item>) => {
@@ -386,6 +394,10 @@ export function createMentionSuggestion(
           place(props.clientRect?.() ?? null);
         },
         onKeyDown: ({ event }) => {
+          // No popup, no keys: the plugin stays active while the query is one we
+          // deliberately refuse (a literal "@ ", a trailing anchor), and without
+          // this Enter would insert a mention nobody could see being chosen.
+          if (!popup) return false;
           const count = Math.max(rowCount(), 1);
           if (event.key === "ArrowDown") {
             selected = (selected + 1) % count;

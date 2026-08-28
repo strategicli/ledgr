@@ -255,6 +255,7 @@ export default function SettingsForm({
             { id: "priority", label: "Priority" },
             { id: "tags", label: "Tag" },
             { id: "person", label: "Person" },
+            { id: "group", label: "Group" },
             { id: "assignee", label: "Assignee" },
           ].map((it) => {
             const shown = !settings.quickAddHidden.includes(it.id);

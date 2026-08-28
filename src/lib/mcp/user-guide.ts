@@ -301,9 +301,19 @@ flashes it. The marker never appears on a printed or shared copy.
 
 ## Turning a note into tasks
 
-On a meeting's notes, hover any checkbox line for a **→ task** button. It creates
-a task pre-filled with that line and its sub-bullets, linked back to the meeting
-and to that exact line. The line then shows a **✓ task** badge that opens it.
+On a meeting's notes, hover any checkbox line for a **→ task** button. It opens
+the ordinary task add card, pre-filled with that line as the name and its
+sub-bullets as the description, and the task is linked back to the meeting, to
+everyone in it, and to that exact line. The line then shows a **✓ task** badge
+that opens it.
+
+Because it's the same add card, everything you can write in a quick capture
+works in an action line too: a due date in plain words ("Friday", "every other
+Tuesday"), a **p1**–**p6** priority, **#tag**, **+project**, and **@name** to
+link a person or any other item. Those get parsed out of the line and set on the
+task instead of sitting in its name. A multi-word name is written the way a
+multi-word tag is: **@Elder-Board**. Anything that matches nothing is left alone
+as plain words, and you can still edit every field in the card before creating.
 
 # Organizing
 
@@ -340,9 +350,13 @@ Build your own kinds of item at \`/build/types\`.
 - **Every item shows what links to it,** both directions, grouped by type.
 - **Typed relation fields** ("Author", "Attendees", "Tags") live under
   Properties. Everything else shows under **Linked here**.
-- **Create as you link.** Typing a name that does not exist makes it.
+- **Create as you link.** Typing a name that does not exist makes it. That
+  includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
+  yet can be added to the meeting from the meeting, without leaving to create
+  them first.
 - **Tags are just a type.** A tag's page shows everything tagged with it.
-- **Groups** have a member roster. An event can be *for* a group.
+- **Groups** have a member roster. An event can be *for* a group, and a task can
+  link to one from the add card's Group chip.
 - **Discover** suggests items you probably should link but have not, ranked by
   shared text, shared neighbours, shared attributes and timing. One click links
   them.
@@ -376,10 +390,11 @@ Ledgr is its own task manager. Nothing else needs to be running.
 - **Type "/" while naming a task** to jump to its description: everything
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
-- **The add card's chip row** carries Date, Priority, **Tag**, and **Person**
-  pickers (sigils still work: "#" tags, "@" links, "+" files), and the **⋯**
-  chip opens any other custom property on the task type so you can set it at
-  creation.
+- **The add card's chip row** carries Date, Priority, **Tag**, **Person** and
+  **Group** pickers (sigils still work: "#" tags, "@" links, "+" files), and the
+  **⋯** chip opens any other custom property on the task type so you can set it
+  at creation. Group works exactly like Person — pick Pastors or Elders and the
+  task links to that group. It only shows if you have a group type.
 - **People get faces.** The person type ships with a built-in **Image**: a
   square picture box on the person's page — click it to upload a photo (it's
   center-cropped square automatically) or paste an image URL, and Remove lives
@@ -507,6 +522,12 @@ complete in place, swipe or use the row menu, expand subtasks under their
 parent. Milestones: the same mode-aware circles, badges, and points chips.
 Meetings, docs, links, mindmaps: the same rows and "+ Add" as their cards.
 Select mode and bulk actions stay on all of them.
+
+**Every card can also take something you already have.** Beside each card's
+"+ Add" is an **Attach**: search items of that card's type and pick one, and it
+files into the card exactly as a freshly created one would. Tasks, meetings,
+milestones, docs, links, mindmaps and custom tools all have it. An item lives
+in one record, so attaching moves it out of whatever record it was in before.
 
 **Completed tasks fold away, and milestones flag their tasks.** Done tasks
 leave both the Tasks card and its full list; a quiet **"N tasks completed"**

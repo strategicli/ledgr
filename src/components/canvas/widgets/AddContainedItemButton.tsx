@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { openItem } from "@/lib/item-nav";
 import { showToast } from "@/components/ui/ActionToast";
+import AttachExistingButton from "@/components/canvas/widgets/AttachExistingButton";
 
 export default function AddContainedItemButton({
   recordId,
@@ -48,14 +49,20 @@ export default function AddContainedItemButton({
     }
   }
 
+  // "Add note" / "Add link" → "note" / "link" for the attach control's copy.
+  const singular = label.replace(/^Add\s+/i, "").toLowerCase() || "item";
+
   return (
-    <button
-      type="button"
-      onClick={() => void create()}
-      disabled={busy}
-      className="flex items-center gap-1.5 rounded px-1 py-1 text-sm text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
-    >
-      <span className="text-base leading-none text-[var(--accent)]">+</span> {label}
-    </button>
+    <div className="flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        onClick={() => void create()}
+        disabled={busy}
+        className="flex items-center gap-1.5 rounded px-1 py-1 text-sm text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
+      >
+        <span className="text-base leading-none text-[var(--accent)]">+</span> {label}
+      </button>
+      <AttachExistingButton recordId={recordId} type={type} label={singular} />
+    </div>
   );
 }

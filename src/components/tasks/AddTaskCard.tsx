@@ -16,6 +16,7 @@ import { scheduleListRefresh } from "@/lib/list-refresh";
 import {
   TAG_TYPE,
   TAGS_ROLE,
+  parseMentionTokens,
   parseProjectToken,
   parseTagTokens,
   stripConsumedTokens,
@@ -33,6 +34,7 @@ import {
   type CreateTarget,
 } from "@/lib/mention-create";
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { GROUP_TYPE } from "@/lib/events/people";
 import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
 import { showToast } from "@/components/ui/ActionToast";
@@ -93,6 +95,8 @@ const IconHash = <I d="M4 9h16M4 15h15M10 3L8 21M16 3l-2 18" />;
 // type — it used to be IconHash, which now means something else entirely.
 const IconPlus = <I d="M12 5v14M5 12h14" />;
 const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />;
+// Group: two overlapping figures — a person with a second head/shoulder behind.
+const IconGroup = <I d="M2 20c0-3 3-5 6.5-5s6.5 2 6.5 5" extra={<><circle cx="8.5" cy="8" r="3.5" /><path d="M16 5.5a3.5 3.5 0 0 1 0 7" /><path d="M17.5 15c2.6.4 4.5 2.3 4.5 5" /></>} />;
 
 let quickAddPromise: Promise<string[]> | null = null;
 function loadQuickAddHidden(): Promise<string[]> {
@@ -119,6 +123,11 @@ export default function AddTaskCard({
   parentId,
   autoFocus = true,
   lockDestination = false,
+  initialTitle,
+  initialDescription,
+  createVia,
+  onBeforeCreate,
+  submitLabel,
   onDone,
   onCancel,
   onOptimisticAdd,
@@ -138,6 +147,20 @@ export default function AddTaskCard({
   // Destination is fixed to the host (e.g. a project's Tasks card): hide the
   // destination picker entirely and always file onto the host.
   lockDestination?: boolean;
+  // Pre-filled capture (the meeting "promote to task" flow): the line's text as
+  // the title, its sub-bullets as the description. Everything the typed capture
+  // parses out of a title — dates, "p2", "#tag", "+project", "@person" — is
+  // parsed out of a pre-filled one the same way, since it's the same card.
+  initialTitle?: string;
+  initialDescription?: string;
+  // Create through a different endpoint with extra fields merged into the POST
+  // body (promotion posts to the meeting's promote-task route so the task also
+  // gets its source anchor and the meeting's people).
+  createVia?: { url: string; extra?: Record<string, unknown> };
+  // Awaited before the POST (promotion flushes the meeting body save first, so
+  // the line's ^id anchor exists before the task points at it).
+  onBeforeCreate?: () => Promise<void> | void;
+  submitLabel?: string;
   onDone: () => void;
   onCancel: () => void;
   // When provided (inline list surfaces), the add is OPTIMISTIC: the card closes
@@ -152,9 +175,9 @@ export default function AddTaskCard({
   onOptimisticSettle?: (tmpId: string, realId: string) => void;
 }) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [showDesc, setShowDesc] = useState(false);
+  const [title, setTitle] = useState(initialTitle ?? "");
+  const [description, setDescription] = useState(initialDescription ?? "");
+  const [showDesc, setShowDesc] = useState(!!initialDescription);
   // due/scheduled hold an explicit PICK only. The defaultDueYmd is a fallback
   // (used when nothing is typed or picked) so a typed date ("…Saturday") always
   // wins over it; dateCleared lets the ✕ suppress that fallback too.
@@ -176,9 +199,12 @@ export default function AddTaskCard({
   const [pickedTags, setPickedTags] = useState<{ id: string | null; name: string }[]>([]);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagQ, setTagQ] = useState("");
-  const [personOpen, setPersonOpen] = useState(false);
-  const [personQ, setPersonQ] = useState("");
-  const [personHits, setPersonHits] = useState<{ id: string; title: string }[]>([]);
+  // One picker serving every linkable-type chip (Person, Group, …): which type
+  // is open and what's typed into it. It used to be three person-only states,
+  // and adding Group beside it would have been a third copy of the same block
+  // (Brandon, 2026-08-28 — "add groups just as easily as person").
+  const [pick, setPick] = useState<{ type: string; q: string } | null>(null);
+  const [pickHits, setPickHits] = useState<{ id: string; title: string }[]>([]);
   // The kebab (⋯): any OTHER custom property on the task type, set at creation.
   // Schema loads on first open; opened keys render small per-kind editors whose
   // values land in the POST's properties.
@@ -204,7 +230,7 @@ export default function AddTaskCard({
   // (The old "@name = assignee" shortcut was retired here — a dedicated assignee
   // picker can hang off the Assignee chip later.)
   const titleRef = useRef<HTMLTextAreaElement>(null);
-  const descRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
   const { glyph, typeLabel } = useTypeGlyphs();
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -228,19 +254,54 @@ export default function AddTaskCard({
       .catch(() => {});
   }, []);
 
-  // Person chip typeahead: a small debounced search over person items.
+  // A pre-filled title's "@name" tokens (promotion): resolve each against an
+  // exact title match and turn it into the same linked chip a picked mention
+  // makes, stripping the token from the title. No match leaves the words alone
+  // — the "+project" rule: never delete a word and do nothing in its place.
   useEffect(() => {
-    if (!personOpen) return;
-    const q = personQ.trim();
+    const tokens = parseMentionTokens(initialTitle ?? "");
+    if (tokens.length === 0) return;
+    let live = true;
+    void (async () => {
+      for (const t of tokens) {
+        const res = await fetch(
+          `/api/items?q=${encodeURIComponent(t.name)}&limit=8`
+        ).catch(() => null);
+        if (!res || !res.ok || !live) continue;
+        const d = (await res.json()) as { items: LinkedItem[] };
+        const hit = (d.items ?? []).find(
+          (i) => (i.title || "").trim().toLowerCase() === t.name.toLowerCase()
+        );
+        if (!hit || !live) continue;
+        setLinked((cur) =>
+          cur.some((l) => l.id === hit.id)
+            ? cur
+            : [...cur, { id: hit.id, title: hit.title, type: hit.type ?? null }]
+        );
+        setTitle((cur) => cur.split(t.token).join(" ").replace(/\s+/g, " ").trim());
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // Mount-only: initialTitle is the seed, not a controlled value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Link-chip typeahead: a small debounced search over items of the open chip's
+  // type (person, group, …).
+  useEffect(() => {
+    if (!pick) return;
+    const q = pick.q.trim();
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ type: "person", limit: "8" });
+        const params = new URLSearchParams({ type: pick.type, limit: "8" });
         if (q) params.set("q", q);
         const res = await fetch(`/api/items?${params}`, { signal: ctrl.signal });
         if (!res.ok) return;
         const d = (await res.json()) as { items: { id: string; title: string }[] };
-        setPersonHits(Array.isArray(d.items) ? d.items : []);
+        setPickHits(Array.isArray(d.items) ? d.items : []);
       } catch {
         // aborted or offline; the next keystroke retries
       }
@@ -249,7 +310,7 @@ export default function AddTaskCard({
       ctrl.abort();
       clearTimeout(t);
     };
-  }, [personOpen, personQ]);
+  }, [pick]);
 
   // Kebab: the task type's OTHER custom scalar properties (relation kinds have
   // their own chips/sigils; multi_select defers). Loaded on mount so the kebab
@@ -268,17 +329,17 @@ export default function AddTaskCard({
   // Chip popovers (date / tag / person / kebab) dismiss on any outside click —
   // each wrapper wears data-chip-pop, so a click inside any of them survives.
   useEffect(() => {
-    if (!pickDate && !tagOpen && !personOpen && !moreOpen) return;
+    if (!pickDate && !tagOpen && !pick && !moreOpen) return;
     const onDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest?.("[data-chip-pop]")) return;
       setPickDate(false);
       setTagOpen(false);
-      setPersonOpen(false);
+      setPick(null);
       setMoreOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [pickDate, tagOpen, personOpen, moreOpen]);
+  }, [pickDate, tagOpen, pick, moreOpen]);
 
   // Clicking anywhere OUTSIDE the card dismisses it, like Cancel (Tyler,
   // 2026-08-18 — "I expect both to work"). Chip popovers and portaled menus
@@ -379,6 +440,7 @@ export default function AddTaskCard({
   async function create() {
     const raw = title.trim();
     if (!raw || busy) return;
+    await onBeforeCreate?.();
     const p = parseTaskTitle(raw, localTodayYmd());
     // Strip the sigil tokens that became structure — "#tag" and "+project" — since
     // each is now carried as a real relation rather than as words in the title.
@@ -444,13 +506,19 @@ export default function AddTaskCard({
       if (t.id) relateTo.push({ targetId: t.id, role: TAGS_ROLE });
     }
     if (relateTo.length > 0) body.relateTo = relateTo;
+    // Promotion rides the same body through the meeting's route, which adds the
+    // source anchor + the meeting's people on the server side.
+    // ponytail: the offline outbox replays every capture to /api/items, so a
+    // promotion queued while offline lands as a plain task; wire the outbox to
+    // per-entry endpoints if that ever bites.
+    if (createVia?.extra) Object.assign(body, createVia.extra);
     const newTags = pendingTags.filter((t) => t.id === null);
 
     // POST the task and wire up its destination/@-linked relations. Shared by
     // both paths below. Returns the created id so the optimistic path can settle
     // its provisional row into a real one (see onOptimisticSettle).
     const persist = async (): Promise<string> => {
-      const res = await fetch("/api/items", {
+      const res = await fetch(createVia?.url ?? "/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -592,6 +660,19 @@ export default function AddTaskCard({
     if (e.key === "Escape") onCancel();
   }
 
+  // The linkable-type chips. Person is always offered; Group only where the
+  // instance has a group type (ADR-144 creates it per-instance via
+  // scripts/setup-groups.mts), so this file stays instance-agnostic and the
+  // chip can't point at a type that isn't there.
+  const linkChips = [
+    { type: "person", label: "Person", action: "person", icon: IconUser },
+    { type: GROUP_TYPE, label: "Group", action: "group", icon: IconGroup },
+  ].filter(
+    (lc) =>
+      showAction(lc.action) &&
+      (lc.type === "person" || mTypes.some((t) => t.key === lc.type))
+  );
+
   const chip = "flex items-center gap-1.5 rounded-md border border-neutral-700 px-2 py-1 text-sm text-neutral-300 hover:border-neutral-600";
   const destProject = projects.find((p) => p.id === effDest);
 
@@ -658,17 +739,21 @@ export default function AddTaskCard({
       </div>
 
       {(showDesc || description) && (
-        <input
+        // A textarea, not an input: promoted lines bring their sub-bullets in as
+        // real markdown lines. Enter makes a newline here (the title field is
+        // where Enter submits); Cmd/Ctrl+Enter still submits from the field.
+        <textarea
           ref={descRef}
           value={description}
+          rows={Math.min(8, description.split("\n").length || 1)}
           onChange={(e) => setDescription(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); void create(); }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void create(); }
             if (e.key === "Escape") onCancel();
           }}
           placeholder="Description"
           aria-label="Description"
-          className="mt-1 w-full bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
+          className="mt-1 w-full resize-y bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
         />
       )}
 
@@ -807,45 +892,47 @@ export default function AddTaskCard({
             )}
           </span>
         )}
-        {/* Person chip: attach a person (a `related` edge — the same list the
-            "@" mention writes, so LinkedChips shows and removes them). */}
-        {showAction("person") && (
-          <span className="relative" data-chip-pop>
-            <button type="button" className={chip} onClick={() => { setPersonOpen((v) => !v); setPersonQ(""); }}>
-              {IconUser} Person
+        {/* Person / Group chips: attach an item (a `related` edge — the same list
+            the "@" mention writes, so LinkedChips shows and removes them). Group
+            only appears on an instance that HAS a group type (ADR-144 creates it
+            per-instance), so this stays instance-agnostic. */}
+        {linkChips.map((lc) => (
+          <span key={lc.type} className="relative" data-chip-pop>
+            <button type="button" className={chip} onClick={() => setPick((cur) => (cur?.type === lc.type ? null : { type: lc.type, q: "" }))}>
+              {lc.icon} {lc.label}
             </button>
-            {personOpen && (
+            {pick?.type === lc.type && (
               <span className="absolute left-0 top-full z-10 mt-1 flex w-56 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
                 <input
                   autoFocus
-                  value={personQ}
-                  onChange={(e) => setPersonQ(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Escape") setPersonOpen(false); }}
-                  placeholder="Search people…"
-                  aria-label="Search people"
+                  value={pick.q}
+                  onChange={(e) => setPick({ type: lc.type, q: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Escape") setPick(null); }}
+                  placeholder={`Search ${lc.label.toLowerCase()}…`}
+                  aria-label={`Search ${lc.label.toLowerCase()}`}
                   className="mb-1 w-full rounded border border-neutral-700 bg-transparent px-2 py-1 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-500"
                 />
                 <span className="max-h-44 overflow-y-auto">
-                  {personHits
+                  {pickHits
                     .filter((h) => !alreadyLinked(h.id))
                     .map((h) => (
                       <button
                         key={h.id}
                         type="button"
-                        onClick={() => { setLinked((cur) => [...cur, { id: h.id, title: h.title, type: "person" }]); setPersonOpen(false); }}
+                        onClick={() => { setLinked((cur) => [...cur, { id: h.id, title: h.title, type: lc.type }]); setPick(null); }}
                         className="flex w-full items-center rounded px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800"
                       >
                         {h.title || "Untitled"}
                       </button>
                     ))}
-                  {personHits.length === 0 && (
+                  {pickHits.length === 0 && (
                     <span className="block px-2 py-1 text-xs text-neutral-600">No matches.</span>
                   )}
                 </span>
               </span>
             )}
           </span>
-        )}
+        ))}
         {/* Assignee is kept as a placeholder chip (defer-by-hiding): assign-by-@
             was retired when "@" became a generic link, and a dedicated picker
             can hang off this chip later. Config-hideable via Quick Add. */}
@@ -967,7 +1054,7 @@ export default function AddTaskCard({
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancel} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700">Cancel</button>
           <button type="button" disabled={!title.trim() || busy} onClick={() => void create()} className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40">
-            {busy ? "Adding…" : parentId ? "Add subtask" : "Add task"}
+            {busy ? "Adding…" : submitLabel ?? (parentId ? "Add subtask" : "Add task")}
           </button>
         </div>
       </div>
