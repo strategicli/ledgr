@@ -69,10 +69,13 @@ export async function POST(request: Request, context: Context) {
         return NextResponse.json({ error: "item not found" }, { status: 404 });
       }
       const filedUnder = await filedUnderRecords(owner.id, itemId);
+      // Whether this type may be filed under several records — the client needs
+      // it to say the right thing about what just happened.
+      const multi = await mayLiveInManyRecords(existing.type);
       // Already filed here: nothing to do, and say so rather than writing a
       // second edge to the same record.
       if (filedUnder.includes(id)) {
-        return NextResponse.json({ item: existing, contained: true }, { status: 200 });
+        return NextResponse.json({ item: existing, contained: true, multi }, { status: 200 });
       }
       // A resource type (no completion concept) may belong to several records
       // at once (ADR-232): add a plain `related` edge and leave its filing
@@ -85,9 +88,9 @@ export async function POST(request: Request, context: Context) {
       // unfiled resource adopts it. Otherwise a note attached to two projects
       // would be a visitor in both and a resident of nowhere, and the visitor
       // marker would say nothing (found in the browser check, 2026-08-28).
-      if ((await mayLiveInManyRecords(existing.type)) && filedUnder.length > 0) {
+      if (multi && filedUnder.length > 0) {
         await relateItems(owner.id, itemId, id, RELATED_ROLE);
-        return NextResponse.json({ item: existing, contained: false }, { status: 200 });
+        return NextResponse.json({ item: existing, contained: false, multi }, { status: 200 });
       }
       // Filed under exactly one record from here on. setHome only DEMOTES the
       // previous home edge (home=false) and the cards are home-agnostic, so
@@ -103,7 +106,7 @@ export async function POST(request: Request, context: Context) {
         }
       }
       await setHome(owner.id, itemId, id, containRole(existing.type));
-      return NextResponse.json({ item: existing, contained: true }, { status: 200 });
+      return NextResponse.json({ item: existing, contained: true, multi }, { status: 200 });
     }
 
     const type = String(raw.type ?? "");
