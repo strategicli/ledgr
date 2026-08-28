@@ -16,6 +16,32 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 **Two gotchas worth keeping.** (1) Right after enabling R2, `<account>.r2.cloudflarestorage.com` refuses TLS with alert 40 and presents no certificate while DNS and TCP look fine — it is edge propagation and clears in ~30 seconds. Don't debug TLS stacks. (2) `/opt/homebrew/bin` is not on the inherited PATH in agent shells, so `vercel`, `npx`, and `node` are all "command not found" until it is prepended.
 
+## 🎚️ FOLLOW-UP — the storage warning only fires on upload
+
+**Shipped with ADR-231, deliberately half-surfaced.** `storageUsageFrom()` (`src/lib/attachments.ts`) owns the thresholds and the wording; `storageWarning` rides both MCP upload tools and the in-app upload response. So you find out you are at 85% *while already adding a file* — which is late if what you were adding is the large thing.
+
+The helper is pure and already returns `{usedBytes, quotaBytes, fraction, level, message}`, so every option below is a **surface, not new logic**:
+- **A gauge in Settings** — the obvious home, visible without uploading, but it is the one that needs real UI (`SettingsForm.tsx`).
+- **A proactive notification** — the push subscriptions + `notify-prep` cron already exist, so a daily "you crossed 80%" is mostly wiring. Best matches "I'd like to know when I'm getting close," since it reaches you *before* you go to upload.
+- **A line on `/health`** — nearly free, but only useful if someone looks.
+
+Pick one the first time the upload-time warning annoys you. Not worth guessing at now.
+
+## 📄 IDEA — "turn into markdown" on upload: keep the content, drop the bytes (Tyler, 2026-08-28)
+
+**The ask.** A checkbox at upload time: *turn into markdown*. Upload a Word doc, a PDF, a deck — Ledgr converts it, files the markdown as the content, and you keep the thing in Ledgr without the binary eating the quota. Tyler's framing: "save on space and still add the file."
+
+**Why it earns its place.** It is the highest-leverage move available against the 10GB cap. A text-heavy 4MB PDF becomes tens of KB of markdown — two orders of magnitude — and the markdown is searchable through the existing FTS, which the binary never was. It also answers the warning above properly: when someone sees "8.5GB of 10.0GB," the fix they actually want is not "delete things," it is "keep what the file *said* and drop the bytes."
+
+**Forks that need deciding before building:**
+1. **Replace the original, or keep both?** "Save on space" implies replace, but conversion is lossy and irreversible once the bytes are gone. Third option worth preferring: replace, but hold the original for N days — the audio-retention purge (ADR-089) already has exactly this shape and could be reused rather than reinvented.
+2. **Where does the markdown land?** The item body (immediately searchable) or its own note child. Body is simplest; a long PDF would sail past `LARGE_BODY_THRESHOLD` (100k chars, ADR-125) into the source/preview path — which is arguably the correct outcome, not a problem.
+3. **What does the converting?** Principle 5 says the dependency has to earn its place. `.docx` is the easy win (a small pure-JS converter). PDF is the hard one, and **a scanned PDF yields nothing from a text extractor** — that case must be detected and refused, never silently filed as an empty note.
+
+**The privacy catch, and it is the one that matters.** ADR-231 just put attachments behind an access gate. **Markdown in an item body is not behind that gate** — it syncs between installs, exports to OneDrive, prints, and renders on a public share page. So "turn into markdown" silently moves content from the gated side to the ungated side. Fine for a recipe; for a bank statement or anything sensitive it is precisely the leak ADR-231 was built to stop. Whatever ships must not present conversion as an unqualified good: at minimum it warns, and it should probably be off by default for anything the owner treats as sensitive. (The scanned-image case is self-limiting while OCR is out of scope — but a *text* PDF of a statement converts perfectly and leaks perfectly.)
+
+**Cheap first slice:** `.docx` only, keep the original, markdown into the body. Proves the flow without touching PDF or OCR, and `.docx` is the format most likely to be mostly text anyway.
+
 ## 🐛 FLAKY — `verify-sync.mts` per-key settings check fails ~1 run in 3
 
 **Pre-existing, unrelated to the storage work, but it makes `verify:ci` red at random.** The check is *"the assignment survives an unrelated preference written later elsewhere"* (ADR-226 per-key settings merge): `jobOwners` comes back `{}` on both peers while `accent` converges correctly. The preceding check, that the trigger logged only the moved key, passes every time.
