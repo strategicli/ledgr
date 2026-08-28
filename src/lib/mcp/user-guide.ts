@@ -831,7 +831,11 @@ Both are in **User Settings**.
 
 - **AI Memory** lets an assistant keep durable facts about you in Ledgr, linked
   into your relation graph, instead of forgetting between sessions. It adds
-  \`/build/memory\`, where you can see exactly what is stored.
+  \`/build/memory\`, where you can see exactly what is stored. Only the ones you
+  mark **pinned** load into every session; everything else is searched out when a
+  task mentions the person, project, or system it covers. Pin standing rules
+  ("always hand me PowerShell, never bash"), not facts about people. Each stump
+  shows its age, so a claim that was true a year ago reads as one.
 - **Live editing context** lets an assistant see which note you have open and
   what you have highlighted, so "rework this sentence" works. Nothing is tracked
   while it is off.

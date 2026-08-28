@@ -459,12 +459,12 @@ try {
 
   // remember: partial-link hardening — a bad `about` id fails the whole call
   // and creates NO memory (the fix: validate ids before the create).
-  const beforeBad = await getMemoryStumps(ownerId, { includeAll: true });
+  const beforeBad = (await getMemoryStumps(ownerId, { includeAll: true })).stumps;
   await expectErr("remember with a bad about id errors", ownerId, "remember", {
     title: `Should not persist ${stamp}`,
     about: [DUMMY], // a well-formed UUID that isn't an owned item
   });
-  const afterBad = await getMemoryStumps(ownerId, { includeAll: true });
+  const afterBad = (await getMemoryStumps(ownerId, { includeAll: true })).stumps;
   check("failed remember created no memory (no partial write)", afterBad.length === beforeBad.length);
 
   // remember: the happy path links the memory to a real item.
@@ -476,24 +476,31 @@ try {
     about: [entity.id as string],
   });
   check("remember returns a linked memory", (goodMem.about as string[])?.includes(entity.id as string));
-  const stumpsDefault = await getMemoryStumps(ownerId);
-  const remembered = stumpsDefault.find((s) => s.id === goodMem.id);
-  check("get_memory_stumps returns the evergreen memory always-on", !!remembered);
+  const { stumps: stumpsDefault } = await getMemoryStumps(ownerId);
+  check(
+    "an unpinned evergreen memory is NOT always-on (horizon no longer loads, ADR-230)",
+    !stumpsDefault.some((s) => s.id === goodMem.id)
+  );
+  const { stumps: allStumps } = await getMemoryStumps(ownerId, { includeAll: true });
+  const remembered = allStumps.find((s) => s.id === goodMem.id);
+  check("includeAll still returns it", !!remembered);
   check("the stump carries its linked neighbour", !!remembered?.linked.some((l) => l.id === entity.id));
 
-  // Per-horizon aging: seasonal (45d window) vs episodic (10d window). Backdate
-  // updatedAt past the episodic window but inside the seasonal one, then assert
-  // the episodic memory drops out of the default set while the seasonal stays.
-  const elevenDaysAgo = new Date(Date.now() - 11 * 86_400_000);
-  const seasonalMem = await callJson(ownerId, "remember", { title: `Seasonal ${stamp}`, horizon: "seasonal" });
-  const episodicMem = await callJson(ownerId, "remember", { title: `Episodic ${stamp}`, horizon: "episodic" });
-  await db.update(items).set({ updatedAt: elevenDaysAgo }).where(eq(items.id, seasonalMem.id as string));
-  await db.update(items).set({ updatedAt: elevenDaysAgo }).where(eq(items.id, episodicMem.id as string));
-  const agedDefault = await getMemoryStumps(ownerId);
-  check("seasonal memory still always-on at 11 days", agedDefault.some((s) => s.id === seasonalMem.id));
-  check("episodic memory ages out of always-on by 11 days", !agedDefault.some((s) => s.id === episodicMem.id));
-  const agedAll = await getMemoryStumps(ownerId, { includeAll: true });
-  check("aged-out episodic memory still visible via includeAll", agedAll.some((s) => s.id === episodicMem.id));
+  // Pinned is the ONLY always-on dial, and it ignores age entirely: the axes are
+  // orthogonal, so a stale-marked seasonal memory still loads when pinned.
+  const pinnedMem = await callJson(ownerId, "remember", {
+    title: `Pinned rule ${stamp}`,
+    horizon: "seasonal",
+    pinned: true,
+  });
+  await db
+    .update(items)
+    .set({ updatedAt: new Date(Date.now() - 200 * 86_400_000) })
+    .where(eq(items.id, pinnedMem.id as string));
+  const { stumps: pinnedOnly, total } = await getMemoryStumps(ownerId);
+  check("a pinned memory loads however old it is", pinnedOnly.some((s) => s.id === pinnedMem.id));
+  check("the always-on set is pinned and nothing else", pinnedOnly.every((s) => s.pinned));
+  check("total counts the whole store, not just the pinned", total > pinnedOnly.length);
 } finally {
   await db.delete(items).where(eq(items.ownerId, ownerId));
   await db.delete(items).where(eq(items.ownerId, owner2Id));

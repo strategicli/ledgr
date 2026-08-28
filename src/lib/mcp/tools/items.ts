@@ -13,6 +13,7 @@ import {
 } from "@/lib/editor/block-anchor";
 import { ITEM_STATUSES, ItemError, URGENCIES, getItem } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
+import { MEMORY_TYPE, memoryAge } from "@/lib/memory";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
@@ -41,7 +42,12 @@ export const itemTools: McpTool[] = [
       "to find an item or a person by words — e.g. find the 'Roger' person, " +
       "or notes mentioning a topic. Returns matching items with a " +
       "highlighted snippet. To then list everything related to a person, pass " +
-      "its id as relatedTo to list_items.",
+      "its id as relatedTo to list_items. For AI-memory recall, pass " +
+      "type: \"memory\": when you meet an unfamiliar person, project, or system, " +
+      "search for it by name before assuming you know nothing about it. Without " +
+      "the type filter, memories are buried under notes, transcripts, and " +
+      "commentaries. Memory hits render their age, so you can tell a current " +
+      "claim from one that was true a year ago.",
     inputSchema: {
       type: "object",
       properties: {
@@ -60,7 +66,15 @@ export const itemTools: McpTool[] = [
       });
       return {
         count: rows.length,
-        items: rows.map((r) => ({ ...rowView(r), snippet: r.snippet })),
+        // Memory hits carry their age (ADR-230): a memory's title often states
+        // something that was true when it was filed, so a bare title reads as
+        // current forever. Only memories get this; every other type is dated by
+        // its own fields.
+        items: rows.map((r) => ({
+          ...rowView(r),
+          ...(r.type === MEMORY_TYPE ? { age: memoryAge(r.updatedAt) } : {}),
+          snippet: r.snippet,
+        })),
       };
     },
   },

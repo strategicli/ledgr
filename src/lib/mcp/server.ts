@@ -92,12 +92,14 @@ export const INSTRUCTIONS = [
 const MEMORY_INSTRUCTIONS = [
   "",
   "AI MEMORY is on. The owner keeps durable memories about themselves, their",
-  "people, and their work in Ledgr. Call get_memory_stumps at the START of the",
-  "session to load the compact index of what's stored, then get_item a stump (and",
-  "follow its links) when it's relevant. When you learn something durable worth",
-  "carrying into a later session, file it with remember. Read the",
-  "memory-protocol resource (ledgr://guide/memory-protocol) for how to recall and",
-  "when to remember.",
+  "people, and their work in Ledgr, in two tiers. Call get_memory_stumps at the",
+  "START of the session: it returns the small PINNED set, the standing rules you",
+  "need on every run. Everything else is retrieved on demand — when a person,",
+  "project, or system comes up that you don't already know, search_items for it",
+  "by name with type: \"memory\", then get_item the stump for detail. When you",
+  "learn something durable worth carrying into a later session, file it with",
+  "remember. Read the memory-protocol resource (ledgr://guide/memory-protocol)",
+  "for the full contract.",
 ].join("\n");
 
 // Appended to INSTRUCTIONS only when the owner has Live editing context on

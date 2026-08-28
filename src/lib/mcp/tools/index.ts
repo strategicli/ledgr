@@ -100,7 +100,10 @@ export async function callTool(
       }
     }
     const payload = await tool.handler(ownerId, a);
-    return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+    // A handler that returns a string has already rendered its own wire format
+    // (the compact memory-stump index, ADR-230). Don't re-encode it as JSON.
+    const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    return { content: [{ type: "text", text }] };
   } catch (err) {
     if (err instanceof ItemError) return toolError(err.message);
     const correlationId = crypto.randomUUID();
