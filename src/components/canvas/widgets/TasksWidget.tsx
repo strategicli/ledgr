@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import InlineAddTask from "@/components/tasks/InlineAddTask";
+import AttachExistingButton from "@/components/canvas/widgets/AttachExistingButton";
 import TaskCheckCircle from "@/components/tasks/TaskCheckCircle";
 import MilestoneFlag from "@/components/milestones/MilestoneFlag";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
@@ -132,11 +133,12 @@ export default function TasksWidget({
           {doneCount} task{doneCount === 1 ? "" : "s"} completed ›
         </Link>
       )}
-      <div className="mt-0.5">
+      <div className="mt-0.5 flex flex-wrap items-center gap-1">
         <InlineAddTask
           host={{ id: recordId, label: projectTitle || "This project", role: "project" }}
           lockDestination
         />
+        <AttachExistingButton recordId={recordId} type="task" label="task" />
       </div>
     </div>
   );

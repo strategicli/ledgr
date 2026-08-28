@@ -523,6 +523,12 @@ parent. Milestones: the same mode-aware circles, badges, and points chips.
 Meetings, docs, links, mindmaps: the same rows and "+ Add" as their cards.
 Select mode and bulk actions stay on all of them.
 
+**Every card can also take something you already have.** Beside each card's
+"+ Add" is an **Attach**: search items of that card's type and pick one, and it
+files into the card exactly as a freshly created one would. Tasks, meetings,
+milestones, docs, links, mindmaps and custom tools all have it. An item lives
+in one record, so attaching moves it out of whatever record it was in before.
+
 **Completed tasks fold away, and milestones flag their tasks.** Done tasks
 leave both the Tasks card and its full list; a quiet **"N tasks completed"**
 line at the bottom of each opens them when you want the history. And a task
