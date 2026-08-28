@@ -6,8 +6,9 @@
 // edge (the collection page wraps this in a SelectionProvider).
 import Link from "next/link";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import DetachButton from "@/components/lists/DetachButton";
 
-export type NoteRow = { id: string; title: string };
+export type NoteRow = { id: string; title: string ; contained?: boolean };
 
 const NoteIcon = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -20,9 +21,15 @@ const NoteIcon = (
 export default function NoteList({
   items,
   selectable = false,
+  detachFrom,
 }: {
   items: NoteRow[];
   selectable?: boolean;
+  // The record these rows are shown on, when the surface distinguishes a
+  // resource that LIVES here from one merely related to it (ADR-232). Given it,
+  // a row with `contained: false` wears the detach ✕. Omitted on surfaces that
+  // don't distinguish, where nothing shows.
+  detachFrom?: string;
 }) {
   return (
     <ul className="flex flex-col gap-1 empty:hidden">
@@ -33,6 +40,9 @@ export default function NoteList({
           <Link href={`/items/${n.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
             {n.title || "Untitled note"}
           </Link>
+          {detachFrom && n.contained === false && (
+            <DetachButton recordId={detachFrom} itemId={n.id} label={n.title} />
+          )}
         </li>
       ))}
     </ul>

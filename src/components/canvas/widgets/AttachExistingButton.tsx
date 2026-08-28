@@ -79,9 +79,34 @@ export default function AttachExistingButton({
         showToast(`Couldn't attach that ${label}`);
         return;
       }
+      // Say which of the two things just happened (ADR-232). Reporting it beats
+      // a tooltip nobody reads, and it lands exactly when the difference
+      // matters.
+      //
+      // Deliberately NOT "moved here" (Brandon, 2026-08-28): that reads as "it
+      // is now inside this record", and containment here is a filing
+      // relationship, not a box. softDeleteItem cascades through parent_id
+      // only, so deleting a record does NOT delete what it holds. The honest
+      // difference is how many records the thing can be filed under.
+      const { contained, multi } = (await res.json().catch(() => ({}))) as {
+        contained?: boolean;
+        multi?: boolean;
+      };
       setOpen(false);
       setQ("");
       router.refresh();
+      // Three outcomes, three sentences. The middle one matters: a resource
+      // filed nowhere is ADOPTED by the first record that takes it, and saying
+      // "a note belongs to one record" there would contradict the very feature
+      // that just ran (caught in the browser check, 2026-08-28).
+      const title = hit.title || "Untitled";
+      showToast(
+        !contained
+          ? `${title} attached — it stays in its other records too`
+          : multi
+            ? `${title} filed here — attach it elsewhere to share it`
+            : `${title} filed here — a ${label} belongs to one record`
+      );
     } finally {
       setBusy(false);
     }
@@ -94,6 +119,7 @@ export default function AttachExistingButton({
         onClick={() => { setOpen((v) => !v); setQ(""); }}
         className="flex items-center gap-1.5 rounded px-1 py-1 text-sm text-neutral-500 hover:text-neutral-300"
         title={`Attach an existing ${label} to this record`}
+        aria-label={`Attach an existing ${label} to this record`}
       >
         <span className="text-base leading-none text-[var(--accent)]">⇱</span> Attach
       </button>

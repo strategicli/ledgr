@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { createItem } from "@/lib/item-mutations";
 import { getItem } from "@/lib/items";
-import { listTypes } from "@/lib/types";
-import { homeParentRecord, relateItems, setHome } from "@/lib/relations";
+import { listTypes, mayLiveInManyRecords } from "@/lib/types";
+import {
+  filedUnderRecords,
+  homeParentRecord,
+  relateItems,
+  setHome,
+  unrelateItems,
+} from "@/lib/relations";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +42,10 @@ const ALLOWED = new Set(["task", "note", "milestone", "event", "link", "mindmap"
 // then never shows up in its card.
 const containRole = (type: string) => (type === "task" ? "project" : "contains");
 
+// The edge a multi-record attach writes. Named because the detach ✕ deletes
+// exactly this role, so the two must not drift apart.
+const RELATED_ROLE = "related";
+
 export async function POST(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
@@ -44,20 +54,59 @@ export async function POST(request: Request, context: Context) {
     const raw = (await request.json()) as Record<string, unknown>;
 
     // Attach an item that ALREADY exists instead of creating a blank one
-    // (Brandon, 2026-08-28 — the cards could only ever make something new). Same
-    // home + role write the create path does, so an attached item lands in the
-    // same card, read by the same query. The role comes from the item's OWN
-    // type, not the caller's `type` hint, so a mistyped hint can't file a note
-    // as a task. setHome clears any previous home edge: an item lives in
-    // one record, so attaching it here MOVES it out of wherever it was.
+    // (Brandon, 2026-08-28 — the cards could only ever make something new).
+    // What the attach WRITES depends on the item's own type, not the caller's
+    // `type` hint (so a mistyped hint can't file a note as a task):
+    //   - a resource type (note, event, link) gains a plain `related` edge and
+    //     keeps its home, so it can be relevant to several projects at once
+    //   - a type that completes (task, milestone) is MOVED, home and all
+    // Either way it lands in the same card, read by the same home-agnostic
+    // query the create path feeds.
     if (raw.itemId !== undefined) {
       const itemId = asUuid(raw.itemId, "itemId");
       const existing = await getItem(owner.id, itemId);
       if (existing.deletedAt) {
         return NextResponse.json({ error: "item not found" }, { status: 404 });
       }
+      const filedUnder = await filedUnderRecords(owner.id, itemId);
+      // Whether this type may be filed under several records — the client needs
+      // it to say the right thing about what just happened.
+      const multi = await mayLiveInManyRecords(existing.type);
+      // Already filed here: nothing to do, and say so rather than writing a
+      // second edge to the same record.
+      if (filedUnder.includes(id)) {
+        return NextResponse.json({ item: existing, contained: true, multi }, { status: 200 });
+      }
+      // A resource type (no completion concept) may belong to several records
+      // at once (ADR-232): add a plain `related` edge and leave its filing
+      // where it is. `related` rather than `contains` on purpose — the
+      // completion sweep scopes on `home or role in ('project','contains')`,
+      // so a contains edge would put a note that merely VISITS this project
+      // inside the project's completion net. Association is never swept.
+      //
+      // Unless it isn't filed anywhere yet: the FIRST record to take an
+      // unfiled resource adopts it. Otherwise a note attached to two projects
+      // would be a visitor in both and a resident of nowhere, and the visitor
+      // marker would say nothing (found in the browser check, 2026-08-28).
+      if (multi && filedUnder.length > 0) {
+        await relateItems(owner.id, itemId, id, RELATED_ROLE);
+        return NextResponse.json({ item: existing, contained: false, multi }, { status: 200 });
+      }
+      // Filed under exactly one record from here on. setHome only DEMOTES the
+      // previous home edge (home=false) and the cards are home-agnostic, so
+      // without this the item would keep rendering on its old record's card
+      // with no way to remove it — a completing type has no detach ✕. Drop the
+      // old filing edges first so "belongs to one record" is actually true.
+      // Both containment roles, not just this type's: the old edge was written
+      // by whatever filed it there. Role-scoped on purpose, so a deliberate
+      // `related` or `tags` edge to the old record survives the re-filing.
+      for (const old of filedUnder) {
+        for (const role of ["project", "contains"]) {
+          await unrelateItems(owner.id, itemId, old, { role });
+        }
+      }
       await setHome(owner.id, itemId, id, containRole(existing.type));
-      return NextResponse.json({ item: existing }, { status: 200 });
+      return NextResponse.json({ item: existing, contained: true, multi }, { status: 200 });
     }
 
     const type = String(raw.type ?? "");

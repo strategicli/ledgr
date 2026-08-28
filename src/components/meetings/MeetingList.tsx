@@ -10,9 +10,10 @@
 // off, like every widget preview.
 import Link from "next/link";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import DetachButton from "@/components/lists/DetachButton";
 import { useTimezone } from "@/components/providers/TimezoneProvider";
 
-export type MeetingRow = { id: string; title: string; when: string | null };
+export type MeetingRow = { id: string; title: string; when: string | null ; contained?: boolean };
 
 function dayLabel(iso: string | null, tz: string): string | null {
   if (!iso) return null;
@@ -27,9 +28,14 @@ function dayLabel(iso: string | null, tz: string): string | null {
 export default function MeetingList({
   items,
   selectable = false,
+  detachFrom,
 }: {
   items: MeetingRow[];
   selectable?: boolean;
+  // The record these rows are shown on, when the surface distinguishes a
+  // resource that LIVES here from one merely related to it (ADR-232). Given it,
+  // a row with `contained: false` wears the detach ✕.
+  detachFrom?: string;
 }) {
   const tz = useTimezone();
   // By date, closest on top (ascending); undated last.
@@ -48,6 +54,9 @@ export default function MeetingList({
             {m.title || "Untitled"}
           </Link>
           {dayLabel(m.when, tz) && <span className="shrink-0 text-xs text-neutral-500">{dayLabel(m.when, tz)}</span>}
+          {detachFrom && m.contained === false && (
+            <DetachButton recordId={detachFrom} itemId={m.id} label={m.title} />
+          )}
         </li>
       ))}
     </ul>
