@@ -79,10 +79,15 @@ export default function AttachExistingButton({
         showToast(`Couldn't attach that ${label}`);
         return;
       }
-      // Say which of the two things just happened (ADR-232). A resource type
-      // keeps its home and is now related here; a type that completes was
-      // MOVED out of wherever it lived. Reporting it beats a tooltip nobody
-      // reads, and it lands exactly when the difference matters.
+      // Say which of the two things just happened (ADR-232). Reporting it beats
+      // a tooltip nobody reads, and it lands exactly when the difference
+      // matters.
+      //
+      // Deliberately NOT "moved here" (Brandon, 2026-08-28): that reads as "it
+      // is now inside this record", and containment here is a filing
+      // relationship, not a box. softDeleteItem cascades through parent_id
+      // only, so deleting a record does NOT delete what it holds. The honest
+      // difference is how many records the thing can be filed under.
       const { contained } = (await res.json().catch(() => ({}))) as {
         contained?: boolean;
       };
@@ -91,8 +96,8 @@ export default function AttachExistingButton({
       router.refresh();
       showToast(
         contained
-          ? `${hit.title || "Untitled"} moved here`
-          : `${hit.title || "Untitled"} attached`
+          ? `${hit.title || "Untitled"} filed here — a ${label} belongs to one record`
+          : `${hit.title || "Untitled"} attached — it stays in its other records too`
       );
     } finally {
       setBusy(false);

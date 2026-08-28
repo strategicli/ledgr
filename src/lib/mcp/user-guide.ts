@@ -533,10 +533,14 @@ docs, links, mindmaps and custom tools all have it.
 **What attaching does depends on the kind of thing.** A resource, meaning
 anything with no Done state (a doc, a meeting, a link), can be relevant to
 several records at once: attaching adds it here and leaves it where it already
-lived. Anything that completes (a task, a milestone) belongs to one record,
-because that is the record whose progress bar it counts toward and whose
-"mark this project done" would close it, so attaching MOVES it. The toast after
-you attach says which one happened.
+was. Anything that completes (a task, a milestone) is filed under one record,
+because that is the record whose progress bar it counts toward and whose "mark
+this project done" would close it, so attaching re-files it here and out of
+wherever it was. The toast says which one happened.
+
+Filed under is not inside. Deleting a record does not delete what is filed
+under it: those items stay, they just stop having a record they file under.
+Only subtasks follow their parent into Trash.
 
 **A row with an ✕ is a visitor.** On a card, a small ✕ at the end of a row means
 that item is related to this record rather than filed in it. Click it to detach,
