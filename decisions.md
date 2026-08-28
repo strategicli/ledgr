@@ -3514,7 +3514,7 @@ Brandon's framing set the bar past "log it better": unclean shutdowns will keep 
 
 ## ADR-230: `horizon` says what stays true, `pinned` says what loads — the always-on set is pinned and nothing else
 
-**Date:** 2026-08-27 · **Status:** accepted, CORE (Tyler ack pending) · **Supersedes the loading half of ADR-137**
+**Date:** 2026-08-27 · **Status:** accepted, CORE — **acked by Tyler 2026-08-28**, relayed by Brandon · **Supersedes the loading half of ADR-137**
 
 **The bug was one word doing two jobs.** AI Memory (ADR-137) gave a memory two properties that mean different things. `horizon` is a **truth** property: does this claim stay true as time passes? `pinned` is a **load** property: does the agent need this in front of it on every run. They are orthogonal — a fact can be permanently true and almost never needed, or temporary and needed constantly. But the always-on query was `evergreen + pinned + recently-touched`, which put a truth property inside a loading decision. Once `evergreen` decided what loaded, it silently came to mean "important", and the agents writing memories set it for that reason instead of the intended one. The tool descriptions taught the confusion directly: `horizon` was introduced as a truth property and then defined by its effect on loading ("Seasonal/episodic age out of the always-on set"), and `pinned` was framed as an escalation of horizon ("regardless of horizon/age") rather than a separate axis.
 

@@ -2,11 +2,11 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## Queued — AI memory axis separation (ADR-230, built 2026-08-27, CORE — Tyler ack BEFORE merge)
+## Queued — AI memory axis separation (ADR-230, built 2026-08-27, acked by Tyler 2026-08-28)
 
 Built and green: typecheck, lint, both live MCP suites (`verify-memory` 24/24, `verify-mcp` unchanged apart from one pre-existing failure noted below). `horizon` no longer decides what loads; the always-on set is `pinned` and nothing else, ages render at read time, and the stump index is compact text instead of pretty JSON. Full reasoning and the measured before-numbers are in ADR-230. Source brief: `_Drafts/ledgr-memory-axis-fix-SPEC.md` (keep it there, it names a confidential personnel memory as an example).
 
-- [ ] **Tyler's ack.** CORE because `get_memory_stumps`' response shape and default result set both change, so ADR-183's additive carve-out does not cover it. No schema change, no data mutated. Record in `COLLAB.md` and on the ADR when given.
+- [x] **Tyler's ack.** Given 2026-08-28, relayed by Brandon; recorded in `COLLAB.md` and on the ADR. CORE because `get_memory_stumps`' response shape and default result set both change, so ADR-183's additive carve-out does not cover it. No schema change, no data mutated. Record in `COLLAB.md` and on the ADR when given.
 - [ ] **Backfill the mislabeled data (spec §5.9), after the descriptions ship.** Pointless before, because write-time keeps regenerating the mess. Reclassify the 12 evergreen memories carrying time-bound titles to seasonal; review the remaining evergreens, expecting roughly a third to be project state rather than durable truth. One-time MCP calls, no migration.
 - [ ] **Review the pinned set against the new bar.** Seven items today, all correctly Tier 1. Anything unpinned that gets pulled in most sessions is a pin candidate; anything pinned that a name search would find belongs in Tier 2.
 - [ ] **Memory audit agent (spec §5.10) — harness, not Ledgr.** A skill plus a scheduled task reporting into a Ledgr task on the existing "🤖 AI System — Input needed" pattern. Flags: evergreen titles containing "now"/"live"/"currently"/"pending"/"not yet" or a bare year; near-duplicates (agents file independently without reading each other); pin candidates; pinned count past ~15; stale seasonals with a plausible newer replacement.
