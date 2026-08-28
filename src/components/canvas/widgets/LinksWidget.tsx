@@ -18,7 +18,7 @@ export default function LinksWidget({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <LinkList items={items} />
+      <LinkList items={items} detachFrom={recordId} />
       <AddContainedItemButton recordId={recordId} type="link" label="Add link" />
     </div>
   );

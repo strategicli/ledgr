@@ -16,6 +16,7 @@
 // changed is presentation: a fixed header set vs. cards, uniform card sizing by
 // surface variant, and add/remove editing in place instead of via a gear.
 import Link from "next/link";
+import DetachButton from "@/components/lists/DetachButton";
 import type { ReactNode } from "react";
 import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import AddSectionButton from "@/components/canvas/AddSectionButton";
@@ -100,7 +101,9 @@ function EmptyState({ children }: { children: ReactNode }) {
   return <p className="text-sm text-neutral-500">{children}</p>;
 }
 
-function ItemList({ data }: { data: RecordWidgetData }) {
+// `recordId` is optional so the unscoped/fallback uses stay unchanged; given
+// it, a merely-related row wears the detach ✕ (ADR-232), like every other card.
+function ItemList({ data, recordId }: { data: RecordWidgetData; recordId?: string }) {
   const items = data.items ?? [];
   if (items.length === 0) return <EmptyState>Nothing here yet.</EmptyState>;
   // Overflow ("+N more") is handled by the shared CardBody footer as a link into
@@ -117,6 +120,9 @@ function ItemList({ data }: { data: RecordWidgetData }) {
               {it.title || "Untitled"}
             </Link>
             {day && <span className="ml-auto shrink-0 text-xs text-neutral-500">{day}</span>}
+            {recordId && it.contained === false && (
+              <DetachButton recordId={recordId} itemId={it.id} label={it.title} />
+            )}
           </li>
         );
       })}
@@ -222,14 +228,14 @@ function WidgetInner({
       return (
         <NotesWidget
           recordId={recordId}
-          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title }))}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, contained: i.contained }))}
         />
       );
     case "links":
       return (
         <LinksWidget
           recordId={recordId}
-          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, url: i.url }))}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, url: i.url, contained: i.contained }))}
         />
       );
     case "milestones":
@@ -260,6 +266,7 @@ function WidgetInner({
             id: i.id,
             title: i.title,
             when: (i.meetingAt ?? i.scheduledDate ?? i.dueDate)?.toISOString() ?? null,
+            contained: i.contained,
           }))}
         />
       );
@@ -267,7 +274,7 @@ function WidgetInner({
       return (
         <MindmapWidget
           recordId={recordId}
-          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title }))}
+          items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, contained: i.contained }))}
         />
       );
     case "overview":
@@ -365,7 +372,7 @@ function WidgetInner({
       if (customType) {
         return (
           <div className="flex flex-col gap-2">
-            <ItemList data={data} />
+            <ItemList data={data} recordId={recordId} />
             <AddContainedItemButton
               recordId={recordId}
               type={customType}

@@ -5,6 +5,8 @@
 // scoped for contained collections), and derived/property widgets read the base
 // + the log. Server-only (queries the DB); the canvas renders what this returns,
 // with no widget-side branching on the record's Type.
+import { sql } from "drizzle-orm";
+import { getDb } from "@/db";
 import { personImage } from "@/lib/person-image";
 import { listActivity, listActivityForSubjects } from "@/lib/activity";
 import { widgetLimit, type Composition, type RecordWidget } from "@/lib/composition";
@@ -46,6 +48,13 @@ export type WidgetItemRow = {
   // Person rows only: the built-in Image (migration 0053), so the header People
   // chips can wear the face. null for other types and unpictured persons.
   image: string | null;
+  // Collection rows only (ADR-232): whether this record CONTAINS the item (a
+  // home edge, or a project/contains role — the same notion of containment the
+  // completion sweep uses) or merely relates to it. A merely-related row is a
+  // resource visiting this record, and it wears the detach ✕. Absent on
+  // surfaces that don't distinguish (the full collection page), which read as
+  // contained and show no ✕.
+  contained?: boolean;
   // Task rows only (2026-08-17): the "n/m done" rollup over direct task
   // children, so the Tasks card can fold subtasks out beneath their parent
   // (the same expandable pill the list surfaces use). Absent = no subtasks.
@@ -159,6 +168,30 @@ async function containedProjects(ownerId: string, recordId: string) {
   );
 }
 
+// Every item this record CONTAINS: a home edge from the item, or a
+// project/contains role in either direction. Deliberately the same predicate
+// as the project-completion sweep (project-completion.ts), so "no ✕" and "the
+// sweep may touch this" always mean the same set. One query per record page,
+// shared by every collection card.
+async function containedIds(ownerId: string, recordId: string): Promise<Set<string>> {
+  const res = await getDb().execute(sql`
+    select r.source_id as id
+      from relations r join items i on i.id = r.source_id
+     where i.owner_id = ${ownerId}
+       and r.target_id = ${recordId}
+       and r.match_state = 'confirmed'
+       and (r.home or r.role in ('project', 'contains'))
+    union
+    select r.target_id as id
+      from relations r join items i on i.id = r.target_id
+     where i.owner_id = ${ownerId}
+       and r.source_id = ${recordId}
+       and r.match_state = 'confirmed'
+       and r.role in ('project', 'contains')
+  `);
+  return new Set((res.rows as { id: string }[]).map((r) => r.id));
+}
+
 function recurrenceLabel(properties: unknown): string | null {
   const rule = parseRecurrence((properties as Record<string, unknown> | null)?.recurrence);
   return rule ? describeRule(rule) : null;
@@ -256,7 +289,9 @@ async function dataForWidget(
   ownerId: string,
   record: LoadedRecord,
   instance: RecordWidget,
-  def: WidgetDefinition
+  def: WidgetDefinition,
+  // The record's contained-item ids, resolved once for the whole page.
+  contained: Set<string>
 ): Promise<RecordWidgetData> {
   const base: RecordWidgetData = { instance, def };
 
@@ -440,7 +475,7 @@ async function dataForWidget(
       queryViewItems(ownerId, filter, { field: "updatedAt", dir: "desc" }, fetchLimit),
       countViewItems(ownerId, filter),
     ]);
-    let mapped = rows.map(row);
+    let mapped = rows.map(row).map((m) => ({ ...m, contained: contained.has(m.id) }));
     if (def.recordQuery?.collectionType === "task") mapped = sortTasksDoneLast(mapped);
     if (def.recordQuery?.collectionType === "milestone") {
       // Resolve each milestone's mode + completion (manual / linked task /
@@ -510,6 +545,7 @@ export async function resolveRecordWidgets(
   composition: Composition
 ): Promise<RecordWidgetData[]> {
   const visible = composition.widgets.filter((iw) => !iw.hidden);
+  const contained = await containedIds(ownerId, record.id);
   return Promise.all(
     visible.map(async (instance) => {
       let def = widgetById(instance.defId);
@@ -523,7 +559,7 @@ export async function resolveRecordWidgets(
         if (!t || t.hidden) return null;
         def = { ...def, label: t.label };
       }
-      return dataForWidget(ownerId, record, instance, def);
+      return dataForWidget(ownerId, record, instance, def, contained);
     })
   ).then((arr) => arr.filter((x): x is RecordWidgetData => x !== null));
 }

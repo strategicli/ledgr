@@ -382,6 +382,27 @@ export async function listTypes(
   return listTypesCached(opts.includeHidden === true);
 }
 
+// Whether an item of this type may belong to SEVERAL records at once (ADR-232).
+// Derived, never configured: a type with no completion concept (statusMode
+// "none" — note, event, link) is a RESOURCE. It can be relevant to two projects
+// without living in either, so attaching it to a second record adds a plain
+// `related` edge and leaves its home alone. A type that COMPLETES (task,
+// milestone) rolls up into one record's progress bar and one record's
+// completion sweep, so it lives in exactly one and attaching MOVES it.
+//
+// Deriving it rather than adding a per-type flag reproduces the split exactly
+// (Brandon + Tyler, 2026-08-28) with nothing to configure. The tradeoff is
+// real and worth knowing: giving a type a Done checkbox in Build narrows it to
+// one record from then on. Existing second edges are left alone (they are
+// `related`, which the completion sweep does not touch), they simply stop
+// being created for that type.
+export async function mayLiveInManyRecords(typeKey: string): Promise<boolean> {
+  const t = await getType(typeKey).catch(() => null);
+  // Unknown type: fall back to the containing behavior, which is what every
+  // attach did before this rule existed.
+  return t?.statusMode === "none";
+}
+
 export async function getType(key: string): Promise<TypeDefinition> {
   const rows = await getDb().select().from(types).where(eq(types.key, key));
   if (rows.length === 0) throw new ItemError("not_found", "type not found");

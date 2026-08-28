@@ -18,7 +18,7 @@ export default function MeetingsWidget({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <MeetingList items={items} />
+      <MeetingList items={items} detachFrom={recordId} />
       <div className="flex flex-wrap items-center gap-1">
         <InlineContainAdd recordId={recordId} type="event" label="Meeting" withTime />
         <AttachExistingButton recordId={recordId} type="event" label="meeting" />

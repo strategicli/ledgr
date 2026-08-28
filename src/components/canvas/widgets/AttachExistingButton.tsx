@@ -79,9 +79,21 @@ export default function AttachExistingButton({
         showToast(`Couldn't attach that ${label}`);
         return;
       }
+      // Say which of the two things just happened (ADR-232). A resource type
+      // keeps its home and is now related here; a type that completes was
+      // MOVED out of wherever it lived. Reporting it beats a tooltip nobody
+      // reads, and it lands exactly when the difference matters.
+      const { contained } = (await res.json().catch(() => ({}))) as {
+        contained?: boolean;
+      };
       setOpen(false);
       setQ("");
       router.refresh();
+      showToast(
+        contained
+          ? `${hit.title || "Untitled"} moved here`
+          : `${hit.title || "Untitled"} attached`
+      );
     } finally {
       setBusy(false);
     }
@@ -94,6 +106,7 @@ export default function AttachExistingButton({
         onClick={() => { setOpen((v) => !v); setQ(""); }}
         className="flex items-center gap-1.5 rounded px-1 py-1 text-sm text-neutral-500 hover:text-neutral-300"
         title={`Attach an existing ${label} to this record`}
+        aria-label={`Attach an existing ${label} to this record`}
       >
         <span className="text-base leading-none text-[var(--accent)]">⇱</span> Attach
       </button>

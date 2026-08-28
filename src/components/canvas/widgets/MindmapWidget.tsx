@@ -18,7 +18,7 @@ export default function MindmapWidget({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <MindmapList items={items} />
+      <MindmapList items={items} detachFrom={recordId} />
       <AddContainedItemButton recordId={recordId} type="mindmap" label="Add mindmap" />
     </div>
   );

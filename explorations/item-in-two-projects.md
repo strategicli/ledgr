@@ -1,7 +1,9 @@
 # An item in two projects
 
-Raised by Brandon, 2026-08-28. Open. Needs both-agree + an ADR if we change
-`home` semantics.
+Raised by Brandon, 2026-08-28. **RESOLVED and BUILT the same day: ADR-232.**
+Tyler agreed to the per-type split (relayed via Brandon). `home` semantics did
+not change, so no migration was needed. The doc is kept for the evidence trail
+and for the open edge noted at the end.
 
 ## What Brandon wants
 
@@ -168,3 +170,21 @@ Also worth knowing: several code comments cite **ADR-111** for containment
 (relations.ts:333, views.ts:52, item-mutations.ts:695). ADR-111 is the
 dashboard canvas ADR. The containment decision is ADR-138 / PJ1. Harmless, but
 it sent this investigation down a wrong path for a while.
+
+## What shipped (ADR-232)
+
+The per-type rule, derived from `statusMode` rather than configured, plus two
+choices made after this doc was written:
+
+- **The second edge is `related`, not `contains`** (Brandon). A `contains` edge
+  sits inside the completion sweep's scope, so it would only be safe by virtue
+  of the sweep's separate skip for types with no completion concept. `related`
+  is outside the scope structurally.
+- **A detach ✕ on merely-related rows is the only visible delineation**
+  (Brandon). A row with an ✕ is a visitor; a row without one lives here.
+
+Still open, and deliberately not decided: the derived rule means giving a type a
+Done checkbox in Build narrows it to one record from then on. Existing `related`
+edges are left alone (the sweep does not touch them), they simply stop being
+created for that type. If that ever surprises someone, the fix is the declared
+per-type flag this doc originally floated.
