@@ -350,9 +350,13 @@ Build your own kinds of item at \`/build/types\`.
 - **Every item shows what links to it,** both directions, grouped by type.
 - **Typed relation fields** ("Author", "Attendees", "Tags") live under
   Properties. Everything else shows under **Linked here**.
-- **Create as you link.** Typing a name that does not exist makes it.
+- **Create as you link.** Typing a name that does not exist makes it. That
+  includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
+  yet can be added to the meeting from the meeting, without leaving to create
+  them first.
 - **Tags are just a type.** A tag's page shows everything tagged with it.
-- **Groups** have a member roster. An event can be *for* a group.
+- **Groups** have a member roster. An event can be *for* a group, and a task can
+  link to one from the add card's Group chip.
 - **Discover** suggests items you probably should link but have not, ranked by
   shared text, shared neighbours, shared attributes and timing. One click links
   them.
@@ -386,10 +390,11 @@ Ledgr is its own task manager. Nothing else needs to be running.
 - **Type "/" while naming a task** to jump to its description: everything
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
-- **The add card's chip row** carries Date, Priority, **Tag**, and **Person**
-  pickers (sigils still work: "#" tags, "@" links, "+" files), and the **⋯**
-  chip opens any other custom property on the task type so you can set it at
-  creation.
+- **The add card's chip row** carries Date, Priority, **Tag**, **Person** and
+  **Group** pickers (sigils still work: "#" tags, "@" links, "+" files), and the
+  **⋯** chip opens any other custom property on the task type so you can set it
+  at creation. Group works exactly like Person — pick Pastors or Elders and the
+  task links to that group. It only shows if you have a group type.
 - **People get faces.** The person type ships with a built-in **Image**: a
   square picture box on the person's page — click it to upload a photo (it's
   center-cropped square automatically) or paste an image URL, and Remove lives

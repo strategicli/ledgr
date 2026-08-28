@@ -34,6 +34,7 @@ import {
   type CreateTarget,
 } from "@/lib/mention-create";
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
+import { GROUP_TYPE } from "@/lib/events/people";
 import { announceFloatingOpen } from "@/lib/floating";
 import DateInput from "@/components/ui/DateInput";
 import { showToast } from "@/components/ui/ActionToast";
@@ -94,6 +95,8 @@ const IconHash = <I d="M4 9h16M4 15h15M10 3L8 21M16 3l-2 18" />;
 // type — it used to be IconHash, which now means something else entirely.
 const IconPlus = <I d="M12 5v14M5 12h14" />;
 const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />;
+// Group: two overlapping figures — a person with a second head/shoulder behind.
+const IconGroup = <I d="M2 20c0-3 3-5 6.5-5s6.5 2 6.5 5" extra={<><circle cx="8.5" cy="8" r="3.5" /><path d="M16 5.5a3.5 3.5 0 0 1 0 7" /><path d="M17.5 15c2.6.4 4.5 2.3 4.5 5" /></>} />;
 
 let quickAddPromise: Promise<string[]> | null = null;
 function loadQuickAddHidden(): Promise<string[]> {
@@ -196,9 +199,12 @@ export default function AddTaskCard({
   const [pickedTags, setPickedTags] = useState<{ id: string | null; name: string }[]>([]);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagQ, setTagQ] = useState("");
-  const [personOpen, setPersonOpen] = useState(false);
-  const [personQ, setPersonQ] = useState("");
-  const [personHits, setPersonHits] = useState<{ id: string; title: string }[]>([]);
+  // One picker serving every linkable-type chip (Person, Group, …): which type
+  // is open and what's typed into it. It used to be three person-only states,
+  // and adding Group beside it would have been a third copy of the same block
+  // (Brandon, 2026-08-28 — "add groups just as easily as person").
+  const [pick, setPick] = useState<{ type: string; q: string } | null>(null);
+  const [pickHits, setPickHits] = useState<{ id: string; title: string }[]>([]);
   // The kebab (⋯): any OTHER custom property on the task type, set at creation.
   // Schema loads on first open; opened keys render small per-kind editors whose
   // values land in the POST's properties.
@@ -282,19 +288,20 @@ export default function AddTaskCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Person chip typeahead: a small debounced search over person items.
+  // Link-chip typeahead: a small debounced search over items of the open chip's
+  // type (person, group, …).
   useEffect(() => {
-    if (!personOpen) return;
-    const q = personQ.trim();
+    if (!pick) return;
+    const q = pick.q.trim();
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ type: "person", limit: "8" });
+        const params = new URLSearchParams({ type: pick.type, limit: "8" });
         if (q) params.set("q", q);
         const res = await fetch(`/api/items?${params}`, { signal: ctrl.signal });
         if (!res.ok) return;
         const d = (await res.json()) as { items: { id: string; title: string }[] };
-        setPersonHits(Array.isArray(d.items) ? d.items : []);
+        setPickHits(Array.isArray(d.items) ? d.items : []);
       } catch {
         // aborted or offline; the next keystroke retries
       }
@@ -303,7 +310,7 @@ export default function AddTaskCard({
       ctrl.abort();
       clearTimeout(t);
     };
-  }, [personOpen, personQ]);
+  }, [pick]);
 
   // Kebab: the task type's OTHER custom scalar properties (relation kinds have
   // their own chips/sigils; multi_select defers). Loaded on mount so the kebab
@@ -322,17 +329,17 @@ export default function AddTaskCard({
   // Chip popovers (date / tag / person / kebab) dismiss on any outside click —
   // each wrapper wears data-chip-pop, so a click inside any of them survives.
   useEffect(() => {
-    if (!pickDate && !tagOpen && !personOpen && !moreOpen) return;
+    if (!pickDate && !tagOpen && !pick && !moreOpen) return;
     const onDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest?.("[data-chip-pop]")) return;
       setPickDate(false);
       setTagOpen(false);
-      setPersonOpen(false);
+      setPick(null);
       setMoreOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [pickDate, tagOpen, personOpen, moreOpen]);
+  }, [pickDate, tagOpen, pick, moreOpen]);
 
   // Clicking anywhere OUTSIDE the card dismisses it, like Cancel (Tyler,
   // 2026-08-18 — "I expect both to work"). Chip popovers and portaled menus
@@ -653,6 +660,19 @@ export default function AddTaskCard({
     if (e.key === "Escape") onCancel();
   }
 
+  // The linkable-type chips. Person is always offered; Group only where the
+  // instance has a group type (ADR-144 creates it per-instance via
+  // scripts/setup-groups.mts), so this file stays instance-agnostic and the
+  // chip can't point at a type that isn't there.
+  const linkChips = [
+    { type: "person", label: "Person", action: "person", icon: IconUser },
+    { type: GROUP_TYPE, label: "Group", action: "group", icon: IconGroup },
+  ].filter(
+    (lc) =>
+      showAction(lc.action) &&
+      (lc.type === "person" || mTypes.some((t) => t.key === lc.type))
+  );
+
   const chip = "flex items-center gap-1.5 rounded-md border border-neutral-700 px-2 py-1 text-sm text-neutral-300 hover:border-neutral-600";
   const destProject = projects.find((p) => p.id === effDest);
 
@@ -872,45 +892,47 @@ export default function AddTaskCard({
             )}
           </span>
         )}
-        {/* Person chip: attach a person (a `related` edge — the same list the
-            "@" mention writes, so LinkedChips shows and removes them). */}
-        {showAction("person") && (
-          <span className="relative" data-chip-pop>
-            <button type="button" className={chip} onClick={() => { setPersonOpen((v) => !v); setPersonQ(""); }}>
-              {IconUser} Person
+        {/* Person / Group chips: attach an item (a `related` edge — the same list
+            the "@" mention writes, so LinkedChips shows and removes them). Group
+            only appears on an instance that HAS a group type (ADR-144 creates it
+            per-instance), so this stays instance-agnostic. */}
+        {linkChips.map((lc) => (
+          <span key={lc.type} className="relative" data-chip-pop>
+            <button type="button" className={chip} onClick={() => setPick((cur) => (cur?.type === lc.type ? null : { type: lc.type, q: "" }))}>
+              {lc.icon} {lc.label}
             </button>
-            {personOpen && (
+            {pick?.type === lc.type && (
               <span className="absolute left-0 top-full z-10 mt-1 flex w-56 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
                 <input
                   autoFocus
-                  value={personQ}
-                  onChange={(e) => setPersonQ(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Escape") setPersonOpen(false); }}
-                  placeholder="Search people…"
-                  aria-label="Search people"
+                  value={pick.q}
+                  onChange={(e) => setPick({ type: lc.type, q: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Escape") setPick(null); }}
+                  placeholder={`Search ${lc.label.toLowerCase()}…`}
+                  aria-label={`Search ${lc.label.toLowerCase()}`}
                   className="mb-1 w-full rounded border border-neutral-700 bg-transparent px-2 py-1 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-500"
                 />
                 <span className="max-h-44 overflow-y-auto">
-                  {personHits
+                  {pickHits
                     .filter((h) => !alreadyLinked(h.id))
                     .map((h) => (
                       <button
                         key={h.id}
                         type="button"
-                        onClick={() => { setLinked((cur) => [...cur, { id: h.id, title: h.title, type: "person" }]); setPersonOpen(false); }}
+                        onClick={() => { setLinked((cur) => [...cur, { id: h.id, title: h.title, type: lc.type }]); setPick(null); }}
                         className="flex w-full items-center rounded px-2 py-1 text-left text-sm text-neutral-300 hover:bg-neutral-800"
                       >
                         {h.title || "Untitled"}
                       </button>
                     ))}
-                  {personHits.length === 0 && (
+                  {pickHits.length === 0 && (
                     <span className="block px-2 py-1 text-xs text-neutral-600">No matches.</span>
                   )}
                 </span>
               </span>
             )}
           </span>
-        )}
+        ))}
         {/* Assignee is kept as a placeholder chip (defer-by-hiding): assign-by-@
             was retired when "@" became a generic link, and a dedicated picker
             can hang off this chip later. Config-hideable via Quick Add. */}
