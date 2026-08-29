@@ -17,6 +17,26 @@ export type UploadedAttachment = {
   fileUrl: string;
 };
 
+// Window events so live surfaces (the per-item Files section) can update the
+// moment a file lands or leaves, without a router.refresh() mid-typing —
+// the same no-dependency event trick ActionToast/UploadProgress use.
+export const ATTACHMENT_ADDED_EVENT = "ledgr:attachment-added";
+export const ATTACHMENT_REMOVED_EVENT = "ledgr:attachment-removed";
+export type AttachmentAddedDetail = {
+  itemId: string;
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+};
+export type AttachmentRemovedDetail = { itemId: string; id: string };
+export function announceAttachmentRemoved(detail: AttachmentRemovedDetail) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<AttachmentRemovedDetail>(ATTACHMENT_REMOVED_EVENT, { detail })
+  );
+}
+
 // The PUT rides XMLHttpRequest, not fetch, for one reason: fetch exposes no
 // upload progress, and the bytes-to-R2 leg is the whole wait. Progress feeds
 // the global UploadProgress stack via its window event.
@@ -74,6 +94,17 @@ export async function uploadAttachment(
     // failure.
     if (usage?.message) showToast(usage.message);
     reportUploadProgress({ id: jobId, filename: displayName, fraction: 1, done: true });
+    window.dispatchEvent(
+      new CustomEvent<AttachmentAddedDetail>(ATTACHMENT_ADDED_EVENT, {
+        detail: {
+          itemId,
+          id,
+          filename,
+          contentType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        },
+      })
+    );
     return { id, filename, fileUrl };
   } catch (err) {
     // Clear the bar either way; the caller's toast reports the failure.

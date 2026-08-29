@@ -16,12 +16,13 @@ export default function DataHygiene() {
         </h1>
 
         <section className="mt-6 rounded-card border border-line bg-surface-1 p-5">
-          <h2 className="text-sm font-semibold text-ink">Orphaned files</h2>
+          <h2 className="text-sm font-semibold text-ink">Unused files</h2>
           <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-            Files in storage that no item points to anymore — left behind when
-            an item was purged from Trash before its files were cleaned up, or
-            by an interrupted upload. They still count against your storage
-            quota until deleted here.
+            Two kinds of file you may not realize you still have, both counting
+            against your storage: files whose item no longer links them (a note
+            somewhere with a file attached that isn&rsquo;t being used), and
+            orphans with no item at all. Recover an orphan and it becomes a note
+            linking the file; the full inventory lives at Build → Files.
           </p>
           <div className="mt-3">
             <OrphanFilesTool />

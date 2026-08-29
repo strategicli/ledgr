@@ -12,7 +12,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { attachmentUrl, attachmentUrlWithShare } from "@/lib/attachment-url";
 import { showToast } from "@/components/ui/ActionToast";
-import { uploadAttachment } from "@/components/attachments/upload";
+import { announceAttachmentRemoved, uploadAttachment } from "@/components/attachments/upload";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import NavGlyph from "@/components/nav/NavGlyph";
 
@@ -97,6 +97,7 @@ export default function FilePanel({
     const res = await fetch(`/api/attachments/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`delete failed (${res.status})`);
     setRows((prev) => prev.filter((r) => r.id !== id));
+    announceAttachmentRemoved({ itemId, id });
     router.refresh();
   };
 
