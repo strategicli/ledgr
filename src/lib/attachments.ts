@@ -5,9 +5,10 @@
 // untracked object would leak quota). Bytes never touch the app server.
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { attachments, items } from "@/db/schema";
+import { attachments, items, syncPeers } from "@/db/schema";
 import { ItemError } from "@/lib/items";
 import { getStorage, type StorageProvider } from "@/lib/storage";
+import { syncEnabled } from "@/lib/sync/client";
 import { attachmentUrl } from "./attachment-url";
 
 // PRD §3.4: per-user quota ~10GB. Per-file cap keeps one paste from eating
@@ -325,6 +326,83 @@ export async function deleteAttachment(
   await getDb()
     .delete(attachments)
     .where(and(eq(attachments.id, id), eq(attachments.ownerId, ownerId)));
+}
+
+// --- Orphaned bytes (ADR-233) ------------------------------------------------
+// An object in storage with no attachment row behind it. Two known producers:
+// an item purge from before 2026-08-29 (rows cascaded, bytes stayed) and a
+// presigned upload whose row was deleted mid-flight. Reconciling against the DB
+// is safe because reserveAttachment inserts the row BEFORE any bytes exist, so
+// "no row" can never describe an upload merely in progress.
+//
+// THE ONE PRECONDITION: this database must be the bucket's only bookkeeper.
+// `attachments` is NOT in SYNCED_TABLES, so on a syncing pair (Brandon's cloud
+// hub + local peer over ONE bucket) each database holds only the rows uploaded
+// through it — a scan from either would call the other's files orphans and
+// delete them. Until attachment rows join sync (proposed, core), the sweep
+// refuses on any install that syncs, hub or spoke. Same reason Tyler's dev and
+// prod each get their OWN bucket (runbook §1: one bucket per database).
+async function assertBucketIsOurs(): Promise<void> {
+  if (syncEnabled()) {
+    throw new ItemError(
+      "bad_request",
+      "This install syncs to a hub, and files aren't part of sync yet — a scan here can't tell an orphan from another install's file."
+    );
+  }
+  const peers = await getDb()
+    .select({ n: sql<string>`count(*)` })
+    .from(syncPeers)
+    .where(eq(syncPeers.revoked, false));
+  if (Number(peers[0]?.n ?? 0) > 0) {
+    throw new ItemError(
+      "bad_request",
+      "This install has synced peers, and files aren't part of sync yet — a scan here can't tell an orphan from a peer's file."
+    );
+  }
+}
+
+export async function findOrphanedObjects(
+  ownerId: string,
+  storage = getStorage()
+): Promise<{ key: string; sizeBytes: number }[]> {
+  if (!storage) {
+    throw new ItemError(
+      "bad_request",
+      "file storage is not configured (R2 env vars missing)"
+    );
+  }
+  await assertBucketIsOurs();
+  const objects = await storage.listObjects(`${ownerId}/`);
+  const rows = await getDb()
+    .select({ storageKey: attachments.storageKey })
+    .from(attachments)
+    .where(eq(attachments.ownerId, ownerId));
+  const known = new Set(rows.map((r) => r.storageKey));
+  return objects.filter((o) => !known.has(o.key));
+}
+
+// Delete the owner's orphaned objects. Re-scans rather than trusting a list the
+// caller saw earlier, so a file uploaded between scan and click can never be
+// caught (its row exists). Best-effort per object; a failure stays an orphan
+// for the next sweep.
+export async function deleteOrphanedObjects(
+  ownerId: string,
+  storage = getStorage()
+): Promise<{ deleted: number; freedBytes: number; failed: number }> {
+  const orphans = await findOrphanedObjects(ownerId, storage);
+  let deleted = 0;
+  let freedBytes = 0;
+  let failed = 0;
+  for (const o of orphans) {
+    try {
+      await storage!.deleteObject(o.key);
+      deleted += 1;
+      freedBytes += o.sizeBytes;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { deleted, freedBytes, failed };
 }
 
 // Purge every attachment whose retention window has passed (the daily cron).

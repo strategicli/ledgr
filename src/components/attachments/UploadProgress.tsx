@@ -20,7 +20,9 @@ export type UploadProgressPayload = {
 };
 
 const EVENT = "ledgr:upload-progress";
-const LINGER_MS = 800;
+// Long enough that a small file's bar still registers as "something happened"
+// rather than a flicker (Tyler, 2026-08-29).
+const LINGER_MS = 1500;
 
 // Fire from anywhere on the client (upload.ts). Safe on the server (no-op).
 export function reportUploadProgress(payload: UploadProgressPayload) {

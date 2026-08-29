@@ -774,6 +774,13 @@ upload that puts you past 80% of your quota says so.
 Limits: about **10 GB** in total, **100 MB** per file, and **2 GB** for an audio
 or video file.
 
+**Deleting a file for real** is the **Delete** on a file row (a File item's
+panel, or a record's Files card) — that removes it from storage. Deleting a
+link or image out of a body does **not** delete the file behind it; it keeps
+counting against your quota until deleted. Purging an item from Trash deletes
+its files with it, and **Build → Data Hygiene → Orphaned files** finds and
+deletes any files nothing points to anymore.
+
 ## Files as items
 
 Sometimes the file IS the thing — an HTML page, a spreadsheet, a scan — and the
@@ -1198,14 +1205,13 @@ Listed so you do not go looking.
 - **Notifications and push are paused.** The notification centre, the bell, and
   the morning and meeting-prep pushes are all switched off. Reminders come from
   the task calendar (ICS) feed instead, fired by your own calendar app.
-- **Data Hygiene** (\`/build/hygiene\`) and **Import & Migration**
-  (\`/build/import\`) are placeholders. The pages describe the plan; there are no
-  actions on them.
+- **Import & Migration** (\`/build/import\`) is a placeholder. The page describes
+  the plan; there are no actions on it. (Data Hygiene has its first real tool —
+  the orphaned-files sweep; the rest of that page is still the plan.)
 - **Light mode** is not shipped. The mechanism exists; the theme does not.
 - **Todoist sync is off** and is not the normal setup. Ledgr is its own task
   manager. Todoist remains an option your instance can be configured to use.
 - **Footnotes, superscripts and citations** are not in the shared editor.
   Footnotes work only inside the Papers module, which uses a plain text area.
-- **Attaching non-image files from the editor** is not wired. Images only.
 - **Nested toggles** are a known limitation.
 `;

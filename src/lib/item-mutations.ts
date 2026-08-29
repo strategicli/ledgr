@@ -53,6 +53,7 @@ import {
   type StatusCategory,
 } from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
+import { getStorage } from "@/lib/storage";
 import { emitActivity, homeParentOf, isTrackedSubjectType } from "@/lib/activity";
 
 // A new revision is skipped when the latest one is younger than this; the
@@ -836,8 +837,33 @@ export async function purgeExpiredTrash() {
       and (deleted_at is null or deleted_at >= ${cutoff})
     returning id
   `);
-  // relations/attachments/revisions rows go via ON DELETE CASCADE. (R2 bytes
-  // for attachments will need their own cleanup when storage lands.)
+  // relations/attachments/revisions rows go via ON DELETE CASCADE. The R2
+  // bytes behind those attachment rows are deleted HERE, before the cascade
+  // (ADR-233 — the debt this comment used to defer). Best-effort per object: a
+  // failed delete leaves an orphan the Data Hygiene sweep reconciles, never a
+  // blocked purge. Peers replicating this purge (sync/apply) deliberately do
+  // NOT repeat it — two installs can share one bucket, and the origin's purge
+  // deletes the bytes exactly once.
+  const doomedFiles = await db.execute(sql`
+    select a.storage_key from attachments a
+    join items i on i.id = a.parent_item_id
+    where i.deleted_at < ${cutoff}
+  `);
+  const storage = getStorage();
+  let purgedFiles = 0;
+  let orphanedFiles = 0;
+  for (const row of doomedFiles.rows) {
+    if (!storage) {
+      orphanedFiles += 1;
+      continue;
+    }
+    try {
+      await storage.deleteObject(String((row as Record<string, unknown>).storage_key));
+      purgedFiles += 1;
+    } catch {
+      orphanedFiles += 1;
+    }
+  }
   const purged = await db.execute(sql`
     delete from items where deleted_at < ${cutoff} returning id
   `);
@@ -851,5 +877,7 @@ export async function purgeExpiredTrash() {
     purged: purged.rows.length,
     detached: detached.rows.length,
     purgedTypes: purgedTypes.rows.length,
+    purgedFiles,
+    orphanedFiles,
   };
 }
