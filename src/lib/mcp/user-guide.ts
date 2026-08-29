@@ -780,11 +780,17 @@ link or image out of a body does **not** delete the file behind it; it keeps
 counting against your quota until deleted. Purging an item from Trash deletes
 its files with it.
 
-**To see everything you have stored:** **Build → Data Hygiene → All files**
-lists every file, its size, the item it belongs to, and a "not linked" mark on
-files nothing points at anymore — with Delete on each row. The **Orphaned
-files** tool on the same page finds and reclaims storage that no item accounts
-for at all.
+**Every item shows its own files.** An item carrying files gets a **Files**
+section above Export & sharing: each file with Open, **Copy link** (a markdown
+link to paste back into the body), Share, and Delete — plus a "not linked" mark
+when nothing in the item points at the file anymore. So a link you backspaced
+out of the body is never stranded invisibly.
+
+**To see everything you have stored:** **Build → Files** (\`/build/files\`)
+lists every file, its size, the item it belongs to, and the same "not linked"
+mark — with Delete on each row. The **Orphaned files** tool on Data Hygiene
+finds storage that no item accounts for at all, and offers **Recover all**
+(each file becomes a note linking it) or **Delete all**.
 
 **A link can BE one of your files:** the URL field takes a dropped file (or the
 paperclip beside it) — the file uploads and its permanent address becomes the

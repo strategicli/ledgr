@@ -59,6 +59,20 @@ export default function OrphanFilesTool() {
     setScan(null);
   };
 
+  const recover = async () => {
+    const res = await fetch("/api/hygiene/orphan-files", { method: "POST" });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.error ?? `recover failed (${res.status})`);
+    }
+    const { recovered, skipped } = await res.json();
+    showToast(
+      `Recovered ${recovered} file${recovered === 1 ? "" : "s"} — each is now a note linking it` +
+        (skipped > 0 ? ` (${skipped} skipped)` : "")
+    );
+    setScan(null);
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -71,14 +85,25 @@ export default function OrphanFilesTool() {
           {busy ? "Scanning…" : "Scan for orphaned files"}
         </button>
         {scan && scan.orphans.length > 0 && (
-          <ConfirmButton
-            title={`Delete ${scan.orphans.length} orphaned file${scan.orphans.length === 1 ? "" : "s"}?`}
-            description={`Frees ${fmtBytes(scan.totalBytes)} of storage. These files have no item behind them anymore; nothing in Ledgr links to them.`}
-            confirmLabel="Delete all"
-            trigger={<span>Delete all ({fmtBytes(scan.totalBytes)})</span>}
-            triggerClassName="rounded border border-red-900/60 bg-red-950/40 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-red-900/40"
-            onConfirm={purge}
-          />
+          <>
+            <ConfirmButton
+              title={`Recover ${scan.orphans.length} orphaned file${scan.orphans.length === 1 ? "" : "s"}?`}
+              description="Creates one note per file, with the file re-attached and linked in the note's body, so each is reachable in Ledgr again."
+              confirmLabel="Recover all"
+              tone="primary"
+              trigger={<span>Recover all</span>}
+              triggerClassName="rounded border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+              onConfirm={recover}
+            />
+            <ConfirmButton
+              title={`Delete ${scan.orphans.length} orphaned file${scan.orphans.length === 1 ? "" : "s"}?`}
+              description={`Frees ${fmtBytes(scan.totalBytes)} of storage. These files have no item behind them anymore; nothing in Ledgr links to them.`}
+              confirmLabel="Delete all"
+              trigger={<span>Delete all ({fmtBytes(scan.totalBytes)})</span>}
+              triggerClassName="rounded border border-red-900/60 bg-red-950/40 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-red-900/40"
+              onConfirm={purge}
+            />
+          </>
         )}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>

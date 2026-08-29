@@ -6,7 +6,14 @@
 // Version History as its own collapsed section beside it (it already carries its
 // own diff/restore chrome, so it stays first-class rather than nested).
 //
-// A server component — the three controls are client islands, the wrappers are
+// The FILES section (ADR-233, Tyler 2026-08-29) sits above Export & sharing and
+// only renders when the item actually has files — so deleting an inline link
+// out of the body never strands a file invisibly: it's listed here with a
+// "not linked" chip, a Copy link to put it back, and Delete to remove it for
+// real. The file canvas passes filesSection={false} (its panel already leads
+// the page).
+//
+// A server component — the controls are client islands, the wrappers are
 // plain markup. MarkdownCanvas's arrange grid places Save Offline / Share /
 // History as individually arrangeable cards, so it renders those directly and
 // does NOT use this footer; every non-arranged canvas does.
@@ -14,17 +21,37 @@ import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import PresentationExport from "@/components/canvas/PresentationExport";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
+import FilePanel from "@/components/attachments/FilePanel";
+import { listItemFilesWithRefs } from "@/lib/attachments";
+import { resolveOwner } from "@/lib/owner";
 
-export default function ItemUtilitiesFooter({
+export default async function ItemUtilitiesFooter({
   itemId,
   currentText,
+  filesSection = true,
 }: {
   itemId: string;
   // The live body markdown, for the Version History "vs. current" diff.
   currentText: string;
+  // The file canvas renders its own panel up top, so it opts out here.
+  filesSection?: boolean;
 }) {
+  const owner = filesSection ? await resolveOwner() : null;
+  const files = owner
+    ? await listItemFilesWithRefs(owner.id, itemId).catch(() => [])
+    : [];
   return (
     <>
+      {files.length > 0 && (
+        <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">
+          <section className="canvas-section">
+            <h3 className="canvas-section-title">Files</h3>
+            <div className="mt-2">
+              <FilePanel itemId={itemId} initial={files} />
+            </div>
+          </section>
+        </div>
+      )}
       <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">
         <details className="canvas-section">
           <summary className="canvas-section-title cursor-pointer hover:text-ink">

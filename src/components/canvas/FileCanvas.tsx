@@ -61,7 +61,7 @@ export default async function FileCanvas(canvasProps: CanvasProps) {
       />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
-      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
+      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} filesSection={false} />
     </>
   );
 }

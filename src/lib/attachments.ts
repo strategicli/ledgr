@@ -6,6 +6,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments, items, syncPeers } from "@/db/schema";
+import { createItem } from "@/lib/item-mutations";
 import { ItemError } from "@/lib/items";
 import { getStorage, type StorageProvider } from "@/lib/storage";
 import { syncEnabled } from "@/lib/sync/client";
@@ -427,6 +428,109 @@ export async function findOrphanedObjects(
     .where(eq(attachments.ownerId, ownerId));
   const known = new Set(rows.map((r) => r.storageKey));
   return objects.filter((o) => !known.has(o.key));
+}
+
+// Guess a row's content type from the filename for a RECOVERED attachment.
+// Metadata only: the serving content-type comes from the R2 object itself
+// (stamped at the original upload), so a miss here costs nothing at read time.
+const EXT_CONTENT_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  html: "text/html",
+  htm: "text/html",
+  txt: "text/plain",
+  md: "text/markdown",
+  csv: "text/csv",
+  json: "application/json",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  zip: "application/zip",
+};
+function guessContentType(filename: string): string {
+  const ext = filename.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  return (ext && EXT_CONTENT_TYPES[ext]) || "application/octet-stream";
+}
+
+// Recover the owner's orphaned objects instead of deleting them (Tyler,
+// 2026-08-29): each becomes a NOTE titled after the file, its attachment row is
+// recreated — reusing the uuid embedded in the storage key, so the object's
+// original /files/<id> address is the live one again — and the note's body is
+// a markdown link to it. Nothing moves in storage; this is bookkeeping repair.
+export async function recoverOrphanedObjects(
+  ownerId: string,
+  storage = getStorage()
+): Promise<{ recovered: number; skipped: number }> {
+  const orphans = await findOrphanedObjects(ownerId, storage);
+  let recovered = 0;
+  let skipped = 0;
+  for (const o of orphans) {
+    // Only keys of our own shape (`${ownerId}/${uuid}/${filename}`) can be
+    // recovered; anything else is left alone for a human to look at.
+    const m = o.key.match(/^[0-9a-f-]{36}\/([0-9a-f-]{36})\/(.+)$/i);
+    if (!m) {
+      skipped += 1;
+      continue;
+    }
+    const [, attId, filename] = m;
+    try {
+      // Markdown-escape the label so a filename with brackets stays one link.
+      const label = filename.replace(/([[\]])/g, "\\$1");
+      const note = await createItem(ownerId, {
+        type: "note",
+        title: filename,
+        body: { format: "markdown", text: `[${label}](${attachmentUrl(attId)})` },
+      });
+      await getDb().insert(attachments).values({
+        id: attId,
+        ownerId,
+        parentItemId: note.id,
+        filename,
+        contentType: guessContentType(filename),
+        sizeBytes: o.sizeBytes,
+        storageKey: o.key,
+      });
+      recovered += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { recovered, skipped };
+}
+
+// One item's files with the still-pointed-at flag — the per-item Files section
+// (ItemUtilitiesFooter) renders these; same referenced rule as the Build →
+// Files browser above.
+export async function listItemFilesWithRefs(
+  ownerId: string,
+  itemId: string
+): Promise<
+  { id: string; filename: string; contentType: string; sizeBytes: number; referenced: boolean }[]
+> {
+  return getDb()
+    .select({
+      id: attachments.id,
+      filename: attachments.filename,
+      contentType: attachments.contentType,
+      sizeBytes: attachments.sizeBytes,
+      referenced: sql<boolean>`
+        coalesce(${items.body}::text like '%' || ${attachments.id}::text || '%', false)
+        or coalesce(${items.properties}::text like '%' || ${attachments.id}::text || '%', false)`,
+    })
+    .from(attachments)
+    .innerJoin(items, eq(items.id, attachments.parentItemId))
+    .where(and(eq(attachments.ownerId, ownerId), eq(attachments.parentItemId, itemId)))
+    .orderBy(sql`${attachments.createdAt} asc`);
 }
 
 // Delete the owner's orphaned objects. Re-scans rather than trusting a list the

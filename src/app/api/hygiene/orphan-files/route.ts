@@ -1,11 +1,16 @@
 // Orphaned-files sweep (ADR-233, the Data Hygiene page's first real tool).
 // GET scans: every object in storage under the owner's prefix with no
-// attachment row behind it. DELETE removes them (it re-scans server-side, so a
-// file uploaded after the scan the owner is looking at can never be caught —
-// its row exists). Owner-scoped both ways.
+// attachment row behind it. DELETE removes them; POST RECOVERS them instead —
+// one note per file, linking it, with its attachment row recreated. Both
+// re-scan server-side, so a file uploaded after the scan the owner is looking
+// at can never be caught (its row exists). Owner-scoped throughout.
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
-import { deleteOrphanedObjects, findOrphanedObjects } from "@/lib/attachments";
+import {
+  deleteOrphanedObjects,
+  findOrphanedObjects,
+  recoverOrphanedObjects,
+} from "@/lib/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +33,16 @@ export async function DELETE() {
     const owner = await requireOwner();
     if (owner instanceof NextResponse) return owner;
     return NextResponse.json(await deleteOrphanedObjects(owner.id));
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+export async function POST() {
+  try {
+    const owner = await requireOwner();
+    if (owner instanceof NextResponse) return owner;
+    return NextResponse.json(await recoverOrphanedObjects(owner.id));
   } catch (err) {
     return errorResponse(err);
   }

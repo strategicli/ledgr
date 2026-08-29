@@ -21,6 +21,10 @@ export type FileRow = {
   filename: string;
   contentType: string;
   sizeBytes: number;
+  // When present (the per-item Files section): does anything in the parent item
+  // still point at this file? false renders the "not linked" chip; absent (the
+  // file canvas / Files card, where the panel itself is the home) shows none.
+  referenced?: boolean;
 };
 
 function fmtBytes(n: number): string {
@@ -115,10 +119,31 @@ export default function FilePanel({
               {f.filename}
             </a>
             <span className="shrink-0 text-xs text-ink-faint">{fmtBytes(f.sizeBytes)}</span>
+            {f.referenced === false && (
+              <span
+                title="Nothing in this item's body or fields points at this file anymore. Copy link puts it back; it counts against your storage either way."
+                className="shrink-0 cursor-help rounded-full border border-line px-1.5 py-px text-[10px] uppercase tracking-wide text-ink-subtle"
+              >
+                not linked
+              </span>
+            )}
             {/* Always visible, not hover-revealed: hover-only actions never show
                 on touch and hid Delete from the first real user (Tyler,
                 2026-08-29) — "scope the UI" (Brandon, 2026-06-21). */}
             <span className="ml-auto flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                title="Copy a markdown link to this file — paste it anywhere in a body"
+                className="rounded px-1.5 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
+                onClick={() =>
+                  navigator.clipboard
+                    .writeText(`[${f.filename.replace(/([[\]])/g, "\\$1")}](${attachmentUrl(f.id)})`)
+                    .then(() => showToast("Markdown link copied — paste it into a body"))
+                    .catch(() => showToast("Couldn't copy the link"))
+                }
+              >
+                Copy link
+              </button>
               <button
                 type="button"
                 title="Copy a public link to this file (anyone with the link can open it — it also unlocks this item's share page and its other files)"
