@@ -25,6 +25,7 @@ import {
   parseSyncMode,
   pushSelectionForHub,
   selectPushOps,
+  trimBatchToBytes,
   shouldPromptFallback,
   shouldPullFrom,
   CADENCE_PRESETS,
@@ -957,6 +958,50 @@ if (failures > 0) {
       everSynced: true,
     }) === "held"
   );
+}
+
+// -- Push batch byte cap (the HTTP 413 that stalled Brandon's hub, 2026-08-29) --
+
+{
+  // A 500-op batch of item bodies weighed 4.2 MB and every push came back
+  // "413 Payload Too Large" forever, because the batch was capped by COUNT
+  // only. `at` is what marks one local transaction, and a batch must never
+  // split one.
+  const op = (seq: number, at: string, size: number) =>
+    ({
+      seq,
+      deviceId: "d",
+      originDeviceId: null,
+      ownerId: "o",
+      at,
+      tbl: "items",
+      rowId: "r" + seq,
+      kind: "update",
+      changed: { body: "x".repeat(size) },
+      schemaVer: "1",
+    }) as unknown as Parameters<typeof trimBatchToBytes>[0][number];
+
+  const heavy = [1, 2, 3, 4].map((i) => op(i, `t${i}`, 1000));
+  check("a batch under the budget goes whole", trimBatchToBytes(heavy, 1_000_000).length === 4);
+  check(
+    "a batch over the budget is cut down",
+    trimBatchToBytes(heavy, 2500).length === 2,
+    `got ${trimBatchToBytes(heavy, 2500).length}`
+  );
+
+  // Three ops sharing one `at` are one transaction: the cut lands before them
+  // or after them, never inside.
+  const run = [op(1, "t1", 500), op(2, "t2", 900), op(3, "t2", 900), op(4, "t2", 900)];
+  const cut = trimBatchToBytes(run, 1600);
+  check("a same-at run is never split", cut.length === 1, `got ${cut.length}`);
+
+  // The queue must always move. One op bigger than the whole budget still
+  // ships rather than returning an empty batch and stalling forever.
+  check(
+    "an over-budget first run still ships",
+    trimBatchToBytes([op(1, "t1", 5000), op(2, "t2", 10)], 100).length === 1
+  );
+  check("an empty batch stays empty", trimBatchToBytes([], 100).length === 0);
 }
 
 console.log("\nAll sync-ui checks passed.");

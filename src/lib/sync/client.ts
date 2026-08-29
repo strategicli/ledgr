@@ -888,6 +888,38 @@ const PUSH_BATCH = 500;
 // How far past the cap a push batch extends to finish the last op's same-`at`
 // run (one local transaction) — see unpushedOps.
 const RUN_EXTEND_CAP = 500;
+// A batch is capped by SIZE as well as by count. 500 ordinary edits are tiny;
+// 500 whole item bodies are not. The 2026-08-27 attachment-address migration
+// (ADR-228) queued 1,413 body rewrites, and the first 500 of them came to
+// 4.2 MB — past the 4.5 MB request body a Vercel function accepts. Every round
+// came back HTTP 413 and the queue could never drain. A count cap alone cannot
+// bound a payload whose rows carry bodies.
+const PUSH_MAX_BYTES = 3_000_000;
+
+/**
+ * Trim a batch to a byte budget WITHOUT splitting a same-`at` run — the same
+ * invariant the count cap respects, since the hub applies one transaction's
+ * items deletes as a single statement (ADR-206 addendum 7). Cutting only at a
+ * run boundary is why this measures forward instead of popping off the end.
+ *
+ * The first run always goes, whatever it weighs: returning an empty batch
+ * would stall the queue permanently, which is the failure this exists to end.
+ */
+export function trimBatchToBytes(ops: SyncOp[], maxBytes: number): SyncOp[] {
+  let bytes = 0;
+  let lastBoundary = 0;
+  for (let i = 0; i < ops.length; i++) {
+    bytes += JSON.stringify(ops[i]).length;
+    const runEnds = i === ops.length - 1 || ops[i + 1].at !== ops[i].at;
+    if (!runEnds) continue;
+    // ponytail: a SINGLE op over the budget still goes out alone and can still
+    // be refused. Splitting one row's body across requests is the only fix for
+    // that, and it needs a wire change — do it if one body ever exceeds 4.5 MB.
+    if (bytes > maxBytes && lastBoundary > 0) return ops.slice(0, lastBoundary);
+    lastBoundary = i + 1;
+  }
+  return ops;
+}
 
 function envInt(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -966,18 +998,21 @@ async function unpushedOps(afterSeq: number): Promise<SyncOp[]> {
       .limit(RUN_EXTEND_CAP);
     rows.push(...run);
   }
-  return rows.map((r) => ({
-    seq: r.seq,
-    deviceId: r.deviceId,
-    originDeviceId: r.originDeviceId,
-    ownerId: r.ownerId,
-    at: r.at.toISOString(),
-    tbl: r.tbl,
-    rowId: r.rowId,
-    kind: r.kind as SyncOp["kind"],
-    changed: r.changed as Record<string, unknown>,
-    schemaVer: r.schemaVer,
-  }));
+  return trimBatchToBytes(
+    rows.map((r) => ({
+      seq: r.seq,
+      deviceId: r.deviceId,
+      originDeviceId: r.originDeviceId,
+      ownerId: r.ownerId,
+      at: r.at.toISOString(),
+      tbl: r.tbl,
+      rowId: r.rowId,
+      kind: r.kind as SyncOp["kind"],
+      changed: r.changed as Record<string, unknown>,
+      schemaVer: r.schemaVer,
+    })),
+    envInt("LEDGR_SYNC_MAX_PUSH_BYTES", PUSH_MAX_BYTES)
+  );
 }
 
 async function pendingCount(afterSeq: number): Promise<number> {
@@ -1134,7 +1169,13 @@ async function exchangeWith(
       pull: opts.pull ? Number(data.cursor ?? cursor.pull) : cursor.pull,
     };
     await writeCursor(hub.url, cursor);
-    if ((!opts.pull || !data.hasMore) && ops.length < PUSH_BATCH) {
+    // "The push side sent everything it was willing to send this round."
+    // Not `ops.length < PUSH_BATCH`: a byte-trimmed batch is under the count
+    // cap and still has more behind it, and calling that drained would report
+    // a backlog as caught up. ops.length === 0 keeps a pull-only or held peer
+    // finishing in one round, exactly as before.
+    const pushDone = ops.length === 0 || ops.length >= pending;
+    if ((!opts.pull || !data.hasMore) && pushDone) {
       drained = true;
       break;
     }
