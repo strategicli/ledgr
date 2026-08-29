@@ -42,6 +42,52 @@ Pick one the first time the upload-time warning annoys you. Not worth guessing a
 
 **Cheap first slice:** `.docx` only, keep the original, markdown into the body. Proves the flow without touching PDF or OCR, and `.docx` is the format most likely to be mostly text anyway.
 
+## 🔗 IDEA — actually opening `file://` links, not just copying them (Tyler, 2026-08-29)
+
+**The ask.** Click a `file:///…` link item and have the file open.
+
+**What exists.** `SmartHref` (`src/components/ui/SmartHref.tsx`, 2026-08-20, ADR addendum 5): a `file:` URL renders as a copy-on-click button with a "paste it into the address bar" toast, because **every browser blocks navigating to a local file from a web page** — a security rule no web app can override. Copy-to-clipboard is the ceiling for a pure web page; "open it" requires something installed on the machine.
+
+**The realistic paths, both opt-in per machine:**
+1. **An OS-registered protocol handler** — a tiny helper (macOS: an `.app` or LaunchAgent; Windows: a registry entry + script) that registers e.g. `ledgr-open://`, receives the path, and hands it to `open`/`start`. `SmartHref` then tries `ledgr-open://…` first and falls back to copy when nothing answers. This is how Zoom/VS Code links work, and it works against the **cloud** deploy too — the handler runs client-side. The helper is a new per-machine install to maintain (weigh against Principle 5's spirit).
+2. **The local supervisor opens it server-side** — on a local-peer install, server = your machine, so an endpoint shelling out to `open <path>` works with zero new installs. But it only helps installs running the supervisor, and Tyler's daily instance is the cloud one, so this alone doesn't answer the ask.
+
+**Fork to decide:** whether the helper is worth owning, or whether the real answer is the item below — stop pointing at local files and put the file *in* Ledgr. For HTML specifically the item below is strictly better (shareable, device-independent); `file://` links remain right for things too big or too local to upload.
+
+## 🌐 FILES AS A FIRST-CLASS CITIZEN — the three upload modes (Tyler, 2026-08-29) — **MODES 2+3 BUILT same day (ADR-232, branch `feat/files-first-class`)**
+
+**What shipped:** mode 2 (any-file editor upload: paste/drop widened, paperclip Attach toolbar button, `/file` slash command; images embed, everything else links) and mode 3 (the pre-built `file` type, migration `0061`; `FileCanvas` with the shared `FilePanel` — open in new tab, Share copies `/files/<id>?s=<token>`, Remove behind ConfirmButton; plus the **Files card** in the tool catalog for projects/project-style pages). The presign handshake is shared at `src/components/attachments/upload.ts` and now surfaces ADR-231's storage warning as a toast. Guide updated (Images and files / Attachments / Files as items). Verified: tsc, eslint, verify-record-widgets, verify-derived-widgets, verify-editor-media, verify-attachment-urls/privacy, verify-user-guide, migration applied to the dev DB. **Mode 1 (convert to markdown) stays queued above. Follow-ups queued below the original write-up:**
+- **Files panel on longform canvases** — record cards exist only on widget-home pages, so "add files to this type" currently reaches projects/pursuits/Project-style types; a note gets files inline via `/file` instead. If a Files panel on notes is wanted, it's a `LongformCanvas` byline addition reusing `FilePanel`.
+- **Inline HTML/PDF preview on the file canvas** — deliberately deferred (Tyler, 2026-08-29): Open in new tab is v1; an iframe over the presigned URL has expiry/refresh fuss.
+- **Browser eyes owed:** code-verified + suite-verified only; nobody has clicked the `/file` command, the Attach button, or the Share copy in a real browser yet.
+
+Original write-up (kept for the decisions and caveats):
+
+**The vision (Tyler's words, tightened).** Files stop being an image-only editor trick. Three distinct upload modes, each answering a different "why am I uploading this":
+
+1. **Convert to markdown** — upload a doc/PDF, Ledgr converts it, the *content* is what you keep. Cheap storage, searchable. Already queued above ("turn into markdown," 2026-08-28) with its forks and the privacy catch; this list just gives it its place in the family.
+2. **File linked inline in the body** — mid-note, `/file` (or drop/attach) and get a markdown link `[name](/files/<id>)` where the cursor is. For files that support a note rather than being the point of it. The editor **already has** a slash-command menu (`slash-suggestion.ts`: headings, lists, checklist, quote, code, table, divider, toggle), so `/file` is one more entry that opens the file picker, uploads through the existing presigned path, and inserts the link — plus widening paste/drop/toolbar from `accept="image/*"` to any file. (Do not repeat the 2026-08-29 mistake of quoting CLAUDE.md's "slash menu is not a v1 requirement" line as though the menu doesn't exist; that line predates the build and refers to the fuller Notion block-drag polish.)
+3. **The item IS the file** — a pre-built `file` type: one uploaded file as the object, the markdown body as the owner's *description/notes about it* (what it is, why it's kept, where it came from). For files markdown can't be (HTML pages, spreadsheets, binaries). Its canvas leads with the file — name, size, type, **Open** — and carries a **Share** button that mints/reuses the item's share token and copies `/files/<id>?s=<token>`, so the file itself is handed out as a live link. This is the mode that answers "I make HTML files with Claude and want to share them as rendered pages."
+
+(The fourth, images pasted into the body, already exists and stays as-is.)
+
+**The serving side already works, end to end — verified in code 2026-08-29:**
+- R2 is general file storage and `createAttachment` (`src/lib/attachments.ts`) has **no MIME allowlist**, only size caps; MCP `attach_file` can attach any type today. Only the in-app UI is images-only.
+- `/files/<id>` (`src/app/files/[id]/route.ts`) 302s to an R2 presigned GET; R2 serves the stored content-type with no `Content-Disposition`, so `text/html` **renders as a live page**, on R2's origin rather than Ledgr's (uploaded HTML can't script against the app).
+- ADR-231 already gives mode 3 its share mechanism: `?s=<token>` grants an anonymous read when the token belongs to the attachment's parent item. When the item *is* the file, "share the item" and "share the file" are the same act — the scoping fits perfectly.
+
+**The "add files to this type" checkbox — reframed as surfacing, not capability.** At the data layer every item can already carry attachments, and that's correct ("everything is an item"; don't gate the primitive). What the checkbox should mean is the existing record-card model: a **Files card** in the type's layout — rows of attachments with upload/open/remove — that any type can add (notes, projects, whatever) and that the `file` type's layout leads with. No new primitive; it's the same move every other card made.
+
+**Share-scoping caveat, and the dodge:** a token is per parent item, so "share" on a five-file note exposes all five. Per-*attachment* tokens would be a real access-model change (ADR territory, not obviously worth it). The dodge: the "share this exact file" button lives on `file` items (one file each, the type's whole point); the Files card on other types shares via the item like everything else.
+
+**Slices, in order:**
+1. Widen the editor upload to any file type (mode 2) + guide's Images/Attachments sections. UI-only, solo lane.
+2. The `file` pre-built type + its canvas + the Share button (mode 3). A module on the shared frame, but a shipped pre-built type lands on Brandon's instance too — passage took ADR-060, so this wants a lightweight ADR + a `COLLAB.md` heads-up.
+3. The Files card in the record-card vocabulary (the checkbox). Widget vocabulary, solo lane.
+4. Mode 1 proceeds on its own queue entry (it has its own forks and the privacy catch).
+
+**Decided (Tyler, 2026-08-29):** the `file` canvas opens the file in a **new tab** for v1; inline HTML/PDF preview (an iframe over the presigned URL, with its expiry/refresh fuss) is a future polish item, not part of the first build. Tyler also confirmed the checkbox-as-Files-card reframing (surfacing, not capability).
+
 ## 🐛 FLAKY — `verify-sync.mts` per-key settings check fails ~1 run in 3
 
 **Pre-existing, unrelated to the storage work, but it makes `verify:ci` red at random.** The check is *"the assignment survives an unrelated preference written later elsewhere"* (ADR-226 per-key settings merge): `jobOwners` comes back `{}` on both peers while `accent` converges correctly. The preceding check, that the trigger logged only the moved key, passes every time.

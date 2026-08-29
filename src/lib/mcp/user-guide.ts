@@ -287,11 +287,14 @@ list. Put a backslash in front to keep a token literal.
   right edge. It can be pinned open as a resizable sidebar, remembered per item,
   and it lists your comments too.
 
-## Images
+## Images and files
 
-Paste an image, drop one on the editor, or use the toolbar button. It uploads
-and embeds where you dropped it. **Images only** — there is no in-editor path
-for attaching other file types yet.
+Paste a file, drop one on the editor, use the toolbar's Image or Attach
+buttons, or type **/file** — the slash menu's File command opens the picker
+right where you're writing. Images upload and embed where they land; any other
+file type (a PDF, a Word doc, an HTML page) uploads and lands as a link on its
+filename. Clicking that link opens the file in a new tab — HTML pages and PDFs
+render in the browser, everything else downloads.
 
 ## Linking to one line
 
@@ -763,11 +766,28 @@ The URL is the password. Rotate it from the same place if it leaks.
 
 ## Attachments
 
-Attach any file type. Images embed in the body; anything else becomes a download
-link. Files go from your browser straight to storage.
+Attach any file type, anywhere you can write: paste, drop, the toolbar's Attach
+button, or **/file**. Images embed in the body; anything else becomes a link
+that opens in a new tab. Files go from your browser straight to storage, and an
+upload that puts you past 80% of your quota says so.
 
 Limits: about **10 GB** in total, **100 MB** per file, and **2 GB** for an audio
 or video file.
+
+## Files as items
+
+Sometimes the file IS the thing — an HTML page, a spreadsheet, a scan — and the
+body is just context around it. The **File** type is for that: the file leads
+the page, and the markdown below is your description of it, for finding it
+later. The filename opens the file in a new tab, and **Share** copies a public
+link anyone can open without signing in — an uploaded HTML page opens as a live
+web page, which makes this the way to hand someone a page you made. The link
+rides the item's share link, so revoking that share link kills the file link
+with it (and a link to one file on an item unlocks that item's other files).
+
+Records get the same panel as a tool: add the **Files** card to a project (or
+any project-style page) from Add a Tool, and files upload, open, share, and
+remove right on the record.
 
 ## Your calendar and email
 

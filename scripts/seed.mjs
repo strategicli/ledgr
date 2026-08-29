@@ -152,6 +152,17 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
+// The file type (ADR-232): the item IS the file — one uploaded attachment as
+// the object, the markdown body as the description around it. Canvas 'file'
+// via the files module manifest. Out of quick capture (you can't upload a file
+// mid-capture); owner may rename or retire it (is_system=false). Mirrors
+// migration 0061.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, status_mode, property_schema)
+  VALUES ('file', 'File', 'document', false, false, false, 'none', '[]'::jsonb)
+  ON CONFLICT (key) DO NOTHING
+`;
+
 // The pursuit type (ADR-111/PJ9): a widget-composed Type one scope up — contains
 // Projects, rolls them up. Mirrors migration 0038.
 await sql`

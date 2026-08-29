@@ -12,6 +12,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { Placeholder } from "@tiptap/extensions";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { Fragment, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -55,7 +56,11 @@ import {
   CollapsibleHeadings,
   setHeadingsCollapsible,
 } from "./collapsible-headings";
-import { SlashCommands, setSlashToggleEnabled } from "./slash-suggestion";
+import {
+  SlashCommands,
+  setSlashFilePicker,
+  setSlashToggleEnabled,
+} from "./slash-suggestion";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -93,10 +98,12 @@ export type MarkdownEditorProps = {
   // Optional: hands the live editor up once ready, so a host can drive
   // imperative inserts (e.g. the Changelog notes "Sign" stamp). No-op when unset.
   onEditorReady?: (editor: Editor) => void;
-  // Optional: upload an image file (paste/drop/button) and resolve its public
-  // URL. When unset, image insertion is disabled — controlled hosts with no
-  // backing item (scratch route, Changelog notes) pass nothing.
-  uploadImage?: (file: File) => Promise<string>;
+  // Optional: upload a file (paste/drop/button/"/file") and resolve its stable
+  // /files/<id> URL. Images embed where they land; any other file type inserts
+  // as a plain markdown link on its filename. When unset, all file insertion is
+  // disabled — controlled hosts with no backing item (scratch route, Changelog
+  // notes) pass nothing.
+  uploadFile?: (file: File) => Promise<string>;
   // When set (meetings, ADR-090): enable the per-line "→ task" promote
   // affordance, posting to this meeting's promote endpoint.
   promoteToMeetingId?: string;
@@ -141,17 +148,19 @@ export type MarkdownEditorProps = {
 
 const COLOR_NAMES = Object.keys(BLOCKNOTE_COLORS) as BlockNoteColor[];
 
-// Pull image files out of a paste/drop payload (ignore non-images so text and
-// markdown paste fall through to Tiptap's normal handling).
-function imageFilesFrom(data: DataTransfer | null): File[] {
+// Pull files out of a paste/drop payload (any type — a payload with no files,
+// i.e. ordinary text/markdown paste, falls through to Tiptap's normal handling).
+function filesFrom(data: DataTransfer | null): File[] {
   if (!data) return [];
-  return Array.from(data.files).filter((f) => f.type.startsWith("image/"));
+  return Array.from(data.files);
 }
 
-// Upload each image and drop it in at the current selection. Sequential so
-// multiple pasted images keep their order; the selection advances past each
-// inserted node, so the next one lands after it.
-async function insertUploadedImages(
+// Upload each file and drop it in at the current selection: images embed as
+// image nodes, everything else inserts as a markdown link on its filename
+// (the stable /files/<id> address). Sequential so multiple pasted files keep
+// their order; the selection advances past each inserted node, so the next one
+// lands after it.
+async function insertUploadedFiles(
   view: EditorView,
   files: File[],
   upload: (file: File) => Promise<string>
@@ -159,13 +168,28 @@ async function insertUploadedImages(
   for (const file of files) {
     try {
       const url = await upload(file);
-      const imageType = view.state.schema.nodes.image;
-      if (!imageType) continue;
-      const alt = (file.name || "").replace(/\.[^.]+$/, "");
-      const node = imageType.create({ src: url, alt });
-      view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+      const { schema } = view.state;
+      if (file.type.startsWith("image/")) {
+        const imageType = schema.nodes.image;
+        if (!imageType) continue;
+        const alt = (file.name || "").replace(/\.[^.]+$/, "");
+        const node = imageType.create({ src: url, alt });
+        view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+        continue;
+      }
+      const linkMark = schema.marks.link;
+      if (!linkMark) continue;
+      // Trailing space: keeps back-to-back uploads from fusing into one link
+      // and gives the caret a mark-free spot to keep typing from.
+      const frag = Fragment.from([
+        schema.text(file.name || "file", [linkMark.create({ href: url })]),
+        schema.text(" "),
+      ]);
+      view.dispatch(
+        view.state.tr.replaceSelection(new Slice(frag, 0, 0)).scrollIntoView()
+      );
     } catch (err) {
-      console.error("image upload failed", err);
+      console.error("file upload failed", err);
     }
   }
 }
@@ -263,7 +287,7 @@ export default function MarkdownEditor({
   initialMarkdown,
   onChange,
   onEditorReady,
-  uploadImage,
+  uploadFile,
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
@@ -274,13 +298,16 @@ export default function MarkdownEditor({
   autoFocus = false,
   focusSignal = 0,
 }: MarkdownEditorProps) {
-  // onChange and uploadImage are kept in refs so the editor's once-bound
+  // onChange and uploadFile are kept in refs so the editor's once-bound
   // callbacks (onUpdate, the paste/drop handlers) always see the latest props
   // without re-creating the editor. Synced in an effect, not during render.
   const onChangeRef = useRef(onChange);
-  const uploadRef = useRef(uploadImage);
+  const uploadRef = useRef(uploadFile);
   const onRequestSaveRef = useRef(onRequestSave);
+  // Two hidden pickers: the Image button's (image/* only) and the any-file one
+  // behind the Attach button + the "/file" slash command.
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const anyFileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   // The promote popup's draft, or null when closed (ADR-090).
   const [promote, setPromote] = useState<{
@@ -333,7 +360,7 @@ export default function MarkdownEditor({
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     onChangeRef.current = onChange;
-    uploadRef.current = uploadImage;
+    uploadRef.current = uploadFile;
     onRequestSaveRef.current = onRequestSave;
   });
 
@@ -454,22 +481,23 @@ export default function MarkdownEditor({
     contentType: "markdown",
     editorProps: {
       attributes: { class: compact ? "ProseMirror ledgr-prose ledgr-prose-compact" : "ProseMirror ledgr-prose" },
-      // Paste/drop of image files → upload to R2, insert as a markdown image.
-      // Only intercepts when an image is actually present and an uploader is
-      // wired; everything else falls through to normal (markdown) paste.
+      // Paste/drop of files → upload to R2; images embed, anything else inserts
+      // as a link (insertUploadedFiles). Only intercepts when a file is actually
+      // present and an uploader is wired; everything else falls through to
+      // normal (markdown) paste.
       handlePaste: (view, event) => {
         const upload = uploadRef.current;
         if (!upload) return false;
-        const files = imageFilesFrom(event.clipboardData);
+        const files = filesFrom(event.clipboardData);
         if (files.length === 0) return false;
         event.preventDefault();
-        void insertUploadedImages(view, files, upload);
+        void insertUploadedFiles(view, files, upload);
         return true;
       },
       handleDrop: (view, event) => {
         const upload = uploadRef.current;
         if (!upload) return false;
-        const files = imageFilesFrom(event.dataTransfer);
+        const files = filesFrom(event.dataTransfer);
         if (files.length === 0) return false;
         event.preventDefault();
         const coords = view.posAtCoords({
@@ -483,7 +511,7 @@ export default function MarkdownEditor({
             )
           );
         }
-        void insertUploadedImages(view, files, upload);
+        void insertUploadedFiles(view, files, upload);
         return true;
       },
     },
@@ -792,6 +820,19 @@ export default function MarkdownEditor({
       if (editor) setHeadingsCollapsible(editor, s.collapsibleHeadings);
     });
   }, [editor]);
+  // Register the "/file" slash command's picker for THIS editor instance (a
+  // WeakMap entry in slash-suggestion, so it can't outlive the editor). Gated on
+  // the uploader being wired, same as the toolbar's insert buttons. Keyed on
+  // presence, not identity — hosts pass inline arrows that change every render.
+  const hasUploader = !!uploadFile;
+  useEffect(() => {
+    if (!editor) return;
+    setSlashFilePicker(
+      editor,
+      hasUploader ? () => anyFileInputRef.current?.click() : null
+    );
+    return () => setSlashFilePicker(editor, null);
+  }, [editor, hasUploader]);
   const showTb = (id: string) => !hiddenTb.has(id);
   // Collapse is a DESKTOP affordance only (the toggle lives in BodyEditor's
   // mode-row). On mobile the toolbar floats over the keyboard and must always
@@ -1005,6 +1046,8 @@ export default function MarkdownEditor({
 
   // Open the hidden file picker behind the toolbar's Image button.
   const openImagePicker = () => fileInputRef.current?.click();
+  // And the any-file one behind the Attach button + the "/file" slash command.
+  const openFilePicker = () => anyFileInputRef.current?.click();
 
   // Open the hyperlink editor, prefilled with the current link's href if the
   // cursor sits inside one (so the button edits rather than stacks links).
@@ -1152,10 +1195,11 @@ export default function MarkdownEditor({
   // The insert cluster (image / link / line-link) is rendered explicitly rather
   // than in the data array: its handlers read a DOM ref (the file input) / the
   // clipboard, which the refs lint rule won't allow inside a mapped structure.
-  const showImage = showTb("image") && !!uploadImage;
+  const showImage = showTb("image") && !!uploadFile;
+  const showAttach = showTb("attach") && !!uploadFile;
   const showWeblink = showTb("weblink");
   const showCopyLink = showTb("link") && !!itemId;
-  const hasInsert = showImage || showWeblink || showCopyLink;
+  const hasInsert = showImage || showAttach || showWeblink || showCopyLink;
   const showColor = showTb("color");
   const showHighlight = showTb("highlight");
   const showSlide = showTb("slide");
@@ -1197,6 +1241,9 @@ export default function MarkdownEditor({
                 {visibleGroups.length > 0 && sep}
                 {showImage && (
                   <ToolbarButton icon={TOOLBAR_ICONS.image} title="Insert image (or paste/drop one)" onClick={openImagePicker} />
+                )}
+                {showAttach && (
+                  <ToolbarButton icon={TOOLBAR_ICONS.attach} title="Attach a file (uploads it and links it here — or paste/drop one, or type /file)" onClick={openFilePicker} />
                 )}
                 {showWeblink && (
                   <ToolbarButton icon={TOOLBAR_ICONS.weblink} title="Insert link" active={toolbar.isLink || linkDraft !== null} onClick={openLinkEditor} />
@@ -1383,7 +1430,25 @@ export default function MarkdownEditor({
           e.target.value = ""; // allow re-picking the same file
           if (upload && files.length) {
             editor.chain().focus().run();
-            void insertUploadedImages(editor.view, files, upload);
+            void insertUploadedFiles(editor.view, files, upload);
+          }
+        }}
+      />
+
+      {/* Hidden any-file picker behind the toolbar's Attach button and the
+          "/file" slash command. Same upload path; non-images land as links. */}
+      <input
+        ref={anyFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const upload = uploadRef.current;
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = ""; // allow re-picking the same file
+          if (upload && files.length) {
+            editor.chain().focus().run();
+            void insertUploadedFiles(editor.view, files, upload);
           }
         }}
       />

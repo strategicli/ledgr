@@ -204,6 +204,19 @@ export const WIDGET_CATALOG: WidgetDefinition[] = [
     hideOnDisable: false,
     recordQuery: { derived: "timeline" },
   },
+  {
+    // Files (ADR-232): the record's ATTACHMENTS — the one card backed by the
+    // attachments table rather than items, hence "derived" with no
+    // collectionType. Upload / open / share / remove ride the shared FilePanel.
+    id: "files",
+    label: "Files",
+    kind: "derived",
+    requires: ["files"],
+    cardinality: "many",
+    scope: ["record"],
+    hideOnDisable: true,
+    recordQuery: { derived: "files" },
+  },
 ];
 
 const BY_ID = new Map(WIDGET_CATALOG.map((w) => [w.id, w]));
@@ -282,6 +295,7 @@ const SATISFIABLE = new Set<string>([
   "mindmap",
   "relationships",
   "activity_log",
+  "files",
 ]);
 
 export function isSatisfiable(requirement: string): boolean {

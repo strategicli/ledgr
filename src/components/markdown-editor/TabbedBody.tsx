@@ -23,7 +23,7 @@ import {
 export type TabbedBodyProps = {
   itemId: string;
   initialMarkdown: string;
-  uploadImage: (file: File) => Promise<string>;
+  uploadFile: (file: File) => Promise<string>;
   // Receives the full reassembled body markdown (all tabs) to save.
   onChange: (markdown: string) => void;
   onRequestSave?: () => Promise<void>;
@@ -66,7 +66,7 @@ export type TabbedBodyProps = {
 export default function TabbedBody({
   itemId,
   initialMarkdown,
-  uploadImage,
+  uploadFile,
   onChange,
   onRequestSave,
   promoteToMeetingId,
@@ -294,7 +294,7 @@ export default function TabbedBody({
         key={tabs ? `tab-${activeIdx}-${tabs.length}` : "untabbed"}
         itemId={itemId}
         initialMarkdown={editorInitial}
-        uploadImage={uploadImage}
+        uploadFile={uploadFile}
         onChange={onEditorChange}
         promoteToMeetingId={promoteToMeetingId}
         promotedRefs={promotedRefs}
