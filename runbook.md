@@ -23,11 +23,9 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (client-side; app falls back to unauthenticated shell if absent) | Clerk dashboard → API Keys |
 | `CLERK_SECRET_KEY` | Clerk secret key (server-side) | Clerk dashboard → API Keys |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` (the in-app sign-in page; no sign-up page, sign-ups are restricted in Clerk) | fixed value |
-| `R2_ACCOUNT_ID` | Cloudflare account id (Phase 1, attachments slice) | Cloudflare dashboard |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 S3-compatible credentials | Cloudflare → R2 → Manage API tokens |
 | `R2_BUCKET` | R2 bucket name (`ledgr`) | Cloudflare → R2 |
 | `R2_ENDPOINT` | R2 S3 endpoint URL | Cloudflare → R2 bucket settings |
-| `R2_PUBLIC_BASE_URL` | public CDN base URL for attachments (custom domain or r2.dev) | Cloudflare → R2 bucket settings |
 | `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` | Azure app registration, app-only client credentials. One registration carries every app-only permission: `Files.ReadWrite.All` (export, §1b) plus `Calendars.Read` and later `Mail.Read` for Phase 2 (§1c). All Graph callers share one token via `src/lib/graph/client.ts` | Azure portal → App registrations (setup: §1b, §1c) |
 | `ONEDRIVE_EXPORT_UPN` | whose OneDrive receives the export tree (Brandon's email); the export job also resolves its `users` row by this email | fixed value |
 | `ONEDRIVE_EXPORT_ROOT` | folder inside that OneDrive holding the export (default `Ledgr` → `/Ledgr/Export/…`) | fixed value, optional |
@@ -50,7 +48,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
 | `DEV_USER_EMAIL` | dev-only auth stand-in (ADR-006): with Clerk keys **unset** and `NODE_ENV=development`, this email resolves as the signed-in user (local UI work without a Microsoft sign-in). Ignored in production builds; never set on Vercel | local only |
 
-> **R2 provisioning (one-time, blocks live image paste):** Cloudflare dashboard → R2 → create bucket `ledgr` → Manage API tokens → create an Object Read & Write token scoped to the bucket → fill the five `R2_*` vars locally and on Vercel (REST API or dashboard, not piped CLI — see the BOM gotcha above) → enable public access for the bucket (or attach a custom domain) and set `R2_PUBLIC_BASE_URL` to it → paste an image into any item body and confirm it renders from that base URL.
+> **R2 provisioning (one-time, blocks live uploads):** Cloudflare dashboard → R2 → create bucket `ledgr` → Manage API tokens → create an Object Read & Write token scoped to the bucket → fill the FOUR `R2_*` vars (ADR-231 deleted `R2_PUBLIC_BASE_URL`; the bucket stays **private** — do NOT enable public access or an r2.dev URL, `/files/<id>` serves reads through presigned redirects) locally and in EVERY Vercel environment you use — **Preview included**, or preview uploads 503 (bitten 2026-08-29) — then set the CORS policy below, then paste an image into any item body and confirm it renders.
 
 > **R2 CORS (one-time, blocks browser uploads):** presigned uploads PUT straight from the browser to the bucket, and a fresh R2 bucket has **no CORS policy**, so the preflight gets 403 and every upload fails. The app's R2 token is object-scoped (deliberately) and cannot set bucket config, so apply it in the dashboard: Cloudflare → R2 → `ledgr` bucket → Settings → CORS policy → add:
 >
@@ -59,6 +57,8 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 >   {
 >     "AllowedOrigins": [
 >       "https://ledgr-teal.vercel.app",
+>       "https://ledgr-sandy.vercel.app",
+>       "https://*.vercel.app",
 >       "https://bc-edgewood.char-arcturus.ts.net",
 >       "http://localhost:3000"
 >     ],
@@ -69,7 +69,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 > ]
 > ```
 >
-> Only PUT needs CORS; image GETs go through `R2_PUBLIC_BASE_URL` as plain `<img>` requests, which never preflight. `scripts/r2-cors.mjs` holds the same policy in code (`--show` to inspect, no flag to apply; needs an Admin-scoped token in `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` to write). Update the origins when the app domain or the R2 custom domain changes.
+> Only PUT needs CORS; reads go through `/files/<id>`'s 302 to a presigned URL as top-level navigations or `<img>` requests, which never preflight. The `https://*.vercel.app` wildcard is what lets **branch previews** upload; it is not an access-control hole — the presigned signature is the credential, CORS just has to not block the browser. `scripts/r2-cors.mjs` holds the same policy in code (`--show` to inspect, no flag to apply; needs an Admin-scoped token in `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` to write). Update the origins when the app domain or the R2 custom domain changes. **Both instances' buckets carry this superset list** — each install has its OWN bucket, so listing the other's origins is harmless, and one shared list means rerunning the script from either machine can't clobber the other's origins. Tyler's bucket got the policy 2026-08-29 via `~/.config/cloudflare/set-ledgr-r2-cors.py` (Cloudflare API with the account global key, since his S3 token is object-scoped) after every browser upload died as "Load failed" — the 2026-08-28 provisioning had skipped this step.
 >
 > **One bucket, several origins (2026-08-26).** The cloud install and the local install share this bucket, so the policy must list **every** origin at once: a `PUT ?cors` replaces the whole policy, there is no per-origin append. The local install is reached at its Tailscale hostname (`NEXT_PUBLIC_APP_URL` in `supervisor/config.json`), and that origin was missing until 2026-08-26 — server-side writes (email-in, MCP `attach_file`) worked fine because they never preflight, so the gap showed up only as browser uploads failing from a phone while the same upload from `localhost:3000` on the PC succeeded. Verify any origin without touching the bucket:
 >

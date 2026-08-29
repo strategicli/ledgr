@@ -34,12 +34,20 @@ if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET || !R2_ENDPOINT) {
 // which meant applying it from any install silently dropped the others'
 // origins (the local install's Tailscale hostname was never in it at all, so
 // browser uploads from a phone died in preflight while localhost worked).
+// This is the SUPERSET across both instances (runbook §1): each install has
+// its own bucket, so listing the other's origins is harmless (the presigned
+// signature is the credential, not CORS), and one shared list means running
+// this from either machine can't clobber the other's origins.
 const origins = [
-  // Cloud install (Vercel).
+  // Brandon's cloud install (Vercel).
   "https://ledgr-teal.vercel.app",
-  // Local install, reached over Tailscale (supervisor NEXT_PUBLIC_APP_URL).
+  // Tyler's cloud install (Vercel).
+  "https://ledgr-sandy.vercel.app",
+  // Vercel branch previews (either instance) — what lets a preview upload.
+  "https://*.vercel.app",
+  // Brandon's local install, reached over Tailscale (supervisor NEXT_PUBLIC_APP_URL).
   "https://bc-edgewood.char-arcturus.ts.net",
-  // The local install and `npm run dev` on the machine itself.
+  // A local install and `npm run dev` on the machine itself.
   "http://localhost:3000",
 ];
 
