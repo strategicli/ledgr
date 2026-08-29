@@ -22,6 +22,7 @@ import { useKeyboardInset } from "./useKeyboardInset";
 import { useIsDesktop } from "./useIsDesktop";
 import { useRouter } from "next/navigation";
 import { openItem } from "@/lib/item-nav";
+import { showToast } from "@/components/ui/ActionToast";
 import {
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
@@ -189,7 +190,11 @@ async function insertUploadedFiles(
         view.state.tr.replaceSelection(new Slice(frag, 0, 0)).scrollIntoView()
       );
     } catch (err) {
+      // Say so on screen, not just in the console — a swallowed failure here
+      // reads as "I picked a file and nothing happened" (Tyler, 2026-08-29,
+      // against a preview with no R2 vars).
       console.error("file upload failed", err);
+      showToast(err instanceof Error ? err.message : "File upload failed");
     }
   }
 }
