@@ -103,7 +103,7 @@ export default function FilePanel({
       )}
       <ul className="flex flex-col gap-1">
         {rows.map((f) => (
-          <li key={f.id} className="group flex items-center gap-2 text-sm">
+          <li key={f.id} className="flex items-center gap-2 text-sm">
             <NavGlyph icon="document" size={14} className="shrink-0 text-ink-subtle" />
             <a
               href={attachmentUrl(f.id)}
@@ -115,11 +115,14 @@ export default function FilePanel({
               {f.filename}
             </a>
             <span className="shrink-0 text-xs text-ink-faint">{fmtBytes(f.sizeBytes)}</span>
+            {/* Always visible, not hover-revealed: hover-only actions never show
+                on touch and hid Delete from the first real user (Tyler,
+                2026-08-29) — "scope the UI" (Brandon, 2026-06-21). */}
             <span className="ml-auto flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 title="Copy a public link to this file (anyone with the link can open it — it also unlocks this item's share page and its other files)"
-                className="rounded px-1.5 py-0.5 text-xs text-ink-subtle opacity-0 transition-opacity hover:bg-surface-2 hover:text-ink focus:opacity-100 group-hover:opacity-100"
+                className="rounded px-1.5 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
                 onClick={() =>
                   copyFileShareLink(itemId, f.id)
                     .then(() => showToast("Public file link copied"))
@@ -129,12 +132,12 @@ export default function FilePanel({
                 Share
               </button>
               <ConfirmButton
-                title="Remove this file?"
+                title="Delete this file?"
                 description="Deletes it from storage for good — links to it stop working."
-                confirmLabel="Remove"
-                trigger={<span aria-hidden>✕</span>}
-                triggerLabel={`Remove ${f.filename}`}
-                triggerClassName="rounded px-1.5 py-0.5 text-xs text-ink-subtle opacity-0 transition-opacity hover:bg-surface-2 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                confirmLabel="Delete"
+                trigger={<span aria-hidden>Delete</span>}
+                triggerLabel={`Delete ${f.filename}`}
+                triggerClassName="rounded px-1.5 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-red-400"
                 align="right"
                 onConfirm={() => remove(f.id)}
               />

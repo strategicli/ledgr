@@ -125,6 +125,16 @@ export default function ShareLink({
               >
                 {copied === t.token ? "copied ✓" : "copy"}
               </button>
+              {/* An explicit "view" beside copy/revoke (Tyler, 2026-08-29) — the
+                  truncated URL is also a link, but it doesn't read as one. */}
+              <a
+                href={`/share/${t.token}`}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 text-neutral-500 hover:text-neutral-300"
+              >
+                view
+              </a>
               <button
                 onClick={() => void revoke(t.token)}
                 className="shrink-0 text-neutral-600 hover:text-[var(--accent)]"

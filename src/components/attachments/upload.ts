@@ -8,6 +8,7 @@
 "use client";
 
 import { showToast } from "@/components/ui/ActionToast";
+import { reportUploadProgress } from "@/components/attachments/UploadProgress";
 
 export type UploadedAttachment = {
   id: string;
@@ -16,36 +17,67 @@ export type UploadedAttachment = {
   fileUrl: string;
 };
 
+// The PUT rides XMLHttpRequest, not fetch, for one reason: fetch exposes no
+// upload progress, and the bytes-to-R2 leg is the whole wait. Progress feeds
+// the global UploadProgress stack via its window event.
+function putWithProgress(
+  url: string,
+  file: File,
+  onProgress: (fraction: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`storage upload failed (${xhr.status})`));
+    xhr.onerror = () => reject(new Error("storage upload failed (network)"));
+    xhr.send(file);
+  });
+}
+
 export async function uploadAttachment(
   itemId: string,
   file: File
 ): Promise<UploadedAttachment> {
-  const res = await fetch("/api/attachments", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      itemId,
-      filename:
-        file.name ||
-        (file.type.startsWith("image/") ? "pasted-image.png" : "pasted-file"),
-      contentType: file.type || "application/octet-stream",
-      sizeBytes: file.size,
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null);
-    throw new Error(detail?.error ?? `upload rejected (${res.status})`);
+  const displayName =
+    file.name ||
+    (file.type.startsWith("image/") ? "pasted-image.png" : "pasted-file");
+  const jobId = crypto.randomUUID();
+  reportUploadProgress({ id: jobId, filename: displayName, fraction: 0 });
+  try {
+    const res = await fetch("/api/attachments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itemId,
+        filename: displayName,
+        contentType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.error ?? `upload rejected (${res.status})`);
+    }
+    const { id, filename, uploadUrl, fileUrl, usage } = await res.json();
+    await putWithProgress(uploadUrl, file, (fraction) =>
+      reportUploadProgress({ id: jobId, filename: displayName, fraction })
+    );
+    // The storage warning (ADR-231) rides the upload response; until 2026-08-29
+    // the UI dropped it on the floor. Fired after the PUT so it can't outrank a
+    // failure.
+    if (usage?.message) showToast(usage.message);
+    reportUploadProgress({ id: jobId, filename: displayName, fraction: 1, done: true });
+    return { id, filename, fileUrl };
+  } catch (err) {
+    // Clear the bar either way; the caller's toast reports the failure.
+    reportUploadProgress({ id: jobId, filename: displayName, fraction: 0, done: true });
+    throw err;
   }
-  const { id, filename, uploadUrl, fileUrl, usage } = await res.json();
-  const put = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  if (!put.ok) throw new Error(`storage upload failed (${put.status})`);
-  // The storage warning (ADR-231) rides the upload response; until 2026-08-29
-  // the UI dropped it on the floor. Fired after the PUT so it can't outrank a
-  // failure.
-  if (usage?.message) showToast(usage.message);
-  return { id, filename, fileUrl };
 }
