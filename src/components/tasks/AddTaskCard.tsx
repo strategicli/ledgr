@@ -273,11 +273,19 @@ export default function AddTaskCard({
           (i) => (i.title || "").trim().toLowerCase() === t.name.toLowerCase()
         );
         if (!hit || !live) continue;
-        setLinked((cur) =>
-          cur.some((l) => l.id === hit.id)
-            ? cur
-            : [...cur, { id: hit.id, title: hit.title, type: hit.type ?? null }]
-        );
+        if (hit.type === TAG_TYPE) {
+          setPickedTags((cur) =>
+            cur.some((x) => x.name.toLowerCase() === hit.title.toLowerCase())
+              ? cur
+              : [...cur, { id: hit.id, name: hit.title }]
+          );
+        } else {
+          setLinked((cur) =>
+            cur.some((l) => l.id === hit.id)
+              ? cur
+              : [...cur, { id: hit.id, title: hit.title, type: hit.type ?? null }]
+          );
+        }
         setTitle((cur) => cur.split(t.token).join(" ").replace(/\s+/g, " ").trim());
       }
     })();
@@ -348,6 +356,12 @@ export default function AddTaskCard({
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
+      // A mousedown on the "@" popup picks on MOUSEDOWN, which re-renders and
+      // unmounts the popup before this document listener runs — the target is
+      // then detached, contains() says "outside", and the whole card cancelled
+      // out from under the pick. A detached target was inside something that
+      // just closed; it is never an outside click.
+      if (!t.isConnected) return;
       if (cardRef.current?.contains(t)) return;
       if (t.closest?.("[data-chip-pop],[data-row-menu]")) return;
       onCancel();
@@ -609,7 +623,19 @@ export default function AddTaskCard({
   }
   function linkItem(item: MentionHit | LinkedItem) {
     if (!mention) return;
-    if (!alreadyLinked(item.id)) setLinked([...linked, { id: item.id, title: item.title, type: item.type }]);
+    // A tag picked via "@" is still a tag, not a link — route it into pickedTags
+    // (same as the Tag chip) so it tags the task and renders as a hash chip,
+    // instead of a big linked chip that doesn't actually tag anything (Brandon,
+    // 2026-08-29 bug report).
+    if (item.type === TAG_TYPE) {
+      setPickedTags((cur) =>
+        cur.some((t) => t.name.toLowerCase() === item.title.toLowerCase())
+          ? cur
+          : [...cur, { id: item.id, name: item.title }]
+      );
+    } else if (!alreadyLinked(item.id)) {
+      setLinked([...linked, { id: item.id, title: item.title, type: item.type }]);
+    }
     const { text, caret: nextCaret } = consumeMentionText(title, mention.start, caret);
     setTitle(text);
     setDismissedQuery(null);
