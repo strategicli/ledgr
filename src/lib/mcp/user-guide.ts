@@ -393,10 +393,12 @@ Ledgr is its own task manager. Nothing else needs to be running.
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
 - **The add card's chip row** carries Date, Priority, **Tag**, **Person** and
-  **Group** pickers (sigils still work: "#" tags, "@" links, "+" files), and the
-  **⋯** chip opens any other custom property on the task type so you can set it
-  at creation. Group works exactly like Person — pick Pastors or Elders and the
-  task links to that group. It only shows if you have a group type.
+  **Group** pickers (sigils still work: "#" adds a tag, "@" links any item,
+  "+project" files the task under that project), and the **⋯** chip opens any
+  other custom property on the task type so you can set it at creation. Group
+  works exactly like Person — pick Pastors or Elders and the task links to
+  that group. It only shows if you have a group type. Picking a tag with "@"
+  tags the task the same way "#" or the Tag chip does — it's never just a link.
 - **People get faces.** The person type ships with a built-in **Image**: a
   square picture box on the person's page — click it to upload a photo (it's
   center-cropped square automatically) or paste an image URL, and Remove lives
