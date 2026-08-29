@@ -3620,3 +3620,29 @@ ADR-229 diagnosed the previous reboot failure as a stale `postmaster.pid` and fi
 **Verification.** Proved on the live rig against the real failure path, not a simulation: the peer was stopped and started with `schtasks /Run /TN "Ledgr Supervisor"`, which is the actual elevated boot task. It shut down an orphaned Postgres left by the previous run, started the cluster, and answered HTTP 200 on :3000 one second later. Postgres's log shows a clean start with no privilege error and no crash recovery. The graceful `pg_ctl stop` path was confirmed separately ("database system is shut down", `clean: true`). Five new checks in `scripts/verify-supervisor.mts` pin each decision, including a negative one that fails if the probe ever depends on a binary again; two existing checks were updated from the mechanism they used to describe. Suite green.
 
 **Affects:** `supervisor/ledgr-supervisor.mjs`, `supervisor/lib.mjs`, `scripts/verify-supervisor.mts`, `runbook.md`.
+
+## ADR-234: a push batch is bounded by bytes as well as by count, because a count cannot bound a payload that carries bodies
+
+**Date:** 2026-08-29
+**Status:** accepted — not core (batch sizing inside the existing sync client; the wire shape, the schema, and the guardrail model are all unchanged)
+
+**Context.** Brandon's hub reported 3,332 changes waiting to reach the cloud copy and would not send them. The first-push guardrail (ADR-206) was holding, correctly: the attachment-address migration of ADR-228 had rewritten 1,413 item bodies in one minute on 2026-08-27, and the OneDrive export re-stamped 1,491 items the next morning in response. Both are legitimate work, and 3,332 is well past the 500-change limit that asks the owner first.
+
+Releasing the hold from Build → Network did not fix it. Every exchange then failed with **HTTP 413**, and the queue could not drain at all.
+
+**The bug.** `unpushedOps` capped a push batch at 500 ops and at no size whatsoever. Ordinary edits are a few hundred bytes each, so 500 of them are trivial and this held for the life of the feature. These 500 were whole rewritten item bodies: 4.2 MB measured, against the 4.5 MB request body a Vercel function will accept. The batch was refused, the cursor did not move, and the next round assembled the identical batch and was refused again. Nothing about it was self-correcting, and no amount of owner action could clear it.
+
+This is not specific to one install or one migration. Any change that touches many bodies at once puts any peer into the same permanent stall, Tyler's included.
+
+**Decision.**
+
+1. **Batches are capped by serialized size (3 MB) as well as by count (500).** The budget sits under Vercel's limit with headroom for the request envelope, and is overridable with `LEDGR_SYNC_MAX_PUSH_BYTES` for a hub with a different ceiling.
+2. **The size cut never splits a same-`at` run.** One local transaction's ops must travel together, because the hub applies a batch's items deletes as a single statement (ADR-206 addendum 7) — the same invariant the count cap already respected via `RUN_EXTEND_CAP`. `trimBatchToBytes` therefore measures forward and cuts only at a run boundary, rather than popping ops off the end.
+3. **A batch is never empty.** A first run over the whole budget still ships alone. Returning nothing would stall the queue permanently, which is the exact failure this ADR exists to end. A single op larger than the hub's limit would still be refused; that needs a wire change to split one row across requests, and is marked in the code as the upgrade path if a body ever exceeds 4.5 MB.
+4. **"Drained" now means the push side sent everything pending,** not `ops.length < PUSH_BATCH`. A size-trimmed batch is under the count cap and still has more behind it, so the old test would have reported a backlog as caught up — the silent misreport principle 9 forbids. `ops.length === 0` keeps a pull-only or held peer finishing in one round, unchanged.
+
+**Why / alternatives.** *Raise the hub's body limit*: not ours to raise on Vercel's serverless functions, and a fixed limit of any size is still a limit a body-heavy batch will find. *Lower `PUSH_BATCH` to a smaller count*: trades a stall for a slower drain and still cannot bound a payload, since one op's size is unbounded. *Compress the request*: real, and orthogonal; it moves the ceiling without ever removing the need for one.
+
+**Verification.** Five checks in `scripts/verify-sync-ui.mts` pin each decision: an under-budget batch goes whole, an over-budget batch is cut, a same-`at` run is never split, an over-budget first run still ships, an empty batch stays empty. Typecheck and lint clean.
+
+**Affects:** `src/lib/sync/client.ts`, `scripts/verify-sync-ui.mts`, `runbook.md`.
