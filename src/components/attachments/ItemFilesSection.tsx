@@ -63,8 +63,10 @@ export default function ItemFilesSection({
   return (
     <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">
       <details className="canvas-section">
-        <summary className="canvas-section-title cursor-pointer hover:text-ink">
-          Files ({rows.length})
+        {/* Same summary shape as Discover related: label + the count chip. */}
+        <summary className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--cs-label)] hover:text-neutral-300">
+          <span>Files</span>
+          <span className="canvas-section-count">{rows.length}</span>
         </summary>
         <div className="mt-2">
           {/* Keyed on the row set so an event-driven change re-seeds FilePanel's

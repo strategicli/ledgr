@@ -14,6 +14,7 @@ import { attachmentUrl } from "@/lib/attachment-url";
 import { announceAttachmentRemoved } from "@/components/attachments/upload";
 import { showToast } from "@/components/ui/ActionToast";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import { formatBytes } from "@/lib/format-count";
 
 type Orphan = { key: string; sizeBytes: number };
 type UnlinkedFile = {
@@ -29,12 +30,6 @@ type Scan = {
   orphanError: string;
 };
 
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 // The key is `${ownerId}/${attachmentId}/${filename}` — show the filename.
 function filenameOf(key: string): string {
@@ -103,7 +98,7 @@ export default function OrphanFilesTool() {
     }
     const { deleted, freedBytes, failed } = await res.json();
     showToast(
-      `Deleted ${deleted} orphaned file${deleted === 1 ? "" : "s"} (${fmtBytes(freedBytes)} freed)` +
+      `Deleted ${deleted} orphaned file${deleted === 1 ? "" : "s"} (${formatBytes(freedBytes)} freed)` +
         (failed > 0 ? ` — ${failed} failed, scan again` : "")
     );
     setScan(null);
@@ -157,7 +152,7 @@ export default function OrphanFilesTool() {
                   >
                     {f.filename}
                   </a>
-                  <span className="shrink-0 text-xs text-ink-faint">{fmtBytes(f.sizeBytes)}</span>
+                  <span className="shrink-0 text-xs text-ink-faint">{formatBytes(f.sizeBytes)}</span>
                   <span className="shrink-0 text-xs text-ink-subtle">
                     on{" "}
                     <Link
@@ -205,9 +200,9 @@ export default function OrphanFilesTool() {
                 />
                 <ConfirmButton
                   title={`Delete ${orphanCount} orphaned file${orphanCount === 1 ? "" : "s"}?`}
-                  description={`Frees ${fmtBytes(scan.orphanBytes)} of storage. These files have no item behind them anymore; nothing in Ledgr links to them.`}
+                  description={`Frees ${formatBytes(scan.orphanBytes)} of storage. These files have no item behind them anymore; nothing in Ledgr links to them.`}
                   confirmLabel="Delete all"
-                  trigger={<span>Delete all ({fmtBytes(scan.orphanBytes)})</span>}
+                  trigger={<span>Delete all ({formatBytes(scan.orphanBytes)})</span>}
                   triggerClassName="rounded border border-red-900/60 bg-red-950/40 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-red-900/40"
                   onConfirm={purge}
                 />
@@ -217,7 +212,7 @@ export default function OrphanFilesTool() {
                   <li key={o.key} className="flex items-center gap-2 text-sm">
                     <span className="truncate text-ink-muted">{filenameOf(o.key)}</span>
                     <span className="ml-auto shrink-0 text-xs text-ink-faint">
-                      {fmtBytes(o.sizeBytes)}
+                      {formatBytes(o.sizeBytes)}
                     </span>
                   </li>
                 ))}

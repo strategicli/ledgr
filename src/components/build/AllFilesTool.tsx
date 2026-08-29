@@ -10,6 +10,7 @@ import Link from "next/link";
 import { attachmentUrl } from "@/lib/attachment-url";
 import { showToast } from "@/components/ui/ActionToast";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import { formatBytes } from "@/lib/format-count";
 
 type FileRow = {
   id: string;
@@ -21,12 +22,6 @@ type FileRow = {
   referenced: boolean;
 };
 
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 export default function AllFilesTool() {
   const [files, setFiles] = useState<FileRow[] | null>(null);
@@ -69,7 +64,7 @@ export default function AllFilesTool() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-ink-subtle">
-        {files.length} file{files.length === 1 ? "" : "s"} · {fmtBytes(totalBytes)} of storage
+        {files.length} file{files.length === 1 ? "" : "s"} · {formatBytes(totalBytes)} of storage
       </p>
       <ul className="flex flex-col gap-1.5">
         {files.map((f) => (
@@ -83,7 +78,7 @@ export default function AllFilesTool() {
             >
               {f.filename}
             </a>
-            <span className="shrink-0 text-xs text-ink-faint">{fmtBytes(f.sizeBytes)}</span>
+            <span className="shrink-0 text-xs text-ink-faint">{formatBytes(f.sizeBytes)}</span>
             <span className="shrink-0 text-xs text-ink-subtle">
               on{" "}
               <Link href={`/items/${f.parent.id}`} className="underline decoration-dotted underline-offset-2 hover:text-ink">

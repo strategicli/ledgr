@@ -26,6 +26,8 @@ import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
+import ItemFilesSection from "@/components/attachments/ItemFilesSection";
+import { listItemFilesWithRefs } from "@/lib/attachments";
 import { bodyMarkdown } from "@/lib/body";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingNotes from "@/components/meetings/MeetingNotes";
@@ -279,6 +281,15 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           labels={labels}
           initialLayout={initialLayout}
           arrange={arrange}
+        />
+        {/* The Files section renders on this branch too (ADR-233 addendum 3):
+            a type with a saved canvas layout returns here, and Tyler's notes do
+            exactly that — files on a note were invisible while the same file on
+            a layout-less type showed fine. Below the grid, not an arrangeable
+            card (a card id means layout vocabulary churn; promote it if wanted). */}
+        <ItemFilesSection
+          itemId={item.id}
+          initial={await listItemFilesWithRefs(ownerId, item.id).catch(() => [])}
         />
       </>
     );

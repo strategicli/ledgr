@@ -15,6 +15,7 @@ import { showToast } from "@/components/ui/ActionToast";
 import { announceAttachmentRemoved, uploadAttachment } from "@/components/attachments/upload";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import NavGlyph from "@/components/nav/NavGlyph";
+import { formatBytes } from "@/lib/format-count";
 
 export type FileRow = {
   id: string;
@@ -27,12 +28,6 @@ export type FileRow = {
   referenced?: boolean;
 };
 
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 // Mint-or-reuse the ITEM's share token, then compose the file's public address
 // (ADR-231: a token is scoped to the attachment's parent item, so when the item
@@ -119,7 +114,7 @@ export default function FilePanel({
             >
               {f.filename}
             </a>
-            <span className="shrink-0 text-xs text-ink-faint">{fmtBytes(f.sizeBytes)}</span>
+            <span className="shrink-0 text-xs text-ink-faint">{formatBytes(f.sizeBytes)}</span>
             {f.referenced === false && (
               <span
                 title="Nothing in this item's body or fields points at this file anymore. Copy link puts it back; it counts against your storage either way."
