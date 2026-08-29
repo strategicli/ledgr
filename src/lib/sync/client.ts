@@ -1077,6 +1077,13 @@ async function exchangeWith(
     // fetch — pull-only skips it outright since it can never be used.
     const pending = await pendingCount(cursor.push);
     const candidateOps = guard.mode === "pull-only" ? [] : await unpushedOps(cursor.push);
+    // The gate is spent by a push the hub ACCEPTED, never by one it refused.
+    // pushSelectionForHub commits `firstPushDone` optimistically, so an
+    // exchange that then failed (HTTP 413, a dropped connection) used to burn
+    // the owner's one-shot "Send anyway" without a single op landing, and the
+    // hold came back on the next restart with the permission already gone.
+    // Held here and committed below, after the hub answers OK.
+    const priorFirstPushDone = rt.firstPushDone;
     const sel = pushSelectionForHub(shared.hubRuntime, hub.url, {
       mode: guard.mode,
       candidateOps,
@@ -1086,6 +1093,8 @@ async function exchangeWith(
       skewWarnMs: guard.skewWarnMs,
       skewHoldMs: guard.skewHoldMs,
     });
+    const firstPushDoneAfter = sel.firstPushDoneAfter;
+    rt.firstPushDone = priorFirstPushDone;
     holdReason = sel.holdReason;
     heldOpsCount = sel.heldOpsCount;
     if (sel.holdReason === "first_push_size") {
@@ -1145,6 +1154,8 @@ async function exchangeWith(
       );
     }
     if (!res.ok) throw new Error(`sync exchange failed: HTTP ${res.status}`);
+    // Accepted. Only now is the first-push gate spent.
+    rt.firstPushDone = firstPushDoneAfter;
     const data = (await res.json()) as {
       ops: SyncOp[];
       cursor: number;

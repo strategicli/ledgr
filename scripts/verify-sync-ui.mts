@@ -3,6 +3,7 @@
 // gate. All pure — no database — so verify-ci.mjs discovers and runs it.
 //
 // Run: npx tsx scripts/verify-sync-ui.mts
+import { readFileSync } from "node:fs";
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
@@ -1002,6 +1003,26 @@ if (failures > 0) {
     trimBatchToBytes([op(1, "t1", 5000), op(2, "t2", 10)], 100).length === 1
   );
   check("an empty batch stays empty", trimBatchToBytes([], 100).length === 0);
+}
+
+// -- The first-push gate is spent by an ACCEPTED push, never an attempted one --
+
+{
+  // Brandon clicked "Send anyway", every exchange then failed with HTTP 413,
+  // and his one-shot permission was gone by the next restart with not one op
+  // landed. pushSelectionForHub commits `firstPushDone` optimistically, so
+  // exchangeWith must hold that commit until the hub has answered OK. Ordering
+  // inside a network call has no pure seam, so this pins the source shape.
+  const src = readFileSync("src/lib/sync/client.ts", "utf8");
+  const restore = src.indexOf("rt.firstPushDone = priorFirstPushDone");
+  const refused = src.indexOf("sync exchange failed: HTTP");
+  const commit = src.indexOf("rt.firstPushDone = firstPushDoneAfter");
+  check("the optimistic commit is rolled back before the request", restore > 0);
+  check(
+    "the gate is spent only after the refusal check has passed",
+    refused > restore && commit > refused,
+    `restore=${restore} refused=${refused} commit=${commit}`
+  );
 }
 
 console.log("\nAll sync-ui checks passed.");
