@@ -328,6 +328,54 @@ export async function deleteAttachment(
     .where(and(eq(attachments.id, id), eq(attachments.ownerId, ownerId)));
 }
 
+// Every attachment the owner has, with its parent item and whether anything in
+// that item still points at it (a body link/image, or a property such as the
+// person Image). The "where do my files live?" browse surface (Tyler,
+// 2026-08-29) — and the answer to "I backspaced the link, did the file
+// delete?": no, the row stays; THIS is where you see it and delete it.
+export async function listAllAttachments(ownerId: string): Promise<
+  {
+    id: string;
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+    createdAt: Date;
+    parent: { id: string; title: string; type: string };
+    referenced: boolean;
+  }[]
+> {
+  const rows = await getDb()
+    .select({
+      id: attachments.id,
+      filename: attachments.filename,
+      contentType: attachments.contentType,
+      sizeBytes: attachments.sizeBytes,
+      createdAt: attachments.createdAt,
+      parentId: items.id,
+      parentTitle: items.title,
+      parentType: items.type,
+      // A text scan, not reference-parsing: bodies store /files/<id>, so the id
+      // appearing anywhere in the body or properties is what "still pointed at"
+      // means. Cheap at hygiene scale (runs on demand, rows are few).
+      referenced: sql<boolean>`
+        coalesce(${items.body}::text like '%' || ${attachments.id}::text || '%', false)
+        or coalesce(${items.properties}::text like '%' || ${attachments.id}::text || '%', false)`,
+    })
+    .from(attachments)
+    .innerJoin(items, eq(items.id, attachments.parentItemId))
+    .where(eq(attachments.ownerId, ownerId))
+    .orderBy(sql`${attachments.createdAt} desc`);
+  return rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    contentType: r.contentType,
+    sizeBytes: r.sizeBytes,
+    createdAt: r.createdAt,
+    parent: { id: r.parentId, title: r.parentTitle, type: r.parentType },
+    referenced: r.referenced,
+  }));
+}
+
 // --- Orphaned bytes (ADR-233) ------------------------------------------------
 // An object in storage with no attachment row behind it. Two known producers:
 // an item purge from before 2026-08-29 (rows cascaded, bytes stayed) and a

@@ -778,8 +778,18 @@ or video file.
 panel, or a record's Files card) — that removes it from storage. Deleting a
 link or image out of a body does **not** delete the file behind it; it keeps
 counting against your quota until deleted. Purging an item from Trash deletes
-its files with it, and **Build → Data Hygiene → Orphaned files** finds and
-deletes any files nothing points to anymore.
+its files with it.
+
+**To see everything you have stored:** **Build → Data Hygiene → All files**
+lists every file, its size, the item it belongs to, and a "not linked" mark on
+files nothing points at anymore — with Delete on each row. The **Orphaned
+files** tool on the same page finds and reclaims storage that no item accounts
+for at all.
+
+**A link can BE one of your files:** the URL field takes a dropped file (or the
+paperclip beside it) — the file uploads and its permanent address becomes the
+link's URL, so your own PDF or page sits in a project's Links card like any web
+link.
 
 ## Files as items
 

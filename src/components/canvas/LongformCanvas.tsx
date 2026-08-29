@@ -44,8 +44,10 @@ export default async function LongformCanvas(canvasProps: CanvasProps) {
 
   const locked = Boolean((item.properties as Record<string, unknown> | null)?.locked);
   // The URL renders as a clickable chip in the byline (link, and any URL type),
-  // so drop it from the editable field strip to avoid showing it twice.
-  const fields = topStripFields(item.type).filter((f) => f !== "url");
+  // so drop it from the editable field strip WHEN SET, to avoid showing it
+  // twice. A URL-less item keeps the field — otherwise a fresh link's page had
+  // no way to set (or upload, ADR-233) its URL at all.
+  const fields = topStripFields(item.type).filter((f) => f !== "url" || !item.url);
   const strip: StripValues = {
     status: item.status,
     dueDate: item.dueDate?.toISOString() ?? null,

@@ -65,7 +65,10 @@ export default function UploadProgress() {
 
   if (jobs.size === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-64 max-w-[calc(100vw-2rem)] flex-col gap-2">
+    // Bottom-center, directly above where ActionToast renders (bottom-4), so it
+    // lands where the eye already looks for feedback — the corner was too easy
+    // to miss (Tyler, 2026-08-29).
+    <div className="pointer-events-none fixed inset-x-0 bottom-16 z-[60] mx-auto flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
       {[...jobs.values()].map((j) => {
         const pct = Math.round(j.fraction * 100);
         return (

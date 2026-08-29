@@ -3,6 +3,7 @@
 // first section; the ADR-063 plan (types with no items, views that return
 // nothing, templates never applied, orphaned relations, unfilled properties)
 // stays written down below so its intent survives until each tool lands.
+import AllFilesTool from "@/components/build/AllFilesTool";
 import OrphanFilesTool from "@/components/build/OrphanFilesTool";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,19 @@ export default function DataHygiene() {
         <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
           Data Hygiene
         </h1>
+
+        <section className="mt-6 rounded-card border border-line bg-surface-1 p-5">
+          <h2 className="text-sm font-semibold text-ink">All files</h2>
+          <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+            Every file in your storage, the item it belongs to, and whether that
+            item still points at it. Deleting a link out of a body never deletes
+            the file — this is where you see what you actually have, and delete
+            what you don&rsquo;t want.
+          </p>
+          <div className="mt-3">
+            <AllFilesTool />
+          </div>
+        </section>
 
         <section className="mt-6 rounded-card border border-line bg-surface-1 p-5">
           <h2 className="text-sm font-semibold text-ink">Orphaned files</h2>
