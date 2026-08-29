@@ -403,6 +403,14 @@ export function pgStartDelayMs(attempt) {
   return [0, 2000, 5000, 10000][Math.min(Math.max(attempt, 1), PG_START_ATTEMPTS) - 1];
 }
 
+/**
+ * How many half-second polls to give ONE start attempt before calling it dead.
+ * 120 = 60s, which has to cover crash recovery on a real database, not just a
+ * clean start. The cost of being generous is a slower failure; the cost of
+ * being stingy is declaring a recovering cluster broken and restarting into it.
+ */
+export const PG_READY_ATTEMPTS = 120;
+
 /** How long a successor waits for the outgoing supervisor to exit. */
 export const AWAIT_PID_TIMEOUT_MS = 90_000;
 
