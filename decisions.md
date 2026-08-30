@@ -3648,3 +3648,26 @@ This is not specific to one install or one migration. Any change that touches ma
 **Addendum (2026-08-29, same day): the gate is spent by an ACCEPTED push, never an attempted one.** Shipping the byte cap exposed a second bug immediately. Brandon's "Send anyway" had already been consumed: `pushSelectionForHub` commits `firstPushDone` optimistically, before the request goes out, and the stored one-shot is cleared as soon as any hub runtime reports the gate done. So four refused 413 rounds burned the owner's permission without a single op landing, and the hold returned on the next restart with nothing left to release. `exchangeWith` now rolls that commit back and re-applies it only after the hub answers OK. Two checks in `scripts/verify-sync-ui.mts` pin the ordering; the decision itself is pure and already tested, so what needed pinning was where the impure call site commits it.
 
 **Affects:** `src/lib/sync/client.ts`, `scripts/verify-sync-ui.mts`, `runbook.md`.
+
+## ADR-235: an expired delta token is a resync instruction, not a failure to retry
+
+**Date:** 2026-08-29
+**Status:** accepted — not core (one provider adapter's recovery behavior; the mail provider interface, the import engine and the stored job state are all unchanged)
+
+**Context.** Email import failed every ten minutes from 2026-08-24 to 2026-08-29 and nothing said so anywhere Brandon looks. It was found only while investigating an unrelated sync stall. Five days of mail addressed to Ledgr simply never arrived.
+
+Microsoft Graph's `messages/delta` hands back a token meaning "tell me what changed since here". Graph expires those, after roughly 30 days or whenever the mailbox's own sync state rolls over, and then answers **HTTP 410** with a body naming the generation it no longer has. A 410 here is not an error in the ordinary sense: it is Graph's documented instruction to start over.
+
+Ledgr treated it as an ordinary failure. `listNewMessages` let the 410 propagate, `runEmailImport` kept the stored token because the run had errored, and the next run ten minutes later asked the identical rejected question. Nothing in that loop could ever converge, and no owner-facing control existed to clear it.
+
+**Decision.** `GraphMailSource.listNewMessages` catches a 410 on the stored token, discards the token, and reads the import folder whole. Exactly one retry: a 410 on the full read is a real failure and is thrown, because retrying that is the endless loop this ADR exists to remove. Any other status (403, 404, 429) still surfaces unchanged, so a permissions problem can never be laundered into a silent, expensive re-read.
+
+**Why a full re-read is safe, and why it always was.** An imported message is *moved* into the Imported subfolder (slice 26). A full read of the import folder therefore returns only what has not been imported yet, and the `internetMessageId` dedup sits behind that as a second line. The recovery this ADR adds was available from the day the feature shipped; nothing but the 410 handler was missing.
+
+**The walk is extracted so the retry starts clean.** A 410 can arrive several pages into a delta stream, with messages already accumulated and their attachments already fetched. `walkDelta` owns one walk and its own accumulator, so the retry cannot inherit a half-finished one and double-report.
+
+**What this does not fix.** A cron that fails every ten minutes for five days is still invisible until somebody reads a log. That is a monitoring gap, not this bug, and it is the more valuable of the two — principle 9 asks for surfaced failures, and a job dying silently for five days is the case it exists to prevent. Left open deliberately rather than bundled in here.
+
+**Verification.** `scripts/verify-email-delta-resync.mts`, ten checks, pure — it drives the real `GraphMailSource` with its two network seams stubbed, so it runs in CI with no mailbox, no credentials and no database. It pins each decision including the two negatives: exactly one retry, and a non-410 failure left alone.
+
+**Affects:** `src/lib/email/graph-source.ts`, `scripts/verify-email-delta-resync.mts`, `runbook.md`.
