@@ -6,6 +6,73 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 A registered peer has been calling `POST /api/machine/sync` every 12 seconds since ~10:15 PM Central 2026-08-29 and getting 409 (schema version mismatch) every time. The 409 returns before the handler logs anything, so the caller was anonymous. One `log.warn` before that return now records peer name + deviceId, `localVer`/`remoteVer`, the `x-forwarded-for` (falling back to `x-real-ip`) IP, and the user agent. Additive only: no behavior, response, or schema change, and the token is never logged. Not core (logging is not part of the machine API contract), so no ADR.
 
+## ✅ SHIPPED — sync stops hammering a broken hub, and can talk only when there is something to say (2026-08-30, ADR-239/240/241)
+
+**Three changes, one cause.** Brandon saw the production Neon database never going idle despite an hourly sync setting. The hourly setting was fine. A FAILURE ignored it: a failed exchange retried every ten seconds forever, and one change the hub could never accept (delete the `day_log` type, still referenced by rows there) turned that into 120 failures in 24 minutes on 2026-08-30.
+
+- **ADR-239, backoff.** Repeated failure doubles the wait, capped at 15 minutes and never past the hub's own cadence. First retry unchanged, so a blip still recovers instantly. A broken hub costs about 4 requests an hour instead of about 8,600 a day. `clampNextDue` gained a retry floor, without which a continuous hub's ten-second cadence would have erased the backoff entirely.
+- **ADR-240, "Only on changes".** A per-hub checkbox on `/build/network`, off by default. The cadence becomes the idle heartbeat: your edits leave immediately, a quiet hub is contacted once per cadence. Decided by a pure rule (`onChangeDue`) off one local read, so nothing goes over the wire to find out there was nothing to send. A failing hub is deliberately never woken early by pending changes, which is what stops this from re-creating the hammer.
+- **ADR-241, parking.** The hub applies what it can, parks what it cannot with the reason, logs it, captures it as an error, and returns it. The peer counts it. The batch stops being all-or-nothing on the non-transactional (cloud) path, so one bad change no longer blocks everything behind it.
+
+**Verification:** 19 new checks in `scripts/verify-sync-ui.mts`; all 78 pure verify scripts pass; typecheck and lint clean. The user guide is updated, since the setting is owner-facing.
+
+**Deploy note:** ADR-239 and ADR-240 are peer-side and need only an app restart here. **ADR-241 is hub-side and needs a production deploy** before the parking behavior exists on the cloud.
+
+**This did NOT by itself stop the constant Neon traffic.** The install doing the hammering is a different machine running stale code, so it does not have these fixes yet. See the item below, which names it.
+
+## 🔎 IDENTIFIED, NOT YET STOPPED — a stale peer has hammered the cloud hub every 12 seconds since ~2026-08-23
+
+**This is what kept the production Neon compute from ever going idle,** and it is the reason the whole ADR-239/240/241 batch exists.
+
+**The measurement.** A probe issuing one query a minute, and never reading the table in question, saw **+5 sequential scans of `sync_peers` and +14 commits every minute, with zero writes anywhere**, sustained for hours. Inter-arrival gaps clustered hard at 12.5 seconds.
+
+**Vercel's logs named it.** `POST /api/machine/sync` returning **409**, every 12.06 seconds, user agent `node`, unbroken. 409 from that route is the schema version gate: the caller **authenticates successfully with a valid device token**, and is then refused because its bundled schema version disagrees with the hub's. So this is a real registered peer running stale code, not an intruder and not a bad token.
+
+**Which machine.** Only two devices hold a token. Brandon's ECC laptop was ruled out by sampling every outbound HTTPS connection on it four times a second for a full minute: zero connections to anything, its only open socket being its local Postgres. The other peer is `BranRedux Desktop` (`bcdesktop`), which Tailscale shows **active** with a live direct connection. Its last SUCCESSFUL check-in was 2026-08-23; migrations landed on the hub 2026-08-25 and 2026-08-26, which is exactly when its version stopped matching. Roughly **50,000 requests** since.
+
+**Why it never healed.** That install's supervisor is set to auto-update every 15 minutes, and the 409 carries both versions precisely so the stale side can raise an update card. It did not update, so either its supervisor is not running and only an orphaned app process survived, or its updates are failing.
+
+**Next step is on that machine:** update it so its version matches (which also hands it the ADR-239 backoff), or stop its supervisor. Stopping the app alone is not enough if the supervisor restarts it. **Careful before anything destructive:** that install has not pushed since 2026-08-23, so it may hold local edits that never reached the hub, and its pull cursor may now predate the hub's retained oplog — in which case it needs a re-fill, and a re-fill destroys unpushed local changes. Measure the unpushed count first.
+
+**The gap this exposed, now half closed.** A peer stuck on 409 was invisible to the hub: `last_seen_at` only advances on a SUCCESSFUL exchange, so the Network page reported "last seen August 23" while that peer was asking 7,200 times a day. The `fix/log-sync-409-caller` branch above now names the caller on the 409 path, which is the half that mattered and would have answered this in one query instead of a day. **Still open:** the 401 path is still silent, and neither rejection is surfaced anywhere the owner looks, only in the function log. Principle 9 wants both.
+
+## 🅿️ FOLLOW-UP — the Network page does not show parked changes (ADR-241)
+
+The hub now parks a change it cannot apply instead of re-sending it forever, records it in the errors list and returns it to the peer, and the peer counts it on the exchange result (`parkedOps`). What is missing is the sentence on `/build/network` saying "this copy could not accept N of your changes." Today you find out through the hub's own errors surface and the weekly health check.
+
+`HubStatus` already carries `holdReason`/`heldOpsCount` in exactly this shape, so this is a surface, not new logic: add `parkedOps` to `HubStatus`, fill it from the exchange result beside the others, and render one line on the row. Do it the first time a parked change is noticed late.
+
+## 📡 CORE, NEEDS TYLER + ADR — the hub calls the peer instead of the peer polling
+
+**Agreed with Brandon 2026-08-30 as the follow-up to ADR-240.** "Only on changes" got outbound changes to zero-cost idling: your edits leave immediately, and a quiet hub is contacted once per cadence. It cannot do the same for INBOUND changes, because a peer cannot learn the hub has news without asking. The cadence is that floor, and the floor is the remaining cost.
+
+**The shape.** The hub calls the peer when it has something, over the Tailscale Funnel address the peer already publishes (`NEXT_PUBLIC_APP_URL`). Nothing talks unless there is real work. "Only on changes" stays as the fallback for any peer the hub cannot reach, which is most of them.
+
+**Why it is core.** It adds a new DIRECTION to the machine API: today every exchange is peer-initiated, and the hub holds no address for anyone. That changes the contract, needs a stored callback address per peer, and needs a story for a peer that is unreachable, moved, or hostile. Both-agree plus an ADR before it merges.
+
+**Open questions for that ADR.** Where the callback address is stored and who may set it; whether the nudge carries a payload or only says "come and get it" (the second is far safer); how it authenticates in the hub-to-peer direction; and what a peer does when nudges stop arriving, since silence must not read as "nothing has changed."
+
+## 🧹 QUEUED — every scheduled job should be movable, pausable, and off
+
+**Brandon, 2026-08-30:** "we need to ensure any cron type item can be deactivated, moved, or whatever," so a copy can go quiet on a predictable rhythm without falling behind.
+
+**The mechanism already exists and is half-wired.** `users.settings.jobOwners` names which install runs a job, and `standDownIfNotOwner` makes the others skip. Three jobs use it: export, email import, calendar sync. **Missing:** `relatedness`, `purge`, `transcription-poll`, `todoist-sync`, and the notify pair. That is why the cloud still runs relatedness daily even though ownership moved to the laptop on 2026-08-26.
+
+**Two pieces of work.** (1) Put the guard on every job, which is a few lines each and matches the existing three. (2) Add an explicit **off** choice to the ownership dropdown, since today the only way to stop a job is to own it somewhere and let it fail.
+
+**While you are in there:** `relatedness` reports `budgetHit: true` on every run, meaning it never finishes its scan and re-does the same work forever. `item_relatedness` is 334,292 rows and 103 MB. It should converge or be capped, not run daily against a budget it cannot meet.
+
+## 💾 QUEUED — the production database is 869 MB and most of it is dead space
+
+**Measured 2026-08-30, and it is not a cloud problem:** the local hub is 857 MB, essentially the same. Brandon's export being 300-400 MB is correct and consistent.
+
+**Where it goes.** Real content is item bodies 125 MB plus revisions 158 MB, so 283 MB — which is the export. The rest: indexes on `items` 68 MB, rebuildable derived tables 144 MB (`item_relatedness` 103 MB, `passage_refs` 41 MB), sync machinery 21 MB, and roughly **290 MB of dead space**. The `items` table's overflow storage holds 414 MB to store 125 MB of live bodies; it was last auto-vacuumed 2026-08-17 and carries 4,196 dead rows. Every body edit rewrites the row and the old copy lingers.
+
+**The fix is `VACUUM FULL` on `items`,** which takes an exclusive lock and therefore is a deliberate maintenance action, never a cron. Take a Neon branch snapshot first (the daily job already makes them). Reclaiming ~290 MB on a 500 MB free allowance is worth the outage window.
+
+**Not the cause, but worth knowing:** only 35 items carry embedded `data:image` URIs and they total 1.7 MB, so pasted images are not what is filling this.
+
+
 ## 🔴 BUILT, AWAITING TYLER'S ACK — the web clipper carries no token (2026-08-30, ADR-238, branch `feat/clipper-session-auth`)
 
 Brandon's clipper stopped working: ADR-224 made minted credentials a `lgrk_…:lgrs_…` PAIR, and the clipper setup's paste box takes one string, so the documented setup produced a bookmarklet that 401s. Rather than teach the box about pairs, the token is gone. The bookmarklet has saved through a popup on our own origin since the ADR-160 follow-up, and that popup carries the owner's session — so the credential was already in the browser.

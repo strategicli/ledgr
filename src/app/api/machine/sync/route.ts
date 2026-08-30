@@ -111,6 +111,25 @@ export async function POST(request: Request) {
       // Owner-scope or unknown-table refusals are visible, never silent.
       log.warn("sync ops rejected", { peer: peer.name, rejected: result.rejected });
     }
+    // ADR-241: changes this hub could not apply are PARKED, not re-tried
+    // forever. The rest of the batch landed and the peer may advance its
+    // cursor, so this is the only place the failure is recorded. Captured as
+    // an error (not just a log line) so it reaches the errors surface and the
+    // weekly health check rather than scrolling past in a function log.
+    if (result.parked.length > 0) {
+      log.warn("sync changes parked: this hub could not apply them", {
+        peer: peer.name,
+        parked: result.parked,
+      });
+      await captureError(
+        "sync",
+        new Error(
+          `${result.parked.length} change(s) from "${peer.name}" could not be applied and were parked: ` +
+            result.parked.map((p) => `${p.kind} ${p.table} ${p.id ?? ""}: ${p.error}`).join("; ")
+        ),
+        { correlationId: log.correlationId }
+      );
+    }
 
     // Record the peer's push cursor + liveness. The identity is the
     // AUTHENTICATED row, never the body's claimed deviceId.
@@ -136,6 +155,7 @@ export async function POST(request: Request) {
         schemaVer: localVer,
         applied: result.actions,
         rejected: result.rejected,
+        parked: result.parked,
         pulled: false,
         serverTime: new Date().toISOString(),
       });
@@ -243,6 +263,7 @@ export async function POST(request: Request) {
       schemaVer: localVer,
       applied: result.actions,
       rejected: result.rejected,
+      parked: result.parked,
       // Guardrail 3: additive field so existing callers are unaffected. The
       // client compares this to its own clock to detect skew.
       serverTime: new Date().toISOString(),

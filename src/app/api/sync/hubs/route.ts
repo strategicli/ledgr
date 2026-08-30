@@ -6,6 +6,7 @@ import {
   cadenceRefusal,
   hubCadence,
   hubFallback,
+  hubOnChange,
   hubListRefusal,
   readSyncHubs,
   writeSyncHubs,
@@ -59,6 +60,14 @@ function parseCadence(raw: unknown): HubCadence | undefined {
   if (refusal) throw new Error(refusal);
   return minutes;
 }
+// ADR-240. Additive and optional on every write path: absent means "leave as
+// is" on PATCH and "off" on POST, so every caller written before this keeps
+// working byte for byte.
+function parseOnChange(raw: unknown): boolean | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "boolean") return raw;
+  throw new Error("only-when-there-are-changes must be true or false");
+}
 function parseFallback(raw: unknown): HubFallback | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (raw === "automatic" || raw === "prompt") return raw;
@@ -77,6 +86,7 @@ function publicHubs(hubs: HubConfig[]) {
     url: h.url,
     cadence: hubCadence(h),
     fallback: hubFallback(h),
+    onChange: hubOnChange(h),
   }));
 }
 
@@ -109,9 +119,11 @@ export async function POST(request: Request) {
     }
     let cadence: HubCadence | undefined;
     let fallback: HubFallback | undefined;
+    let onChange: boolean | undefined;
     try {
       cadence = parseCadence((body as { cadence?: unknown }).cadence);
       fallback = parseFallback((body as { fallback?: unknown }).fallback);
+      onChange = parseOnChange((body as { onChange?: unknown }).onChange);
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 });
     }
@@ -128,7 +140,13 @@ export async function POST(request: Request) {
     }
     const next = [
       ...current,
-      { url, token, cadence: cadence ?? CADENCE_CONTINUOUS, fallback: fallback ?? "automatic" },
+      {
+        url,
+        token,
+        cadence: cadence ?? CADENCE_CONTINUOUS,
+        fallback: fallback ?? "automatic",
+        onChange: onChange ?? false,
+      },
     ];
     const refused = refuseList(next);
     if (refused) return refused;
@@ -156,15 +174,18 @@ export async function PATCH(request: Request) {
       url?: unknown;
       cadence?: unknown;
       fallback?: unknown;
+      onChange?: unknown;
       move?: unknown;
     };
     let url: string;
     let cadence: HubCadence | undefined;
     let fallback: HubFallback | undefined;
+    let onChange: boolean | undefined;
     try {
       url = normalizeHubUrl(body.url);
       cadence = parseCadence(body.cadence);
       fallback = parseFallback(body.fallback);
+      onChange = parseOnChange(body.onChange);
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 400 });
     }
@@ -177,7 +198,12 @@ export async function PATCH(request: Request) {
 
     const next = current.map((h) =>
       h.url === url
-        ? { ...h, cadence: cadence ?? hubCadence(h), fallback: fallback ?? hubFallback(h) }
+        ? {
+            ...h,
+            cadence: cadence ?? hubCadence(h),
+            fallback: fallback ?? hubFallback(h),
+            onChange: onChange ?? hubOnChange(h),
+          }
         : h
     );
     if (body.move) {

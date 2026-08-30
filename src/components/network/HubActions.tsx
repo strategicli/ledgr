@@ -25,6 +25,11 @@ const CADENCE_HELP =
   "Continuously exchanges every few seconds, which is right for another machine of yours. A longer gap suits a copy you keep as an archive, and means it can be that far behind: falling back to it loses everything since its last exchange. Once a week is the longest gap offered, because a copy that misses two checks in a row can no longer catch up and needs everything sent to it again.";
 const FALLBACK_HELP =
   "Automatically means this machine reads from that copy without asking. Ask me first means it only sends changes there; if every automatic copy goes down it will ask before it starts reading from this one, because reading a stale copy makes everything look fresher than it is.";
+// ADR-240. Stated as what it buys, not as what it toggles: the point is that a
+// copy hosted in the cloud costs money for every minute its database is awake,
+// and checking in with nothing to say costs the same as checking in with work.
+const ON_CHANGE_HELP =
+  "Only when there are changes sends your edits the moment you make them, instead of waiting for the next check. The setting above then becomes the slowest this copy will ever go without hearing from you, rather than a fixed schedule. Turn it on for a copy hosted in the cloud, where an empty check-in still wakes the database and still costs you.";
 
 export function AddHub() {
   const router = useRouter();
@@ -32,6 +37,7 @@ export function AddHub() {
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [cadence, setCadence] = useState<HubCadence>(CADENCE_CONTINUOUS);
+  const [onChange, setOnChange] = useState(false);
   const [fallback, setFallback] = useState<HubFallback>("automatic");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +49,7 @@ export function AddHub() {
       const res = await fetch("/api/sync/hubs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url, token, cadence, fallback }),
+        body: JSON.stringify({ url, token, cadence, fallback, onChange }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -117,8 +123,16 @@ export function AddHub() {
         </label>
       </div>
       <p className="ui-meta mt-2 text-ink-subtle">
-        {CADENCE_HELP} {FALLBACK_HELP}
+        {CADENCE_HELP} {FALLBACK_HELP} {ON_CHANGE_HELP}
       </p>
+      <label className="ui-meta mt-2 inline-flex items-center gap-1.5 text-ink">
+        <input
+          type="checkbox"
+          checked={onChange}
+          onChange={(e) => setOnChange(e.target.checked)}
+        />
+        Only contact this copy when there are changes
+      </label>
       <p className="ui-meta mt-2 text-ink-subtle">
         On the other copy: Build → Network → Devices → Add device, then paste
         the one-time code here. A new device starts out able to receive only;
@@ -179,12 +193,14 @@ export function HubSettings({
   url,
   cadence,
   fallback,
+  onChange,
   canMoveUp,
   canMoveDown,
 }: {
   url: string;
   cadence: HubCadence;
   fallback: HubFallback;
+  onChange: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
 }) {
@@ -246,6 +262,21 @@ export function HubSettings({
         </select>
         <span role="tooltip" className={tooltip}>
           {FALLBACK_HELP}
+        </span>
+      </span>
+      <span className="group relative inline-flex cursor-help items-center">
+        <label className="inline-flex items-center gap-1 text-xs text-ink">
+          <input
+            type="checkbox"
+            checked={onChange}
+            disabled={busy}
+            aria-label="Only contact this copy when there are changes"
+            onChange={(e) => void patch({ onChange: e.target.checked })}
+          />
+          Only on changes
+        </label>
+        <span role="tooltip" className={tooltip}>
+          {ON_CHANGE_HELP}
         </span>
       </span>
       <span className="inline-flex items-center">

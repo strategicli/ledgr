@@ -36,6 +36,7 @@ function hub(over: Partial<HubStatus> = {}): HubStatus {
     url: "https://study-pc.example.com",
     cadence: CADENCE_CONTINUOUS,
     fallback: "automatic",
+    onChange: false,
     lastSyncAt: ago(2 * MIN),
     lastError: null,
     nextDueAt: null,

@@ -1166,7 +1166,7 @@ in the middle you get both in one line.
   copy needs its data re-filled from that copy first
   (\`npm run local:restore -- --from-url\`), because changing the address alone
   would merge two diverged databases.
-- **Each copy has two settings, and they are independent.** **How often** is
+- **Each copy has three settings, and they are independent.** **How often** is
   the schedule, and it is the ordinary ladder: continuously (every few
   seconds — right for another machine of yours), every minute, every 5, every
   15, hourly, once a day, or once a week. A longer gap suits a copy you keep as
@@ -1179,6 +1179,17 @@ in the middle you get both in one line.
   automatic copy goes down it will ask before it starts reading from this one.
   The arrows on each row change the priority order. At least one copy always has
   to be automatic, or this machine would sit waiting for you instead of syncing.
+- **Only on changes** sends your edits the moment you make them, instead of
+  waiting for the next check. **How often** then means something different for
+  that copy: it stops being a fixed schedule and becomes the slowest that copy
+  will ever go without hearing from you. Turn it on for a copy hosted in the
+  cloud. A check-in with nothing to say costs that copy exactly what a useful
+  one costs, because it wakes its database either way, and a copy set to check
+  continuously with nothing to send can hold that database awake all day for
+  nothing. With this on, "continuously" costs you only when you are actually
+  working. It changes when *your* changes leave; changes made on another copy
+  still arrive on the schedule, because this machine cannot know they exist
+  until it asks.
 - **Check in now** exchanges with every copy immediately, whatever the schedule
   says. A schedule works in both directions: between check-ins your changes are
   waiting here, and changes made on another copy have not arrived yet. This is

@@ -110,6 +110,8 @@ export type HubStatus = {
   url: string;
   cadence: HubCadence;
   fallback: HubFallback;
+  // ADR-240: is this hub contacted only when there is something to send?
+  onChange: boolean;
   lastSyncAt: string | null;
   lastError: string | null;
   // When this hub is next due for an exchange (ISO), null when due now.
@@ -209,6 +211,13 @@ export type HubRuntime = {
   skewMs: number | null;
   // Epoch ms; 0 means due now.
   nextDueAt: number;
+  // Consecutive failed exchanges with this hub, cleared by the next success.
+  // Drives the retry backoff in nextDueAfter (ADR-239).
+  consecutiveFails: number;
+  // Epoch ms of the last attempt, success or failure. Debounces the
+  // change-triggered exchange (ADR-240) so a burst of edits is one round
+  // trip, not one per edit.
+  lastExchangeAt: number;
 };
 type SyncShared = {
   status: SyncStatus;
@@ -246,7 +255,7 @@ const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgr
 const status = shared.status;
 
 function hubRuntime(url: string): HubRuntime {
-  return (shared.hubRuntime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0 });
+  return (shared.hubRuntime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 });
 }
 
 export function getSyncStatus(): SyncStatus {
@@ -400,6 +409,14 @@ export type HubConfig = {
   // reader going through `hubCadence` instead of quietly assuming a number.
   cadence?: HubCadence | "continuous" | "daily";
   fallback?: HubFallback;
+  // "Only when there are changes" (ADR-240). Off by default, so every hub
+  // written before this behaves exactly as it did. When on, the cadence stops
+  // being the schedule and becomes the IDLE HEARTBEAT: this peer's own
+  // changes go out as soon as they exist, and a quiet hub is contacted only
+  // once per cadence. That is what makes "continuous" affordable on a
+  // serverless hub, where every contact wakes a database that bills by the
+  // minute it stays awake.
+  onChange?: boolean;
 };
 
 /** The defaults, applied in one place so every reader agrees. Tolerant of the
@@ -417,6 +434,35 @@ export function hubCadence(h: Pick<HubConfig, "cadence">): HubCadence {
 }
 export function hubFallback(h: Pick<HubConfig, "fallback">): HubFallback {
   return h.fallback === "prompt" ? "prompt" : "automatic";
+}
+/** Tolerant like the two above: anything but an explicit true is off, so an
+ * unreadable setting falls back to the old always-wait-for-the-cadence
+ * behavior rather than to a livelier one. */
+export function hubOnChange(h: Pick<HubConfig, "onChange">): boolean {
+  return h.onChange === true;
+}
+
+/**
+ * Should an "only when there are changes" hub be contacted right now, even
+ * though its cadence is not up? Pure, so the rule is checkable without a
+ * database or a network.
+ *
+ * The failure clause is the important one. A hub that is currently FAILING
+ * must never be woken early by pending changes, because a change the hub
+ * cannot accept is pending forever — which is precisely the loop that held a
+ * serverless database awake around the clock on 2026-08-30. When a hub is
+ * failing, the ADR-239 backoff wins and this rule stands down.
+ */
+export function onChangeDue(opts: {
+  onChange: boolean;
+  hasLocalChanges: boolean;
+  consecutiveFails: number;
+  msSinceLastExchange: number;
+  debounceMs: number;
+}): boolean {
+  if (!opts.onChange || !opts.hasLocalChanges) return false;
+  if (opts.consecutiveFails > 0) return false;
+  return opts.msSinceLastExchange >= opts.debounceMs;
 }
 
 /** How long between exchanges with a hub on this cadence. `continuousMs` is
@@ -511,18 +557,38 @@ export function effectiveCadence(
   return hubCadence(hub);
 }
 
+/** Ceiling on the gap between retries of a hub that keeps failing (ADR-239).
+ * Long enough that a broken hub costs a handful of requests an hour; short
+ * enough that a hub coming back is picked up while the owner is still there. */
+export const MAX_RETRY_BACKOFF_MS = 15 * 60 * 1000;
+
 /**
  * When is a hub next due after an attempt? A success waits the full cadence;
  * a FAILURE retries on the normal pull window instead, so a daily hub that
  * errors does not disappear for 24 hours.
+ *
+ * A failure that REPEATS backs off, doubling each time (ADR-239). Without
+ * this, one change the hub can never accept was re-sent every 10 seconds for
+ * as long as the process lived: ~8,600 requests a day, enough on its own to
+ * hold a serverless hub's database awake around the clock. Seen live on
+ * 2026-08-30. The FIRST retry keeps the old timing, so an ordinary blip still
+ * recovers at once; only a persistent failure slows down.
  */
 export function nextDueAfter(opts: {
   now: number;
   ok: boolean;
   cadenceMs: number;
   retryMs: number;
+  /** Consecutive failures INCLUDING this one. 1 (the default) = first failure. */
+  fails?: number;
 }): number {
-  return opts.now + (opts.ok ? opts.cadenceMs : Math.min(opts.retryMs, opts.cadenceMs));
+  if (opts.ok) return opts.now + opts.cadenceMs;
+  const base = Math.min(opts.retryMs, opts.cadenceMs);
+  const attempts = Math.max(1, Math.floor(opts.fails ?? 1));
+  // Clamp the exponent before the shift so a long outage cannot reach Infinity.
+  const backoff = base * 2 ** Math.min(attempts - 1, 20);
+  // Never slower than the cap, and never slower than the hub's own cadence.
+  return opts.now + Math.min(backoff, Math.max(opts.cadenceMs, MAX_RETRY_BACKOFF_MS));
 }
 
 /**
@@ -533,9 +599,19 @@ export function nextDueAfter(opts: {
  * cadence had written — up to 24 hours away — and was silently skipped every
  * round in between. Clamping to the CURRENT cadence means a schedule change
  * takes effect within one interval, like every other GUI sync setting.
+ *
+ * `floorMs` is what stops this from undoing a retry backoff (ADR-239): a
+ * continuous hub's cadence is 10 seconds, so without the floor the clamp
+ * would drag every backed-off retry straight back down to 10 seconds and the
+ * backoff would never happen at all.
  */
-export function clampNextDue(nextDueAt: number, now: number, cadenceMs: number): number {
-  return Math.min(nextDueAt, now + cadenceMs);
+export function clampNextDue(
+  nextDueAt: number,
+  now: number,
+  cadenceMs: number,
+  floorMs = 0
+): number {
+  return Math.min(nextDueAt, now + Math.max(cadenceMs, floorMs));
 }
 
 /**
@@ -580,7 +656,12 @@ export function effectiveHubs(
       // Normalize the ADR-210 axes here so nothing downstream has to guess:
       // an entry stored before they existed reads as continuous + automatic,
       // which is precisely the behavior it already had.
-      .map((h) => ({ ...h, cadence: hubCadence(h), fallback: hubFallback(h) }));
+      .map((h) => ({
+        ...h,
+        cadence: hubCadence(h),
+        fallback: hubFallback(h),
+        onChange: hubOnChange(h),
+      }));
   }
   const token = (envToken ?? "").trim();
   if (!token) return [];
@@ -589,6 +670,7 @@ export function effectiveHubs(
     token,
     cadence: CADENCE_CONTINUOUS as HubCadence,
     fallback: "automatic" as HubFallback,
+    onChange: false,
   }));
 }
 
@@ -698,7 +780,7 @@ export function resolveSyncState(o: {
   return o.readAttempted || !o.everSynced ? "offline" : settled;
 }
 export function buildSyncStatus(
-  hubs: Pick<HubConfig, "url" | "cadence" | "fallback">[],
+  hubs: Pick<HubConfig, "url" | "cadence" | "fallback" | "onChange">[],
   s: SyncStatus,
   pendingOps: number,
   mode: SyncMode,
@@ -716,6 +798,7 @@ export function buildSyncStatus(
       url: h.url,
       cadence: hubCadence(h),
       fallback: hubFallback(h),
+      onChange: hubOnChange(h),
       lastSyncAt: prior?.lastSyncAt ?? null,
       lastError: prior?.lastError ?? null,
       nextDueAt: prior?.nextDueAt ?? null,
@@ -878,7 +961,7 @@ export function pushSelectionForHub(
   url: string,
   opts: Omit<Parameters<typeof selectPushOps>[0], "firstPushDone" | "skewMs">
 ): PushSelection {
-  const rt = (runtime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0 });
+  const rt = (runtime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 });
   const sel = selectPushOps({ ...opts, firstPushDone: rt.firstPushDone, skewMs: rt.skewMs });
   rt.firstPushDone = sel.firstPushDoneAfter;
   return sel;
@@ -1051,6 +1134,9 @@ type ExchangeResult = {
   // True when both halves ran to completion inside the bounded loop — the
   // "brought up to speed" test the approval clear depends on.
   drained: boolean;
+  // Changes this hub refused to apply and parked (ADR-241). Zero on a healthy
+  // exchange; anything above it is a change that hub will never have.
+  parkedOps: number;
   pendingOps: number;
   holdReason: HoldReason | null;
   heldOpsCount: number | null;
@@ -1067,6 +1153,7 @@ async function exchangeWith(
   const schemaVer = latestSchemaVer();
   let cursor = await readCursor(hub.url);
   let drained = false;
+  let parkedOps = 0;
   let holdReason: HoldReason | null = null;
   let heldOpsCount: number | null = null;
   // Bounded loop: worst case both sides hold deep backlogs; each round moves
@@ -1161,7 +1248,21 @@ async function exchangeWith(
       cursor: number;
       hasMore: boolean;
       serverTime?: string;
+      // ADR-241, additive: changes this hub could not apply and has parked.
+      // Absent from a hub that predates the change, which reads as none.
+      parked?: { kind: string; table: string; id: string | null; error: string }[];
     };
+    if (data.parked?.length) {
+      // Not an exception: the rest of the batch landed and the cursor may
+      // advance. It must still be impossible to miss, because a parked change
+      // is one this hub will never have.
+      parkedOps += data.parked.length;
+      log.warn("hub could not apply some changes; they were parked, not re-sent", {
+        hub: hub.url,
+        parked: data.parked.length,
+        first: data.parked[0],
+      });
+    }
     // Belt and suspenders for a hub that predates `pull: false` and answered
     // with ops anyway: on a push-only round we never apply them, because the
     // pull cursor deliberately does not advance and we would re-apply the
@@ -1193,6 +1294,7 @@ async function exchangeWith(
   }
   return {
     drained,
+    parkedOps,
     pendingOps: await pendingCount(cursor.push),
     holdReason,
     heldOpsCount,
@@ -1210,7 +1312,11 @@ async function exchange(
   hubs: HubConfig[],
   deviceId: string,
   guard: PushGuard,
-  approval: FallbackApproval | null
+  approval: FallbackApproval | null,
+  // Highest local-origin oplog seq. Compared against a hub's push cursor to
+  // answer "do we have anything to send this hub?" without a round trip, which
+  // is what an "only when there are changes" hub is scheduled on (ADR-240).
+  maxLocalSeq: number
 ): Promise<void> {
   const now = Date.now();
   // Forget the runtime state of hubs no longer configured, so a hub that is
@@ -1237,6 +1343,7 @@ async function exchange(
       url: h.url,
       cadence: hubCadence(h),
       fallback: hubFallback(h),
+      onChange: hubOnChange(h),
       nextDueAt: rt.nextDueAt > now ? new Date(rt.nextDueAt).toISOString() : null,
       pulling: shouldPullFrom(h, approval?.url ?? null),
       skewMs: rt.skewMs,
@@ -1259,14 +1366,42 @@ async function exchange(
     const isAutomatic = hubFallback(hub) === "automatic";
     const cadence = effectiveCadence(hub, approval);
     const cadenceMs = cadenceIntervalMs(cadence, guard.continuousMs);
-    // Honor a cadence the owner changed since this hub was last scheduled.
-    rt.nextDueAt = clampNextDue(rt.nextDueAt, now, cadenceMs);
-    if (rt.nextDueAt > now) continue;
+    // Honor a cadence the owner changed since this hub was last scheduled,
+    // without dragging a failing hub's backoff back down to its cadence.
+    const retryFloorMs =
+      rt.consecutiveFails > 0
+        ? nextDueAfter({
+            now: 0,
+            ok: false,
+            cadenceMs,
+            retryMs: guard.continuousMs,
+            fails: rt.consecutiveFails,
+          })
+        : 0;
+    rt.nextDueAt = clampNextDue(rt.nextDueAt, now, cadenceMs, retryFloorMs);
+    if (rt.nextDueAt > now) {
+      // "Only when there are changes" (ADR-240): the cadence is this hub's
+      // idle heartbeat, not its schedule, so our own unsent changes bring the
+      // exchange forward. One cheap LOCAL read decides it; nothing is sent
+      // over the wire to find out there was nothing to send.
+      if (!hubOnChange(hub)) continue;
+      const cursor = await readCursor(hub.url);
+      const due = onChangeDue({
+        onChange: true,
+        hasLocalChanges: cursor.push < maxLocalSeq,
+        consecutiveFails: rt.consecutiveFails,
+        msSinceLastExchange: now - rt.lastExchangeAt,
+        debounceMs: guard.continuousMs,
+      });
+      if (!due) continue;
+    }
+    rt.lastExchangeAt = now;
     const pull = shouldPullFrom(hub, approval?.url ?? null);
     if (isAutomatic) automaticAttempted = true;
     if (pull) readAttempted = true;
     try {
       const r = await exchangeWith(hub, deviceId, guard, { pull });
+      rt.consecutiveFails = 0;
       rt.nextDueAt = nextDueAfter({ now, ok: true, cadenceMs, retryMs: guard.continuousMs });
       status.hubs[i] = {
         ...status.hubs[i],
@@ -1296,14 +1431,29 @@ async function exchange(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      rt.nextDueAt = nextDueAfter({ now, ok: false, cadenceMs, retryMs: guard.continuousMs });
+      rt.consecutiveFails += 1;
+      rt.nextDueAt = nextDueAfter({
+        now,
+        ok: false,
+        cadenceMs,
+        retryMs: guard.continuousMs,
+        fails: rt.consecutiveFails,
+      });
       status.hubs[i] = {
         ...status.hubs[i],
         lastError: message,
         nextDueAt: new Date(rt.nextDueAt).toISOString(),
       };
       status.lastError = message;
-      log.warn("hub exchange failed", { hub: hub.url, automatic: isAutomatic, error: message });
+      log.warn("hub exchange failed", {
+        hub: hub.url,
+        automatic: isAutomatic,
+        error: message,
+        // How many times running, and how long we wait now — so the backoff is
+        // readable in the log instead of inferred from timestamps.
+        consecutiveFails: rt.consecutiveFails,
+        retryInMs: rt.nextDueAt - now,
+      });
     }
   }
 
@@ -1443,7 +1593,7 @@ export function startSyncLoop(): void {
         for (const rt of Object.values(shared.hubRuntime)) rt.nextDueAt = 0;
       }
       if (due || wrote || forced || lastSeenSeq < 0) {
-        await exchange(hubs, deviceId, guard, approval);
+        await exchange(hubs, deviceId, guard, approval, maxSeq);
         lastFullExchange = Date.now();
       }
       // One-shot: the stored release did its job the moment the first push

@@ -3728,3 +3728,62 @@ Setting the clipper up meant getting a token: mint one signed with `LEDGR_CLIPPE
 **Rejected: a Launchpad-style authorize popup (ADR-224 / `/connect/launchpad`).** That shape is right for an app that must hold a durable credential of its own. A bookmarklet does not: it only ever runs in a browser that can just be signed in.
 
 Check: `npx tsx scripts/verify-clipper-tokenless.mts` (new, 14 pure checks).
+
+## ADR-239: a hub that keeps failing is retried more slowly, not every ten seconds
+
+**Date:** 2026-08-30
+**Status:** accepted — not core (the peer's own retry schedule; the machine sync contract, the stored hub shape and every response are unchanged)
+
+**Context.** Brandon noticed the production Neon database was never idle and asked why, given his hub is set to check hourly. The hourly setting was being honored on the happy path. A FAILURE was not: `nextDueAfter` rescheduled a failed exchange at a flat `retryMs` (10 seconds), with no backoff and no ceiling, forever.
+
+On 2026-08-30 between 08:20:54 and 08:44:51 UTC this rig failed 120 times in a row, once every twelve seconds, on one change the hub could never accept. A permanently broken hub costs about 8,600 requests a day at that rate. On a serverless hub each of those wakes a database that bills for the minutes it stays awake, so one stuck change is enough to hold the whole thing open around the clock.
+
+**Decision.** Repeated failure doubles the wait, starting from the existing first-retry gap, capped at `MAX_RETRY_BACKOFF_MS` (15 minutes) and never longer than the hub's own cadence when that is longer. The FIRST retry keeps the old timing exactly, so an ordinary network blip still recovers at once; only a persistent failure slows down. A success clears the counter.
+
+**The clamp had to learn about it.** `clampNextDue` exists so a cadence the owner changed takes effect within one interval, and it did that by capping the next-due time at `now + cadenceMs`. A continuous hub's cadence is ten seconds, so it would have dragged every backed-off retry straight back down and the backoff would never have happened at all. It now takes a `floorMs` the caller sets from the current backoff.
+
+**Why not fix only the poison pill.** ADR-241 does that, and it is the better fix for the case we actually hit. This one is the guardrail underneath it: any persistent failure, including one nobody has thought of yet, must not become a hammer. Two independent causes had to line up to produce the outage, and removing either one alone is not enough.
+
+**What this does not fix.** The failing exchange still happens; it just costs a handful of requests an hour instead of thousands a day. And it cannot help a peer that is not running this code, which is exactly the case the same investigation turned up: a second install (`bcdesktop`) on a build from before 2026-08-25 has been failing the schema version gate and re-asking every 12.06 seconds since, roughly 50,000 requests. It gets the backoff only by updating, which also removes the reason it was failing. The backoff is the guardrail for the next stuck peer, not the cure for that one.
+
+**Verification.** Nine checks in `scripts/verify-sync-ui.mts`: the first retry is unchanged, the second doubles, the fourth is eight times, the cap holds, an hourly hub never backs off past its own cadence, a success clears it, and the clamp both honors a retry floor and still pulls back a stale cadence when nothing is failing.
+
+**Affects:** `src/lib/sync/client.ts`, `scripts/verify-sync-ui.mts`.
+
+## ADR-240: "only when there are changes" makes the cadence an idle heartbeat
+
+**Date:** 2026-08-30
+**Status:** accepted — not core (additive per-hub setting; the stored hub shape gains an optional boolean, every existing entry reads as off, and the machine sync contract is untouched)
+
+**Context.** Brandon asked for a sync option where changes flow continuously but the copies do not talk at all when there is nothing to say. The reason is cost, not tidiness: an empty exchange on a serverless hub costs exactly what a useful one costs, because it wakes the database either way. The existing ladder could not express it. Continuous meant about 8,600 exchanges a day whether or not anything had changed; hourly meant an edit could sit for an hour.
+
+**Decision.** A per-hub checkbox, **Only on changes**, off by default. When it is on the cadence stops being the schedule and becomes the **idle heartbeat**: this peer's own unsent changes bring the exchange forward immediately, and a quiet hub is contacted once per cadence and no more. The owner's existing ladder therefore sets the floor, which is why no new cadence value was added.
+
+**Why a boolean and not a new cadence preset.** A preset would have needed its own interval, its own label, its own entry in the retention-gap refusal, and a second concept to explain. The boolean composes with every rung already on the ladder: "hourly, only on changes" and "daily, only on changes" both mean something obvious, and the retention guardrail keeps working unchanged because the worst case is still the cadence.
+
+**The rule is pure and the signal is local.** `onChangeDue` decides it with no database and no network. The caller answers "do we have anything to send" by comparing the hub's stored push cursor to the local oplog head, which is one local read. Nothing goes over the wire to discover there was nothing to send, which would have defeated the point.
+
+**A failing hub is never woken early.** This is the clause that keeps ADR-240 from re-creating the ADR-239 hammer. A change the hub cannot accept is pending forever, so "we have changes waiting" would otherwise fire on every tick. When a hub is failing the backoff wins and this rule stands down.
+
+**What this does not do.** It cannot make INBOUND changes instant, because a peer cannot learn the hub has news without asking. The cadence is that floor. Making it truly zero-poll needs the hub to call the peer, which is a new direction in the machine API and therefore core: agreed with Brandon as the follow-up, to be opened as its own ADR with Tyler.
+
+**Verification.** Ten checks in `scripts/verify-sync-ui.mts` covering the reader's tolerance, the four ways the rule says no, the debounce boundary, and the failing-hub clause.
+
+**Affects:** `src/lib/sync/client.ts`, `src/app/api/sync/hubs/route.ts`, `src/components/network/HubActions.tsx`, `src/app/build/network/page.tsx`, `scripts/verify-sync-ui.mts`, `src/lib/mcp/user-guide.ts`.
+
+## ADR-241: a change the hub cannot apply is parked, not re-sent forever
+
+**Date:** 2026-08-30
+**Status:** accepted — not core (hub-side apply behavior plus one additive response field; no caller has to change and every existing one keeps working)
+
+**Context.** The failure behind ADR-239 was a single change that could never succeed: "delete the `day_log` type", which rows on the hub still referenced. On the neon-http driver there is no session and therefore no transaction, so `applySyncOps` ran the batch action by action. The failing action threw, the whole exchange returned HTTP 500, the peer's push cursor never advanced, and the identical batch went back out on the next retry. Every retry also re-applied the actions that came before the failure.
+
+**Decision.** On the non-transactional path each action runs in its own try/catch. A failure is **parked**: recorded with its kind, table, row id and reason, skipped, and the rest of the batch continues. The hub logs the parked set, captures it as an error so it reaches the errors surface and the weekly health check, and returns it in the response. The peer counts it, logs it, and carries it on the exchange result.
+
+**Why parking beats retrying.** Retrying forever is not conservative, it is only louder: the change never lands, and the peer is also prevented from making progress on everything behind it. Parking makes exactly one thing true that was not true before, which is that somebody finds out. A parked change is a change that hub will never have, and that must be visible rather than inferred from a log full of 500s.
+
+**The transactional path stays all-or-nothing.** A failed statement has already poisoned the surrounding transaction, so nothing after it can run, and per-action parking there needs a SAVEPOINT per action. Marked with a `ponytail:` comment naming the ceiling. The hub that hit this is the cloud one, which takes the branch that is fixed.
+
+**What is still open.** The peer counts parked changes but the Network page does not yet show them; today they surface through the hub's own errors list and the weekly health check. That surface is queued in `next_steps.md` rather than bundled here.
+
+**Affects:** `src/lib/sync/apply.ts`, `src/app/api/machine/sync/route.ts`, `src/lib/sync/client.ts`.

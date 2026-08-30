@@ -36,6 +36,9 @@ import {
   CADENCE_CONTINUOUS,
   CADENCE_DAILY_MINUTES,
   CADENCE_DAILY_MS,
+  MAX_RETRY_BACKOFF_MS,
+  hubOnChange,
+  onChangeDue,
   type HubRuntime,
   type SyncStatus,
 } from "../src/lib/sync/client";
@@ -540,6 +543,80 @@ check(
   );
 }
 
+// Repeated failure backs off (ADR-239). One change the hub could never accept,
+// re-sent every 10 seconds, was ~8,600 requests a day — enough on its own to
+// hold a serverless hub's database awake around the clock.
+{
+  const now = 1_000_000;
+  const CADENCE_HOURLY_MS = 60 * 60 * 1000;
+  const failAt = (fails: number, cadenceMs = 10000) =>
+    nextDueAfter({ now, ok: false, cadenceMs, retryMs: 10000, fails }) - now;
+  check("the first failure still retries on the pull window", failAt(1) === 10000);
+  check("the second failure waits twice as long", failAt(2) === 20000);
+  check("the fourth waits eight times as long", failAt(4) === 80000);
+  check("the backoff stops at the cap", failAt(30) === MAX_RETRY_BACKOFF_MS);
+  check(
+    "an hourly hub backs off no further than its own cadence",
+    failAt(30, CADENCE_HOURLY_MS) === CADENCE_HOURLY_MS
+  );
+  check(
+    "a success clears the backoff",
+    nextDueAfter({ now, ok: true, cadenceMs: 10000, retryMs: 10000, fails: 30 }) === now + 10000
+  );
+  // The clamp must not undo the backoff: a continuous hub's cadence is 10s, so
+  // clamping to the cadence alone would erase every retry gap above it.
+  const backedOff = now + MAX_RETRY_BACKOFF_MS;
+  check(
+    "clampNextDue honors a retry floor above the cadence",
+    clampNextDue(backedOff, now, 10000, MAX_RETRY_BACKOFF_MS) === backedOff
+  );
+  check(
+    "clampNextDue still pulls back a stale cadence when nothing is failing",
+    clampNextDue(now + CADENCE_DAILY_MS, now, 10000) === now + 10000
+  );
+}
+
+// "Only when there are changes" (ADR-240). The cadence stops being the
+// schedule and becomes the idle heartbeat: our own changes bring the exchange
+// forward, and a quiet hub is contacted once per cadence and no more.
+{
+  check("the flag is off unless explicitly set", hubOnChange({}) === false);
+  check("a non-boolean never turns it on", hubOnChange({ onChange: "yes" as never }) === false);
+  check("an explicit true turns it on", hubOnChange({ onChange: true }) === true);
+
+  const base = {
+    onChange: true,
+    hasLocalChanges: true,
+    consecutiveFails: 0,
+    msSinceLastExchange: 60_000,
+    debounceMs: 10_000,
+  };
+  check("changes waiting bring the exchange forward", onChangeDue(base) === true);
+  check(
+    "nothing to send means nothing to say",
+    onChangeDue({ ...base, hasLocalChanges: false }) === false
+  );
+  check(
+    "a hub without the flag still waits out its cadence",
+    onChangeDue({ ...base, onChange: false }) === false
+  );
+  check(
+    "a burst of edits is debounced into one round trip",
+    onChangeDue({ ...base, msSinceLastExchange: 2000 }) === false
+  );
+  check(
+    "at the debounce boundary it goes",
+    onChangeDue({ ...base, msSinceLastExchange: 10_000 }) === true
+  );
+  // The clause that keeps ADR-240 from re-creating the ADR-239 hammer: a
+  // change the hub cannot accept is pending forever, so a FAILING hub must
+  // never be woken early by it.
+  check(
+    "a failing hub is NOT woken early by pending changes",
+    onChangeDue({ ...base, consecutiveFails: 1 }) === false
+  );
+}
+
 // A schedule already written must not outlive the cadence that wrote it.
 //
 // Caught live on the dev rig 2026-08-23: a hub was set to `daily`, which wrote
@@ -649,9 +726,9 @@ check(
   const ops = [{ seq: 1 }, { seq: 2 }] as never[];
   const runtime: Record<string, HubRuntime> = {
     // The healthy mirror has already pushed once this process.
-    "https://mirror": { firstPushDone: true, skewMs: 0, nextDueAt: 0 },
+    "https://mirror": { firstPushDone: true, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
     // The emergency archive has not, and has a day of ops queued.
-    "https://archive": { firstPushDone: false, skewMs: 0, nextDueAt: 0 },
+    "https://archive": { firstPushDone: false, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
   };
   const common = {
     mode: "full" as const,
@@ -691,8 +768,8 @@ check(
   // Same isolation for clock skew: a hub whose clock is wrong holds only its
   // own push.
   const runtime: Record<string, HubRuntime> = {
-    "https://good": { firstPushDone: true, skewMs: 200, nextDueAt: 0 },
-    "https://badclock": { firstPushDone: true, skewMs: 300_000, nextDueAt: 0 },
+    "https://good": { firstPushDone: true, skewMs: 200, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
+    "https://badclock": { firstPushDone: true, skewMs: 300_000, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
   };
   const common = {
     mode: "full" as const,
@@ -716,7 +793,7 @@ check(
 {
   // An unknown hub starts fresh rather than inheriting anyone's state.
   const runtime: Record<string, HubRuntime> = {
-    "https://old": { firstPushDone: true, skewMs: 0, nextDueAt: 0 },
+    "https://old": { firstPushDone: true, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
   };
   const sel = pushSelectionForHub(runtime, "https://new", {
     mode: "full",
@@ -857,7 +934,7 @@ check(
       // The ADR-210 axes are filled in on read, so the stored entry comes back
       // normalized rather than byte-identical.
       JSON.stringify([
-        { url: "https://a.example", token: "ta", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
+        { url: "https://a.example", token: "ta", cadence: CADENCE_CONTINUOUS, fallback: "automatic", onChange: false },
       ])
   );
   check(
@@ -868,8 +945,8 @@ check(
     "no stored list falls back to env, same token on each",
     JSON.stringify(effectiveHubs(undefined, "https://a.example, https://b.example", "t1")) ===
       JSON.stringify([
-        { url: "https://a.example", token: "t1", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
-        { url: "https://b.example", token: "t1", cadence: CADENCE_CONTINUOUS, fallback: "automatic" },
+        { url: "https://a.example", token: "t1", cadence: CADENCE_CONTINUOUS, fallback: "automatic", onChange: false },
+        { url: "https://b.example", token: "t1", cadence: CADENCE_CONTINUOUS, fallback: "automatic", onChange: false },
       ])
   );
   check("env hubs without a token arm nothing", effectiveHubs(undefined, "https://a.example", undefined).length === 0);
