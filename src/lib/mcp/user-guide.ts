@@ -777,8 +777,10 @@ or video file.
 **Deleting a file for real** is the **Delete** on a file row (a File item's
 panel, or a record's Files card) — that removes it from storage. Deleting a
 link or image out of a body does **not** delete the file behind it; it keeps
-counting against your quota until deleted. Purging an item from Trash deletes
-its files with it.
+counting against your quota until deleted. When you DO delete a file, every
+link to it cleans itself up: your text stays, unlinked, with a "(file deleted)"
+note after it — an embedded image becomes the note alone. Purging an item from
+Trash deletes its files with it.
 
 **Every item shows its own files.** An item carrying files gets a collapsible
 **Files** section above Export & sharing (it appears the moment your first
