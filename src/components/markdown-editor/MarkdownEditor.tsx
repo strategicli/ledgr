@@ -23,7 +23,12 @@ import { useIsDesktop } from "./useIsDesktop";
 import { useRouter } from "next/navigation";
 import { openItem } from "@/lib/item-nav";
 import { showToast } from "@/components/ui/ActionToast";
-import { FILE_DRAG_MIME, type FileDragPayload } from "@/components/attachments/upload";
+import {
+  ATTACHMENT_REMOVED_EVENT,
+  FILE_DRAG_MIME,
+  type AttachmentRemovedDetail,
+  type FileDragPayload,
+} from "@/components/attachments/upload";
 import {
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
@@ -171,6 +176,56 @@ function insertFileLink(view: EditorView, label: string, url: string): void {
   view.dispatch(
     view.state.tr.replaceSelection(new Slice(frag, 0, 0)).scrollIntoView()
   );
+}
+
+// When a file is DELETED (the Files panel/section, Build → Files), its
+// references in the live doc would keep rendering as links — and worse, an
+// unsaved body would resurrect them over the server-side scrub on its next
+// autosave. So the editor scrubs its own document: link marks pointing at the
+// file unlink to their text plus a "(file deleted)" note, embedded images
+// become the note alone. The owner's words are never deleted (Tyler,
+// 2026-08-29); the resulting transaction autosaves like any edit.
+function scrubDeletedFile(editor: Editor, attachmentId: string): void {
+  const { state } = editor.view;
+  const { doc, schema } = state;
+  const hits: { from: number; to: number; kind: "link" | "image" }[] = [];
+  doc.descendants((node, pos) => {
+    if (
+      node.type === schema.nodes.image &&
+      typeof node.attrs.src === "string" &&
+      node.attrs.src.includes(attachmentId)
+    ) {
+      hits.push({ from: pos, to: pos + node.nodeSize, kind: "image" });
+      return false;
+    }
+    if (node.isText) {
+      const linked = node.marks.some(
+        (m) =>
+          m.type === schema.marks.link &&
+          typeof m.attrs.href === "string" &&
+          m.attrs.href.includes(attachmentId)
+      );
+      if (linked) hits.push({ from: pos, to: pos + node.nodeSize, kind: "link" });
+    }
+    return true;
+  });
+  if (hits.length === 0) return;
+  let tr = state.tr;
+  // Back to front, so earlier positions stay valid as later spans change.
+  for (const h of hits.sort((a, b) => b.from - a.from)) {
+    try {
+      if (h.kind === "image") {
+        tr = tr.replaceWith(h.from, h.to, schema.text("(file deleted)"));
+      } else {
+        tr = tr.insertText(" (file deleted)", h.to);
+        tr = tr.removeMark(h.from, h.to, schema.marks.link);
+      }
+    } catch {
+      // A span the schema won't take the edit on (e.g. a block-position image):
+      // leave it rather than corrupt the doc; the server scrub still ran.
+    }
+  }
+  editor.view.dispatch(tr);
 }
 
 // Upload each file and drop it in at the current selection: images embed as
@@ -863,6 +918,17 @@ export default function MarkdownEditor({
     );
     return () => setSlashFilePicker(editor, null);
   }, [editor, hasUploader]);
+  // Scrub deleted files out of the live doc (see scrubDeletedFile above).
+  useEffect(() => {
+    if (!editor || !itemId) return;
+    const onRemoved = (e: Event) => {
+      const d = (e as CustomEvent<AttachmentRemovedDetail>).detail;
+      if (d.itemId === itemId) scrubDeletedFile(editor, d.id);
+    };
+    window.addEventListener(ATTACHMENT_REMOVED_EVENT, onRemoved as EventListener);
+    return () =>
+      window.removeEventListener(ATTACHMENT_REMOVED_EVENT, onRemoved as EventListener);
+  }, [editor, itemId]);
   const showTb = (id: string) => !hiddenTb.has(id);
   // Collapse is a DESKTOP affordance only (the toggle lives in BodyEditor's
   // mode-row). On mobile the toolbar floats over the keyboard and must always

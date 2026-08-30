@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { attachmentUrl } from "@/lib/attachment-url";
+import { announceAttachmentRemoved } from "@/components/attachments/upload";
 import { showToast } from "@/components/ui/ActionToast";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import { formatBytes } from "@/lib/format-count";
@@ -48,10 +49,11 @@ export default function AllFilesTool() {
     };
   }, []);
 
-  const remove = async (id: string) => {
-    const res = await fetch(`/api/attachments/${id}`, { method: "DELETE" });
+  const remove = async (f: FileRow) => {
+    const res = await fetch(`/api/attachments/${f.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`delete failed (${res.status})`);
-    setFiles((prev) => (prev ?? []).filter((f) => f.id !== id));
+    announceAttachmentRemoved({ itemId: f.parent.id, id: f.id });
+    setFiles((prev) => (prev ?? []).filter((x) => x.id !== f.id));
     showToast("File deleted from storage");
   };
 
@@ -102,7 +104,7 @@ export default function AllFilesTool() {
                 triggerLabel={`Delete ${f.filename}`}
                 triggerClassName="rounded px-1.5 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-red-400"
                 align="right"
-                onConfirm={() => remove(f.id)}
+                onConfirm={() => remove(f)}
               />
             </span>
           </li>

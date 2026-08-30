@@ -6,7 +6,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { attachments, items, syncPeers } from "@/db/schema";
-import { createItem } from "@/lib/item-mutations";
+import { createItem, updateItem } from "@/lib/item-mutations";
 import { ItemError } from "@/lib/items";
 import { getStorage, type StorageProvider } from "@/lib/storage";
 import { syncEnabled } from "@/lib/sync/client";
@@ -309,6 +309,48 @@ export async function markAudioForPurge(
     .where(and(eq(attachments.id, attachmentId), eq(attachments.ownerId, ownerId)));
 }
 
+// After a file is deleted, its references would render as dead links. Scrub
+// them from every REFERENCING body the owner has (Copy link can paste a file's
+// address into any item, not just its parent): the markdown link unlinks to its
+// label plus a "(file deleted)" note, an embedded image becomes the note alone,
+// and any bare leftover address becomes the note. The text the owner wrote is
+// never deleted (Tyler, 2026-08-29). Goes through updateItem so revisions and
+// the mention/passage sync all behave as if the owner edited it. Best-effort:
+// a scrub failure must not un-delete a file, so the caller catches.
+export function scrubDeletedFileFromText(text: string, attachmentId: string): string {
+  const addr = `/files/${attachmentId}`;
+  return text
+    .replace(new RegExp(`!\\[[^\\]]*\\]\\(${addr}\\)`, "gi"), "(file deleted)")
+    .replace(new RegExp(`\\[([^\\]]*)\\]\\(${addr}\\)`, "gi"), "$1 (file deleted)")
+    .split(addr)
+    .join("(file deleted)");
+}
+
+async function scrubFileReferences(ownerId: string, attachmentId: string): Promise<void> {
+  const refs = await getDb()
+    .select({ id: items.id, body: items.body })
+    .from(items)
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        sql`${items.deletedAt} is null`,
+        sql`${items.body}::text like '%' || ${attachmentId}::text || '%'`
+      )
+    );
+  for (const r of refs) {
+    const raw = r.body as { format?: unknown; text?: unknown } | null;
+    if (typeof raw?.text !== "string") continue;
+    const next = scrubDeletedFileFromText(raw.text, attachmentId);
+    if (next === raw.text) continue;
+    await updateItem(ownerId, r.id, {
+      body: {
+        format: typeof raw.format === "string" ? raw.format : "markdown",
+        text: next,
+      },
+    });
+  }
+}
+
 // Delete one attachment now: R2 bytes then the row (delete-now / purge share
 // this). Owner-scoped. Storage injected for testability (default getStorage()).
 export async function deleteAttachment(
@@ -327,6 +369,10 @@ export async function deleteAttachment(
   await getDb()
     .delete(attachments)
     .where(and(eq(attachments.id, id), eq(attachments.ownerId, ownerId)));
+  // Dead-link cleanup, after the delete is real. A failure here leaves the
+  // annotation missing, never the file undeleted; the open editor also scrubs
+  // its own live doc (MarkdownEditor), so the common case is covered twice.
+  await scrubFileReferences(ownerId, id).catch(() => {});
 }
 
 // Every attachment the owner has, with its parent item and whether anything in
