@@ -57,6 +57,13 @@ export type ListOptions = {
   // Title substring match (powers the @-mention picker). Full-text search
   // over bodies is its own slice and uses the tsvector, not this.
   q?: string;
+  // Restrict to items with a confirmed relation edge to this item, either
+  // direction, any role — the same clause views.ts uses for its relatedTo
+  // filter (kept in step by hand; the SQL is small enough that sharing it
+  // wasn't worth entangling this read surface with ViewFilter). Lets a token
+  // client list the tasks tagged with a tag item or filed under a project
+  // item (GET /api/machine/items?relatedTo=…).
+  relatedTo?: string;
   trash?: boolean;
   limit?: number;
   offset?: number;
@@ -124,6 +131,14 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
         ? inArray(items.statusCategory, ["not_started", "in_progress"])
         : eq(items.statusCategory, opts.statusCategory)
     );
+  }
+  if (opts.relatedTo) {
+    where.push(sql`exists (
+      select 1 from relations r
+      where r.match_state = 'confirmed'
+        and ((r.source_id = ${items.id} and r.target_id = ${opts.relatedTo})
+          or (r.target_id = ${items.id} and r.source_id = ${opts.relatedTo}))
+    )`);
   }
   // Escape ILIKE wildcards once: reused by the substring filter and the
   // prefix-match ordering term below.

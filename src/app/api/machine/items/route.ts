@@ -11,6 +11,7 @@ import {
 import { createItem, updateItem } from "@/lib/item-mutations";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { captureError, createLogger } from "@/lib/log";
+import { STATUS_CATEGORIES, type StatusCategory } from "@/lib/status";
 
 // The external HTTP API (ADR-066): app integrations and crons — e.g. Savor's
 // journal-push cron — read items out of and write items into Ledgr with an
@@ -23,18 +24,45 @@ export const dynamic = "force-dynamic";
 
 const MAX_BATCH = 100;
 
+// CORS is open for the same reason /api/machine/capture's is (see the comment
+// there): the token IS the credential, there are no cookies to protect, and a
+// browser client (Launchpad's task tile) fetches with an Authorization header —
+// which triggers a preflight this route must answer.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
+function cors(res: NextResponse): NextResponse {
+  for (const [k, v] of Object.entries(CORS_HEADERS)) res.headers.set(k, v);
+  return res;
+}
+
+function json(body: unknown, status = 200): NextResponse {
+  return cors(NextResponse.json(body, { status }));
+}
+
+export function OPTIONS() {
+  return cors(new NextResponse(null, { status: 204 }));
+}
+
 // GET /api/machine/items — owner-scoped list, body-free (the "out of this"
-// path). Filters mirror the in-app list: ?type= &status= &parentId= &q= &limit=
-// &offset=. Open an item's body via the MCP get_item tool if you need it.
+// path). Filters mirror the in-app list: ?type= &status= &statusCategory=
+// (a category or "active") &relatedTo=<itemId> (confirmed edge either
+// direction — tasks tagged with a tag item / filed under a project item)
+// &parentId= &q= &limit= &offset=. Open an item's body via the MCP get_item
+// tool if you need it.
 export async function GET(request: Request) {
   const identity = await verifyApiRequest(request.headers.get("authorization"));
   if (!identity) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return json({ error: "unauthorized" }, 401);
   }
 
   const ownerId = await resolveMachineOwner();
   if (!ownerId) {
-    return NextResponse.json({ error: "owner not configured" }, { status: 503 });
+    return json({ error: "owner not configured" }, 503);
   }
 
   try {
@@ -47,21 +75,38 @@ export async function GET(request: Request) {
     const status = params.get("status");
     if (status !== null) {
       if (!ITEM_STATUSES.includes(status as ItemStatus)) {
-        return NextResponse.json(
+        return json(
           { error: `status must be one of: ${ITEM_STATUSES.join(", ")}` },
-          { status: 400 }
+          400
         );
       }
       opts.status = status as ItemStatus;
     }
+    const statusCategory = params.get("statusCategory");
+    if (statusCategory !== null) {
+      const valid =
+        statusCategory === "active" ||
+        (STATUS_CATEGORIES as readonly string[]).includes(statusCategory);
+      if (!valid) {
+        return json(
+          {
+            error: `statusCategory must be "active" or one of: ${STATUS_CATEGORIES.join(", ")}`,
+          },
+          400
+        );
+      }
+      opts.statusCategory = statusCategory as StatusCategory | "active";
+    }
+    const relatedTo = params.get("relatedTo");
+    if (relatedTo !== null) opts.relatedTo = asUuid(relatedTo, "relatedTo");
     const limit = params.get("limit");
     if (limit !== null) opts.limit = Number(limit) || undefined;
     const offset = params.get("offset");
     if (offset !== null) opts.offset = Number(offset) || undefined;
 
-    return NextResponse.json({ items: await listItems(ownerId, opts) });
+    return json({ items: await listItems(ownerId, opts) });
   } catch (err) {
-    return errorResponse(err);
+    return cors(await errorResponse(err));
   }
 }
 
@@ -74,33 +119,30 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const identity = await verifyApiRequest(request.headers.get("authorization"));
   if (!identity) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return json({ error: "unauthorized" }, 401);
   }
 
   const log = createLogger("machine-items");
   const ownerId = await resolveMachineOwner();
   if (!ownerId) {
     log.warn("machine API owner unresolved (set LEDGR_API_OWNER_UPN / ONEDRIVE_EXPORT_UPN)");
-    return NextResponse.json({ error: "owner not configured" }, { status: 503 });
+    return json({ error: "owner not configured" }, 503);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return json({ error: "invalid JSON" }, 400);
   }
 
   const batch = (body as { items?: unknown })?.items;
   const rawItems = Array.isArray(batch) ? batch : [body];
   if (rawItems.length === 0) {
-    return NextResponse.json({ count: 0, created: [], errors: [] });
+    return json({ count: 0, created: [], errors: [] });
   }
   if (rawItems.length > MAX_BATCH) {
-    return NextResponse.json(
-      { error: `too many items (max ${MAX_BATCH} per request)` },
-      { status: 400 }
-    );
+    return json({ error: `too many items (max ${MAX_BATCH} per request)` }, 400);
   }
 
   const created: unknown[] = [];
@@ -120,10 +162,7 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json(
-    { count: created.length, created, errors },
-    { status: created.length > 0 ? 201 : 400 }
-  );
+  return json({ count: created.length, created, errors }, created.length > 0 ? 201 : 400);
 }
 
 // PATCH /api/machine/items — update one item (a bare { id, ...patch }) or a
@@ -140,31 +179,28 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const identity = await verifyApiRequest(request.headers.get("authorization"));
   if (!identity) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return json({ error: "unauthorized" }, 401);
   }
 
   const ownerId = await resolveMachineOwner();
   if (!ownerId) {
-    return NextResponse.json({ error: "owner not configured" }, { status: 503 });
+    return json({ error: "owner not configured" }, 503);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+    return json({ error: "invalid JSON" }, 400);
   }
 
   const batch = (body as { items?: unknown })?.items;
   const rawItems = Array.isArray(batch) ? batch : [body];
   if (rawItems.length === 0) {
-    return NextResponse.json({ count: 0, updated: [], errors: [] });
+    return json({ count: 0, updated: [], errors: [] });
   }
   if (rawItems.length > MAX_BATCH) {
-    return NextResponse.json(
-      { error: `too many items (max ${MAX_BATCH} per request)` },
-      { status: 400 }
-    );
+    return json({ error: `too many items (max ${MAX_BATCH} per request)` }, 400);
   }
 
   const updated: unknown[] = [];
@@ -186,8 +222,5 @@ export async function PATCH(request: Request) {
     }
   }
 
-  return NextResponse.json(
-    { count: updated.length, updated, errors },
-    { status: updated.length > 0 ? 200 : 400 }
-  );
+  return json({ count: updated.length, updated, errors }, updated.length > 0 ? 200 : 400);
 }
