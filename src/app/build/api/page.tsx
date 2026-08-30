@@ -35,18 +35,23 @@ function StatusDot({ ok }: { ok: boolean }) {
   );
 }
 
-// The api-scoped surface a credential opens. Kept in step with the four routes
-// that call verifyApiRequest (credentials.ts) — if a fifth is added, list it here.
+// The api-scoped surface a credential opens. Kept in step with the five routes
+// that call verifyApiRequest (credentials.ts) — if a sixth is added, list it here.
 const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "GET / POST / PATCH",
     path: "/api/machine/items",
-    what: "read and write items (GET filters: type, status, statusCategory, relatedTo, parentId, q)",
+    what: "read and write items (GET filters: type — one key or comma-separated — status, statusCategory, relatedTo, parentId, q)",
   },
   {
     method: "POST",
     path: "/api/machine/relations",
     what: "link items to each other",
+  },
+  {
+    method: "GET",
+    path: "/api/machine/types",
+    what: "list the type registry (incl. capability, so a client can find project-shaped types)",
   },
   {
     method: "POST",
@@ -145,7 +150,7 @@ export default async function ApiTokens() {
           <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
             api
           </code>{" "}
-          opens these four routes and nothing else. It acts as you, so anything
+          opens these five routes and nothing else. It acts as you, so anything
           it writes lands in your items.
         </p>
         <div className="mt-3 overflow-x-auto">

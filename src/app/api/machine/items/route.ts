@@ -49,11 +49,11 @@ export function OPTIONS() {
 }
 
 // GET /api/machine/items — owner-scoped list, body-free (the "out of this"
-// path). Filters mirror the in-app list: ?type= &status= &statusCategory=
-// (a category or "active") &relatedTo=<itemId> (confirmed edge either
-// direction — tasks tagged with a tag item / filed under a project item)
-// &parentId= &q= &limit= &offset=. Open an item's body via the MCP get_item
-// tool if you need it.
+// path). Filters mirror the in-app list: ?type= (one key or comma-separated)
+// &status= &statusCategory= (a category or "active") &relatedTo=<itemId>
+// (confirmed edge either direction — tasks tagged with a tag item / filed
+// under a project item) &parentId= &q= &limit= &offset=. Open an item's body
+// via the MCP get_item tool if you need it.
 export async function GET(request: Request) {
   const identity = await verifyApiRequest(request.headers.get("authorization"));
   if (!identity) {
@@ -67,8 +67,15 @@ export async function GET(request: Request) {
 
   try {
     const params = new URL(request.url).searchParams;
+    // type accepts one key or a comma-separated list (?type=project,seminary
+    // — the "everything project-shaped" query, paired with GET
+    // /api/machine/types to discover which keys those are).
+    const rawType = params.get("type");
+    const typeList = rawType
+      ? rawType.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
     const opts: ListOptions = {
-      type: params.get("type") ?? undefined,
+      type: typeList.length > 1 ? typeList : typeList[0] ?? undefined,
       parentId: params.get("parentId") ?? undefined,
       q: params.get("q") ?? undefined,
     };

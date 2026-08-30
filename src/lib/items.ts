@@ -46,7 +46,11 @@ export class ItemError extends Error {
 }
 
 export type ListOptions = {
-  type?: string;
+  // One type key, or several (matched with IN — the machine API's ?type=a,b,c
+  // form; lets a token client read every "project-shaped" type in one query).
+  // The composite items_live_type_updated_idx serves IN as a per-value
+  // multi-range scan, so a handful of types stays cheap.
+  type?: string | string[];
   status?: ItemStatus;
   // Restrict to a status category, or "active" (not_started + in_progress) — the
   // same set the task views use (see views.ts viewWhere). Lets the Inbox hide
@@ -121,7 +125,13 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   // Trash included (ADR-093). Their authoring path is the by-id canvas, not a
   // list.
   where.push(eq(items.isTemplate, false));
-  if (opts.type) where.push(eq(items.type, opts.type));
+  if (opts.type) {
+    where.push(
+      Array.isArray(opts.type)
+        ? inArray(items.type, opts.type)
+        : eq(items.type, opts.type)
+    );
+  }
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
   if (opts.inbox !== undefined) where.push(eq(items.inbox, opts.inbox));
