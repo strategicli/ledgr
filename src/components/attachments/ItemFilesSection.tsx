@@ -19,9 +19,15 @@ import {
 export default function ItemFilesSection({
   itemId,
   initial,
+  bare = false,
 }: {
   itemId: string;
   initial: FileRow[];
+  // The arrange-grid "Files" card (MarkdownCanvas): the card frame already
+  // provides the header and placement, so render just the live panel — always,
+  // even empty, since the owner placed the card deliberately and its empty
+  // state carries the "+ Add file" affordance.
+  bare?: boolean;
 }) {
   const [rows, setRows] = useState<FileRow[]>(initial);
 
@@ -59,6 +65,15 @@ export default function ItemFilesSection({
     };
   }, [itemId]);
 
+  if (bare) {
+    return (
+      <FilePanel
+        key={rows.map((r) => r.id).join(",")}
+        itemId={itemId}
+        initial={rows}
+      />
+    );
+  }
   if (rows.length === 0) return null;
   return (
     <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">

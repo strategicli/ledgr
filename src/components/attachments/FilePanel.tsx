@@ -12,7 +12,12 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { attachmentUrl, attachmentUrlWithShare } from "@/lib/attachment-url";
 import { showToast } from "@/components/ui/ActionToast";
-import { announceAttachmentRemoved, uploadAttachment } from "@/components/attachments/upload";
+import {
+  announceAttachmentRemoved,
+  uploadAttachment,
+  FILE_DRAG_MIME,
+  type FileDragPayload,
+} from "@/components/attachments/upload";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import NavGlyph from "@/components/nav/NavGlyph";
 import { formatBytes } from "@/lib/format-count";
@@ -109,8 +114,22 @@ export default function FilePanel({
               href={attachmentUrl(f.id)}
               target="_blank"
               rel="noopener noreferrer"
-              title={`Open ${f.filename} in a new tab`}
+              title={`Open ${f.filename} in a new tab — or drag it into the body to link it there`}
               className="truncate text-ink hover:text-[var(--accent)]"
+              draggable
+              // Dragging the row into the editor links the EXISTING file (the
+              // editor reads FILE_DRAG_MIME); the text/plain fallback pastes
+              // the markdown link anywhere else.
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  FILE_DRAG_MIME,
+                  JSON.stringify({ id: f.id, filename: f.filename } satisfies FileDragPayload)
+                );
+                e.dataTransfer.setData(
+                  "text/plain",
+                  `[${f.filename.replace(/([[\]])/g, "\\$1")}](${attachmentUrl(f.id)})`
+                );
+              }}
             >
               {f.filename}
             </a>

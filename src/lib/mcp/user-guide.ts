@@ -785,7 +785,10 @@ its files with it.
 upload lands): each file with Open, **Copy link** (a markdown link to paste
 back into the body), Share, and Delete — plus a "not linked" mark when nothing
 in the item points at the file anymore. So a link you backspaced out of the
-body is never stranded invisibly.
+body is never stranded invisibly, and **dragging a file row into the body
+links it right where it lands** — no re-upload. On a type with a customized
+page layout, Files is an arrangeable card like the rest: put it wherever you
+want it.
 
 **To see everything you have stored:** **Build → Files** (\`/build/files\`)
 lists every file, its size, the item it belongs to, and the same "not linked"

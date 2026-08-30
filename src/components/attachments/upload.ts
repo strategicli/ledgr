@@ -30,6 +30,12 @@ export type AttachmentAddedDetail = {
   sizeBytes: number;
 };
 export type AttachmentRemovedDetail = { itemId: string; id: string };
+
+// Drag payload for an EXISTING file (a FilePanel row dragged into the editor):
+// the editor inserts a link to the already-uploaded attachment instead of
+// re-uploading or pasting a raw URL (Tyler, 2026-08-29).
+export const FILE_DRAG_MIME = "application/x-ledgr-file";
+export type FileDragPayload = { id: string; filename: string };
 export function announceAttachmentRemoved(detail: AttachmentRemovedDetail) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(

@@ -23,6 +23,7 @@ import { useIsDesktop } from "./useIsDesktop";
 import { useRouter } from "next/navigation";
 import { openItem } from "@/lib/item-nav";
 import { showToast } from "@/components/ui/ActionToast";
+import { FILE_DRAG_MIME, type FileDragPayload } from "@/components/attachments/upload";
 import {
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
@@ -156,6 +157,22 @@ function filesFrom(data: DataTransfer | null): File[] {
   return Array.from(data.files);
 }
 
+// Insert a linked filename at the current selection, trailing space included —
+// the space keeps back-to-back inserts from fusing into one link and gives the
+// caret a mark-free spot to keep typing from. Shared by fresh uploads and by
+// an existing file row dragged in from the Files panel.
+function insertFileLink(view: EditorView, label: string, url: string): void {
+  const linkMark = view.state.schema.marks.link;
+  if (!linkMark) return;
+  const frag = Fragment.from([
+    view.state.schema.text(label || "file", [linkMark.create({ href: url })]),
+    view.state.schema.text(" "),
+  ]);
+  view.dispatch(
+    view.state.tr.replaceSelection(new Slice(frag, 0, 0)).scrollIntoView()
+  );
+}
+
 // Upload each file and drop it in at the current selection: images embed as
 // image nodes, everything else inserts as a markdown link on its filename
 // (the stable /files/<id> address). Sequential so multiple pasted files keep
@@ -178,17 +195,7 @@ async function insertUploadedFiles(
         view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
         continue;
       }
-      const linkMark = schema.marks.link;
-      if (!linkMark) continue;
-      // Trailing space: keeps back-to-back uploads from fusing into one link
-      // and gives the caret a mark-free spot to keep typing from.
-      const frag = Fragment.from([
-        schema.text(file.name || "file", [linkMark.create({ href: url })]),
-        schema.text(" "),
-      ]);
-      view.dispatch(
-        view.state.tr.replaceSelection(new Slice(frag, 0, 0)).scrollIntoView()
-      );
+      insertFileLink(view, file.name, url);
     } catch (err) {
       // Say so on screen, not just in the console — a swallowed failure here
       // reads as "I picked a file and nothing happened" (Tyler, 2026-08-29,
@@ -500,22 +507,40 @@ export default function MarkdownEditor({
         return true;
       },
       handleDrop: (view, event) => {
+        const setDropSelection = () => {
+          const coords = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          });
+          if (coords) {
+            view.dispatch(
+              view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, coords.pos)
+              )
+            );
+          }
+        };
+        // A row dragged in from the Files panel: link the EXISTING attachment
+        // where it lands — no re-upload, no raw URL text (Tyler, 2026-08-29).
+        const existing = event.dataTransfer?.getData(FILE_DRAG_MIME);
+        if (existing) {
+          event.preventDefault();
+          try {
+            const { id, filename } = JSON.parse(existing) as FileDragPayload;
+            if (typeof id !== "string" || !id) return true;
+            setDropSelection();
+            insertFileLink(view, String(filename ?? "file"), `/files/${id}`);
+          } catch {
+            // Malformed payload: swallow the drop rather than paste raw JSON.
+          }
+          return true;
+        }
         const upload = uploadRef.current;
         if (!upload) return false;
         const files = filesFrom(event.dataTransfer);
         if (files.length === 0) return false;
         event.preventDefault();
-        const coords = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        });
-        if (coords) {
-          view.dispatch(
-            view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, coords.pos)
-            )
-          );
-        }
+        setDropSelection();
         void insertUploadedFiles(view, files, upload);
         return true;
       },

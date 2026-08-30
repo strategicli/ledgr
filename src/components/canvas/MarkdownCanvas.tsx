@@ -162,6 +162,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
 
   if (useGrid) {
     const propsObj = (item.properties as Record<string, unknown>) ?? {};
+    // The Files card's rows (ADR-233 addendum 3): fetched here because nodeFor
+    // is sync. The card itself stays live via the upload/remove window events.
+    const itemFiles = await listItemFilesWithRefs(ownerId, item.id).catch(() => []);
     // The read-only system footer (Type/Created/Updated + non-strip fields) as a
     // bare definition list — the card header already labels it "Details".
     const metaNode = (
@@ -245,6 +248,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           />
         ) : null;
       }
+      if (id === "files")
+        return <ItemFilesSection itemId={item.id} initial={itemFiles} bare />;
       if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} bare />;
       if (id === "discover")
         return <DiscoverPanel itemId={item.id} anchorTitle={item.title} bare />;
@@ -281,15 +286,6 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           labels={labels}
           initialLayout={initialLayout}
           arrange={arrange}
-        />
-        {/* The Files section renders on this branch too (ADR-233 addendum 3):
-            a type with a saved canvas layout returns here, and Tyler's notes do
-            exactly that — files on a note were invisible while the same file on
-            a layout-less type showed fine. Below the grid, not an arrangeable
-            card (a card id means layout vocabulary churn; promote it if wanted). */}
-        <ItemFilesSection
-          itemId={item.id}
-          initial={await listItemFilesWithRefs(ownerId, item.id).catch(() => [])}
         />
       </>
     );
