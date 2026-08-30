@@ -13,6 +13,7 @@ import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { addShareTokenToAttachmentUrls } from "@/lib/attachment-url";
+import { getSettings } from "@/lib/settings";
 import { makeMarkdownBody } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
 
@@ -69,8 +70,19 @@ export async function GET(
     addShareTokenToAttachmentUrls(bodyMarkdown(resolved.body), token)
   );
 
+  // The footer names whose Ledgr this came from (Tyler, 2026-08-29) — the
+  // owner's Settings display name, escaped since footerHtml is raw markup;
+  // falls back to the plain wording when no name is set.
+  const displayName = (await getSettings(shared.ownerId)).displayName.trim();
+  const escaped = displayName
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const whose = escaped
+    ? `${escaped}${/s$/i.test(escaped) ? "'" : "'s"} Ledgr`
+    : "Ledgr";
   const html = renderPrintDocument(resolved.title, shareBody, {
-    footerHtml: "Shared from Ledgr · read-only",
+    footerHtml: `Shared from ${whose} · read-only`,
     mentions,
   });
 

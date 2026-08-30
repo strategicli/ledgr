@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import ActionToast from "@/components/ui/ActionToast";
+import UploadProgress from "@/components/attachments/UploadProgress";
 import DeskSendContextMenu from "@/components/desk/DeskSendMenu";
 import Nav from "@/components/nav/Nav";
 import NavProgress from "@/components/nav/NavProgress";
@@ -152,6 +153,9 @@ export default async function RootLayout({
           <ActionToast />
           {/* One global toast for row/swipe actions (S4/S5); lives outside the
               list subtree so it survives the refresh that removes the acted row. */}
+          <UploadProgress />
+          {/* One global upload-progress stack (bottom-right), same trick: every
+              uploadAttachment reports here via a window event (ADR-236). */}
           <DeskSendContextMenu />
           {/* One global Send-to-Desk popover (ADR-146): opened at the cursor by
               inline mention/link right-clicks; desktop-only. */}

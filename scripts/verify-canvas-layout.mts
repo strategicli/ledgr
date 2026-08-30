@@ -34,7 +34,7 @@ function readingOrder(layout: CanvasLayout, bp: "lg" | "md" | "sm" = "lg"): stri
 const taskProps: PropertyDef[] = [];
 const taskVocab = cardVocabulary("task", taskProps);
 check(
-  "task vocabulary is title → system strip → body → recurrence → completions → subtasks → related → discover → save → share → history → meta",
+  "task vocabulary is title → system strip → body → recurrence → completions → subtasks → related → discover → files → save → share → history → meta",
   JSON.stringify(taskVocab) ===
     JSON.stringify([
       "title",
@@ -48,6 +48,9 @@ check(
       "subtasks",
       "related",
       "discover",
+      // files joined the vocabulary in ADR-237 addendum 3 (the arrangeable
+      // Files card), between the content web and export.
+      "files",
       "saveOffline",
       "share",
       "history",

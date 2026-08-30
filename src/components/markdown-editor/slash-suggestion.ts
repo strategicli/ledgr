@@ -33,12 +33,26 @@ export function setSlashToggleEnabled(on: boolean): void {
   toggleEnabled = on;
 }
 
+// Per-editor file picker for the "/file" command. Unlike the toggle gate this
+// can't be app-wide: whether upload works depends on the HOST's uploadFile prop
+// (scratch/changelog have none), and two editors with different hosts can be
+// mounted at once. A WeakMap keyed by the editor keeps each registration scoped
+// to its instance and lets it die with the editor.
+const filePickers = new WeakMap<Editor, () => void>();
+export function setSlashFilePicker(
+  editor: Editor,
+  open: (() => void) | null
+): void {
+  if (open) filePickers.set(editor, open);
+  else filePickers.delete(editor);
+}
+
 type SlashCommand = {
   id: string;
   label: string;
   hint: string;
   keywords: string[];
-  enabled?: () => boolean;
+  enabled?: (editor: Editor) => boolean;
   run: (editor: Editor, range: Range) => void;
 };
 
@@ -159,11 +173,25 @@ const COMMANDS: SlashCommand[] = [
       if (!wrapSelectionInToggle(editor)) insertToggle(editor);
     },
   },
+  {
+    id: "file",
+    label: "File",
+    hint: "Upload a file and link it here",
+    keywords: ["file", "upload", "attach", "attachment", "pdf", "doc", "html"],
+    // Only offered where the host wired an uploader (see setSlashFilePicker).
+    enabled: (editor) => filePickers.has(editor),
+    // Delete the "/query" first so the picked file's link lands where the "/"
+    // was typed, then hand off to the editor's hidden any-file input.
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run();
+      filePickers.get(editor)?.();
+    },
+  },
 ];
 
-function filterCommands(query: string): SlashCommand[] {
+function filterCommands(query: string, editor: Editor): SlashCommand[] {
   const q = query.trim().toLowerCase();
-  return COMMANDS.filter((c) => c.enabled?.() ?? true).filter(
+  return COMMANDS.filter((c) => c.enabled?.(editor) ?? true).filter(
     (c) =>
       q === "" ||
       c.label.toLowerCase().includes(q) ||
@@ -182,7 +210,8 @@ function suggestionConfig(editor: Editor) {
     char: "/",
     // Fires only at the start of a block or after a space (Suggestion's default
     // allowedPrefixes), so a "/" inside "http://" or "and/or" won't open it.
-    items: ({ query }: { query: string }): SlashCommand[] => filterCommands(query),
+    items: ({ query }: { query: string }): SlashCommand[] =>
+      filterCommands(query, editor),
     command: ({
       editor,
       range,

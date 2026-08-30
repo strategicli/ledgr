@@ -166,6 +166,10 @@
 .ledgr-prose a {
   color: #5aa9e6;
   text-decoration: underline;
+  /* Inside the contenteditable, anchors inherit the text cursor, which reads
+     as "not clickable" even though a click does open the link (Tyler,
+     2026-08-29 — noticed on inline file links). */
+  cursor: pointer;
 }
 
 /* Inline images (paste/drop → R2). Constrain to the column; a selected image

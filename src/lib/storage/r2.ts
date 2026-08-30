@@ -93,6 +93,42 @@ export class R2Provider implements StorageProvider {
     if (!res.ok) throw new Error(`R2 put failed: ${res.status}`);
   }
 
+  async listObjects(
+    prefix: string
+  ): Promise<{ key: string; sizeBytes: number }[]> {
+    // S3 ListObjectsV2, paginated. The XML is parsed with two regexes rather
+    // than an XML library (Principle 5): the response shape is fixed and the
+    // only user-influenced text (the key) is entity-decoded below.
+    const base = this.config.endpoint.replace(/\/+$/, "");
+    const decodeXml = (s: string) =>
+      s
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, "&");
+    const out: { key: string; sizeBytes: number }[] = [];
+    let token: string | undefined;
+    do {
+      const url = new URL(`${base}/${this.config.bucket}`);
+      url.searchParams.set("list-type", "2");
+      url.searchParams.set("prefix", prefix);
+      url.searchParams.set("max-keys", "1000");
+      if (token) url.searchParams.set("continuation-token", token);
+      const signed = await this.client.sign(new Request(url, { method: "GET" }));
+      const res = await fetch(signed);
+      if (!res.ok) throw new Error(`R2 list failed: ${res.status}`);
+      const xml = await res.text();
+      for (const m of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+        const key = m[1].match(/<Key>([\s\S]*?)<\/Key>/)?.[1];
+        const size = m[1].match(/<Size>(\d+)<\/Size>/)?.[1];
+        if (key) out.push({ key: decodeXml(key), sizeBytes: Number(size ?? 0) });
+      }
+      token = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
+    } while (token);
+    return out;
+  }
+
   async deleteObject(key: string): Promise<void> {
     const signed = await this.client.sign(
       new Request(this.objectUrl(key), { method: "DELETE" })

@@ -287,11 +287,14 @@ list. Put a backslash in front to keep a token literal.
   right edge. It can be pinned open as a resizable sidebar, remembered per item,
   and it lists your comments too.
 
-## Images
+## Images and files
 
-Paste an image, drop one on the editor, or use the toolbar button. It uploads
-and embeds where you dropped it. **Images only** — there is no in-editor path
-for attaching other file types yet.
+Paste a file, drop one on the editor, use the toolbar's Image or Attach
+buttons, or type **/file** — the slash menu's File command opens the picker
+right where you're writing. Images upload and embed where they land; any other
+file type (a PDF, a Word doc, an HTML page) uploads and lands as a link on its
+filename. Clicking that link opens the file in a new tab — HTML pages and PDFs
+render in the browser, everything else downloads.
 
 ## Linking to one line
 
@@ -783,11 +786,58 @@ The URL is the password. Rotate it from the same place if it leaks.
 
 ## Attachments
 
-Attach any file type. Images embed in the body; anything else becomes a download
-link. Files go from your browser straight to storage.
+Attach any file type, anywhere you can write: paste, drop, the toolbar's Attach
+button, or **/file**. Images embed in the body; anything else becomes a link
+that opens in a new tab. Files go from your browser straight to storage, and an
+upload that puts you past 80% of your quota says so.
 
 Limits: about **10 GB** in total, **100 MB** per file, and **2 GB** for an audio
 or video file.
+
+**Deleting a file for real** is the **Delete** on a file row (a File item's
+panel, or a record's Files card) — that removes it from storage. Deleting a
+link or image out of a body does **not** delete the file behind it; it keeps
+counting against your quota until deleted. When you DO delete a file, every
+link to it cleans itself up: your text stays, unlinked, with a "(file deleted)"
+note after it — an embedded image becomes the note alone. Purging an item from
+Trash deletes its files with it.
+
+**Every item shows its own files.** An item carrying files gets a collapsible
+**Files** section above Export & sharing (it appears the moment your first
+upload lands): each file with Open, **Copy link** (a markdown link to paste
+back into the body), Share, and Delete — plus a "not linked" mark when nothing
+in the item points at the file anymore. So a link you backspaced out of the
+body is never stranded invisibly, and **dragging a file row into the body
+links it right where it lands** — no re-upload. On a type with a customized
+page layout, Files is an arrangeable card like the rest: put it wherever you
+want it.
+
+**To see everything you have stored:** **Build → Files** (\`/build/files\`)
+lists every file, its size, the item it belongs to, and the same "not linked"
+mark — with Delete on each row. The **Unused files** tool on Data Hygiene
+narrows to what you can likely reclaim: files whose item no longer links them
+(delete per row), and orphans with no item at all — **Recover all** turns each
+orphan into a note linking it, or **Delete all** reclaims the storage.
+
+**A link can BE one of your files:** the URL field takes a dropped file (or the
+paperclip beside it) — the file uploads and its permanent address becomes the
+link's URL, so your own PDF or page sits in a project's Links card like any web
+link.
+
+## Files as items
+
+Sometimes the file IS the thing — an HTML page, a spreadsheet, a scan — and the
+body is just context around it. The **File** type is for that: the file leads
+the page, and the markdown below is your description of it, for finding it
+later. The filename opens the file in a new tab, and **Share** copies a public
+link anyone can open without signing in — an uploaded HTML page opens as a live
+web page, which makes this the way to hand someone a page you made. The link
+rides the item's share link, so revoking that share link kills the file link
+with it (and a link to one file on an item unlocks that item's other files).
+
+Records get the same panel as a tool: add the **Files** card to a project (or
+any project-style page) from Add a Tool, and files upload, open, share, and
+remove right on the record.
 
 ## Your calendar and email
 
@@ -1198,14 +1248,13 @@ Listed so you do not go looking.
 - **Notifications and push are paused.** The notification centre, the bell, and
   the morning and meeting-prep pushes are all switched off. Reminders come from
   the task calendar (ICS) feed instead, fired by your own calendar app.
-- **Data Hygiene** (\`/build/hygiene\`) and **Import & Migration**
-  (\`/build/import\`) are placeholders. The pages describe the plan; there are no
-  actions on them.
+- **Import & Migration** (\`/build/import\`) is a placeholder. The page describes
+  the plan; there are no actions on it. (Data Hygiene has its first real tool —
+  the orphaned-files sweep; the rest of that page is still the plan.)
 - **Light mode** is not shipped. The mechanism exists; the theme does not.
 - **Todoist sync is off** and is not the normal setup. Ledgr is its own task
   manager. Todoist remains an option your instance can be configured to use.
 - **Footnotes, superscripts and citations** are not in the shared editor.
   Footnotes work only inside the Papers module, which uses a plain text area.
-- **Attaching non-image files from the editor** is not wired. Images only.
 - **Nested toggles** are a known limitation.
 `;

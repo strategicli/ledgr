@@ -37,7 +37,7 @@ export type BodyEditorProps = {
   itemId: string;
   initialMarkdown: string;
   onChange: (markdown: string) => void;
-  uploadImage: (file: File) => Promise<string>;
+  uploadFile: (file: File) => Promise<string>;
   onRequestSave?: () => Promise<void>;
   promoteToMeetingId?: string;
   promotedRefs?: PromotedRefs;
@@ -148,7 +148,7 @@ export default function BodyEditor({
   itemId,
   initialMarkdown,
   onChange,
-  uploadImage,
+  uploadFile,
   onRequestSave,
   promoteToMeetingId,
   promotedRefs,
@@ -293,7 +293,7 @@ export default function BodyEditor({
         key="rich-tabbed"
         itemId={itemId}
         initialMarkdown={mountText}
-        uploadImage={uploadImage}
+        uploadFile={uploadFile}
         onChange={handleChange}
         promoteToMeetingId={promoteToMeetingId}
         promotedRefs={promotedRefs}
@@ -314,7 +314,7 @@ export default function BodyEditor({
         key="rich"
         itemId={itemId}
         initialMarkdown={mountText}
-        uploadImage={uploadImage}
+        uploadFile={uploadFile}
         onChange={handleChange}
         promoteToMeetingId={promoteToMeetingId}
         promotedRefs={promotedRefs}

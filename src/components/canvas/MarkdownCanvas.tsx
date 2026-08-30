@@ -26,6 +26,8 @@ import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
+import ItemFilesSection from "@/components/attachments/ItemFilesSection";
+import { listItemFilesWithRefs } from "@/lib/attachments";
 import { bodyMarkdown } from "@/lib/body";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingNotes from "@/components/meetings/MeetingNotes";
@@ -160,6 +162,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
 
   if (useGrid) {
     const propsObj = (item.properties as Record<string, unknown>) ?? {};
+    // The Files card's rows (ADR-237 addendum 3): fetched here because nodeFor
+    // is sync. The card itself stays live via the upload/remove window events.
+    const itemFiles = await listItemFilesWithRefs(ownerId, item.id).catch(() => []);
     // The read-only system footer (Type/Created/Updated + non-strip fields) as a
     // bare definition list — the card header already labels it "Details".
     const metaNode = (
@@ -243,6 +248,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           />
         ) : null;
       }
+      if (id === "files")
+        return <ItemFilesSection itemId={item.id} initial={itemFiles} bare />;
       if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} bare />;
       if (id === "discover")
         return <DiscoverPanel itemId={item.id} anchorTitle={item.title} bare />;

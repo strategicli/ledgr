@@ -9,6 +9,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { personImage } from "@/lib/person-image";
 import { listActivity, listActivityForSubjects } from "@/lib/activity";
+import { listAttachments } from "@/lib/attachments";
 import { widgetLimit, type Composition, type RecordWidget } from "@/lib/composition";
 import { getItem } from "@/lib/items";
 import { getType } from "@/lib/types";
@@ -99,6 +100,9 @@ export type RecordWidgetData = {
   // 2026-08-17 — a finished one gets stamped and joins the axis).
   timeline?: { id: string; title: string; kind: "meeting" | "milestone"; date: Date; done?: boolean }[];
   timelineUndated?: { id: string; title: string }[];
+  // files (ADR-236): the record's attachments — not items, so they ride their
+  // own field rather than `items`.
+  files?: { id: string; filename: string; contentType: string; sizeBytes: number }[];
 };
 
 type LoadedRecord = Awaited<ReturnType<typeof getItem>>;
@@ -397,6 +401,23 @@ async function dataForWidget(
     // Preview cap (Tyler, 2026-07-01): show `limit`, keep the true count for the
     // "Showing N of M →" drill-down.
     return { ...base, items: mapped.slice(0, widgetLimit(instance)), count: mapped.length };
+  }
+
+  // files (ADR-236): the record's attachments, upload order. All rows come
+  // back — a record rarely carries many files, and the panel has no preview cap.
+  if (def.id === "files") {
+    const files = await listAttachments(ownerId, record.id);
+    files.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    return {
+      ...base,
+      files: files.map((f) => ({
+        id: f.id,
+        filename: f.filename,
+        contentType: f.contentType,
+        sizeBytes: f.sizeBytes,
+      })),
+      count: files.length,
+    };
   }
 
   if (def.id === "timeline") {

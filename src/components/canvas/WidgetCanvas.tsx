@@ -29,6 +29,7 @@ import LinksWidget from "@/components/canvas/widgets/LinksWidget";
 import MilestonesWidget from "@/components/canvas/widgets/MilestonesWidget";
 import MeetingsWidget from "@/components/canvas/widgets/MeetingsWidget";
 import MindmapWidget from "@/components/canvas/widgets/MindmapWidget";
+import FilePanel from "@/components/attachments/FilePanel";
 import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
 import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import type { CanvasProps } from "@/lib/modules";
@@ -69,6 +70,7 @@ const PROJECT_SECTIONS = new Set([
   "overview",
   "recentActivity",
   "timeline",
+  "files",
   "status",
   "people",
   "progress",
@@ -238,6 +240,10 @@ function WidgetInner({
           items={(data.items ?? []).map((i) => ({ id: i.id, title: i.title, url: i.url, contained: i.contained }))}
         />
       );
+    case "files":
+      // The record's attachments (ADR-236) — the shared FilePanel, same rows the
+      // file type's canvas renders, so the card and the canvas can't drift.
+      return <FilePanel itemId={recordId} initial={data.files ?? []} />;
     case "milestones":
       return (
         <MilestonesWidget

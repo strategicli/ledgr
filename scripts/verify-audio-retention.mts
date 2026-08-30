@@ -47,6 +47,7 @@ const deleted: string[] = [];
 const spy: SP = {
   async presignUpload() { throw new Error("unused"); },
   async putObject() { throw new Error("unused"); },
+  async listObjects() { throw new Error("unused"); },
   async presignDownload(k) { return `https://signed.example.invalid/${k}`; },
   async deleteObject(k) { deleted.push(k); },
 };

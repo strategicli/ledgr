@@ -66,6 +66,7 @@ type CardKind =
   | "body"
   | "related"
   | "discover"
+  | "files"
   | "saveOffline"
   | "share"
   | "history"
@@ -89,6 +90,7 @@ function kindOf(id: CardId): CardKind {
     case "body":
     case "related":
     case "discover":
+    case "files":
     case "saveOffline":
     case "share":
     case "history":
@@ -125,6 +127,7 @@ const SPECS: Record<CardKind, CardSpec> = {
   recurrenceCalendar: { mode: "flow", flowable: true, w: 12, h: 9 },
   related: { mode: "flow", flowable: true, w: 12, h: 6 },
   discover: { mode: "flow", flowable: true, w: 12, h: 4 },
+  files: { mode: "flow", flowable: true, w: 12, h: 3 },
   relation: { mode: "flow", flowable: true, w: 6, h: 4 },
   saveOffline: { mode: "flow", flowable: true, w: 12, h: 2 },
   share: { mode: "flow", flowable: true, w: 12, h: 2 },
@@ -165,7 +168,10 @@ export function cardVocabulary(
   for (const p of propertySchema) {
     if (p.kind === "relation") ids.push(`rel:${p.key}`);
   }
-  ids.push("related", "discover", "saveOffline", "share", "history", "meta");
+  // files sits where the classic canvases place the Files section: after the
+  // content web, before export (ADR-237 addendum 3 — an arrangeable card, so
+  // the owner decides where it lives; reconcile appends it to saved layouts).
+  ids.push("related", "discover", "files", "saveOffline", "share", "history", "meta");
   return ids;
 }
 
@@ -174,6 +180,7 @@ const STATIC_LABELS: Record<string, string> = {
   body: "Body",
   related: "Related",
   discover: "Discover related",
+  files: "Files",
   saveOffline: "Save Offline",
   share: "Share",
   history: "Version History",
