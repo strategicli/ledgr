@@ -5,9 +5,7 @@
 // stays "User Settings" everywhere (never bare "Settings").
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { hasScopedToken } from "@/lib/auth/machine";
-import { clipperConfigured } from "@/lib/auth/oauth";
-import { API_SCOPES, hasActiveCredential, listCredentials } from "@/lib/auth/credentials";
+import { API_SCOPES, listCredentials } from "@/lib/auth/credentials";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
@@ -32,11 +30,6 @@ export default async function SettingsPage() {
   const proto =
     h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
-  // Either credential path satisfies the clipper's "you have a way to get a
-  // token" state: a static env entry, or a minted api-scoped credential
-  // (ADR-224).
-  const hasApiToken = hasScopedToken("api") || (await hasActiveCredential("api"));
-  const canMintClipper = clipperConfigured();
   const credentials = await listCredentials(owner.id);
 
   return (
@@ -53,11 +46,7 @@ export default async function SettingsPage() {
           scopes={API_SCOPES}
           origin={origin}
         />
-        <WebClipper
-          origin={origin}
-          hasApiToken={hasApiToken}
-          canMint={canMintClipper}
-        />
+        <WebClipper origin={origin} />
       </div>
     </main>
   );
