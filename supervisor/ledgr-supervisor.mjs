@@ -84,6 +84,7 @@ import {
   AWAIT_PID_ENV,
   AWAIT_PID_TIMEOUT_MS,
   PG_START_ATTEMPTS,
+  PG_READY_ATTEMPTS,
   pgStartDelayMs,
   tunedPostgresFlags,
 } from "./lib.mjs";
@@ -141,6 +142,9 @@ function lockHash(dir) {
 // there); the supervisor dir itself has no node_modules.
 const requireFromRepo = createRequire(join(cfg.repoDir, "package.json"));
 const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
+// node-postgres, for the readiness check. Same dependency embedded-postgres
+// itself uses, so this adds nothing to the stack (Principle 5).
+const { Client: PgClient } = (await import(pathToFileURL(requireFromRepo.resolve("pg")).href)).default;
 
 // Which @embedded-postgres/<platform> package holds the binaries, so pg_ctl
 // can be found beside the postgres binary for a graceful shutdown.
@@ -236,6 +240,101 @@ async function stopOrphanedPostgres() {
 }
 
 /**
+ * One start attempt, through `pg_ctl start` instead of spawning postgres.exe
+ * directly (embedded-postgres's way).
+ *
+ * The difference is who gets to run: postgres.exe refuses to start with
+ * administrator rights, and the at-boot scheduled task (`--always` scope) runs
+ * with an UNFILTERED admin token — Windows only strips admin rights from
+ * interactive sign-ins, not from boot-time task logons. That took this peer
+ * down on every reboot (seen 2026-08-27 and 2026-08-29): the tray "Start"
+ * click worked, the boot task never could. pg_ctl exists for exactly this: it
+ * drops its own privileges (CreateRestrictedToken) before launching postgres,
+ * so the same command works elevated and unelevated.
+ *
+ * pg_ctl is spawned, never waited on. On Windows it does NOT exit after the
+ * server is up: it stays alive as the restricted-token parent holding the job
+ * object. A blocking spawnSync here therefore hung the supervisor forever with
+ * a perfectly healthy database underneath it (seen on the rig 2026-08-29 —
+ * Postgres ready at 12:21:11, supervisor still waiting twenty minutes later).
+ *
+ * Readiness is an actual connection instead, which is the honest question
+ * anyway: the port opens before crash recovery finishes, so "listening" is not
+ * "will accept my connection". Postgres's own output goes to postgres.log via
+ * -l, and that file is where a failure explains itself.
+ */
+async function startPostgresOnce() {
+  const pgCtl = pgCtlPath();
+  if (!pgCtl) {
+    // Binaries not resolvable the pg_ctl way — let embedded-postgres try.
+    await pg.start();
+    return;
+  }
+  const logFile = join(cfg.dataDir, "postgres.log");
+  const child = spawn(
+    pgCtl,
+    [
+      "start",
+      "-D", pgDir,
+      "-l", logFile,
+      // -o is one string handed to postgres; none of our flag values contain
+      // spaces (see tunedPostgresFlags), so a plain join is safe.
+      "-o", ["-p", String(cfg.dbPort), ...tunedPostgresFlags(cfg, totalmem())].join(" "),
+    ],
+    { detached: true, stdio: "ignore" }
+  );
+  child.unref();
+  for (let i = 0; i < PG_READY_ATTEMPTS; i += 1) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (await pgIsReady()) return;
+  }
+  throw new Error(`postgres did not become ready; see ${logFile}: ${tailFile(logFile, 3)}`);
+}
+
+/**
+ * True only once the server will actually accept a connection.
+ *
+ * Deliberately a real connection and not `pg_isready`: this Postgres build
+ * ships three binaries (initdb, pg_ctl, postgres) and pg_isready is not one of
+ * them, so a check built on it can never succeed — it silently reported a
+ * perfectly healthy cluster as dead until the start timed out (rig, 2026-08-29).
+ *
+ * Connects to the built-in `postgres` database, which always exists; `ledgr` is
+ * only created after this returns.
+ */
+async function pgIsReady() {
+  const client = new PgClient({
+    host: "127.0.0.1",
+    port: cfg.dbPort,
+    user: "postgres",
+    password: "postgres",
+    database: "postgres",
+    connectionTimeoutMillis: 3000,
+  });
+  try {
+    await client.connect();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      // nothing to close
+    }
+  }
+}
+
+/** Last few lines of a log file, for putting a reason in an error message. */
+function tailFile(file, lines) {
+  try {
+    return readFileSync(file, "utf8").trim().split(/\r?\n/).slice(-lines).join(" | ").slice(0, 300);
+  } catch {
+    return "no log";
+  }
+}
+
+/**
  * Start Postgres, retrying a few times before giving up (ADR-227).
  *
  * One attempt was enough right up until it wasn't. A supervisor that goes away
@@ -261,6 +360,10 @@ async function stopOrphanedPostgres() {
 async function startPostgres() {
   if (firstRun && !existsSync(join(pgDir, "PG_VERSION"))) {
     log("initdb (first run)", { pgDir });
+    // ponytail: initdb still runs direct, so a FIRST run from an elevated
+    // process (e.g. the at-boot task on a brand-new machine) would fail the
+    // same way pg.start() used to. Install is interactive today; route this
+    // through `pg_ctl initdb` if that ever changes.
     await pg.initialise();
   }
   // Clear the way before trying, not after failing: an orphan holding the port
@@ -275,13 +378,13 @@ async function startPostgres() {
     const wait = pgStartDelayMs(attempt);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     try {
-      await pg.start();
+      await startPostgresOnce();
       if (attempt > 1) log("postgres started after retrying", { attempt, rescued });
       break;
     } catch (err) {
-      // embedded-postgres rejects with nothing at all when the server exits
-      // before it says it is ready, so this is often the string "undefined".
-      // The reason itself went to the log as Postgres's own stderr.
+      // pg_ctl start puts the reason on its stderr (and Postgres's own output
+      // in postgres.log). The legacy pg.start() fallback still rejects with
+      // nothing at all, so "undefined" can still appear on that path.
       const detail = String(err?.message ?? err).slice(0, 300);
       const cleared = !rescued && (await clearStalePostmasterPid());
       if (cleared) rescued = true;
@@ -1038,17 +1141,22 @@ function releaseLock() {
  * back open transactions, checkpoint, exit. pg_ctl ships in the same bin
  * directory as the postgres binary embedded-postgres already resolved.
  */
-function stopPostgresGracefully() {
+function pgCtlPath() {
   let bin;
   try {
     // resolve() lands on the package's dist entry; the binaries live one level
     // up in native/bin.
     bin = dirname(dirname(requireFromRepo.resolve("@embedded-postgres/" + PG_PLATFORM_PKG)));
   } catch {
-    return false;
+    return null;
   }
   const pgCtl = join(bin, "native", "bin", isWin ? "pg_ctl.exe" : "pg_ctl");
-  if (!existsSync(pgCtl)) return false;
+  return existsSync(pgCtl) ? pgCtl : null;
+}
+
+function stopPostgresGracefully() {
+  const pgCtl = pgCtlPath();
+  if (!pgCtl) return false;
   // -w waits for it to finish; -t bounds that wait so a wedged cluster cannot
   // hang shutdown forever (the forced stop below is the fallback).
   const res = run(pgCtl, ["stop", "-D", pgDir, "-m", "fast", "-w", "-t", "30"]);
@@ -1056,6 +1164,43 @@ function stopPostgresGracefully() {
     detail: res.stderr || res.stdout,
   });
   return res.ok;
+}
+
+/**
+ * Last resort when `pg_ctl stop` could not finish: kill the postmaster.
+ *
+ * This used to be embedded-postgres's `pg.stop()`, which kills the child
+ * process IT spawned. We start through pg_ctl now, so there is no such child —
+ * postgres is its own process and the only handle on it is postmaster.pid.
+ * Same outcome (an unclean stop that costs WAL replay on the next start), same
+ * guards as the orphan path: only a live pid, only one whose image really is a
+ * postmaster, so a reissued pid cannot make us kill an unrelated process.
+ */
+async function forceStopPostgres() {
+  const lockFile = join(pgDir, "postmaster.pid");
+  if (!existsSync(lockFile)) return;
+  let recorded;
+  try {
+    recorded = parsePostmasterPid(readFileSync(lockFile, "utf8"));
+  } catch {
+    return;
+  }
+  if (recorded.pid === null || !pidAlive(recorded.pid)) return;
+  const image = processImageName(recorded.pid);
+  if (typeof image !== "string" || !image.includes("postgres")) return;
+  log("forcing postgres down", { pid: recorded.pid });
+  if (isWin) run("taskkill", ["/pid", String(recorded.pid), "/f", "/t"]);
+  else {
+    try {
+      process.kill(recorded.pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+  // Bounded wait so shutdown cannot hang on a process that will not die.
+  for (let i = 0; i < 20 && pidAlive(recorded.pid); i += 1) {
+    await new Promise((r) => setTimeout(r, 250));
+  }
 }
 
 let restartAfterShutdown = false;
@@ -1099,14 +1244,9 @@ async function shutdown(sig) {
   if (restartTimer) clearTimeout(restartTimer);
   await stopApp();
   const clean = stopPostgresGracefully();
-  try {
-    // Either finishes the job (when pg_ctl could not) or just releases the
-    // handle. Bounded: once the postmaster has already exited, this library's
-    // promise waits on an "exit" event that has been and gone.
-    await Promise.race([pg.stop(), new Promise((r) => setTimeout(r, clean ? 2000 : 20000))]);
-  } catch (err) {
-    log("postgres stop failed", { error: String(err) });
-  }
+  // pg_ctl start means there is no child handle to lean on, so the forced
+  // fallback goes by postmaster.pid instead of pg.stop()'s remembered process.
+  if (!clean) await forceStopPostgres();
   log("postgres stopped", { clean });
   releaseLock();
   if (restartAfterShutdown) {

@@ -16,7 +16,7 @@ export default function NotesWidget({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <NoteList items={items} />
+      <NoteList items={items} detachFrom={recordId} />
       <AddContainedItemButton recordId={recordId} type="note" label="Add note" />
     </div>
   );

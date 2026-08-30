@@ -152,7 +152,7 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
-// The file type (ADR-232): the item IS the file — one uploaded attachment as
+// The file type (ADR-236): the item IS the file — one uploaded attachment as
 // the object, the markdown body as the description around it. Canvas 'file'
 // via the files module manifest. Out of quick capture (you can't upload a file
 // mid-capture); owner may rename or retire it (is_system=false). Mirrors

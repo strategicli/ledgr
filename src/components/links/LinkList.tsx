@@ -8,16 +8,22 @@
 import Link from "next/link";
 import NavGlyph from "@/components/nav/NavGlyph";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import DetachButton from "@/components/lists/DetachButton";
 import SmartHref from "@/components/ui/SmartHref";
 
-export type LinkRow = { id: string; title: string; url: string | null };
+export type LinkRow = { id: string; title: string; url: string | null ; contained?: boolean };
 
 export default function LinkList({
   items,
   selectable = false,
+  detachFrom,
 }: {
   items: LinkRow[];
   selectable?: boolean;
+  // The record these rows are shown on, when the surface distinguishes a
+  // resource that LIVES here from one merely related to it (ADR-232). Given it,
+  // a row with `contained: false` wears the detach ✕.
+  detachFrom?: string;
 }) {
   return (
     <ul className="flex flex-col gap-1 empty:hidden">
@@ -38,6 +44,9 @@ export default function LinkList({
             <Link href={`/items/${l.id}`} className="min-w-0 flex-1 truncate text-neutral-400 hover:text-neutral-200">
               {l.title || "Untitled link"}
             </Link>
+          )}
+          {detachFrom && l.contained === false && (
+            <DetachButton recordId={detachFrom} itemId={l.id} label={l.title || l.url || ""} />
           )}
         </li>
       ))}

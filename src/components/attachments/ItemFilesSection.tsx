@@ -1,4 +1,4 @@
-// The per-item Files section (ADR-233 addendum 2/3): a collapsible
+// The per-item Files section (ADR-237 addendum 2/3): a collapsible
 // canvas-section like Export & sharing and Version History, rendered ONLY when
 // the item actually has files. Client-side and event-fed, because the footer
 // is server-rendered and an editor upload doesn't refresh the route — without

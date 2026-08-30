@@ -7,15 +7,21 @@
 import Link from "next/link";
 import NavGlyph from "@/components/nav/NavGlyph";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
+import DetachButton from "@/components/lists/DetachButton";
 
-export type MindmapRow = { id: string; title: string };
+export type MindmapRow = { id: string; title: string ; contained?: boolean };
 
 export default function MindmapList({
   items,
   selectable = false,
+  detachFrom,
 }: {
   items: MindmapRow[];
   selectable?: boolean;
+  // The record these rows are shown on, when the surface distinguishes a
+  // resource that LIVES here from one merely related to it (ADR-232). Given it,
+  // a row with `contained: false` wears the detach ✕.
+  detachFrom?: string;
 }) {
   return (
     <ul className="flex flex-col gap-1 empty:hidden">
@@ -26,6 +32,9 @@ export default function MindmapList({
           <Link href={`/items/${m.id}`} className="min-w-0 flex-1 truncate text-neutral-200 hover:text-neutral-100">
             {m.title || "Untitled mindmap"}
           </Link>
+          {detachFrom && m.contained === false && (
+            <DetachButton recordId={detachFrom} itemId={m.id} label={m.title} />
+          )}
         </li>
       ))}
     </ul>

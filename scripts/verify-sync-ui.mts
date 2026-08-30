@@ -3,6 +3,7 @@
 // gate. All pure — no database — so verify-ci.mjs discovers and runs it.
 //
 // Run: npx tsx scripts/verify-sync-ui.mts
+import { readFileSync } from "node:fs";
 import { digestsMatch, hashToken } from "../src/lib/auth/machine";
 import {
   buildSyncStatus,
@@ -25,6 +26,7 @@ import {
   parseSyncMode,
   pushSelectionForHub,
   selectPushOps,
+  trimBatchToBytes,
   shouldPromptFallback,
   shouldPullFrom,
   CADENCE_PRESETS,
@@ -956,6 +958,70 @@ if (failures > 0) {
       readAttempted: true,
       everSynced: true,
     }) === "held"
+  );
+}
+
+// -- Push batch byte cap (the HTTP 413 that stalled Brandon's hub, 2026-08-29) --
+
+{
+  // A 500-op batch of item bodies weighed 4.2 MB and every push came back
+  // "413 Payload Too Large" forever, because the batch was capped by COUNT
+  // only. `at` is what marks one local transaction, and a batch must never
+  // split one.
+  const op = (seq: number, at: string, size: number) =>
+    ({
+      seq,
+      deviceId: "d",
+      originDeviceId: null,
+      ownerId: "o",
+      at,
+      tbl: "items",
+      rowId: "r" + seq,
+      kind: "update",
+      changed: { body: "x".repeat(size) },
+      schemaVer: "1",
+    }) as unknown as Parameters<typeof trimBatchToBytes>[0][number];
+
+  const heavy = [1, 2, 3, 4].map((i) => op(i, `t${i}`, 1000));
+  check("a batch under the budget goes whole", trimBatchToBytes(heavy, 1_000_000).length === 4);
+  check(
+    "a batch over the budget is cut down",
+    trimBatchToBytes(heavy, 2500).length === 2,
+    `got ${trimBatchToBytes(heavy, 2500).length}`
+  );
+
+  // Three ops sharing one `at` are one transaction: the cut lands before them
+  // or after them, never inside.
+  const run = [op(1, "t1", 500), op(2, "t2", 900), op(3, "t2", 900), op(4, "t2", 900)];
+  const cut = trimBatchToBytes(run, 1600);
+  check("a same-at run is never split", cut.length === 1, `got ${cut.length}`);
+
+  // The queue must always move. One op bigger than the whole budget still
+  // ships rather than returning an empty batch and stalling forever.
+  check(
+    "an over-budget first run still ships",
+    trimBatchToBytes([op(1, "t1", 5000), op(2, "t2", 10)], 100).length === 1
+  );
+  check("an empty batch stays empty", trimBatchToBytes([], 100).length === 0);
+}
+
+// -- The first-push gate is spent by an ACCEPTED push, never an attempted one --
+
+{
+  // Brandon clicked "Send anyway", every exchange then failed with HTTP 413,
+  // and his one-shot permission was gone by the next restart with not one op
+  // landed. pushSelectionForHub commits `firstPushDone` optimistically, so
+  // exchangeWith must hold that commit until the hub has answered OK. Ordering
+  // inside a network call has no pure seam, so this pins the source shape.
+  const src = readFileSync("src/lib/sync/client.ts", "utf8");
+  const restore = src.indexOf("rt.firstPushDone = priorFirstPushDone");
+  const refused = src.indexOf("sync exchange failed: HTTP");
+  const commit = src.indexOf("rt.firstPushDone = firstPushDoneAfter");
+  check("the optimistic commit is rolled back before the request", restore > 0);
+  check(
+    "the gate is spent only after the refusal check has passed",
+    refused > restore && commit > refused,
+    `restore=${restore} refused=${refused} commit=${commit}`
   );
 }
 

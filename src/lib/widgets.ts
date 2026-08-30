@@ -205,7 +205,7 @@ export const WIDGET_CATALOG: WidgetDefinition[] = [
     recordQuery: { derived: "timeline" },
   },
   {
-    // Files (ADR-232): the record's ATTACHMENTS — the one card backed by the
+    // Files (ADR-236): the record's ATTACHMENTS — the one card backed by the
     // attachments table rather than items, hence "derived" with no
     // collectionType. Upload / open / share / remove ride the shared FilePanel.
     id: "files",

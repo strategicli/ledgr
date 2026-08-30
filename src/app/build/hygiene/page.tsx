@@ -1,4 +1,4 @@
-// Data Hygiene (ADR-063 stub → first real tool 2026-08-29, ADR-233): find and
+// Data Hygiene (ADR-063 stub → first real tool 2026-08-29, ADR-237): find and
 // clean what the model no longer accounts for. The orphaned-files sweep is the
 // first section; the ADR-063 plan (types with no items, views that return
 // nothing, templates never applied, orphaned relations, unfilled properties)

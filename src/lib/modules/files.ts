@@ -1,4 +1,4 @@
-// The Files module (Files as a first-class citizen, ADR-232). Pure manifest,
+// The Files module (Files as a first-class citizen, ADR-236). Pure manifest,
 // like the songs/papers/mindmap modules: it declares the `file` type — the
 // item IS the file, the markdown body is the description around it — and its
 // `file` canvas by id (the component is wired in module-wiring.tsx). The type

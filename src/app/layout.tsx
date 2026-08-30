@@ -155,7 +155,7 @@ export default async function RootLayout({
               list subtree so it survives the refresh that removes the acted row. */}
           <UploadProgress />
           {/* One global upload-progress stack (bottom-right), same trick: every
-              uploadAttachment reports here via a window event (ADR-232). */}
+              uploadAttachment reports here via a window event (ADR-236). */}
           <DeskSendContextMenu />
           {/* One global Send-to-Desk popover (ADR-146): opened at the cursor by
               inline mention/link right-clicks; desktop-only. */}

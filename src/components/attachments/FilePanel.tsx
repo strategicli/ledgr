@@ -1,4 +1,4 @@
-// The item's files, as a panel (Files as a first-class citizen, ADR-232): one
+// The item's files, as a panel (Files as a first-class citizen, ADR-236): one
 // row per attachment — filename opens the file in a new tab (/files/<id>; HTML
 // and PDFs render, everything else downloads), a Share button copies a public
 // link gated by the item's share token, and Remove deletes it (ConfirmButton,

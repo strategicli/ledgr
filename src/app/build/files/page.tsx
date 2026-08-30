@@ -1,4 +1,4 @@
-// Build → Files (ADR-233; moved out of Data Hygiene same day at Tyler's call —
+// Build → Files (ADR-237; moved out of Data Hygiene same day at Tyler's call —
 // files are DATA the owner browses, not a mess to clean). Every file in
 // storage, the item it belongs to, a "not linked" mark when nothing points at
 // it anymore, and Delete per row. The cleanup counterpart (orphaned bytes with

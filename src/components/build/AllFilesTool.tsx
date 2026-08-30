@@ -1,4 +1,4 @@
-// All files (ADR-233, Data Hygiene tool #2): every attachment, its size, the
+// All files (ADR-237, Data Hygiene tool #2): every attachment, its size, the
 // item it hangs off, and whether that item still points at it. The "not
 // linked" chip answers the question that created this tool — "I backspaced
 // the link, did the file delete?" (no: it's here, still counting against the

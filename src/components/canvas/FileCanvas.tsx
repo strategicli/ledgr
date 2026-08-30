@@ -1,4 +1,4 @@
-// The file canvas (Files as a first-class citizen, ADR-232): for the `file`
+// The file canvas (Files as a first-class citizen, ADR-236): for the `file`
 // type, where the item IS the file — the uploaded attachment is the object and
 // the markdown body is the owner's description of it (what it is, why it's
 // kept, where it came from). The file panel leads, rendered through

@@ -55,7 +55,7 @@ export const BUILD_NAV: BuildGroup[] = [
       { label: "Templates", href: "/build/templates", icon: "document" },
       { label: "Workflows & Wikis", href: "/build/new", icon: "board" },
       { label: "Bespoke Tools", href: "/build/tools", icon: "bolt" },
-      // The storage browser (ADR-233): every uploaded file, its item, and
+      // The storage browser (ADR-237): every uploaded file, its item, and
       // whether the item still points at it. Data, not maintenance — files are
       // content the owner owns, not a mess to clean (that's hygiene's sweep).
       { label: "Files", href: "/build/files", icon: "folder" },

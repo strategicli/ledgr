@@ -169,7 +169,7 @@ export function cardVocabulary(
     if (p.kind === "relation") ids.push(`rel:${p.key}`);
   }
   // files sits where the classic canvases place the Files section: after the
-  // content web, before export (ADR-233 addendum 3 — an arrangeable card, so
+  // content web, before export (ADR-237 addendum 3 — an arrangeable card, so
   // the owner decides where it lives; reconcile appends it to saved layouts).
   ids.push("related", "discover", "files", "saveOffline", "share", "history", "meta");
   return ids;

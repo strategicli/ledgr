@@ -1,4 +1,4 @@
-// The unused-files sweep (ADR-233; widened same day at Tyler's call): one Scan,
+// The unused-files sweep (ADR-237; widened same day at Tyler's call): one Scan,
 // two findings. UNLINKED files still belong to an item but nothing in it
 // points at them anymore ("there's a note out there with a file attached that
 // isn't being used") — listed with their item, per-row Delete. ORPHANED files

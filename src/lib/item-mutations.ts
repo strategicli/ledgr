@@ -839,7 +839,7 @@ export async function purgeExpiredTrash() {
   `);
   // relations/attachments/revisions rows go via ON DELETE CASCADE. The R2
   // bytes behind those attachment rows are deleted HERE, before the cascade
-  // (ADR-233 — the debt this comment used to defer). Best-effort per object: a
+  // (ADR-237 — the debt this comment used to defer). Best-effort per object: a
   // failed delete leaves an orphan the Data Hygiene sweep reconciles, never a
   // blocked purge. Peers replicating this purge (sync/apply) deliberately do
   // NOT repeat it — two installs can share one bucket, and the origin's purge

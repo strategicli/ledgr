@@ -1,4 +1,4 @@
--- File type (Files as a first-class citizen, ADR-232). The item IS the file:
+-- File type (Files as a first-class citizen, ADR-236). The item IS the file:
 -- one uploaded attachment as the object (opened in a new tab off /files/<id>,
 -- shared as a public link riding the item's share token), the markdown body as
 -- the owner's description of it — for files markdown can't be (HTML pages,

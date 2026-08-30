@@ -28,7 +28,7 @@ export interface StorageProvider {
   // A short-lived signed GET for one object. The ONLY way to read bytes.
   presignDownload(key: string, ttlSeconds?: number): Promise<string>;
   deleteObject(key: string): Promise<void>;
-  // Enumerate stored objects under a key prefix (ADR-233): what the orphan
+  // Enumerate stored objects under a key prefix (ADR-237): what the orphan
   // sweep reconciles against the attachments table. Owner-scoped callers pass
   // `${ownerId}/`. Names only what exists in storage — deciding which of those
   // are orphans is the caller's job, against the DB.

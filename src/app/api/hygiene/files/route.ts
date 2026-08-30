@@ -1,4 +1,4 @@
-// All the owner's files (ADR-233, Data Hygiene tool #2): every attachment with
+// All the owner's files (ADR-237, Data Hygiene tool #2): every attachment with
 // its parent item and whether the item still points at it. Deletion goes
 // through the existing DELETE /api/attachments/[id]; this route only reads.
 import { NextResponse } from "next/server";

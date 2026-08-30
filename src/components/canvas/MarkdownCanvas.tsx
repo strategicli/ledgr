@@ -162,7 +162,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
 
   if (useGrid) {
     const propsObj = (item.properties as Record<string, unknown>) ?? {};
-    // The Files card's rows (ADR-233 addendum 3): fetched here because nodeFor
+    // The Files card's rows (ADR-237 addendum 3): fetched here because nodeFor
     // is sync. The card itself stays live via the upload/remove window events.
     const itemFiles = await listItemFilesWithRefs(ownerId, item.id).catch(() => []);
     // The read-only system footer (Type/Created/Updated + non-strip fields) as a

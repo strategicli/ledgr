@@ -6,7 +6,7 @@
 // Version History as its own collapsed section beside it (it already carries its
 // own diff/restore chrome, so it stays first-class rather than nested).
 //
-// The FILES section (ADR-233, Tyler 2026-08-29) sits above Export & sharing —
+// The FILES section (ADR-237, Tyler 2026-08-29) sits above Export & sharing —
 // a collapsible section like its neighbors, visible only when the item has
 // files — so deleting an inline link out of the body never strands a file
 // invisibly: it's listed here with a "not linked" chip, a Copy link to put it

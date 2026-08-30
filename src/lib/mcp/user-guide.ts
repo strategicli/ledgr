@@ -360,6 +360,8 @@ Build your own kinds of item at \`/build/types\`.
 - **Tags are just a type.** A tag's page shows everything tagged with it.
 - **Groups** have a member roster. An event can be *for* a group, and a task can
   link to one from the add card's Group chip.
+- **A resource can belong to several records.** Docs, meetings and links can be
+  attached to more than one project at a time; tasks and milestones live in one.
 - **Discover** suggests items you probably should link but have not, ranked by
   shared text, shared neighbours, shared attributes and timing. One click links
   them.
@@ -394,10 +396,12 @@ Ledgr is its own task manager. Nothing else needs to be running.
   after the slash lands in the task's body. Word-boundary only, so dates like
   9/13 and URLs never trigger it.
 - **The add card's chip row** carries Date, Priority, **Tag**, **Person** and
-  **Group** pickers (sigils still work: "#" tags, "@" links, "+" files), and the
-  **⋯** chip opens any other custom property on the task type so you can set it
-  at creation. Group works exactly like Person — pick Pastors or Elders and the
-  task links to that group. It only shows if you have a group type.
+  **Group** pickers (sigils still work: "#" adds a tag, "@" links any item,
+  "+project" files the task under that project), and the **⋯** chip opens any
+  other custom property on the task type so you can set it at creation. Group
+  works exactly like Person — pick Pastors or Elders and the task links to
+  that group. It only shows if you have a group type. Picking a tag with "@"
+  tags the task the same way "#" or the Tag chip does — it's never just a link.
 - **People get faces.** The person type ships with a built-in **Image**: a
   square picture box on the person's page — click it to upload a photo (it's
   center-cropped square automatically) or paste an image URL, and Remove lives
@@ -528,9 +532,25 @@ Select mode and bulk actions stay on all of them.
 
 **Every card can also take something you already have.** Beside each card's
 "+ Add" is an **Attach**: search items of that card's type and pick one, and it
-files into the card exactly as a freshly created one would. Tasks, meetings,
-milestones, docs, links, mindmaps and custom tools all have it. An item lives
-in one record, so attaching moves it out of whatever record it was in before.
+shows in the card like a freshly created one. Tasks, meetings, milestones,
+docs, links, mindmaps and custom tools all have it.
+
+**What attaching does depends on the kind of thing.** A resource, meaning
+anything with no Done state (a doc, a meeting, a link), can be relevant to
+several records at once: attaching adds it here and leaves it where it already
+was. Anything that completes (a task, a milestone) is filed under one record,
+because that is the record whose progress bar it counts toward and whose "mark
+this project done" would close it, so attaching re-files it here and out of
+wherever it was. The toast says which one happened.
+
+Filed under is not inside. Deleting a record does not delete what is filed
+under it: those items stay, they just stop having a record they file under.
+Only subtasks follow their parent into Trash.
+
+**A row with an ✕ is a visitor.** On a card, a small ✕ at the end of a row means
+that item is related to this record rather than filed in it. Click it to detach,
+which removes the association and never the item, with undo. A row without an ✕
+lives here.
 
 **Completed tasks fold away, and milestones flag their tasks.** Done tasks
 leave both the Tasks card and its full list; a quiet **"N tasks completed"**

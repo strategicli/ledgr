@@ -9,7 +9,7 @@ export function badgeCount(n: number, cap = 99): string {
   return v > cap ? `${cap}+` : String(v);
 }
 
-// Shared byte formatting (ADR-233): one place that decides when KB becomes MB,
+// Shared byte formatting (ADR-237): one place that decides when KB becomes MB,
 // after three surfaces grew their own copies and one showed "1009 KB" (Tyler:
 // "kb is hard to read"). Steps up a unit at 1000 of the previous one, so the
 // value shown never exceeds three digits.

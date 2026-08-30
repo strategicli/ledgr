@@ -1,4 +1,4 @@
-// Orphaned-files sweep (ADR-233, the Data Hygiene page's first real tool).
+// Orphaned-files sweep (ADR-237, the Data Hygiene page's first real tool).
 // GET scans: every object in storage under the owner's prefix with no
 // attachment row behind it. DELETE removes them; POST RECOVERS them instead —
 // one note per file, linking it, with its attachment row recreated. Both

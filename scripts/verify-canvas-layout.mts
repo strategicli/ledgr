@@ -48,7 +48,7 @@ check(
       "subtasks",
       "related",
       "discover",
-      // files joined the vocabulary in ADR-233 addendum 3 (the arrangeable
+      // files joined the vocabulary in ADR-237 addendum 3 (the arrangeable
       // Files card), between the content web and export.
       "files",
       "saveOffline",

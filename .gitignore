@@ -98,3 +98,7 @@ plans/
 .github/hooks/
 .impeccable/
 ledgr-icon.png
+
+# Throwaway verification scaffolding (scripts/tmp-*.mts). Committed by accident
+# twice; a "git add -A" during a browser check should never sweep these in.
+scripts/tmp-*

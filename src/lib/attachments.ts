@@ -423,7 +423,7 @@ export async function listAllAttachments(ownerId: string): Promise<
   }));
 }
 
-// --- Orphaned bytes (ADR-233) ------------------------------------------------
+// --- Orphaned bytes (ADR-237) ------------------------------------------------
 // An object in storage with no attachment row behind it. Two known producers:
 // an item purge from before 2026-08-29 (rows cascaded, bytes stayed) and a
 // presigned upload whose row was deleted mid-flight. Reconciling against the DB

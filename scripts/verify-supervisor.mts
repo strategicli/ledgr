@@ -503,7 +503,56 @@ check(
 check(
   "an orphaned Postgres is cleared BEFORE the attempts, not retried into",
   supervisorSrc.indexOf("await stopOrphanedPostgres()") > 0 &&
-    supervisorSrc.indexOf("await stopOrphanedPostgres()") < supervisorSrc.indexOf("await pg.start()")
+    supervisorSrc.indexOf("await stopOrphanedPostgres()") <
+      supervisorSrc.indexOf("await startPostgresOnce()")
+);
+
+// Postgres refuses to run with administrator rights, and the at-boot task runs
+// with an UNFILTERED admin token (Windows only strips admin from interactive
+// sign-ins). Spawning postgres.exe directly therefore worked from the tray and
+// failed on every single reboot — the peer was down each morning until someone
+// started it by hand (2026-08-27, 2026-08-29). pg_ctl drops its own privileges
+// before launching the server, so the same command works either way.
+check(
+  "postgres is started through pg_ctl, so an elevated at-boot task can start it",
+  /async function startPostgresOnce[\s\S]*?pgCtl,\s*\[\s*"start"/.test(supervisorSrc)
+);
+// On Windows pg_ctl does NOT exit once the server is up — it stays alive as the
+// restricted-token parent. Waiting on it hung the supervisor with a healthy
+// database underneath (2026-08-29). Readiness must come from pg_isready, which
+// also answers the right question: the port opens before recovery finishes.
+// Scoped to the function body: `run(pgCtl, …)` is still the RIGHT call in
+// stopPostgresGracefully, so an unscoped search would read the stop path and
+// call the start path guilty.
+const startOnceBody = supervisorSrc.slice(
+  supervisorSrc.indexOf("async function startPostgresOnce"),
+  supervisorSrc.indexOf("\n}", supervisorSrc.indexOf("async function startPostgresOnce"))
+);
+check(
+  "pg_ctl is spawned, never waited on, so a parent that outlives the start cannot hang the supervisor",
+  /spawn\(\s*pgCtl,/.test(startOnceBody) &&
+    startOnceBody.includes("child.unref()") &&
+    !startOnceBody.includes("run(pgCtl")
+);
+// Readiness must be a real connection. A listening port is not readiness (it
+// opens before recovery finishes), and pg_isready is not even present: this
+// Postgres build ships initdb, pg_ctl and postgres and nothing else, so a check
+// built on that binary reports every healthy cluster as dead.
+const pgIsReadyBody = supervisorSrc.slice(
+  supervisorSrc.indexOf("async function pgIsReady"),
+  supervisorSrc.indexOf("\n}", supervisorSrc.indexOf("async function pgIsReady"))
+);
+check(
+  "readiness is an actual connection, not a listening port and not the absent pg_isready",
+  /async function startPostgresOnce[\s\S]*?await pgIsReady\(\)/.test(supervisorSrc) &&
+    /new PgClient\([\s\S]*?await client\.connect\(\)/.test(pgIsReadyBody) &&
+    // no child process at all: the probe must not depend on a binary, since the
+    // one it would reach for is not shipped.
+    !/\brun\(|\bspawn/.test(pgIsReadyBody)
+);
+check(
+  "the readiness probe targets the built-in postgres database, which exists before ledgr is created",
+  pgIsReadyBody.includes('database: "postgres"')
 );
 check(
   "the orphan is stopped cleanly through pg_ctl, not killed (the existing shutdown path)",
@@ -792,7 +841,16 @@ check(
 );
 check(
   "the forced fallback is still there, and bounded so a wedged cluster cannot hang shutdown",
-  supervisorSrc.includes("Promise.race([pg.stop()")
+  /async function forceStopPostgres[\s\S]*?for \(let i = 0; i < \d+ && pidAlive/.test(supervisorSrc)
+);
+// Starting through pg_ctl means there is no child handle to kill, so the
+// fallback goes by postmaster.pid — and must keep the same guards the orphan
+// path uses, or a reissued pid gets some unrelated process killed.
+check(
+  "the forced fallback verifies the pid really is a postmaster before killing it",
+  /async function forceStopPostgres[\s\S]*?image\.includes\("postgres"\)[\s\S]*?taskkill/.test(
+    supervisorSrc
+  )
 );
 
 
