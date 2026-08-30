@@ -3645,4 +3645,6 @@ This is not specific to one install or one migration. Any change that touches ma
 
 **Verification.** Five checks in `scripts/verify-sync-ui.mts` pin each decision: an under-budget batch goes whole, an over-budget batch is cut, a same-`at` run is never split, an over-budget first run still ships, an empty batch stays empty. Typecheck and lint clean.
 
+**Addendum (2026-08-29, same day): the gate is spent by an ACCEPTED push, never an attempted one.** Shipping the byte cap exposed a second bug immediately. Brandon's "Send anyway" had already been consumed: `pushSelectionForHub` commits `firstPushDone` optimistically, before the request goes out, and the stored one-shot is cleared as soon as any hub runtime reports the gate done. So four refused 413 rounds burned the owner's permission without a single op landing, and the hold returned on the next restart with nothing left to release. `exchangeWith` now rolls that commit back and re-applies it only after the hub answers OK. Two checks in `scripts/verify-sync-ui.mts` pin the ordering; the decision itself is pure and already tested, so what needed pinning was where the impure call site commits it.
+
 **Affects:** `src/lib/sync/client.ts`, `scripts/verify-sync-ui.mts`, `runbook.md`.
