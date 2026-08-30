@@ -61,6 +61,17 @@ export async function POST(request: Request) {
   // it (phase 5).
   const localVer = latestSchemaVer();
   if (!body.schemaVer || !versionGate(localVer, body.schemaVer)) {
+    // Identify the caller: a 409 returns before anything else is recorded,
+    // so without this line the rejected peer is anonymous in the logs.
+    // Never log the token or the Authorization header.
+    log.warn("schema version mismatch", {
+      peer: peer.name,
+      deviceId: peer.deviceId,
+      localVer,
+      remoteVer: body.schemaVer ?? null,
+      ip: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      userAgent: request.headers.get("user-agent"),
+    });
     return NextResponse.json(
       { error: "schema version mismatch", localVer, remoteVer: body.schemaVer ?? null },
       { status: 409 }

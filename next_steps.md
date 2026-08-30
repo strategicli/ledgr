@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — a rejected sync call now names its caller (2026-08-30, branch `fix/log-sync-409-caller`)
+
+A registered peer has been calling `POST /api/machine/sync` every 12 seconds since ~10:15 PM Central 2026-08-29 and getting 409 (schema version mismatch) every time. The 409 returns before the handler logs anything, so the caller was anonymous. One `log.warn` before that return now records peer name + deviceId, `localVer`/`remoteVer`, the `x-forwarded-for` (falling back to `x-real-ip`) IP, and the user agent. Additive only: no behavior, response, or schema change, and the token is never logged. Not core (logging is not part of the machine API contract), so no ADR.
+
 ## 🔴 BUILT, AWAITING TYLER'S ACK — the web clipper carries no token (2026-08-30, ADR-238, branch `feat/clipper-session-auth`)
 
 Brandon's clipper stopped working: ADR-224 made minted credentials a `lgrk_…:lgrs_…` PAIR, and the clipper setup's paste box takes one string, so the documented setup produced a bookmarklet that 401s. Rather than teach the box about pairs, the token is gone. The bookmarklet has saved through a popup on our own origin since the ADR-160 follow-up, and that popup carries the owner's session — so the credential was already in the browser.
