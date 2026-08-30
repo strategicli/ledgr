@@ -17,7 +17,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { hasScopedToken } from "@/lib/auth/machine";
 import { hasActiveCredential } from "@/lib/auth/credentials";
-import { appConfigured, clipperConfigured } from "@/lib/auth/oauth";
+import { appConfigured } from "@/lib/auth/oauth";
 import AppTokenMinter from "@/components/build/AppTokenMinter";
 import CopyField from "@/components/build/CopyField";
 import { resolveOwner } from "@/lib/owner";
@@ -77,7 +77,6 @@ export default async function ApiTokens() {
   const origin = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
 
   const appReady = appConfigured();
-  const clipperReady = clipperConfigured();
   const staticApiToken = hasScopedToken("api");
   const mintedApiCredential = await hasActiveCredential("api");
 
@@ -285,13 +284,15 @@ export default async function ApiTokens() {
           </li>
           <li className="flex items-start gap-2.5 ui-row text-ink-muted">
             <span className="mt-1.5">
-              <StatusDot ok={clipperReady} />
+              <StatusDot ok />
             </span>
             <span>
-              <strong className="text-ink">Clipper tokens</strong> — User
-              Settings → Save from the web, signed with{" "}
-              <code className="font-mono text-xs">LEDGR_CLIPPER_SECRET</code>.{" "}
-              {clipperReady ? "Configured." : "Not configured."}
+              <strong className="text-ink">Web clipper</strong> — User Settings →
+              Save from the web. Needs no token (ADR-238): the bookmarklet saves
+              through your own signed-in session. Tokens signed with{" "}
+              <code className="font-mono text-xs">LEDGR_CLIPPER_SECRET</code>{" "}
+              still verify, so a bookmarklet dragged before that change keeps
+              working, but nothing issues new ones.
             </span>
           </li>
           <li className="flex items-start gap-2.5 ui-row text-ink-muted">

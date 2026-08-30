@@ -2,6 +2,17 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## 🔴 BUILT, AWAITING TYLER'S ACK — the web clipper carries no token (2026-08-30, ADR-238, branch `feat/clipper-session-auth`)
+
+Brandon's clipper stopped working: ADR-224 made minted credentials a `lgrk_…:lgrs_…` PAIR, and the clipper setup's paste box takes one string, so the documented setup produced a bookmarklet that 401s. Rather than teach the box about pairs, the token is gone. The bookmarklet has saved through a popup on our own origin since the ADR-160 follow-up, and that popup carries the owner's session — so the credential was already in the browser.
+
+- `/api/machine/capture` accepts the signed-in owner when no machine token verifies. Token path unchanged and tried first; a verified token naming no owner still 503s.
+- The bookmarklet is one static URL for the whole instance: nothing to mint, paste, or revoke. Its ready/send handshake now repeats, so a popup that detours through `/sign-in` still saves once you are back.
+- Setup UI, `/build/api` status row, and the user guide say "drag it, click it, sign in once." The clipper minter is deleted; `signClipperToken` and `verifyApiToken` are untouched, so an old bookmarklet keeps working.
+- **Verified:** tokenless `POST /api/machine/capture` → **201** with extracted markdown, landing a `link` item in the Inbox (test rows removed after); `verify-clipper-tokenless.mts` (new, 14 pure checks); all 79 pure verify scripts, `tsc`, `eslint`, `next build` clean.
+- **Not exercised locally:** the effect that stamps the `javascript:` href, because page bodies do not hydrate under the empty-Clerk `dev-auth` server (every route stalls on `loading.tsx` with only the layout hydrated — same on clean `main`, so not a regression). The pattern is unchanged from the shipping version.
+- **CORE, so it is not merged:** it changes how an existing endpoint authenticates. See COLLAB.md for the ack ask, especially the CORS/`SameSite` reasoning.
+
 ## ✅ SHIPPED — private attachments + a storage warning (2026-08-28, ADR-231)
 
 **Attachments work in production for the first time.** They never did: `vercel env ls production` had no `R2_*` vars at all, so `getStorage()` always returned `null` and every upload answered "file storage is not configured." R2 itself had never been provisioned.

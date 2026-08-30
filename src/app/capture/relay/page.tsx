@@ -19,26 +19,28 @@ export default function CaptureRelay() {
     function onMessage(event: MessageEvent) {
       if (event.source !== window.opener) return;
       const data = event.data as {
-        token?: string;
         url?: string;
         title?: string;
         html?: string;
       } | null;
-      if (!data || typeof data.token !== "string" || typeof data.url !== "string") {
-        return;
-      }
+      if (!data || typeof data.url !== "string") return;
       setStatus("saving");
       setMessage("Saving to Ledgr…");
+      // No Authorization header: this page is Ledgr's own origin, so the POST
+      // is same-origin and carries the owner's session (ADR-238). The
+      // bookmarklet therefore carries no credential at all.
       fetch("/api/machine/capture", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${data.token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: data.url, title: data.title, html: data.html }),
       })
         .then(async (res) => {
           const body = await res.json().catch(() => ({}));
+          // A 401 here means the session lapsed between this page rendering
+          // and the save. Say what to do rather than showing "unauthorized".
+          if (res.status === 401) {
+            throw new Error("sign in to Ledgr, then click the bookmarklet again");
+          }
           if (!res.ok) throw new Error(body.error || "failed");
           setStatus("done");
           setMessage(
