@@ -41,7 +41,7 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "GET / POST / PATCH",
     path: "/api/machine/items",
-    what: "read and write items",
+    what: "read and write items (GET filters: type, status, statusCategory, relatedTo, parentId, q)",
   },
   {
     method: "POST",
