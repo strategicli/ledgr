@@ -28,6 +28,7 @@ import {
   gatherSyncStatus,
   hubCadence,
   hubFallback,
+  hubOnChange,
   readSyncHubs,
   type FullSyncStatus,
   type HubConfig,
@@ -281,6 +282,7 @@ export default async function Network() {
                           url={url}
                           cadence={hubCadence(hub)}
                           fallback={hubFallback(hub)}
+                          onChange={hubOnChange(hub)}
                           canMoveUp={i > 0}
                           canMoveDown={i < hubs.length - 1}
                         />

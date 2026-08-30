@@ -220,7 +220,23 @@ export function passageBodyFromAction(
   return null;
 }
 
-export type ApplyResult = { actions: number; rejected: number };
+/** One change the hub could not apply, parked instead of re-tried forever
+ * (ADR-241). Carries enough to identify the row without carrying its
+ * contents: this travels back to the peer and into the error log. */
+export type ParkedAction = {
+  kind: string;
+  table: string;
+  id: string | null;
+  error: string;
+};
+export type ApplyResult = { actions: number; rejected: number; parked: ParkedAction[] };
+
+/** Which row an action targets, for a parked-change report. */
+function actionTarget(a: WriteAction): { table: string; id: string | null } {
+  if (a.kind === "snapshot_revision") return { table: "revisions", id: a.itemId };
+  if (a.kind === "insert") return { table: a.tbl, id: null };
+  return { table: a.tbl, id: a.pkVal };
+}
 
 // ── Batch execution plan (ADR-206 addendum 7) ───────────────────────────────
 //
@@ -275,7 +291,7 @@ export async function applySyncOps(
 
   const state = await readLocalState(db, ops);
   const { actions, rejected } = mergeOps(ops, state);
-  if (actions.length === 0) return { actions: 0, rejected: rejected.length };
+  if (actions.length === 0) return { actions: 0, rejected: rejected.length, parked: [] };
 
   const plan = planActions(actions);
 
@@ -283,7 +299,29 @@ export async function applySyncOps(
     await tgt.execute(sql`delete from items where id = any(${uuidArray(g.ids)}::uuid[])`);
   };
 
+  // ADR-241. A change the hub can NEVER apply used to take the whole batch
+  // down with it: the exchange returned an error, the peer's push cursor never
+  // advanced, and the identical batch went back out on the next retry, forever.
+  // On 2026-08-30 one such change ("delete the day_log type", which the hub's
+  // own rows still referenced) did that 120 times in 24 minutes. Parking it
+  // keeps the rest of the batch moving and hands the failure back to be shown.
+  const parked: ParkedAction[] = [];
+  const park = (a: WriteAction, err: unknown) => {
+    const { table, id } = actionTarget(a);
+    parked.push({
+      kind: a.kind,
+      table,
+      id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  };
+
   if (useTx) {
+    // ponytail: the transactional path stays all-or-nothing, because a failed
+    // statement has already poisoned the transaction and nothing after it can
+    // run. Parking here needs a statement-level SAVEPOINT per action; add that
+    // if a local-Postgres hub ever hits the same wall. The hub that hit it is
+    // the cloud one, which takes the branch below.
     await db.transaction(async (tx) => {
       let origin: string | null = null;
       const setOrigin = async (next: string) => {
@@ -308,13 +346,26 @@ export async function applySyncOps(
     });
   } else {
     for (const action of plan.stream) {
-      await runAction(db, action);
-      const derived = passageBodyFromAction(action);
-      if (derived) await replacePassageRefs(db, derived.itemId, derived.body);
+      try {
+        await runAction(db, action);
+        const derived = passageBodyFromAction(action);
+        if (derived) await replacePassageRefs(db, derived.itemId, derived.body);
+      } catch (err) {
+        park(action, err);
+      }
     }
     for (const g of plan.itemsDeletes) {
-      await deleteItemsGroup(db, g);
+      try {
+        await deleteItemsGroup(db, g);
+      } catch (err) {
+        // The group is one statement, so one FK refusal parks the whole
+        // family. Named by its first id, which is what a reader can look up.
+        park(
+          { kind: "delete", tbl: "items", ownerId: "", origin: g.origin, pkCol: "id", pkVal: g.ids[0] },
+          err
+        );
+      }
     }
   }
-  return { actions: actions.length, rejected: rejected.length };
+  return { actions: actions.length - parked.length, rejected: rejected.length, parked };
 }
