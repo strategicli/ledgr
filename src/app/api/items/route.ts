@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, parseItemPayload, requireOwner } from "@/lib/api";
 import {
-  ITEM_STATUSES,
   listItems,
   type ItemStatus,
   type ListOptions,
@@ -50,9 +49,13 @@ export async function GET(request: Request) {
     if (inbox !== null) opts.inbox = inbox === "true";
     const status = params.get("status");
     if (status !== null) {
-      if (!ITEM_STATUSES.includes(status as ItemStatus)) {
+      // A status KEY, not the inherited default set (ADR-243): statuses are
+      // user-defined per type, so gating this on ITEM_STATUSES made every custom
+      // stage unfilterable. Shape-check only — an unknown key just matches
+      // nothing, which is the honest answer for a filter.
+      if (!/^[a-z][a-z0-9_]*$/.test(status) || status.length > 40) {
         return NextResponse.json(
-          { error: `status must be one of: ${ITEM_STATUSES.join(", ")}` },
+          { error: "status must be a status key (a slug: letters, digits, _)" },
           { status: 400 }
         );
       }

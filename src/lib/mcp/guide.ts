@@ -120,6 +120,31 @@ to other items — carries a \`targetType\` and \`cardinality\` of \`single\` or
   (e.g. a \`series\` select, a \`date\`, a \`passage\` relation), not a pile of
   loose tags.
 
+## Statuses, a.k.a. stages (\`set_type_statuses\`, and \`status\` on an item)
+
+A status is **per type**, not global. \`open\`/\`done\`/\`archived\` is only the
+default set a type inherits; a type can define its own named stages instead (a
+project's Ongoing / Waiting for Others / Paused / Future / Done). Each stage maps
+to one of four fixed **categories** (\`not_started\`, \`in_progress\`, \`done\`,
+\`archived\`), which is what progress roll-ups and completion actually key off.
+
+- \`list_types\` reports each type's \`statusMode\` and, in \`select\` mode, its
+  stages in order with their keys, labels and categories. Those keys are exactly
+  what \`create_item\`/\`update_item\` accept.
+- **You can set a custom stage directly.** \`status\` is not limited to
+  open/done/archived: pass the stage's key or its label
+  (\`status: "active"\` or \`status: "Active"\`, either works, any case). Passing a
+  name the type does not have is refused, and the error lists the type's real
+  stages, so read \`list_types\` or just retry from that list.
+- **Set it at creation when the stage matters.** With no \`status\`, a new item
+  takes the type's default starting stage, which for named stages is often the
+  waiting-est one (a new \`goal\` starts at Someday). If the owner said the goal
+  is active, pass \`status\` rather than creating it and expecting them to fix it
+  in the UI.
+- \`set_type_statuses\` changes what the stages *are* (renaming, adding,
+  re-ordering, or switching the type to a plain checkbox). That reshapes the
+  type for every item of it, so confirm with the owner first.
+
 ## Views (\`create_view\`, \`update_view\`)
 
 A view is a saved, filtered, sorted list the owner reaches by name ("This week's

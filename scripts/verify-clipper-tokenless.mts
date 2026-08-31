@@ -33,9 +33,51 @@ check("carries no bearer header", !/Bearer|Authorization/i.test(src));
 // page load. A one-shot listener would be gone by then, so it must not remove
 // itself — this is what makes "click it, sign in, it saves" work.
 check(
-  "answers every ready ping (listener is not one-shot)",
-  src.includes("ledgr-relay-ready") && !src.includes("removeEventListener")
+  "answers every ready ping (not one-shot on ready)",
+  src.includes("ledgr-relay-ready") &&
+    !/ledgr-relay-ready"\)\s*(\{)?\s*window\.removeEventListener/.test(src)
 );
+// ...but exactly one clip per popup: once the relay says it saved, the opener
+// stops answering, so a later page load in that popup can't re-send the clip
+// and file a duplicate.
+check(
+  "retires the listener once the relay reports the save",
+  /ledgr-relay-saved"\)\s*window\.removeEventListener\("message",\s*m\)/.test(src)
+);
+
+// Behavioural: run the bookmarklet against a fake window and count the sends.
+// Two "ready" pings (the popup announcing itself twice) must still hand the
+// clip over twice — that's the sign-in round trip — but once the relay reports
+// the save, further pings are ignored.
+{
+  const sends: unknown[] = [];
+  const handlers: ((e: unknown) => void)[] = [];
+  const w = { postMessage: (d: unknown) => sends.push(d) };
+  const fakeWindow = {
+    open: () => w,
+    addEventListener: (_t: string, h: (e: unknown) => void) => handlers.push(h),
+    removeEventListener: (_t: string, h: (e: unknown) => void) => {
+      const i = handlers.indexOf(h);
+      if (i >= 0) handlers.splice(i, 1);
+    },
+  };
+  const fakeDoc = { title: "T", documentElement: { outerHTML: "<html></html>" } };
+  const send = (data: unknown) => [...handlers].forEach((h) => h({ source: w, data }));
+
+  new Function("window", "document", "location", "alert", src)(
+    fakeWindow,
+    fakeDoc,
+    { href: "https://example.com/a" },
+    () => {}
+  );
+
+  send("ledgr-relay-ready");
+  send("ledgr-relay-ready");
+  check("re-sends the clip on a repeat ready (sign-in round trip)", sends.length === 2);
+  send("ledgr-relay-saved");
+  send("ledgr-relay-ready");
+  check("sends nothing more once the relay reports the save", sends.length === 2);
+}
 check("warns when the popup is blocked", /allow pop-ups/i.test(src));
 
 // Structural tripwires: the two files the credential-free path depends on.
@@ -45,6 +87,10 @@ const relay = readFileSync("src/app/capture/relay/page.tsx", "utf8");
 check("relay sends no Authorization header", !/Authorization:\s*`/.test(relay));
 check("relay posts to the capture route", relay.includes("/api/machine/capture"));
 check("relay tells a signed-out clipper what to do", /sign in to Ledgr/.test(relay));
+// The latch that closes the other half of the double-save: however many times
+// this page is handed the clip, it POSTs once.
+check("relay files a clip at most once per popup", /saved\.current/.test(relay));
+check("relay tells the opener the clip is filed", relay.includes("ledgr-relay-saved"));
 
 const route = readFileSync("src/app/api/machine/capture/route.ts", "utf8");
 check("capture route falls back to the session owner", /resolveOwner\(\)/.test(route));

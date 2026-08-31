@@ -43,6 +43,8 @@ const origins = [
   "https://ledgr-teal.vercel.app",
   // Tyler's cloud install (Vercel).
   "https://ledgr-sandy.vercel.app",
+  // Tyler's cloud install, custom domain (Clerk production, 2026-08-31).
+  "https://ledgr.tylerjcollins.com",
   // Vercel branch previews (either instance) — what lets a preview upload.
   "https://*.vercel.app",
   // Brandon's local install, reached over Tailscale (supervisor NEXT_PUBLIC_APP_URL).

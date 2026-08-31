@@ -928,12 +928,22 @@ with your permission. Set it up at \`/build/claude\`.
 - **claude.ai, desktop and phone:** add a custom connector using the endpoint URL
   and sign in. That covers all three at once.
 
+Either way, connecting ends on an approval page naming the app that is asking:
+press **Authorize** to grant it access (or **Cancel** to refuse) and you are
+sent back to the app. If the browser then shows a "can't connect to localhost"
+page, the handoff already happened — check the client, which is usually
+connected; that dead-end tab is the client closing its one-time listener.
+
 ## What an assistant can do
 
 - **Find and read** — search your items, list them by type, status, date window
   or what they relate to, and read one in full.
 - **Create and change** — file tasks and notes, update fields, convert an item to
   another type, and make one exact edit to a note you are writing.
+- **Set your own stages** — if a type has named stages, an assistant can put an
+  item on any of them by name ("mark that goal Active", "move the project to
+  Waiting for Others"), at creation or later. You should not have to open the app
+  to fix the stage afterwards. It can also filter and list by a custom stage.
 - **Work with tasks** — break one into subtasks, set a repeat rule in plain
   words, tick a single date of a repeating task.
 - **Handle files** — attach by URL or upload, then embed in the body.

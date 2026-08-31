@@ -50,7 +50,9 @@ import {
   categoryOfStatus,
   defaultStatusKey,
   initialStatusKey,
+  resolveStatusKey,
   type StatusCategory,
+  type StatusDef,
 } from "@/lib/status";
 import { statusSchemaForType } from "@/lib/status-schema";
 import { getStorage } from "@/lib/storage";
@@ -227,6 +229,28 @@ async function snapshotRevision(
   `);
 }
 
+// The write-path status guard (ADR-243). Statuses are user-defined per type, and
+// items.status is plain text, so nothing below this line stops a caller from
+// storing a key the type never had — it renders as nothing on the canvas and
+// buckets as not_started, which is how "set this goal to Active" used to fail
+// silently. Every writer (canvas, board drag, REST, machine API, MCP) routes
+// through createItem/updateItem, so one guard here covers all of them: resolve
+// the key or the label, else refuse and name the type's real statuses so the
+// caller can retry without a second round trip.
+function requireStatusKey(
+  schema: StatusDef[],
+  raw: string,
+  typeKey: string
+): string {
+  const key = resolveStatusKey(schema, raw);
+  if (key) return key;
+  throw new ItemError(
+    "bad_request",
+    `'${raw}' is not a status on type '${typeKey}'. Its statuses are: ` +
+      schema.map((st) => `${st.key} ("${st.label}")`).join(", ")
+  );
+}
+
 export async function createItem(ownerId: string, input: ItemInput) {
   await assertTypeExists(input.type);
   // is_template is set explicitly on a prototype root, else inherited from a
@@ -241,7 +265,10 @@ export async function createItem(ownerId: string, input: ItemInput) {
   // started" status, and store its category alongside so the hot queries / the
   // done-checkbox / recurrence key off the indexed bucket.
   const schema = await statusSchemaForType(input.type);
-  const statusKey = input.status ?? initialStatusKey(schema);
+  const statusKey =
+    input.status !== undefined
+      ? requireStatusKey(schema, input.status, input.type)
+      : initialStatusKey(schema);
   const statusCat = categoryOfStatus(schema, statusKey);
 
   const body = input.body ?? null;
@@ -374,9 +401,14 @@ export async function updateItem(
   // category, not a literal "done" — resolved through the type's schema. Also
   // the value written to status_category alongside the status key.
   let nextCategory: StatusCategory | undefined;
+  // The resolved status key to write (ADR-243): a caller may name a status by its
+  // label, and a name the type doesn't have is refused rather than stored.
+  let nextStatus: string | undefined;
   if (patch.status !== undefined) {
-    const schema = await statusSchemaForType(patch.type ?? existing[0].type);
-    nextCategory = categoryOfStatus(schema, patch.status);
+    const typeKey = patch.type ?? existing[0].type;
+    const schema = await statusSchemaForType(typeKey);
+    nextStatus = requireStatusKey(schema, patch.status, typeKey);
+    nextCategory = categoryOfStatus(schema, nextStatus);
   }
 
   // Recurrence-aware completion (ADR-076). Completing a recurring task is not a
@@ -453,7 +485,7 @@ export async function updateItem(
   if (patch.type !== undefined) set.type = patch.type;
   if (patch.title !== undefined) set.title = patch.title;
   if (patch.status !== undefined) {
-    set.status = patch.status;
+    set.status = nextStatus;
     set.statusCategory = nextCategory;
     // Completing an item triages it out of the Inbox (PRD §4.2): a finished task
     // is no longer "awaiting triage", so completion IS triage. Only on the
