@@ -902,6 +902,12 @@ with your permission. Set it up at \`/build/claude\`.
 - **claude.ai, desktop and phone:** add a custom connector using the endpoint URL
   and sign in. That covers all three at once.
 
+Either way, connecting ends on an approval page naming the app that is asking:
+press **Authorize** to grant it access (or **Cancel** to refuse) and you are
+sent back to the app. If the browser then shows a "can't connect to localhost"
+page, the handoff already happened — check the client, which is usually
+connected; that dead-end tab is the client closing its one-time listener.
+
 ## What an assistant can do
 
 - **Find and read** — search your items, list them by type, status, date window

@@ -44,6 +44,9 @@ type BasePayload = {
 export type ClientPayload = BasePayload & {
   t: "client";
   redirect_uris: string[];
+  // Display name from DCR metadata (RFC 7591 client_name), shown on the
+  // consent page. Optional: client_ids minted before it existed verify fine.
+  client_name?: string;
 };
 
 export type CodePayload = BasePayload & {
@@ -149,7 +152,7 @@ function nowSeconds(): number {
 // row. Single-user, so registration is permissive (any well-formed request
 // succeeds); the signature is what binds the redirect_uri at authorize time.
 
-export function issueClientId(redirectUris: string[]): string {
+export function issueClientId(redirectUris: string[], clientName?: string): string {
   const iat = nowSeconds();
   const payload: ClientPayload = {
     t: "client",
@@ -158,6 +161,7 @@ export function issueClientId(redirectUris: string[]): string {
     // exp so the same verify path (which requires exp) applies uniformly.
     exp: iat + REFRESH_TTL_SECONDS,
     redirect_uris: redirectUris,
+    ...(clientName ? { client_name: clientName } : {}),
   };
   return signToken(payload);
 }
