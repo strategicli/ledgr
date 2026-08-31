@@ -873,7 +873,7 @@ check(
     // which is what lets the owner's answer be a GUI choice instead of a config
     // edit plus a service restart. Before that, ownership was two switches and
     // a job assigned to a peer whose config had it off ran nowhere at all.
-    "the shared jobs and the three movable exclusive ones run by default",
+    "the shared jobs and the movable exclusive ones run by default",
     JSON.stringify(defaults) ===
       JSON.stringify([
         "calendar-sync",
@@ -882,6 +882,7 @@ check(
         "purge",
         "relatedness",
         "snapshot",
+        "youtube-transcript",
       ]),
     defaults.join(",")
   );
@@ -932,7 +933,14 @@ check(
 check("crons: false turns everything off", normalizeCrons(false).length === 0);
 check(
   "a job can be turned off individually",
-  normalizeCrons({ purge: false, snapshot: false, export: false, "calendar-sync": false, "email-import": false })
+  normalizeCrons({
+    purge: false,
+    snapshot: false,
+    export: false,
+    "calendar-sync": false,
+    "email-import": false,
+    "youtube-transcript": false,
+  })
     .map((j) => j.name)
     .join(",") === "relatedness"
 );
@@ -1069,6 +1077,7 @@ check(
     export: false,
     "calendar-sync": false,
     "email-import": false,
+    "youtube-transcript": false,
   });
   const now = Date.now();
   const text = serializeCronState(

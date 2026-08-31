@@ -385,6 +385,21 @@ export type UserSettings = {
   // it did before this existed, so an owner who never touches it changes
   // nothing. Same no-migration posture as listTabs/searchSynonyms.
   jobOwners: JobOwners;
+  // Whether a saved YouTube video gets its transcript written into its body.
+  //
+  // WHY IT LIVES HERE, WITH THE SYNCED SETTINGS. There are two questions and
+  // they have different answers. "Do I want my videos transcribed?" is the
+  // owner's own preference, so it belongs in the synced blob and follows them
+  // to every copy. "Which machine actually does the work?" is a separate
+  // question with a control that already exists: the "Runs on" dropdown under
+  // Scheduled work (jobOwners above). Merging the two would mean either every
+  // copy trying (and the cloud failing, since it has no yt-dlp and YouTube
+  // refuses data-center addresses) or the switch being invisible on the very
+  // machine you would go looking for it on.
+  //
+  // Off by default, because the work needs tools that not every machine has:
+  // yt-dlp, and Whisper for a video with no captions.
+  youtubeTranscripts: { enabled: boolean };
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -488,6 +503,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   deskWorkspaces: [],
   searchSynonyms: {},
   jobOwners: {},
+  youtubeTranscripts: { enabled: false },
 };
 
 const SETTINGS_UUID_RE =
@@ -731,6 +747,13 @@ export function parseSettings(raw: unknown): UserSettings {
   const deskWorkspaces = parseDeskWorkspaces(r.deskWorkspaces);
   const searchSynonyms = parseSearchSynonyms(r.searchSynonyms);
   const jobOwners = parseJobOwners(r.jobOwners);
+  // Only an explicit `true` turns it on: an absent, partial or hand-edited blob
+  // leaves the feature off, which is the safe answer on a machine without the
+  // tools to do the work.
+  const youtubeTranscripts = {
+    enabled:
+      (r.youtubeTranscripts as { enabled?: unknown } | undefined)?.enabled === true,
+  };
   return {
     highlightColor,
     highlightGradient,
@@ -770,6 +793,7 @@ export function parseSettings(raw: unknown): UserSettings {
     deskWorkspaces,
     searchSynonyms,
     jobOwners,
+    youtubeTranscripts,
   };
 }
 

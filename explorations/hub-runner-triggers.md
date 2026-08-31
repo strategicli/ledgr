@@ -1,6 +1,10 @@
 # Exploration: hub runner + triggers (YouTube transcripts first)
 
-**Status:** direction agreed with Brandon 2026-08-29; ready to build. Slice 1 (the runner + the YouTube transcript job) is a go. Slices 2+ are agreed direction, build in order. Build happens on the always-on hub PC (BC-EDGEWOOD); this doc is the handoff.
+**Status:** **slice 1 is BUILT (2026-08-30, ADR-242), and it did not need the runner.** Slices 2 to 5 remain agreed direction, in order. Build happens on the always-on hub PC (BC-EDGEWOOD); this doc is the handoff.
+
+> **Read this before building slices 2 to 5.** The runner service below is the one part of this doc that did not survive contact with the repo. It was designed on 2026-08-29, one day before Ledgr's supervisor made it redundant: the supervisor already runs a long-lived process on the hub PC, already fires `GET /api/machine/<job>` on a timer with its own minted token, already picks exactly one machine per job through job ownership, and already reports a failure into the errors list and `/health`. So slice 1 shipped as an ordinary Ledgr scheduled job, and the runner, the queue, the public `/hooks` path, the shared bearer secret, and the heartbeat were all deleted rather than built. Instant capture did not need the hook URL either: the save already runs on the machine that does the work, so one guard in `createItem` starts the job by calling a function.
+>
+> **Slices 2 to 5 should start from the same question:** what does the supervisor plus a machine endpoint already give us, and what is genuinely left? The Graph webhook slices (2 to 4) do still need a public address to receive notifications, but the local Ledgr is already public over the Funnel and already authenticates machine callers, so the honest shape is probably a Ledgr route, not a second service. Slice 5 (on-demand buttons) is nearly free for the same reason.
 
 ## The itch that started it
 

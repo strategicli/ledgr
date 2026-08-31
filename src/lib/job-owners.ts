@@ -69,7 +69,8 @@ export type MovableJob =
   | "email-import"
   | "todoist-sync"
   | "transcription-poll"
-  | "health-check";
+  | "health-check"
+  | "youtube-transcript";
 
 export type JobDef = {
   /** What the job is, in the owner's words. No "cron", no "target". */
@@ -160,6 +161,21 @@ export const MOVABLE_JOBS: Record<MovableJob, JobDef> = {
     blocked:
       "Moving this needs one check first: notifications are registered per machine, so it would reach different devices.",
     consequence: null,
+  },
+  "youtube-transcript": {
+    label: "Video transcripts",
+    what: "Writes the words spoken in a saved video into the saved link, so you can read and search them here.",
+    // Movable from the day it shipped, because there is no place in the line to
+    // lose. The waiting list is not stored anywhere: it is simply "saved videos
+    // that have no transcript yet", worked out fresh on every run. And the mark
+    // that says a video is already done lives in the video's own body, which
+    // syncs, so a machine that has never run this job still knows exactly which
+    // ones are finished. Only a machine with the transcribing tools installed
+    // can do the work, and one without them says so on Build rather than
+    // failing quietly.
+    movable: true,
+    consequence:
+      "A late run costs nothing. A video simply waits until the machine that does this picks it up, however long that takes.",
   },
 };
 

@@ -55,10 +55,10 @@ console.log("Exclusive-job ownership\n");
 
 // ── The catalog ─────────────────────────────────────────────────────────────
 
-ok("the catalog covers the six exclusive jobs and nothing else", () => {
+ok("the catalog covers the seven exclusive jobs and nothing else", () => {
   // Every job ADR-214 marks NOT shared is a job this picker must talk about;
   // the shared ones must never appear, because owning them would be wrong.
-  assert.equal(MOVABLE_JOB_NAMES.length, 6);
+  assert.equal(MOVABLE_JOB_NAMES.length, 7);
   for (const name of MOVABLE_JOB_NAMES) assert.ok(isMovableJob(name));
   assert.equal(isMovableJob("purge"), false, "purge is per-instance, never owned");
   assert.equal(isMovableJob("relatedness"), false, "relatedness is a per-instance cache");
@@ -86,12 +86,20 @@ ok("a movable row states its trade, and a blocked row says why not", () => {
   }
 });
 
-ok("export, calendar sync and email capture are the proven three", () => {
+ok("export, calendar sync, email capture and video transcripts are the proven set", () => {
   // A guard on the SIZE of the claimable set, not a restatement of it: flipping
-  // a fourth job on is a deliberate act that should have to touch this line and
+  // another job on is a deliberate act that should have to touch this line and
   // ADR the reason, never something that rides along in an unrelated diff.
+  // Video transcripts joined claimable at birth: its waiting list is recomputed
+  // every run and the already-done mark lives in the synced body, so a new
+  // owner has nothing to inherit.
   const claimable = MOVABLE_JOB_NAMES.filter((n) => MOVABLE_JOBS[n].movable).sort();
-  assert.deepEqual(claimable, ["calendar-sync", "email-import", "export"]);
+  assert.deepEqual(claimable, [
+    "calendar-sync",
+    "email-import",
+    "export",
+    "youtube-transcript",
+  ]);
 });
 
 ok("no row explains itself in engineering vocabulary", () => {
