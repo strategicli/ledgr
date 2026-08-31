@@ -220,6 +220,29 @@ export function categoryOfStatus(schema: StatusDef[], key: string): StatusCatego
   return statusDef(schema, key)?.category ?? "not_started";
 }
 
+// Resolve a caller-supplied status to a real key in this type's schema (ADR-243).
+// Accepts the KEY, the key in any case, or the LABEL in any case: a model reading
+// list_types will send "Waiting for Others" as readily as `waiting`, and no API
+// caller should have to know which of the two Ledgr stores. Returns null when
+// nothing matches, so a WRITE can refuse instead of storing a key the type
+// doesn't have — which renders as nothing on the canvas and silently buckets as
+// not_started through categoryOfStatus's read-path fallback above. That fallback
+// is deliberate and stays: forgiving on READ (a status dropped from the schema
+// while rows still hold it), strict on WRITE (a key that was never real).
+export function resolveStatusKey(
+  schema: StatusDef[],
+  input: string
+): string | null {
+  const want = input.trim().toLowerCase();
+  if (!want) return null;
+  // Keys are always lowercase slugs, so the key pass is already case-insensitive.
+  return (
+    schema.find((s) => s.key === want)?.key ??
+    schema.find((s) => s.label.trim().toLowerCase() === want)?.key ??
+    null
+  );
+}
+
 // The default status key for a category (the isDefault one, else the first in
 // that category, else null when the category is empty). The new-item status is
 // defaultStatusKey(schema,'not_started'); the done-checkbox target is

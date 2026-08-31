@@ -934,6 +934,10 @@ with your permission. Set it up at \`/build/claude\`.
   or what they relate to, and read one in full.
 - **Create and change** — file tasks and notes, update fields, convert an item to
   another type, and make one exact edit to a note you are writing.
+- **Set your own stages** — if a type has named stages, an assistant can put an
+  item on any of them by name ("mark that goal Active", "move the project to
+  Waiting for Others"), at creation or later. You should not have to open the app
+  to fix the stage afterwards. It can also filter and list by a custom stage.
 - **Work with tasks** — break one into subtasks, set a repeat rule in plain
   words, tick a single date of a repeating task.
 - **Handle files** — attach by URL or upload, then embed in the body.
