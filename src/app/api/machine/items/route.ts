@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { asUuid, errorResponse, parseItemPayload } from "@/lib/api";
 import { verifyApiRequest } from "@/lib/auth/credentials";
 import {
-  ITEM_STATUSES,
   ItemError,
   listItems,
   type ItemStatus,
@@ -81,9 +80,11 @@ export async function GET(request: Request) {
     };
     const status = params.get("status");
     if (status !== null) {
-      if (!ITEM_STATUSES.includes(status as ItemStatus)) {
+      // A status KEY, not the inherited default set (ADR-243) — see the note in
+      // /api/items. Shape-check only; an unknown key matches nothing.
+      if (!/^[a-z][a-z0-9_]*$/.test(status) || status.length > 40) {
         return json(
-          { error: `status must be one of: ${ITEM_STATUSES.join(", ")}` },
+          { error: "status must be a status key (a slug: letters, digits, _)" },
           400
         );
       }

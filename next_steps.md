@@ -2,6 +2,26 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — an assistant can set a custom status (2026-08-31, ADR-243, branch `fix/mcp-custom-statuses`)
+
+**The reported symptom:** Claude could not put a goal on Active or a project on Waiting for Others, so every goal it created landed on Someday and Brandon had to fix the stage in the UI. It had already cost design decisions: the workaround being proposed was to add checkbox properties standing in for stages that already existed.
+
+**The cause.** ADR-082 made statuses per-type and left `ITEM_STATUSES` (`open`/`done`/`archived`) as nothing but the keys of the *inherited default* set. Three call sites still treated that list as the closed set of legal statuses: `status` on `create_item`, `update_item` and `list_items` was declared `enum: [...ITEM_STATUSES]`, and the `status` list filter on `/api/items` and `/api/machine/items` 400'd on anything else. Underneath, nothing validated a status at all, so an unrecognised key that did get through was simply stored and buckets as not-started, rendering as nothing on the canvas.
+
+**The fix, in one place.** `resolveStatusKey` (pure, `status.ts`) matches a stage by key **or by label**, any case, so "Waiting for Others" works as well as `waiting`. `requireStatusKey` wraps it inside `createItem`/`updateItem`, the one chokepoint every writer routes through (canvas, board drag, REST, machine API, MCP), and refuses an unknown name with the type's real stages listed in the error. The enums came off; the REST filters shape-check a slug. `categoryOfStatus`'s forgiving read-path fallback is untouched on purpose: forgiving on read, strict on write.
+
+**Needs Tyler's nod before merge.** The loosening is solo under the ADR-183 carve-out, but on a type with custom stages `status: "open"` used to be accepted and silently mis-stored and is now refused, which is a behaviour change to an existing argument on the machine/MCP contract. See ADR-243's "The core question".
+
+**Verification:** new `scripts/verify-status-write.mts` 25/25, plus a live run through the real MCP handlers (create by label, create by key, update by label, refusal message, custom-stage filter). Ten existing suites re-run green.
+
+## 🔜 NEXT (queued out of ADR-243, deliberately not bundled)
+
+Two adjacent gaps, both found while fixing the above, both left alone because neither was the reported bug:
+
+- **Custom property VALUES are not validated against their kind.** `items.properties` is untyped JSON, so a `multi_select` can be given a bare string and a `select` an undeclared option, and both store silently and then render as nothing. Same shape of bug as ADR-243 one layer over. A genuine tightening with no loosening to justify it, so it needs its own decision (and Tyler, per ADR-183).
+- **`update_type` replaces `propertySchema` wholesale and wipes it when the field is omitted** (it also requires `label`). So "add one property" or "add one option to a multi-select" means reading the current schema and resending all of it, and a caller that just wanted to rename the type drops every field. A surgical per-field tool (add / update / remove / reorder, plus option add/remove) would fix it, purely additively. Brandon's steer if it gets built: **warn about orphaned data, never rewrite it** — report how many items still hold a removed option or an old key and let him decide.
+- **`move_item_type` does not re-validate status.** Move an item to a type that lacks its current stage and the row keeps a status the new type has never heard of. Pre-existing, unrelated to ADR-243, cheap to fix alongside either item above.
+
 ## ✅ SHIPPED — saved YouTube videos transcribe themselves (2026-08-30, ADR-242, branch `feat/youtube-transcripts`)
 
 Save a YouTube video and its full transcript is written into that link item, searchable and readable offline. Captions first (seconds), Whisper on the graphics card when a video has none (minutes). Free, deterministic, nothing leaves the machine.

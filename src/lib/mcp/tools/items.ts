@@ -11,7 +11,7 @@ import {
   lineWithBlockId,
   stripAnchorFromLine,
 } from "@/lib/editor/block-anchor";
-import { ITEM_STATUSES, ItemError, URGENCIES, getItem } from "@/lib/items";
+import { ItemError, URGENCIES, getItem } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
 import { MEMORY_TYPE, memoryAge } from "@/lib/memory";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
@@ -92,7 +92,7 @@ export const itemTools: McpTool[] = [
       type: "object",
       properties: {
         type: { type: "string", description: "Type key (e.g. task, event, note, link, person, or a custom type)." },
-        status: { type: "string", enum: [...ITEM_STATUSES], description: "Item status filter." },
+        status: { type: "string", description: "Item status filter — a status KEY for the type. The inherited default keys are open | done | archived; a type with named stages has its own (see list_types), e.g. status='active' for goals. Filtering by a status the type doesn't have simply matches nothing." },
         relatedTo: { type: "string", description: "Only items with a confirmed relation to this item id (either direction)." },
         due: { type: "string", enum: [...DUE_WINDOWS], description: "Date window: overdue | today | week | none (no date)." },
         withinDays: { type: "integer", description: "Items dated today through N days out (1–366). Wins over `due`.", minimum: 1, maximum: 366 },
@@ -108,8 +108,11 @@ export const itemTools: McpTool[] = [
       const filter: ViewFilter = {};
       const type = optString(args, "type");
       if (type) filter.type = type;
-      const status = optEnum(args, "status", ITEM_STATUSES);
-      if (status) filter.status = status;
+      // Not enum-gated against ITEM_STATUSES (ADR-243): that list is only the
+      // INHERITED default set, so pinning it here made every custom stage
+      // ("active", "waiting") unfilterable.
+      const status = optString(args, "status");
+      if (status) filter.status = status.toLowerCase();
       const relatedTo = args.relatedTo != null ? asUuid(args.relatedTo, "relatedTo") : undefined;
       if (relatedTo) filter.relatedTo = relatedTo;
       const dateField = optEnum<DateProperty>(args, "dateField", DATE_PROPERTIES);
@@ -357,7 +360,7 @@ export const itemTools: McpTool[] = [
         type: { type: "string", description: "Type key (task, event, note, link, person, or a custom type — see list_types)." },
         title: { type: "string", description: "Item title." },
         bodyMarkdown: { type: "string", description: "Body as markdown (also accepted as `body`). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
-        status: { type: "string", enum: [...ITEM_STATUSES], description: "Status (default open)." },
+        status: { type: "string", description: "Starting status. Accepts the status KEY or its LABEL from list_types (e.g. 'active' or 'Active' for a goal). Omit to get the type's default starting stage — which for a type with named stages is often NOT the one you want, so pass this explicitly when the stage matters. A name the type doesn't have is rejected with the list of its real ones." },
         dueDate: { type: "string", description: "Due date (the deadline), ISO 8601 (e.g. 2026-06-19). Tasks only, conventionally." },
         scheduledDate: { type: "string", description: "Planned date — the day you intend to WORK on it, as opposed to dueDate (the deadline). ISO 8601. This is what Today/Planner and a recurring series read." },
         parentId: {
@@ -407,7 +410,7 @@ export const itemTools: McpTool[] = [
         id: { type: "string", description: "The item id (UUID)." },
         title: { type: "string", description: "New title." },
         bodyMarkdown: { type: "string", description: "New body markdown, replacing the entire body (also accepted as `body`). To link inline to another item so it renders as Ledgr's native @-mention chip and auto-creates a relation, write [@Title](ledgr://item/<id>) (look up the id via search_items/list_items first)." },
-        status: { type: "string", enum: [...ITEM_STATUSES], description: "New status." },
+        status: { type: "string", description: "New status. Accepts the status KEY or its LABEL from list_types (e.g. 'waiting' or 'Waiting for Others' on a project). This is how you set a CUSTOM stage; it is not limited to open/done/archived. A name the type doesn't have is rejected with the list of its real ones." },
         dueDate: { type: "string", description: "New due date / deadline (ISO 8601), or null to clear." },
         scheduledDate: { type: "string", description: "New planned date — the day you intend to work on it (ISO 8601), or null to clear. On a recurring task this is the next occurrence, so prefer letting status=done advance it." },
         parentId: {
