@@ -2,8 +2,9 @@
 // their body.
 //
 // Nothing new is stored to make this work. "Needs a transcript" is not a queue,
-// a flag, or a column; it is simply a saved link whose address is a YouTube one
-// and whose body carries no transcript marker. That is why a month of videos
+// a flag, or a column; it is simply a saved link whose address is ONE YouTube
+// VIDEO (not a channel or a playlist, see isYoutubeVideoUrl for why that
+// distinction is load-bearing) and whose body carries no transcript marker. That is why a month of videos
 // saved on the cloud, where this cannot run, costs nothing: come back to the
 // machine that can do the work and the first run picks all of them up, oldest
 // first. There is nothing to drain and nothing to expire.
@@ -14,7 +15,7 @@
 // be transcribed: a failure writes its own marker plus one visible line saying
 // why, so a private video says so in the item instead of being retried every
 // ten minutes for the rest of its life. Trying again means deleting that line.
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
@@ -39,14 +40,37 @@ const YOUTUBE_HOSTS = new Set([
 /** The literal that says "this body has been through the job". */
 const MARKER = "<!-- transcript:";
 
-/** Is this address a YouTube video? Junk in, false out, never a throw. */
-export function isYoutubeUrl(url: string | null | undefined): boolean {
+/**
+ * Is this address ONE YouTube VIDEO? Junk in, false out, never a throw.
+ *
+ * The "one video" half is load-bearing, and it cost us a real failure to learn
+ * it (2026-08-31, first run). Plenty of saved links are YouTube CHANNEL pages
+ * (`youtube.com/@someone`, `/c/name`, `/user/name`) or playlists rather than
+ * videos. Handed one of those, yt-dlp does not decline: it starts enumerating
+ * everything the channel has ever posted, which never finishes inside a
+ * timeout. One saved channel page burned ten minutes across two attempts and
+ * then wrote "took too long to fetch" into the item, and it was never going to
+ * be transcribable at all.
+ *
+ * So a candidate needs an actual video id: youtu.be/ID, /watch?v=ID, /shorts/,
+ * /live/, or /embed/. Anything else is not a video and never enters the list.
+ */
+export function isYoutubeVideoUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  let parsed: URL;
   try {
-    return YOUTUBE_HOSTS.has(new URL(url).hostname.toLowerCase());
+    parsed = new URL(url);
   } catch {
     return false;
   }
+  if (!YOUTUBE_HOSTS.has(parsed.hostname.toLowerCase())) return false;
+  const path = parsed.pathname;
+  // youtu.be/<id> — the share-sheet form, where the id IS the whole path.
+  if (parsed.hostname.toLowerCase().endsWith("youtu.be")) {
+    return /^\/[\w-]{6,}\/?$/.test(path);
+  }
+  if (path === "/watch") return !!parsed.searchParams.get("v");
+  return /^\/(shorts|live|embed|v)\/[\w-]{6,}/.test(path);
 }
 
 /** Has this body already been through the job, either way? */
@@ -99,7 +123,7 @@ function today(): string {
  * thing this table is heavy with, and an owner with hundreds of transcribed
  * videos would otherwise drag every finished transcript into memory to discover
  * they are all finished. The url test here is deliberately coarse (Postgres has
- * no opinion about hostnames); isYoutubeUrl narrows it properly afterwards.
+ * no opinion about hostnames); isYoutubeVideoUrl narrows it properly afterwards.
  */
 function pendingWhere(ownerId: string) {
   return and(
@@ -111,17 +135,27 @@ function pendingWhere(ownerId: string) {
   );
 }
 
-/** How many saved videos are waiting. For the Build card; counts only. */
+/**
+ * How many saved videos are waiting. For the Build card.
+ *
+ * Counts what the job would actually attempt, which means paying for the same
+ * narrowing the passes do: the SQL filter is coarse, and of 82 matches on the
+ * real database nine were channel pages that will never be transcribed. A card
+ * promising 82 while 73 were possible is a small lie that would never resolve
+ * itself. Urls only, never bodies, so this stays a cheap read.
+ */
 export async function pendingVideoCount(ownerId: string): Promise<number> {
   const rows = await getDb()
-    .select({ n: count() })
+    .select({ url: items.url })
     .from(items)
     .where(pendingWhere(ownerId));
-  return Number(rows[0]?.n ?? 0);
+  return rows.filter((r) => isYoutubeVideoUrl(r.url)).length;
 }
 
 export type TranscriptRun = {
   skipped?: string;
+  /** A detached caller got this: the passes were started, not waited for. */
+  started?: boolean;
   scanned: number;
   done: number;
   failed: number;
@@ -157,7 +191,7 @@ let rerun = false;
  */
 export async function runYoutubeTranscripts(
   ownerId: string,
-  opts?: { limit?: number }
+  opts?: { limit?: number; detach?: boolean }
 ): Promise<TranscriptRun> {
   // The owner's switch (ADR-222), so turning this on is a checkbox rather than
   // a config file and a restart. Off means off: no process is touched.
@@ -181,6 +215,43 @@ export async function runYoutubeTranscripts(
 
   running = true;
   const log = createLogger("youtube-transcript");
+
+  // THE WORK MUST NOT LIVE INSIDE THE REQUEST THAT ASKED FOR IT.
+  //
+  // Measured on the hub PC 2026-08-31, on the very first real run: Node's HTTP
+  // server destroys a connection whose request has been open for five minutes
+  // (`server.requestTimeout`, 300s by default), so the scheduler's call came
+  // back as "fetch failed" after 306 seconds and the run was recorded as a
+  // failure. The work itself had been fine and carried on to completion. What
+  // took so long was legitimate: the first video without captions made Whisper
+  // download its 3.5GB model once.
+  //
+  // So a caller that says `detach` gets an answer as soon as the fast checks
+  // above have passed, and the passes run on behind it. Nothing is lost by
+  // returning early: the single-flight guard is what prevents overlap, results
+  // are logged by the loop itself, and a failure is captured into error_log
+  // where every other job's failures already surface. Waiting for the total
+  // instead would only mean choosing between a false failure every ten minutes
+  // and a batch small enough to fit in five minutes, which no single long video
+  // can be made to fit anyway.
+  if (opts?.detach) {
+    void drain(ownerId, opts.limit ?? 3, log).catch((err) =>
+      captureError("youtube-transcript", err, { correlationId: log.correlationId })
+    );
+    return { ...NOTHING, started: true };
+  }
+  return drain(ownerId, opts?.limit ?? 3, log);
+}
+
+/**
+ * The passes themselves. Assumes the caller has already claimed the
+ * single-flight flag, and always releases it.
+ */
+async function drain(
+  ownerId: string,
+  limit: number,
+  log: ReturnType<typeof createLogger>
+): Promise<TranscriptRun> {
   const total: TranscriptRun = { scanned: 0, done: 0, failed: 0 };
   // KEEP GOING UNTIL THE WAITING LIST IS EMPTY, not just one batch of it. The
   // promise made to the owner is that a month of videos saved where this cannot
@@ -189,12 +260,12 @@ export async function runYoutubeTranscripts(
   // are seconds each, so a real backlog drains in one go.
   //
   // The budget is what keeps that honest: passes stop after twenty minutes and
-  // the rest wait for the next tick, comfortably inside the job's thirty-minute
-  // ceiling, so a queue of Whisper-length videos can never look like a hung job.
+  // the rest wait for the next tick, so a queue of Whisper-length videos hands
+  // control back regularly instead of running for an hour unwatched.
   const deadline = Date.now() + 20 * 60_000;
   try {
     for (;;) {
-      const pass = await transcribePass(ownerId, opts?.limit ?? 3, log);
+      const pass = await transcribePass(ownerId, limit, log);
       total.scanned += pass.scanned;
       total.done += pass.done;
       total.failed += pass.failed;
@@ -227,7 +298,7 @@ async function transcribePass(
   const date = today();
   const result: TranscriptRun = { scanned: 0, done: 0, failed: 0 };
   for (const row of rows) {
-    if (!isYoutubeUrl(row.url)) continue; // the coarse SQL filter's false positives
+    if (!isYoutubeVideoUrl(row.url)) continue; // the coarse SQL filter's false positives
     result.scanned++;
     let existing = "";
     try {

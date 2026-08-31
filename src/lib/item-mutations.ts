@@ -352,15 +352,18 @@ function kickYoutubeTranscript(ownerId: string, type: string, url: string | null
     // Loaded on demand, never at the top of this file: the transcript module
     // reaches for yt-dlp and Whisper as child processes, and item creation is
     // in practically every bundle on the server.
-    const { isYoutubeUrl, runYoutubeTranscripts } = await import("@/lib/youtube/transcripts");
-    if (!isYoutubeUrl(url)) return;
+    const { isYoutubeVideoUrl, runYoutubeTranscripts } = await import("@/lib/youtube/transcripts");
+    if (!isYoutubeVideoUrl(url)) return;
     // Only the machine named under Scheduled work does this, exactly as the
     // timer path checks. Whether the feature is switched on at all is the
     // owner's separate setting, which the job reads for itself: asking it here
     // too is how two answers to one question start disagreeing.
     const { run } = await jobRunVerdict(ownerId, "youtube-transcript");
     if (!run) return;
-    await runYoutubeTranscripts(ownerId);
+    // Detached for the same reason the scheduled endpoint is: the save that
+    // started this is an HTTP request too, and it must not be held open while a
+    // video is transcribed.
+    await runYoutubeTranscripts(ownerId, { detach: true });
   })().catch((err) =>
     captureError("youtube-transcript", err, {
       detail: { trigger: "a video was saved, so the transcript started at once" },

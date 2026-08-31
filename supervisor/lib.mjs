@@ -1044,10 +1044,13 @@ export const LOCAL_JOBS = {
     everyMinutes: 10,
     shared: false,
     on: true,
-    // Whisper on a long video takes minutes, not seconds. The default 120s
-    // ceiling would call a run that is going perfectly well a failure, and
-    // then start another one beside it on the next tick.
-    timeoutMs: 30 * 60_000,
+    // No custom ceiling needed, and a long one was actively wrong. This
+    // endpoint starts the work and answers immediately, because Node destroys
+    // any request left open for five minutes: the 30-minute ceiling this once
+    // carried could never be reached, and it only meant the scheduler waited
+    // five minutes to be told "fetch failed" about work that was going fine
+    // (seen on the first real run, 2026-08-31). The default 120s is now
+    // generous for a call that returns in under a second.
     why:
       "Writes the transcript into the saved link itself. Two machines transcribing the " +
       "same video would both write the same body and then fight over whose copy wins, so " +

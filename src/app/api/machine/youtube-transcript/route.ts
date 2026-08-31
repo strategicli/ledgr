@@ -43,7 +43,13 @@ export async function GET(request: Request) {
     const standDown = await standDownIfNotOwner("youtube-transcript", ownerId);
     if (standDown) return standDown;
 
-    const result = await runYoutubeTranscripts(ownerId);
+    // Detached: this answers as soon as it knows the work has started, and the
+    // transcripts carry on behind it. Waiting is not an option, because Node
+    // destroys a request that has been open for five minutes and the scheduler
+    // then records a failure for work that was going perfectly (seen on the
+    // first real run, 2026-08-31, when Whisper fetched its 3.5GB model). The
+    // results still reach the log and any failure still reaches error_log.
+    const result = await runYoutubeTranscripts(ownerId, { detach: true });
     // Stamped even when the run skipped, because this machine did take its
     // turn. The liveness warning on Build exists to catch a job that has
     // quietly stopped happening, not to complain about a switch the owner
@@ -57,8 +63,8 @@ export async function GET(request: Request) {
         correlationId: log.correlationId,
       });
     }
-    log.info("youtube transcripts finished", result);
-    return NextResponse.json({ ok: true, correlationId: log.correlationId, ...result });
+    log.info("youtube transcripts started", { correlationId: log.correlationId });
+    return NextResponse.json({ ok: true, started: true, correlationId: log.correlationId });
   } catch (err) {
     // No silent failures: this lands in error_log, counts on /health, and the
     // supervisor's cron state records it too.
