@@ -42,7 +42,13 @@ function python(): string {
 // single video produces.
 const MAX_OUTPUT = 64 * 1024 * 1024;
 
-const CAPTION_TIMEOUT_MS = 5 * 60_000;
+// Ninety seconds, and it used to be five minutes. A caption track is a few
+// hundred KB of text and arrives in seconds; five minutes never meant "nearly
+// there", it meant something was wrong, and it bought two of them (creator
+// track then automatic) before giving up. That is how one saved page cost ten
+// minutes on 2026-08-31. The address test now rejects the page that caused it,
+// so this is the second line of defence rather than the first.
+const CAPTION_TIMEOUT_MS = 90_000;
 const AUDIO_TIMEOUT_MS = 20 * 60_000;
 const WHISPER_TIMEOUT_MS = 30 * 60_000;
 

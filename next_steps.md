@@ -2,6 +2,26 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — the transcript job no longer reports a false failure every time it works hard (2026-08-31, ADR-243)
+
+**Found by the first real run,** which transcribed a video successfully and was recorded as a failure anyway. Two bugs, one visible symptom.
+
+**The false failure.** The endpoint awaited the whole drain, and Node destroys any request left open for five minutes, so the scheduler got `fetch failed` after 306 seconds while the work carried on fine behind it, going on to resolve seven more videos. The endpoint now starts the work and answers at once. Results still reach the log, failures still reach the errors list, and the single-flight guard, not the open request, is what stops two runs overlapping.
+
+**A saved channel page is not a video.** What made the run slow enough to meet that ceiling was one saved link that was a YouTube channel page. Handed a channel, yt-dlp starts enumerating everything the channel ever posted: it burned the caption timeout, burned it again on the retry, spent ten minutes on one item, and wrote "took too long to fetch" into a link that could never have been transcribed. Candidates now need a real video id, so channel pages, playlists, search results and bare `youtube.com` never enter the list. The caption timeout drops from five minutes to ninety seconds as a second line of defence.
+
+**Still unproven:** the Whisper fallback. Every transcript so far came from captions, and the one item that reached the fallback was that channel page, which failed before Whisper ever ran.
+
+**The lesson is bigger than this job:** a scheduled endpoint that does real work must not do it inside the request. Every other exclusive job here finishes in seconds, which is why nothing had met this ceiling before. Worth checking the next long-running job against it.
+
+## 🧷 KNOWN STEP — a release that ADDS a scheduled job needs `npm run local:restart`
+
+Discovered 2026-08-31 while switching on video transcripts. The supervisor decides which jobs exist when its process starts, and the auto-update path replaces the **app build** without restarting the **supervisor above it**. So a newly added job is missing from the schedule until the supervisor itself is restarted, and its "last ran" stays empty while everything else looks correct.
+
+It is visible rather than silent: `npm run local:status` says "the running service predates the code on disk, restart to apply it" and names the command. But nobody would predict the need, and the symptom (feature switched on, owner named, code deployed, nothing happening) points everywhere except here.
+
+**Options if it bites again:** have the update path restart the supervisor when `LOCAL_JOBS` has changed, or have the app surface the same warning on `/build/updates` where the job list is read. Both are small; neither is urgent now that the symptom is written down.
+
 ## ✅ SHIPPED — saved YouTube videos transcribe themselves (2026-08-30, ADR-242, branch `feat/youtube-transcripts`)
 
 Save a YouTube video and its full transcript is written into that link item, searchable and readable offline. Captions first (seconds), Whisper on the graphics card when a video has none (minutes). Free, deterministic, nothing leaves the machine.

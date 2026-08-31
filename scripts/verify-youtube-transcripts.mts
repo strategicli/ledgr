@@ -10,7 +10,7 @@
 import { vttToText } from "../src/lib/youtube/fetch";
 import {
   hasTranscriptMarker,
-  isYoutubeUrl,
+  isYoutubeVideoUrl,
   withFailure,
   withTranscript,
 } from "../src/lib/youtube/transcripts";
@@ -82,17 +82,33 @@ check("breaks a paragraph on a long silence", paused.includes("\n\n"));
 check("survives an empty file", vttToText("") === "" && vttToText("WEBVTT\n") === "");
 
 // ── The address test ────────────────────────────────────────────────────────
-check("youtu.be share links", isYoutubeUrl("https://youtu.be/dQw4w9WgXcQ"));
-check("music.youtube.com", isYoutubeUrl("https://music.youtube.com/watch?v=abc"));
-check("m.youtube.com", isYoutubeUrl("https://m.youtube.com/watch?v=abc"));
-check("www.youtube.com", isYoutubeUrl("https://www.youtube.com/watch?v=abc"));
-check("host casing does not matter", isYoutubeUrl("https://WWW.YouTube.com/watch?v=abc"));
-check("a plain article is not one", !isYoutubeUrl("https://example.com/posts/youtube-is-great"));
+check("youtu.be share links", isYoutubeVideoUrl("https://youtu.be/dQw4w9WgXcQ"));
+check("music.youtube.com", isYoutubeVideoUrl("https://music.youtube.com/watch?v=abc"));
+check("m.youtube.com", isYoutubeVideoUrl("https://m.youtube.com/watch?v=abc"));
+check("www.youtube.com", isYoutubeVideoUrl("https://www.youtube.com/watch?v=abc"));
+check("host casing does not matter", isYoutubeVideoUrl("https://WWW.YouTube.com/watch?v=abc"));
+check("a plain article is not one", !isYoutubeVideoUrl("https://example.com/posts/youtube-is-great"));
 // A host that merely ENDS in youtube.com is somebody else's domain.
-check("a lookalike host is not one", !isYoutubeUrl("https://notyoutube.com/watch?v=abc"));
-check("an empty string is not one", !isYoutubeUrl(""));
-check("junk is not one, and does not throw", !isYoutubeUrl("::: not a url :::"));
-check("null and undefined are not one", !isYoutubeUrl(null) && !isYoutubeUrl(undefined));
+check("a lookalike host is not one", !isYoutubeVideoUrl("https://notyoutube.com/watch?v=abc"));
+check("an empty string is not one", !isYoutubeVideoUrl(""));
+check("junk is not one, and does not throw", !isYoutubeVideoUrl("::: not a url :::"));
+check("null and undefined are not one", !isYoutubeVideoUrl(null) && !isYoutubeVideoUrl(undefined));
+check("shorts are videos", isYoutubeVideoUrl("https://www.youtube.com/shorts/abc123def"));
+check("a live url is a video", isYoutubeVideoUrl("https://www.youtube.com/live/abc123def"));
+check("an embed is a video", isYoutubeVideoUrl("https://www.youtube.com/embed/abc123def"));
+check("extra query params are fine", isYoutubeVideoUrl("https://youtu.be/dQw4w9WgXcQ?t=42"));
+// THE ONE THAT COST US A REAL FAILURE (2026-08-31). Handed a channel page,
+// yt-dlp starts enumerating the whole channel and never finishes inside a
+// timeout, so one saved channel page burned ten minutes and then wrote "took
+// too long to fetch" into an item that was never transcribable to begin with.
+check("an @handle channel page is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/@JesseEnkamp"));
+check("a /c/ channel page is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/c/JamesGrage"));
+check("a /channel/ page is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/channel/UCabcdefghij"));
+check("a /user/ page is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/user/someone"));
+check("a playlist is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/playlist?list=PLabcdef"));
+check("a bare youtube.com is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/"));
+check("/watch with no v is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/watch"));
+check("the results page is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/results?search_query=karate"));
 
 // ── The marker ──────────────────────────────────────────────────────────────
 check("finds the marker", hasTranscriptMarker("x\n<!-- transcript:captions 2026-08-30 -->\ny"));
