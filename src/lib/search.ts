@@ -25,6 +25,27 @@ export type SearchOptions = {
 
 const SEARCH_LIMIT = 50;
 
+// Relevance = ts_rank, doubled when the WHOLE query also matches the title.
+//
+// The boost is not a nicety, it breaks a tie that would otherwise be decided by
+// noise. ts_rank saturates: once a lexeme appears a handful of times in a body,
+// its contribution is ~1.0, so a long note that merely mentions the words scores
+// 0.99999994 against an exact-title item's 1.0 — a 6e-8 gap that recency then
+// swamps. That is how "Life Plan Development 2025-2026" landed sixth in a search
+// for its own title (2026-08-31). The A-weight on the title in the generated
+// tsvector can't fix this on its own, because weights only matter before
+// saturation. Doubling a title hit does.
+//
+// `@@` means EVERY query term is in the title (websearch_to_tsquery ANDs them),
+// so this fires for "the thing I named" and not for a partial word overlap.
+// Recomputing to_tsvector over the title per row is cheap: titles are short and
+// the row set is already filtered by the GIN index.
+export function rankSql(query: SQL): SQL<number> {
+  return sql<number>`(ts_rank(${items.search}, ${query}) * (case
+    when to_tsvector('english', coalesce(${items.title}, '')) @@ ${query} then 2
+    else 1 end))`;
+}
+
 // Exposed as a query builder (items.ts pattern) so verification can assert
 // owner scoping and the absence of body in the generated SQL. The snippet
 // is the one deliberate brush with body content on a list read: ts_headline
@@ -60,7 +81,7 @@ export function searchItemsQuery(
   return getDb()
     .select({
       ...listColumns,
-      rank: sql<number>`ts_rank(${items.search}, ${query})`,
+      rank: rankSql(query),
       snippet: sql<
         string | null
       >`ts_headline('english', left(coalesce(${items.bodyText}, ''), 4000), ${query}, 'StartSel=[[, StopSel=]], MaxWords=18, MinWords=8, MaxFragments=2, FragmentDelimiter=" … "')`,
@@ -70,7 +91,7 @@ export function searchItemsQuery(
     .orderBy(
       // Relevance scaled by the recency curve, so a fresh row outranks an
       // equally-relevant stale one; updated_at stays as the final tiebreak.
-      sql`ts_rank(${items.search}, ${query}) * ${recencyMultiplier(opts.recency ?? RECENCY_MILD)} desc`,
+      sql`${rankSql(query)} * ${recencyMultiplier(opts.recency ?? RECENCY_MILD)} desc`,
       desc(items.updatedAt)
     )
     .limit(Math.min(Math.max(opts.limit ?? SEARCH_LIMIT, 1), SEARCH_LIMIT));

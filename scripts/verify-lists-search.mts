@@ -247,6 +247,27 @@ try {
       quokka.some((r) => r.id === quokkaBody.id),
     quokka.map((r) => `${r.title}:${r.rank.toFixed(3)}`).join(", ")
   );
+  // The saturating case (2026-08-31): ts_rank tops out near 1.0 once a term
+  // repeats, so the A-weight on the title stops deciding anything and a long
+  // body that merely mentions the words outranked the item whose TITLE is the
+  // query. The body item is created LAST here, so recency also favors the wrong
+  // answer — only the title boost in rankSql can put this in the right order.
+  const wallabyTitle = await createItem(ownerId, { type: "note", title: "V14 wallaby migration plan" });
+  const wallabyBody = await createItem(ownerId, {
+    type: "note",
+    title: "V14 a long note about something else",
+    body: para(
+      Array.from({ length: 40 }, () => "The wallaby migration plan came up again.").join(" ")
+    ),
+  });
+  created.push(wallabyTitle.id, wallabyBody.id);
+  const wallaby = await searchItems(ownerId, "wallaby migration plan");
+  check(
+    "exact-title hit outranks a long body repeating the same words",
+    wallaby[0]?.id === wallabyTitle.id && wallaby.some((r) => r.id === wallabyBody.id),
+    wallaby.map((r) => `${r.title}:${r.rank.toFixed(3)}`).join(", ")
+  );
+
   const gin = await db.execute(
     sql`select indexdef from pg_indexes where indexname = 'items_search_gin'`
   );

@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ DONE (local, unmerged) — a title match doubles relevance (2026-08-31, ADR-244)
+
+Searching `Life Plan Development 2025-2026` put the note with exactly that title sixth. Not a weighting bug: the title is already weight A. `ts_rank` **saturates**, so on that query the exact-title note scored 1.0000000 and three rows that merely repeat the words scored 0.9999999 — a gap recency then swamped, leaving the order to noise. `rankSql()` in `src/lib/search.ts` now doubles the score when the whole query also matches the title, and both search paths (exact + fuzzy) use it. No migration, no index change. Covered by a new saturating-case check in `verify-lists-search`.
+
 ## ✅ SHIPPED — an assistant can set a custom status (2026-08-31, ADR-243, branch `fix/mcp-custom-statuses`)
 
 **The reported symptom:** Claude could not put a goal on Active or a project on Waiting for Others, so every goal it created landed on Someday and Brandon had to fix the stage in the UI. It had already cost design decisions: the workaround being proposed was to add checkbox properties standing in for stages that already existed.

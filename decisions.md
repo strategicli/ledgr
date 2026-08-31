@@ -3843,3 +3843,27 @@ Underneath the enum sat a quieter hazard. Nothing below the API layer validated 
 **Affects:** `src/lib/status.ts`, `src/lib/item-mutations.ts`, `src/lib/mcp/tools/items.ts`, `src/app/api/items/route.ts`, `src/app/api/machine/items/route.ts`, `src/lib/mcp/guide.ts`, `src/lib/mcp/user-guide.ts`; new `scripts/verify-status-write.mts`.
 
 **Verification:** new `verify-status-write` 25/25 against the dev branch, covering the pure resolver (key, case, label, no-match), a probe type with custom stages set by key and by label with the right category written, a stage the type lacks refused with its real stages named and the row left untouched, and the regression that matters most: types inheriting the default set still take `open`/`done`/`archived`, task checkbox completion still works, and a stage borrowed from another type is refused. Existing suites re-run green: `verify-statuses`, `verify-items`, `verify-mcp`, `verify-mcp-tasks`, `verify-recurrence`, `verify-project-done`, `verify-types`, `verify-today-inbox`, `verify-focus`, `verify-subtasks`, `verify-user-guide`. Typecheck and lint clean.
+
+## ADR-244: a title match doubles a search result's relevance
+
+**Date:** 2026-08-31 · **Status:** accepted · **Scope:** solo (ranking, not the FTS approach or any contract)
+
+**The reported symptom.** Searching `Life Plan Development 2025-2026` returned seven matches, and the note actually titled "Life Plan Development 2025-2026 - Coaching Session" came sixth: under a memory, a prompt, another note, and a task.
+
+**The cause is saturation, not weighting.** The generated `search` tsvector already puts the title at weight A and the body at B (drizzle/0013), so the weights were not the problem. `ts_rank` saturates: once a lexeme repeats a few times in a body its contribution approaches 1.0, and every one of those rows then scores within 1e-7 of a perfect title match. Measured on the live data for that query: the exact-title note scored `1.0000000`, a 173-character task scored `0.9999999`, another note `0.99999994`. Weight A only matters below saturation. Above it, the ordering was decided by the recency multiplier (ADR-156) and then `updated_at`, which is to say by noise.
+
+**Decision.** `rankSql(query)` in `src/lib/search.ts` is the one relevance expression both search paths use, and it doubles `ts_rank` when the whole query also matches the title:
+
+```
+ts_rank(search, q) * (case when to_tsvector('english', title) @@ q then 2 else 1 end)
+```
+
+`@@` on a title-only vector means EVERY term of the query is in the title, because `websearch_to_tsquery` ANDs them. So the boost fires for "the thing I named" and not for a partial word overlap. It applies to the exact path (`searchItemsQuery`, which feeds the search page, quick search, the typeaheads and MCP `search_items`) and to the fuzzy path's per-term signal (`search-deep.ts`), where the signal is normalized by the boosted max and so still lands in 0..1.
+
+**Why this shape.** *Re-weight the tsvector* — a generated-column rebuild and a migration on production data, for a knob that stops mattering above saturation. *`ts_rank` normalization flags (`|32`, document length)* — measured, and they do not separate these rows: 0.5 vs 0.49999997. *Sort by a title-only `ts_rank`* — saturates the same way, and it demotes real body hits. *Order by title match as a hard first sort key* — buries a strong body hit under any weakly-related title, which is the failure mode ADR-156 avoided when it chose a multiplier over a sort key. A multiplier composes with the recency multiplier instead of overriding it, which is the same reasoning as ADR-156, and it needs no schema change.
+
+**Cost:** one `to_tsvector` over a short title per already-filtered row, in a limit-capped result set. No migration, no index change, no API shape change.
+
+**Affects:** `src/lib/search.ts` (new exported `rankSql`, used for the returned `rank` and the ORDER BY), `src/lib/search-deep.ts` (term signal), `scripts/verify-lists-search.mts`.
+
+**Verification:** a new check in `verify-lists-search` builds the saturating case on purpose — an item whose title is the query versus a longer, NEWER note repeating the same words forty times, so recency also favors the wrong answer — and asserts the title item ranks first (2.000 vs 1.000). Whole suite green, `verify-search-deep` 100% green, typecheck and lint clean.

@@ -29,6 +29,7 @@ import { and, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { listColumns } from "@/lib/items";
+import { rankSql } from "@/lib/search";
 import { RECENCY_MILD, recencyMultiplier } from "@/lib/recency";
 import { termToTsQuery, type PersonalDictionary } from "@/lib/synonyms";
 import { type FuzzyWhen } from "@/lib/nl-date";
@@ -203,7 +204,11 @@ function compile(c: Criterion, personal: PersonalDictionary): Compiled | null {
       // "sure" word. Window functions are legal in the select list and ORDER BY,
       // which is why this needs no CTE.
       return {
-        signal: sql`(ts_rank(${items.search}, ${query}) / greatest(max(ts_rank(${items.search}, ${query})) over (), 1e-6))`,
+        // rankSql, not a bare ts_rank: a title hit doubles the score, which is
+        // what keeps an exact-title item above a long body that merely repeats
+        // the words (see lib/search.ts). Normalizing by the boosted max keeps
+        // this signal in 0..1 exactly as before.
+        signal: sql`(${rankSql(query)} / greatest(max(${rankSql(query)}) over (), 1e-6))`,
         gate: match,
         hard: locks ? match : null,
       };
