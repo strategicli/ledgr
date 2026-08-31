@@ -152,6 +152,29 @@ waiting, and clears only when you actually triage.
 - **From your own app:** create a credential in **User Settings → API
   credentials** and post to the HTTP API. \`/build/api\` has the details.
 
+## Video transcripts
+
+Save a YouTube video the way you save anything else and Ledgr can write the
+whole transcript into that link item, so the words are searchable, readable
+offline, and quotable without scrubbing through the video.
+
+- **Switch it on** at \`/build/updates\` → **Video transcripts**. It is off until
+  you turn it on.
+- **It starts as soon as you save.** A video saved on the copy doing the work
+  begins at once; anything else is picked up within ten minutes.
+- **Captions first, listening second.** Most videos already carry captions, which
+  take seconds. A video with none is transcribed by Whisper on the graphics
+  card, which takes minutes. Either way it is free and nothing leaves the
+  machine.
+- **This needs a computer of your own.** It cannot run on a cloud copy: YouTube
+  refuses data-center addresses. Nothing is lost meanwhile, because the waiting
+  list is simply your saved videos with no transcript yet, worked oldest first
+  whenever a capable copy runs. Which machine that is comes from **Scheduled
+  work** on the same page.
+- **A video that cannot be transcribed says so in the item**, as one line giving
+  the reason (private, removed, members only). Delete that line to have another
+  go.
+
 ## Templates
 
 A template is a real item you author normally, prototype and all: body,

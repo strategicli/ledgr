@@ -55,6 +55,8 @@ import {
 import { statusSchemaForType } from "@/lib/status-schema";
 import { getStorage } from "@/lib/storage";
 import { emitActivity, homeParentOf, isTrackedSubjectType } from "@/lib/activity";
+import { jobRunVerdict } from "@/lib/job-owners-store";
+import { captureError } from "@/lib/log";
 
 // A new revision is skipped when the latest one is younger than this; the
 // editor autosaves often (slice 5) and one snapshot per burst is enough
@@ -290,7 +292,53 @@ export async function createItem(ownerId: string, input: ItemInput) {
       payload: { type: created.type },
     }).catch(() => {});
   }
+  kickYoutubeTranscript(ownerId, created.type, created.url);
   return created;
+}
+
+/**
+ * Start transcribing a video the moment it is saved, instead of leaving it to
+ * the ten-minute timer.
+ *
+ * ONE GUARD, IN THE ONE FUNCTION EVERY SAVE ALREADY GOES THROUGH: the phone
+ * share sheet, the desktop bookmarklet, quick capture in the app, and anything
+ * Claude files over the assistant connection all create their link here. That
+ * is why no capture route carries its own copy of this, and why a capture path
+ * added next year gets it without anyone remembering to wire it up.
+ *
+ * The timer stays as the backstop, and it is not redundant: it is what picks up
+ * a video saved while this copy was closed, or saved on another copy entirely
+ * (a video saved in the cloud arrives here on the next sync and waits for the
+ * next tick).
+ *
+ * FIRE AND FORGET, deliberately. The caller's reply goes back at once and the
+ * transcript finishes behind it, so sharing a video from a phone never waits on
+ * Whisper. Nothing here may delay or fail the create, so the promise is
+ * swallowed into captureError rather than returned: an unhandled rejection out
+ * of a background task takes the whole process down.
+ */
+function kickYoutubeTranscript(ownerId: string, type: string, url: string | null) {
+  // The cheap half first, in memory, so creating a task or a note pays one
+  // string comparison and nothing else.
+  if (type !== "link" || !url) return;
+  void (async () => {
+    // Loaded on demand, never at the top of this file: the transcript module
+    // reaches for yt-dlp and Whisper as child processes, and item creation is
+    // in practically every bundle on the server.
+    const { isYoutubeUrl, runYoutubeTranscripts } = await import("@/lib/youtube/transcripts");
+    if (!isYoutubeUrl(url)) return;
+    // Only the machine named under Scheduled work does this, exactly as the
+    // timer path checks. Whether the feature is switched on at all is the
+    // owner's separate setting, which the job reads for itself: asking it here
+    // too is how two answers to one question start disagreeing.
+    const { run } = await jobRunVerdict(ownerId, "youtube-transcript");
+    if (!run) return;
+    await runYoutubeTranscripts(ownerId);
+  })().catch((err) =>
+    captureError("youtube-transcript", err, {
+      detail: { trigger: "a video was saved, so the transcript started at once" },
+    })
+  );
 }
 
 export async function updateItem(

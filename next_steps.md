@@ -2,6 +2,20 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — saved YouTube videos transcribe themselves (2026-08-30, ADR-242, branch `feat/youtube-transcripts`)
+
+Save a YouTube video and its full transcript is written into that link item, searchable and readable offline. Captions first (seconds), Whisper on the graphics card when a video has none (minutes). Free, deterministic, nothing leaves the machine.
+
+**Built as one scheduled job, not the separate runner service `explorations/hub-runner-triggers.md` planned.** That doc predates the supervisor. The supervisor already fires machine endpoints on a timer with its own token, job ownership already picks one machine, and failures already reach the errors list, so the runner, the queue, the public Funnel path, the shared secret, and the heartbeat all came out of the design. What is left is `GET /api/machine/youtube-transcript` every ten minutes, plus the code that pulls a transcript.
+
+**No new state.** "Needs a transcript" is just a saved link with a YouTube address and no `<!-- transcript:` marker in its body, so nothing can drain or expire, and a backlog is picked up oldest first whenever a capable copy runs. A video that cannot be transcribed gets one visible line saying why instead of being retried forever.
+
+**Switching it on:** `py -m pip install -U yt-dlp` on the machine that will do the work, then the **Video transcripts** checkbox at `/build/updates`. Off by default. **It cannot run on the cloud copy at all** (YouTube refuses data-center addresses, and a cloud function stops after sixty seconds), which the Build card says plainly.
+
+**Heads-up for the first run:** there is already a real backlog, **87 waiting on the local copy and 76 on the cloud one** (measured 2026-08-30; the two copies disagreeing is its own small question, see the stale-peer item below). The first run works through them oldest first within a twenty-minute budget per run, so expect a few runs and a burst of body writes that then sync everywhere.
+
+**Still open, deliberately:** no per-video "try again" button (delete the failure line instead), and the single-flight guard is per process rather than per machine.
+
 ## ✅ SHIPPED — a rejected sync call now names its caller (2026-08-30, branch `fix/log-sync-409-caller`)
 
 A registered peer has been calling `POST /api/machine/sync` every 12 seconds since ~10:15 PM Central 2026-08-29 and getting 409 (schema version mismatch) every time. The 409 returns before the handler logs anything, so the caller was anonymous. One `log.warn` before that return now records peer name + deviceId, `localVer`/`remoteVer`, the `x-forwarded-for` (falling back to `x-real-ip`) IP, and the user agent. Additive only: no behavior, response, or schema change, and the token is never logged. Not core (logging is not part of the machine API contract), so no ADR.

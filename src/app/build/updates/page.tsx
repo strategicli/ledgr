@@ -21,6 +21,7 @@ import UpdateButton from "@/components/updates/UpdateButton";
 import StartupToggle from "@/components/updates/StartupToggle";
 import SnapshotKeep from "@/components/updates/SnapshotKeep";
 import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
+import YoutubeTranscripts from "@/components/updates/YoutubeTranscripts";
 import JobOwnerControl from "@/components/updates/JobOwnerControl";
 import RestartServiceButton from "@/components/updates/RestartServiceButton";
 import {
@@ -30,6 +31,9 @@ import {
 } from "@/lib/local-service";
 import { readStartupReport, STARTUP_UNAVAILABLE } from "@/lib/startup";
 import { readJobOwners, installLabel } from "@/lib/job-owners-store";
+import { getSettings } from "@/lib/settings";
+import { ytDlpVersion } from "@/lib/youtube/fetch";
+import { pendingVideoCount } from "@/lib/youtube/transcripts";
 import { listInstalls } from "@/lib/installs";
 import { duplicateLabels, installHealthLine } from "@/lib/installs-plan";
 import { readLocalDeviceId } from "@/lib/sync/client";
@@ -160,6 +164,14 @@ export default async function Updates() {
     instance.supervisorDir && snapshots.length === 0 && !findPgTool("pg_dump")
   );
   const snapshotBytes = snapshots.reduce((n, s) => n + s.bytes, 0);
+
+  // Video transcripts. The switch is the owner's and syncs, so it is read on
+  // every instance; whether yt-dlp is here is a fact about THIS machine, so it
+  // is only asked on a supervised peer (a cloud deploy cannot run it at all,
+  // and the card says so instead of spawning a process that will never work).
+  const settings = await getSettings(owner.id);
+  const ytDlp = instance.supervisorDir ? await ytDlpVersion() : null;
+  const ytPending = await pendingVideoCount(owner.id);
 
   // Which install runs each exclusive job (exploration sync-node-maturity §1).
   // Rendered on EVERY instance, cloud included: the misconfiguration that hurts
@@ -855,6 +867,87 @@ export default async function Updates() {
           </Card>
         </section>
       )}
+
+      {/* ── Video transcripts: the switch, and can this machine do it ──── */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">Video transcripts</h2>
+        <Card>
+          <p className="text-sm text-ink-muted">
+            Save a YouTube video and a few minutes later that saved link holds
+            the whole transcript, written into the item itself. You can search
+            it, read it, and quote it without watching the video or typing a
+            word.
+          </p>
+
+          <div className="mt-4">
+            <YoutubeTranscripts enabled={settings.youtubeTranscripts.enabled} />
+          </div>
+
+          {/* Can the machine you are looking at actually do the work? Asked
+              here rather than left to a log, because "I ticked the box and
+              nothing happened" is the whole failure mode. */}
+          {instance.supervisorDir ? (
+            ytDlp ? (
+              <p className="mt-4 flex items-start gap-2 text-sm text-ink">
+                <span className="mt-1.5">
+                  <StatusDot tone="ok" />
+                </span>
+                <span>
+                  This machine has the tools. It is using yt-dlp{" "}
+                  <span className="font-mono">{ytDlp}</span>.
+                </span>
+              </p>
+            ) : (
+              <p className="mt-4 flex items-start gap-2 text-sm text-ink">
+                <span className="mt-1.5">
+                  <StatusDot tone="bad" />
+                </span>
+                <span>
+                  This machine cannot do the work yet: yt-dlp, the tool that
+                  fetches a video&rsquo;s captions, is not installed. Install it
+                  from a terminal on this machine with{" "}
+                  <Mono>py -m pip install -U yt-dlp</Mono>. Run that same command
+                  again every few months: YouTube keeps changing how videos are
+                  served, and an out-of-date yt-dlp quietly stops working.
+                </span>
+              </p>
+            )
+          ) : (
+            <p className="mt-4 flex items-start gap-2 text-sm text-ink">
+              <span className="mt-1.5">
+                <StatusDot tone="bad" />
+              </span>
+              <span>
+                You are looking at the cloud copy, which cannot do this at all.
+                YouTube refuses data-center addresses, and a cloud function stops
+                after sixty seconds, which any real transcription run passes.
+              </span>
+            </p>
+          )}
+
+          <p className="mt-3 text-sm text-ink-muted">
+            Nothing is lost while you are on the cloud copy. The waiting list is
+            not a queue that can drain or expire, it is simply the videos you
+            have saved that have no transcript yet, so the first run on a machine
+            with the tools works through them oldest first.
+          </p>
+
+          <p className="mt-3 text-sm text-ink">
+            {ytPending === 0
+              ? "Nothing is waiting right now."
+              : `${ytPending} video${ytPending === 1 ? "" : "s"} waiting.`}
+          </p>
+
+          <p className="ui-meta mt-3 text-ink-subtle">
+            This switch is yours and follows you to every copy. Which machine
+            actually does the work is a separate answer, in{" "}
+            <Link href="#scheduled-work" className="underline decoration-dotted">
+              Scheduled work
+            </Link>{" "}
+            above.
+          </p>
+        </Card>
+      </section>
 
       {/* ── Sync surfaces moved to Build → Network (ADR-209) ───────────── */}
       <section className="mt-8">

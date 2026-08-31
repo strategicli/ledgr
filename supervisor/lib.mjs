@@ -1038,6 +1038,23 @@ export const LOCAL_JOBS = {
     on: false,
     why: "Claims transcription jobs from the provider; two pollers race for the same job.",
   },
+  "youtube-transcript": {
+    path: "/api/machine/youtube-transcript",
+    label: "Video transcripts",
+    everyMinutes: 10,
+    shared: false,
+    on: true,
+    // Whisper on a long video takes minutes, not seconds. The default 120s
+    // ceiling would call a run that is going perfectly well a failure, and
+    // then start another one beside it on the next tick.
+    timeoutMs: 30 * 60_000,
+    why:
+      "Writes the transcript into the saved link itself. Two machines transcribing the " +
+      "same video would both write the same body and then fight over whose copy wins, so " +
+      "the endpoint runs only on the copy named under Scheduled work, and stands down " +
+      "everywhere else. Scheduled here always so that naming this machine is all it takes " +
+      "(ADR-225).",
+  },
   "health-check": {
     path: "/api/machine/health-check",
     label: "Weekly health check",
