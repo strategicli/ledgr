@@ -3818,7 +3818,7 @@ On 2026-08-30 between 08:20:54 and 08:44:51 UTC this rig failed 120 times in a r
 ## ADR-243: a status is whatever the type says it is, on write as well as on read
 
 **Date:** 2026-08-31
-**Status:** accepted; the loosening is solo under the ADR-183 carve-out, but the one tightening half touches the machine/MCP API contract and wants Tyler's nod before it merges (see "The core question" below)
+**Status:** accepted. The loosening was solo under the ADR-183 carve-out; the one tightening half touches the machine/MCP API contract, so it went to Tyler, who **acked it 2026-08-31** (relayed via Brandon). See "The core question" below for exactly what he was agreeing to.
 
 **Context.** ADR-082 made statuses user-defined per type: `items.status` is plain text holding a stage key, and `items.status_category` holds the fixed bucket the plumbing reasons about. `ITEM_STATUSES` (`open`/`done`/`archived`) survived as nothing more than the keys of the *inherited default* set, and `src/lib/item-enums.ts` says so in a comment. Three call sites never got the memo and kept treating that list as the closed set of legal statuses: `status` on `create_item`, `update_item` and `list_items` was declared `enum: [...ITEM_STATUSES]`, and the `status` list filter on both `/api/items` and `/api/machine/items` returned 400 for anything else.
 

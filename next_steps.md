@@ -10,7 +10,7 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 **The fix, in one place.** `resolveStatusKey` (pure, `status.ts`) matches a stage by key **or by label**, any case, so "Waiting for Others" works as well as `waiting`. `requireStatusKey` wraps it inside `createItem`/`updateItem`, the one chokepoint every writer routes through (canvas, board drag, REST, machine API, MCP), and refuses an unknown name with the type's real stages listed in the error. The enums came off; the REST filters shape-check a slug. `categoryOfStatus`'s forgiving read-path fallback is untouched on purpose: forgiving on read, strict on write.
 
-**Needs Tyler's nod before merge.** The loosening is solo under the ADR-183 carve-out, but on a type with custom stages `status: "open"` used to be accepted and silently mis-stored and is now refused, which is a behaviour change to an existing argument on the machine/MCP contract. See ADR-243's "The core question".
+**Tyler acked the core half 2026-08-31** (relayed via Brandon) and it is merged. The loosening was solo under the ADR-183 carve-out; what needed him was that on a type with custom stages, `status: "open"` used to be accepted and silently mis-stored and is now refused, a behaviour change to an existing argument on the machine/MCP contract. See ADR-243's "The core question".
 
 **Verification:** new `scripts/verify-status-write.mts` 25/25, plus a live run through the real MCP handlers (create by label, create by key, update by label, refusal message, custom-stage filter). Ten existing suites re-run green.
 
