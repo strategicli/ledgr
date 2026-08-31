@@ -26,14 +26,16 @@ import { useEffect, useRef } from "react";
 // The ready/send handshake repeats rather than firing once: when the popup
 // lands on sign-in first, the relay page that finally announces itself is a
 // SECOND page load, and a one-shot listener would have already been torn down
-// by then. So we answer every "ready" ping for the life of the host page.
+// by then. So we answer every "ready" ping — until the relay says it saved,
+// which retires the listener so a later reload of that popup can't re-send the
+// clip and file it twice.
 export function buildBookmarklet(origin: string): string {
   const relay = origin + "/capture/relay";
   const src = `(function(){var d={url:location.href,title:document.title,html:document.documentElement.outerHTML};var w=window.open(${JSON.stringify(
     relay
-  )},"ledgr-clip","width=380,height=200");if(!w){alert("Ledgr: please allow pop-ups for this site, then try again");return}window.addEventListener("message",function(e){if(e.source===w&&e.data==="ledgr-relay-ready")w.postMessage(d,${JSON.stringify(
+  )},"ledgr-clip","width=380,height=200");if(!w){alert("Ledgr: please allow pop-ups for this site, then try again");return}function m(e){if(e.source!==w)return;if(e.data==="ledgr-relay-ready")w.postMessage(d,${JSON.stringify(
     origin
-  )})})})();`;
+  )});else if(e.data==="ledgr-relay-saved")window.removeEventListener("message",m)}window.addEventListener("message",m)})();`;
   return "javascript:" + encodeURIComponent(src);
 }
 
