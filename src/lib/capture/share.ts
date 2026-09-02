@@ -10,6 +10,33 @@ import { makeMarkdownBody } from "@/lib/body";
 import { fetchAndExtract } from "@/lib/clip/extract";
 import { createItem } from "@/lib/item-mutations";
 
+// Absolute base for the share flow's 303 redirects.
+//
+// NOT `new URL(path, request.url)`, which is what this used to be: a
+// POST-navigation route handler reads `request.url` back as
+// http://localhost:3000 (Next builds an internal origin for it), so every
+// share 303'd Android's share sheet to a dead localhost URL and the whole
+// mobile-share feature looked broken. The host the phone actually reached us
+// on only ever lives in the headers. Don't put request.url back here.
+//
+// Deliberately not lib/auth/oauth.ts's originFromRequest(): that one assumes
+// https whenever the host isn't literally "localhost", which is wrong for the
+// case that matters most here — a local install reached over the tailnet at
+// http://<magicdns-name>:3000, with no proxy and no forwarded-proto header.
+export function shareRedirectBase(request: Request): string {
+  const h = request.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  // No Host at all shouldn't happen; fall back rather than build an empty base.
+  if (!host) return new URL(request.url).origin;
+  // A forwarded proto means a proxy in front (Vercel always sets it, and may
+  // send a list). Absent, we were reached directly, so the request's own
+  // scheme is the truth.
+  const forwarded = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto = forwarded || new URL(request.url).protocol.replace(/:$/, "");
+  return `${proto}://${host.split(",")[0].trim()}`;
+}
+
+
 // Android puts the URL in `url` or (commonly) at the end of `text`.
 export function extractUrl(...candidates: (string | undefined)[]): string | null {
   for (const c of candidates) {

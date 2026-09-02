@@ -2,6 +2,16 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — mobile share sent the share sheet to localhost:3000 (2026-09-02, branch `fix/mobile-share-redirect-host`)
+
+Sharing anything to the installed Android PWA ended on a dead `localhost:3000` URL. **Not the manifest**: the capture worked every time; the redirect afterwards was wrong. Both share routes built their 303 with `new URL(path, request.url)`, and a POST-navigation route handler reads `request.url` back as `http://localhost:3000/…` (Next builds an internal origin for it), so the `Location` header pointed at the phone itself.
+
+The host the phone actually reached only ever lives in the headers, so all 13 redirects across `capture/share` + `capture/share/claim` now go through one `shareRedirectBase()` in `src/lib/capture/share.ts`: host from `x-forwarded-host` or `host`, scheme from `x-forwarded-proto` when a proxy set it and otherwise the scheme the request itself arrived on.
+
+**Why not `originFromRequest()` from `lib/auth/oauth.ts`** (the first attempt, and it was wrong): that helper assumes `https` for any host that is not literally `localhost`. The local install is `next start -p 3000` with no proxy, reached over the tailnet at `http://bc-closetbook:3000` (measured: 200 with Next's own headers, nothing listening on 443/8443), so it would have traded a broken localhost redirect for a broken `https://…:3000` one. Reading the scheme off the request means adding `tailscale serve` in front later needs no code change.
+
+Verified: tsc + eslint clean, `verify-share-claim.mts` 16/16 (four new checks: forwarded host wins, a tailnet host stays http, a comma-listed forwarded-proto takes its first entry, no headers at all still yields a usable base). No ADR (a bug fix behind an existing route, no core surface). No user-guide change: nothing the owner can do changed, it just works now.
+
 ## ✅ FIXED, and it was the real cause: the hourly snapshot froze the whole app (2026-09-02, ADR-246)
 
 **Caught live by Brandon, and his observation is what cracked it:** two machines could not reach Ledgr at the same moment while he was driving the hub PC over RustDesk with a smooth remote-desktop session. The network was fine. So the earlier Wi-Fi and Funnel explanation (ADR-245, written hours before) could not be the whole story, and it was not.

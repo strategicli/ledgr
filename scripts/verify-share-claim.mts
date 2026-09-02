@@ -4,6 +4,7 @@
 // arbitrary storage key or losing an empty share.
 // Run: npx tsx scripts/verify-share-claim.mts
 import { buildClaimQuery } from "../src/app/capture/share/route";
+import { shareRedirectBase } from "../src/lib/capture/share";
 import { isValidStashId } from "../src/app/capture/share/claim/route";
 
 let failures = 0;
@@ -23,6 +24,39 @@ check("all-empty share yields an empty query", buildClaimQuery({}) === "");
 check(
   "a long text share is still valid query syntax (caller decides the size fallback)",
   new URLSearchParams(buildClaimQuery({ text: "x".repeat(10_000) })).get("text")?.length === 10_000
+);
+
+// --- redirectBase ----------------------------------------------------------
+// The mobile-share bug: request.url reads back as localhost:3000 behind
+// Vercel's proxy, so every 303 pointed the share sheet at a dead URL.
+const req = (headers: Record<string, string>) =>
+  new Request("http://localhost:3000/capture/share", { headers });
+check(
+  "forwarded host wins over request.url",
+  shareRedirectBase(req({ "x-forwarded-host": "ledgr.example.com", "x-forwarded-proto": "https" })) ===
+    "https://ledgr.example.com"
+);
+check(
+  "plain host header works too, keeping the request's own scheme (no proxy)",
+  shareRedirectBase(req({ host: "ledgr.example.com" })) === "http://ledgr.example.com"
+);
+check(
+  "localhost stays http (dev)",
+  shareRedirectBase(req({ host: "localhost:3100" })) === "http://localhost:3100"
+);
+check(
+  "a local install on a tailnet address stays http, not https",
+  shareRedirectBase(req({ host: "ledgr-pc.tail1234.ts.net:3000" })) ===
+    "http://ledgr-pc.tail1234.ts.net:3000"
+);
+check(
+  "a proxy's forwarded-proto list takes its first entry",
+  shareRedirectBase(req({ "x-forwarded-host": "a.b", "x-forwarded-proto": "https, http" })) ===
+    "https://a.b"
+);
+check(
+  "no headers at all falls back to the request origin, never an empty base",
+  shareRedirectBase(req({})) === "http://localhost:3000"
 );
 
 // --- isValidStashId ---------------------------------------------------------

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
-import { captureSharedUrlOrText } from "@/lib/capture/share";
+import { captureSharedUrlOrText, shareRedirectBase } from "@/lib/capture/share";
 import { createInboxTranscript } from "@/lib/meetings/transcripts";
 import { getStorage } from "@/lib/storage";
 
@@ -26,6 +26,7 @@ import { getStorage } from "@/lib/storage";
 // iOS has no share-target support and stays on the in-app upload/paste paths
 // (PRD §4.5).
 export const dynamic = "force-dynamic";
+
 
 // The form field name the manifest declares for the shared file.
 const FILE_FIELD = "transcript";
@@ -71,19 +72,19 @@ async function stashAndRedirect(
   // No storage configured: nothing to stash into, so the share is lost rather
   // than crashing. Same degrade-gracefully posture as the rest of the app
   // running without R2 configured.
-  if (!storage) return NextResponse.redirect(new URL("/", request.url), 303);
+  if (!storage) return NextResponse.redirect(new URL("/", shareRedirectBase(request)), 303);
   const id = crypto.randomUUID();
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   await storage.putObject(`${STASH_PREFIX}${id}.json`, bytes, "application/json");
-  return NextResponse.redirect(new URL(`/capture/share/claim?stash=${id}`, request.url), 303);
+  return NextResponse.redirect(new URL(`/capture/share/claim?stash=${id}`, shareRedirectBase(request)), 303);
 }
 
 async function handleAnonymousFile(file: File, request: Request): Promise<NextResponse> {
   if (file.size > MAX_FILE_BYTES) {
-    return NextResponse.redirect(new URL("/", request.url), 303);
+    return NextResponse.redirect(new URL("/", shareRedirectBase(request)), 303);
   }
   const text = await file.text();
-  if (!text.trim()) return NextResponse.redirect(new URL("/", request.url), 303);
+  if (!text.trim()) return NextResponse.redirect(new URL("/", shareRedirectBase(request)), 303);
   return stashAndRedirect(
     { kind: "transcript", title: titleFromFilename(file.name || "Transcript"), text },
     request
@@ -94,7 +95,7 @@ async function handleAnonymousTextOrUrl(form: FormData, request: Request): Promi
   const fields = { title: str(form.get("title")), text: str(form.get("text")), url: str(form.get("url")) };
   const query = buildClaimQuery(fields);
   if (query.length < MAX_QUERY_BYTES) {
-    return NextResponse.redirect(new URL(`/capture/share/claim?${query}`, request.url), 303);
+    return NextResponse.redirect(new URL(`/capture/share/claim?${query}`, shareRedirectBase(request)), 303);
   }
   return stashAndRedirect({ kind: "text", ...fields }, request);
 }
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
   try {
     form = await request.formData();
   } catch {
-    return NextResponse.redirect(new URL("/", request.url), 303);
+    return NextResponse.redirect(new URL("/", shareRedirectBase(request)), 303);
   }
 
   const file = form.get(FILE_FIELD);
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
         text,
       });
       return NextResponse.redirect(
-        new URL(`/capture/transcript/${transcript.id}`, request.url),
+        new URL(`/capture/transcript/${transcript.id}`, shareRedirectBase(request)),
         303
       );
     }
@@ -143,11 +144,11 @@ export async function POST(request: Request) {
     text: str(form.get("text")),
     url: str(form.get("url")),
   });
-  return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", request.url), 303);
+  return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
 }
 
 // A stray GET (a bookmark to the old page, a manual hit) has nothing to capture;
 // send it home rather than 405. Real shares always arrive as the POST above.
 export async function GET(request: Request) {
-  return NextResponse.redirect(new URL("/", request.url), 303);
+  return NextResponse.redirect(new URL("/", shareRedirectBase(request)), 303);
 }
