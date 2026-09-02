@@ -103,7 +103,7 @@ export async function runSnapshot(opts: {
 }): Promise<{ name: string; bytes: number; keep: number; removed: string[] }> {
   const keep = await readSnapshotKeep();
   const dir = snapshotsDir(opts.supervisorDir);
-  const { name, bytes } = takeSnapshot({ dbUrl: opts.dbUrl, dir });
+  const { name, bytes } = await takeSnapshot({ dbUrl: opts.dbUrl, dir });
   return { name, bytes, keep, removed: pruneSnapshots(dir, keep) };
 }
 

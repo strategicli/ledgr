@@ -137,7 +137,13 @@ export function reachableAddresses(opts: {
 
 /** Ask the local Tailscale CLI. Never throws: not installed is a normal answer. */
 export async function readTailscaleState(): Promise<TailscaleState> {
-  const { spawnSync } = await import("node:child_process");
+  // AWAITED, not spawnSync (2026-09-02, ADR-246). The app is one Node process,
+  // so a synchronous child here froze every other request for up to the 5s
+  // timeout below while the Network page asked one question. Same defect that
+  // made the hourly snapshot look like an outage, just smaller and rarer.
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
   // On Windows the name needs its .exe: spawn does no PATHEXT resolution, so a
   // bare "tailscale" is ENOENT even when the CLI is on PATH — which is exactly
   // how this read first reported "not installed" on a machine that had it.
@@ -147,8 +153,11 @@ export async function readTailscaleState(): Promise<TailscaleState> {
       : ["tailscale", "/usr/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
   for (const bin of candidates) {
     try {
-      const res = spawnSync(bin, ["status", "--json"], { encoding: "utf8", timeout: 5000 });
-      if (res.error) continue;
+      const res = await run(bin, ["status", "--json"], {
+        encoding: "utf8",
+        timeout: 5000,
+        maxBuffer: 4 * 1024 * 1024,
+      });
       if (typeof res.stdout === "string" && res.stdout.trim()) {
         return parseTailscaleStatus(res.stdout);
       }
@@ -158,8 +167,21 @@ export async function readTailscaleState(): Promise<TailscaleState> {
         installed: true,
         detail: (res.stderr || "").trim() || "Tailscale is installed but not signed in yet.",
       };
-    } catch {
-      // try the next candidate
+    } catch (err) {
+      // A missing binary means "try the next candidate". Anything else means
+      // this IS the CLI and it failed us: `tailscale status` exits non-zero
+      // when the node is stopped or signed out, and that answer is installed-
+      // but-unusable, which the old `res.error` check could not distinguish.
+      const e = err as { code?: string | number; stdout?: string; stderr?: string };
+      if (e.code === "ENOENT") continue;
+      if (typeof e.stdout === "string" && e.stdout.trim()) {
+        return parseTailscaleStatus(e.stdout);
+      }
+      return {
+        ...TAILSCALE_ABSENT,
+        installed: true,
+        detail: (e.stderr || "").trim() || "Tailscale is installed but not signed in yet.",
+      };
     }
   }
   return TAILSCALE_ABSENT;

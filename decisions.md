@@ -3875,6 +3875,7 @@ Underneath the enum sat a quieter hazard. Nothing below the API layer validated 
 
 **Date:** 2026-09-02
 **Status:** accepted (not core: a monitoring workflow, a supervisor process-priority nicety, and one `pg_dump` flag; no schema, contract, or provider-interface change)
+**⚠️ Its cause ranking is SUPERSEDED BY ADR-246, written hours later the same day.** Everything measured below is accurate and the changes all stand, but the biggest cause was not in this list: the hourly snapshot ran `pg_dump` synchronously inside the single-process app, freezing the entire server for 132 to 160 seconds every hour. Read ADR-246 before chasing the Funnel or Wi-Fi on a report of Ledgr being unreachable. Left unedited otherwise, because what it got wrong is instructive: every measurement here was real, and a set of real measurements still added up to the wrong ranking.
 
 **Context.** Two complaints had been running for weeks with no evidence behind either: Ledgr took a long time to load from other devices, and AI clients reaching the MCP endpoint would intermittently fail, which one of them described as "flaky." Neither had a timestamp, a duration, or a reproduction. The suspicion in the room was that the hub PC was falling asleep or needed waking.
 
@@ -3917,3 +3918,41 @@ Four times faster *and* smaller than the default, so there is no trade to weigh.
 **The order that actually matters, so nobody mistakes this ADR for the fix:** plugging in the Ethernet cable outranks everything above it, and moving the phone back onto the tailnet skips the Funnel path entirely. Parts 2 and 3 here are second-order. Part 1 is the instrument that will tell us whether any of it worked.
 
 **Affects:** `.github/workflows/hub-reachable.yml` (new), the `LEDGR_HUB_URL` repo variable (set for Brandon's hub), `supervisor/ledgr-supervisor.mjs` (`run()`'s `low` option and the two call sites), `src/lib/snapshots.ts` (`--compress=zstd:1`), `runbook.md` §6b.
+
+## ADR-246: the hourly snapshot froze the whole server for two and a half minutes, and that was the "flaky" all along
+
+**Date:** 2026-09-02
+**Status:** accepted (not core: one library file made asynchronous, plus its callers). **Supersedes the cause ranking in ADR-245**, which is left standing as the record of what the measurements showed before this was found.
+
+**Context, and why ADR-245 got the ranking wrong.** ADR-245, written hours earlier the same day, measured the Funnel round trip and seven Wi-Fi drops and ranked those as the causes of "Ledgr is slow from my phone" and "MCP is flaky." Then Brandon caught the failure live and produced the one observation that killed the Wi-Fi theory: **two machines could not reach Ledgr at the same moment, while he was driving this very machine over RustDesk with a perfectly smooth remote-desktop session.** The network was demonstrably fine. Something in the app was not.
+
+**The cause, found in the log with a two-minute-wide fingerprint.** The hourly snapshot job ran from **15:45:38 to 15:48:18 UTC**, taking 160 seconds, and Brandon's outage was "the last two to five minutes" reported at 15:50. Every hourly run that day tells the same story: 132, 133, 135, 139, 140, 160 seconds. Never a fast one.
+
+`takeSnapshot` shelled out to `pg_dump` with **`spawnSync`**, and it is called from the request handler of `GET /api/machine/snapshot`. Ledgr's app is **one Node process** (confirmed: pid 6980, no cluster workers). `spawnSync` blocks the event loop. So for the entire length of the dump, the server accepted TCP connections and answered none of them, from every device at once, once an hour, then recovered leaving nothing behind but a "snapshot taken" line that looked like success. Which it was. The dump was never the problem; doing it *inside the process that serves pages* was.
+
+**That is 150 seconds in every 3600: Ledgr was completely unreachable about 4% of the time,** in blocks long enough for any phone or AI client to time out. "Flaky" was a precise description.
+
+**Decision.** Every child process in `src/lib/snapshots.ts` is spawned asynchronously, through one `promisify(execFile)` helper. `takeSnapshot` and `findPgTool` become `async`; their four callers await them. `readTailscaleState` in `network-addresses.ts` gets the same treatment: it had a `spawnSync` with a five-second timeout, so the Network page could freeze every other request for up to five seconds, the same defect one order of magnitude smaller.
+
+**Measured, both directions, with a real 287MB dump of the live database and an HTTP server polled every 200ms throughout:**
+
+| dump path | requests served during the dump | longest window with nothing served |
+|---|---|---|
+| `spawnSync` (the old way) | **0** | **9.6s**, the whole dump |
+| awaited `execFile` (now) | **48** | 0.23s, i.e. the poll interval |
+
+The dump is 9 to 10 seconds in that test rather than 160 because ADR-245's `zstd:1` change had already landed. **Those two changes are independent and both were needed:** compression cut the dump's *length* fourfold, and this cuts the *blocking* to nothing. Either alone would have left a real defect, and the compression win is exactly why the freeze in the contrast test above is 10 seconds instead of the 160 the hub was actually suffering.
+
+**A guard, not just a fix.** `verify-snapshots` grows a check that fails if `spawnSync`, `execSync`, or `execFileSync` ever reappears in `snapshots.ts`, with the incident named in the assertion message. A source-text check is crude, and it is the only kind that catches this: the bug typechecks, passes every behavioral test, and produces correct output. Nothing about it is visible except from outside, under load, on the clock.
+
+**This is ADR-244's lesson with a second edge, and worth stating generally.** That ADR said a scheduled endpoint must not do real work *inside the request*, because the request times out. This is the sharper version: **a scheduled endpoint must not do real work synchronously, because the whole server stops.** The request timeout is a nuisance that reports itself in a log. The blocked event loop is an outage that reports nothing at all. Both jobs looked healthy in `error_log` the entire time they were misbehaving.
+
+**Why not the alternatives.**
+- *Detach the work like ADR-244 did.* Does not help on its own: a detached handler that still calls `spawnSync` blocks the same loop just as hard. Asynchrony is the fix; detaching is unnecessary once the dump is 10 seconds and non-blocking.
+- *Move snapshots into the supervisor process instead.* It would work, and it is the bigger redesign: the supervisor already owns the timer, and dumping from there would keep this class of work permanently out of the serving process. Rejected for now because the endpoint is also what the owner's "Snapshot now" button reaches, and ADR-217's one-runner property (both triggers take the same act) is worth more than the isolation. Revisit if a third heavy job wants the same treatment.
+- *Run snapshots less often.* Treats the symptom, costs recovery granularity, and leaves the freeze in place for whenever it does run.
+- *Only fix the snapshot and leave the Tailscale probe.* Rejected: same defect, same file class, five seconds of everyone's requests for one page's question, and the audit that found it took one grep.
+
+**What ADR-245 still got right,** so this does not swing too far the other way: the Funnel genuinely does cost 6.2s for the signed-out shell's 36 assets against 0.15s locally, and Wi-Fi genuinely did drop seven times in a week. Those are real and unfixed. What changes is the ranking: they explain *slow*, and they explain *some* unreachability, but the hourly total blackout was this, and it was the biggest of the three by a wide margin.
+
+**Affects:** `src/lib/snapshots.ts` (the async helper, `findPgTool`, `takeSnapshot`), `src/lib/snapshot-settings.ts`, `src/app/build/updates/page.tsx`, `src/lib/network-addresses.ts`, `scripts/local-snapshot.mts`, `scripts/verify-snapshots.mts` (30 checks, one new), `runbook.md` §7.

@@ -48,6 +48,16 @@ function ok(what: string, fn: () => void) {
   console.log(`  ✓ ${what}`);
 }
 
+// The dump is asynchronous now (ADR-246: a synchronous pg_dump froze the whole
+// single-process server for the length of the dump), so the checks that drive
+// it need to await. Kept as a second helper rather than making `ok` async,
+// which would mean awaiting all two dozen pure checks that have no need of it.
+async function okAsync(what: string, fn: () => Promise<void>) {
+  await fn();
+  checks += 1;
+  console.log(`  ✓ ${what}`);
+}
+
 console.log("Snapshot spread and prune decisions\n");
 
 // ── The knob ────────────────────────────────────────────────────────────────
@@ -289,17 +299,17 @@ ok("listing and pruning agree on real files", () => {
   }
 });
 
-ok("a failed dump leaves no half-file pretending to be a restore point", () => {
+await okAsync("a failed dump leaves no half-file pretending to be a restore point", async () => {
   const dir = mkdtempSync(join(tmpdir(), "ledgr-snap-"));
   try {
     // No pg_dump at all is a sentence, not a stack trace.
-    assert.throws(
+    await assert.rejects(
       () => takeSnapshot({ dbUrl: "postgresql://nowhere/ledgr", dir, pgDump: null }),
       /client tools are not installed/
     );
     // A "pg_dump" that exits non-zero: node itself, handed flags it rejects.
     // The point is the cleanup, not the error text.
-    assert.throws(
+    await assert.rejects(
       () =>
         takeSnapshot({
           dbUrl: "postgresql://nowhere/ledgr",
@@ -401,6 +411,22 @@ ok("both trigger paths take a snapshot through the one runner", () => {
     assert.match(src, /snapshotTarget\(\)/, `${name} is missing the local-peer gate`);
   }
   assert.match(owner, /export async function POST/, "Snapshot now has no route");
+});
+
+ok("the dump never blocks the server's event loop", () => {
+  // THE REGRESSION THIS GUARDS (2026-09-02, ADR-246): pg_dump used to run via
+  // spawnSync inside the request that triggers it. The app is ONE Node
+  // process, so that froze it for the length of the dump: 132 to 160 seconds,
+  // every hour, answering nobody from any device. It read as "Ledgr is slow"
+  // and "MCP is flaky" for weeks because the machine and network were fine.
+  // A synchronous child process anywhere in this file brings that back.
+  const src = readFileSync(resolve("src/lib/snapshots.ts"), "utf8");
+  for (const banned of ["spawnSync", "execSync", "execFileSync"]) {
+    assert.ok(
+      !src.includes(`${banned}(`),
+      `snapshots.ts calls ${banned}, which freezes the whole server for the dump`
+    );
+  }
 });
 
 ok("nothing restores over the live cluster", () => {
