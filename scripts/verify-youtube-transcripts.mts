@@ -9,6 +9,7 @@
 //   npx tsx scripts/verify-youtube-transcripts.mts
 import { vttToText } from "../src/lib/youtube/fetch";
 import {
+  VIDEO_URL_SQL_PATTERN,
   hasTranscriptMarker,
   isYoutubeVideoUrl,
   withFailure,
@@ -109,6 +110,84 @@ check("a playlist is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/p
 check("a bare youtube.com is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/"));
 check("/watch with no v is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/watch"));
 check("the results page is NOT a video", !isYoutubeVideoUrl("https://www.youtube.com/results?search_query=karate"));
+
+// ── The address test, asked in Postgres ─────────────────────────────────────
+// The query that finds work asks this question in SQL, and the code asks it
+// again in JavaScript. They must not drift, and the drift that matters has a
+// direction: SQL missing a real video means that video is never transcribed at
+// all, silently. So every address the code calls a video, the pattern must
+// match too. The other direction is allowed — the code is deliberately stricter
+// about paths than one regex should try to be — but only for oddities, never
+// for a link a person would actually save.
+//
+// Postgres `~*` is case-insensitive; `i` here is what makes this the same test.
+const sqlPattern = new RegExp(VIDEO_URL_SQL_PATTERN, "i");
+
+// THE FIVE THAT JAMMED THE REAL QUEUE (2026-09-02). Every one of them contains
+// the letters "youtu", which is all the old query asked for, and not one is a
+// video. Three of them sat at the front of the list by age, filled the batch of
+// three, and stopped eighteen videos behind them for a day and a half.
+const JAMMERS = [
+  "https://www.reddit.com/r/youtube/comments/8xiffg/youtube_app_video_history_not_updating/",
+  "https://www.jawa.gg/?utm_source=Youtube&utm_medium=Youtube+%2B+Integration",
+  "https://export-youtube-playlist.vercel.app/",
+  "http://sharesummit.com/10-cool-youtube-url-tricks.html",
+  "https://www.makeuseof.com/replace-chrome-youtube-gboard-maps-with-open-source-apps-android/",
+];
+for (const url of JAMMERS) {
+  check(`the query does not offer up ${new URL(url).hostname}`, !sqlPattern.test(url));
+}
+
+// Everything the address test upstream has an opinion about, asked of the query
+// too. A video must reach the job; a non-video must never fill a batch slot.
+const ADDRESSES = [
+  "https://youtu.be/dQw4w9WgXcQ",
+  "https://youtu.be/dQw4w9WgXcQ?t=42",
+  "https://www.youtu.be/dQw4w9WgXcQ",
+  "https://music.youtube.com/watch?v=abc",
+  "https://m.youtube.com/watch?v=abc",
+  "https://www.youtube.com/watch?v=abc",
+  "https://youtube.com/watch?v=ya9Yu_1jghQ&si=uR-QVXUvTYJ5IksB",
+  "https://youtube.com/watch?si=uR-QVXUvTYJ5IksB&v=ya9Yu_1jghQ",
+  "https://WWW.YouTube.com/watch?v=abc",
+  "http://www.youtube.com/watch?v=AYt-rVUU2EQ",
+  "https://www.youtube.com/shorts/abc123def",
+  "https://www.youtube.com/live/abc123def",
+  "https://www.youtube.com/embed/abc123def",
+  "https://www.youtube.com/@JesseEnkamp",
+  "https://www.youtube.com/c/JamesGrage",
+  "https://www.youtube.com/channel/UCabcdefghij",
+  "https://www.youtube.com/user/someone",
+  "https://www.youtube.com/playlist?list=PLabcdef",
+  "https://www.youtube.com/",
+  "https://www.youtube.com/watch",
+  "https://www.youtube.com/results?search_query=karate",
+  "https://notyoutube.com/watch?v=abc",
+  "https://example.com/posts/youtube-is-great",
+  ...JAMMERS,
+];
+for (const url of ADDRESSES) {
+  // One-directional on purpose: a video the query skips is a video that is
+  // never transcribed and never complained about.
+  if (isYoutubeVideoUrl(url)) {
+    check(`the query offers up ${url}`, sqlPattern.test(url));
+  }
+}
+// And the other direction holds for every ordinary address, so a batch cannot
+// fill with rows the job will refuse. Only the contrived leftovers below are
+// allowed to differ.
+for (const url of ADDRESSES) {
+  check(`the query and the code agree on ${url}`, sqlPattern.test(url) === isYoutubeVideoUrl(url));
+}
+// The allowed drift, written down so nobody "fixes" it: the code insists a
+// youtu.be link's id is the WHOLE path, and one regex should not try to. The
+// query hands this over, the code declines it, and one wasted batch slot on an
+// address nobody saves is the entire cost.
+check(
+  "an extra path segment is the query's one allowed false positive",
+  sqlPattern.test("https://youtu.be/dQw4w9WgXcQ/extra") &&
+    !isYoutubeVideoUrl("https://youtu.be/dQw4w9WgXcQ/extra")
+);
 
 // ── The marker ──────────────────────────────────────────────────────────────
 check("finds the marker", hasTranscriptMarker("x\n<!-- transcript:captions 2026-08-30 -->\ny"));

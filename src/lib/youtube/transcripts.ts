@@ -116,21 +116,46 @@ function today(): string {
 }
 
 /**
- * Saved links that still want a transcript: mine, live, with an address that
- * looks like YouTube's, and no marker in the body.
+ * The same question isYoutubeVideoUrl answers, asked in Postgres.
+ *
+ * IT HAS TO BE ASKED HERE, and a jammed queue is why. The test used to be
+ * `url ilike '%youtu%'`, which is true of any address with those six letters in
+ * it anywhere: a reddit thread in r/youtube, a sponsor link with
+ * `utm_source=Youtube`, an article about YouTube url tricks. Those are not
+ * videos, so the pass threw them out — and threw them out again every ten
+ * minutes forever, because only a video ever gets the marker that would remove
+ * it from this list. They sat at the front of the queue by age and never moved.
+ * On 2026-09-01 the three oldest survivors happened to be three such links, the
+ * batch of three filled up with them, the pass attempted nothing, and the loop
+ * read "attempted nothing" as "nothing left to do". Eighteen real videos behind
+ * them waited a day and a half for a run that was doing this every ten minutes
+ * and reporting success.
+ *
+ * So a link that is not a video never enters the list at all. isYoutubeVideoUrl
+ * is still the final say (it is stricter about paths than one regex should try
+ * to be); this is only here so the batch cannot fill with things that can never
+ * be worked on. scripts/verify-youtube-transcripts.mts holds the two to the
+ * same answers so they cannot drift.
+ *
+ * `~*` is case-insensitive, matching the lowercased hostname test in the code.
+ */
+export const VIDEO_URL_SQL_PATTERN = String.raw`^https?://((www\.|m\.|music\.)?youtube\.com/(watch\?(.*&)?v=|(shorts|live|embed|v)/[\w-]{6,})|(www\.)?youtu\.be/[\w-]{6,})`;
+
+/**
+ * Saved links that still want a transcript: mine, live, a YouTube video's
+ * address, and no marker in the body.
  *
  * The marker test is SQL rather than JavaScript on purpose. Bodies are the one
  * thing this table is heavy with, and an owner with hundreds of transcribed
  * videos would otherwise drag every finished transcript into memory to discover
- * they are all finished. The url test here is deliberately coarse (Postgres has
- * no opinion about hostnames); isYoutubeVideoUrl narrows it properly afterwards.
+ * they are all finished.
  */
 function pendingWhere(ownerId: string) {
   return and(
     eq(items.ownerId, ownerId),
     eq(items.type, "link"),
     isNull(items.deletedAt),
-    sql`${items.url} ilike '%youtu%'`,
+    sql`${items.url} ~* ${VIDEO_URL_SQL_PATTERN}`,
     sql`coalesce(${items.body}->>'text', '') not like '%<!-- transcript:%'`
   );
 }
@@ -139,10 +164,10 @@ function pendingWhere(ownerId: string) {
  * How many saved videos are waiting. For the Build card.
  *
  * Counts what the job would actually attempt, which means paying for the same
- * narrowing the passes do: the SQL filter is coarse, and of 82 matches on the
- * real database nine were channel pages that will never be transcribed. A card
- * promising 82 while 73 were possible is a small lie that would never resolve
- * itself. Urls only, never bodies, so this stays a cheap read.
+ * narrowing the passes do: the query is precise about addresses now, but
+ * isYoutubeVideoUrl is still the final say, and a card promising a number the
+ * job will not reach is a small lie that would never resolve itself. Urls only,
+ * never bodies, so this stays a cheap read.
  */
 export async function pendingVideoCount(ownerId: string): Promise<number> {
   const rows = await getDb()
@@ -295,10 +320,23 @@ async function transcribePass(
     .orderBy(items.createdAt)
     .limit(limit);
 
+  // A batch that is full of things the code then refuses to work on is the
+  // shape of a jammed queue: the loop below counts only what it attempts, the
+  // drain reads a count of zero as an empty list, and everything behind these
+  // rows waits forever. The query is supposed to make that impossible now, so
+  // if it happens anyway, say which addresses did it. A day and a half of
+  // "youtube transcripts started, ok" with nothing transcribed is what the
+  // absence of this line cost (2026-09-02).
+  if (rows.length > 0 && !rows.some((r) => isYoutubeVideoUrl(r.url))) {
+    log.warn("youtube transcript queue is jammed: no candidate is a video", {
+      urls: rows.map((r) => r.url),
+    });
+  }
+
   const date = today();
   const result: TranscriptRun = { scanned: 0, done: 0, failed: 0 };
   for (const row of rows) {
-    if (!isYoutubeVideoUrl(row.url)) continue; // the coarse SQL filter's false positives
+    if (!isYoutubeVideoUrl(row.url)) continue; // stricter than the query, by design
     result.scanned++;
     let existing = "";
     try {
