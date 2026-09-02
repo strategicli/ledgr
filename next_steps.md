@@ -2,6 +2,24 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ DIAGNOSED AND PARTLY FIXED: "Ledgr is slow from my phone" and "MCP is flaky" (2026-09-02, ADR-245)
+
+**Neither complaint was the app, and the PC was not falling asleep.** Sleep-on-AC is off, seven days of power events show one overnight sleep, and `/health` answered 200 on every probe from outside. The measured causes, biggest first:
+
+1. **The Funnel taxes every request.** Cold connection ~0.5s, each warm request ~0.15s, localhost 4ms. The signed-out shell pulls 36 static assets, so that is **6.2s through the Funnel against 0.15s locally**. Bandwidth was never the issue and only HTTP/1.1 is on offer.
+2. **The hub is a laptop on Wi-Fi with Ethernet unplugged.** Seven disconnects in seven days, four during work hours, ~45s of total unreachability each. Tailscale is offline for that window, so phones and AI clients both get nothing, and it heals with no trace.
+3. **The laptop competes with itself.** Auto-update spends ~4.5 min in `next build` while serving pages (nine builds over three days); the hourly snapshot added 39s of compression.
+
+**The MCP 404s were the client-side connector bridge, not Ledgr.** The Todoist connector 404'd in the same session while the hub's own `/api/mcp` and OAuth discovery endpoints answered correctly from outside. Recorded so nobody hunts a phantom bug in the MCP route next time.
+
+**Shipped here:** a `hub-reachable` workflow probing the public address every ~15 min (the Actions tab is now the uptime record, and it states in its own header that it cannot see 45-second blips); `npm ci` and `next build` at below-normal CPU priority; snapshots on `zstd:1`, measured 39s to 10s and 304MB to 287MB, restore-verified into a scratch database at 23,847 items.
+
+**Brandon's actions, which outrank all of the above:** plug in Ethernet on the hub (done/doing), and keep the phone on the tailnet so it never touches the Funnel (done).
+
+**⏳ ONE PIECE IS NOT MERGED YET: the `hub-reachable.yml` workflow file itself.** Everything else in ADR-245 shipped; the workflow could not be pushed because the machine's GitHub token carries `repo` but not `workflow` scope, and GitHub refuses to let an OAuth app create a workflow file without it. The `LEDGR_HUB_URL` repo variable is already set, so the probe starts recording the moment the file lands. To finish it: `gh auth refresh -h github.com -s workflow` (a browser sign-in, once per machine), then push the branch holding it. Until then there is no uptime record, and the Windows WLAN event log is the only instrument.
+
+**🔀 Still open, and it now has a second reason to happen: Cloudflare Tunnel plus a custom domain.** This is the actual fix for cause 1, since it brings HTTP/2, edge caching of static assets, and no relay hop. It is *also* the missing piece for the queued Clerk-production decision further down this file, because a `.ts.net` name cannot carry a custom domain and Tyler has already made that jump on his instance. Deliberately not bundled into ADR-245: it is a real change with its own trade-offs, and it belongs with that auth decision rather than smuggled in beside a monitoring workflow. **Worth measuring before committing to it:** how much of the 6.2s survives once static assets are edge-cached, since most of those 36 requests would then never reach the laptop at all.
+
 ## ✅ FIXED — the transcript job no longer reports a false failure every time it works hard (2026-08-31, ADR-244)
 
 **Found by the first real run,** which transcribed a video successfully and was recorded as a failure anyway. Two bugs, one visible symptom.

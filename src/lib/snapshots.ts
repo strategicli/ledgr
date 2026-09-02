@@ -145,9 +145,28 @@ export function takeSnapshot(opts: {
   const name = snapshotName(opts.at ?? new Date());
   const partial = join(opts.dir, `.${name}.part`);
   const final = join(opts.dir, name);
+  // zstd at its cheapest level, measured against the live production database
+  // on 2026-09-02 (the hub is a laptop that serves pages while it dumps, so the
+  // cost of an hourly snapshot is not academic):
+  //
+  //   default (gzip:6)  39s → 304 MB     zstd:1  10s → 287 MB
+  //   gzip:1            19s → 361 MB     lz4:1   10s → 472 MB
+  //
+  // Four times faster AND smaller than the default, so there is no trade to
+  // weigh. zstd needs pg_dump 16+, which costs nothing here: the client must
+  // already be at least the server's major (see findPgTool) and the embedded
+  // server is 18, so any pg_dump able to read this cluster can write this file.
   const res = spawnSync(
     pgDump,
-    ["--format=custom", "--no-owner", "--no-privileges", "-f", partial, opts.dbUrl],
+    [
+      "--format=custom",
+      "--compress=zstd:1",
+      "--no-owner",
+      "--no-privileges",
+      "-f",
+      partial,
+      opts.dbUrl,
+    ],
     { encoding: "utf8", timeout: 30 * 60_000 }
   );
   if (res.status !== 0) {
