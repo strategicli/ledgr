@@ -2,6 +2,25 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED, and it was the real cause: the hourly snapshot froze the whole app (2026-09-02, ADR-246)
+
+**Caught live by Brandon, and his observation is what cracked it:** two machines could not reach Ledgr at the same moment while he was driving the hub PC over RustDesk with a smooth remote-desktop session. The network was fine. So the earlier Wi-Fi and Funnel explanation (ADR-245, written hours before) could not be the whole story, and it was not.
+
+**The cause.** The hourly snapshot ran `pg_dump` through `spawnSync`, inside the request handler that triggers it. Ledgr's app is one Node process, and a synchronous child process freezes the event loop, so the server answered **nobody, on any device, for the length of the dump**. In the log that is 132 to 160 seconds, every hour: about **4% of all time completely down**, in blocks long enough for a phone or an AI client to time out. It logged "snapshot taken" and looked like a success every time, which it was. Doing it inside the serving process was the bug, not the dump.
+
+**Measured both ways** with a real 287MB dump of the live database and an HTTP server polled every 200ms throughout:
+
+| dump path | requests served during the dump | longest dead window |
+|---|---|---|
+| `spawnSync` (before) | **0** | **9.6s**, the whole dump |
+| awaited `execFile` (now) | **48** | 0.23s, the poll interval |
+
+**Fixed:** every child process in `src/lib/snapshots.ts` is awaited; `takeSnapshot` and `findPgTool` are async and their four callers await them. `readTailscaleState` had the same defect with a five-second timeout and was fixed alongside. `verify-snapshots` grows a check that fails if a synchronous spawn reappears there, with the incident named in the message, because this bug typechecks and passes every behavioral test.
+
+**The standing rule this leaves behind:** never call `spawnSync`, `execSync`, or `execFileSync` from anything a request can reach. The audit is one grep over `src/`.
+
+**Why ADR-245's fixes still mattered:** its `zstd:1` change cut the dump from 39s to 10s, which is why the contrast test above freezes for 10 seconds rather than 160. Compression cut the length; this cut the blocking. Both were needed, and neither alone was enough.
+
 ## ✅ DIAGNOSED AND PARTLY FIXED: "Ledgr is slow from my phone" and "MCP is flaky" (2026-09-02, ADR-245)
 
 **Neither complaint was the app, and the PC was not falling asleep.** Sleep-on-AC is off, seven days of power events show one overnight sleep, and `/health` answered 200 on every probe from outside. The measured causes, biggest first:

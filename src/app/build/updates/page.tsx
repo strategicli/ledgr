@@ -161,7 +161,7 @@ export default async function Updates() {
   const perSnapshotBytes =
     measuredBytes ?? (dbBytes === null ? null : estimateSnapshotBytes(dbBytes));
   const pgToolsMissing = Boolean(
-    instance.supervisorDir && snapshots.length === 0 && !findPgTool("pg_dump")
+    instance.supervisorDir && snapshots.length === 0 && !(await findPgTool("pg_dump"))
   );
   const snapshotBytes = snapshots.reduce((n, s) => n + s.bytes, 0);
 

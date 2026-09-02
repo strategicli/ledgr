@@ -24,10 +24,31 @@
 // rewinding in place would replay weeks-old state into production as fresh
 // edits. In-place restore stays what it already is — the deliberate,
 // documented `npm run local:restore` path, which resets the sync identity.
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { chooseKeepers } from "@/lib/snapshots-plan";
+
+// EVERY child process in this file is spawned ASYNCHRONOUSLY, and that is the
+// whole point of this helper rather than a style preference (2026-09-02,
+// ADR-246). `spawnSync` blocks the Node event loop, and Ledgr's app is ONE
+// process, so a synchronous `pg_dump` here meant the server answered nobody
+// for as long as the dump took: 132 to 160 seconds, every hour, from every
+// device. That was the "Ledgr is slow" and "MCP is flaky" complaint all along.
+// Anything added here that shells out must await this, never spawn*Sync.
+const run = promisify(execFile);
+
+/** Did this command exist and exit 0? Never throws, never blocks the loop. */
+async function succeeds(cmd: string, args: string[]): Promise<boolean> {
+  try {
+    await run(cmd, args, { encoding: "utf8", timeout: 10_000 });
+    return true;
+  } catch {
+    // missing binary, non-zero exit, or timeout: all "cannot use this one"
+    return false;
+  }
+}
 
 // ── Files on disk ───────────────────────────────────────────────────────────
 //
@@ -95,9 +116,9 @@ export function averageSnapshotBytes(snapshots: Snapshot[]): number | null {
  * Program Files when winget did not touch PATH; this is the same lookup, so a
  * peer set up by the installer finds them with no PATH work.
  */
-export function findPgTool(tool: string): string | null {
+export async function findPgTool(tool: string): Promise<string | null> {
   const exe = process.platform === "win32" ? `${tool}.exe` : tool;
-  if (spawnSync(exe, ["--version"], { encoding: "utf8" }).status === 0) return exe;
+  if (await succeeds(exe, ["--version"])) return exe;
   const roots =
     process.platform === "win32"
       ? ["C:/Program Files/PostgreSQL", "C:/Program Files (x86)/PostgreSQL"]
@@ -115,7 +136,7 @@ export function findPgTool(tool: string): string | null {
   }
   // Newest version first: a client must be at least the server's major.
   for (const p of candidates.sort().reverse()) {
-    if (existsSync(p) && spawnSync(p, ["--version"], { encoding: "utf8" }).status === 0) return p;
+    if (existsSync(p) && (await succeeds(p, ["--version"]))) return p;
   }
   return null;
 }
@@ -133,13 +154,13 @@ export const PG_TOOLS_MISSING =
  * No stop, no lock: pg_dump takes a consistent snapshot of a running cluster by
  * design, which is the whole reason this can be hourly.
  */
-export function takeSnapshot(opts: {
+export async function takeSnapshot(opts: {
   dbUrl: string;
   dir: string;
   at?: Date;
   pgDump?: string | null;
-}): { name: string; bytes: number } {
-  const pgDump = opts.pgDump === undefined ? findPgTool("pg_dump") : opts.pgDump;
+}): Promise<{ name: string; bytes: number }> {
+  const pgDump = opts.pgDump === undefined ? await findPgTool("pg_dump") : opts.pgDump;
   if (!pgDump) throw new Error(PG_TOOLS_MISSING);
   mkdirSync(opts.dir, { recursive: true });
   const name = snapshotName(opts.at ?? new Date());
@@ -156,26 +177,30 @@ export function takeSnapshot(opts: {
   // weigh. zstd needs pg_dump 16+, which costs nothing here: the client must
   // already be at least the server's major (see findPgTool) and the embedded
   // server is 18, so any pg_dump able to read this cluster can write this file.
-  const res = spawnSync(
-    pgDump,
-    [
-      "--format=custom",
-      "--compress=zstd:1",
-      "--no-owner",
-      "--no-privileges",
-      "-f",
-      partial,
-      opts.dbUrl,
-    ],
-    { encoding: "utf8", timeout: 30 * 60_000 }
-  );
-  if (res.status !== 0) {
+  try {
+    await run(
+      pgDump,
+      [
+        "--format=custom",
+        "--compress=zstd:1",
+        "--no-owner",
+        "--no-privileges",
+        "-f",
+        partial,
+        opts.dbUrl,
+      ],
+      // Awaited, not synchronous: see the note on `run` at the top of this file.
+      // pg_dump writes the archive to `-f`, so its own output is warnings only.
+      { encoding: "utf8", timeout: 30 * 60_000, maxBuffer: 4 * 1024 * 1024 }
+    );
+  } catch (err) {
     try {
       rmSync(partial, { force: true });
     } catch {
       // the dump failing is the news; a leftover .part is ignored by listing
     }
-    const why = (res.stderr || res.error?.message || `exit ${res.status}`).trim();
+    const e = err as { stderr?: string; message?: string };
+    const why = (e.stderr || e.message || "unknown failure").trim();
     throw new Error(`pg_dump failed: ${why.slice(0, 300)}`);
   }
   renameSync(partial, final);

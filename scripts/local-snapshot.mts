@@ -167,7 +167,7 @@ async function browse(rawTime: string): Promise<void> {
   const snap = matches[0];
   const dumpPath = join(dir, snap.name);
 
-  const pgRestore = findPgTool("pg_restore");
+  const pgRestore = await findPgTool("pg_restore");
   if (!pgRestore) {
     fail(
       "pg_restore is not installed, and the embedded database ships the server only.\n" +
@@ -245,7 +245,7 @@ try {
       break;
     case "now": {
       const keep = await readKeep();
-      const { name, bytes } = takeSnapshot({ dbUrl: buildDbUrl(cfg), dir });
+      const { name, bytes } = await takeSnapshot({ dbUrl: buildDbUrl(cfg), dir });
       console.log(`Took ${name} (${humanBytes(bytes)})`);
       const removed = pruneSnapshots(dir, keep);
       if (removed.length > 0) console.log(`Pruned ${removed.length} older snapshot(s).`);
