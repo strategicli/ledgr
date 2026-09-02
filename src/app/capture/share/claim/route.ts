@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
-import { captureSharedUrlOrText } from "@/lib/capture/share";
+import { captureSharedUrlOrText, shareRedirectBase } from "@/lib/capture/share";
 import { createInboxTranscript } from "@/lib/meetings/transcripts";
 import { getStorage } from "@/lib/storage";
 
@@ -12,6 +12,7 @@ import { getStorage } from "@/lib/storage";
 // NOT in the public matcher), with redirect_url preserving this exact URL —
 // so the share survives sign-in and lands here again afterwards.
 export const dynamic = "force-dynamic";
+
 
 const STASH_PREFIX = "share-stash/";
 // Same one-off UUID guard every other file in this codebase rolls locally
@@ -33,7 +34,7 @@ function isStashPayload(v: unknown): v is StashPayload {
 }
 
 function home(request: Request): NextResponse {
-  return NextResponse.redirect(new URL("/", request.url), 303);
+  return NextResponse.redirect(new URL("/", shareRedirectBase(request)), 303);
 }
 
 export async function GET(request: Request) {
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
       });
       await cleanup();
       return NextResponse.redirect(
-        new URL(`/capture/transcript/${transcript.id}`, request.url),
+        new URL(`/capture/transcript/${transcript.id}`, shareRedirectBase(request)),
         303
       );
     }
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
       url: payload.url,
     });
     await cleanup();
-    return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", request.url), 303);
+    return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
   }
 
   // No stash: the URL/text share rode directly in the query string.
@@ -103,5 +104,5 @@ export async function GET(request: Request) {
   // redirect_url after sign-in racing a first successful claim) re-runs the
   // capture and can double-capture the same text share. Soft-delete + inbox
   // triage is the safety net, same as any other duplicate capture.
-  return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", request.url), 303);
+  return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
 }
