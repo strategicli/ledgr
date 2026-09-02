@@ -31,7 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { totalmem } from "node:os";
+import { constants as osConstants, setPriority, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
@@ -111,19 +111,57 @@ log("config loaded", { role: cfg.role, dataDir: cfg.dataDir, appPort: cfg.appPor
 
 const isWin = process.platform === "win32";
 
+// `low: true` runs the child at below-normal CPU priority, so a long build
+// yields to the app that is still serving pages (2026-09-02: an auto-update
+// spends ~4.5 minutes in `next build` on the same laptop that answers phone
+// requests, and Windows hands a fresh child the same priority as everything
+// else). The trick is that Windows children INHERIT the creating process's
+// priority class, and spawnSync blocks, so lowering ourselves for exactly the
+// duration of the call is the whole mechanism, with no argument-quoting games
+// and nothing to clean up. Restored in `finally` so a throwing child cannot
+// leave the supervisor demoted, and deliberately NOT used for `startApp` (the
+// app must serve at normal priority) or for migrations (DDL holding locks
+// should finish fast, not politely).
 function run(cmd, args, opts = {}) {
-  const res = spawnSync(cmd, args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    shell: isWin && cmd === "npm", // npm is npm.cmd on Windows
-    ...opts,
-  });
-  return {
-    ok: res.status === 0,
-    code: res.status,
-    stdout: (res.stdout ?? "").trim(),
-    stderr: (res.stderr ?? "").trim(),
-  };
+  const { low = false, ...spawnOpts } = opts;
+  if (low) lowerOwnPriority();
+  try {
+    const res = spawnSync(cmd, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: isWin && cmd === "npm", // npm is npm.cmd on Windows
+      ...spawnOpts,
+    });
+    return {
+      ok: res.status === 0,
+      code: res.status,
+      stdout: (res.stdout ?? "").trim(),
+      stderr: (res.stderr ?? "").trim(),
+    };
+  } finally {
+    if (low) restoreOwnPriority();
+  }
+}
+
+// Best-effort both ways: priority is a nicety, never a reason to fail an
+// update. BELOW_NORMAL rather than LOW/IDLE on purpose: idle priority would
+// starve the build whenever anything else is busy, stretching the very window
+// we are trying to make less intrusive.
+function lowerOwnPriority() {
+  try {
+    setPriority(0, osConstants.priority.PRIORITY_BELOW_NORMAL);
+  } catch {
+    // no privilege, or an OS without priority classes: run at normal speed
+  }
+}
+
+function restoreOwnPriority() {
+  try {
+    setPriority(0, osConstants.priority.PRIORITY_NORMAL);
+  } catch {
+    // same: the supervisor spends its life asleep, so a stuck demotion is
+    // survivable, and the next boot resets it regardless
+  }
 }
 
 function git(args, cwd = cfg.repoDir) {
@@ -606,7 +644,7 @@ async function applyUpdate(reason, { fetch = true } = {}) {
         });
       } else {
         log("running npm ci", { dir });
-        const ci = run("npm", ["ci"], { cwd: dir, stdio: ["ignore", "inherit", "inherit"] });
+        const ci = run("npm", ["ci"], { cwd: dir, stdio: ["ignore", "inherit", "inherit"], low: true });
         if (!ci.ok) {
           log("update FAILED: npm ci", { stderr: ci.stderr });
           return;
@@ -619,6 +657,7 @@ async function applyUpdate(reason, { fetch = true } = {}) {
         cwd: dir,
         stdio: ["ignore", "inherit", "inherit"],
         env: { ...process.env, NODE_ENV: "production" },
+        low: true,
       });
       buildOk = build.ok;
       if (!buildOk) {

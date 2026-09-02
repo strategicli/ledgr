@@ -3870,3 +3870,50 @@ Underneath the enum sat a quieter hazard. Nothing below the API layer validated 
 **Verification:** typecheck and lint clean; `verify-youtube-transcripts` **47/47** (twelve new address checks, including every channel, playlist, and search-page form that must not be treated as a video) and `verify-supervisor` all pass. The production evidence for the diagnosis: `"job":"youtube-transcript","ms":306930,"detail":"fetch failed"` in the supervisor log, and in the database eight items resolved (six transcripts, one genuinely private video, one channel page reporting "took too long to fetch") with the waiting count down from 90 to 82. No unit test covers the held-open connection, deliberately: it is a platform timeout no pure check can reach.
 
 **Still unproven in production:** the Whisper path. Every transcript so far came from captions, and the one video that reached the fallback was the channel page, which failed before Whisper was ever invoked.
+
+## ADR-245: "flaky" was the network, not the app. Measure the hub from outside, and stop the laptop competing with itself
+
+**Date:** 2026-09-02
+**Status:** accepted (not core: a monitoring workflow, a supervisor process-priority nicety, and one `pg_dump` flag; no schema, contract, or provider-interface change)
+
+**Context.** Two complaints had been running for weeks with no evidence behind either: Ledgr took a long time to load from other devices, and AI clients reaching the MCP endpoint would intermittently fail, which one of them described as "flaky." Neither had a timestamp, a duration, or a reproduction. The suspicion in the room was that the hub PC was falling asleep or needed waking.
+
+**What the measurements actually said.** The app was never the problem. Probed from outside, `/health` on the hub answered 200 every time, and locally in about 30ms. Nothing in seven days of Windows power events supports a sleeping machine: sleep-on-AC is off, and the one recorded sleep was a single night. The three real causes, in order of size:
+
+1. **The Funnel round trip, which is per-request and unavoidable.** A new connection costs ~0.5s (TLS through a Chicago DERP relay); each subsequent request on a warm connection ~0.15s; localhost is 4ms. The signed-out shell pulls 36 static assets, which is **6.2s through the Funnel against 0.15s locally** on one connection. Bandwidth is fine (a 300KB chunk moved at ~480KB/s), and only HTTP/1.1 is offered. So this is latency multiplied by request count, not a slow pipe.
+2. **The hub is a laptop on Wi-Fi with its Ethernet port unplugged.** Windows logged **seven Wi-Fi disconnects in seven days**, four of them inside working hours on 2026-08-29, each taking about 45 seconds to reassociate. Tailscale is offline for that whole window, so the public address is simply dead, for phones and for every AI client, and then it recovers with nothing left to show it ever happened. Tailscale's own tracker carries matching reports of Funnel failing to recover after a node has been offline, so a drop is not always self-healing.
+3. **The machine competes with itself.** `update.mode` is `auto` on a 15-minute poll, and each accepted commit spends **~4.5 minutes in `next build`** at normal priority on the same laptop that is serving pages (nine of them across 2026-08-29 to 08-31). The hourly snapshot added another 39 seconds of single-core compression.
+
+**And the MCP 404s in that session were not Ledgr at all.** The Ledgr connector returned 404 three times, but so did the unrelated Todoist connector in the same session, while direct probes of the hub's own `/api/mcp` and OAuth discovery endpoints all answered correctly from outside. The failure was in the client-side connector bridge, not this codebase. Worth writing down, because the natural instinct was to go looking for a bug in the MCP route and there was none.
+
+**Decision, three parts.**
+
+**1. A reachability probe, with its blind spot stated in the file.** `.github/workflows/hub-reachable.yml` curls the hub's public `/health` every ~15 minutes and fails the run when three attempts over ~20 seconds all miss. The Actions tab becomes the uptime record, and a failure emails the owner. Three attempts rather than one, because a single miss could be the runner's own network or a relay hiccup, and a monitor that cries wolf gets ignored. It targets the `LEDGR_HUB_URL` repo variable and does **nothing** when unset, because Brandon and Tyler share one repo and one person's laptop being off must not redden the other's Actions tab.
+
+**The honest limit, which is in the workflow's header comment too:** GitHub's minimum schedule is five minutes and its scheduled runs are delayed under load, so a ~15-minute sample has roughly a **1-in-20 chance of landing inside a 45-second Wi-Fi drop**. This instrument measures *sustained* outages (a reboot, a machine left asleep, a Funnel that did not come back) and will almost never see the blips that started this investigation. Those are already recorded for free on the machine, in `Microsoft-Windows-WLAN-AutoConfig/Operational`, which is where the seven drops above came from. Two instruments, each honest about its own resolution, beat one that looks complete and is not.
+
+**2. Heavy build steps run at below-normal CPU priority.** `run()` in the supervisor takes `low: true`, used for `npm ci` and `next build`. The mechanism is deliberately boring: Windows children inherit the creating process's priority class and `spawnSync` blocks, so the supervisor lowers *itself* for exactly the duration of the call and restores in a `finally`. No argument quoting through `cmd /c start`, no new dependency, nothing to clean up. **`startApp` is pointedly not marked,** because the app must serve at normal priority and it is spawned outside that window. Migrations are not marked either, since DDL holding locks should finish fast rather than politely. Verified rather than assumed: a child spawned inside the window reports priority 10, a child spawned after it reports 0.
+
+**3. Hourly snapshots compress with `zstd:1`.** Measured against the live database on the hub, which is the only fair place to measure it:
+
+| method | time | size |
+|---|---|---|
+| default (`gzip:6`) | 39s | 304 MB |
+| `gzip:1` | 19s | 361 MB |
+| **`zstd:1`** | **10s** | **287 MB** |
+| `lz4:1` | 10s | 472 MB |
+
+Four times faster *and* smaller than the default, so there is no trade to weigh. **zstd needs `pg_dump` 16+, and that costs nothing here:** the client must already be at least the server's major (`findPgTool`'s own rule) and the embedded server is 18, so any `pg_dump` able to read this cluster can write this file. Proven end to end before shipping, because this is the restore path and a fast dump nobody can restore is worthless. The real code path produced a 287MB dump in 9.4s; it carries the `PGDMP` magic `local-restore.mjs` checks for; `pg_restore --list` reads its table of contents; and restoring it into a scratch database returned **23,847 items, identical to live**. The 29-check snapshot suite passes unchanged.
+
+**Why not the alternatives.**
+- *Cloudflare Tunnel plus a custom domain.* The real fix for cause 1 (HTTP/2, edge caching of static assets, no relay hop), and it would unblock the Clerk production upgrade that `next_steps.md` already has queued, since a `.ts.net` name cannot carry one. Not rejected, deferred: it is a bigger change than this session's brief, and it belongs with that open auth decision rather than smuggled in beside a monitoring workflow.
+- *An external uptime monitor (UptimeRobot and friends).* Genuinely less work, and it can poll faster than GitHub will. Rejected for now because the repo already runs eight scheduled workflows through this exact door, so this adds one file and no new account, service, or dashboard to remember.
+- *Probing every five minutes, GitHub's floor.* Rejected: it triples the runs to buy a 1-in-7 chance of catching a blip instead of 1-in-20, still misses most of them, and the blips already have a better instrument in the Windows event log.
+- *Reporting probe failures into `error_log`.* Rejected as incoherent: when the hub is unreachable there is nothing to report to, and routing it to the Vercel copy instead means the two deploys' error logs no longer mean the same thing.
+- *`lz4:1` for snapshots.* Same 10s, but 472MB against 287MB, so it pays 65% more disk every hour for nothing.
+- *Lowering `pg_dump`'s priority too.* Rejected: it is `spawnSync` inside the app process, and the app must stay responsive, so the same self-demotion trick is unavailable. With the dump down to 10 seconds, the remaining contention is not worth a bigger change.
+- *Setting `update.mode` to `manual`.* Would remove cause 3 outright, but auto-update is a posture Brandon chose deliberately, and a priority change is transparent where taking the automation away is not.
+
+**The order that actually matters, so nobody mistakes this ADR for the fix:** plugging in the Ethernet cable outranks everything above it, and moving the phone back onto the tailnet skips the Funnel path entirely. Parts 2 and 3 here are second-order. Part 1 is the instrument that will tell us whether any of it worked.
+
+**Affects:** `.github/workflows/hub-reachable.yml` (new), the `LEDGR_HUB_URL` repo variable (set for Brandon's hub), `supervisor/ledgr-supervisor.mjs` (`run()`'s `low` option and the two call sites), `src/lib/snapshots.ts` (`--compress=zstd:1`), `runbook.md` §6b.
