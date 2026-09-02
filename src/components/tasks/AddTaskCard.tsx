@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseTaskTitle } from "@/lib/nl-date";
-import { priorityStyle, type Priority } from "@/lib/priority";
+import { PRIORITIES, priorityStyle, type Priority } from "@/lib/priority";
 import { enqueueCapture } from "@/lib/outbox";
 import { scheduleListRefresh } from "@/lib/list-refresh";
 import {
@@ -193,6 +193,7 @@ export default function AddTaskCard({
   const [qaHidden, setQaHidden] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pickDate, setPickDate] = useState(false);
+  const [priorityOpen, setPriorityOpen] = useState(false);
   // Tag + Person chips (Tyler, 2026-08-18): pick tags/persons without typing
   // the "#"/"@" sigils. Picked tags merge with "#" tokens on save; picked
   // persons ride the same `linked` list the "@" mentions use (related edges).
@@ -853,20 +854,49 @@ export default function AddTaskCard({
           </span>
         )}
         {showAction("priority") && (
-          <span className="relative inline-flex items-center">
-            <select
-              value={effUrgency ?? ""}
-              onChange={(e) => setUrgency(e.target.value ? (Number(e.target.value) as Priority) : null)}
-              aria-label="Priority"
+          // A button + popover, same shape as the Date/Tag/Person chips (not a
+          // native <select>): a <select> with appearance-none + an overlaid icon
+          // doesn't fully suppress native chrome on every browser, which read as
+          // the flag rendering in its own separate box next to "P3" — a visual
+          // split with no code-visible cause until the control itself stopped
+          // being native.
+          <span className="relative" data-chip-pop>
+            <button
+              type="button"
+              onClick={() => setPriorityOpen((v) => !v)}
               // Text + border take the priority color (P2 gold, P3 purple…); the
               // neutral defaults are only applied when no priority is set, so they
               // never fight the colored classes (Tailwind has no order guarantee).
-              className={`flex appearance-none items-center gap-1.5 rounded-md border py-1 pl-2 pr-7 text-sm ${pStyle ? `${pStyle.text} ${pStyle.border}` : "border-neutral-700 text-neutral-300 hover:border-neutral-600"}`}
+              className={`${chip} ${pStyle ? `${pStyle.text} ${pStyle.border}` : ""}`}
             >
-              <option value="">Priority</option>
-              {[1, 2, 3, 4, 5, 6].map((u) => <option key={u} value={u}>P{u}</option>)}
-            </select>
-            <span className={`pointer-events-none absolute right-1.5 ${pStyle ? pStyle.text : "text-neutral-500"}`}>{IconFlag}</span>
+              {IconFlag} {pStyle ? pStyle.label : "Priority"}
+            </button>
+            {priorityOpen && (
+              <span className="absolute left-0 top-full z-10 mt-1 flex w-28 flex-col rounded border border-neutral-700 bg-neutral-900 p-1 shadow-lg shadow-black/40">
+                {PRIORITIES.map((u) => {
+                  const s = priorityStyle(u);
+                  return (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => { setUrgency(u); setPriorityOpen(false); }}
+                      className={`flex items-center rounded px-2 py-1 text-left text-sm hover:bg-neutral-800 ${s.text}`}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+                {effUrgency != null && (
+                  <button
+                    type="button"
+                    onClick={() => { setUrgency(null); setPriorityOpen(false); }}
+                    className="mt-1 flex items-center rounded border-t border-neutral-800 px-2 py-1 pt-2 text-left text-sm text-neutral-500 hover:bg-neutral-800"
+                  >
+                    Clear
+                  </button>
+                )}
+              </span>
+            )}
           </span>
         )}
         {/* Tag chip (Tyler, 2026-08-18): pick from existing tags (the 200 the
