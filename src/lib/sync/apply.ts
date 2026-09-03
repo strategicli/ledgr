@@ -163,7 +163,38 @@ async function readLocalState(db: SyncDb, ops: SyncOp[]): Promise<LocalState> {
   return state;
 }
 
-async function runAction(db: SyncDb, action: WriteAction): Promise<void> {
+// Carrying the origin INSIDE the statement, for drivers with no session
+// (ADR-248). The oplog trigger stamps origin_device_id from the
+// ledgr.sync_origin GUC, and `SET LOCAL` needs a session, which neon-http does
+// not have — so on the cloud every applied write was logged as if the cloud
+// itself had made it. That is not cosmetic: the merge reads those stamps back,
+// so the NEXT body from the same peer looked like a two-device conflict,
+// snapshotted the previous body into `revisions` and flagged the item
+// syncBodyMerged. One note collected 37 revisions in an afternoon that way
+// (2026-09-03), 133 sub-debounce revisions across 74 flagged items.
+//
+// A single statement is its own transaction, so a set_config(…, is_local)
+// evaluated BY that statement still reaches the AFTER trigger that ends it. It
+// has to sit somewhere the planner must evaluate: an unreferenced SELECT CTE is
+// dropped, but a FROM item, a USING item and a RETURNING expression are not
+// (all three verified against Neon before this landed). `origin` is undefined
+// on the transactional path, where the caller has already SET LOCAL it.
+function originFrom(origin: string | undefined, clause: "from" | "using") {
+  if (origin === undefined) return sql``;
+  const kw = clause === "from" ? sql` from ` : sql` using `;
+  return sql`${kw}(select set_config('ledgr.sync_origin', ${origin}, true)) as _origin`;
+}
+
+function originReturning(origin: string | undefined) {
+  if (origin === undefined) return sql``;
+  return sql` returning (select set_config('ledgr.sync_origin', ${origin}, true)) as _origin`;
+}
+
+async function runAction(
+  db: SyncDb,
+  action: WriteAction,
+  origin?: string
+): Promise<void> {
   if (action.kind === "insert") {
     const cols = Object.keys(action.row);
     await db.execute(
@@ -172,7 +203,7 @@ async function runAction(db: SyncDb, action: WriteAction): Promise<void> {
             cols.map((c) => sql`${bind(action.row[c])}`),
             sql`, `
           )})
-          on conflict do nothing`
+          on conflict do nothing${originReturning(origin)}`
     );
     return;
   }
@@ -181,21 +212,23 @@ async function runAction(db: SyncDb, action: WriteAction): Promise<void> {
       ([c, v]) => sql`${ident(c)} = ${bind(v)}`
     );
     await db.execute(
-      sql`update ${ident(action.tbl)} set ${sql.join(sets, sql`, `)}
-          where ${ident(action.pkCol)} = ${action.pkVal}`
+      sql`update ${ident(action.tbl)} set ${sql.join(sets, sql`, `)}${originFrom(origin, "from")}
+          where ${ident(action.tbl)}.${ident(action.pkCol)} = ${action.pkVal}`
     );
     return;
   }
   if (action.kind === "delete") {
     await db.execute(
-      sql`delete from ${ident(action.tbl)} where ${ident(action.pkCol)} = ${action.pkVal}`
+      sql`delete from ${ident(action.tbl)}${originFrom(origin, "using")}
+          where ${ident(action.tbl)}.${ident(action.pkCol)} = ${action.pkVal}`
     );
     return;
   }
   // snapshot_revision: the losing side of a body conflict, forced into the
   // same revisions safety net every ordinary save uses.
   await db.execute(
-    sql`insert into revisions (item_id, body) values (${action.itemId}, ${bind(action.body)})`
+    sql`insert into revisions (item_id, body)
+        values (${action.itemId}, ${bind(action.body)})${originReturning(origin)}`
   );
 }
 
@@ -275,12 +308,13 @@ export function planActions(actions: WriteAction[]): ActionPlan {
 }
 
 /**
- * Merge + execute a batch of foreign ops. On drivers with sessions
- * (node-postgres) the whole batch runs in one transaction and each action
- * SET LOCALs the ledgr.sync_origin GUC to the op's ORIGINAL writer, so the
- * oplog triggers stamp origin_device_id and push can exclude echoes. On
- * neon-http (no session) the GUC is skipped; the triggers' IS DISTINCT FROM
- * guards plus value-diff-only actions terminate the echo after one round.
+ * Merge + execute a batch of foreign ops. Either way the oplog triggers see
+ * ledgr.sync_origin set to the op's ORIGINAL writer, so origin_device_id is
+ * stamped, push can exclude echoes, and the merge never mistakes a peer's own
+ * earlier write for a competing local one. On drivers with sessions
+ * (node-postgres) the whole batch runs in one transaction and each action SET
+ * LOCALs the GUC; on neon-http (no session) each statement carries the
+ * set_config itself — see originFrom/originReturning (ADR-248).
  */
 export async function applySyncOps(
   ops: SyncOp[],
@@ -295,8 +329,11 @@ export async function applySyncOps(
 
   const plan = planActions(actions);
 
-  const deleteItemsGroup = async (tgt: SyncDb, g: ItemsDeleteGroup) => {
-    await tgt.execute(sql`delete from items where id = any(${uuidArray(g.ids)}::uuid[])`);
+  const deleteItemsGroup = async (tgt: SyncDb, g: ItemsDeleteGroup, origin?: string) => {
+    await tgt.execute(
+      sql`delete from items${originFrom(origin, "using")}
+          where items.id = any(${uuidArray(g.ids)}::uuid[])`
+    );
   };
 
   // ADR-241. A change the hub can NEVER apply used to take the whole batch
@@ -347,7 +384,7 @@ export async function applySyncOps(
   } else {
     for (const action of plan.stream) {
       try {
-        await runAction(db, action);
+        await runAction(db, action, action.origin);
         const derived = passageBodyFromAction(action);
         if (derived) await replacePassageRefs(db, derived.itemId, derived.body);
       } catch (err) {
@@ -356,7 +393,7 @@ export async function applySyncOps(
     }
     for (const g of plan.itemsDeletes) {
       try {
-        await deleteItemsGroup(db, g);
+        await deleteItemsGroup(db, g, g.origin);
       } catch (err) {
         // The group is one statement, so one FK refusal parks the whole
         // family. Named by its first id, which is what a reader can look up.

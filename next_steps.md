@@ -2,6 +2,18 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED: the phantom body conflicts that were flooding revisions (2026-09-03, ADR-248, branch `fix/sync-origin-http`)
+
+Brandon, mid-edit: "why are there dozens of revision histories saying the same thing instead of only meaningful changes?" The note in front of him had **37 revisions in one afternoon, 10 to 20 seconds apart**, against a save path that snapshots at most one per 5 minutes.
+
+They were not saves. They were the merge's body-conflict branch (ADR-206) firing on every single synced edit, because the cloud could not record who originally wrote what: the oplog trigger reads the `ledgr.sync_origin` GUC, `SET LOCAL` needs a session, and neon-http has none. So every write the cloud applied from the hub was logged as the cloud's own, and the next body from that same hub read as a two-device conflict: snapshot the previous body, flag the item `syncBodyMerged`. **133 sub-debounce revisions in 10 days, every one on a flagged item, zero on unflagged ones; 74 items falsely flagged.**
+
+**The fix** carries `set_config(…, is_local => true)` inside each statement on the sessionless path, where the planner cannot drop it (a `FROM` item, a `USING` item, a `RETURNING` expression, all three verified against Neon first; an unreferenced SELECT CTE is optimized away, which is the trap). A single statement is its own transaction, so the GUC is still set when the AFTER trigger ends it. The transactional path is untouched. `verify-sync.mts` now runs an exchange with `transactions: false` and asserts both halves: every op stamped with the true origin, and three sequential edits crossing that apply leaving no phantom revision and no flag. 124/124 pass.
+
+**Backfill written, not yet run against production:** `scripts/backfill-sync-conflict-noise.mts` clears the false flags and thins the phantom revisions to the cadence a real save keeps (first per 5-minute window, plus the newest). Dry run by default, backs up every deleted row first, only touches flagged items. Prod dry run: **104 revisions, 74 flags**. Exercised end to end on the dev branch (kept the older spaced revision, the first of the burst, and the newest; left the rest of `properties` alone).
+
+**Tyler needs this:** his cloud instance runs the same neon-http path and has the same silent noise.
+
 ## ✅ SHIPPED — the timeline spine is now a rendering the view engine can use, on any type (2026-09-03, ADR-247, branch `feat/mcp-add-calendar-event`)
 
 Tyler's project review timeline (ADR-198) stopped being one page's private display. Brandon asked for it "as a lens or widget that can be used on any item/type," with property filters, sort, and a granularity control. **Researching it first cut the build in half:** the view engine already had the filters (`propertyFilters` plus the ADR-164 `where` rules over any property), the sorts (built-in fields and custom properties), and even the granularity vocabulary (`TIMELINE_ZOOMS`, hour → 5-year, stored as `display.zoom`), and `ViewRenderer` was already the one renderer behind the view page, list lens tabs, dashboard widgets, related groups, and the Desk. Three things were actually missing.
