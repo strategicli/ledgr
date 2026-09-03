@@ -609,6 +609,12 @@ whole project's history on one vertical line — meetings and milestones large,
 task completions, notes, and links as small ticks between them, month markers
 and a Today line down the spine. Scroll it to re-live the project.
 
+Three controls sit above the spine. **Group by** sets how much time each marker
+covers, from an hour out to five years. **Order** flips it to newest-first.
+**Show** switches whole collections off, so a year-old project can be read as
+just its meetings and milestones. They are plain links, so any combination is a
+URL you can bookmark or share.
+
 **The whole project as one markdown file:** ⋯ → **Markdown** on a project
 renders it as a single readable document — summary, people, milestones,
 meetings, clickable links, tasks with added/completed dates, and the timeline —
@@ -673,12 +679,23 @@ A view is a saved filter, sort and layout you reach by name. Build them at
 \`/build/views\`, run them at \`/views\`.
 
 - **Five layouts:** list, table, board, calendar, agenda.
+- **Read any list as a timeline.** Pick the calendar layout, then set **Default
+  view** to **History**: the same vertical spine as a project's review timeline,
+  over whatever the view holds. **Group by** sets the marker span (hour through
+  five years) and the view's sort **Direction** decides whether the newest sits
+  at the top. It works on any type, so a work log becomes a scrollable record of
+  what you did, filtered to one category if you like.
+- **Place items by your own date property.** The calendar and agenda **Date
+  field** now offers a type's own date properties beside the built-in ones, so a
+  type that keeps its date in a property (a log entry's Date, a journal's Date)
+  can finally land on a calendar, a timeline, or a History spine.
 - **Filter on anything,** including your own properties, with operators that fit
   the property kind.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
   filters.
 - **Sort by anything,** including priority and custom properties.
-- **Pick your columns** for list, table and agenda layouts.
+- **Pick your columns** for list, table and agenda layouts, and for a History
+  spine, where they become each entry's second line.
 - **Boards drag,** including on a phone with a long press.
 
 ## Dashboards

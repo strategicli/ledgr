@@ -3956,3 +3956,39 @@ The dump is 9 to 10 seconds in that test rather than 160 because ADR-245's `zstd
 **What ADR-245 still got right,** so this does not swing too far the other way: the Funnel genuinely does cost 6.2s for the signed-out shell's 36 assets against 0.15s locally, and Wi-Fi genuinely did drop seven times in a week. Those are real and unfixed. What changes is the ranking: they explain *slow*, and they explain *some* unreachability, but the hourly total blackout was this, and it was the biggest of the three by a wide margin.
 
 **Affects:** `src/lib/snapshots.ts` (the async helper, `findPgTool`, `takeSnapshot`), `src/lib/snapshot-settings.ts`, `src/app/build/updates/page.tsx`, `src/lib/network-addresses.ts`, `scripts/local-snapshot.mts`, `scripts/verify-snapshots.mts` (30 checks, one new), `runbook.md` §7.
+
+## ADR-247: the project review timeline becomes a rendering the view engine can use, not one page's private display
+
+**Date:** 2026-09-03
+**Status:** accepted (not core: no schema change, no migration, no `view_layout` enum value — the whole feature rides `views.display`, an already-tolerant jsonb, plus one extracted component).
+
+**Context.** Tyler's everything-timeline (ADR-198) shipped as `/items/[id]/timeline`: a vertical center spine, meetings and milestones large, task completions and notes and links as small ticks, month markers, a Today line. Brandon wanted that display "as a lens or widget that can be used on any item/type," with filters by property, sort options, and a granularity control, the motivating case being reading his work log (`log_entry`) as a timeline of what he actually did.
+
+Researching it first changed the shape of the work. Most of the ask already existed:
+
+- **Filters by property** already exist twice over: `ViewFilter.propertyFilters` for select/multi-select, and the ADR-164 `where` rules group over any property, relation, priority, or status. The builder renders both.
+- **Sort options** already cover every built-in field plus `{field:"property", propertyKey, numeric}`.
+- **Granularity** already had a vocabulary: `TIMELINE_ZOOMS` (hour → halfDecade) in `display.zoom`, from ADR-166's horizontal Timeline.
+- **Every mount point** already routes through one renderer: `ViewRenderer` serves the view page, list lens tabs, dashboard widgets, related-item groups, and the Desk.
+
+So the missing pieces were three, and small: the spine was trapped in a page, the view engine had no spine rendering, and the builder would not let a view be placed by a custom date property.
+
+**Decision 1: the spine is a CALENDAR MODE, not a sixth view layout.** `CALENDAR_MODES` gains `"spine"` (labelled **History (vertical)** in the UI), and `ViewRenderer`'s `case "calendar"` branches to it ahead of every planner check. A top-level `spine` layout would have meant a new `view_layout` Postgres enum value: a migration, and a plausible core change needing both-agree. A mode is a key in `views.display`, which is exactly where ADR-166 put the horizontal Timeline, so this is precedent-following rather than a dodge. Same reach, no schema touch, ships solo. The cost, accepted knowingly: the layout picker still says "Calendar" while offering a vertical narrative as one of its modes.
+
+**Decision 2: `display.zoom` doubles as the grain.** Its values already are the granularity list Brandon described. It means px-per-day on the horizontal Timeline and "how much time one chip covers" on the spine. A second `display.grain` key would have left two knobs meaning the same thing on two renderings of one view, with no answer to which wins.
+
+**Decision 3: `TimelineEntry` is promoted to the shared seam** (`src/lib/timeline-entry.ts`, dependency-free). Two gatherers now emit it: `gatherProjectTimeline` (one record, five collections, a different date rule per collection) and `viewEntries` (any view's rows, one date field). `TimelineSpine` is pure and hook-free — no fetching, no routing, no `Date.now()`, with "now" arriving as a caller-computed index — which is what lets a server page and a client dashboard widget both mount it. That purity is deliberate headroom: Brandon wants to build further on the mixed views/widgets/lenses idea, and a third gatherer (an activity-log spine, a cross-project roll-up, a composed record surface) should only have to emit the array.
+
+**Decision 4: both gatherers stay.** Forcing the record spine into a view would mean five stitched views or a new multi-type filter, since a view has one type filter and one date field.
+
+**Decision 5: one tier for a view spine.** A homogeneous row set has no natural hierarchy, and inventing one would guess at intent. Two tiers stay on the record spine, where meetings and milestones really are the headlines.
+
+**Decision 6: hour grain is built for every type, not gated** (Brandon's call). A day-only date has no hour to sit in, so at hour grain it buckets by its day rather than inventing a midnight. Hiding the control per type would have been the wrong shape of honesty.
+
+**Also fixed, found while testing.** `parseViewInput` back-filled `dateProperty` to `plan`/`meetingAt` for any calendar view without one. With `display.startField` now settable from the UI, that left a stored view claiming a date field it does not use, since every renderer prefers `startField`. The back-fill now skips when `startField` is set. And `viewView` (the MCP serializer) echoes `display`, because `update_view` replaces wholesale: without it in the read, an update would silently wipe a view's mode, grain, or custom-date placement.
+
+**The unlocked case.** `log_entry` keeps its date in `properties.logdate`, and the builder's date-field picker offered custom types only "created" and "updated". `placement.ts` had read `DateRef = {prop}` since ADR-166; nothing could set it. Now the picker offers a type's own `date` properties and writes `display.startField`, which improves Month and the horizontal Timeline for every custom type, not just the spine.
+
+**Verified on real data** (dev branch): the record spine renders unchanged at its defaults, then regroups by week and reverses and filters by collection; a `journal` view (112 rows, date only in `properties.date`, so unplaceable before this) renders as a spine with month markers, survives an edit-and-resave round trip, and renders again inside a faithful dashboard widget with no console errors. Grain bucketing is checked in `scripts/verify-timeline-geometry.mts`: zone handling both ways, week starting Monday to match the horizontal ruler, quarter/year/half-decade boundaries, and the hour-grain day fallback.
+
+**Known rough edge, left alone on purpose.** In a narrow dashboard widget the two-column spine is cramped, because its breakpoint is the viewport rather than its container. Fixing it properly means container queries across the spine, which would change ADR-198's shipped markup; not worth doing blind. Every other faithful widget layout (mini table, mini board) shares the constraint.
