@@ -19,6 +19,7 @@ import {
   serializeTabs,
   type CanvasTab,
 } from "@/lib/editor/canvas-tabs";
+import { publishBodyMarkdown } from "@/lib/word-count";
 
 export type TabbedBodyProps = {
   itemId: string;
@@ -197,6 +198,18 @@ export default function TabbedBody({
   useEffect(() => {
     onTabsPresence?.(tabs !== null);
   }, [tabs, onTabsPresence]);
+
+  // Word count by tab (Tyler, 2026-09-02): while the body is tabbed, the chrome
+  // counts the ACTIVE tab, not the whole document. Published after commit, so it
+  // lands on top of ItemEditor's whole-body publish from the same change (last
+  // publish wins in the store) and again on every tab switch. A follower (Desk
+  // mirror) stays quiet so it can't fight the source editor over the count.
+  // When the last tab is removed, tabs go null and ItemEditor's whole-body
+  // publish for that change stands on its own.
+  useEffect(() => {
+    if (follower || !tabs) return;
+    publishBodyMarkdown(itemId, tabs[activeIdx]?.body ?? "", { perTab: true });
+  }, [tabs, activeIdx, itemId, follower]);
 
   return (
     <div>

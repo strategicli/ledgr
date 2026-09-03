@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — the word count is per tab on a tabbed note (2026-09-02, branch `fix/word-count-per-tab`)
+
+The canvas chrome (top-right on desktop, the ⋯ menu everywhere) used to count the whole body even when the note was split into canvas tabs (ADR-095), which threw Tyler off since he works tab by tab. Now a tabbed body counts only the ACTIVE tab and says so: "142 words (this tab)". Untabbed notes, widget-home records (the composed count, ADR-197), and Source/Preview modes (which show the whole document) are unchanged. Mechanism: `TabbedBody` publishes the active section into the existing `word-count.ts` store with a `perTab` flag after each commit and tab switch (last publish wins over `ItemEditor`'s whole-body publish from the same change); `ItemCanvas` seeds the server count from the first tab so there is no whole-doc flash at load. Not core: no schema, body format, or API change. `verify-word-count.mts` covers the tab-scoped publish.
+
 ## ✅ FIXED — mobile share sent the share sheet to localhost:3000 (2026-09-02, branch `fix/mobile-share-redirect-host`)
 
 Sharing anything to the installed Android PWA ended on a dead `localhost:3000` URL. **Not the manifest**: the capture worked every time; the redirect afterwards was wrong. Both share routes built their 303 with `new URL(path, request.url)`, and a POST-navigation route handler reads `request.url` back as `http://localhost:3000/…` (Next builds an internal origin for it), so the `Location` header pointed at the phone itself.
