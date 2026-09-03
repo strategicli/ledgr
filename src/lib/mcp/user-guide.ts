@@ -946,6 +946,13 @@ connected; that dead-end tab is the client closing its one-time listener.
   to fix the stage afterwards. It can also filter and list by a custom stage.
 - **Work with tasks** — break one into subtasks, set a repeat rule in plain
   words, tick a single date of a repeating task.
+- **Add a meeting off your calendar** — see your upcoming Outlook events that
+  are not in Ledgr yet and add one, exactly as the **Add** button on the
+  Calendar lens does. The added meeting keeps its attendees, join link and
+  calendar id, so calendar sync recognizes it later instead of making a second
+  copy. Use this rather than "create an event" whenever the meeting is really on
+  your calendar: "put next Monday's staff meeting in Ledgr and hang this agenda
+  item on it."
 - **Handle files** — attach by URL or upload, then embed in the body.
 - **Link things** — relate and unrelate items, and confirm suggested links.
 - **Build the workspace** — create and edit types, views and dashboards, add

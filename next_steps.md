@@ -2,6 +2,23 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — an agent can add a calendar meeting the way the Add button does (2026-09-03, branch `feat/mcp-add-calendar-event`)
+
+**The problem was silent duplication.** To hang an agenda item on a meeting that was on Brandon's Outlook calendar but not yet in Ledgr, an agent's only move was `create_item type=event`. That writes a bare event with no `ms_event_id`, which is the one field calendar sync matches on (`sync.ts:149-165`, owner-scoped `inArray(items.msEventId, ids)`). The next sync therefore sees no match, and the routed agenda item is stranded on a copy the real meeting will never become. The live example is the hand-made "Campus Pastors (Wk 2) - 9.8.26" event (`properties: null`), still un-merged.
+
+**No new endpoint was needed.** The UI's Add button already posts to `promoteCalendarEvent(ownerId, cacheId)`, which writes `ms_event_id` + the whole `properties.calendar` payload (attendees, joinUrl, seriesMasterId), sets `calendar_events.promoted_item_id` so it is idempotent, and runs event intake. So the two tools in `src/lib/mcp/tools/calendar.ts` are wrappers and nothing more:
+
+- **`list_calendar_feed`** — the upcoming un-added events, over `listCalendarFeed`. Discovery: it hands back the `id` the add tool takes.
+- **`add_calendar_event`** — `promoteCalendarEvent`, echoing `rowView(item)` plus `alreadyAdded` so the agent can immediately `relate_items` onto it.
+
+**The one shared-code change:** `listCalendarFeed` grew an optional `windowDays`. The feed deliberately bounds itself to 14 days to keep the human suggestion list short, but the cache holds 28 (`DEFAULT_WINDOW_DAYS`) and an agent routing three weeks out needs the rest. Defaults to 14, clamps to 28; every existing caller is unchanged.
+
+**Answering the task's open questions:** the import path is reusable (no new endpoint); the match key is `items.ms_event_id` against the Graph event id, not the series id; and reach is the cached calendar only. That last one is deliberate — an event outside the four-week cache has no `ms_event_id` to write, so there is nothing to merge on, and `create_item` remains right for a meeting that is not on the real calendar at all.
+
+Not core: additive MCP surface under the ADR-183 carve-out, no schema or API change, no ADR. `verify-calendar-feed.mts` grew nine checks (24/24) covering the window widening and clamp, that the tool writes `ms_event_id`/`properties.calendar`/`meetingAt`, idempotency, and a clean rejection of a bad id. User guide updated: "What an assistant can do" now names the capability.
+
+**Still open, and a data question rather than a code one:** the 9.8.26 orphan is not fixed by this. Adding that event from the feed now would produce a *second* item beside the manual one. It needs a human merge — move the body across and trash the orphan — or leave it and let it age out.
+
 ## ✅ SHIPPED — the word count is per tab on a tabbed note (2026-09-02, branch `fix/word-count-per-tab`)
 
 The canvas chrome (top-right on desktop, the ⋯ menu everywhere) used to count the whole body even when the note was split into canvas tabs (ADR-095), which threw Tyler off since he works tab by tab. Now a tabbed body counts only the ACTIVE tab and says so: "142 words (this tab)". Untabbed notes, widget-home records (the composed count, ADR-197), and Source/Preview modes (which show the whole document) are unchanged. Mechanism: `TabbedBody` publishes the active section into the existing `word-count.ts` store with a `perTab` flag after each commit and tab switch (last publish wins over `ItemEditor`'s whole-body publish from the same change); `ItemCanvas` seeds the server count from the first tab so there is no whole-doc flash at load. Not core: no schema, body format, or API change. `verify-word-count.mts` covers the tab-scoped publish.
