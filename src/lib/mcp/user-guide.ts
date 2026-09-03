@@ -609,6 +609,12 @@ whole project's history on one vertical line — meetings and milestones large,
 task completions, notes, and links as small ticks between them, month markers
 and a Today line down the spine. Scroll it to re-live the project.
 
+Three controls sit above the spine. **Group by** sets how much time each marker
+covers, from an hour out to five years. **Order** flips it to newest-first.
+**Show** switches whole collections off, so a year-old project can be read as
+just its meetings and milestones. They are plain links, so any combination is a
+URL you can bookmark or share.
+
 **The whole project as one markdown file:** ⋯ → **Markdown** on a project
 renders it as a single readable document — summary, people, milestones,
 meetings, clickable links, tasks with added/completed dates, and the timeline —
@@ -673,12 +679,23 @@ A view is a saved filter, sort and layout you reach by name. Build them at
 \`/build/views\`, run them at \`/views\`.
 
 - **Five layouts:** list, table, board, calendar, agenda.
+- **Read any list as a timeline.** Pick the calendar layout, then set **Default
+  view** to **History**: the same vertical spine as a project's review timeline,
+  over whatever the view holds. **Group by** sets the marker span (hour through
+  five years) and the view's sort **Direction** decides whether the newest sits
+  at the top. It works on any type, so a work log becomes a scrollable record of
+  what you did, filtered to one category if you like.
+- **Place items by your own date property.** The calendar and agenda **Date
+  field** now offers a type's own date properties beside the built-in ones, so a
+  type that keeps its date in a property (a log entry's Date, a journal's Date)
+  can finally land on a calendar, a timeline, or a History spine.
 - **Filter on anything,** including your own properties, with operators that fit
   the property kind.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
   filters.
 - **Sort by anything,** including priority and custom properties.
-- **Pick your columns** for list, table and agenda layouts.
+- **Pick your columns** for list, table and agenda layouts, and for a History
+  spine, where they become each entry's second line.
 - **Boards drag,** including on a phone with a long press.
 
 ## Dashboards
@@ -946,6 +963,13 @@ connected; that dead-end tab is the client closing its one-time listener.
   to fix the stage afterwards. It can also filter and list by a custom stage.
 - **Work with tasks** — break one into subtasks, set a repeat rule in plain
   words, tick a single date of a repeating task.
+- **Add a meeting off your calendar** — see your upcoming Outlook events that
+  are not in Ledgr yet and add one, exactly as the **Add** button on the
+  Calendar lens does. The added meeting keeps its attendees, join link and
+  calendar id, so calendar sync recognizes it later instead of making a second
+  copy. Use this rather than "create an event" whenever the meeting is really on
+  your calendar: "put next Monday's staff meeting in Ledgr and hang this agenda
+  item on it."
 - **Handle files** — attach by URL or upload, then embed in the body.
 - **Link things** — relate and unrelate items, and confirm suggested links.
 - **Build the workspace** — create and edit types, views and dashboards, add

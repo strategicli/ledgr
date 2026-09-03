@@ -603,8 +603,13 @@ export type ViewColumn =
 // null = the defaults below, so a pre-existing calendar view is unchanged.
 
 // The calendar sub-mode: a month grid (all-day chips), the multi-day time-grid
-// (retiring; ADR-166), or the horizontal zoomable Timeline that replaces it.
-export const CALENDAR_MODES = ["month", "timegrid", "timeline"] as const;
+// (retiring; ADR-166), the horizontal zoomable Timeline that replaces it, or the
+// vertical "History" spine (2026-09-03) — Tyler's project review timeline made
+// available to any view. History rides here rather than becoming a sixth
+// view_layout so it needs no enum migration and inherits the whole engine
+// (filters, the AND/OR rules, sort, type scoping) plus every ViewRenderer mount
+// (the view page, list lens tabs, dashboard widgets, related groups, the Desk).
+export const CALENDAR_MODES = ["month", "timegrid", "timeline", "spine"] as const;
 export type CalendarMode = (typeof CALENDAR_MODES)[number];
 
 // Timeline zoom = how much time fills the screen; sets px-per-day (the geometry
@@ -638,8 +643,12 @@ export type ViewDisplay = {
   workEndHour?: number; // 1–24, default 19; always > workStartHour
   showWeekends?: boolean; // default true
   showCalendar?: boolean; // overlay read-only synced calendar events; default false
-  // --- Timeline mode (ADR-166) ---
-  zoom?: TimelineZoom; // px-per-day; default "week"
+  // --- Timeline + History modes (ADR-166) ---
+  // One granularity knob for both renderings: px-per-day on the horizontal
+  // Timeline, and the span one chip covers on the vertical History spine. Two
+  // keys meaning the same thing would leave a saved view with no answer to
+  // which one wins.
+  zoom?: TimelineZoom; // default "week"
   // The date field an item is anchored by, and optionally the field that ends
   // its span (a bar). null = derive from `prop` (start) / no span (end). A
   // withEnd date prop auto-pairs its "__end" key; startField/endField cover
@@ -985,10 +994,14 @@ export function parseViewInput(raw: unknown): ViewInput {
     }
     dateProperty = r.dateProperty as DateProperty;
   }
+  const display = parseDisplay(r.display);
   // Calendar/agenda need a date to place items on; default to the one the
   // type actually has — a meeting places by "When", everything else by its
   // plan date (scheduled ?? due, ADR-109) so tasks land on their planned day.
-  if ((layout === "calendar" || layout === "agenda") && !dateProperty) {
+  // NOT when display.startField already names the placement (a custom date
+  // property, 2026-09-03): the renderers prefer startField, so back-filling
+  // here would leave the stored view claiming a date field it doesn't use.
+  if ((layout === "calendar" || layout === "agenda") && !dateProperty && !display?.startField) {
     dateProperty = filter.type === "event" ? "meetingAt" : "plan";
   }
   return {
@@ -999,7 +1012,7 @@ export function parseViewInput(raw: unknown): ViewInput {
     columns: parseColumns(r.columns),
     layout,
     dateProperty,
-    display: parseDisplay(r.display),
+    display,
   };
 }
 

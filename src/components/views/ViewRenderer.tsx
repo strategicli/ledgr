@@ -10,6 +10,7 @@ import BoardDnd, { type BoardCard } from "@/components/views/BoardDnd";
 import ProjectCardGrid, { ProjectCardBody, projectCardFrameClass } from "@/components/projects/ProjectCardGrid";
 import type { ViewProjectCards } from "@/lib/project-cards";
 import PlannerCalendar from "@/components/planner/PlannerCalendar";
+import TimelineSpine from "@/components/timeline/TimelineSpine";
 import RowMenu from "@/components/lists/RowMenu";
 import SwipeRow from "@/components/lists/SwipeRow";
 import SelectCheckbox from "@/components/selection/SelectCheckbox";
@@ -21,6 +22,8 @@ import type { Progress } from "@/lib/subtasks";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { groupValuesFor, orderedGroups, type GroupEdges } from "@/lib/view-grouping";
 import BoardColumn from "@/components/views/BoardColumn";
+import { DEFAULT_GRAIN, type Grain } from "@/lib/timeline-grain";
+import type { TimelineEntry, TimelineUndated } from "@/lib/timeline-entry";
 import { DISPLAY_DEFAULTS } from "@/lib/views";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
@@ -663,6 +666,118 @@ function BoardLayout({
   );
 }
 
+// --- History spine (2026-09-03) -------------------------------------------
+// Turn a view's rows into the shape TimelineSpine renders. This is the second
+// gatherer for src/lib/timeline-entry.ts (the first is gatherProjectTimeline):
+// one type, one date field, one tier, versus a record's five collections.
+//
+// Deliberately NOT placement.ts. That seam resolves a DRAGGABLE {ymd, minutes}
+// anchor, and the spine is read-only, so going through it would mean converting
+// the anchor back into an instant for no gain. What it does honor is
+// display.startField, the one thing placement offers that the older dateOf does
+// not: a custom date property, which is where a bespoke type (a work log's
+// `logdate`) actually keeps its date.
+const SPINE_KIND: Record<string, TimelineEntry["kind"]> = {
+  event: "meeting",
+  milestone: "milestone",
+  task: "task",
+  note: "note",
+  link: "link",
+};
+
+function spineDate(
+  item: ViewItem,
+  view: ViewDefinition,
+  grain: Grain
+): { date: Date; calendarDay: boolean; hasTime: boolean } | null {
+  const start = view.display?.startField;
+  if (start && "prop" in start) {
+    const props =
+      item.properties && typeof item.properties === "object"
+        ? (item.properties as Record<string, unknown>)
+        : null;
+    const raw = props?.[start.prop];
+    if (typeof raw !== "string" || raw.length < 10) return null;
+    // Custom date props are ISO date scalars, day-only (placement.ts readAnchor).
+    const d = new Date(`${raw.slice(0, 10)}T00:00:00Z`);
+    return Number.isNaN(d.getTime()) ? null : { date: d, calendarDay: true, hasTime: false };
+  }
+  // No explicit start field: the view's date property, or per-item "when" for a
+  // view that never chose one (resolving per item keeps a meeting an instant and
+  // a scheduled day a UTC calendar day, instead of guessing one rule for both).
+  const field: ViewDefinition["dateProperty"] | "endAt" | "noteDate" =
+    start && "field" in start
+      ? start.field
+      : (view.dateProperty ?? (item.meetingAt ? "meetingAt" : "plan"));
+  const date =
+    field === "endAt"
+      ? item.endAt
+      : field === "noteDate"
+        ? item.noteDate
+        : dateOf(item, field);
+  if (!date) return null;
+  const calendarDay = field === "noteDate" || usesUtc(field as ViewDefinition["dateProperty"]);
+  // A time is worth showing when the field carries one AND the reader is looking
+  // at that scale, plus always for a meeting (its time is the point).
+  const hasTime =
+    !calendarDay && (grain === "hour" || grain === "day" || field === "meetingAt");
+  return { date, calendarDay, hasTime };
+}
+
+function viewEntries(
+  items: ViewItem[],
+  view: ViewDefinition,
+  statuses: StatusDef[] | undefined,
+  tz: string,
+  grain: Grain
+): { entries: TimelineEntry[]; undated: TimelineUndated[] } {
+  const entries: TimelineEntry[] = [];
+  const undated: TimelineUndated[] = [];
+  const cols = view.columns ?? [];
+  for (const item of items) {
+    const placed = spineDate(item, view, grain);
+    if (!placed) {
+      undated.push({ id: item.id, title: item.title, badge: item.type });
+      continue;
+    }
+    // The chip follows StatusChip's rule: a not-started status is noise, so it
+    // shows nothing rather than a chip on every row. The view's chosen columns
+    // become the second line, which is how a work-log spine reads its category.
+    const def = statuses?.find((s) => s.key === item.status);
+    const meta = cols.map((c) => columnText(item, c, tz)).filter(Boolean).join(" · ");
+    entries.push({
+      id: item.id,
+      itemId: item.id,
+      date: placed.date,
+      // One tier for a view spine: a homogeneous row set has no natural
+      // hierarchy, and inventing one would guess at the owner's intent. The
+      // two-tier look stays on the record spine, where meetings and milestones
+      // really are the headlines (Brandon, 2026-09-03).
+      tier: "big",
+      kind: SPINE_KIND[item.type] ?? "item",
+      label: def && def.category !== "not_started" ? def.label : "",
+      title: item.title,
+      hasTime: placed.hasTime,
+      calendarDay: placed.calendarDay,
+      done: item.statusCategory === "done",
+      url: item.type === "link" ? item.url : null,
+      meta: meta || undefined,
+    });
+  }
+  entries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return { entries, undated };
+}
+
+// Where the Today marker goes, by comparing day keys to the app-timezone today
+// the caller already threads in. Pure: no clock read, so a client mount and an
+// SSR pass agree. Undefined `today` (a dashboard widget) means no marker.
+function spineTodayBefore(entries: TimelineEntry[], today: string | undefined, tz: string): number {
+  if (!today) return -1;
+  return entries.findIndex(
+    (e) => (e.calendarDay ? utcKey : tzFmts(tz).key).format(e.date) > today
+  );
+}
+
 function AgendaLayout({
   items,
   view,
@@ -1011,6 +1126,28 @@ export default function ViewRenderer({
         />
       );
     case "calendar": {
+      // History (2026-09-03): the vertical spine, ahead of every planner check.
+      // It rides display.mode rather than a sixth view_layout, so it needed no
+      // enum migration and every ViewRenderer mount picks it up unchanged.
+      if ((view.display?.mode ?? DISPLAY_DEFAULTS.mode) === "spine") {
+        const grain = view.display?.zoom ?? DEFAULT_GRAIN;
+        const { entries, undated } = viewEntries(items, view, statuses, tz, grain);
+        return (
+          <div className="mt-4">
+            <TimelineSpine
+              entries={entries}
+              tz={tz}
+              grain={grain}
+              // The view's own Sort direction reads the spine: descending puts
+              // the most recent at the top. One less control to invent.
+              dir={view.sort.dir === "asc" ? "asc" : "desc"}
+              todayBefore={spineTodayBefore(entries, today, tz)}
+              undated={undated}
+              undatedLabel="No date"
+            />
+          </div>
+        );
+      }
       // The Planner (ADR-131, extended by ADR-166): mount the interactive
       // planner whenever the calendar places items on a WRITABLE date field —
       // scheduled/due/plan (calendar days), or a meeting's "When" (meeting_at,

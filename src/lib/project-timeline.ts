@@ -16,38 +16,17 @@
 import { milestoneStates } from "@/lib/milestones";
 import { getItem } from "@/lib/items";
 import { listDescendantTasks } from "@/lib/subtasks";
+import type { TimelineEntry, TimelineUndated } from "@/lib/timeline-entry";
 import { queryViewItems } from "@/lib/views";
 
-export type TimelineTier = "big" | "small";
-
-export type TimelineEntry = {
-  id: string;
-  // The item the entry links to (the record itself for "created").
-  itemId: string;
-  date: Date;
-  tier: TimelineTier;
-  kind: "meeting" | "milestone" | "task" | "note" | "link" | "created";
-  // Short verb phrase for the entry ("Meeting", "Milestone completed", …).
-  label: string;
-  title: string;
-  // Meetings only: the entry has a wall-clock time worth showing.
-  hasTime: boolean;
-  // True when `date` is a UTC-midnight calendar day (due dates, note dates) —
-  // format it in UTC. False for real timestamps (meeting times, completion
-  // stamps, created-at), which format in the owner's timezone; rendering a
-  // UTC-midnight day in a US timezone would shift it back a day, and rendering
-  // a late-evening stamp in UTC would shift it forward one.
-  calendarDay: boolean;
-  done?: boolean;
-  // Link entries only: the outbound URL. The tick's title opens it directly
-  // (same rule as the Links card, where the title IS the outbound link).
-  url?: string | null;
-};
+// The entry shape moved to src/lib/timeline-entry.ts when the spine became
+// reusable (2026-09-03); re-exported so existing importers keep working.
+export type { TimelineEntry, TimelineTier, TimelineUndated } from "@/lib/timeline-entry";
 
 export type ProjectTimeline = {
   entries: TimelineEntry[]; // ascending by date
   // Open milestones with no date to plot — the "Upcoming" tail.
-  undated: { id: string; title: string }[];
+  undated: TimelineUndated[];
   // Index of the first entry after now (-1 = none): where the page's Today
   // marker splits past from future. Computed here because a component render
   // must stay pure (no Date.now() in the page).
@@ -67,7 +46,13 @@ type LoadedRecord = Awaited<ReturnType<typeof getItem>>;
 
 export async function gatherProjectTimeline(
   ownerId: string,
-  record: LoadedRecord
+  record: LoadedRecord,
+  // Which kinds to keep (the page's ?kinds= chips). Filtering HERE rather than
+  // in the page is what keeps firstFutureIndex honest: it is an index into the
+  // returned array, so filtering afterwards would point the Today marker at the
+  // wrong entry. "created" is never filtered out — it is the story's opening
+  // line, not one of the collections.
+  kinds?: ReadonlySet<TimelineEntry["kind"]>
 ): Promise<ProjectTimeline> {
   const [meetings, milestones, tasks, notes, links] = await Promise.all([
     queryViewItems(ownerId, { type: "event", relatedTo: record.id }, { field: "meetingAt", dir: "asc" }, 500),
@@ -108,13 +93,13 @@ export async function gatherProjectTimeline(
     });
   }
 
-  const undated: { id: string; title: string }[] = [];
+  const undated: TimelineUndated[] = [];
   for (const m of milestones) {
     const s = states.get(m.id);
     const done = s?.done ?? false;
     const date = done && s?.completedAt ? s.completedAt : m.dueDate;
     if (!date) {
-      if (!done) undated.push({ id: m.id, title: m.title });
+      if (!done) undated.push({ id: m.id, title: m.title, badge: "milestone" });
       continue;
     }
     entries.push({
@@ -200,7 +185,13 @@ export async function gatherProjectTimeline(
     });
   }
 
-  entries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const kept = kinds ? entries.filter((e) => e.kind === "created" || kinds.has(e.kind)) : entries;
+  kept.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const keptUndated = kinds && !kinds.has("milestone") ? [] : undated;
   const now = Date.now();
-  return { entries, undated, firstFutureIndex: entries.findIndex((e) => e.date.getTime() > now) };
+  return {
+    entries: kept,
+    undated: keptUndated,
+    firstFutureIndex: kept.findIndex((e) => e.date.getTime() > now),
+  };
 }
