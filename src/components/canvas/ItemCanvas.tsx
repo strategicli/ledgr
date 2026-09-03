@@ -20,6 +20,7 @@ import { getType } from "@/lib/types";
 import { getSettings } from "@/lib/settings";
 import { tocForType } from "@/lib/toc";
 import WordCount from "@/components/canvas/WordCount";
+import { parseTabs } from "@/lib/editor/canvas-tabs";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
 import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
 import FloatingToc from "@/components/canvas/FloatingToc";
@@ -118,9 +119,18 @@ export default async function ItemCanvas({
   // wrong (Tyler, 2026-08-17). That count is a load-time snapshot (`live:
   // false` below keeps the Overview editor from overwriting it with
   // overview-only numbers); every other type keeps the live body count.
+  // A TABBED body (ADR-095) counts only its first tab, the one the canvas opens
+  // on, and says so: the whole-document number misleads when you work tab by
+  // tab (Tyler, 2026-09-02). TabbedBody keeps it on the active tab from there.
   const composed = canvasId === "widgets";
+  const bodyTabs = composed ? null : parseTabs(bodyMarkdown(item.body));
+  const wordCountPerTab = Boolean(bodyTabs && bodyTabs.length > 0);
   const wordCount = wordCountOf(
-    composed ? await buildProjectMarkdown(owner.id, item) : bodyMarkdown(item.body)
+    composed
+      ? await buildProjectMarkdown(owner.id, item)
+      : wordCountPerTab
+        ? (bodyTabs![0]?.body ?? "")
+        : bodyMarkdown(item.body)
   );
 
   // Listen (read-aloud), per-type opt-in (Build → Types "Listen" column).
@@ -222,7 +232,14 @@ export default async function ItemCanvas({
                 <span aria-hidden>·</span>
                 <span>Updated {fmtChromeDate(item.updatedAt)}</span>
                 <span aria-hidden>·</span>
-                <span><WordCount itemId={item.id} initial={wordCount} live={!composed} /></span>
+                <span>
+                  <WordCount
+                    itemId={item.id}
+                    initial={wordCount}
+                    initialPerTab={wordCountPerTab}
+                    live={!composed}
+                  />
+                </span>
               </span>
               {variant === "page" && !item.isTemplate && (
                 <ItemActionsMenu
@@ -236,6 +253,7 @@ export default async function ItemCanvas({
                   createdLabel={fmtChromeDate(item.createdAt)}
                   updatedLabel={fmtChromeDate(item.updatedAt)}
                   wordCount={wordCount}
+                  wordCountPerTab={wordCountPerTab}
                   wordCountLive={!composed}
                   listen={Boolean(listenText)}
                 />

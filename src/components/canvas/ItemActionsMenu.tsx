@@ -31,6 +31,7 @@ export default function ItemActionsMenu({
   createdLabel,
   updatedLabel,
   wordCount,
+  wordCountPerTab = false,
   wordCountLive = true,
   listen = false,
 }: {
@@ -45,6 +46,8 @@ export default function ItemActionsMenu({
   createdLabel?: string;
   updatedLabel?: string;
   wordCount?: number;
+  // The server count covers only the first canvas tab (tabbed body, ADR-095).
+  wordCountPerTab?: boolean;
   // false = the count is a composed-document snapshot (widget-home records),
   // not the live body — see WordCount's `live` prop.
   wordCountLive?: boolean;
@@ -202,7 +205,12 @@ export default function ItemActionsMenu({
                 {updatedLabel && <div>Updated {updatedLabel}</div>}
                 {wordCount !== undefined && (
                   <div>
-                    <WordCount itemId={itemId} initial={wordCount} live={wordCountLive} />
+                    <WordCount
+                      itemId={itemId}
+                      initial={wordCount}
+                      initialPerTab={wordCountPerTab}
+                      live={wordCountLive}
+                    />
                   </div>
                 )}
               </div>
