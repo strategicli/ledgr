@@ -105,7 +105,11 @@ export async function createMentionTarget(
       body: JSON.stringify({
         type: target.key,
         title,
-        ...(needsTriage(target) ? { inbox: true } : {}),
+        // The catch-all names its arrival path and lets the owner's Capture
+        // routing place it (ADR-249). A SCOPED create is not a capture at all,
+        // so it keeps saying "filed" outright: an explicit inbox always beats
+        // the setting, which is what keeps "@/person Jane" behaving as it did.
+        ...(needsTriage(target) ? { source: "mention_create" } : { inbox: false }),
       }),
     });
     if (!res.ok) return null;

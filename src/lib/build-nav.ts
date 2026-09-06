@@ -59,6 +59,17 @@ export const BUILD_NAV: BuildGroup[] = [
       // whether the item still points at it. Data, not maintenance — files are
       // content the owner owns, not a mess to clean (that's hygiene's sweep).
       { label: "Files", href: "/build/files", icon: "folder" },
+      // Capture & Inbox (ADR-249): where each arrival path lands — queued in the
+      // Inbox, filed straight away, or dropped into a project — plus the web
+      // clipper setup, moved here from the bottom of User Settings so "how does
+      // stuff get into Ledgr" has one address. DATA, not MAINTAIN: capture
+      // routing shapes what data exists.
+      {
+        label: "Capture & Inbox",
+        href: "/build/capture",
+        icon: "inbox",
+        keywords: ["capture", "inbox", "clipper", "routing", "source", "email", "todoist"],
+      },
     ],
   },
   {

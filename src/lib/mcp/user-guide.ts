@@ -115,7 +115,8 @@ Press **q** or **+ New**. A capture card opens with a type picker.
 
 - **It defaults to "Unsorted",** not Task. Capture the thought now, decide what
   it is later.
-- **Everything lands in the Inbox** (\`/inbox\`) until you triage it.
+- **It lands in the Inbox** (\`/inbox\`) by default, until you triage it. Where
+  quick capture goes is yours to change at \`/build/capture\`.
 - **Type the details into the title.** "Call Bob tomorrow p1 every week" pulls
   out the date, the priority and the repeat rule, shows them as chips, and
   leaves the title clean. It understands "every other Tuesday", "first Sunday of
@@ -131,6 +132,16 @@ Press **q** or **+ New**. A capture card opens with a type picker.
 people inline, or open a row for a deeper pass. The nav badge counts what is
 waiting, and clears only when you actually triage.
 
+**The Inbox is optional, per arrival path.** \`/build/capture\` lists the seven
+ways things arrive without you filing them — quick capture, the phone share
+sheet, the web clipper, email in, Todoist, new items from an \`@\`-mention, and
+an AI assistant — and each one can queue in the Inbox, file itself straight
+away, or drop into a project. Six of them start in the Inbox; an AI assistant
+starts filed. Anything that asks you where it should go, like the task
+card's own picker, does what you picked and ignores the routing. When nothing
+routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
+— the page still works and is one click away from \`/build/capture\`.
+
 **Triage mode** (\`/inbox/triage\`) deals with a backlog one card at a time:
 **→** triaged, **←** trash, **↓** or **Space** skip, **Backspace** undo.
 
@@ -140,13 +151,13 @@ waiting, and clears only when you actually triage.
   Ledgr. A URL becomes a link item with the page's readable text; a text file
   becomes a transcript and asks which meeting it belongs to.
 - **From your desktop browser:** the web clipper bookmarklet saves the page's
-  article text into your Inbox as a link item. Drag it to your bookmarks bar
-  from **User Settings → Save from the web** — there is no token to generate
+  article text as a link item. Drag it to your bookmarks bar from **\`/build/capture\`
+  → Save from the web** — there is no token to generate
   and nothing to paste. Clicking it opens a small Ledgr popup that does the
   save; if you are not signed in, that popup asks you to, once. It is text
   only; images are stripped.
 - **By email:** put a message in the **"Ledgr Import"** folder in Outlook and it
-  becomes a note in your Inbox. Start the subject with **\`task:\`** and it becomes
+  becomes a note. Start the subject with **\`task:\`** and it becomes
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
 - **From your own app:** create a credential in **User Settings → API

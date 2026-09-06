@@ -3,7 +3,8 @@
 // route became a POST handler (to also accept shared files, ADR for the
 // transcript-file share path): a shared URL lands as a `link` item with the
 // page's readable content extracted into the body, bare text as the catch-all
-// `unmarked` (capture's default type, ADR-067), both inbox: true — capture never
+// `unmarked` (capture's default type, ADR-067), both naming their arrival path
+// as "share_target" so the owner's Capture routing places them — capture never
 // auto-triages (ADR-010). Keeping this in one module means the URL/text behavior
 // is identical whether the share arrived as the old GET or the new POST.
 import { makeMarkdownBody } from "@/lib/body";
@@ -118,7 +119,7 @@ export async function captureSharedUrlOrText(
       type: "link",
       title: itemTitle.slice(0, 300),
       url,
-      inbox: true,
+      source: "share_target",
       body: article ? makeMarkdownBody(article.markdown) : null,
     });
     return item.id;
@@ -129,7 +130,7 @@ export async function captureSharedUrlOrText(
   const item = await createItem(ownerId, {
     type: "unmarked",
     title: itemTitle.slice(0, 300),
-    inbox: true,
+    source: "share_target",
   });
   return item.id;
 }

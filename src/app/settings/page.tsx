@@ -12,7 +12,6 @@ import { DEFAULT_TIMEZONE } from "@/lib/today";
 import SettingsForm from "@/components/settings/SettingsForm";
 import ApiCredentials from "@/components/settings/ApiCredentials";
 import IcsFeed from "@/components/settings/IcsFeed";
-import WebClipper from "@/components/settings/WebClipper";
 import BackButton from "@/components/ui/BackButton";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +45,6 @@ export default async function SettingsPage() {
           scopes={API_SCOPES}
           origin={origin}
         />
-        <WebClipper origin={origin} />
       </div>
     </main>
   );

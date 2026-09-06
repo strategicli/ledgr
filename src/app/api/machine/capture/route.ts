@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       type: "link",
       title,
       url,
-      inbox: true,
+      source: "web_clipper",
       body: article ? makeMarkdownBody(article.markdown) : null,
     });
     return json({ id: item.id, extracted: article !== null }, 201);
