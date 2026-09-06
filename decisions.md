@@ -2627,6 +2627,8 @@ Also rejected: reimplementing "next occurrence" arithmetic in the tool layer (`r
 ## ADR-183: Additive MCP surface is not core, and editing a repeat rule keeps its completion log
 **Date:** 2026-08-11
 **Status:** accepted (Brandon, in response to Tyler's two ADR-180/181 heads-ups). Part 1 amends the CLAUDE.md "Building together" core list, so it needs Tyler's ack; flagged in `COLLAB.md`. Part 2 is a one-behavior bug fix, not core.
+
+**Ack recorded 2026-09-06 (Tyler agrees, relayed by Brandon in session).** Part 1's carve-out is now agreed by both, not just live in the file, so an additive-only MCP or API change ships solo without a further ack. First use under the settled rule is ADR-249, which adds an optional `source` argument to `create_item`. Recorded here because the pending state was cited in three places (`COLLAB.md`, ADR-249, PR #365) and a rule that is agreed should stop reading as outstanding. Noted honestly: the agreement reached this file through Brandon rather than as Tyler's own written line, so if Tyler wants it worded differently, this is the line to amend.
 **Context:** Tyler shipped ADR-180 and ADR-181, both flagged CORE-but-additive, both asking Brandon to ack a contract extension after the fact. He also flagged a deliberate divergence: editing a recurrence rule through MCP keeps the per-date completion log, while the canvas `RecurrenceControl` wipes it. Brandon's answers, one to each.
 
 **Part 1: purely additive MCP/API surface drops out of the core list.**

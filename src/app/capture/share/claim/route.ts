@@ -100,9 +100,11 @@ export async function GET(request: Request) {
     text: url.searchParams.get("text")?.trim() || undefined,
     url: url.searchParams.get("url")?.trim() || undefined,
   });
-  // ponytail: revisiting/refreshing this URL (back button, a re-sent
-  // redirect_url after sign-in racing a first successful claim) re-runs the
-  // capture and can double-capture the same text share. Soft-delete + inbox
-  // triage is the safety net, same as any other duplicate capture.
+  // Revisiting/refreshing this URL (back button, a re-sent redirect_url after
+  // sign-in racing a first successful claim) re-runs the capture, but a URL
+  // share now lands on the existing item rather than a second one (the
+  // recapture window in lib/capture/share.ts). A bare TEXT share still has no
+  // URL to key on, so that one can still double; soft-delete + inbox triage
+  // stays the safety net there.
   return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
 }

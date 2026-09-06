@@ -99,6 +99,21 @@ check(
   "capture route never sets Allow-Credentials (open CORS must stay cookie-free)",
   !/"Access-Control-Allow-Credentials"/.test(route)
 );
+// The half the client can't guarantee: a bookmark in the owner's bar is a
+// frozen copy of the bookmarklet, so an older one still re-hands the clip to a
+// second relay page load and that fresh page has a fresh latch. The route
+// refuses the repeat. Behaviour is covered by verify-capture-dedupe.mts.
+check(
+  "capture route refuses a repeat of the same URL",
+  /recentCaptureId\(ownerId, url\)/.test(route)
+);
+check("relay says so when the clip was already filed", /duplicate/.test(relay));
+
+const shareLib = readFileSync("src/lib/capture/share.ts", "utf8");
+check(
+  "the share/claim path shares that same guard",
+  /recentCaptureId\(ownerId, url\)/.test(shareLib)
+);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exitCode = fail > 0 ? 1 : 0;

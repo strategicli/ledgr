@@ -7,6 +7,9 @@
 // as "share_target" so the owner's Capture routing places them — capture never
 // auto-triages (ADR-010). Keeping this in one module means the URL/text behavior
 // is identical whether the share arrived as the old GET or the new POST.
+import { and, desc, eq, gte, isNull } from "drizzle-orm";
+import { getDb } from "@/db";
+import { items } from "@/db/schema";
 import { makeMarkdownBody } from "@/lib/body";
 import { fetchAndExtract } from "@/lib/clip/extract";
 import { createItem } from "@/lib/item-mutations";
@@ -90,6 +93,46 @@ async function fetchPageTitle(url: string): Promise<string | null> {
   }
 }
 
+// One clip, one item — enforced here, where every capture path lands, because
+// the client-side latches can't cover all of it. The bookmarklet's half of the
+// handshake (retire the listener once the relay reports the save, ADR-238 fix)
+// lives in a bookmark the owner dragged to their bar, which is a FROZEN COPY of
+// whatever the code said that day: an older bookmark still answers every
+// "ready" ping forever, so any second load of the relay popup (the sign-in
+// detour, a Clerk handshake reload) gets handed the clip again, and a fresh
+// page instance has a fresh latch. The claim route has the same shape of hole
+// on a refresh/back-button revisit. A short window keyed on the URL closes all
+// of them at once, and no bookmark ever needs re-dragging again.
+//
+// ponytail: a bounded lookback, not a uniqueness constraint — re-clipping the
+// same page tomorrow is legitimate, and the owner keeps that.
+const RECAPTURE_WINDOW_MS = 2 * 60 * 1000;
+
+// The owner's most recent live capture of this URL inside the window, if any.
+export async function recentCaptureId(
+  ownerId: string,
+  url: string
+): Promise<string | null> {
+  const rows = await getDb()
+    .select({ id: items.id })
+    .from(items)
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        // Both capture paths file a URL as a `link`, so keep the match to
+        // those: an event or a note that happens to carry the same address
+        // must never swallow a clip.
+        eq(items.type, "link"),
+        eq(items.url, url),
+        isNull(items.deletedAt),
+        gte(items.createdAt, new Date(Date.now() - RECAPTURE_WINDOW_MS))
+      )
+    )
+    .orderBy(desc(items.createdAt))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
 // Capture a shared URL or bare text into the inbox; returns the new item's id,
 // or null when there was nothing to capture (an empty share). The caller
 // redirects to /items/{id} on a hit.
@@ -102,6 +145,10 @@ export async function captureSharedUrlOrText(
   const url = extractUrl(fields.url?.trim() || undefined, text);
 
   if (url) {
+    // Already filed moments ago: hand back that item instead of a second one.
+    // Before the extract, so a re-delivered share costs nothing either.
+    const already = await recentCaptureId(ownerId, url);
+    if (already) return already;
     // Pull the readable article (one bounded fetch) so the clip carries content,
     // not just the link. Null on a paywall/non-article page — we degrade to
     // URL + title.

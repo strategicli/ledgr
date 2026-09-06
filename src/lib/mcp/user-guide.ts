@@ -155,7 +155,9 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
   → Save from the web** — there is no token to generate
   and nothing to paste. Clicking it opens a small Ledgr popup that does the
   save; if you are not signed in, that popup asks you to, once. It is text
-  only; images are stripped.
+  only; images are stripped. Clipping the same page twice within a couple of
+  minutes lands on the item you already have (the popup says "Already in your
+  Inbox") instead of filing a second copy.
 - **By email:** put a message in the **"Ledgr Import"** folder in Outlook and it
   becomes a note. Start the subject with **\`task:\`** and it becomes
   a task instead. Attachments are linked back to the original mail, not copied.
