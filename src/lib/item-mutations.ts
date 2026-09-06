@@ -35,8 +35,11 @@ import { extractBodyText } from "@/lib/body-text";
 // loaded dynamically inside moveItemType instead.
 import type { PropertyDef } from "@/lib/types";
 import { getItem, itemColumns, ItemError, type ItemStatus, type Urgency } from "@/lib/items";
+import { routeFor } from "@/lib/inbox-sources";
 import { syncMentionRelations } from "@/lib/mentions";
 import { syncPassageRefs } from "@/lib/passages/refs";
+import { relateItems } from "@/lib/relations";
+import { getSettings } from "@/lib/settings";
 import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
 import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
 import {
@@ -107,7 +110,12 @@ export type ItemInput = {
   // the type default.
   composition?: Record<string, unknown> | null;
   // Untriaged flag (PRD §4.2 Inbox): arrival paths set it, triage clears it.
+  // An explicit value always wins over the per-source route below.
   inbox?: boolean;
+  // Which arrival path made this item (ADR-249): one of INBOX_SOURCES' keys.
+  // Read only when `inbox` is absent, and only to look up where the owner told
+  // that path to file things. Not persisted on the row (deferred, cut 1).
+  source?: string;
   // Mark this item as template content (ADR-093). Set true to mint a template
   // prototype; children created under a template parent inherit it automatically
   // (see createItem), so callers only ever set it on the root prototype.
@@ -271,6 +279,8 @@ export async function createItem(ownerId: string, input: ItemInput) {
       : initialStatusKey(schema);
   const statusCat = categoryOfStatus(schema, statusKey);
 
+  const { inbox, destinationId } = await resolveRoute(ownerId, input);
+
   const body = input.body ?? null;
   const rows = await getDb()
     .insert(items)
@@ -297,7 +307,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
       url: input.url ?? null,
       parentId: input.parentId ?? null,
       properties: input.properties ?? null,
-      inbox: input.inbox ?? false,
+      inbox,
       isTemplate,
     })
     .returning(itemColumns);
@@ -319,8 +329,51 @@ export async function createItem(ownerId: string, input: ItemInput) {
       payload: { type: created.type },
     }).catch(() => {});
   }
+  // The destination edge (ADR-249) is written here, not at the API route's
+  // relateTo: four of the seven arrival paths call createItem directly and
+  // would silently drop their destination. Best-effort like the activity log
+  // above, so a failed edge never undoes a capture.
+  if (destinationId) {
+    await relateItems(ownerId, created.id, destinationId, "project").catch(() => {});
+  }
   kickYoutubeTranscript(ownerId, created.type, created.url);
   return created;
+}
+
+/**
+ * Where this capture lands: the Inbox, filed away, or filed into a project.
+ *
+ * AN EXPLICIT `inbox` ALWAYS WINS. The per-source setting supplies a default
+ * when the caller is silent, never an override, so every MCP and API caller
+ * written before ADR-249 behaves exactly as it did. Settings are read only when
+ * a source names itself and the caller said nothing, so the ordinary create
+ * path adds no query (and getSettings is React-cached per request anyway).
+ *
+ * A destination that has been moved to Trash falls back to the Inbox rather
+ * than filing invisibly, and the setting is left alone so restoring the project
+ * restores the routing.
+ */
+export async function resolveRoute(
+  ownerId: string,
+  input: Pick<ItemInput, "inbox" | "source">
+): Promise<{ inbox: boolean; destinationId: string | null }> {
+  if (input.inbox !== undefined || !input.source) {
+    return { inbox: input.inbox ?? false, destinationId: null };
+  }
+  const { inboxRoutes } = await getSettings(ownerId);
+  const route = routeFor(inboxRoutes, input.source);
+  if (!route.destinationId) return route;
+  const live = await getDb()
+    .select({ id: items.id })
+    .from(items)
+    .where(
+      and(
+        eq(items.id, route.destinationId),
+        eq(items.ownerId, ownerId),
+        isNull(items.deletedAt)
+      )
+    );
+  return live.length > 0 ? route : { inbox: true, destinationId: null };
 }
 
 /**

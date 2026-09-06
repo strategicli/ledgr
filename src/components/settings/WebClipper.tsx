@@ -1,12 +1,12 @@
-// "Save from the web" (web clipper) setup on User Settings (ADR-122). The
-// clipper itself shipped with ADR-100, but its setup lived buried at the bottom
-// of Build → AI & MCP next to MCP tokens, where nobody looking to "save a web
-// page" would find it. This is its findable home: one place to drag the desktop
-// bookmarklet and read the mobile share-sheet steps. It's a set-up-once surface
-// (drag the bookmarklet once; install the PWA once), so User Settings — reached
-// from both Work and Build — fits better than a daily-nav slot. The draggable
-// link lives in ClipperSetup; this wrapper supplies the framing and the mobile
-// walkthrough.
+// "Save from the web" (web clipper) setup (ADR-122). The clipper itself shipped
+// with ADR-100, but its setup lived buried at the bottom of Build → AI & MCP
+// next to MCP tokens, where nobody looking to "save a web page" would find it.
+// This is its framing: one place to drag the desktop bookmarklet and read the
+// mobile share-sheet steps. It's a set-up-once surface (drag the bookmarklet
+// once; install the PWA once), so it never earned a daily-nav slot. It sat on
+// User Settings until ADR-249 moved it to Build → Capture & Inbox, next to the
+// routing that decides where a clipped page lands. The draggable link lives in
+// ClipperSetup; this wrapper supplies the framing and the mobile walkthrough.
 //
 // ADR-238 removed the token step entirely, and with it the readiness
 // breadcrumb this section used to carry: there is no longer a state in which
@@ -20,9 +20,10 @@ export default function WebClipper({ origin }: { origin: string }) {
         Save from the web
       </h2>
       <p className="mt-1 text-sm text-neutral-500">
-        Clip a web page&rsquo;s readable content into your Inbox, from desktop or
-        your phone. The article saves as a link item carrying its text, so you
-        keep the substance even if the original moves or disappears.
+        Clip a web page&rsquo;s readable content into Ledgr, from desktop or your
+        phone. The article saves as a link item carrying its text, so you keep
+        the substance even if the original moves or disappears. Where it lands
+        is the Web clipper and Phone share sheet routing above.
       </p>
 
       {/* Desktop: the draggable bookmarklet. */}
@@ -44,8 +45,8 @@ export default function WebClipper({ origin }: { origin: string }) {
           Install app / Add to Home screen).
         </li>
         <li>
-          From any app, tap Share and choose Ledgr. The page lands in your
-          Inbox.
+          From any app, tap Share and choose Ledgr. The page lands wherever you
+          routed the share sheet above.
         </li>
       </ol>
       <p className="mt-2 text-xs text-neutral-600">

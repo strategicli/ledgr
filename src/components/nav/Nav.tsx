@@ -11,6 +11,7 @@ import NavShell, {
   type ShellDest,
   type ShellSlot,
 } from "@/components/nav/NavShell";
+import { INBOX_SOURCES, routeFor } from "@/lib/inbox-sources";
 import { countInbox } from "@/lib/items";
 import { countUnread } from "@/lib/notifications";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
@@ -116,11 +117,26 @@ export default async function Nav() {
     return { kind: "destination", ...toDest(slot) };
   };
 
-  const slots = settings.navSlots.map(toShellSlot);
+  // The Inbox hides itself when nothing feeds it (ADR-249): no arrival path
+  // routes there AND nothing is sitting in it. A filter over two values already
+  // awaited above, no extra query. Mind the defaults — six of the seven sources
+  // default to "inbox" — so an owner who has configured nothing still sees it.
+  // This HIDES THE NAV SLOT, NEVER THE ROUTE: /inbox keeps working, reachable
+  // from /build/capture and the command palette, so a preference can't strand
+  // whatever is already sitting in there.
+  const showInbox =
+    inboxCount > 0 ||
+    INBOX_SOURCES.some((s) => routeFor(settings.inboxRoutes, s.key).inbox);
+  const keep = (d: { href: string }) => showInbox || d.href !== "/inbox";
+  const shellSlots = (config: NavSlotConfig[]) =>
+    config
+      .filter((s) => s.type === "tools" || keep(s))
+      .map((s) => (s.type === "tools" ? { ...s, children: s.children.filter(keep) } : s))
+      .map(toShellSlot);
+
+  const slots = shellSlots(settings.navSlots);
   // null mobileNavSlots mirrors the desktop list.
-  const mobileSlots = (settings.mobileNavSlots ?? settings.navSlots).map(
-    toShellSlot
-  );
+  const mobileSlots = shellSlots(settings.mobileNavSlots ?? settings.navSlots);
 
   return (
     <NavShell

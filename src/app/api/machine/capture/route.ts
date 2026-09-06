@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/api";
 import { verifyApiRequest } from "@/lib/auth/credentials";
 import { makeMarkdownBody } from "@/lib/body";
 import { extractArticle, fetchAndExtract } from "@/lib/clip/extract";
+import { recentCaptureId } from "@/lib/capture/share";
 import { createItem } from "@/lib/item-mutations";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { resolveOwner } from "@/lib/owner";
@@ -85,6 +86,16 @@ export async function POST(request: Request) {
   }
   const url = parsedUrl.toString();
 
+  // One clip, one item: this URL landing again within the window is the same
+  // click arriving twice (an older bookmarklet re-handing the clip to a second
+  // relay page load), not a second clip. Answer with the item it already made.
+  // See recentCaptureId for why the client-side latches can't cover this alone.
+  const already = await recentCaptureId(ownerId, url);
+  // Still a 201 with the clip's id: to every existing caller this reads exactly
+  // like the save it asked for, which keeps the machine API's success path
+  // byte-compatible (`duplicate` is a new, additive field — ADR-183's carve-out).
+  if (already) return json({ id: already, duplicate: true }, 201);
+
   // html present = the bookmarklet sent the live DOM (handles auth'd/SPA pages);
   // absent = fetch and extract the public page ourselves.
   const html = typeof payload.html === "string" ? payload.html : null;
@@ -99,7 +110,7 @@ export async function POST(request: Request) {
       type: "link",
       title,
       url,
-      inbox: true,
+      source: "web_clipper",
       body: article ? makeMarkdownBody(article.markdown) : null,
     });
     return json({ id: item.id, extracted: article !== null }, 201);

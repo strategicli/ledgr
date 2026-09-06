@@ -55,7 +55,11 @@ export default function CaptureRelay() {
           window.opener?.postMessage("ledgr-relay-saved", "*");
           setStatus("done");
           setMessage(
-            body.extracted ? "Saved to your Inbox (with content)." : "Saved to your Inbox (link only)."
+            body.duplicate
+              ? "Already in your Inbox."
+              : body.extracted
+                ? "Saved to your Inbox (with content)."
+                : "Saved to your Inbox (link only)."
           );
           setTimeout(() => window.close(), 1200);
         })
