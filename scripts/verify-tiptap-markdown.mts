@@ -146,6 +146,27 @@ check(
   printHtml.includes("color:inherit") && !printHtml.includes("--mark-ink"),
 );
 
+// The swatch panel must stay reachable and must not cost the selection.
+const editorSrc = readFileSync("src/components/markdown-editor/MarkdownEditor.tsx", "utf8");
+const swatch = editorSrc.slice(
+  editorSrc.indexOf("function SwatchControl"),
+  editorSrc.indexOf("export type MarkdownEditorHandle") + 1 || editorSrc.length,
+);
+// SHIPPED BUG (2026-09-09): the panel was `absolute right-0`, so with the window
+// against the right edge of the monitor the last colors opened off-screen and
+// could not be clicked at all. useAnchoredPanel clamps it into the viewport.
+check(
+  "the swatch panel is viewport-clamped, not absolutely positioned",
+  swatch.includes("useAnchoredPanel") && !swatch.includes("absolute right-0"),
+);
+// Every button in this control preventDefaults mousedown. Without it the editor
+// blurs on click and the selection being colored is gone before the pick lands —
+// which is also why this control cannot just become ui/Popover.
+check(
+  "the swatch trigger and swatches keep the editor's selection on mousedown",
+  (swatch.match(/onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/g) ?? []).length >= 4,
+);
+
 // --- mention link: encode → decode -----------------------------------------
 const id = "9f8c2b14-0000-4abc-8def-112233445566";
 const md = mentionToMarkdown(id, "Elder Meeting");

@@ -17,6 +17,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useAnchoredPanel } from "@/components/ui/Popover";
 import { TOOLBAR_ICONS } from "./toolbar-icons";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { useIsDesktop } from "./useIsDesktop";
@@ -303,6 +304,199 @@ function toolbarBtnClass(active?: boolean, disabled?: boolean) {
         ? "bg-surface-2 text-ink"
         : "text-ink-subtle hover:bg-surface-2 hover:text-ink"
   }`;
+}
+
+// A swatch's face: the color's text stroke for the "color" kind, its highlight
+// fill for the "highlight" kind, and the owner's live accent for the accent.
+function swatchHex(kind: "color" | "highlight", c: HighlightColor) {
+  if (c === ACCENT_HIGHLIGHT) return ACCENT_HIGHLIGHT_BG;
+  return kind === "color"
+    ? BLOCKNOTE_COLORS[c].text
+    : BLOCKNOTE_COLORS[c].background;
+}
+
+// Roughly how wide the open panel is, per kind: ten 24px swatches plus the clear
+// button, the divider, gaps and padding. Only feeds the viewport CLAMP below, and
+// over-estimating is the safe direction (it pulls the panel further inside), so
+// this doesn't have to track the layout to the pixel.
+const SWATCH_PANEL_W = { color: 300, highlight: 344 } as const;
+
+// The text-color / highlight picker: a toolbar button that opens a row of
+// swatches (ADR-155).
+//
+// A COMPONENT rather than the render helper this used to be, because it needs
+// useAnchoredPanel and the two pickers are each rendered conditionally on the
+// owner's toolbar config — a hook called from a helper invoked behind two
+// separate conditions is a hook-order bug waiting to happen.
+//
+// The panel is portaled and fixed-positioned rather than `absolute right-0`
+// (Tyler, 2026-09-09, screenshot): with the window pushed against the right edge
+// of the monitor, the row opened off-screen and the last colors were simply
+// unreachable. Adding the tenth accent swatch made a narrow miss into an obvious
+// one. `useAnchoredPanel` (the placement half of ui/Popover, exported for exactly
+// this) clamps into the viewport on both edges and flips above the button when
+// there's no room below, so no window position can hide a color.
+//
+// NOT ui/Popover itself, though the panel is now equivalent: that component owns
+// its trigger button and doesn't preventDefault on mousedown, which in an editor
+// toolbar blurs the document and throws away the selection being highlighted.
+function SwatchControl({
+  kind,
+  current,
+  onPick,
+  open,
+  onToggle,
+  isDesktop,
+}: {
+  kind: "color" | "highlight";
+  current: string;
+  onPick: (c: HighlightColor | null) => void;
+  open: boolean;
+  onToggle: () => void;
+  isDesktop: boolean;
+}) {
+  const { anchorRef, coords } = useAnchoredPanel<HTMLButtonElement>(
+    open,
+    SWATCH_PANEL_W[kind],
+    "right"
+  );
+  const title = kind === "color" ? "Text color" : "Highlight";
+
+  // Mobile: the formatting bar is a horizontally-scrolling strip pinned above
+  // the keyboard, so an absolutely-positioned popover would be clipped by the
+  // scroll container (overflow-x:auto forces overflow-y:auto) and would open
+  // down into the keyboard. Fall back to a native <select> — the OS picker is
+  // unclipped, keyboard-safe, and idiomatic on touch. Desktop gets the swatch
+  // popover below.
+  if (!isDesktop) {
+    return (
+      <select
+        title={title}
+        aria-label={title}
+        className="h-7 rounded-md bg-surface-2 px-1 text-sm text-ink-muted"
+        value={current}
+        onChange={(e) => onPick((e.target.value || null) as HighlightColor | null)}
+      >
+        <option value="">{title}</option>
+        {COLOR_NAMES.map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+        {kind === "highlight" && (
+          <option value={ACCENT_HIGHLIGHT}>my highlight</option>
+        )}
+      </select>
+    );
+  }
+
+  const pick = (c: HighlightColor | null) => {
+    onPick(c);
+    onToggle();
+  };
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        title={title}
+        aria-label={title}
+        aria-haspopup="true"
+        aria-expanded={open}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onToggle}
+        className={toolbarBtnClass(open || !!current)}
+      >
+        <span className="flex items-center gap-1">
+          {kind === "color" ? (
+            <span className="text-sm font-semibold leading-none">A</span>
+          ) : (
+            <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{TOOLBAR_ICONS.highlight}</span>
+          )}
+          <span
+            className="h-1 w-3.5 rounded-full"
+            style={{
+              backgroundColor: current
+                ? swatchHex(kind, current as HighlightColor)
+                : "var(--line-strong, #444)",
+              backgroundImage:
+                current === ACCENT_HIGHLIGHT
+                  ? "var(--accent-highlight-image, none)"
+                  : undefined,
+            }}
+          />
+        </span>
+      </button>
+      {open &&
+        coords &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[55]"
+              onMouseDown={onToggle}
+            />
+            <div
+              role="dialog"
+              aria-label={title}
+              style={{ position: "fixed", left: coords.left, top: coords.top, bottom: coords.bottom }}
+              className="z-[60] flex w-max items-center gap-1 rounded-card border border-line bg-surface-3 p-1.5 shadow-lg"
+            >
+              <button
+                type="button"
+                title="None"
+                aria-label="No color"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(null)}
+                className="flex h-6 w-6 items-center justify-center rounded text-xs text-ink-subtle ring-1 ring-line hover:text-ink"
+              >
+                ✕
+              </button>
+              {COLOR_NAMES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title={c}
+                  aria-label={c}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(c)}
+                  className={`h-6 w-6 rounded ring-1 ring-line ${
+                    current === c ? "ring-2 ring-ink" : ""
+                  }`}
+                  style={{ backgroundColor: swatchHex(kind, c) }}
+                />
+              ))}
+              {/* The owner's own accent as a tenth highlight ("My highlight").
+                  Highlight-only: an accent TEXT color is a different thing and
+                  wasn't asked for. Separated by a divider because it isn't one
+                  of the nine literals — it tracks the accent in settings, so
+                  this swatch changes color when that does. Labeled, per the
+                  scope-the-UI rule: an unexplained tenth swatch reads as a bug. */}
+              {kind === "highlight" && (
+                <>
+                  <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
+                  <button
+                    type="button"
+                    title="My highlight (your accent color from Settings)"
+                    aria-label="My highlight"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pick(ACCENT_HIGHLIGHT)}
+                    className={`h-6 w-6 rounded ring-1 ring-line ${
+                      current === ACCENT_HIGHLIGHT ? "ring-2 ring-ink" : ""
+                    }`}
+                    style={{
+                      backgroundColor: ACCENT_HIGHLIGHT_BG,
+                      // A gradient accent shows as a gradient here too; layout.tsx
+                      // sets this var only when the owner picked one.
+                      backgroundImage: "var(--accent-highlight-image, none)",
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  );
 }
 
 // A viewport rect → coordinates inside `wrap` (which must be position:relative).
@@ -986,7 +1180,7 @@ export default function MarkdownEditor({
     );
   }
 
-  // Takes the wider HighlightColor because it shares `swatchControl` with the
+  // Takes the wider HighlightColor because it shares `SwatchControl` with the
   // highlight picker. The accent is a highlight-only value, and that picker
   // renders its swatch only for kind === "highlight", so it can't arrive here;
   // the guard makes that explicit rather than silently setting a bad attribute.
@@ -1021,146 +1215,6 @@ export default function MarkdownEditor({
   // (ADR-155). Replaces the OS-native <select>s, which read as foreign chrome
   // in the toolbar. `hex` is the color's text stroke for the "color" kind and
   // its highlight fill for the "highlight" kind.
-  const swatchHex = (kind: "color" | "highlight", c: HighlightColor) =>
-    c === ACCENT_HIGHLIGHT
-      ? ACCENT_HIGHLIGHT_BG
-      : kind === "color"
-        ? BLOCKNOTE_COLORS[c].text
-        : BLOCKNOTE_COLORS[c].background;
-  const swatchControl = (
-    kind: "color" | "highlight",
-    current: string,
-    onPick: (c: HighlightColor | null) => void
-  ) => {
-    const open = openSwatch === kind;
-    const title = kind === "color" ? "Text color" : "Highlight";
-    // Mobile: the formatting bar is a horizontally-scrolling strip pinned above
-    // the keyboard, so an absolutely-positioned popover would be clipped by the
-    // scroll container (overflow-x:auto forces overflow-y:auto) and would open
-    // down into the keyboard. Fall back to a native <select> — the OS picker is
-    // unclipped, keyboard-safe, and idiomatic on touch. Desktop gets the swatch
-    // popover below.
-    if (!isDesktop) {
-      return (
-        <select
-          title={title}
-          aria-label={title}
-          className="h-7 rounded-md bg-surface-2 px-1 text-sm text-ink-muted"
-          value={current}
-          onChange={(e) => onPick((e.target.value || null) as HighlightColor | null)}
-        >
-          <option value="">{title}</option>
-          {COLOR_NAMES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-          {kind === "highlight" && (
-            <option value={ACCENT_HIGHLIGHT}>my highlight</option>
-          )}
-        </select>
-      );
-    }
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          title={title}
-          aria-label={title}
-          aria-haspopup="true"
-          aria-expanded={open}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setOpenSwatch(open ? null : kind)}
-          className={toolbarBtnClass(open || !!current)}
-        >
-          <span className="flex items-center gap-1">
-            {kind === "color" ? (
-              <span className="text-sm font-semibold leading-none">A</span>
-            ) : (
-              <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{TOOLBAR_ICONS.highlight}</span>
-            )}
-            <span
-              className="h-1 w-3.5 rounded-full"
-              style={{
-                backgroundColor: current
-                  ? swatchHex(kind, current as BlockNoteColor)
-                  : "var(--line-strong, #444)",
-              }}
-            />
-          </span>
-        </button>
-        {open && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onMouseDown={() => setOpenSwatch(null)}
-            />
-            <div className="absolute right-0 top-full z-50 mt-1 flex w-max items-center gap-1 rounded-card border border-line bg-surface-3 p-1.5 shadow-lg sm:left-0 sm:right-auto">
-              <button
-                type="button"
-                title="None"
-                aria-label="No color"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onPick(null);
-                  setOpenSwatch(null);
-                }}
-                className="flex h-6 w-6 items-center justify-center rounded text-xs text-ink-subtle ring-1 ring-line hover:text-ink"
-              >
-                ✕
-              </button>
-              {COLOR_NAMES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  title={c}
-                  aria-label={c}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    onPick(c);
-                    setOpenSwatch(null);
-                  }}
-                  className={`h-6 w-6 rounded ring-1 ring-line ${
-                    current === c ? "ring-2 ring-ink" : ""
-                  }`}
-                  style={{ backgroundColor: swatchHex(kind, c) }}
-                />
-              ))}
-              {/* The owner's own accent as a tenth highlight ("User Highlight").
-                  Highlight-only: an accent TEXT color is a different thing and
-                  wasn't asked for. Separated by a divider because it isn't one
-                  of the nine literals — it tracks the accent in settings, so
-                  this swatch changes color when that does. Labeled, per the
-                  scope-the-UI rule: an unexplained tenth swatch reads as a bug. */}
-              {kind === "highlight" && (
-                <>
-                  <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
-                  <button
-                    type="button"
-                    title="My highlight (your accent color from Settings)"
-                    aria-label="My highlight"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      onPick(ACCENT_HIGHLIGHT);
-                      setOpenSwatch(null);
-                    }}
-                    className={`h-6 w-6 rounded ring-1 ring-line ${
-                      current === ACCENT_HIGHLIGHT ? "ring-2 ring-ink" : ""
-                    }`}
-                    style={{
-                      backgroundColor: ACCENT_HIGHLIGHT_BG,
-                      // A gradient accent shows as a gradient here too; layout.tsx
-                      // sets this var only when the owner picked one.
-                      backgroundImage: "var(--accent-highlight-image, none)",
-                    }}
-                  />
-                </>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
-
   // List nesting (the mobile Tab-key replacement). Bullet/ordered lists nest
   // their `listItem`; the GFM checklist nests `taskItem` (configured nested:true
   // above). Pick the node type from the active list so one pair of buttons
@@ -1398,8 +1452,26 @@ export default function MarkdownEditor({
             {(showColor || showHighlight || showSlide || showComment) && (
               <div className="flex items-center gap-0.5">
                 {(visibleGroups.length > 0 || hasInsert) && sep}
-                {showColor && swatchControl("color", toolbar.textColor, setColor)}
-                {showHighlight && swatchControl("highlight", toolbar.highlight, setHighlight)}
+                {showColor && (
+                  <SwatchControl
+                    kind="color"
+                    current={toolbar.textColor}
+                    onPick={setColor}
+                    open={openSwatch === "color"}
+                    onToggle={() => setOpenSwatch(openSwatch === "color" ? null : "color")}
+                    isDesktop={isDesktop}
+                  />
+                )}
+                {showHighlight && (
+                  <SwatchControl
+                    kind="highlight"
+                    current={toolbar.highlight}
+                    onPick={setHighlight}
+                    open={openSwatch === "highlight"}
+                    onToggle={() => setOpenSwatch(openSwatch === "highlight" ? null : "highlight")}
+                    isDesktop={isDesktop}
+                  />
+                )}
                 {showSlide && (
                   <ToolbarButton
                     icon={TOOLBAR_ICONS.slide}
