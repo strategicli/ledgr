@@ -103,6 +103,11 @@
   --selection-bg: color-mix(in srgb, var(--accent) 40%, transparent);
   --selection-ink: #ffffff;
 
+  /* Highlighted text (the `mark` rules further down). Same reasoning as
+     --selection-ink: a highlight should make text easier to read, not merely
+     put a color behind it. */
+  --mark-ink: #ffffff;
+
   /* One unified card radius (10px) so panels, rows, and menus agree. */
   --radius-card-px: 0.625rem;
 
@@ -168,6 +173,7 @@
   /* Alpha over white stays pale, so light mode selects to dark ink. */
   --selection-bg: color-mix(in srgb, var(--accent) 22%, transparent);
   --selection-ink: #101010;
+  --mark-ink: #101010;
   /* Canvas-section skin vars (defined further down) flip too. */
   --cs-card: #f7f7f6;
   --cs-border: #e6e4e1;
@@ -274,19 +280,41 @@ body {
   }
 }
 
-/* A highlight is a BACKGROUND mark; it must never claim the foreground. The UA
-   stylesheet gives <mark> its own `color` (black), and an element's own color
-   beats one inherited from an ancestor — so a highlight applied over colored text
-   (`<span style="color:red"><mark>verse</mark></span>`) silently turned that text
-   black. The editor emits only `background-color` on a mark (extensions.ts), so
-   this one rule is all that stood between "highlight layers over color" and
-   "highlight destroys color".
+/* A highlight brightens its own text, and still never overrides text that
+   carries a color of its own. Those are two rules, and the order matters.
 
-   Load-bearing for the booth export (src/lib/editor/booth-export.ts), where a
-   highlight means "put this on the screen" and has to coexist with the text color
-   that means "this is Scripture". Same fix lives in print-html.ts's HL_CSS, which
-   is a separate self-contained stylesheet. Don't drop either one. */
+   The old rule here was a flat `mark { color: inherit }`, for a good reason kept
+   below. But "inherit" meant highlighted text sat at whatever the surrounding
+   prose was — a muted `--foreground`, or `#a3a3a3` inside a blockquote
+   (markdown-editor.css) — so highlighting text made it no easier to read than
+   the line above it, which is the opposite of what a marker pen is for
+   (Tyler, 2026-09-09, first noticed on a highlight inside a quote).
+
+   THE RULE THAT STAYS, and why it can't just be deleted: the UA stylesheet gives
+   <mark> its own `color` (black), and an element's own color beats one inherited
+   from an ancestor — so a highlight over colored text
+   (`<span style="color:red"><mark>verse</mark></span>`) silently turned that
+   verse black. A highlight owns the FILL channel. It is load-bearing for the
+   booth export (src/lib/editor/booth-export.ts), where a highlight means "put
+   this on the screen" and has to coexist with the text color that means "this is
+   Scripture": repainting Scripture would destroy the distinction the preacher is
+   reading from.
+
+   So the claim is narrowed rather than dropped. A bare highlight takes the
+   bright ink; a highlight anywhere inside a text-color span goes back to
+   inheriting, so the color wins. The other nesting order
+   (`<mark><span style="color:red">`) needs no rule: the span's own inline style
+   already beats the mark's. The editor emits text color as exactly
+   `<span style="color:#hex">` (extensions.ts), which is what the attribute
+   selector matches.
+
+   The self-contained print/share/offline document (print-html.ts's HL_CSS)
+   deliberately does NOT get this: it prints black-on-white, where bright ink
+   would come out invisible on paper. Its `color:inherit` stays. */
 mark {
+  color: var(--mark-ink);
+}
+span[style*="color"] mark {
   color: inherit;
 }
 

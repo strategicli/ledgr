@@ -25,6 +25,7 @@ import {
   type UiDensity,
   type UserSettings,
 } from "@/lib/settings";
+import { accentHighlightImageCss } from "@/lib/colors";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
 import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import AiMemoryLearnMore from "@/components/settings/AiMemoryLearnMore";
@@ -138,9 +139,21 @@ export default function SettingsForm({
   // Push the chosen accent to the live CSS vars: `--accent` is always a solid
   // (so text/borders/glows stay valid); `--accent-gradient` is the gradient when
   // one is picked, else the same solid.
+  //
+  // `--accent-highlight-image` has to move with them (ADR-250). It is the image
+  // channel of the accent highlight, and for a GRADIENT accent it is the only
+  // layer you can actually see, painting over the `background-color` underneath.
+  // Leaving it out here is what made changing your accent look like it did
+  // nothing: `--accent` updated instantly, the highlight kept the gradient the
+  // server wrote at page load, and it only corrected on a full reload. These
+  // three vars are one setting; they get written together or the highlight lies.
   const applyAccent = (color: string, gradient: string | null) => {
     document.body.style.setProperty("--accent", color);
     document.body.style.setProperty("--accent-gradient", gradient ?? color);
+    document.body.style.setProperty(
+      "--accent-highlight-image",
+      gradient ? accentHighlightImageCss(gradient) : "none"
+    );
   };
 
   const applyTextSize = (size: TextSize) => {
