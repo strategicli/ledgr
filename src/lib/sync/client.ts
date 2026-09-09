@@ -409,13 +409,24 @@ export type HubConfig = {
   // reader going through `hubCadence` instead of quietly assuming a number.
   cadence?: HubCadence | "continuous" | "daily";
   fallback?: HubFallback;
-  // "Only when there are changes" (ADR-240). Off by default, so every hub
-  // written before this behaves exactly as it did. When on, the cadence stops
-  // being the schedule and becomes the IDLE HEARTBEAT: this peer's own
-  // changes go out as soon as they exist, and a quiet hub is contacted only
-  // once per cadence. That is what makes "continuous" affordable on a
-  // serverless hub, where every contact wakes a database that bills by the
-  // minute it stays awake.
+  // "Only when there are changes" (ADR-252, replacing ADR-240's reading of the
+  // same stored flag). Off by default, so every hub written before this
+  // behaves exactly as it did. When on, the cadence is the FASTEST this hub is
+  // contacted and this flag decides whether there is any reason to: a round
+  // with nothing of ours to send is skipped entirely, so a quiet week is a
+  // quiet week. "Hourly, only when there are changes" therefore means at most
+  // once an hour, and nothing at all on a day nobody touched anything.
+  //
+  // That is what makes a serverless hub affordable, because every contact
+  // wakes a database that then bills for a fixed idle tail whether the round
+  // trip carried work or not.
+  //
+  // The one thing it costs: changes made on ANOTHER copy cannot arrive while
+  // we stay quiet, since this machine has no way to know they exist until it
+  // asks. Right for a cloud archive that writes nothing; wrong for a second
+  // machine of yours, which is why the flag is per-hub. `maxSafeGapMs` is the
+  // backstop that keeps a long quiet spell from aging out of the hub's
+  // retention window.
   onChange?: boolean;
 };
 
@@ -443,26 +454,55 @@ export function hubOnChange(h: Pick<HubConfig, "onChange">): boolean {
 }
 
 /**
- * Should an "only when there are changes" hub be contacted right now, even
- * though its cadence is not up? Pure, so the rule is checkable without a
- * database or a network.
+ * The longest a peer may go without exchanging at all, in minutes.
  *
- * The failure clause is the important one. A hub that is currently FAILING
- * must never be woken early by pending changes, because a change the hub
- * cannot accept is pending forever — which is precisely the loop that held a
- * serverless database awake around the clock on 2026-08-30. When a hub is
- * failing, the ADR-239 backoff wins and this rule stands down.
+ * One number, two jobs. It is the ceiling the cadence picker enforces
+ * (`cadenceRefusal`), and it is the backstop that overrides "only when there
+ * are changes" (`quietSkip`) — because both are the same question: how long
+ * can this peer stay silent and still catch up rather than needing a full
+ * re-fill? The hub holds a peer's place in the oplog for `grace_days`, and the
+ * rule is that you must be able to miss ONE check and still be inside the
+ * window, so the answer is half of it, capped at the weekly preset.
  */
-export function onChangeDue(opts: {
+export function maxSafeGapMinutes(graceDays = HOLD_GRACE_DAYS_DEFAULT): number {
+  return Math.min(CADENCE_WEEKLY_MINUTES, (graceDays / 2) * 1440);
+}
+export function maxSafeGapMs(graceDays = HOLD_GRACE_DAYS_DEFAULT): number {
+  return maxSafeGapMinutes(graceDays) * 60_000;
+}
+
+/**
+ * Should an "only when there are changes" hub be left alone this round, even
+ * though its cadence IS up? Pure, so the rule is checkable without a database
+ * or a network.
+ *
+ * ADR-252 turned ADR-240's reading of the flag around. The cadence is now the
+ * fastest this hub is contacted, not the slowest, and this is the gate that
+ * decides whether a due round happens at all. Nothing of ours to send means
+ * nothing to say, and saying nothing is the entire saving: an empty round trip
+ * wakes a serverless hub's database for its full idle tail.
+ *
+ * Two clauses stop the quiet from becoming a different bug:
+ *
+ *   - A FAILING hub is never skipped. Its retries are already spaced by the
+ *     ADR-239 backoff, and skipping them would leave a broken hub reporting
+ *     itself fine, with no attempt that could ever clear the error.
+ *   - A hub nobody has spoken to in `maxSafeGapMs` is never skipped. Silence
+ *     past that ages this peer out of the hub's retention window (ADR-208),
+ *     which costs a full re-fill instead of a catch-up. A fortnight away is
+ *     exactly the ordinary case that would otherwise walk into it.
+ */
+export function quietSkip(opts: {
   onChange: boolean;
   hasLocalChanges: boolean;
   consecutiveFails: number;
   msSinceLastExchange: number;
-  debounceMs: number;
+  livenessFloorMs: number;
 }): boolean {
-  if (!opts.onChange || !opts.hasLocalChanges) return false;
+  if (!opts.onChange) return false;
+  if (opts.hasLocalChanges) return false;
   if (opts.consecutiveFails > 0) return false;
-  return opts.msSinceLastExchange >= opts.debounceMs;
+  return opts.msSinceLastExchange < opts.livenessFloorMs;
 }
 
 /** How long between exchanges with a hub on this cadence. `continuousMs` is
@@ -502,8 +542,10 @@ export function cadenceRefusal(minutes: HubCadence, graceDays = HOLD_GRACE_DAYS_
   // so that a widened `grace_days` cannot open a gap wider than `hubCadence`
   // will read back. Otherwise the picker would accept a value the reader
   // silently clamps, which is the same class of quiet disagreement this whole
-  // guardrail exists to prevent.
-  const maxMinutes = Math.min(CADENCE_WEEKLY_MINUTES, (graceDays / 2) * 1440);
+  // guardrail exists to prevent. Shared with `quietSkip`'s backstop (ADR-252),
+  // so the dropdown and the on-changes gate can never disagree about how long
+  // silence is safe.
+  const maxMinutes = maxSafeGapMinutes(graceDays);
   if (minutes <= maxMinutes) return null;
   const maxDays = maxMinutes / 1440;
   const gap = maxDays >= 1 ? `${Math.floor(maxDays)} days` : `${Math.round(maxDays * 24)} hours`;
@@ -1379,21 +1421,24 @@ async function exchange(
           })
         : 0;
     rt.nextDueAt = clampNextDue(rt.nextDueAt, now, cadenceMs, retryFloorMs);
-    if (rt.nextDueAt > now) {
-      // "Only when there are changes" (ADR-240): the cadence is this hub's
-      // idle heartbeat, not its schedule, so our own unsent changes bring the
-      // exchange forward. One cheap LOCAL read decides it; nothing is sent
-      // over the wire to find out there was nothing to send.
-      if (!hubOnChange(hub)) continue;
+    // The cadence is the fastest this hub is contacted. Nothing overrides it
+    // but the owner's own check-in button, which zeroes the due time above.
+    if (rt.nextDueAt > now) continue;
+    // "Only when there are changes" (ADR-252): the round is due, so now decide
+    // whether there is anything worth waking this hub for. One cheap LOCAL
+    // read decides it; nothing is sent over the wire to find out there was
+    // nothing to send. A fresh process has `lastExchangeAt` at 0, so it always
+    // exchanges once on startup, which is what it did before this gate too.
+    if (hubOnChange(hub)) {
       const cursor = await readCursor(hub.url);
-      const due = onChangeDue({
+      const skip = quietSkip({
         onChange: true,
         hasLocalChanges: cursor.push < maxLocalSeq,
         consecutiveFails: rt.consecutiveFails,
         msSinceLastExchange: now - rt.lastExchangeAt,
-        debounceMs: guard.continuousMs,
+        livenessFloorMs: maxSafeGapMs(),
       });
-      if (!due) continue;
+      if (skip) continue;
     }
     rt.lastExchangeAt = now;
     const pull = shouldPullFrom(hub, approval?.url ?? null);

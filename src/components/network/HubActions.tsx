@@ -25,11 +25,11 @@ const CADENCE_HELP =
   "Continuously exchanges every few seconds, which is right for another machine of yours. A longer gap suits a copy you keep as an archive, and means it can be that far behind: falling back to it loses everything since its last exchange. Once a week is the longest gap offered, because a copy that misses two checks in a row can no longer catch up and needs everything sent to it again.";
 const FALLBACK_HELP =
   "Automatically means this machine reads from that copy without asking. Ask me first means it only sends changes there; if every automatic copy goes down it will ask before it starts reading from this one, because reading a stale copy makes everything look fresher than it is.";
-// ADR-240. Stated as what it buys, not as what it toggles: the point is that a
+// ADR-252. Stated as what it buys, not as what it toggles: the point is that a
 // copy hosted in the cloud costs money for every minute its database is awake,
 // and checking in with nothing to say costs the same as checking in with work.
 const ON_CHANGE_HELP =
-  "Only when there are changes sends your edits the moment you make them, instead of waiting for the next check. The setting above then becomes the slowest this copy will ever go without hearing from you, rather than a fixed schedule. Turn it on for a copy hosted in the cloud, where an empty check-in still wakes the database and still costs you.";
+  "Only when there are changes skips a check with nothing to send. The setting above still says how often to check at most, and this decides whether the check is worth making, so a day you do not touch Ledgr costs nothing at all. Turn it on for a copy hosted in the cloud, where an empty check-in wakes the database and costs you the same as a useful one. Leave it off for another machine of yours, because a copy that stays quiet cannot hear about changes made anywhere else.";
 
 export function AddHub() {
   const router = useRouter();
