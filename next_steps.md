@@ -2,6 +2,14 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — highlighted text is bright now, and changing your accent updates highlights live (2026-09-09, ADR-251)
+
+Two follow-ups to ADR-250, both reported by Tyler within minutes of it going live.
+
+**The bug I shipped:** changing your accent in Settings appeared to do nothing to existing highlights. `applyAccent` (`SettingsForm.tsx`) pushes the accent onto `<body>` live so the app re-skins without a reload, and it wrote `--accent` and `--accent-gradient` but not the `--accent-highlight-image` ADR-250 had just added. For a gradient accent that image is the only visible layer, so the highlight kept the gradient the server wrote at page load and only corrected on a full reload. Tyler is on a gradient accent, which is the case where the symptom is total. All three vars are one setting and are now written together, with a check that fails if they diverge again.
+
+**The ask:** highlighted text stayed the muted prose gray, `#a3a3a3` inside a blockquote (which is where he noticed it), so highlighting made text no easier to read. `mark` now takes a bright `--mark-ink`. The old `mark { color: inherit }` is narrowed rather than deleted: it existed because the UA gives `<mark>` a black color that beats inherited color, so a highlight over colored text repainted it, which matters for the booth export where a text color means "this is Scripture". A highlight inside a text-color span still inherits that color; a bare one takes the bright ink. The print/offline document is deliberately excluded, since bright ink on paper is invisible.
+
 ## ✅ SHIPPED — your own accent is now a highlight you can use on text (2026-09-09, ADR-250, branch `feat/accent-highlight`)
 
 Tyler asked for the accent he picks in Settings to be available as a highlight in the editor, so the marker pen matches the app. One extra swatch at the end of the highlight row, labeled **My highlight**, separated from the nine literals by a divider because it behaves differently from them.

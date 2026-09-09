@@ -110,6 +110,42 @@ check(
   accentHighlightImageCss(grad),
 );
 
+// --- the wiring around the accent highlight, scanned in source ------------
+// These three are source scans rather than behavior tests because each one is a
+// bug that TYPECHECKS, passes every other check here, and is only visible by
+// looking at the running app. Two of them already shipped once.
+const { readFileSync } = await import("node:fs");
+const settingsForm = readFileSync("src/components/settings/SettingsForm.tsx", "utf8");
+const globalsCss = readFileSync("src/app/globals.css", "utf8");
+const printHtml = readFileSync("src/lib/print-html.ts", "utf8");
+
+// SHIPPED BUG (2026-09-09): applyAccent wrote --accent and --accent-gradient
+// live but not --accent-highlight-image, so changing your accent appeared to do
+// nothing to existing highlights until a full page reload. For a gradient accent
+// the image is the only layer you can see. The three vars are one setting.
+const applyAccent = settingsForm.slice(
+  settingsForm.indexOf("const applyAccent"),
+  settingsForm.indexOf("const applyTextSize"),
+);
+for (const v of ["--accent", "--accent-gradient", "--accent-highlight-image"]) {
+  check(`applyAccent writes ${v} live`, applyAccent.includes(`"${v}"`));
+}
+
+// A highlight brightens its own text, but must never repaint text that carries
+// a color of its own (the booth export reads that color as "this is Scripture").
+check("mark takes the bright ink", /mark\s*\{[^}]*color:\s*var\(--mark-ink\)/.test(globalsCss));
+check(
+  "a highlight inside a text-color span still inherits that color",
+  /span\[style\*="color"\]\s+mark\s*\{[^}]*color:\s*inherit/.test(globalsCss),
+);
+
+// The print/share/offline document prints black-on-white, so bright ink there
+// would come out invisible on paper. Its highlights keep color:inherit.
+check(
+  "the print shell's highlights do NOT take the bright ink",
+  printHtml.includes("color:inherit") && !printHtml.includes("--mark-ink"),
+);
+
 // --- mention link: encode → decode -----------------------------------------
 const id = "9f8c2b14-0000-4abc-8def-112233445566";
 const md = mentionToMarkdown(id, "Elder Meeting");
