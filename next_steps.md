@@ -2,6 +2,14 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — selected text stayed dim inside the selection band (2026-09-08, branch `fix/selection-text-contrast`)
+
+Nothing in the app ever styled `::selection`, so the browser default painted a band behind the text and left the text at its own color. Selecting muted prose (`--ink-muted`, `text-neutral-400`) left it a light gray on the band and harder to read than the unselected line above it, which Tyler hit while reading a note.
+
+One rule in `src/app/globals.css` now pins selected text to full-strength white and tints the band with the owner's accent at 40%. It styles from the token layer (ADR-141) rather than hardcoding: two new semantic tokens, `--selection-bg` and `--selection-ink`, defined in `:root` and flipped in `.light` (alpha over white stays pale, so light mode selects to dark ink, ready for whenever light mode lands). Alpha over a dark page always lands mid-dark, so white stays legible whatever accent the owner picks.
+
+A Tailwind `selection:*` utility on a subtree still wins on specificity, so a surface can opt out; the `/items/[id]/markdown` source view already sets its own selection background and keeps it, now with readable text on top. Verified in the compiled stylesheet Turbopack serves, not just the source. No ADR (UI polish, not core) and no user-guide change (nothing the owner can do changed).
+
 ## ✅ SHIPPED — the word count is per tab on a tabbed note (2026-09-02, branch `fix/word-count-per-tab`)
 
 The canvas chrome (top-right on desktop, the ⋯ menu everywhere) used to count the whole body even when the note was split into canvas tabs (ADR-095), which threw Tyler off since he works tab by tab. Now a tabbed body counts only the ACTIVE tab and says so: "142 words (this tab)". Untabbed notes, widget-home records (the composed count, ADR-197), and Source/Preview modes (which show the whole document) are unchanged. Mechanism: `TabbedBody` publishes the active section into the existing `word-count.ts` store with a `perTab` flag after each commit and tab switch (last publish wins over `ItemEditor`'s whole-body publish from the same change); `ItemCanvas` seeds the server count from the first tab so there is no whole-doc flash at load. Not core: no schema, body format, or API change. `verify-word-count.mts` covers the tab-scoped publish.
