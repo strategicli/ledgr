@@ -65,8 +65,9 @@ export default function ClipperSetup({ origin }: { origin: string }) {
       </div>
 
       <p className="text-xs leading-relaxed text-neutral-500">
-        Then click it on any page to save it (with its readable content, images
-        stripped) to your Inbox. It briefly opens a small Ledgr popup to do the
+        Then click it on any page to save it, with its readable content and its
+        images stripped, wherever you routed the Web clipper above. It briefly
+        opens a small Ledgr popup to do the
         save (which also works around sites that block cross-site requests, e.g.
         YouTube) — allow pop-ups for it if your browser asks. If you&rsquo;re not
         signed in to Ledgr, that popup asks you to sign in the first time, then

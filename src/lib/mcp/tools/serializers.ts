@@ -68,8 +68,10 @@ export function typeView(t: TypeDefinition) {
   };
 }
 
-// One view's definition — the list_views shape plus columns/dateProperty, so
-// create_view/update_view echo the full stored view.
+// One view's definition — the list_views shape plus columns/dateProperty/display,
+// so create_view/update_view echo the full stored view. `display` is echoed
+// because update_view REPLACES wholesale: without it in the read, an update
+// would silently wipe a view's calendar mode, grain, or custom-date placement.
 export function viewView(v: ViewDefinition) {
   return {
     id: v.id,
@@ -81,6 +83,7 @@ export function viewView(v: ViewDefinition) {
     grouping: v.grouping,
     columns: v.columns,
     dateProperty: v.dateProperty,
+    display: v.display,
   };
 }
 

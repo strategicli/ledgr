@@ -16,6 +16,7 @@ import { getSettings } from "@/lib/settings";
 import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
 import { attachmentTools } from "./attachments";
+import { calendarTools } from "./calendar";
 import { contextTools, LIVE_CONTEXT_TOOL_NAMES } from "./context";
 import { dashboardTools } from "./dashboards";
 import { itemTools } from "./items";
@@ -37,6 +38,7 @@ const TOOLS: McpTool[] = [
   ...taskTools,
   ...recordTools,
   ...attachmentTools,
+  ...calendarTools,
   ...typeTools,
   ...relationTools,
   ...viewTools,

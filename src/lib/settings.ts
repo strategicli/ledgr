@@ -333,6 +333,12 @@ export type UserSettings = {
   // An absent key defaults to on (see NOTIFICATION_KINDS / notificationEnabled),
   // so a new source is on until the owner turns it off. Additive, no migration.
   notificationPrefs: Record<string, boolean>;
+  // Where each arrival path lands (ADR-249). Keyed by source (see
+  // INBOX_SOURCES in src/lib/inbox-sources.ts), value is ONE string: "inbox",
+  // "filed", or a project's id. An absent key = that source's default route,
+  // so a fresh instance keeps the old always-Inbox behavior. Keys are free
+  // text, like notifications.kind, so a new source needs no migration.
+  inboxRoutes: Record<string, string>;
   // The owner's IANA timezone (e.g. "America/Chicago"), defining every "today"
   // boundary and the wall-clock of every displayed time. null = follow the
   // server default (the LEDGR_TIMEZONE env var, else America/New_York), which is
@@ -435,6 +441,20 @@ function parseNotificationPrefs(raw: unknown): Record<string, boolean> {
   return out;
 }
 
+// Keep only routable values: the two mode words, or a project id. Any other
+// value is dropped, and the source falls back to its default in routeFor.
+function parseInboxRoutes(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== "string") continue;
+    if (value === "inbox" || value === "filed" || SETTINGS_UUID_RE.test(value)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 // Type keys offered as tools on widget-home records (slug-shaped, deduped,
 // bounded — a malformed entry is dropped, not rejected).
 function parseToolTypes(raw: unknown): string[] {
@@ -494,6 +514,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   tocPinnedItems: [],
   relatedLensChoices: {},
   notificationPrefs: {},
+  inboxRoutes: {},
   timezone: null,
   aiMemoryEnabled: false,
   liveContextEnabled: false,
@@ -506,7 +527,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   youtubeTranscripts: { enabled: false },
 };
 
-const SETTINGS_UUID_RE =
+export const SETTINGS_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Validate one destination, returning null if it's unusable. An unknown icon
@@ -727,6 +748,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const tocPinnedItems = parseItemIdList(r.tocPinnedItems, TOC_PINNED_HARD_CAP);
   const relatedLensChoices = parseRelatedLensChoices(r.relatedLensChoices);
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
+  const inboxRoutes = parseInboxRoutes(r.inboxRoutes);
   const timezone =
     typeof r.timezone === "string" && isValidTimezone(r.timezone)
       ? r.timezone
@@ -784,6 +806,7 @@ export function parseSettings(raw: unknown): UserSettings {
     tocPinnedItems,
     relatedLensChoices,
     notificationPrefs,
+    inboxRoutes,
     timezone,
     aiMemoryEnabled,
     liveContextEnabled,

@@ -293,7 +293,7 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   const applySrc = readFileSync("src/lib/sync/apply.ts", "utf8");
   check(
     "apply wires the plan and runs items deletes as one statement",
-    applySrc.includes("planActions(") && applySrc.includes("delete from items where id = any(")
+    applySrc.includes("planActions(") && applySrc.includes("where items.id = any(")
   );
 }
 
@@ -516,12 +516,14 @@ async function readWireOps(p: Peer, sinceSeq: number, excludeOrigin: string): Pr
 }
 
 // One direction of the real exchange: from's ops applied onto to, through the
-// real engine+apply (transactions + the origin GUC, node-postgres path).
-async function exchangeOnce(from: Peer, to: Peer): Promise<number> {
+// real engine+apply. `transactions` picks the driver shape: true is the
+// node-postgres path (one transaction, SET LOCAL), false is what neon-http
+// gets (statement by statement, the origin carried inside each statement).
+async function exchangeOnce(from: Peer, to: Peer, transactions = true): Promise<number> {
   const since = to.cursors.get(from.name) ?? 0;
   const ops = await readWireOps(from, since, to.deviceId);
   if (ops.length === 0) return 0;
-  const res = await applySyncOps(ops, { db: to.db, transactions: true });
+  const res = await applySyncOps(ops, { db: to.db, transactions });
   to.cursors.set(from.name, ops[ops.length - 1].seq);
   return res.actions;
 }
@@ -767,6 +769,53 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
         sa.accent === "#0d9488" && sb.accent === "#0d9488",
         `A=${sa.accent} B=${sb.accent}`
       );
+    }
+
+    // ── Sessionless apply still stamps the origin (ADR-248) ────────────────
+    // The cloud runs neon-http, which has no session, so `SET LOCAL
+    // ledgr.sync_origin` never reached the oplog trigger there: every applied
+    // write was logged as the cloud's OWN, and the next body from the same
+    // peer then read as a two-device conflict — a junk revision plus a
+    // syncBodyMerged flag on every single synced save. Sequential edits on one
+    // device must cross a sessionless apply leaving neither behind.
+    {
+      const N = "55555555-0000-4000-8000-000000000001";
+      await A.query(
+        `insert into items (id, owner_id, type, title, body) values ($1, $2, 'note', 'origin probe', $3)`,
+        [N, OWNER, JSON.stringify({ format: "markdown", text: "draft 1" })]
+      );
+      await exchangeOnce(A, B, false);
+      for (const text of ["draft 2", "draft 3", "draft 4"]) {
+        await A.query(`update items set body = $2 where id = $1`, [
+          N,
+          JSON.stringify({ format: "markdown", text }),
+        ]);
+        await exchangeOnce(A, B, false);
+      }
+      const ops = await B.query(
+        `select count(*)::int as n from sync_ops
+         where row_id = $1 and origin_device_id is distinct from $2`,
+        [N, A.deviceId]
+      );
+      check(
+        "a sessionless apply stamps origin_device_id on every op it writes",
+        Number(ops.rows[0].n) === 0,
+        `${ops.rows[0].n} op(s) on B carry the wrong origin`
+      );
+      const noise = await B.query(
+        `select (select count(*)::int from revisions where item_id = $1) as revs,
+                (select properties ->> 'syncBodyMerged' from items where id = $1) as flag`,
+        [N]
+      );
+      check(
+        "sequential edits on one device leave no phantom conflict behind",
+        Number(noise.rows[0].revs) === 0 && noise.rows[0].flag === null,
+        `revisions=${noise.rows[0].revs} syncBodyMerged=${noise.rows[0].flag}`
+      );
+      const body = await B.query(`select body ->> 'text' as t from items where id = $1`, [N]);
+      check("and the last edit is what landed", body.rows[0]?.t === "draft 4", `${body.rows[0]?.t}`);
+      await A.query(`delete from items where id = $1`, [N]);
+      await exchangeOnce(A, B, false);
     }
 
     // ── FK-inversion family delete (ADR-206 addendum 7) ────────────────────

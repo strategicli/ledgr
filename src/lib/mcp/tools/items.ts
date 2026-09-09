@@ -350,7 +350,8 @@ export const itemTools: McpTool[] = [
       "Friday' (type=task, title, dueDate), or capture a note. Body is markdown " +
       "(bodyMarkdown). Use relateTo to link the new item to existing items by id " +
       "(e.g. relate a task to a person). Items default to filed (not in " +
-      "the inbox); set inbox=true to capture for later triage. Call list_types " +
+      "the inbox) unless the owner routed Claude's captures elsewhere in their " +
+      "Capture settings; set inbox=true to capture for later triage. Call list_types " +
       "first if unsure which type or custom properties exist. Pass parentId to " +
       "file it as a SUBTASK under another item. For a task that REPEATS, create " +
       "it first, then call set_recurrence on the new id.",
@@ -375,7 +376,8 @@ export const itemTools: McpTool[] = [
         urgency: { type: "number", enum: [...URGENCIES], description: "Priority 1–6 (tasks; 1 highest)." },
         url: { type: "string", description: "URL (links)." },
         properties: { type: "object", description: "Custom property values keyed by the type's property keys (see list_types)." },
-        inbox: { type: "boolean", description: "true = capture into the inbox for later triage; default false (filed)." },
+        inbox: { type: "boolean", description: "true = capture into the inbox for later triage; default false (filed). Beats `source` whenever both are sent." },
+        source: { type: "string", description: "Which arrival path this came from, when it isn't you: one of quick_capture, share_target, web_clipper, email_in, todoist, mention_create, ai_mcp. The owner's Capture settings say where each one files. Omit it and `inbox` both, and this lands wherever they route ai_mcp (filed, by default)." },
         relateTo: { type: "array", items: { type: "string" }, description: "Item ids to relate this new item to (confirmed edges)." },
       },
       required: ["type"],
@@ -383,7 +385,12 @@ export const itemTools: McpTool[] = [
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     handler: async (ownerId, args) => {
-      const raw = buildWriteRaw(args, ["type"], ["relateTo"]);
+      const raw = buildWriteRaw(args, ["type", "source"], ["relateTo"]);
+      // Name the arrival path when the caller named neither (ADR-249), so the
+      // owner can route what Claude files. Purely additive: a caller that sends
+      // `inbox` still wins outright, and ai_mcp defaults to filed, which is what
+      // an omitted `inbox` has always meant here.
+      if (raw.inbox === undefined && raw.source === undefined) raw.source = "ai_mcp";
       const input = parseItemPayload(raw, "create");
       const created = await createItem(ownerId, input);
       const relateTo = optUuidArray(args, "relateTo");

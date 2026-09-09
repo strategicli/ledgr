@@ -115,7 +115,8 @@ Press **q** or **+ New**. A capture card opens with a type picker.
 
 - **It defaults to "Unsorted",** not Task. Capture the thought now, decide what
   it is later.
-- **Everything lands in the Inbox** (\`/inbox\`) until you triage it.
+- **It lands in the Inbox** (\`/inbox\`) by default, until you triage it. Where
+  quick capture goes is yours to change at \`/build/capture\`.
 - **Type the details into the title.** "Call Bob tomorrow p1 every week" pulls
   out the date, the priority and the repeat rule, shows them as chips, and
   leaves the title clean. It understands "every other Tuesday", "first Sunday of
@@ -131,6 +132,16 @@ Press **q** or **+ New**. A capture card opens with a type picker.
 people inline, or open a row for a deeper pass. The nav badge counts what is
 waiting, and clears only when you actually triage.
 
+**The Inbox is optional, per arrival path.** \`/build/capture\` lists the seven
+ways things arrive without you filing them — quick capture, the phone share
+sheet, the web clipper, email in, Todoist, new items from an \`@\`-mention, and
+an AI assistant — and each one can queue in the Inbox, file itself straight
+away, or drop into a project. Six of them start in the Inbox; an AI assistant
+starts filed. Anything that asks you where it should go, like the task
+card's own picker, does what you picked and ignores the routing. When nothing
+routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
+— the page still works and is one click away from \`/build/capture\`.
+
 **Triage mode** (\`/inbox/triage\`) deals with a backlog one card at a time:
 **→** triaged, **←** trash, **↓** or **Space** skip, **Backspace** undo.
 
@@ -140,13 +151,15 @@ waiting, and clears only when you actually triage.
   Ledgr. A URL becomes a link item with the page's readable text; a text file
   becomes a transcript and asks which meeting it belongs to.
 - **From your desktop browser:** the web clipper bookmarklet saves the page's
-  article text into your Inbox as a link item. Drag it to your bookmarks bar
-  from **User Settings → Save from the web** — there is no token to generate
+  article text as a link item. Drag it to your bookmarks bar from **\`/build/capture\`
+  → Save from the web** — there is no token to generate
   and nothing to paste. Clicking it opens a small Ledgr popup that does the
   save; if you are not signed in, that popup asks you to, once. It is text
-  only; images are stripped.
+  only; images are stripped. Clipping the same page twice within a couple of
+  minutes lands on the item you already have (the popup says "Already in your
+  Inbox") instead of filing a second copy.
 - **By email:** put a message in the **"Ledgr Import"** folder in Outlook and it
-  becomes a note in your Inbox. Start the subject with **\`task:\`** and it becomes
+  becomes a note. Start the subject with **\`task:\`** and it becomes
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
 - **From your own app:** create a credential in **User Settings → API
@@ -609,6 +622,12 @@ whole project's history on one vertical line — meetings and milestones large,
 task completions, notes, and links as small ticks between them, month markers
 and a Today line down the spine. Scroll it to re-live the project.
 
+Three controls sit above the spine. **Group by** sets how much time each marker
+covers, from an hour out to five years. **Order** flips it to newest-first.
+**Show** switches whole collections off, so a year-old project can be read as
+just its meetings and milestones. They are plain links, so any combination is a
+URL you can bookmark or share.
+
 **The whole project as one markdown file:** ⋯ → **Markdown** on a project
 renders it as a single readable document — summary, people, milestones,
 meetings, clickable links, tasks with added/completed dates, and the timeline —
@@ -673,12 +692,23 @@ A view is a saved filter, sort and layout you reach by name. Build them at
 \`/build/views\`, run them at \`/views\`.
 
 - **Five layouts:** list, table, board, calendar, agenda.
+- **Read any list as a timeline.** Pick the calendar layout, then set **Default
+  view** to **History**: the same vertical spine as a project's review timeline,
+  over whatever the view holds. **Group by** sets the marker span (hour through
+  five years) and the view's sort **Direction** decides whether the newest sits
+  at the top. It works on any type, so a work log becomes a scrollable record of
+  what you did, filtered to one category if you like.
+- **Place items by your own date property.** The calendar and agenda **Date
+  field** now offers a type's own date properties beside the built-in ones, so a
+  type that keeps its date in a property (a log entry's Date, a journal's Date)
+  can finally land on a calendar, a timeline, or a History spine.
 - **Filter on anything,** including your own properties, with operators that fit
   the property kind.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
   filters.
 - **Sort by anything,** including priority and custom properties.
-- **Pick your columns** for list, table and agenda layouts.
+- **Pick your columns** for list, table and agenda layouts, and for a History
+  spine, where they become each entry's second line.
 - **Boards drag,** including on a phone with a long press.
 
 ## Dashboards
@@ -946,6 +976,13 @@ connected; that dead-end tab is the client closing its one-time listener.
   to fix the stage afterwards. It can also filter and list by a custom stage.
 - **Work with tasks** — break one into subtasks, set a repeat rule in plain
   words, tick a single date of a repeating task.
+- **Add a meeting off your calendar** — see your upcoming Outlook events that
+  are not in Ledgr yet and add one, exactly as the **Add** button on the
+  Calendar lens does. The added meeting keeps its attendees, join link and
+  calendar id, so calendar sync recognizes it later instead of making a second
+  copy. Use this rather than "create an event" whenever the meeting is really on
+  your calendar: "put next Monday's staff meeting in Ledgr and hang this agenda
+  item on it."
 - **Handle files** — attach by URL or upload, then embed in the body.
 - **Link things** — relate and unrelate items, and confirm suggested links.
 - **Build the workspace** — create and edit types, views and dashboards, add
