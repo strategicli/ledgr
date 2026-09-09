@@ -30,8 +30,11 @@ import {
   type FileDragPayload,
 } from "@/components/attachments/upload";
 import {
+  ACCENT_HIGHLIGHT,
+  ACCENT_HIGHLIGHT_BG,
   BLOCKNOTE_COLORS,
   type BlockNoteColor,
+  type HighlightColor,
 } from "@/lib/colors";
 import {
   EmptyListItemFix,
@@ -983,13 +986,18 @@ export default function MarkdownEditor({
     );
   }
 
-  const setColor = (color: BlockNoteColor | null) => {
+  // Takes the wider HighlightColor because it shares `swatchControl` with the
+  // highlight picker. The accent is a highlight-only value, and that picker
+  // renders its swatch only for kind === "highlight", so it can't arrive here;
+  // the guard makes that explicit rather than silently setting a bad attribute.
+  const setColor = (color: HighlightColor | null) => {
+    if (color === ACCENT_HIGHLIGHT) return;
     const chain = editor.chain().focus();
     if (color) chain.setMark("textColor", { color }).run();
     else chain.unsetMark("textColor").run();
   };
 
-  const setHighlight = (color: BlockNoteColor | null) => {
+  const setHighlight = (color: HighlightColor | null) => {
     const chain = editor.chain().focus();
     if (color) chain.setMark("highlight", { color }).run();
     else chain.unsetMark("highlight").run();
@@ -1013,12 +1021,16 @@ export default function MarkdownEditor({
   // (ADR-155). Replaces the OS-native <select>s, which read as foreign chrome
   // in the toolbar. `hex` is the color's text stroke for the "color" kind and
   // its highlight fill for the "highlight" kind.
-  const swatchHex = (kind: "color" | "highlight", c: BlockNoteColor) =>
-    kind === "color" ? BLOCKNOTE_COLORS[c].text : BLOCKNOTE_COLORS[c].background;
+  const swatchHex = (kind: "color" | "highlight", c: HighlightColor) =>
+    c === ACCENT_HIGHLIGHT
+      ? ACCENT_HIGHLIGHT_BG
+      : kind === "color"
+        ? BLOCKNOTE_COLORS[c].text
+        : BLOCKNOTE_COLORS[c].background;
   const swatchControl = (
     kind: "color" | "highlight",
     current: string,
-    onPick: (c: BlockNoteColor | null) => void
+    onPick: (c: HighlightColor | null) => void
   ) => {
     const open = openSwatch === kind;
     const title = kind === "color" ? "Text color" : "Highlight";
@@ -1035,12 +1047,15 @@ export default function MarkdownEditor({
           aria-label={title}
           className="h-7 rounded-md bg-surface-2 px-1 text-sm text-ink-muted"
           value={current}
-          onChange={(e) => onPick((e.target.value || null) as BlockNoteColor | null)}
+          onChange={(e) => onPick((e.target.value || null) as HighlightColor | null)}
         >
           <option value="">{title}</option>
           {COLOR_NAMES.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
+          {kind === "highlight" && (
+            <option value={ACCENT_HIGHLIGHT}>my highlight</option>
+          )}
         </select>
       );
     }
@@ -1109,6 +1124,36 @@ export default function MarkdownEditor({
                   style={{ backgroundColor: swatchHex(kind, c) }}
                 />
               ))}
+              {/* The owner's own accent as a tenth highlight ("User Highlight").
+                  Highlight-only: an accent TEXT color is a different thing and
+                  wasn't asked for. Separated by a divider because it isn't one
+                  of the nine literals — it tracks the accent in settings, so
+                  this swatch changes color when that does. Labeled, per the
+                  scope-the-UI rule: an unexplained tenth swatch reads as a bug. */}
+              {kind === "highlight" && (
+                <>
+                  <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
+                  <button
+                    type="button"
+                    title="My highlight (your accent color from Settings)"
+                    aria-label="My highlight"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onPick(ACCENT_HIGHLIGHT);
+                      setOpenSwatch(null);
+                    }}
+                    className={`h-6 w-6 rounded ring-1 ring-line ${
+                      current === ACCENT_HIGHLIGHT ? "ring-2 ring-ink" : ""
+                    }`}
+                    style={{
+                      backgroundColor: ACCENT_HIGHLIGHT_BG,
+                      // A gradient accent shows as a gradient here too; layout.tsx
+                      // sets this var only when the owner picked one.
+                      backgroundImage: "var(--accent-highlight-image, none)",
+                    }}
+                  />
+                </>
+              )}
             </div>
           </>
         )}

@@ -256,7 +256,14 @@ list, Numbered list, Checklist, Quote, Code block, Table, Divider, Toggle, and
 Four separate channels, so they can all sit on the same words at once.
 
 - **Text colour** — nine colours, from the "A" button.
-- **Highlight** — nine translucent washes, from the marker button.
+- **Highlight** — nine translucent washes, from the marker button, plus **My
+  highlight** at the end of the row: your own accent colour from Settings, so
+  the marker pen matches the rest of the app. It is a live reference, not a
+  fixed colour, so changing your accent in Settings restyles every "My
+  highlight" you have already made. If your accent is a gradient, the highlight
+  is that gradient. (Outside Ledgr, in a plain Markdown reader, it shows as
+  that reader's ordinary highlight; the Save Offline and PDF copies keep your
+  colour.)
 - **Slide mark** — "put this on the screen". Shows as a blue rule bracketing the
   span, and drives the presentation export.
 - **Comment** — a private note to yourself, anchored to the selected text.

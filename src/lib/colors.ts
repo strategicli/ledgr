@@ -39,6 +39,68 @@ export function isBlockNoteColor(name: unknown): name is BlockNoteColor {
   return typeof name === "string" && name in BLOCKNOTE_COLORS;
 }
 
+// The ACCENT highlight ("User Highlight", 2026-09-09): a tenth highlight whose
+// color is whatever accent the owner picked in settings, so the marker pen
+// matches the app. Highlight-only on purpose — it is NOT in BLOCKNOTE_COLORS,
+// because that table feeds the text-color picker and both value lookups too,
+// and an accent *text* color is a different (and unrequested) thing.
+//
+// It is the one palette value that is a LIVE REFERENCE rather than a literal:
+// the body stores `var(--accent)`, not the hex it resolved to on the day it was
+// typed, so re-picking an accent in settings restyles every existing accent
+// highlight. That is the whole point of the feature, and it is why this can't
+// just be a preset hex. The cost is that the value means nothing to a renderer
+// that doesn't define --accent (Obsidian, GitHub): there the `<mark>` degrades
+// to that renderer's own default highlight, still visibly highlighted, just not
+// in the owner's color. Ledgr's own offline/share/PDF document does NOT pay
+// that cost — print-html.ts resolves the accent server-side into a literal
+// rgba() so the Sunday-proof copy is self-contained (Principle 4).
+export const ACCENT_HIGHLIGHT = "accent";
+
+// The wash. Same 0.40 alpha family as the nine literal highlights, so an accent
+// highlight sits at the same weight as its neighbours, and alpha over the dark
+// canvas keeps text legible whatever accent is chosen.
+export const ACCENT_HIGHLIGHT_ALPHA = 0.4;
+export const ACCENT_HIGHLIGHT_BG =
+  `color-mix(in srgb, var(--accent) ${ACCENT_HIGHLIGHT_ALPHA * 100}%, transparent)`;
+
+// A highlight name: one of the nine literals, or the owner's accent.
+export type HighlightColor = BlockNoteColor | typeof ACCENT_HIGHLIGHT;
+
+export function isHighlightColor(name: unknown): name is HighlightColor {
+  return name === ACCENT_HIGHLIGHT || isBlockNoteColor(name);
+}
+
+// The accent highlight as a LITERAL rgba(), for a document that has no
+// --accent to resolve: the offline/share/PDF shell. `accent` is the owner's
+// stored solid hex (settings.highlightColor, always a solid even when a
+// gradient is active — see HIGHLIGHT_GRADIENTS). Falls back to the value
+// as-given if it isn't a hex we can read, so a hand-edited setting can't
+// produce broken CSS.
+export function accentHighlightLiteral(accent: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(accent.trim());
+  if (!m) return accent;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${ACCENT_HIGHLIGHT_ALPHA})`;
+}
+
+// A GRADIENT accent as the accent highlight's background-image (globals.css
+// `mark.hl-accent`, set from layout.tsx). A gradient is a CSS image, so it
+// can't ride the `background-color` an ordinary highlight uses, and at full
+// saturation it reads as a solid band that fights the text on top of it. So it
+// gets a page-colored veil stacked over it, which is the alpha the nine literal
+// highlights get from their rgba() — one layered value works for ANY gradient,
+// with no rewriting of its color stops.
+//
+// The veil is the dark canvas (--surface-0, #191919). A future light theme
+// wants a white veil instead; that is a one-line change here, not a rework,
+// which is why the veil is named rather than inlined at the call site.
+const HIGHLIGHT_VEIL = "rgba(25,25,25,0.55)";
+
+export function accentHighlightImageCss(gradient: string): string {
+  return `linear-gradient(${HIGHLIGHT_VEIL}, ${HIGHLIGHT_VEIL}), ${gradient}`;
+}
+
 // Text color: standard inline HTML, renders everywhere with no plugin.
 export function textColorTag(color: BlockNoteColor): {
   open: string;
@@ -53,12 +115,16 @@ export function textColorTag(color: BlockNoteColor): {
 // Highlight: <mark> renders highlighted in Obsidian/GitHub with no plugin;
 // the hl-* class is the stable hook for a CSS theme snippet, and the inline
 // style keeps the exact color even without one.
-export function highlightTag(color: BlockNoteColor): {
+export function highlightTag(color: HighlightColor): {
   open: string;
   close: string;
 } {
+  const background =
+    color === ACCENT_HIGHLIGHT
+      ? ACCENT_HIGHLIGHT_BG
+      : BLOCKNOTE_COLORS[color].background;
   return {
-    open: `<mark class="hl-${color}" style="background-color:${BLOCKNOTE_COLORS[color].background}">`,
+    open: `<mark class="hl-${color}" style="background-color:${background}">`,
     close: "</mark>",
   };
 }
@@ -113,16 +179,22 @@ export function textColorName(style: string): BlockNoteColor | null {
   return v && v in TEXT_VALUE_TO_COLOR ? TEXT_VALUE_TO_COLOR[v] : null;
 }
 
-// A <mark>'s class ("hl-yellow") or background style back to its palette name.
+// A <mark>'s class ("hl-yellow", "hl-accent") or background style back to its
+// palette name. The accent highlight's fallback is a substring test rather than
+// a table lookup: its value carries a var() reference, and what comes back out
+// of CSSOM for `color-mix(in srgb, var(--accent) 40%, transparent)` varies by
+// browser and by whether the property resolved, so the stable signal is that
+// the value mentions --accent at all.
 export function highlightColorName(
   className: string | null,
   style: string | null
-): BlockNoteColor | null {
+): HighlightColor | null {
   const cls = (className ?? "").match(/\bhl-([a-z]+)\b/);
-  if (cls && isBlockNoteColor(cls[1])) return cls[1];
+  if (cls && isHighlightColor(cls[1])) return cls[1];
   if (style) {
     const v = bgValueInStyle(style);
     if (v && v in BG_VALUE_TO_COLOR) return BG_VALUE_TO_COLOR[v];
+    if (v && v.includes("--accent")) return ACCENT_HIGHLIGHT;
   }
   return null;
 }

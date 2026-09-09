@@ -290,6 +290,20 @@ mark {
   color: inherit;
 }
 
+/* The accent highlight ("My highlight", colors.ts). Its FILL rides the inline
+   style the body already carries — `color-mix(in srgb, var(--accent) 40%,
+   transparent)` — so a solid accent needs no rule here at all; this is only the
+   image channel, which a `background-color` cannot hold.
+
+   A GRADIENT accent is a CSS image, so it can only arrive this way. layout.tsx
+   sets --accent-highlight-image only when the owner actually picked a gradient
+   (it carries a page-colored veil so the gradient reads as a highlight wash
+   rather than a solid band under the text); with a solid accent the var is
+   unset and this falls back to `none`, leaving the inline color alone. */
+mark.hl-accent {
+  background-image: var(--accent-highlight-image, none);
+}
+
 /* Circular checkbox used across the app — task done-toggles and Build/config
    form checkboxes alike. Dark-mode friendly: a gray ring on a dark fill that
    turns the highlight accent with a white check when ticked. Mirrors the
