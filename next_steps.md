@@ -2,6 +2,22 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
+
+**Where it came from.** Brandon's 2026-09-08 audit of the cloud database found it being woken roughly 40 to 140 times a day, on an install where the cloud copy is meant to be a near-idle archive. The framing that made the fix obvious: a serverless database parks its compute after five minutes idle and that delay cannot be shortened on the free plan, so **one tiny query costs the same as a busy minute**. Count wake-ups, not queries. An hourly job with nothing to do keeps the database awake two hours a day.
+
+**Two changes shipped together.**
+
+1. **Four GitHub Actions schedules stopped** (`calendar-sync`, `email-import`, `todoist-sync`, `transcription-poll`, about 16 wake-ups a day between them). Every one of them only ever poked the cloud copy, which either no-opped on an adapter check or read `users.settings` purely to learn the hub owns the job and it must stand down. `schedule:` commented out, `workflow_dispatch` kept, following the `notify-prep.yml` precedent — defer by hiding, not deleting. Note for whoever reads this next: **a GitHub schedule only runs from the default branch**, so nothing changed until this merged.
+2. **"Only on changes" now reads the way Brandon meant it** (ADR-252). The cadence is the fastest a copy is contacted; the flag decides whether a due round is worth making. "Hourly, only on changes" means at most hourly and nothing at all on a quiet day, where before it meant hourly forever plus a wake on every burst of editing. Came with a seven-day liveness backstop, so a long quiet spell cannot age the peer out of the hub's retention window (ADR-208) and force a full re-fill.
+
+**Done by hand alongside, not in code:** the phone/Outlook calendar subscription moved from the cloud's ICS URL to the hub's (up to 96 wake-ups a day, the single largest independent waker), the stale "BranRedux Desktop" peer revoked, and the MCP connector plus PWA confirmed pointing at the hub.
+
+**Deliberately left alone:** the three `vercel.json` crons. `purge` must run on every install (ADR-214), and aligning the other two to share one wake does not work, because Vercel Hobby crons drift by up to an hour independently (measured: the 09:00 relatedness cron ran at 09:19). Three wakes a day is about fifteen minutes of compute, which is not worth a core conversation with Tyler about shared cron config.
+
+**Still open, cheap, and worth doing when convenient:** two stray `@example.invalid` test users are sitting in the live production `users` table from old verification runs, and the Vercel connector in claude.ai is authorized to an account that cannot see the `ledgr` project (re-authorize it in claude.ai connector settings; the local `vercel` CLI is fine as `brandonscollins`). Neither touches wake-ups.
+
+**Verify it worked** from the Neon Console's Monitoring tab, which draws exactly when the compute was awake and costs nothing to read. Do not check by querying the database, since every check wakes the thing being measured.
 ## ✅ FIXED — highlighted text is bright now, and changing your accent updates highlights live (2026-09-09, ADR-251)
 
 Two follow-ups to ADR-250, both reported by Tyler within minutes of it going live.

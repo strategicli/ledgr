@@ -38,7 +38,9 @@ import {
   CADENCE_DAILY_MS,
   MAX_RETRY_BACKOFF_MS,
   hubOnChange,
-  onChangeDue,
+  maxSafeGapMinutes,
+  maxSafeGapMs,
+  quietSkip,
   type HubRuntime,
   type SyncStatus,
 } from "../src/lib/sync/client";
@@ -576,45 +578,56 @@ check(
   );
 }
 
-// "Only when there are changes" (ADR-240). The cadence stops being the
-// schedule and becomes the idle heartbeat: our own changes bring the exchange
-// forward, and a quiet hub is contacted once per cadence and no more.
+// "Only when there are changes" (ADR-252, replacing ADR-240's reading of the
+// same flag). The cadence is the FASTEST a hub is contacted; this gate decides
+// whether a due round is worth making at all, so a quiet stretch is silent.
 {
   check("the flag is off unless explicitly set", hubOnChange({}) === false);
   check("a non-boolean never turns it on", hubOnChange({ onChange: "yes" as never }) === false);
   check("an explicit true turns it on", hubOnChange({ onChange: true }) === true);
 
+  // The one number behind both the picker's ceiling and the gate's backstop.
+  check("the safe gap is half the hub's retention window", maxSafeGapMinutes(14) === 7 * 1440);
+  check("and never longer than the weekly preset", maxSafeGapMinutes(60) === 10_080);
+  check("in ms for the loop", maxSafeGapMs(14) === 7 * 24 * 60 * 60 * 1000);
+
   const base = {
     onChange: true,
-    hasLocalChanges: true,
+    hasLocalChanges: false,
     consecutiveFails: 0,
     msSinceLastExchange: 60_000,
-    debounceMs: 10_000,
+    livenessFloorMs: maxSafeGapMs(),
   };
-  check("changes waiting bring the exchange forward", onChangeDue(base) === true);
+  check("nothing to send means nothing to say", quietSkip(base) === true);
   check(
-    "nothing to send means nothing to say",
-    onChangeDue({ ...base, hasLocalChanges: false }) === false
+    "changes waiting are always sent on the next due round",
+    quietSkip({ ...base, hasLocalChanges: true }) === false
   );
   check(
-    "a hub without the flag still waits out its cadence",
-    onChangeDue({ ...base, onChange: false }) === false
+    "a hub without the flag keeps its cadence as a fixed schedule",
+    quietSkip({ ...base, onChange: false }) === false
+  );
+  // A broken hub that is never contacted can never come back, and would report
+  // itself fine while doing nothing. Its retries are already spaced by the
+  // ADR-239 backoff, so let them through.
+  check(
+    "a failing hub is retried even with nothing to send",
+    quietSkip({ ...base, consecutiveFails: 1 }) === false
+  );
+  // The backstop: silence past the safe gap ages this peer out of the hub's
+  // retention window (ADR-208), which costs a full re-fill instead of a
+  // catch-up. A fortnight away is the ordinary case that would hit it.
+  check(
+    "silence at the safe gap breaks the quiet",
+    quietSkip({ ...base, msSinceLastExchange: maxSafeGapMs() }) === false
   );
   check(
-    "a burst of edits is debounced into one round trip",
-    onChangeDue({ ...base, msSinceLastExchange: 2000 }) === false
+    "just inside the safe gap stays quiet",
+    quietSkip({ ...base, msSinceLastExchange: maxSafeGapMs() - 1 }) === true
   );
-  check(
-    "at the debounce boundary it goes",
-    onChangeDue({ ...base, msSinceLastExchange: 10_000 }) === true
-  );
-  // The clause that keeps ADR-240 from re-creating the ADR-239 hammer: a
-  // change the hub cannot accept is pending forever, so a FAILING hub must
-  // never be woken early by it.
-  check(
-    "a failing hub is NOT woken early by pending changes",
-    onChangeDue({ ...base, consecutiveFails: 1 }) === false
-  );
+  // A fresh process has no in-memory last-exchange time, so it always checks in
+  // once on startup rather than trusting a gap it cannot measure.
+  check("a restart checks in once", quietSkip({ ...base, msSinceLastExchange: Date.now() }) === false);
 }
 
 // A schedule already written must not outlive the cadence that wrote it.
