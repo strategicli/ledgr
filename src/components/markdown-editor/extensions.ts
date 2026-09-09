@@ -22,8 +22,11 @@ import Image from "@tiptap/extension-image";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import {
   BLOCKNOTE_COLORS,
+  ACCENT_HIGHLIGHT,
+  ACCENT_HIGHLIGHT_BG,
   highlightColorName,
   highlightTag,
+  isHighlightColor,
   isBlockNoteColor,
   textColorName,
   textColorTag,
@@ -165,12 +168,18 @@ export const Highlight = Mark.create({
 
   renderHTML({ mark }) {
     const color = mark.attrs.color;
-    if (!isBlockNoteColor(color)) return ["mark", {}, 0];
+    if (!isHighlightColor(color)) return ["mark", {}, 0];
+    // The accent highlight keeps the owner's live --accent reference rather than
+    // a literal, so re-picking an accent in settings restyles it (colors.ts).
+    const background =
+      color === ACCENT_HIGHLIGHT
+        ? ACCENT_HIGHLIGHT_BG
+        : BLOCKNOTE_COLORS[color].background;
     return [
       "mark",
       mergeAttributes({
         class: `hl-${color}`,
-        style: `background-color:${BLOCKNOTE_COLORS[color].background}`,
+        style: `background-color:${background}`,
       }),
       0,
     ];
@@ -179,7 +188,7 @@ export const Highlight = Mark.create({
   renderMarkdown(node, helpers) {
     const content = helpers.renderChildren(node);
     const color = node.attrs?.color;
-    if (!isBlockNoteColor(color)) return `<mark>${content}</mark>`;
+    if (!isHighlightColor(color)) return `<mark>${content}</mark>`;
     const tag = highlightTag(color);
     return `${tag.open}${content}${tag.close}`;
   },

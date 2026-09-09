@@ -13,6 +13,7 @@ import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
 import { createLogger } from "@/lib/log";
+import { accentHighlightImageCss } from "@/lib/colors";
 import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX, UI_SCALE } from "@/lib/settings";
 import { DEFAULT_TIMEZONE, primeAppTimezone } from "@/lib/today";
 import "./globals.css";
@@ -83,6 +84,12 @@ export default async function RootLayout({
   // The gradient laid over accent *fills*; defaults to the solid so non-gradient
   // accents resolve to a plain color anywhere `--accent-gradient` is used.
   let accentGradient = DEFAULT_SETTINGS.highlightColor;
+  // The accent highlight's IMAGE channel (globals.css `mark.hl-accent`), set
+  // only when the owner picked a gradient accent: a highlight's fill normally
+  // rides the inline `background-color` the body carries, and a gradient is an
+  // image, not a color, so it can only reach the mark as a background-image.
+  // "none" for a solid accent, which leaves that inline color untouched.
+  let accentHighlightImage = "none";
   let navPosition = DEFAULT_SETTINGS.navPosition;
   let railSize = DEFAULT_SETTINGS.railSize;
   let proseFontSize = TEXT_SIZE_PX[DEFAULT_SETTINGS.textSize];
@@ -103,6 +110,9 @@ export default async function RootLayout({
       const s = await getSettings(owner.id);
       accent = s.highlightColor;
       accentGradient = s.highlightGradient ?? s.highlightColor;
+      accentHighlightImage = s.highlightGradient
+        ? accentHighlightImageCss(s.highlightGradient)
+        : "none";
       navPosition = s.navPosition;
       railSize = s.railSize;
       proseFontSize = TEXT_SIZE_PX[s.textSize];
@@ -141,7 +151,7 @@ export default async function RootLayout({
         <body
           className="min-h-full flex flex-col"
           data-section-style={sectionStyle}
-          style={{ "--accent": accent, "--accent-gradient": accentGradient, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
+          style={{ "--accent": accent, "--accent-gradient": accentGradient, "--accent-highlight-image": accentHighlightImage, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           <style dangerouslySetInnerHTML={{ __html: uiScaleCss }} />
           <NavProgress />

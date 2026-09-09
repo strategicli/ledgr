@@ -2,6 +2,20 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — your own accent is now a highlight you can use on text (2026-09-09, ADR-250, branch `feat/accent-highlight`)
+
+Tyler asked for the accent he picks in Settings to be available as a highlight in the editor, so the marker pen matches the app. One extra swatch at the end of the highlight row, labeled **My highlight**, separated from the nine literals by a divider because it behaves differently from them.
+
+**The one real decision, and it is in the body format:** an accent highlight stores a LIVE REFERENCE, `color-mix(in srgb, var(--accent) 40%, transparent)`, not the hex the accent happened to be when it was typed. That is what makes re-picking an accent in Settings restyle every highlight already made, which is the whole point of the feature. Baking the hex would have been simpler and would have quietly failed at exactly the moment it mattered, with no migration able to fix it afterwards. The cost is paid outside Ledgr: a plain Markdown reader with no `--accent` shows its own default highlight rather than the owner's color, still visibly highlighted.
+
+**The offline copy does not pay that cost.** `print-html.ts` carries no app context on purpose, so a `var(--accent)` would resolve to nothing and the highlight would vanish on paper, which is a Principle 4 failure. That document now gets a generated `mark.hl-accent` rule with the accent resolved server-side into a literal `rgba()`, per render, so it still tracks the current accent. Both callers (the print route, the share route) pass it; the share route reuses the settings read it was already doing for the footer.
+
+**Gradient accents work, and that is not a nicety:** Tyler's own accent is the Sunset gradient. A CSS gradient is an image, not a color, so it cannot ride the `background-color` a highlight normally uses. `layout.tsx` sets `--accent-highlight-image` only when a gradient is actually picked, and `globals.css` gives `mark.hl-accent` an image channel that falls back to `none`. The gradient sits under a page-colored veil, which supplies the alpha the nine literals get from their `rgba()`, so one layered value handles any gradient without rewriting its stops.
+
+**Deliberately highlight-only.** It is NOT in `BLOCKNOTE_COLORS`: that table also feeds the text-color picker, and a text color round-trips by matching its value, so a `var()` reference there would decode as "no color" and be dropped on every save. A check fails if it ever gets added to the nine, because that mistake loses data silently instead of breaking the build.
+
+Nothing needed changing in the booth export: its highlight strip is attribute-agnostic, so an accent highlight already flattens in the presentation copy like the other nine. Verified with 19 new checks across `verify-tiptap-markdown.mts` and `verify-print.mts`, all 80 pure verify scripts green, typecheck and lint clean. User guide updated (a new thing the owner can do, ADR-189).
+
 ## ✅ FIXED — selected text stayed dim inside the selection band (2026-09-08, branch `fix/selection-text-contrast`)
 
 Nothing in the app ever styled `::selection`, so the browser default painted a band behind the text and left the text at its own color. Selecting muted prose (`--ink-muted`, `text-neutral-400`) left it a light gray on the band and harder to read than the unselected line above it, which Tyler hit while reading a note.

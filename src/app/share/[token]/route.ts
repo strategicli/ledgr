@@ -73,7 +73,8 @@ export async function GET(
   // The footer names whose Ledgr this came from (Tyler, 2026-08-29) — the
   // owner's Settings display name, escaped since footerHtml is raw markup;
   // falls back to the plain wording when no name is set.
-  const displayName = (await getSettings(shared.ownerId)).displayName.trim();
+  const ownerSettings = await getSettings(shared.ownerId);
+  const displayName = ownerSettings.displayName.trim();
   const escaped = displayName
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -84,6 +85,9 @@ export async function GET(
   const html = renderPrintDocument(resolved.title, shareBody, {
     footerHtml: `Shared from ${whose} · read-only`,
     mentions,
+    // So an accent highlight in the body renders in the owner's color on a
+    // page that has no app context to resolve `var(--accent)` against.
+    accent: ownerSettings.highlightColor,
   });
 
   return new NextResponse(html, {

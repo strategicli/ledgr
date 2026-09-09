@@ -12,7 +12,7 @@
 // preserved, headings
 // shifted under the title's <h1>). This module owns only the document shell and
 // its styles.
-import { BLOCKNOTE_COLORS } from "@/lib/colors";
+import { accentHighlightLiteral, BLOCKNOTE_COLORS } from "@/lib/colors";
 import { bodyMarkdown, isItemBody } from "@/lib/body";
 import { CHART_CSS } from "@/lib/chordpro/chart-css";
 import { chordProToHtml } from "@/lib/chordpro/render";
@@ -158,9 +158,24 @@ export function renderPrintDocument(
     // to self. The owner opts in per render (`?comments=1`); a share link cannot
     // opt in at all yet.
     comments?: boolean;
+    // The owner's accent, as a solid hex (settings.highlightColor). Present so
+    // the accent highlight ("My highlight", colors.ts) survives into THIS
+    // document: in the app it renders from a live `var(--accent)` reference,
+    // and this page deliberately carries no app context, so the reference has
+    // nothing to resolve against. Resolving it server-side to a literal rgba()
+    // is what keeps the offline/PDF copy faithful (Principle 4, Sunday-proof).
+    // Omitted, the mark falls back to the UA's default highlight — still
+    // visibly highlighted, just not in the owner's color.
+    accent?: string;
   } = {}
 ): string {
   const safeTitle = escapeHtml(title || "Untitled");
+  // Appended after DOC_CSS so it sits in the same cascade as the nine literal
+  // hl-* rules. `color:inherit` for the same load-bearing reason they have it:
+  // a highlight owns the fill channel and must not repaint colored text black.
+  const accentHl = opts.accent
+    ? `mark.hl-accent{background-color:${accentHighlightLiteral(opts.accent)};color:inherit}`
+    : "";
   const footer = opts.footerHtml ? `<div class="doc-footer">${opts.footerHtml}</div>` : "";
   // A chordpro body renders as a chord chart whose own header carries the title,
   // key/capo/tempo/time line — so the outer <h1> is suppressed for it. Every
@@ -181,7 +196,7 @@ export function renderPrintDocument(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${safeTitle}</title>
-<style>${DOC_CSS}</style>
+<style>${DOC_CSS}${accentHl}</style>
 </head>
 <body>
 <div class="print-bar"><button onclick="window.print()">Print / PDF</button></div>
