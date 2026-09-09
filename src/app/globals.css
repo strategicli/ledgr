@@ -94,6 +94,15 @@
   --ink-subtle: #6f6f6f; /* meta, timestamps */
   --ink-faint: #4d4d4d; /* faint / disabled */
 
+  /* Text SELECTION (2026-09-08). The browser default paints a band behind the
+     text but leaves the text at its own color, so selecting muted prose
+     (--ink-muted / text-neutral-400) left it dim and hard to read inside the
+     band. Pin selected text to full-strength white and tint the band with the
+     owner's accent. Alpha over a dark page always lands mid-dark, so white
+     stays legible whatever accent is picked; `.light` flips the ink to dark. */
+  --selection-bg: color-mix(in srgb, var(--accent) 40%, transparent);
+  --selection-ink: #ffffff;
+
   /* One unified card radius (10px) so panels, rows, and menus agree. */
   --radius-card-px: 0.625rem;
 
@@ -156,6 +165,9 @@
   --ink-muted: #5a5a5a;
   --ink-subtle: #8a8a8a;
   --ink-faint: #b5b5b5;
+  /* Alpha over white stays pale, so light mode selects to dark ink. */
+  --selection-bg: color-mix(in srgb, var(--accent) 22%, transparent);
+  --selection-ink: #101010;
   /* Canvas-section skin vars (defined further down) flip too. */
   --cs-card: #f7f7f6;
   --cs-border: #e6e4e1;
@@ -217,6 +229,14 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Selected text reads at full strength everywhere (see --selection-ink above).
+   A Tailwind `selection:*` utility on a subtree still wins on specificity, so a
+   surface can opt out (e.g. the /items/[id]/markdown source view). */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-ink);
 }
 
 /* Nav clearance (v6). The nav writes --nav-pt/pb/pl/pr on <body> (see

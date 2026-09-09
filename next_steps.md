@@ -2,6 +2,13 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — selected text stayed dim inside the selection band (2026-09-08, branch `fix/selection-text-contrast`)
+
+Nothing in the app ever styled `::selection`, so the browser default painted a band behind the text and left the text at its own color. Selecting muted prose (`--ink-muted`, `text-neutral-400`) left it a light gray on the band and harder to read than the unselected line above it, which Tyler hit while reading a note.
+
+One rule in `src/app/globals.css` now pins selected text to full-strength white and tints the band with the owner's accent at 40%. It styles from the token layer (ADR-141) rather than hardcoding: two new semantic tokens, `--selection-bg` and `--selection-ink`, defined in `:root` and flipped in `.light` (alpha over white stays pale, so light mode selects to dark ink, ready for whenever light mode lands). Alpha over a dark page always lands mid-dark, so white stays legible whatever accent the owner picks.
+
+A Tailwind `selection:*` utility on a subtree still wins on specificity, so a surface can opt out; the `/items/[id]/markdown` source view already sets its own selection background and keeps it, now with readable text on top. Verified in the compiled stylesheet Turbopack serves, not just the source. No ADR (UI polish, not core) and no user-guide change (nothing the owner can do changed).
 ## ✅ SHIPPED: the Inbox is now configurable per arrival source (2026-09-06, ADR-249, branch `feat/inbox-sources`)
 
 Built exactly as planned in the 2026-09-05 session. The seven arrival paths stopped hardcoding `inbox: true` and started naming themselves, and an owner-written setting decides where each one lands: the Inbox, filed straight in, or into a named project. All six settled decisions and the three recommended defaults (DATA group, projects only, trashed destination falls back to the Inbox) shipped as written, none re-litigated.
