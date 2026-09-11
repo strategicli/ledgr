@@ -454,9 +454,27 @@ Ledgr is its own task manager. Nothing else needs to be running.
   in the same panel. Project cards' people circles and a task row's person
   chips then show the face, falling back to initials or the person glyph
   without one.
-- **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
-  deadline. Most of the app sorts by the plan date and falls back to the
-  deadline.
+- **One date most days, two when you want them.** *Scheduled* is when you plan
+  to do it; *due* is the deadline. Most of the app sorts by the plan date and
+  falls back to the deadline. The deadline is no longer its own row on a task:
+  it lives inside the Schedule popover and rides that row's summary
+  ("Fri, Sep 11 \u00b7 \u21bb Every 2 weeks \u00b7 due Sep 14"), so a task with one date
+  shows one date.
+- **Dates move together.** Bump a task and its whole checklist follows: every
+  dated subtask shifts by the same number of days, all the way down, and the
+  deadline keeps whatever gap it had from the plan date. A repeating task
+  carries its deadline and its subtasks forward each time it advances, so
+  nothing is left dated to last cycle. You never set a rule for this \u2014 the gap
+  is simply whatever the two dates currently are, and changing either one
+  restates it.
+- **Pin a date to hold it still.** In the Schedule popover, a deadline says
+  "Follows the plan date"; click it to pin, and it becomes a hard external date
+  that ignores every move (Apr 15, a grant deadline, a hand-off). Subtasks can
+  be pinned the same way when one really does belong on its own day.
+- **A deadline before the plan date gets flagged,** not blocked \u2014 sometimes you
+  genuinely missed it. Where the deadline is still ahead, one click moves the
+  plan onto it. A deadline on the same day as the plan simply doesn't print, so
+  rows stop showing you the same date twice.
 - **Six priorities,** P1 to P6, colour-coded. They drive the checkbox colour, row
   chips and grouping.
 - **Subtasks nest,** with an "n of m done" rollup and a breadcrumb. **Add
@@ -473,8 +491,10 @@ Ledgr is its own task manager. Nothing else needs to be running.
   weekend, Next week, No date), a month calendar, a free-text box ("next fri
   9am"), and Time / Repeat controls. It edits what's shown — the scheduled
   date if the task has one, otherwise the due date — and a repeat glyph
-  beside it marks a repeating task. The same picker now backs the Schedule
-  and Due popovers on the task page.
+  beside it marks a repeating task. The same picker backs the Schedule popover
+  on the task page. Clicking a date still changes that date, everywhere in the
+  app: a chip reading "due Sep 14" edits the deadline, a plain date edits the
+  plan.
 - **Reschedule fast:** Today / Tomorrow / +1wk chips, or type "in 3 days" or
   "next Tuesday".
 - **Roll overdue tasks forward** in one click from Today. It moves the plan and

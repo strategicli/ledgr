@@ -2,6 +2,63 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ⟢ SHIPPED, awaiting Brandon — dates follow their anchor now (2026-09-11, ADR-252, branch `feat/date-anchoring`)
+
+Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
+
+**What was actually wrong**, because none of it was the model:
+
+- **The deadline had no way to move.** ADR-076's `maintainDueOffset` did exactly the right thing and had **no GUI control anywhere**, default off, settable only over MCP. A lever you reach by asking Claude is the ADR-222 failure: the feature had a builder attached.
+- **Subtasks only followed their parent if they carried a stored offset, and exactly ONE control in the codebase ever wrote one** (`SubtaskSchedule.tsx`, and only while the parent was already dated). Tyler's checklist came from MCP `add_subtasks`, so five of six were frozen forever. He proved it mid-conversation by bumping the parent to Sep 14; one subtask moved.
+- **The rail showed two equally-weighted date rows** on every task, when most tasks want one.
+
+**What shipped.** Children shift by DELTA, so nothing has to be stamped and Tyler's existing stragglers started tracking with no migration. A deadline shifts with its own plan date, on edit, on recurrence advance, and on a calendar log edit. `properties.datePins` is the single opt-out. The deadline folds into the Schedule popover and rides that row's summary. A deadline before the plan date is flagged with a one-click fix (offered only when it hasn't already passed). `deadlineDisplay` is one shared rule so no two rows disagree: same day as the plan hides, before it or overdue alerts, genuinely later shows quietly. Inline click-to-edit is preserved everywhere, per Tyler's explicit ask.
+
+**Canvas cleanup rode along** (non-core): `+ Task` is gone from tasks (it made a *related* task, not a subtask — invisible next to "Add subtask"); `+ Relate` moved into the rail as a `Linked` row beside Project/Tags/People; `Linked here` moved inside the main pane, fixing the misalignment (it had been re-centering `max-w-3xl` against the full width, rail included); Export & sharing and Version History no longer render on tasks.
+
+**Blocking:** **CORE, needs Brandon's agree before merge.** It changes what `due_date` means and adds a stored property. No migration, no API break, no dependency. Flagged in `COLLAB.md`.
+
+**Left open, deliberately:**
+
+- **`relativeSchedule` still drives the template apply path** (`deriveOffsetChildren`) and only that path, because a prototype carries no concrete dates for anchoring to measure against. Worth revisiting if templates ever grow real dates, but it is correct as is and pinned by the verify suite.
+- **`rail/DueRow.tsx` is now unreferenced**, kept per defer-by-hiding with a header explaining where the deadline went.
+- **The undo toast is wired server-side but not surfaced.** `updateItem` returns `datesShifted` (the prior child dates) and `restoreChildDates` is the undo half; no client yet raises "Moved N subtasks · Undo". Worth doing before this gets heavy use, since a parent bump now writes to descendants.
+
+## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
+
+Not caused by ADR-252; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
+
+```
+FAIL the projection honors interval + byday — got [09-21, 09-24, 10-05, 10-08], want [09-07, 09-10, 09-21, 09-24]
+FAIL get_item projects the bounded series      — got [09-11, 09-18, 09-25], want [09-04, 09-11, 09-18, 09-25]
+FAIL get_item reports the next uncompleted date — got 09-11, want 09-04
+```
+
+The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-252 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
+
+## ✅ FIXED — image uploads worked everywhere except the domain the app runs on (2026-09-09, ops only, no code change)
+
+Tyler pasted an image into a note and got a toast reading `storage upload failed (network)`. That string is `xhr.onerror` in `src/components/attachments/upload.ts:65`, the branch that fires when the browser's PUT to R2 never gets a usable HTTP response, which is what a failed CORS preflight looks like from XHR: no status to report, so the message can only say "network".
+
+**Root cause: the production bucket did not allow the app's own origin.** A preflight probe told the whole story at once.
+
+```
+OPTIONS $R2_ENDPOINT/ledgr/probe   Origin: https://ledgr.tylerjcollins.com   -> 403 Forbidden
+OPTIONS $R2_ENDPOINT/ledgr/probe   Origin: https://ledgr-sandy.vercel.app    -> 204 + allow headers
+```
+
+**Why it hid for nine days.** The 2026-08-31 custom-domain move did add `https://ledgr.tylerjcollins.com` to `scripts/r2-cors.mjs` and did run it. The apply reported success. It had gone to `ledgr-dev`, because that script took its bucket from `.env.local`'s `R2_BUCKET`, and on Tyler's machine that names the dev bucket. So the dev bucket allowed the custom domain and production never did, while `next_steps.md` and the runbook both recorded the origin as applied. Nothing was broken by a deploy and nothing logged an error: the last verified browser upload was 2026-08-29 from the old `ledgr-sandy.vercel.app` origin, which kept working the whole time, and browser uploads simply were not exercised from the custom domain until today. Server-side writes (MCP `attach_file`, email-in) were never affected, since they do not preflight.
+
+**Fixed by adding the origin to the policy of record and rerunning it:** `~/.config/cloudflare/set-ledgr-r2-cors.py` (backup at `set-ledgr-r2-cors.py.bak-20260909`). That script, not the repo one, is what production's bucket answers to, because the app's S3 token is object-scoped and cannot write bucket config at all. Verified after: preflight returns 204 with `Access-Control-Allow-Origin` echoed for the custom domain, the vercel.app origin, and localhost. No wait was needed for `MaxAgeSeconds`, since browsers cache only successful preflights and the 403 was never cached.
+
+**The guardrail, which is the part worth keeping.** `scripts/r2-cors.mjs` now refuses to apply without an explicit `--bucket=<name>`, and names the bucket in every line it prints, including `--show`. A silent default that resolves to a dev bucket on a dev machine is how a successful-looking write misses production, and the same trap was live for anyone who ran the script from either install. The policy in that file also moved from a bare `PUT` to `PUT/GET/HEAD` plus an exposed `etag`, matching what production actually carries, so applying the repo policy to the prod bucket can no longer quietly narrow it. `runbook.md` §1 now says which tool owns which bucket instead of implying the repo script owns both.
+
+**Still open, small:**
+
+- **Brandon needs a heads-up**, since the script is shared and applying it now takes a flag. A COLLAB.md note is not written yet.
+- **The dev bucket's policy is still the old PUT-only shape.** Harmless, and it self-corrects the next time anyone applies from the repo script with `--bucket=ledgr-dev`.
+- **Nothing verifies this class of bug.** The two origin lists are one list in two files, in two languages, and agreement between them is currently a convention held by comments. A pure check that parses both and fails when they diverge would be cheap and would have caught the 8/31 drift the day it happened.
+
 ## ✅ FIXED — highlighted text is bright now, and changing your accent updates highlights live (2026-09-09, ADR-251)
 
 Two follow-ups to ADR-250, both reported by Tyler within minutes of it going live.

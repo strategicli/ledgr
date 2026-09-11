@@ -14,13 +14,12 @@ import PeopleRow from "@/components/relations/PeopleRow";
 import CustomProperties from "@/components/build/CustomProperties";
 import CanvasTwoPane from "@/components/canvas/CanvasTwoPane";
 import SchedulePopover from "@/components/canvas/rail/SchedulePopover";
-import DueRow from "@/components/canvas/rail/DueRow";
 import PriorityRow from "@/components/canvas/rail/PriorityRow";
 import StatusRow from "@/components/canvas/rail/StatusRow";
 import { RAIL_ROW, RAIL_STATIC } from "@/components/canvas/rail/styles";
 import FocusStar from "@/components/today/FocusStar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
+import LinkedRow from "@/components/canvas/rail/LinkedRow";
 import { getType } from "@/lib/types";
 import { getItem } from "@/lib/items";
 import { resolveStatusSchema } from "@/lib/status";
@@ -28,7 +27,7 @@ import { parseRecurrence } from "@/lib/recurrence";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { parseScheduledTime } from "@/lib/scheduled-time";
 import { isFocusedOn } from "@/lib/focus";
-import { bodyMarkdown } from "@/lib/body";
+import { isDuePinned } from "@/lib/date-anchor";
 import type { CanvasProps } from "@/lib/modules";
 
 export default async function TaskCanvas(canvasProps: CanvasProps) {
@@ -125,6 +124,21 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
                 bare
               />
             </div>
+            {/* Linked here sits INSIDE the main pane (ADR-252) so it lines up with
+                the title and body above it. It used to render below the two-pane
+                split, where its own `max-w-3xl mx-auto` re-centered it against the
+                full width — rail included — leaving it visibly shoved right and
+                not even aligned with the footer beneath it. `bare` drops that
+                inner column; the add affordance lives in the rail's Linked row. */}
+            <div className="mt-6">
+              <RelatedPanel
+                ownerId={ownerId}
+                itemId={item.id}
+                claimPersons
+                addBar={false}
+                bare
+              />
+            </div>
           </div>
         }
         rail={
@@ -149,8 +163,11 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             </div>
           )}
 
-          {/* Schedule: scheduled date + time-of-day + repeat + reminder, tucked
-              into one popover. */}
+          {/* Schedule: the task's ONE date row (ADR-252) — planned date, deadline,
+              time-of-day, repeat and reminder all tucked into a single popover.
+              The deadline used to sit beside this as a peer row, which is what
+              made every task read as "two dates for everything"; it now rides
+              this row's summary and opens inside this popover. */}
           <div className={RAIL_ROW}>
             <SchedulePopover
               itemId={item.id}
@@ -160,11 +177,9 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               recurrence={recurrenceRule}
               scheduledTime={scheduledTime}
               reminderMinutes={reminderMinutes}
+              duePinned={isDuePinned(props)}
               done={statusDone}
             />
-          </div>
-          <div className={RAIL_ROW}>
-            <DueRow itemId={item.id} initial={item.dueDate?.toISOString() ?? null} today={today} done={statusDone} />
           </div>
           <div className={RAIL_ROW}>
             <PriorityRow itemId={item.id} initial={item.urgency} />
@@ -191,6 +206,13 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             </div>
           )}
 
+          {/* Linked: the connected web, as a label + count + "+" beside its
+              relation siblings above (ADR-252). The panel in the main pane lists
+              the items; this row is where you ADD one. */}
+          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+            <LinkedRow ownerId={ownerId} itemId={item.id} />
+          </div>
+
           {/* Focus today: a one-tap star, kept in plain sight (not behind a
               popover) since it's a frequent daily action. */}
           <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
@@ -203,10 +225,12 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
         }
       />
 
-      {/* The rail's People row owns confirmed persons (ADR-175), so the panel
-          doesn't repeat them. */}
-      <RelatedPanel ownerId={ownerId} itemId={item.id} claimPersons />
-      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
+      {/* No Export & sharing / Version History footer on tasks (ADR-252). Save
+          Offline, Share link and Download Markdown are BODY-shaped features, and
+          a task's body is a line or two and a URL — the section was three
+          affordances nobody would reach for, sitting under every task. Hidden,
+          not deleted: ItemUtilitiesFooter still renders on every other canvas,
+          and a task's revisions stay reachable from the item actions menu. */}
     </div>
   );
 }

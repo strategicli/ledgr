@@ -40,8 +40,9 @@ import { syncMentionRelations } from "@/lib/mentions";
 import { syncPassageRefs } from "@/lib/passages/refs";
 import { relateItems } from "@/lib/relations";
 import { getSettings } from "@/lib/settings";
-import { dateToYmdUtc, parseRecurrence } from "@/lib/recurrence";
-import { recomputeRelativeChildren } from "@/lib/relative-subtask-service";
+import { parseRecurrence } from "@/lib/recurrence";
+import { shiftChildDates, type ShiftedChild } from "@/lib/relative-subtask-service";
+import { dayDelta, isDuePinned, shiftDay } from "@/lib/date-anchor";
 import {
   appTodayYmd,
   completeMaterializedOccurrence,
@@ -437,6 +438,12 @@ export async function updateItem(
       statusCategory: items.statusCategory,
       type: items.type,
       body: items.body,
+      // The PRIOR dates + pins: date anchoring (ADR-252) shifts this item's
+      // deadline and its children by however far its scheduled date just moved,
+      // so the write needs the before-value. Free — this row is already read.
+      scheduledDate: items.scheduledDate,
+      dueDate: items.dueDate,
+      properties: items.properties,
     })
     .from(items)
     .where(
@@ -551,6 +558,25 @@ export async function updateItem(
   }
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
   if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
+  // Date anchoring (ADR-252): the deadline hangs off the plan date, so moving the
+  // plan carries the deadline along by the same number of days, preserving the gap
+  // the owner already set. Skipped when the caller set BOTH dates in one patch
+  // (it is stating them deliberately) and when the deadline is pinned (a hard
+  // external date that ignores the plan). This is what stops a completed recurring
+  // task from leaving a fossil deadline behind — the ADR-076 `maintainDueOffset`
+  // flag did this, but default-off and reachable only over MCP, so nobody had it.
+  const scheduledDelta =
+    patch.scheduledDate !== undefined
+      ? dayDelta(existing[0].scheduledDate, patch.scheduledDate)
+      : null;
+  if (
+    scheduledDelta !== null &&
+    patch.dueDate === undefined &&
+    existing[0].dueDate &&
+    !isDuePinned(existing[0].properties as Record<string, unknown> | null)
+  ) {
+    set.dueDate = shiftDay(existing[0].dueDate, scheduledDelta);
+  }
   if (patch.urgency !== undefined) set.urgency = patch.urgency;
   if (patch.meetingAt !== undefined) set.meetingAt = patch.meetingAt;
   if (patch.endAt !== undefined) set.endAt = patch.endAt;
@@ -628,6 +654,10 @@ export async function updateItem(
     .where(and(eq(items.id, id), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
   const updated = rows[0];
+  // Descendants moved by this write, captured as they were BEFORE it so the
+  // caller can offer an undo (ADR-252 / ADR-142). Empty on every write that
+  // didn't move a date.
+  let shiftedChildren: ShiftedChild[] = [];
   if (writeBody) {
     if (updated.body != null) await snapshotRevision(id, updated.body);
     // Runs on null bodies too: clearing a body clears its mention edges.
@@ -635,15 +665,14 @@ export async function updateItem(
     // Same contract for passage @/refs — the passage_refs sibling of mentions.
     await syncPassageRefs(ownerId, id, updated.body);
   }
-  // A scheduled-date change re-derives any relative subtasks (S5, ADR-085):
-  // each carries an offset from this parent's scheduled day, so moving the
-  // parent shifts them (and chains down). Only when scheduled actually changed.
-  if (patch.scheduledDate !== undefined) {
-    await recomputeRelativeChildren(
-      ownerId,
-      id,
-      updated.scheduledDate ? dateToYmdUtc(updated.scheduledDate) : null
-    );
+  // A scheduled-date move carries the whole subtask tree with it (ADR-252):
+  // every unpinned dated descendant shifts by the same number of days, so a
+  // parent bumped to next Monday takes its checklist along. Only when the date
+  // actually moved (a no-op re-save shifts nothing), and never when it was
+  // cleared or first set — there is no delta to apply then, and the children
+  // keep the dates they have.
+  if (scheduledDelta !== null) {
+    shiftedChildren = await shiftChildDates(ownerId, id, scheduledDelta);
   }
   // A materialized occurrence was just completed: advance its parent series and
   // clone the next occurrence (create-next-after-completion). Done after the
@@ -693,7 +722,12 @@ export async function updateItem(
       await advanceNextActionIfPinned(ownerId, parent.id, updated.id).catch(() => {});
     }
   }
-  return updated;
+  // Additive (ADR-183 carve-out): callers that ignore the key are unaffected; the
+  // item PATCH route passes it through so the client can raise "Moved N subtasks ·
+  // Undo" instead of moving the owner's dates silently.
+  return shiftedChildren.length > 0
+    ? { ...updated, datesShifted: shiftedChildren }
+    : updated;
 }
 
 // The reconciliation summary for a type move (ADR-132). `carried` properties

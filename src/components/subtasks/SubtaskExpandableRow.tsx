@@ -16,6 +16,7 @@ import Link from "next/link";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 import TaskDateEdit from "@/components/tasks/TaskDateEdit";
 import { useRowMenu, type RowMenuOptions } from "@/components/lists/RowMenu";
+import { deadlineDisplay } from "@/lib/format-date";
 
 // App-timezone today comes from the host when it has one (the task tabs and
 // Today home already carry it); this local fallback covers hosts that don't
@@ -107,13 +108,20 @@ function MiniDate({
   const iso = field === "scheduledDate" ? node.scheduledDate : node.dueDate;
   if (!iso && show === "when-set") return null;
   const ymd = iso ? iso.slice(0, 10) : null;
+  // A deadline is "off" not only when it has passed but when it sits BEFORE the
+  // day the work is planned for (ADR-252) — the state that rendered deadpan while
+  // stale due dates piled up. The row stays editable either way: clicking a date
+  // anywhere in the app still changes it.
+  const schedYmd = node.scheduledDate?.slice(0, 10) ?? null;
+  const beforePlan =
+    field === "dueDate" && ymd != null && schedYmd != null && ymd < schedYmd;
   return (
     <TaskDateEdit
       id={node.id}
       ymd={ymd}
       label={iso ? `${field === "scheduledDate" ? "scheduled" : "due"} ${fmt(iso)}` : null}
       field={field}
-      overdue={!done && ymd != null && ymd < today}
+      overdue={(!done && ymd != null && ymd < today) || beforePlan}
       today={today}
       scheduledIso={node.scheduledDate}
       dueIso={node.dueDate}
@@ -182,9 +190,20 @@ function MiniRow({
             {node.scheduledDate && (
               <span className="shrink-0 text-xs text-neutral-500">scheduled {fmt(node.scheduledDate)}</span>
             )}
-            {node.dueDate && (
-              <span className="shrink-0 text-xs text-neutral-500">due {fmt(node.dueDate)}</span>
-            )}
+            {/* Non-task children aren't editable here, so the shared display rule
+                applies in full: a deadline on the plan day is redundant and hides
+                (ADR-252). */}
+            {(() => {
+              const dl = deadlineDisplay(node.dueDate, node.scheduledDate, today);
+              if (!dl) return null;
+              return (
+                <span
+                  className={`shrink-0 text-xs ${dl.alert ? "text-red-400" : "text-neutral-500"}`}
+                >
+                  due {dl.label}
+                </span>
+              );
+            })()}
           </>
         )}
       </div>

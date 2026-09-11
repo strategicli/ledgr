@@ -1,3 +1,10 @@
+// SUPERSEDED, kept not deleted (the defer-by-hiding rule). ADR-252 folded the
+// deadline into the Schedule popover — see `DeadlineField.tsx` — because a peer
+// "Due" row beside "Schedule" made every task read as two equally-weighted dates
+// when most tasks want one. Nothing renders this any more. It stays as the
+// recoverable prior art if the rail ever wants a standalone deadline row back
+// (and as the reference for the plain optimistic-PATCH row shape).
+//
 // The rail's "Due" row (ADR-108): the deadline as a compact row that opens a
 // small date popover (same DayField as Schedule). Optimistic PATCH of dueDate +
 // refresh, reverting on failure — the FieldStrip pattern.

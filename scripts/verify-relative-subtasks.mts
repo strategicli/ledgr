@@ -65,6 +65,8 @@ function ymdToUtc(ymd: string): Date {
 }
 const sched = (i: { scheduledDate: Date | null }) =>
   i.scheduledDate ? dateToYmdUtc(i.scheduledDate) : null;
+const due = (i: { dueDate: Date | null }) =>
+  i.dueDate ? dateToYmdUtc(i.dueDate) : null;
 
 try {
   console.log("\n# Service: recompute on parent scheduled-date change");
@@ -81,27 +83,81 @@ try {
       scheduledDate: ymdToUtc("2026-06-20"),
       properties: { relativeSchedule: { offsetDays: 2 } },
     });
+    // No stored offset, and never dated through the subtask picker: under ADR-085
+    // this child was frozen forever (the five-of-six breakage Tyler hit). Under
+    // ADR-252 anchoring it tracks like any other.
     const abs = await createItem(owner.id, {
       type: "task",
       title: "Fixed prep",
       parentId: parent.id,
       scheduledDate: ymdToUtc("2026-06-19"),
     });
+    // Pinned: the deliberate opt-out, the only thing that stands still now.
+    const pinned = await createItem(owner.id, {
+      type: "task",
+      title: "Immovable",
+      parentId: parent.id,
+      scheduledDate: ymdToUtc("2026-06-19"),
+      properties: { datePins: { scheduled: true } },
+    });
 
-    // Move the parent +7 days → the relative child shifts, the absolute one doesn't.
+    // Move the parent +7 days → every unpinned child moves +7, offset or not.
     await updateItem(owner.id, parent.id, { scheduledDate: ymdToUtc("2026-06-25") });
-    eq("relative child shifts with parent", sched(await getItem(owner.id, rel.id)), "2026-06-27");
-    eq("absolute child untouched", sched(await getItem(owner.id, abs.id)), "2026-06-19");
+    eq("child with an offset shifts with parent", sched(await getItem(owner.id, rel.id)), "2026-06-27");
+    eq("child WITHOUT an offset shifts too (ADR-252)", sched(await getItem(owner.id, abs.id)), "2026-06-26");
+    eq("pinned child stands still", sched(await getItem(owner.id, pinned.id)), "2026-06-19");
 
-    // Remove the parent's date → the relative child clears (no anchor).
+    // Clearing the parent's date is not a move: there is no delta to apply, so
+    // children keep the dates they have. ADR-085 wiped them here, which lost work.
     await updateItem(owner.id, parent.id, { scheduledDate: null });
-    check("relative child clears when parent loses its date", sched(await getItem(owner.id, rel.id)) === null);
+    eq("children keep their dates when the parent is cleared", sched(await getItem(owner.id, rel.id)), "2026-06-27");
 
-    // Restore the parent's date → the relative child re-derives (offset kept).
+    // Re-dating a previously undated parent is likewise not a move.
     await updateItem(owner.id, parent.id, { scheduledDate: ymdToUtc("2026-07-01") });
-    eq("relative child re-derives when parent re-dated", sched(await getItem(owner.id, rel.id)), "2026-07-03");
-    const relItem = await getItem(owner.id, rel.id);
-    eq("offset preserved across clear/restore", relativeOffsetOf(relItem.properties as Record<string, unknown>), 2);
+    eq("children unchanged when a cleared parent is re-dated", sched(await getItem(owner.id, rel.id)), "2026-06-27");
+  }
+
+  console.log("\n# Service: the deadline rides the plan date (ADR-252)");
+  {
+    const parent = await createItem(owner.id, {
+      type: "task",
+      title: "Edit sermon",
+      scheduledDate: ymdToUtc("2026-09-11"),
+      dueDate: ymdToUtc("2026-09-14"),
+    });
+    const kid = await createItem(owner.id, {
+      type: "task",
+      title: "Remove filler words",
+      parentId: parent.id,
+      scheduledDate: ymdToUtc("2026-09-11"),
+      dueDate: ymdToUtc("2026-09-12"),
+    });
+    const kidPinnedDue = await createItem(owner.id, {
+      type: "task",
+      title: "Hard external deadline",
+      parentId: parent.id,
+      scheduledDate: ymdToUtc("2026-09-11"),
+      dueDate: ymdToUtc("2026-09-12"),
+      properties: { datePins: { due: true } },
+    });
+
+    // +3 days: plan and deadline both move, gap preserved, all the way down.
+    await updateItem(owner.id, parent.id, { scheduledDate: ymdToUtc("2026-09-14") });
+    const p = await getItem(owner.id, parent.id);
+    eq("parent plan moved", sched(p), "2026-09-14");
+    eq("parent deadline kept its 3-day gap", due(p), "2026-09-17");
+    const k = await getItem(owner.id, kid.id);
+    eq("child plan moved", sched(k), "2026-09-14");
+    eq("child deadline moved with it", due(k), "2026-09-15");
+    eq("pinned deadline stood still", due(await getItem(owner.id, kidPinnedDue.id)), "2026-09-12");
+
+    // Setting BOTH dates in one patch is the caller stating them deliberately:
+    // no gap-preserving shift on top of an explicit deadline.
+    await updateItem(owner.id, parent.id, {
+      scheduledDate: ymdToUtc("2026-10-01"),
+      dueDate: ymdToUtc("2026-10-02"),
+    });
+    eq("explicit deadline in the same patch wins", due(await getItem(owner.id, parent.id)), "2026-10-02");
   }
 
   console.log("\n# Service: offsets chain down the tree");
