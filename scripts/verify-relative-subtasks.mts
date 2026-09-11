@@ -1,8 +1,15 @@
-// S5 verification (ADR-085): relative subtask scheduling. Two halves:
+// Date anchoring verification (ADR-252, superseding the ADR-085 contract this
+// file used to assert). Two halves:
 //   1. PURE (relative-subtask.ts) — parse, offsetBetween, applyOffset, describe.
-//   2. SERVICE (live Neon) — recompute on a parent scheduled-date change (incl.
-//      chaining + clearing when the anchor is removed), an absolute subtask left
-//      untouched, and the clone/materialize path deriving a relative child's date.
+//      These still matter: the offset survives on the TEMPLATE apply path, where
+//      a dateless prototype gives anchoring no gap to measure.
+//   2. SERVICE (live Neon) — the anchoring rule itself: every unpinned dated
+//      child shifts by the parent's delta (offset or not — that is the ADR-085
+//      bug this replaces), a pinned child and a pinned deadline stand still, a
+//      deadline keeps its gap down the tree, an explicit deadline in the same
+//      patch wins, clearing a parent's date is NOT a move (ADR-085 wiped its
+//      children here, which lost work), the undo round-trips, and the
+//      clone/materialize path still derives from a stored offset.
 // Run: npx tsx scripts/verify-relative-subtasks.mts
 import { readFileSync } from "node:fs";
 for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(/\r?\n/)) {
@@ -50,6 +57,7 @@ const {
   updateItem,
 } = await import("../src/lib/item-mutations");
 const { cloneItemSubtree } = await import("../src/lib/clone");
+const { restoreChildDates } = await import("../src/lib/relative-subtask-service");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 
 const db = getDb();
@@ -158,6 +166,43 @@ try {
       dueDate: ymdToUtc("2026-10-02"),
     });
     eq("explicit deadline in the same patch wins", due(await getItem(owner.id, parent.id)), "2026-10-02");
+  }
+
+  console.log("\n# Service: the undo puts a shifted tree back (ADR-252)");
+  {
+    const parent = await createItem(owner.id, {
+      type: "task",
+      title: "Undo me",
+      scheduledDate: ymdToUtc("2026-09-11"),
+    });
+    const kid = await createItem(owner.id, {
+      type: "task",
+      title: "Child",
+      parentId: parent.id,
+      scheduledDate: ymdToUtc("2026-09-13"),
+      dueDate: ymdToUtc("2026-09-15"),
+    });
+
+    // The shift reports the children AS THEY WERE, which is what the toast undoes.
+    const moved = await updateItem(owner.id, parent.id, {
+      scheduledDate: ymdToUtc("2026-09-18"),
+    });
+    const shifted = (moved as { datesShifted?: { id: string }[] }).datesShifted ?? [];
+    eq("the write reports what it moved", shifted.length, 1);
+    eq("child moved +7", sched(await getItem(owner.id, kid.id)), "2026-09-20");
+    eq("child deadline moved +7", due(await getItem(owner.id, kid.id)), "2026-09-22");
+
+    // Undo: every reported row goes back exactly where it was.
+    await restoreChildDates(owner.id, shifted as Parameters<typeof restoreChildDates>[1]);
+    eq("undo restores the plan date", sched(await getItem(owner.id, kid.id)), "2026-09-13");
+    eq("undo restores the deadline", due(await getItem(owner.id, kid.id)), "2026-09-15");
+
+    // A write that moves nothing reports nothing, so the toast stays silent.
+    const quiet = await updateItem(owner.id, parent.id, { title: "Undo me (renamed)" });
+    check(
+      "a write that moves no dates reports nothing",
+      (quiet as { datesShifted?: unknown }).datesShifted === undefined
+    );
   }
 
   console.log("\n# Service: offsets chain down the tree");

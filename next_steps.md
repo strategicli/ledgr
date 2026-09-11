@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ⟢ SHIPPED, awaiting Brandon — dates follow their anchor now (2026-09-11, ADR-252, branch `feat/date-anchoring`)
+## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-252, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
 
@@ -16,13 +16,19 @@ Tyler: "Due date vs schedule is mucking up the UI and really confusing the syste
 
 **Canvas cleanup rode along** (non-core): `+ Task` is gone from tasks (it made a *related* task, not a subtask — invisible next to "Add subtask"); `+ Relate` moved into the rail as a `Linked` row beside Project/Tags/People; `Linked here` moved inside the main pane, fixing the misalignment (it had been re-centering `max-w-3xl` against the full width, rail included); Export & sharing and Version History no longer render on tasks.
 
-**Blocking:** **CORE, needs Brandon's agree before merge.** It changes what `due_date` means and adds a stored property. No migration, no API break, no dependency. Flagged in `COLLAB.md`.
+**Core, and agreed** (Brandon, 2026-09-11). It changes what `due_date` means and adds a stored property. No migration, no API break, no dependency.
 
 **Left open, deliberately:**
 
 - **`relativeSchedule` still drives the template apply path** (`deriveOffsetChildren`) and only that path, because a prototype carries no concrete dates for anchoring to measure against. Worth revisiting if templates ever grow real dates, but it is correct as is and pinned by the verify suite.
 - **`rail/DueRow.tsx` is now unreferenced**, kept per defer-by-hiding with a header explaining where the deadline went.
-- **The undo toast is wired server-side but not surfaced.** `updateItem` returns `datesShifted` (the prior child dates) and `restoreChildDates` is the undo half; no client yet raises "Moved N subtasks · Undo". Worth doing before this gets heavy use, since a parent bump now writes to descendants.
+- **`rollOverdueScheduled` is deliberately outside anchoring.** The "Roll N overdue → today" bulk UPDATE moves only `scheduled_date`: its leave-the-deadline-alone rule is the older and stronger one (ADR-078, a missed deadline stays a fact), and the roll flattens every stale task onto today independently, so overdue children are already caught by the predicate and a per-row delta would move them twice. **The narrow gap left open:** a FUTURE-dated child of an overdue parent keeps its date while the parent jumps forward, closing the spacing between them. Needs a subtask dated ahead of an already-late parent, so it is rare. Named rather than silently decided — pick a semantic if it ever bites.
+
+## 🐛 OPEN — `verify-sync.mts` is FLAKY (pre-existing, found 2026-09-11)
+
+Fails intermittently on the check `and the last edit is what landed (draft 3)`. Confirmed **not** caused by ADR-252: with that work stashed, 3 of 6 runs on `main` failed the same way. It is in `verify:ci`, so it will redden CI at random and train people to re-run rather than read it, which is the worse cost.
+
+Reads like a timing/ordering race in the draft-conflict fixture (last-write-wins resolved by a timestamp two edits can share). Likely fix: order the fixture's edits by an explicit sequence rather than wall-clock, or space them deterministically.
 
 ## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
 

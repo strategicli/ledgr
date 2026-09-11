@@ -200,7 +200,7 @@ Rule of thumb: a change to **core** (data model, the canonical body format, the 
 
 ## Tyler — current
 
-- **🔴 NEEDS YOUR AGREE (Brandon) — CORE, built and green on `feat/date-anchoring`, NOT merged: ADR-252, "a date tracks its anchor unless it is pinned."** This changes what `due_date` MEANS, so it waits on you. No migration, no dependency, no API break, no schema column — it adds `properties.datePins` and changes behavior.
+- **🟢 AGREED (Brandon, 2026-09-11) — CORE, green on `feat/date-anchoring`: ADR-252, "a date tracks its anchor unless it is pinned."** This changes what `due_date` MEANS, which is why it waited on you. No migration, no dependency, no API break, no schema column — it adds `properties.datePins` and changes behavior.
 
   **What prompted it.** A recurring sermon-edit task of mine whose six subtasks all read `Sep 11 · due Aug 28`. Chasing it turned up two gaps that are worth your attention because they are both "the feature exists but nothing can reach it":
 
@@ -214,6 +214,8 @@ Rule of thumb: a change to **core** (data model, the canonical body format, the 
   - **I deliberately do NOT honor a stored `maintainDueOffset: false` as a pin.** `parseRecurrence` collapses stored `false` to `undefined`, so it is indistinguishable from the unset default every task carries — honoring it would preserve the exact bug. It is translated to a pin at the MCP **write** boundary instead, where an explicit `false` still means something. If you had tasks where you meant "hold this deadline still," they will start moving; pinning restores it.
 
   `relativeSchedule` survives, narrowed to the template apply path only (a prototype has no concrete dates, so there is no gap to measure). Full `verify:ci` green, DB-backed recurrence/subtask/template suites green, `verify-relative-subtasks.mts` rewritten to the new contract. Details in ADR-252 and `next_steps.md`.
+
+  **Since you agreed:** the undo toast is now wired end to end ("Moved N subtasks · Undo", `POST /api/tasks/restore-dates`) on all three date-editing surfaces, so a parent bump can be taken back. And `rollOverdueScheduled` is documented as a deliberate exception to anchoring — it flattens every stale task onto today by design, and its "leave the missed deadline alone" rule (your ADR-078) is the stronger one. The narrow gap that leaves (a future-dated child of an overdue parent) is logged rather than silently decided; say if you'd rather it preserved the gap.
 
   **Unrelated, while I was in there:** `verify-mcp-tasks.mts` has 3 failures on `main` today — hardcoded occurrence dates that have drifted into the past. Not mine, logged in `next_steps.md`, not fixed here to keep the diff honest.
 

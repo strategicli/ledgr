@@ -467,6 +467,9 @@ Ledgr is its own task manager. Nothing else needs to be running.
   nothing is left dated to last cycle. You never set a rule for this \u2014 the gap
   is simply whatever the two dates currently are, and changing either one
   restates it.
+- **Moved something by mistake?** When a bump carries subtasks along, a toast
+  says how many moved and offers **Undo**, which puts every one of them back
+  exactly where it was.
 - **Pin a date to hold it still.** In the Schedule popover, a deadline says
   "Follows the plan date"; click it to pin, and it becomes a hard external date
   that ignores every move (Apr 15, a grant deadline, a hand-off). Subtasks can
