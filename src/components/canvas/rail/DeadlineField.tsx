@@ -1,6 +1,7 @@
-// The deadline, folded into the Schedule popover (ADR-252). It stopped being a
-// peer row in the rail because a task has ONE date most days; the deadline is the
-// exception you add on purpose, so it lives beside the date it hangs off.
+// The deadline's editor (ADR-253), opened by the rail's Due row. It briefly lived
+// inside the Schedule popover, on the theory that a task wants one date most
+// days — but that made the deadline invisible on any task without one, so the
+// Due row came back and this control moved into it. See DueRow for that story.
 //
 // Two states, no rule-authoring: a deadline FOLLOWS the plan date by default,
 // keeping whatever gap the two currently have, or it is PINNED — a hard external

@@ -1,4 +1,4 @@
-// The rail's "Due" row (ADR-108; folded into Schedule by ADR-252, then restored
+// The rail's "Due" row (ADR-108; folded into Schedule by ADR-253, then restored
 // as its own row on Tyler's call, 2026-09-11).
 //
 // The fold was an overcorrection. Tucking the deadline inside the Schedule
@@ -8,7 +8,7 @@
 // worth building is worth making legible. The deadline is a peer row again,
 // sitting directly under Schedule where the two dates read as a pair.
 //
-// What it keeps from ADR-252 is the part that mattered: the deadline ANCHORS to
+// What it keeps from ADR-253 is the part that mattered: the deadline ANCHORS to
 // the plan date (it moves when the plan moves, preserving the gap) unless it is
 // pinned, and a deadline landing before the plan day is flagged with a one-click
 // fix. All of that lives in DeadlineField, which this row opens.

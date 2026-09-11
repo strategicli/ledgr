@@ -130,7 +130,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
                 bare
               />
             </div>
-            {/* Linked here sits INSIDE the main pane (ADR-252) so it lines up with
+            {/* Linked here sits INSIDE the main pane (ADR-253) so it lines up with
                 the title and body above it. It used to render below the two-pane
                 split, where its own `max-w-3xl mx-auto` re-centered it against the
                 full width — rail included — leaving it visibly shoved right and
@@ -179,7 +179,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
           </div>
 
           {/* Due: its own row directly under Schedule, so the pair reads together
-              (Tyler, 2026-09-11). ADR-252 had folded it into the popover above,
+              (Tyler, 2026-09-11). ADR-253 had folded it into the popover above,
               which fixed "two dates for everything" by making the second date
               invisible — with no deadline set there was no affordance at all.
               The anchoring behavior is unchanged; only its home moved back. */}

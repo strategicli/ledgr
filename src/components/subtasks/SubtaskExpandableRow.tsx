@@ -109,7 +109,7 @@ function MiniDate({
   if (!iso && show === "when-set") return null;
   const ymd = iso ? iso.slice(0, 10) : null;
   // A deadline is "off" not only when it has passed but when it sits BEFORE the
-  // day the work is planned for (ADR-252) — the state that rendered deadpan while
+  // day the work is planned for (ADR-253) — the state that rendered deadpan while
   // stale due dates piled up. The row stays editable either way: clicking a date
   // anywhere in the app still changes it.
   const schedYmd = node.scheduledDate?.slice(0, 10) ?? null;
@@ -192,7 +192,7 @@ function MiniRow({
             )}
             {/* Non-task children aren't editable here, so the shared display rule
                 applies in full: a deadline on the plan day is redundant and hides
-                (ADR-252). */}
+                (ADR-253). */}
             {(() => {
               const dl = deadlineDisplay(node.dueDate, node.scheduledDate, today);
               if (!dl) return null;

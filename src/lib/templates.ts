@@ -494,7 +494,7 @@ export async function createItemFromTemplate(
   await applyDateRules(ownerId, rootId, tmpl.applyConfig, now);
   // The clone came out undated (cloneItemSubtree resets descendants), so the
   // prototype's offset checklist resolves against the root's freshly applied
-  // date — the one place the ADR-085 offset still drives anything (ADR-252).
+  // date — the one place the ADR-085 offset still drives anything (ADR-253).
   const root = await getItem(ownerId, rootId);
   await deriveOffsetChildren(
     ownerId,
@@ -606,11 +606,11 @@ export async function applyTemplateToExisting(
   }
 
   // Apply the scalar/body/date patch. This also carries the target's EXISTING
-  // subtasks along if it moves the scheduled date (ADR-252) — the clones added
+  // subtasks along if it moves the scheduled date (ADR-253) — the clones added
   // just above are still undated at this point, so they are untouched by it.
   if (Object.keys(patch).length) await updateItem(ownerId, targetId, patch);
 
-  // Re-date the clones by anchoring (ADR-252): each keeps the gap it had from the
+  // Re-date the clones by anchoring (ADR-253): each keeps the gap it had from the
   // PROTOTYPE's scheduled date, measured against the target's. So a template whose
   // checklist runs "day 0, day +2, day +5" lands on the target's dates in the same
   // shape. This replaces the ADR-085 offset re-derive, and reaches every clone
@@ -621,7 +621,7 @@ export async function applyTemplateToExisting(
     const delta = dayDelta(proto.scheduledDate, refreshed.scheduledDate) ?? 0;
     for (const { protoChild, clonedId } of cloned) {
       const childProps = protoChild.properties as Record<string, unknown> | null;
-      // `relativeSchedule` survives ADR-252 as a TEMPLATE authoring device, and
+      // `relativeSchedule` survives ADR-253 as a TEMPLATE authoring device, and
       // only here: a prototype usually carries no concrete dates at all, so there
       // is no gap to measure and the stored offset is the only statement of "day
       // +1 of the checklist". Live subtask trees need none of this — they anchor

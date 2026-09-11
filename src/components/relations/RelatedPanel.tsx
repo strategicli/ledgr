@@ -55,7 +55,7 @@ export default async function RelatedPanel({
   // the row — the ADR-069 grid layout for the same type does not.
   claimPersons = false,
   // Whether this panel owns the "+ Relate" / "+ Task" affordances. The task
-  // canvas turns them OFF (ADR-252) and carries a "Linked" row in its rail
+  // canvas turns them OFF (ADR-253) and carries a "Linked" row in its rail
   // instead, beside Project / Tags / People — which are relation edges too, so
   // the add lives with its siblings rather than as an unlabelled button floating
   // under the body. With no links yet this panel then renders nothing at all.

@@ -1284,17 +1284,20 @@ in the middle you get both in one line.
   automatic copy goes down it will ask before it starts reading from this one.
   The arrows on each row change the priority order. At least one copy always has
   to be automatic, or this machine would sit waiting for you instead of syncing.
-- **Only on changes** sends your edits the moment you make them, instead of
-  waiting for the next check. **How often** then means something different for
-  that copy: it stops being a fixed schedule and becomes the slowest that copy
-  will ever go without hearing from you. Turn it on for a copy hosted in the
-  cloud. A check-in with nothing to say costs that copy exactly what a useful
-  one costs, because it wakes its database either way, and a copy set to check
-  continuously with nothing to send can hold that database awake all day for
-  nothing. With this on, "continuously" costs you only when you are actually
-  working. It changes when *your* changes leave; changes made on another copy
-  still arrive on the schedule, because this machine cannot know they exist
-  until it asks.
+- **Only on changes** skips a check that has nothing to send. **How often**
+  still sets the pace, as the fastest that copy is contacted; this decides
+  whether a due check is worth making at all. So "hourly, only on changes"
+  means at most once an hour while you are working, and nothing whatsoever on a
+  day you never touched Ledgr. Turn it on for a copy hosted in the cloud, where
+  a check-in with nothing to say costs exactly what a useful one costs, because
+  it wakes that copy's database either way, and a woken database stays awake
+  and billable for several minutes afterwards. Two things to know. Changes made on
+  another copy cannot arrive while this one stays quiet, since this machine has
+  no way to know they exist until it asks, so leave this off for a second
+  machine of yours and use it for an archive that writes nothing. And no matter
+  how long the quiet lasts, this machine still checks in about once a week,
+  because a copy silent longer than that loses its place in the history the
+  other side keeps for it and would need everything sent again.
 - **Check in now** exchanges with every copy immediately, whatever the schedule
   says. A schedule works in both directions: between check-ins your changes are
   waiting here, and changes made on another copy have not arrived yet. This is

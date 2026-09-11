@@ -25,7 +25,7 @@ export function formatDayLabel(
 }
 
 // How (and whether) to print a deadline beside a plan date on a list row
-// (ADR-252). Rows used to print both unconditionally, which is how "Sep 11 · due
+// (ADR-253). Rows used to print both unconditionally, which is how "Sep 11 · due
 // Aug 28" sat on screen for weeks reading as normal. One rule, shared by every
 // row that shows a task's dates, so they can't drift apart:
 //

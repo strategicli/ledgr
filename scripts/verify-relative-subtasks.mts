@@ -1,4 +1,4 @@
-// Date anchoring verification (ADR-252, superseding the ADR-085 contract this
+// Date anchoring verification (ADR-253, superseding the ADR-085 contract this
 // file used to assert). Two halves:
 //   1. PURE (relative-subtask.ts) — parse, offsetBetween, applyOffset, describe.
 //      These still matter: the offset survives on the TEMPLATE apply path, where
@@ -93,7 +93,7 @@ try {
     });
     // No stored offset, and never dated through the subtask picker: under ADR-085
     // this child was frozen forever (the five-of-six breakage Tyler hit). Under
-    // ADR-252 anchoring it tracks like any other.
+    // ADR-253 anchoring it tracks like any other.
     const abs = await createItem(owner.id, {
       type: "task",
       title: "Fixed prep",
@@ -112,7 +112,7 @@ try {
     // Move the parent +7 days → every unpinned child moves +7, offset or not.
     await updateItem(owner.id, parent.id, { scheduledDate: ymdToUtc("2026-06-25") });
     eq("child with an offset shifts with parent", sched(await getItem(owner.id, rel.id)), "2026-06-27");
-    eq("child WITHOUT an offset shifts too (ADR-252)", sched(await getItem(owner.id, abs.id)), "2026-06-26");
+    eq("child WITHOUT an offset shifts too (ADR-253)", sched(await getItem(owner.id, abs.id)), "2026-06-26");
     eq("pinned child stands still", sched(await getItem(owner.id, pinned.id)), "2026-06-19");
 
     // Clearing the parent's date is not a move: there is no delta to apply, so
@@ -125,7 +125,7 @@ try {
     eq("children unchanged when a cleared parent is re-dated", sched(await getItem(owner.id, rel.id)), "2026-06-27");
   }
 
-  console.log("\n# Service: the deadline rides the plan date (ADR-252)");
+  console.log("\n# Service: the deadline rides the plan date (ADR-253)");
   {
     const parent = await createItem(owner.id, {
       type: "task",
@@ -168,7 +168,7 @@ try {
     eq("explicit deadline in the same patch wins", due(await getItem(owner.id, parent.id)), "2026-10-02");
   }
 
-  console.log("\n# Service: the undo puts a shifted tree back (ADR-252)");
+  console.log("\n# Service: the undo puts a shifted tree back (ADR-253)");
   {
     const parent = await createItem(owner.id, {
       type: "task",

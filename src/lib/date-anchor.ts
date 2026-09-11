@@ -1,4 +1,4 @@
-// Date anchoring (ADR-252) — the one rule three surfaces share: **a date tracks
+// Date anchoring (ADR-253) — the one rule three surfaces share: **a date tracks
 // its anchor unless it is pinned.**
 //
 //   - a child item's dates anchor to its PARENT's scheduled date,
@@ -101,7 +101,7 @@ export function shiftDay(date: Date | null, deltaDays: number): Date | null {
 // Is this deadline incoherent — a due date landing BEFORE the day the work is
 // planned for? Surfaced as a cue + a one-click fix, never blocked: sometimes you
 // genuinely missed a deadline and the honest record is "due Aug 28, working it
-// Sep 14" (ADR-252).
+// Sep 14" (ADR-253).
 export function isDueBeforeScheduled(
   scheduled: Date | null | undefined,
   due: Date | null | undefined

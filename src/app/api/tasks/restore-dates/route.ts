@@ -4,7 +4,7 @@ import { restoreChildDates, type ShiftedChild } from "@/lib/relative-subtask-ser
 
 export const dynamic = "force-dynamic";
 
-// POST /api/tasks/restore-dates — the undo half of date anchoring (ADR-252).
+// POST /api/tasks/restore-dates — the undo half of date anchoring (ADR-253).
 // Moving a task's plan date carries every unpinned dated descendant with it, so
 // a single click can rewrite dates on items the owner never opened. `updateItem`
 // hands back those rows AS THEY WERE, and this puts them back.

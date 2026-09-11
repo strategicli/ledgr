@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-252, branch `feat/date-anchoring`, Brandon agreed)
+## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
 
@@ -28,7 +28,7 @@ Tyler: "Due date vs schedule is mucking up the UI and really confusing the syste
 
 ## ✅ SHIPPED — item-canvas polish batch (2026-09-11, branch `feat/date-anchoring`, non-core)
 
-Five things Tyler raised while testing the ADR-252 preview.
+Five things Tyler raised while testing the ADR-253 preview.
 
 - **The kebab menu could open below the window.** `ItemActionsMenu`'s two panels were `absolute right-0` with no idea where the viewport ends, so on a short window the lower actions were simply unreachable — the same failure the color swatch panel had (#369) and now the same fix: both panels portal to `<body>` and use `useAnchoredPanel`, the placement half of `ui/Popover`, which clamps both horizontal edges and flips above the trigger when below is cramped. Two follow-ons that are easy to miss: a portaled panel is no longer inside `wrapRef`, so the outside-click test had to learn about it or every click inside the menu would close it; and `MoveUnderMenu` gets an explicit `className=""` because its `DEFAULT_CLASS` carries its own absolute positioning and card chrome, which would fight the new wrapper.
 - **`+ Task` is gone** (sitewide). It created a *related* task, not a subtask — a distinction invisible sitting beside "Add subtask" on the same page. `NewRelatedTask` kept, unrendered.
@@ -65,7 +65,7 @@ Both reads are last-write-wins races resolved by a timestamp two writes can shar
 
 ## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
 
-Not caused by ADR-252; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
+Not caused by ADR-253; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
 
 ```
 FAIL the projection honors interval + byday — got [09-21, 09-24, 10-05, 10-08], want [09-07, 09-10, 09-21, 09-24]
@@ -73,7 +73,7 @@ FAIL get_item projects the bounded series      — got [09-11, 09-18, 09-25], wa
 FAIL get_item reports the next uncompleted date — got 09-11, want 09-04
 ```
 
-The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-252 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
+The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-253 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
 
 ## ✅ FIXED — image uploads worked everywhere except the domain the app runs on (2026-09-09, ops only, no code change)
 
@@ -97,6 +97,23 @@ OPTIONS $R2_ENDPOINT/ledgr/probe   Origin: https://ledgr-sandy.vercel.app    -> 
 - **Brandon needs a heads-up**, since the script is shared and applying it now takes a flag. A COLLAB.md note is not written yet.
 - **The dev bucket's policy is still the old PUT-only shape.** Harmless, and it self-corrects the next time anyone applies from the repo script with `--bucket=ledgr-dev`.
 - **Nothing verifies this class of bug.** The two origin lists are one list in two files, in two languages, and agreement between them is currently a convention held by comments. A pure check that parses both and fails when they diverge would be cheap and would have caught the 8/31 drift the day it happened.
+
+## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
+
+**Where it came from.** Brandon's 2026-09-08 audit of the cloud database found it being woken roughly 40 to 140 times a day, on an install where the cloud copy is meant to be a near-idle archive. The framing that made the fix obvious: a serverless database parks its compute after five minutes idle and that delay cannot be shortened on the free plan, so **one tiny query costs the same as a busy minute**. Count wake-ups, not queries. An hourly job with nothing to do keeps the database awake two hours a day.
+
+**Two changes shipped together.**
+
+1. **Four GitHub Actions schedules stopped** (`calendar-sync`, `email-import`, `todoist-sync`, `transcription-poll`, about 16 wake-ups a day between them). Every one of them only ever poked the cloud copy, which either no-opped on an adapter check or read `users.settings` purely to learn the hub owns the job and it must stand down. `schedule:` commented out, `workflow_dispatch` kept, following the `notify-prep.yml` precedent — defer by hiding, not deleting. Note for whoever reads this next: **a GitHub schedule only runs from the default branch**, so nothing changed until this merged.
+2. **"Only on changes" now reads the way Brandon meant it** (ADR-252). The cadence is the fastest a copy is contacted; the flag decides whether a due round is worth making. "Hourly, only on changes" means at most hourly and nothing at all on a quiet day, where before it meant hourly forever plus a wake on every burst of editing. Came with a seven-day liveness backstop, so a long quiet spell cannot age the peer out of the hub's retention window (ADR-208) and force a full re-fill.
+
+**Done by hand alongside, not in code:** the phone/Outlook calendar subscription moved from the cloud's ICS URL to the hub's (up to 96 wake-ups a day, the single largest independent waker), the stale "BranRedux Desktop" peer revoked, and the MCP connector plus PWA confirmed pointing at the hub.
+
+**Deliberately left alone:** the three `vercel.json` crons. `purge` must run on every install (ADR-214), and aligning the other two to share one wake does not work, because Vercel Hobby crons drift by up to an hour independently (measured: the 09:00 relatedness cron ran at 09:19). Three wakes a day is about fifteen minutes of compute, which is not worth a core conversation with Tyler about shared cron config.
+
+**Still open, cheap, and worth doing when convenient:** two stray `@example.invalid` test users are sitting in the live production `users` table from old verification runs, and the Vercel connector in claude.ai is authorized to an account that cannot see the `ledgr` project (re-authorize it in claude.ai connector settings; the local `vercel` CLI is fine as `brandonscollins`). Neither touches wake-ups.
+
+**Verify it worked** from the Neon Console's Monitoring tab, which draws exactly when the compute was awake and costs nothing to read. Do not check by querying the database, since every check wakes the thing being measured.
 
 ## ✅ FIXED — highlighted text is bright now, and changing your accent updates highlights live (2026-09-09, ADR-251)
 

@@ -96,7 +96,7 @@ export default function SchedulePopover({
       });
       if (!res.ok) throw new Error(String(res.status));
       endSave(true);
-      // Moving the plan date carried the subtask tree (ADR-252); say so, with a
+      // Moving the plan date carried the subtask tree (ADR-253); say so, with a
       // way back.
       reportDateShift(await res.json(), () => router.refresh());
       router.refresh();

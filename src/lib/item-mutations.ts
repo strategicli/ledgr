@@ -438,7 +438,7 @@ export async function updateItem(
       statusCategory: items.statusCategory,
       type: items.type,
       body: items.body,
-      // The PRIOR dates + pins: date anchoring (ADR-252) shifts this item's
+      // The PRIOR dates + pins: date anchoring (ADR-253) shifts this item's
       // deadline and its children by however far its scheduled date just moved,
       // so the write needs the before-value. Free — this row is already read.
       scheduledDate: items.scheduledDate,
@@ -558,7 +558,7 @@ export async function updateItem(
   }
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
   if (patch.scheduledDate !== undefined) set.scheduledDate = patch.scheduledDate;
-  // Date anchoring (ADR-252): the deadline hangs off the plan date, so moving the
+  // Date anchoring (ADR-253): the deadline hangs off the plan date, so moving the
   // plan carries the deadline along by the same number of days, preserving the gap
   // the owner already set. Skipped when the caller set BOTH dates in one patch
   // (it is stating them deliberately) and when the deadline is pinned (a hard
@@ -655,7 +655,7 @@ export async function updateItem(
     .returning(itemColumns);
   const updated = rows[0];
   // Descendants moved by this write, captured as they were BEFORE it so the
-  // caller can offer an undo (ADR-252 / ADR-142). Empty on every write that
+  // caller can offer an undo (ADR-253 / ADR-142). Empty on every write that
   // didn't move a date.
   let shiftedChildren: ShiftedChild[] = [];
   if (writeBody) {
@@ -665,7 +665,7 @@ export async function updateItem(
     // Same contract for passage @/refs — the passage_refs sibling of mentions.
     await syncPassageRefs(ownerId, id, updated.body);
   }
-  // A scheduled-date move carries the whole subtask tree with it (ADR-252):
+  // A scheduled-date move carries the whole subtask tree with it (ADR-253):
   // every unpinned dated descendant shifts by the same number of days, so a
   // parent bumped to next Monday takes its checklist along. Only when the date
   // actually moved (a no-op re-save shifts nothing), and never when it was

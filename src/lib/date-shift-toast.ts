@@ -1,4 +1,4 @@
-// The undo toast for date anchoring (ADR-252). Moving a task's plan date carries
+// The undo toast for date anchoring (ADR-253). Moving a task's plan date carries
 // every unpinned dated descendant with it, which is the point — but it is still a
 // write to items the owner never opened, and the house rule (ADR-142) is that a
 // one-way-feeling action says what it did and offers a way back.

@@ -1,4 +1,4 @@
-// The task rail's "Linked" row (ADR-252; given the Version History shape on
+// The task rail's "Linked" row (ADR-253; given the Version History shape on
 // Tyler's call, 2026-09-11).
 //
 // "+ Relate" used to float unlabelled under the body, and on a task with no links

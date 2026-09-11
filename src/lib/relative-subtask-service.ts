@@ -1,4 +1,4 @@
-// Child date shifting (ADR-252) — the server half of `date-anchor.ts`. When a
+// Child date shifting (ADR-253) — the server half of `date-anchor.ts`. When a
 // task's scheduled date moves by N days, move every dated child by the same N,
 // recursing so the shift chains all the way down a subtask tree.
 //
@@ -87,7 +87,7 @@ export async function shiftChildDates(
 
 // Derive dates for descendants carrying a stored `relativeSchedule` offset, from
 // an anchor day downward. This is ADR-085's old recompute, deliberately kept and
-// deliberately NARROWED to the template apply path (ADR-252).
+// deliberately NARROWED to the template apply path (ADR-253).
 //
 // It survives because a template PROTOTYPE usually carries no concrete dates at
 // all: its checklist says "day 0, day +1, day +5" as offsets, and there is no gap

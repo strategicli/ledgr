@@ -37,7 +37,7 @@ function SubtaskRow({
 }: {
   node: SubtaskNode;
   parentScheduled: Date | null;
-  // App-timezone YMD, for the deadline's overdue cue (ADR-252).
+  // App-timezone YMD, for the deadline's overdue cue (ADR-253).
   today: string;
 }) {
   const done = node.type === "task" && node.statusCategory === "done";
@@ -79,7 +79,7 @@ function SubtaskRow({
             </span>
           )
         )}
-        {/* The deadline shows only when it adds something (ADR-252): same day as
+        {/* The deadline shows only when it adds something (ADR-253): same day as
             the plan is redundant, before it or already past is an alert. */}
         {(() => {
           const dl = deadlineDisplay(

@@ -30,7 +30,7 @@ export default function AddRelation({
   rail = false,
 }: {
   itemId: string;
-  // Rail mode (ADR-252): render the compact "+" used by the rail's other
+  // Rail mode (ADR-253): render the compact "+" used by the rail's other
   // relation rows (Project / Tags / People) instead of the "+ Relate" pill, so
   // the task rail's Linked row matches its siblings. The picker itself is
   // identical either way.

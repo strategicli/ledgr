@@ -32,7 +32,7 @@ function overdueWhere(ownerId: string, dueToday: Date): SQL {
 // date to today so it lands in today's plan. The deadline (due_date) is left
 // alone — a missed deadline stays a fact. Returns the count moved.
 //
-// DELIBERATELY OUTSIDE DATE ANCHORING (ADR-252). Everywhere else, moving a plan
+// DELIBERATELY OUTSIDE DATE ANCHORING (ADR-253). Everywhere else, moving a plan
 // date carries the deadline and the subtask tree by the same delta; this one
 // bulk statement does neither, for two reasons:
 //   1. The deadline exception is the older, stronger rule (ADR-078): the roll is

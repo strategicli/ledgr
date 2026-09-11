@@ -612,7 +612,7 @@ export const taskTools: McpTool[] = [
       // yet seeds the planned date, so the series has a concrete next date and
       // shows up in Today/Planner. An already-planned task keeps its date.
       const patch: Parameters<typeof updateItem>[2] = { propertyPatch: { recurrence: rule } };
-      // `maintainDueOffset` is superseded by date anchoring (ADR-252): a deadline
+      // `maintainDueOffset` is superseded by date anchoring (ADR-253): a deadline
       // now rides the plan date by default, so the flag's `true` is simply the
       // new normal. Only an explicit `false` still says something — "hold this
       // deadline still" — and it is translated here, at the write boundary, into

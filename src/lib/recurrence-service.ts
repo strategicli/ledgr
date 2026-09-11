@@ -94,7 +94,7 @@ async function advanceSeriesRow(
     recurrence: res.rule,
   };
 
-  // The deadline rides the occurrence forward (ADR-252). ADR-076 did this behind
+  // The deadline rides the occurrence forward (ADR-253). ADR-076 did this behind
   // `maintainDueOffset`, default OFF and settable only over MCP, which is why a
   // recurring task's due date froze at its first occurrence and read as a stale
   // overdue forever. Anchoring is now the default; pinning the deadline is the
@@ -132,7 +132,7 @@ async function advanceSeriesRow(
     })
     .where(and(eq(items.id, series.id), eq(items.ownerId, ownerId)))
     .returning();
-  // The whole checklist advances with the series (ADR-252): every unpinned dated
+  // The whole checklist advances with the series (ADR-253): every unpinned dated
   // descendant moves by the same number of days the occurrence just moved, so
   // next cycle's subtasks aren't still dated to the last one.
   const delta = dayDelta(series.scheduledDate, updated.scheduledDate);
@@ -273,7 +273,7 @@ export async function completeMaterializedOccurrence(
 
 // Write a series row's recurrence log + recomputed scheduled/status. Shared by the
 // toggle and carve paths. The deadline and the subtask tree ride the recomputed
-// scheduled date by its delta, exactly as they do on the completion path (ADR-252)
+// scheduled date by its delta, exactly as they do on the completion path (ADR-253)
 // — under anchoring there IS a single delta to measure (old scheduled → the new
 // next-uncompleted date), which is what ADR-076's note here said was missing.
 async function writeSeriesLogState(
@@ -312,7 +312,7 @@ async function writeSeriesLogState(
     })
     .where(and(eq(items.id, series.id), eq(items.ownerId, ownerId)))
     .returning();
-  // Same anchoring rule as the completion path (ADR-252): the log edit moved the
+  // Same anchoring rule as the completion path (ADR-253): the log edit moved the
   // series' scheduled date, so the checklist under it moves by the same delta.
   const childDelta = dayDelta(series.scheduledDate, updated.scheduledDate);
   if (childDelta !== null) await shiftChildDates(ownerId, series.id, childDelta);

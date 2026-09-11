@@ -61,7 +61,7 @@ export default function SubtaskSchedule({
       });
       if (!res.ok) throw new Error(String(res.status));
       endSave(true);
-      // A subtask can have subtasks; moving this one carries them (ADR-252).
+      // A subtask can have subtasks; moving this one carries them (ADR-253).
       reportDateShift(await res.json(), () => router.refresh());
       router.refresh();
       return true;
