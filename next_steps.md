@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — the quick-add card no longer doubles a highlighted word (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
+
+Typing a date word ("tomorrow") into the add-task title showed it as bold, doubled white text. The card draws the highlight pill on a hidden mirror copy of the title under the textarea, and that copy uses `<mark>`. ADR-251's global `mark { color: var(--mark-ink) }` is an unlayered rule, so it beat the mirror's Tailwind `text-transparent` utility and the mirror's word showed through. The mirror mark now sets its color inline (`src/components/tasks/AddTaskCard.tsx`), which no stylesheet rule can override. Only overlay of its kind in the app (`text-transparent` + `<mark>`), so nothing else needed the same guard.
+
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 
 **Where it came from.** Brandon's 2026-09-08 audit of the cloud database found it being woken roughly 40 to 140 times a day, on an install where the cloud copy is meant to be a near-idle archive. The framing that made the fix obvious: a serverless database parks its compute after five minutes idle and that delay cannot be shortened on the free plan, so **one tiny query costs the same as a busy minute**. Count wake-ups, not queries. An hourly job with nothing to do keeps the database awake two hours a day.

@@ -721,7 +721,12 @@ export default function AddTaskCard({
                   // (the bg just bleeds past the text). Kept to ~1.5px so two adjacent
                   // tokens ("Saturday" + "every week") leave a visible gap rather than
                   // merging. py rounds it into a pill.
-                  s.hl ? <mark key={i} className="rounded px-[1.5px] py-0.5 -mx-[1.5px] bg-[var(--accent)]/35 text-transparent">{s.text}</mark> : <span key={i}>{s.text}</span>
+                  // color is INLINE, not `text-transparent`: globals.css paints every
+                  // <mark> bright (`mark { color: var(--mark-ink) }`, ADR-251) from an
+                  // unlayered rule, which beats any Tailwind utility regardless of
+                  // specificity. Without this the mirror's word shows through the
+                  // textarea as doubled white text (the recurring "quick add" glitch).
+                  s.hl ? <mark key={i} style={{ color: "transparent" }} className="rounded px-[1.5px] py-0.5 -mx-[1.5px] bg-[var(--accent)]/35">{s.text}</mark> : <span key={i}>{s.text}</span>
                 )}
           </div>
           <textarea
