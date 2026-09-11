@@ -18,6 +18,7 @@ import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectT
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { contactLink } from "@/lib/contact-links";
+import { propInstant } from "@/lib/placement";
 import type { Progress } from "@/lib/subtasks";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
 import { groupValuesFor, orderedGroups, type GroupEdges } from "@/lib/view-grouping";
@@ -75,7 +76,7 @@ const utcKey = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC" });
 // during render.
 const tzFmtCache = new Map<
   string,
-  { day: Intl.DateTimeFormat; dayLong: Intl.DateTimeFormat; key: Intl.DateTimeFormat }
+  { day: Intl.DateTimeFormat; dayLong: Intl.DateTimeFormat; key: Intl.DateTimeFormat; dayTime: Intl.DateTimeFormat }
 >();
 function tzFmts(tz: string) {
   let f = tzFmtCache.get(tz);
@@ -89,6 +90,13 @@ function tzFmts(tz: string) {
         timeZone: tz,
       }),
       key: new Intl.DateTimeFormat("en-CA", { timeZone: tz }),
+      dayTime: new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: tz,
+      }),
     };
     tzFmtCache.set(tz, f);
   }
@@ -194,10 +202,15 @@ function columnLabel(col: ViewColumn, labels: Record<string, string>): string {
     : FIELD_COLUMN_LABELS[col.key];
 }
 
-function formatPropValue(v: unknown): string {
+function formatPropValue(v: unknown, tz?: string): string {
   if (v == null) return "";
   if (Array.isArray(v)) return v.map((x) => String(x)).join(", ");
   if (typeof v === "boolean") return v ? "Yes" : "No";
+  // A timed date property (ADR-253) reads as a local day + clock, not raw ISO.
+  if (typeof v === "string" && tz) {
+    const inst = propInstant(v);
+    if (inst) return tzFmts(tz).dayTime.format(inst);
+  }
   return String(v);
 }
 
@@ -239,7 +252,7 @@ function columnText(item: ViewItem, col: ViewColumn, tz: string): string {
       item.properties && typeof item.properties === "object"
         ? (item.properties as Record<string, unknown>)
         : null;
-    return formatPropValue(props?.[col.key]);
+    return formatPropValue(props?.[col.key], tz);
   }
   switch (col.key) {
     case "type":
@@ -698,7 +711,9 @@ function spineDate(
         : null;
     const raw = props?.[start.prop];
     if (typeof raw !== "string" || raw.length < 10) return null;
-    // Custom date props are ISO date scalars, day-only (placement.ts readAnchor).
+    // A withTime prop is a real instant (ADR-253); a day scalar stays a UTC day.
+    const inst = propInstant(raw);
+    if (inst) return { date: inst, calendarDay: false, hasTime: grain === "hour" || grain === "day" };
     const d = new Date(`${raw.slice(0, 10)}T00:00:00Z`);
     return Number.isNaN(d.getTime()) ? null : { date: d, calendarDay: true, hasTime: false };
   }

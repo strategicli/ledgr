@@ -372,6 +372,12 @@ Build your own kinds of item at \`/build/types\`.
 
 - **Properties** can be text, number, date, checkbox, URL, phone, email, select,
   multi-select, or a relation to another type.
+- **A date field can carry a time, an end, or both.** On a Date property, tick
+  **Include a time of day** and the record shows a date-and-time picker instead
+  of a plain date; tick **Has an end (a range)** and a second "to" picker
+  appears beside it. A time log's Date can be one 9:06 to 9:15 PM range that
+  the Planner and a History spine place by the hour. Values you already saved
+  as plain days stay readable; nothing rewrites them.
 - **Phone and email fields are tappable.** Pick the Phone or Email kind and the
   value becomes a tap-to-call or tap-to-mail link, on the record and in a table
   view, with the right keyboard on a phone. Type the number however you like —
@@ -708,7 +714,9 @@ A view is a saved filter, sort and layout you reach by name. Build them at
 - **Place items by your own date property.** The calendar and agenda **Date
   field** now offers a type's own date properties beside the built-in ones, so a
   type that keeps its date in a property (a log entry's Date, a journal's Date)
-  can finally land on a calendar, a timeline, or a History spine.
+  can finally land on a calendar, a timeline, or a History spine. If that
+  property includes a time of day, the entry lands at its hour, and a table
+  column shows the day and clock rather than a raw timestamp.
 - **Filter on anything,** including your own properties, with operators that fit
   the property kind.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
