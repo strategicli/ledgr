@@ -13,7 +13,6 @@ import { useRouter } from "next/navigation";
 import { beginSave, endSave } from "@/lib/save-status";
 import Popover from "@/components/ui/Popover";
 import DayField from "./DayField";
-import DeadlineField from "./DeadlineField";
 import { RowFace, CalendarGlyph } from "./row-ui";
 import { RAIL_TRIGGER } from "./styles";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
@@ -47,18 +46,16 @@ export default function SchedulePopover({
   recurrence,
   scheduledTime,
   reminderMinutes,
-  duePinned = false,
   done = false,
 }: {
   itemId: string;
   today: string;
   scheduled: string | null; // ISO instant or null
-  due: string | null; // ISO instant or null (also the recurrence anchor fallback)
+  due: string | null; // ISO instant or null — the recurrence anchor fallback only;
+  // the deadline itself is edited in the rail's own Due row (DueRow).
   recurrence: RecurrenceRule | null;
   scheduledTime: ScheduledTime | null;
   reminderMinutes: number | null;
-  // The deadline holds still while the plan moves (ADR-252).
-  duePinned?: boolean;
   // A completed task isn't "overdue" however old its scheduled date — suppress it.
   done?: boolean;
 }) {
@@ -115,15 +112,8 @@ export default function SchedulePopover({
   const summary: string[] = [];
   if (day) summary.push(day);
   if (scheduledTime) summary.push(formatTime12(scheduledTime.start));
-  // The deadline rides along in the same row rather than owning one of its own
-  // (ADR-252), so the rail reads as one date line even when a task has two.
-  const dueLabel = formatDayLabel(due);
-  const empty = !day && !repeat && !dueLabel;
+  const empty = !day && !repeat;
   const overdue = !done && isOverdueYmd(iso, today);
-  // A deadline already behind the plan is the state that goes unnoticed; flag it
-  // on the resting row, not only inside the popover.
-  const dueBeforePlan =
-    !!due && !!iso && due.slice(0, 10) < iso.slice(0, 10);
 
   return (
     <Popover
@@ -148,11 +138,6 @@ export default function SchedulePopover({
                   {summary.length ? " · " : ""}↻ {repeat}
                 </span>
               )}
-              {dueLabel && (
-                <span className={dueBeforePlan ? "text-red-400" : "text-ink-subtle"}>
-                  {summary.length || repeat ? " · " : ""}due {dueLabel}
-                </span>
-              )}
             </>
           )}
         </RowFace>
@@ -166,19 +151,6 @@ export default function SchedulePopover({
             today={today}
             onPick={pickDate}
             parseTime
-          />
-        </div>
-        {/* Deadline sits directly under the date it hangs off (ADR-252). It was
-            a peer rail row until tasks read as "two dates for everything"; most
-            tasks have one date, and the deadline is the deliberate exception. */}
-        <div className="border-t border-neutral-800 pt-3">
-          <div className={sectionLabel}>Deadline</div>
-          <DeadlineField
-            itemId={itemId}
-            today={today}
-            scheduled={iso}
-            due={due}
-            pinned={duePinned}
           />
         </div>
         <div className="border-t border-neutral-800 pt-3">

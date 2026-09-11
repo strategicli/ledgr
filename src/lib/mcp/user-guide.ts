@@ -454,12 +454,10 @@ Ledgr is its own task manager. Nothing else needs to be running.
   in the same panel. Project cards' people circles and a task row's person
   chips then show the face, falling back to initials or the person glyph
   without one.
-- **One date most days, two when you want them.** *Scheduled* is when you plan
-  to do it; *due* is the deadline. Most of the app sorts by the plan date and
-  falls back to the deadline. The deadline is no longer its own row on a task:
-  it lives inside the Schedule popover and rides that row's summary
-  ("Fri, Sep 11 \u00b7 \u21bb Every 2 weeks \u00b7 due Sep 14"), so a task with one date
-  shows one date.
+- **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
+  deadline. Most of the app sorts by the plan date and falls back to the
+  deadline. On a task they sit as a pair at the top of the details rail,
+  Schedule then Due.
 - **Dates move together.** Bump a task and its whole checklist follows: every
   dated subtask shifts by the same number of days, all the way down, and the
   deadline keeps whatever gap it had from the plan date. A repeating task
@@ -470,10 +468,11 @@ Ledgr is its own task manager. Nothing else needs to be running.
 - **Moved something by mistake?** When a bump carries subtasks along, a toast
   says how many moved and offers **Undo**, which puts every one of them back
   exactly where it was.
-- **Pin a date to hold it still.** In the Schedule popover, a deadline says
-  "Follows the plan date"; click it to pin, and it becomes a hard external date
-  that ignores every move (Apr 15, a grant deadline, a hand-off). Subtasks can
-  be pinned the same way when one really does belong on its own day.
+- **Pin a date to hold it still.** Open the Due row and it says "Follows the
+  plan date"; click that to pin, and the deadline becomes a hard external date
+  that ignores every move (Apr 15, a grant deadline, a hand-off). A pinned
+  deadline shows a small pin on the rail row, so you can tell at a glance that a
+  bump won't carry it.
 - **A deadline before the plan date gets flagged,** not blocked \u2014 sometimes you
   genuinely missed it. Where the deadline is still ahead, one click moves the
   plan onto it. A deadline on the same day as the plan simply doesn't print, so

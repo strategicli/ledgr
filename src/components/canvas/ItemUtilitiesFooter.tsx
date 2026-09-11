@@ -30,12 +30,24 @@ export default async function ItemUtilitiesFooter({
   itemId,
   currentText,
   filesSection = true,
+  exportSharing = true,
+  bare = false,
 }: {
   itemId: string;
   // The live body markdown, for the Version History "vs. current" diff.
   currentText: string;
   // The file canvas renders its own panel up top, so it opts out here.
   filesSection?: boolean;
+  // The TASK canvas opts out (Tyler, 2026-09-11): Save Offline, Share link and
+  // the presentation export are BODY-shaped features, and a task's body is a
+  // line or two. Files and Version History still render — hiding those was an
+  // overreach, since a file whose body link is deleted would be stranded with
+  // nowhere to find it (the safety property ADR-237 exists for), and revisions
+  // are a task's only undo for a clobbered description.
+  exportSharing?: boolean;
+  // Drop the centered reading column, for a host that already provides one (the
+  // task canvas renders this inside its two-pane main column).
+  bare?: boolean;
 }) {
   const owner = filesSection ? await resolveOwner() : null;
   const files = owner
@@ -48,21 +60,29 @@ export default async function ItemUtilitiesFooter({
         // event arrives, which is what makes the section appear live on the
         // FIRST upload instead of after a reload. Collapsible like its
         // neighbors (Tyler, 2026-08-29).
-        <ItemFilesSection itemId={itemId} initial={files} />
+        <ItemFilesSection itemId={itemId} initial={files} bare={bare} />
       )}
-      <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">
-        <details className="canvas-section">
-          <summary className="canvas-section-title cursor-pointer hover:text-ink">
-            Export &amp; sharing
-          </summary>
-          <div className="mt-2 flex flex-col gap-2">
-            <SaveOffline itemId={itemId} bare />
-            <ShareLink itemId={itemId} bare />
-            <PresentationExport itemId={itemId} bare />
-          </div>
-        </details>
-      </div>
-      <HistoryPanel itemId={itemId} currentText={currentText} />
+      {exportSharing && (
+        <div
+          className={
+            bare
+              ? ""
+              : "canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12"
+          }
+        >
+          <details className={`canvas-section ${bare ? "canvas-section-bare" : ""}`}>
+            <summary className="canvas-section-title cursor-pointer hover:text-ink">
+              Export &amp; sharing
+            </summary>
+            <div className="mt-2 flex flex-col gap-2">
+              <SaveOffline itemId={itemId} bare />
+              <ShareLink itemId={itemId} bare />
+              <PresentationExport itemId={itemId} bare />
+            </div>
+          </details>
+        </div>
+      )}
+      <HistoryPanel itemId={itemId} currentText={currentText} bare={bare} />
     </>
   );
 }

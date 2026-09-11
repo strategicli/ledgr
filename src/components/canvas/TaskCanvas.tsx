@@ -14,12 +14,14 @@ import PeopleRow from "@/components/relations/PeopleRow";
 import CustomProperties from "@/components/build/CustomProperties";
 import CanvasTwoPane from "@/components/canvas/CanvasTwoPane";
 import SchedulePopover from "@/components/canvas/rail/SchedulePopover";
+import DueRow from "@/components/canvas/rail/DueRow";
 import PriorityRow from "@/components/canvas/rail/PriorityRow";
 import StatusRow from "@/components/canvas/rail/StatusRow";
 import { RAIL_ROW, RAIL_STATIC } from "@/components/canvas/rail/styles";
 import FocusStar from "@/components/today/FocusStar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import LinkedRow from "@/components/canvas/rail/LinkedRow";
+import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import { getType } from "@/lib/types";
 import { getItem } from "@/lib/items";
 import { resolveStatusSchema } from "@/lib/status";
@@ -28,6 +30,7 @@ import { appTodayYmd } from "@/lib/recurrence-service";
 import { parseScheduledTime } from "@/lib/scheduled-time";
 import { isFocusedOn } from "@/lib/focus";
 import { isDuePinned } from "@/lib/date-anchor";
+import { bodyMarkdown } from "@/lib/body";
 import type { CanvasProps } from "@/lib/modules";
 
 export default async function TaskCanvas(canvasProps: CanvasProps) {
@@ -139,13 +142,30 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
                 bare
               />
             </div>
+            {/* Files + Version History, below Linked (Tyler, 2026-09-11), sharing
+                the main column so they line up with everything above. Export &
+                sharing stays off for tasks — Save Offline / Share link / the
+                presentation export are body-shaped and a task's body is a line
+                or two. Files and History do NOT: a file whose body link is
+                deleted would otherwise be stranded with nowhere to find it
+                (ADR-237), and revisions are a task's only undo for a clobbered
+                description. Hiding all three was an overreach on my part. */}
+            <div className="mt-2">
+              <ItemUtilitiesFooter
+                itemId={item.id}
+                currentText={bodyMarkdown(item.body)}
+                exportSharing={false}
+                bare
+              />
+            </div>
           </div>
         }
         rail={
-          // The task's details as a clean divided list of rows. The heavy editors
-          // (date · time · repeat · reminder) collapse behind the single Schedule
-          // row's popover (ADR-108); everything stays one tap away but out of
-          // sight until needed.
+          // The task's details as a clean divided list of rows, in the owner's
+          // order (Tyler, 2026-09-11): the two DATES lead, then how urgent, then
+          // how it's labelled and who's involved, then where it lives and what
+          // it's connected to. The heavy editors (time · repeat · reminder) stay
+          // collapsed behind the Schedule row's popover (ADR-108).
           <div className="flex flex-col">
           {/* Status: the completion circle now lives next to the title in
               checkbox mode (TaskTitle), so the rail only carries a status row
@@ -156,18 +176,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
             </div>
           )}
 
-          {/* Project first (the Todoist order): where the task lives. */}
-          {projectFields.length > 0 && (
-            <div className={`${RAIL_ROW} ${RAIL_STATIC} first:pt-0`}>
-              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={projectFields} rail />
-            </div>
-          )}
-
-          {/* Schedule: the task's ONE date row (ADR-252) — planned date, deadline,
-              time-of-day, repeat and reminder all tucked into a single popover.
-              The deadline used to sit beside this as a peer row, which is what
-              made every task read as "two dates for everything"; it now rides
-              this row's summary and opens inside this popover. */}
+          {/* Schedule: the planned date, plus time / repeat / reminder inside. */}
           <div className={RAIL_ROW}>
             <SchedulePopover
               itemId={item.id}
@@ -177,10 +186,26 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               recurrence={recurrenceRule}
               scheduledTime={scheduledTime}
               reminderMinutes={reminderMinutes}
-              duePinned={isDuePinned(props)}
               done={statusDone}
             />
           </div>
+
+          {/* Due: its own row directly under Schedule, so the pair reads together
+              (Tyler, 2026-09-11). ADR-252 had folded it into the popover above,
+              which fixed "two dates for everything" by making the second date
+              invisible — with no deadline set there was no affordance at all.
+              The anchoring behavior is unchanged; only its home moved back. */}
+          <div className={RAIL_ROW}>
+            <DueRow
+              itemId={item.id}
+              scheduled={item.scheduledDate?.toISOString() ?? null}
+              due={item.dueDate?.toISOString() ?? null}
+              today={today}
+              pinned={isDuePinned(props)}
+              done={statusDone}
+            />
+          </div>
+
           <div className={RAIL_ROW}>
             <PriorityRow itemId={item.id} initial={item.urgency} />
           </div>
@@ -200,18 +225,28 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
           <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
             <PeopleRow ownerId={ownerId} itemId={item.id} rail />
           </div>
+
+          {/* Project: where the task lives. It led the rail under the Todoist
+              order (2026-08-18); Tyler moved it below the dates and people
+              (2026-09-11), so what you set most often reads first. */}
+          {projectFields.length > 0 && (
+            <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+              <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={projectFields} rail />
+            </div>
+          )}
+
+          {/* Linked: the connected web, as a label + count + "+" beside its
+              relation siblings above. The panel in the main pane lists the
+              items; this row is where you ADD one. */}
+          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+            <LinkedRow ownerId={ownerId} itemId={item.id} />
+          </div>
+
           {scalarFields.length > 0 && (
             <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
               <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
             </div>
           )}
-
-          {/* Linked: the connected web, as a label + count + "+" beside its
-              relation siblings above (ADR-252). The panel in the main pane lists
-              the items; this row is where you ADD one. */}
-          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
-            <LinkedRow ownerId={ownerId} itemId={item.id} />
-          </div>
 
           {/* Focus today: a one-tap star, kept in plain sight (not behind a
               popover) since it's a frequent daily action. */}
@@ -225,12 +260,6 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
         }
       />
 
-      {/* No Export & sharing / Version History footer on tasks (ADR-252). Save
-          Offline, Share link and Download Markdown are BODY-shaped features, and
-          a task's body is a line or two and a URL — the section was three
-          affordances nobody would reach for, sitting under every task. Hidden,
-          not deleted: ItemUtilitiesFooter still renders on every other canvas,
-          and a task's revisions stay reachable from the item actions menu. */}
     </div>
   );
 }
