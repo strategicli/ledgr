@@ -328,7 +328,12 @@ export default function CustomProperties({
           <InlineLabel typeKey={typeKey} propertyKey={prop.key} label={prop.label} />
         </dt>
         <dd className="flex min-w-0 items-center gap-1">
-          <span className={isSaving ? "opacity-50 transition-opacity" : undefined}>
+          {/* min-w-0: the controls are `w-56 max-w-full`, and max-w-full only
+              caps them if THIS wrapper can shrink below its content. Without it a
+              narrow layout card (4 of 12 columns, `overflow-auto`) is spilled by
+              the 128px label + 224px control, and Windows paints a horizontal
+              scrollbar under every field. */}
+          <span className={`min-w-0 ${isSaving ? "opacity-50 transition-opacity" : ""}`}>
             {control(prop, isEditing && !filled)}
           </span>
           {filled && (() => {
