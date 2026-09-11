@@ -104,6 +104,13 @@ try {
   const isEmpty = await byWhere("and", [{ subject: "property", key: "note", op: "empty" }]);
   check("property empty = missing/blank", has(isEmpty, s2) && !has(isEmpty, tAlpha));
 
+  const cOn = await mkTask("flag on", { flag: true });
+  const cOff = await mkTask("flag off", { flag: false });
+  const checked = await byWhere("and", [{ subject: "property", key: "flag", op: "checked" }]);
+  check("checkbox checked = json true only", has(checked, cOn) && !has(checked, cOff) && !has(checked, s2));
+  const unchecked = await byWhere("and", [{ subject: "property", key: "flag", op: "unchecked" }]);
+  check("checkbox unchecked = false or absent", has(unchecked, cOff) && has(unchecked, s2) && !has(unchecked, cOn));
+
   console.log("\n# AND vs OR combinator");
   const orRes = await byWhere("or", [
     { subject: "property", key: "note", op: "contains", value: "world" },

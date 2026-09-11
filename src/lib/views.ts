@@ -312,6 +312,11 @@ function propertyConditionSql(key: string, c: WhereCondition): SQL | null {
       return present;
     case "empty":
       return absent;
+    // A checkbox stores JSON true; anything else (false, absent, "") is unchecked.
+    case "checked":
+      return sql`${items.properties} @> ${JSON.stringify({ [key]: true })}::jsonb`;
+    case "unchecked":
+      return sql`not (${items.properties} @> ${JSON.stringify({ [key]: true })}::jsonb)`;
     case "contains":
       return c.value != null ? sql`${text} ilike ${`%${c.value}%`}` : null;
     case "eq":
