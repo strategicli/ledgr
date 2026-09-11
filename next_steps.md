@@ -2,6 +2,10 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ FIXED — record-page property fields no longer grow a horizontal scrollbar (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
+
+On a record page laid out as a grid (any type with a saved layout; first seen on Hiring Candidates), every text/URL/textarea property card showed a horizontal scrollbar under the field on Windows, and the textarea card scrolled its label to the bottom. A property card defaults to 4 of 12 columns with `overflow-auto`; the row inside is a 128px label + a 224px `w-56` control, wider than the card. The control's `max-w-full` never capped it because its wrapper `<span>` could not shrink below its content. The wrapper is now `min-w-0` (`src/components/build/CustomProperties.tsx`), so the control shrinks to the card and nothing spills. The wide side-by-side layout is unchanged.
+
 ## ✅ FIXED — the quick-add card no longer doubles a highlighted word (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
 
 Typing a date word ("tomorrow") into the add-task title showed it as bold, doubled white text. The card draws the highlight pill on a hidden mirror copy of the title under the textarea, and that copy uses `<mark>`. ADR-251's global `mark { color: var(--mark-ink) }` is an unlayered rule, so it beat the mirror's Tailwind `text-transparent` utility and the mirror's word showed through. The mirror mark now sets its color inline (`src/components/tasks/AddTaskCard.tsx`), which no stylesheet rule can override. Only overlay of its kind in the app (`text-transparent` + `<mark>`), so nothing else needed the same guard.
