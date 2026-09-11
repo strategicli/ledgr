@@ -1055,7 +1055,7 @@ export default function AddTaskCard({
                     value={typeof val === "string" ? val.slice(0, 10) : null}
                     onCommit={(ymd) => set(`${ymd}T00:00:00.000Z`)}
                     ariaLabel={def.label}
-                    className={`${box} [color-scheme:dark]`}
+                    className={box}
                   />
                 ) : def.kind === "checkbox" ? (
                   <input

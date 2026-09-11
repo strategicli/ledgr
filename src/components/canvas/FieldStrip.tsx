@@ -38,7 +38,7 @@ function toLocalInput(iso: string): string {
 // panel surface, brighter on focus/hover — the calm chip strip under the title.
 const selectClass =
   "rounded-md border border-line bg-surface-1 px-2 py-0.5 text-sm text-ink outline-none focus:border-line-strong";
-const inputClass = `${selectClass} [color-scheme:dark]`;
+const inputClass = selectClass;
 // Reschedule shortcut chips on the scheduled field (T2).
 const chipClass =
   "rounded-full border border-line px-2 py-0.5 text-xs text-ink-muted hover:border-line-strong hover:text-ink";

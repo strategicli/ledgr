@@ -11,7 +11,7 @@ import { openItem } from "@/lib/item-nav";
 import type { TypeDefinition } from "@/lib/types";
 
 const fieldClass =
-  "rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
+  "rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-200 outline-none focus:border-neutral-600";
 
 export default function NewTemplateForm({
   types,
