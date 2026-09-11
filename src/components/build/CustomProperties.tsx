@@ -270,7 +270,7 @@ export default function CustomProperties({
           />
         );
       case "date": {
-        // A withTime field (ADR-253) edits a local wall-clock and stores an
+        // A withTime field (ADR-254) edits a local wall-clock and stores an
         // instant; a withEnd field shows a second input for its `__end` sibling.
         const endKey = `${prop.key}__end`;
         const input = (key: string, focus: boolean) => {

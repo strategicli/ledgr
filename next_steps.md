@@ -2,11 +2,11 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## 🔶 IN REVIEW — the work log becomes a timed history (2026-09-11, ADR-253 proposed, branch `claude/day-log-time-tracking-ddb8b1`)
+## ✅ SHIPPED — the work log becomes a timed history (2026-09-11, ADR-254, Tyler agreed, branch `claude/day-log-time-tracking-ddb8b1`)
 
 **The ask (Brandon).** Log Entry's Start/End were text ("9:06 PM"), so nothing could place an entry by the hour. Make them real times and read the whole log on the vertical History spine.
 
-**Built.** A `withTime` flag on the `date` kind, beside `withEnd` (ADR-253, **core: Tyler to agree before merge**). Log Entry's Date becomes one timed range: start in `logdate`, end in `logdate__end`, both ISO instants. Readers detect instant vs day from the value, so existing day-only values need no rewrite. Type builder gained two checkboxes on a Date row (time of day, end/range); the record page gained a date-and-time picker and, for the first time, a "to" input for a `withEnd` field. Table cells format a timed property as day + clock. `verify-placement.mts` covers it.
+**Built.** A `withTime` flag on the `date` kind, beside `withEnd` (ADR-254, core, both agreed). Log Entry's Date becomes one timed range: start in `logdate`, end in `logdate__end`, both ISO instants. Readers detect instant vs day from the value, so existing day-only values need no rewrite. Type builder gained two checkboxes on a Date row (time of day, end/range); the record page gained a date-and-time picker and, for the first time, a "to" input for a `withEnd` field. Table cells format a timed property as day + clock. `verify-placement.mts` covers it.
 
 **Migration.** `scripts/convert-log-times.mts` (machine API, Basic auth from `/build/api`, dry run by default, JSON backup + `--rollback`). "All day" rows keep a day-only date. Run order after deploy: tick both boxes on Log Entry → Date in `/build/types`, dry-run the script, apply, spot-check the "Work Log" History view at hour grain, then hide the old Start/End text fields.
 

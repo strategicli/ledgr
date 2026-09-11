@@ -60,7 +60,7 @@ type Row = {
   optionsText: string;
   targetType: string;
   cardinality: RelationCardinality;
-  // `date` kind only: range end + wall-clock time (ADR-166 / ADR-253).
+  // `date` kind only: range end + wall-clock time (ADR-166 / ADR-254).
   withEnd: boolean;
   withTime: boolean;
 };

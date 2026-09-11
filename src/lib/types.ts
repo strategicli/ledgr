@@ -96,7 +96,7 @@ export type PropertyDef = {
   // every existing filter/sort on the start key is untouched. Unset = a single
   // date. Declared once here, so no manual "which field is the end" wiring.
   withEnd?: boolean;
-  // `date` kind only (ADR-253): when true the field carries a wall-clock TIME as
+  // `date` kind only (ADR-254): when true the field carries a wall-clock TIME as
   // well as a day. The value is then a full ISO instant ("2026-09-11T02:06:00Z")
   // instead of a day scalar ("2026-09-10"); readers tell the two apart by length
   // (placement.ts propInstant), so a field flipped on later keeps its old

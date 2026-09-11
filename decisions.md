@@ -4095,9 +4095,9 @@ So the missing pieces were three, and small: the spine was trapped in a page, th
 
 **Affects:** `src/lib/sync/client.ts` (`quietSkip`, `maxSafeGapMinutes`/`maxSafeGapMs`, `cadenceRefusal`, the loop's per-hub gate), `src/components/network/HubActions.tsx`, `src/lib/mcp/user-guide.ts`, `scripts/verify-sync-ui.mts`. Companion to the same day's cron pruning (four GitHub Actions schedules stopped, runbook §5 and the Neon Free section rewritten).
 
-## ADR-253: a date property can carry a time of day (`withTime`), so one field is a timed range
+## ADR-254: a date property can carry a time of day (`withTime`), so one field is a timed range
 
-**Date:** 2026-09-11 · **Status:** proposed (core: property-kind contract; needs Tyler's agreement before merge) · **Requested by:** Brandon
+**Date:** 2026-09-11 · **Status:** accepted (core: property-kind contract; Tyler agreed 2026-09-11) · **Requested by:** Brandon
 
 **Context.** The work log (`log_entry`) kept its start and end as free text ("9:06 PM"), so the History spine and the Planner could only place an entry on its day. Brandon wants the log to be a real time-tracking history, viewable on the vertical spine by the hour. The `date` kind was day-only by design (ADR-166: "custom date props are ISO date scalars, day-only for v1"), with `withEnd` already letting one field carry a range end at `<key>__end`.
 

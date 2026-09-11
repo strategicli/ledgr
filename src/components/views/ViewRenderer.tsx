@@ -206,7 +206,7 @@ function formatPropValue(v: unknown, tz?: string): string {
   if (v == null) return "";
   if (Array.isArray(v)) return v.map((x) => String(x)).join(", ");
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  // A timed date property (ADR-253) reads as a local day + clock, not raw ISO.
+  // A timed date property (ADR-254) reads as a local day + clock, not raw ISO.
   if (typeof v === "string" && tz) {
     const inst = propInstant(v);
     if (inst) return tzFmts(tz).dayTime.format(inst);
@@ -711,7 +711,7 @@ function spineDate(
         : null;
     const raw = props?.[start.prop];
     if (typeof raw !== "string" || raw.length < 10) return null;
-    // A withTime prop is a real instant (ADR-253); a day scalar stays a UTC day.
+    // A withTime prop is a real instant (ADR-254); a day scalar stays a UTC day.
     const inst = propInstant(raw);
     if (inst) return { date: inst, calendarDay: false, hasTime: grain === "hour" || grain === "day" };
     const d = new Date(`${raw.slice(0, 10)}T00:00:00Z`);

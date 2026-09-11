@@ -141,7 +141,7 @@ function item(over: Partial<PlaceableItem>): PlaceableItem {
   check("prop range write → launch__end = 07-30", pp?.["launch__end"] === "2026-07-30", pp?.["launch__end"]);
 }
 
-// --- timed custom date property (withTime, ADR-253): instant in, instant out
+// --- timed custom date property (withTime, ADR-254): instant in, instant out
 {
   const it = item({
     type: "log_entry",

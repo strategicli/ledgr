@@ -145,7 +145,7 @@ function propString(properties: unknown, key: string): string | null {
 }
 
 // A custom date property value is either a day scalar ("2026-09-10") or, for a
-// `withTime` field (ADR-253), a full ISO instant. Anything longer than a day
+// `withTime` field (ADR-254), a full ISO instant. Anything longer than a day
 // that parses is the instant; a bare day (or garbage) returns null so the
 // caller keeps the day-only path. Exported so the spine and the cell renderer
 // agree with placement on which values carry a clock.
@@ -161,7 +161,7 @@ function readAnchor(item: PlaceableItem, ref: DateRef, tz: string): Anchor | nul
   if ("prop" in ref) {
     const v = propString(item.properties, ref.prop);
     if (!v) return null;
-    // A withTime prop stores a real instant (ADR-253): split it in the owner's
+    // A withTime prop stores a real instant (ADR-254): split it in the owner's
     // zone like meetingAt. A day scalar stays an all-day anchor.
     const inst = propInstant(v);
     if (inst) return { ymd: ymdOf(ymdInZone(inst, tz)), minutes: minutesInZone(inst, tz) };
@@ -250,7 +250,7 @@ function writeRef(
 ): PatchParts {
   const parts = emptyParts();
   if ("prop" in ref) {
-    // Value-driven (ADR-253): an anchor with minutes writes an instant, one
+    // Value-driven (ADR-254): an anchor with minutes writes an instant, one
     // without writes the day. The view's zoom decides which the drag produced.
     parts.propertyPatch[ref.prop] = !anchor
       ? null

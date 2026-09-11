@@ -87,7 +87,7 @@ export const typeTools: McpTool[] = [
             ...(p.targetType != null ? { targetType: p.targetType } : {}),
             ...(p.cardinality ? { cardinality: p.cardinality } : {}),
             // Date fields: a range end lives at `<key>__end`; a timed field
-            // stores a full ISO instant instead of a day (ADR-166 / ADR-253).
+            // stores a full ISO instant instead of a day (ADR-166 / ADR-254).
             ...(p.withEnd ? { withEnd: true } : {}),
             ...(p.withTime ? { withTime: true } : {}),
           })),

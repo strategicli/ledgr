@@ -1,5 +1,5 @@
 // One-off: turn a Log Entry's text Start/End ("9:06 PM") into a timed range on
-// its Date field (ADR-253): properties.logdate = start instant, logdate__end =
+// its Date field (ADR-254): properties.logdate = start instant, logdate__end =
 // end instant, both ISO in UTC composed from the entry's day in the owner's
 // zone. "All day" (or unparseable) entries keep their day-only date and get no
 // end. Idempotent: an entry whose logdate already carries a time is skipped.
