@@ -2,6 +2,17 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — `image` is a property kind on any type (2026-09-11, ADR-255, branch `feat/image-property-kind`, Tyler agreed)
+
+Any type can now carry a picture field. Pick "Image (upload or URL)" as a field kind in the type builder, name it anything, and every record of that type gets the same click-to-upload box the person page already had.
+
+**What shipped.** `image` added to `PROPERTY_KINDS` (a plain string, same contract as `url`: an http(s) URL or a stable `/files/<id>` address, ADR-228; additive, no migration). `PersonImageBox` generalized to `src/components/build/ImageBox.tsx`'s `ImageBox`, taking a `propKey` prop; person's two mounts pass `propKey="image"` and are unchanged in behavior. `CustomProperties.tsx` renders an `ImageBox` for any image-kind field; the classic canvas renders one beside the person box for every image-kind property on the type. Views: a filter offers only is-set/is-empty, and a table column shows a 24px thumbnail. MCP: `create_type`/`update_type` accept the kind (no code change needed), `update_item`'s `propertyPatch` fills/clears it, and `attach_file` gained an optional `propertyKey` that writes the upload's address straight into an image property (`embedInBody` then defaults to false).
+
+**Follow-ups, not done here:**
+
+- A per-field wide "cover" display style (v1 is one 112px square box for every image kind).
+- The drag-to-position cropper already queued for person's Image (v1 stays a deterministic center crop).
+
 ## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**

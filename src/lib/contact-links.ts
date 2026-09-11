@@ -100,7 +100,8 @@ export function contactLink(
   const v = value.trim();
   if (!v) return null;
 
-  if (kind === "url") {
+  // image stores the same plain string url does (ADR-228/ADR-255): same link.
+  if (kind === "url" || kind === "image") {
     const href = urlHref(v);
     return href ? { href, title: "Open link", external: true } : null;
   }

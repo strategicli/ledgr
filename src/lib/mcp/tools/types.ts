@@ -103,7 +103,9 @@ export const typeTools: McpTool[] = [
       "the 'make me a place to track X' move. `key` is a lowercase slug, " +
       "immutable once created; `label` is the display name. `propertySchema` is " +
       "the type's fields: each { key, label, kind } where kind is text | number | " +
-      "date | checkbox | url | select | multi_select (these need an `options` " +
+      "date | checkbox | url | image (a picture: stores an http(s) URL or a " +
+      "/files/<id> address; fill it with update_item propertyPatch or attach_file " +
+      "propertyKey) | select | multi_select (these need an `options` " +
       "string array) | relation (a typed link — set `targetType` to the type key " +
       "it links to, or omit for any, plus `cardinality` single|many). A `date` " +
       "field may set `withTime: true` (stores a full ISO instant, not a day) " +

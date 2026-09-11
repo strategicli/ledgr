@@ -465,6 +465,11 @@ Ledgr is its own task manager. Nothing else needs to be running.
   in the same panel. Project cards' people circles and a task row's person
   chips then show the face, falling back to initials or the person glyph
   without one.
+- **Any type can carry a picture.** Add a field of kind "Image (upload or
+  URL)" to a type at Build → Types, and every record of that type gets the
+  same click-to-upload box the person page has — upload a photo or paste a
+  direct image URL, Remove in the same panel. A list view's column for that
+  field shows a small thumbnail instead of the raw address.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
   deadline. On a task they sit as a pair at the top of the details rail,
