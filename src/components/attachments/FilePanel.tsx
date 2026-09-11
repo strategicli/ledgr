@@ -108,7 +108,16 @@ export default function FilePanel({
     <div className="flex flex-col gap-1">
       <ul className="flex flex-col gap-1">
         {rows.map((f) => (
-          <li key={f.id} className="flex items-center gap-2 text-sm">
+          // Wrapping row (Tyler, 2026-09-11): the name side and the action side
+          // are two flex items, not six siblings, so the actions drop to their
+          // own line intact when there isn't room beside the filename. The name
+          // group asks for 12rem via `basis-48`; in a 248px host (the task rail)
+          // the ~180px of buttons can't also fit, so they wrap — while a wide
+          // host still renders the single line it always did. Before this, every
+          // part competed for the same line: the filename collapsed to nothing
+          // and the buttons pushed the panel into a horizontal scroll.
+          <li key={f.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <span className="flex min-w-0 flex-1 basis-48 items-center gap-2">
             <NavGlyph icon="document" size={14} className="shrink-0 text-ink-subtle" />
             <a
               href={attachmentUrl(f.id)}
@@ -142,6 +151,7 @@ export default function FilePanel({
                 not linked
               </span>
             )}
+            </span>
             {/* Always visible, not hover-revealed: hover-only actions never show
                 on touch and hid Delete from the first real user (Tyler,
                 2026-08-29) — "scope the UI" (Brandon, 2026-06-21). */}
