@@ -17,15 +17,20 @@
 // interpolation.
 import { useEffect, useState, type ReactNode } from "react";
 
-// The collapse toggle's look, shared by the hide and show chevrons so they can't
-// drift apart. It carries the owner's ACCENT (Tyler, 2026-09-11): as
-// border-line/ink-subtle it was charcoal on charcoal, invisible in the modal
-// peek where the surfaces sit closest together, and this is the one control that
-// reveals half the canvas — worth drawing the eye to.
-const TOGGLE =
+// The collapse toggle's shape, shared by the hide and show chevrons so they
+// can't drift apart. Colour is NOT shared (Tyler, 2026-09-11): while the rail is
+// open the chevron is ordinary chrome and stays gray, but once the rail is
+// COLLAPSED it is the only thing on screen that brings it back — so that state,
+// and only that state, takes the owner's accent.
+const TOGGLE_BASE =
   "sticky z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full " +
-  "border border-[var(--accent)]/45 bg-surface-2 text-[var(--accent)] " +
-  "transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)]/15";
+  "border transition-colors";
+const TOGGLE_QUIET =
+  "border-line bg-surface-2 text-ink-subtle " +
+  "hover:border-line-strong hover:bg-surface-3 hover:text-ink";
+const TOGGLE_ACCENT =
+  "border-[var(--accent)]/45 bg-surface-2 text-[var(--accent)] " +
+  "hover:border-[var(--accent)] hover:bg-[var(--accent)]/15";
 
 function Chevron({ dir }: { dir: "left" | "right" }) {
   return (
@@ -161,7 +166,12 @@ export default function CanvasTwoPane({
               onPointerDown={(e) => e.stopPropagation()}
               aria-label="Hide panel"
               title="Hide panel"
-              className={`${TOGGLE} ${stickyTop}`}
+              // translate-x-1.5 centres the circle ON the rail's edge (Tyler,
+              // 2026-09-11). The boundary strip is w-3 and the button is w-6
+              // centred in it, which puts the circle's centre 6px LEFT of where
+              // the rail actually begins — visibly off the line it is meant to
+              // sit on. Half the strip's width moves it onto that edge.
+              className={`${TOGGLE_BASE} ${TOGGLE_QUIET} ${stickyTop} translate-x-1.5`}
             >
               <Chevron dir="right" />
             </button>
@@ -199,7 +209,7 @@ export default function CanvasTwoPane({
               onClick={() => setOpen(true)}
               aria-label="Show panel"
               title="Show panel"
-              className={`${TOGGLE} mx-auto ${stickyTop}`}
+              className={`${TOGGLE_BASE} ${TOGGLE_ACCENT} mx-auto ${stickyTop}`}
             >
               <Chevron dir="left" />
             </button>
