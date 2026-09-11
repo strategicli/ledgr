@@ -18,7 +18,7 @@ import InlineLabel from "./InlineLabel";
 // container — the task rail scrolls on overflow-y, which makes overflow-x `auto`
 // too, so any few px of horizontal spill shows up as a scrollbar + shifted rail.
 const inputClass =
-  "max-w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600 [color-scheme:dark]";
+  "max-w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-600";
 
 // Box-like kinds whose empty control reads as visual noise (the row of blank
 // inputs on a sparse Person). When empty they collapse into a "+ label" add-chip

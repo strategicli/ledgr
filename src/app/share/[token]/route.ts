@@ -88,6 +88,9 @@ export async function GET(
     // So an accent highlight in the body renders in the owner's color on a
     // page that has no app context to resolve `var(--accent)` against.
     accent: ownerSettings.highlightColor,
+    // The look baked into the link when it was minted, else the owner's current
+    // theme. The reader can switch it on the page itself.
+    theme: shared.options.theme ?? ownerSettings.theme,
   });
 
   return new NextResponse(html, {

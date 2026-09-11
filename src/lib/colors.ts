@@ -35,6 +35,23 @@ export const BLOCKNOTE_COLORS = {
 
 export type BlockNoteColor = keyof typeof BLOCKNOTE_COLORS;
 
+// The same nine text colors as darker shades for a LIGHT page (light/sepia
+// themes). The bright dark-canvas values above are what the body stores, so a
+// light page repaints them by attribute match on the stored hex (globals.css
+// carries the in-app rules; print-html.ts generates the document's from this
+// table). Keep the globals.css block in step when changing a value.
+export const LIGHT_TEXT_COLORS: Record<BlockNoteColor, string> = {
+  gray: "#52525b",
+  brown: "#8a5a2b",
+  red: "#c81e2e",
+  orange: "#c2410c",
+  yellow: "#a16207",
+  green: "#15803d",
+  blue: "#1d4ed8",
+  purple: "#7e22ce",
+  pink: "#be185d",
+};
+
 export function isBlockNoteColor(name: unknown): name is BlockNoteColor {
   return typeof name === "string" && name in BLOCKNOTE_COLORS;
 }

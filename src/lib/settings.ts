@@ -92,6 +92,31 @@ export const TEXT_SIZE_PX: Record<TextSize, string> = {
 // untouched until he chooses a level). The factors stay modest so the layout
 // never breaks. Distinct from navDensity, which is only how nav slots pack.
 export const UI_DENSITIES = ["compact", "default", "comfortable", "roomy"] as const;
+
+// App theme. `data-theme` on <html> (unset for dark, the :root default);
+// globals.css carries one variable block per theme ([data-theme=…]), and
+// tier 1 of the token layer (ADR-141) routes every neutral utility through those
+// variables, so the flip is one class, not a per-component rewrite. Stored as the
+// plain product word so the value reads the same in the blob and on screen.
+export const THEMES = ["dark", "light", "gray", "sepia"] as const;
+export type Theme = (typeof THEMES)[number];
+export const THEME_LABELS: Record<Theme, string> = {
+  dark: "Dark",
+  light: "Light",
+  gray: "Gray",
+  sepia: "Sepia",
+};
+// Each theme's page color (= its --surface-0 in globals.css). Feeds the
+// <meta name="theme-color"> so the mobile title bar matches the page.
+export const THEME_PAGE_COLOR: Record<Theme, string> = {
+  dark: "#191919",
+  light: "#ffffff",
+  gray: "#2b2b2b",
+  sepia: "#f4ecd8",
+};
+export function isTheme(v: unknown): v is Theme {
+  return typeof v === "string" && (THEMES as readonly string[]).includes(v);
+}
 export type UiDensity = (typeof UI_DENSITIES)[number];
 export const UI_SCALE: Record<UiDensity, number> = {
   compact: 0.9,
@@ -291,6 +316,8 @@ export type UserSettings = {
   // textSize (which sizes the prose canvas only).
   uiDensity: UiDensity;
   mobileUiDensity: UiDensity | null;
+  // App theme (dark/light/gray/sepia); data-theme on <html> set in layout.
+  theme: Theme;
   // Item-canvas section style (heavy/light/unified). Maps to the
   // `data-section-style` attribute on <body>; the CanvasSection CSS reads it.
   sectionStyle: SectionStyle;
@@ -505,6 +532,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   textSize: "base",
   uiDensity: "default",
   mobileUiDensity: null,
+  theme: "dark",
   sectionStyle: "light",
   favorites: [],
   listTabs: {},
@@ -734,6 +762,7 @@ export function parseSettings(raw: unknown): UserSettings {
       : (UI_DENSITIES as readonly string[]).includes(r.mobileUiDensity as string)
         ? (r.mobileUiDensity as UiDensity)
         : null;
+  const theme = isTheme(r.theme) ? r.theme : DEFAULT_SETTINGS.theme;
   const sectionStyle = (SECTION_STYLES as readonly string[]).includes(r.sectionStyle as string)
     ? (r.sectionStyle as SectionStyle)
     : DEFAULT_SETTINGS.sectionStyle;
@@ -797,6 +826,7 @@ export function parseSettings(raw: unknown): UserSettings {
     textSize,
     uiDensity,
     mobileUiDensity,
+    theme,
     sectionStyle,
     favorites,
     listTabs,
