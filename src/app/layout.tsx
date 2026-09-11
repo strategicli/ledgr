@@ -14,7 +14,7 @@ import { navPadVars } from "@/lib/nav-layout";
 import { resolveOwner } from "@/lib/owner";
 import { createLogger } from "@/lib/log";
 import { accentHighlightImageCss } from "@/lib/colors";
-import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX, UI_SCALE } from "@/lib/settings";
+import { DEFAULT_SETTINGS, getSettings, TEXT_SIZE_PX, THEME_PAGE_COLOR, UI_SCALE } from "@/lib/settings";
 import { DEFAULT_TIMEZONE, primeAppTimezone } from "@/lib/today";
 import "./globals.css";
 
@@ -54,8 +54,21 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  themeColor: "#191919",
+// The title-bar color follows the owner's theme (settings.theme), so a light
+// or sepia page doesn't sit under a black mobile status bar. Best-effort like
+// the layout's own settings read: signed-out or failed → dark.
+export async function generateViewport(): Promise<Viewport> {
+  let themeColor = THEME_PAGE_COLOR.dark;
+  try {
+    const owner = await resolveOwner();
+    if (owner) themeColor = THEME_PAGE_COLOR[(await getSettings(owner.id)).theme];
+  } catch (err) {
+    if ((err as { digest?: string })?.digest === "DYNAMIC_SERVER_USAGE") throw err;
+  }
+  return { ...viewportBase, themeColor };
+}
+
+const viewportBase: Viewport = {
   // Paint under the iOS home indicator; the nav bar pads itself back out
   // with safe-area-inset-bottom.
   viewportFit: "cover",
@@ -101,6 +114,9 @@ export default async function RootLayout({
   // Item-canvas section style (the canvas redesign) — emitted as a body attribute
   // the CanvasSection CSS reads, so the whole panel weight flips from one setting.
   let sectionStyle = DEFAULT_SETTINGS.sectionStyle;
+  // App theme: data-theme on <html> (none for dark, the :root default) that
+  // flips the whole token layer in globals.css. Server-rendered, so no flash.
+  let theme = DEFAULT_SETTINGS.theme;
   // Resolved owner timezone: seeds the sync cache (appTimezoneSync) for the whole
   // request and is provided to client components via TimezoneProvider.
   let tz = DEFAULT_TIMEZONE;
@@ -119,6 +135,7 @@ export default async function RootLayout({
       uiScale = UI_SCALE[s.uiDensity];
       mobileUiScale = UI_SCALE[s.mobileUiDensity ?? s.uiDensity];
       sectionStyle = s.sectionStyle;
+      theme = s.theme;
       tz = s.timezone ?? DEFAULT_TIMEZONE;
     }
   } catch (err) {
@@ -147,6 +164,7 @@ export default async function RootLayout({
       <html
         lang="en"
         className={`${geistSans.variable} ${geistMono.variable} ${logoFont.variable} h-full antialiased`}
+        data-theme={theme === "dark" ? undefined : theme}
       >
         <body
           className="min-h-full flex flex-col"

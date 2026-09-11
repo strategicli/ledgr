@@ -2,6 +2,14 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ BUILT — themes: Dark, Light, Gray, Sepia (2026-09-11, branch `feat/themes`)
+
+**What you can do now.** Settings → Theme picks the app's look (Dark stays the default). It applies on every device and on the first paint (the class is set on `<html>` server-side), and the mobile title bar follows the page color. Share links carry an "Opens in" theme (defaults to your own); the shared page has an **Appearance** picker at the top right so the reader can switch, and their browser remembers the choice for every Ledgr document.
+
+**How.** No schema change: `theme` in the settings blob (`settings.ts` THEMES). One variable block per theme in `globals.css` beside the existing `.light` (ADR-141 tier 1 makes every neutral utility follow). The nine text colors are repainted on light pages by attribute match on the stored hex (`LIGHT_TEXT_COLORS` in `colors.ts`, mirrored in `globals.css`); highlights are alpha washes and needed nothing. The 13 per-input `[color-scheme:dark]` guards were deleted so native date pickers follow the theme. `print-html.ts` is var-based now, with the same four looks.
+
+**Not done.** The PWA manifest splash stays dark (fetched once, cached by the OS). No "follow system" option. The offline landing page (`public/offline.html`) stays dark.
+
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 
 **Where it came from.** Brandon's 2026-09-08 audit of the cloud database found it being woken roughly 40 to 140 times a day, on an install where the cloud copy is meant to be a near-idle archive. The framing that made the fix obvious: a serverless database parks its compute after five minutes idle and that delay cannot be shortened on the free plan, so **one tiny query costs the same as a busy minute**. Count wake-ups, not queries. An hourly job with nothing to do keeps the database awake two hours a day.
