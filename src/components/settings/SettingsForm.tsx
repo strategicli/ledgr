@@ -24,6 +24,8 @@ import {
   type TextSize,
   type UiDensity,
   type UserSettings,
+  THEMES,
+  THEME_LABELS,
 } from "@/lib/settings";
 import { accentHighlightImageCss } from "@/lib/colors";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
@@ -591,6 +593,25 @@ export default function SettingsForm({
               className={segBtn(settings.sectionStyle === style)}
             >
               {SECTION_STYLE_LABELS[style]}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-neutral-200">Theme</h2>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          The app&apos;s overall look. Applies everywhere you&apos;re signed in, and
+          new share links open in this theme by default.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-1">
+          {THEMES.map((t) => (
+            <button
+              key={t}
+              onClick={() => void save({ theme: t }, true)}
+              className={segBtn(settings.theme === t)}
+            >
+              {THEME_LABELS[t]}
             </button>
           ))}
         </div>

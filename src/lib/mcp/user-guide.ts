@@ -853,7 +853,10 @@ an exported file changes nothing here.
 The **Share link** control mints an unguessable, read-only link to a single item.
 No sign-in for whoever you send it to. You can revoke it, and each press makes a
 fresh one, so a leaked link can be killed on its own. Comments are never
-included.
+included. **Opens in** picks the theme the shared page starts in (it defaults
+to your own). The page itself has an **Appearance** dropdown at the top right,
+so whoever you send it to can switch between Dark, Light, Gray, and Sepia; their
+browser remembers the choice for every Ledgr document they open.
 
 ## Presentation export
 
@@ -1064,7 +1067,7 @@ Three, all plain Markdown over MCP:
 | Area | What you can change |
 |---|---|
 | You | Display name, timezone |
-| Appearance | Accent colour, interface density (desktop and mobile separately), text size, section style |
+| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, interface density (desktop and mobile separately), text size, section style |
 | Navigation | Position (top, bottom, left, right), spacing |
 | Editor | Which toolbar buttons show; collapsible headings; toggle blocks |
 | Capture | Which actions appear on the task capture card |
