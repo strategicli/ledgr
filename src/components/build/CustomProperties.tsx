@@ -12,6 +12,25 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { contactInputType, contactLink } from "@/lib/contact-links";
 import { beginSave, endSave } from "@/lib/save-status";
 import type { PropertyDef } from "@/lib/types";
+import { propInstant } from "@/lib/placement";
+
+// datetime-local speaks the BROWSER's zone, which for a single-user app is the
+// owner's zone in practice. ponytail: if a device ever edits from another zone,
+// route these through users.settings.timezone (zone.ts zonedInstant) instead.
+const pad2 = (n: number) => String(n).padStart(2, "0");
+function toLocalInput(stored: string): string {
+  const inst = propInstant(stored);
+  if (inst) {
+    return `${inst.getFullYear()}-${pad2(inst.getMonth() + 1)}-${pad2(inst.getDate())}T${pad2(inst.getHours())}:${pad2(inst.getMinutes())}`;
+  }
+  // A day-only value in a timed field seeds the day; the clock starts at 00:00.
+  return stored.length >= 10 ? `${stored.slice(0, 10)}T00:00` : "";
+}
+function fromLocalInput(local: string): string | null {
+  if (!local) return null;
+  const d = new Date(local);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
 import InlineLabel from "./InlineLabel";
 
 // max-w-full so a fixed-width control (w-56, w-32) can't push past a narrow
@@ -250,17 +269,44 @@ export default function CustomProperties({
             }}
           />
         );
-      case "date":
+      case "date": {
+        // A withTime field (ADR-254) edits a local wall-clock and stores an
+        // instant; a withEnd field shows a second input for its `__end` sibling.
+        const endKey = `${prop.key}__end`;
+        const input = (key: string, focus: boolean) => {
+          const raw = values[key];
+          const str = typeof raw === "string" ? raw : "";
+          return prop.withTime ? (
+            <input
+              key={key}
+              type="datetime-local"
+              autoFocus={focus}
+              className={inputClass}
+              value={toLocalInput(str)}
+              onChange={(e) => void save({ [key]: fromLocalInput(e.target.value) })}
+              onBlur={(e) => key === prop.key && recedeIfEmpty(prop.key, e.target.value)}
+            />
+          ) : (
+            <input
+              key={key}
+              type="date"
+              autoFocus={focus}
+              className={inputClass}
+              value={str.slice(0, 10)}
+              onChange={(e) => void save({ [key]: e.target.value || null })}
+              onBlur={(e) => key === prop.key && recedeIfEmpty(prop.key, e.target.value)}
+            />
+          );
+        };
+        if (!prop.withEnd) return input(prop.key, autoFocus);
         return (
-          <input
-            type="date"
-            autoFocus={autoFocus}
-            className={inputClass}
-            value={typeof v === "string" ? v.slice(0, 10) : ""}
-            onChange={(e) => void save({ [prop.key]: e.target.value || null })}
-            onBlur={(e) => recedeIfEmpty(prop.key, e.target.value)}
-          />
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            {input(prop.key, autoFocus)}
+            <span className="text-xs text-ink-subtle">to</span>
+            {input(endKey, false)}
+          </span>
         );
+      }
       case "checkbox":
         return (
           <input

@@ -86,6 +86,10 @@ export const typeTools: McpTool[] = [
             // relate_items should link (ADR-067).
             ...(p.targetType != null ? { targetType: p.targetType } : {}),
             ...(p.cardinality ? { cardinality: p.cardinality } : {}),
+            // Date fields: a range end lives at `<key>__end`; a timed field
+            // stores a full ISO instant instead of a day (ADR-166 / ADR-254).
+            ...(p.withEnd ? { withEnd: true } : {}),
+            ...(p.withTime ? { withTime: true } : {}),
           })),
         })),
       };
@@ -101,7 +105,9 @@ export const typeTools: McpTool[] = [
       "the type's fields: each { key, label, kind } where kind is text | number | " +
       "date | checkbox | url | select | multi_select (these need an `options` " +
       "string array) | relation (a typed link — set `targetType` to the type key " +
-      "it links to, or omit for any, plus `cardinality` single|many). Example: a " +
+      "it links to, or omit for any, plus `cardinality` single|many). A `date` " +
+      "field may set `withTime: true` (stores a full ISO instant, not a day) " +
+      "and/or `withEnd: true` (its end lives at `<key>__end`). Example: a " +
       "'sermon' type with a `series` select, a `date`, and a `passage` relation. " +
       "Call describe_workspace/list_types first to avoid duplicating an existing " +
       "type, and confirm the shape with the owner before creating.",

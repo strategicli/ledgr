@@ -60,6 +60,9 @@ type Row = {
   optionsText: string;
   targetType: string;
   cardinality: RelationCardinality;
+  // `date` kind only: range end + wall-clock time (ADR-166 / ADR-254).
+  withEnd: boolean;
+  withTime: boolean;
 };
 
 function Field({
@@ -172,6 +175,8 @@ export default function TypeBuilder({
     optionsText: p?.options?.join(", ") ?? "",
     targetType: p?.targetType ?? "",
     cardinality: p?.cardinality ?? "many",
+    withEnd: p?.withEnd === true,
+    withTime: p?.withTime === true,
   });
 
   const [label, setLabel] = useState(initial?.label ?? "");
@@ -197,6 +202,8 @@ export default function TypeBuilder({
       optionsText: p.options?.join(", ") ?? "",
       targetType: p.targetType ?? "",
       cardinality: p.cardinality ?? "many",
+      withEnd: p.withEnd === true,
+      withTime: p.withTime === true,
     }))
   );
   const [busy, setBusy] = useState(false);
@@ -253,6 +260,10 @@ export default function TypeBuilder({
       if (r.kind === "relation") {
         def.targetType = r.targetType || null; // "" = any type
         def.cardinality = r.cardinality;
+      }
+      if (r.kind === "date") {
+        if (r.withEnd) def.withEnd = true;
+        if (r.withTime) def.withTime = true;
       }
       schema.push(def);
     }
@@ -558,6 +569,28 @@ export default function TypeBuilder({
                 </button>
               </div>
             </div>
+            {row.kind === "date" && (
+              <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-500">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="ledgr-check"
+                    checked={row.withTime}
+                    onChange={(e) => updateRow(row.id, { withTime: e.target.checked })}
+                  />
+                  Include a time of day
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="ledgr-check"
+                    checked={row.withEnd}
+                    onChange={(e) => updateRow(row.id, { withEnd: e.target.checked })}
+                  />
+                  Has an end (a range)
+                </label>
+              </div>
+            )}
             {NEEDS_OPTIONS.includes(row.kind) && (
               <input
                 value={row.optionsText}

@@ -117,6 +117,15 @@ On a record page laid out as a grid (any type with a saved layout; first seen on
 ## ✅ FIXED — the quick-add card no longer doubles a highlighted word (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
 
 Typing a date word ("tomorrow") into the add-task title showed it as bold, doubled white text. The card draws the highlight pill on a hidden mirror copy of the title under the textarea, and that copy uses `<mark>`. ADR-251's global `mark { color: var(--mark-ink) }` is an unlayered rule, so it beat the mirror's Tailwind `text-transparent` utility and the mirror's word showed through. The mirror mark now sets its color inline (`src/components/tasks/AddTaskCard.tsx`), which no stylesheet rule can override. Only overlay of its kind in the app (`text-transparent` + `<mark>`), so nothing else needed the same guard.
+## ✅ SHIPPED — the work log becomes a timed history (2026-09-11, ADR-254, Tyler agreed, branch `claude/day-log-time-tracking-ddb8b1`)
+
+**The ask (Brandon).** Log Entry's Start/End were text ("9:06 PM"), so nothing could place an entry by the hour. Make them real times and read the whole log on the vertical History spine.
+
+**Built.** A `withTime` flag on the `date` kind, beside `withEnd` (ADR-254, core, both agreed). Log Entry's Date becomes one timed range: start in `logdate`, end in `logdate__end`, both ISO instants. Readers detect instant vs day from the value, so existing day-only values need no rewrite. Type builder gained two checkboxes on a Date row (time of day, end/range); the record page gained a date-and-time picker and, for the first time, a "to" input for a `withEnd` field. Table cells format a timed property as day + clock. `verify-placement.mts` covers it.
+
+**Migration.** `scripts/convert-log-times.mts` (machine API, Basic auth from `/build/api`, dry run by default, JSON backup + `--rollback`). "All day" rows keep a day-only date. Run order after deploy: tick both boxes on Log Entry → Date in `/build/types`, dry-run the script, apply, spot-check the "Work Log" History view at hour grain, then hide the old Start/End text fields.
+
+**Not done here.** The builder's date picker still writes only `startField`; a Planner view of a range must name `endField: { prop: "logdate__end" }` (the MCP-created Work Log view does). The record picker uses the browser's zone.
 
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 
