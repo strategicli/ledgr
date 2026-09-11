@@ -44,6 +44,7 @@ import {
   toggleOccurrenceCompletion,
 } from "@/lib/recurrence-service";
 import { listSubtree, type SubtaskNode } from "@/lib/subtasks";
+import { withDatePin } from "@/lib/date-anchor";
 import {
   optBodyMarkdown,
   optEnum,
@@ -573,8 +574,11 @@ export const taskTools: McpTool[] = [
         maintainDueOffset: {
           type: "boolean",
           description:
-            "When the planned date advances, shift the due date by the same " +
-            "number of days, preserving the gap between them.",
+            "Superseded — a deadline now keeps its gap from the planned date " +
+            "automatically, so true is the default behavior and you rarely need " +
+            "this. Pass false to PIN the deadline instead, holding it still while " +
+            "the plan moves (a hard external date). Kept so existing callers keep " +
+            "working; prefer update_item's datePins property.",
         },
         resetLog: {
           type: "boolean",
@@ -608,6 +612,21 @@ export const taskTools: McpTool[] = [
       // yet seeds the planned date, so the series has a concrete next date and
       // shows up in Today/Planner. An already-planned task keeps its date.
       const patch: Parameters<typeof updateItem>[2] = { propertyPatch: { recurrence: rule } };
+      // `maintainDueOffset` is superseded by date anchoring (ADR-253): a deadline
+      // now rides the plan date by default, so the flag's `true` is simply the
+      // new normal. Only an explicit `false` still says something — "hold this
+      // deadline still" — and it is translated here, at the write boundary, into
+      // the real lever (a due pin). The stored flag itself is no longer read:
+      // parseRecurrence collapses `false` to `undefined`, making it
+      // indistinguishable from the unset default every task already carries.
+      if (args.maintainDueOffset !== undefined) {
+        const next = withDatePin(
+          item.properties as Record<string, unknown> | null,
+          "due",
+          args.maintainDueOffset !== true
+        );
+        patch.propertyPatch!.datePins = next.datePins ?? null;
+      }
       if (!item.scheduledDate) {
         const first = nextUncompletedOnOrAfter(rule, rule.dtstart) ?? rule.dtstart;
         patch.scheduledDate = ymdToUtcDate(first);

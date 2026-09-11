@@ -15,6 +15,7 @@ import { beginSave, endSave } from "@/lib/save-status";
 import { describeOffset, offsetBetween } from "@/lib/relative-subtask";
 import Popover from "@/components/ui/Popover";
 import DayPickerPanel from "@/components/ui/DayPickerPanel";
+import { reportDateShift } from "@/lib/date-shift-toast";
 
 // Local-day fallback for the panel's quick rows (Today/Tomorrow/…): this
 // control renders inside the canvas without the app-timezone plumbed through,
@@ -60,6 +61,8 @@ export default function SubtaskSchedule({
       });
       if (!res.ok) throw new Error(String(res.status));
       endSave(true);
+      // A subtask can have subtasks; moving this one carries them (ADR-253).
+      reportDateShift(await res.json(), () => router.refresh());
       router.refresh();
       return true;
     } catch {

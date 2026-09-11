@@ -37,7 +37,6 @@ import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import AddRelation from "./AddRelation";
-import NewRelatedTask from "./NewRelatedTask";
 import RelatedGroupView from "./RelatedGroupView";
 import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
 import RelationActions from "./RelationActions";
@@ -55,11 +54,18 @@ export default async function RelatedPanel({
   // Prop-driven (not host-type-driven) because only the bespoke task canvas has
   // the row — the ADR-069 grid layout for the same type does not.
   claimPersons = false,
+  // Whether this panel owns the "+ Relate" / "+ Task" affordances. The task
+  // canvas turns them OFF (ADR-253) and carries a "Linked" row in its rail
+  // instead, beside Project / Tags / People — which are relation edges too, so
+  // the add lives with its siblings rather than as an unlabelled button floating
+  // under the body. With no links yet this panel then renders nothing at all.
+  addBar: showAddBar = true,
 }: {
   ownerId: string;
   itemId: string;
   bare?: boolean;
   claimPersons?: boolean;
+  addBar?: boolean;
 }) {
   const [related, typeRows, hostRows, settings, passages] = await Promise.all([
     listRelatedItems(ownerId, itemId),
@@ -75,10 +81,13 @@ export default async function RelatedPanel({
   ]);
 
   // The add affordances ride along whether or not anything is linked yet.
+  // "+ Relate" only. "+ Task" is gone (Tyler, 2026-09-11): it created a RELATED
+  // task, not a subtask, a distinction invisible sitting beside "Add subtask" on
+  // the same page — so it read as a duplicate of the thing right above it.
+  // NewRelatedTask is kept, just unrendered (defer-by-hiding).
   const addBar = (
     <div className="flex flex-wrap items-center gap-1">
       <AddRelation itemId={itemId} />
-      <NewRelatedTask hostId={itemId} />
     </div>
   );
 
@@ -88,8 +97,11 @@ export default async function RelatedPanel({
     <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">{addBar}</div>
   );
 
-  // Nothing linked yet: just the quiet add affordances, no section chrome.
-  if (related.length === 0 && passages.length === 0) return emptyState;
+  // Nothing linked yet: just the quiet add affordances, no section chrome — or
+  // nothing whatsoever when the host owns the add affordance itself.
+  if (related.length === 0 && passages.length === 0) {
+    return showAddBar ? emptyState : null;
+  }
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
   const hostType = hostRows[0]?.type ?? "";
@@ -127,7 +139,15 @@ export default async function RelatedPanel({
   // Suggested edges render with the existing confirm/reject row (the relatedTo
   // view filter is confirmed-only). Everything else groups by type for the lens.
   const unclaimed = related.filter((r) => !claimed.has(r.id));
-  if (unclaimed.length === 0 && passages.length === 0) return emptyState;
+  // The THIRD place this panel can bail out, and the one that kept "+ Relate"
+  // alive on the task canvas after the other two were gated: an item can HAVE
+  // relations and still have nothing to list here, because its typed fields
+  // (Project, Tags) and People claimed them all. It must respect `addBar` like
+  // the other two exits, or a host that owns its own add affordance gets a
+  // stray one back exactly when every link is accounted for elsewhere.
+  if (unclaimed.length === 0 && passages.length === 0) {
+    return showAddBar ? emptyState : null;
+  }
   const suggested = unclaimed.filter((r) => r.matchState === "suggested");
   const confirmed = unclaimed.filter((r) => r.matchState !== "suggested");
 
@@ -269,7 +289,7 @@ export default async function RelatedPanel({
           </ul>
         </div>
       )}
-      <div className="mt-4">{addBar}</div>
+      {showAddBar && <div className="mt-4">{addBar}</div>}
     </>
   );
 
