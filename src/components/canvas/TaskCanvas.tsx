@@ -21,8 +21,9 @@ import { RAIL_ROW, RAIL_STATIC } from "@/components/canvas/rail/styles";
 import FocusStar from "@/components/today/FocusStar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import LinkedRow from "@/components/canvas/rail/LinkedRow";
-import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
+import ItemFilesSection from "@/components/attachments/ItemFilesSection";
+import { listItemFilesWithRefs } from "@/lib/attachments";
 import { getType } from "@/lib/types";
 import { getItem } from "@/lib/items";
 import { resolveStatusSchema } from "@/lib/status";
@@ -74,6 +75,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
 
   // Parent breadcrumb (a subtask points up to its parent task).
   const parent = item.parentId ? await getItem(ownerId, item.parentId).catch(() => null) : null;
+  const itemFiles = await listItemFilesWithRefs(ownerId, item.id).catch(() => []);
   const parentLink =
     parent && !parent.deletedAt ? { href: `/items/${parent.id}`, title: parent.title || "Untitled" } : null;
 
@@ -143,23 +145,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
                 bare
               />
             </div>
-            {/* Files + Version History, below Linked (Tyler, 2026-09-11), sharing
-                the main column so they line up with everything above. Export &
-                sharing stays off for tasks — Save Offline / Share link / the
-                presentation export are body-shaped and a task's body is a line
-                or two. Files and History do NOT: a file whose body link is
-                deleted would otherwise be stranded with nowhere to find it
-                (ADR-237), and revisions are a task's only undo for a clobbered
-                description. Hiding all three was an overreach on my part. */}
-            <div className="mt-2">
-              <ItemUtilitiesFooter
-                itemId={item.id}
-                currentText={bodyMarkdown(item.body)}
-                exportSharing={false}
-                history={false}
-                bare
-              />
-            </div>
+
           </div>
         }
         rail={
@@ -236,6 +222,16 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               <RelationProperties ownerId={ownerId} itemId={item.id} typeKey="task" props={projectFields} rail />
             </div>
           )}
+
+          {/* Files, directly above Linked (Tyler, 2026-09-11). Everything about
+              the task lives in the rail; the body pane is the work. Rendered
+              unconditionally but SELF-HIDING: the component returns null with
+              zero files and stays mounted listening for upload events, so the
+              section appears the moment the first file lands without a reload.
+              Gating it on a server-side count here would cost exactly that. */}
+          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+            <ItemFilesSection itemId={item.id} initial={itemFiles} column={false} />
+          </div>
 
           {/* Linked: the connected web, as a label + count + "+" beside its
               relation siblings above. The panel in the main pane lists the

@@ -893,8 +893,9 @@ note after it — an embedded image becomes the note alone. Purging an item from
 Trash deletes its files with it.
 
 **Every item shows its own files.** An item carrying files gets a collapsible
-**Files** section above Export & sharing (it appears the moment your first
-upload lands): each file with Open, **Copy link** (a markdown link to paste
+**Files** section above Export & sharing — on a task it sits in the details
+rail instead, just above Linked (it appears the moment your first upload
+lands): each file with Open, **Copy link** (a markdown link to paste
 back into the body), Share, and Delete — plus a "not linked" mark when nothing
 in the item points at the file anymore. So a link you backspaced out of the
 body is never stranded invisibly, and **dragging a file row into the body
