@@ -20,6 +20,7 @@ import RecurrenceCalendar from "@/components/canvas/RecurrenceCalendar";
 import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
 import ReminderControl from "@/components/canvas/ReminderControl";
 import { formatDayLabel, isOverdueYmd } from "@/lib/format-date";
+import { reportDateShift } from "@/lib/date-shift-toast";
 import {
   DEFAULT_DURATION_MINUTES,
   formatTime12,
@@ -50,7 +51,8 @@ export default function SchedulePopover({
   itemId: string;
   today: string;
   scheduled: string | null; // ISO instant or null
-  due: string | null; // ISO instant or null (the recurrence anchor fallback)
+  due: string | null; // ISO instant or null — the recurrence anchor fallback only;
+  // the deadline itself is edited in the rail's own Due row (DueRow).
   recurrence: RecurrenceRule | null;
   scheduledTime: ScheduledTime | null;
   reminderMinutes: number | null;
@@ -94,6 +96,9 @@ export default function SchedulePopover({
       });
       if (!res.ok) throw new Error(String(res.status));
       endSave(true);
+      // Moving the plan date carried the subtask tree (ADR-253); say so, with a
+      // way back.
+      reportDateShift(await res.json(), () => router.refresh());
       router.refresh();
     } catch {
       setIso(before);

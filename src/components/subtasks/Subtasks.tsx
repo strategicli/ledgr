@@ -11,6 +11,8 @@ import AddSubtask from "./AddSubtask";
 import AddExistingSubtask from "./AddExistingSubtask";
 import SubtaskCheckbox from "./SubtaskCheckbox";
 import SubtaskSchedule from "./SubtaskSchedule";
+import { deadlineDisplay } from "@/lib/format-date";
+import { appTodayYmd } from "@/lib/recurrence-service";
 
 // Due and scheduled dates are UTC-midnight calendar days (ADR-008); format in
 // UTC so the shown day can't shift with the viewer's timezone.
@@ -31,9 +33,12 @@ function ProgressBadge({ done, total }: { done: number; total: number }) {
 function SubtaskRow({
   node,
   parentScheduled,
+  today,
 }: {
   node: SubtaskNode;
   parentScheduled: Date | null;
+  // App-timezone YMD, for the deadline's overdue cue (ADR-253).
+  today: string;
 }) {
   const done = node.type === "task" && node.statusCategory === "done";
   return (
@@ -74,11 +79,23 @@ function SubtaskRow({
             </span>
           )
         )}
-        {node.dueDate && (
-          <span className="shrink-0 text-xs text-neutral-500">
-            due {dateFmt.format(node.dueDate)}
-          </span>
-        )}
+        {/* The deadline shows only when it adds something (ADR-253): same day as
+            the plan is redundant, before it or already past is an alert. */}
+        {(() => {
+          const dl = deadlineDisplay(
+            node.dueDate?.toISOString() ?? null,
+            node.scheduledDate?.toISOString() ?? null,
+            today
+          );
+          if (!dl) return null;
+          return (
+            <span
+              className={`shrink-0 text-xs ${dl.alert ? "text-red-400" : "text-neutral-500"}`}
+            >
+              due {dl.label}
+            </span>
+          );
+        })()}
       </div>
       {node.children.length > 0 && (
         // A gentle nesting step (Tyler, 2026-08-14) — enough to read as nested,
@@ -87,7 +104,12 @@ function SubtaskRow({
 
           {node.children.map((child) => (
             // A child's parent (for its relative offset) is THIS node.
-            <SubtaskRow key={child.id} node={child} parentScheduled={node.scheduledDate} />
+            <SubtaskRow
+              key={child.id}
+              node={child}
+              parentScheduled={node.scheduledDate}
+              today={today}
+            />
           ))}
         </ul>
       )}
@@ -115,6 +137,7 @@ export default async function Subtasks({
   bare?: boolean;
 }) {
   const { children, progress } = await listSubtree(ownerId, itemId);
+  const today = appTodayYmd();
 
   if (bare) {
     return (
@@ -122,7 +145,7 @@ export default async function Subtasks({
         {children.length > 0 && (
           <ul className="mb-0.5">
             {children.map((node) => (
-              <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} />
+              <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} today={today} />
             ))}
           </ul>
         )}
@@ -162,7 +185,7 @@ export default async function Subtasks({
     >
       <ul>
         {children.map((node) => (
-          <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} />
+          <SubtaskRow key={node.id} node={node} parentScheduled={parentScheduled} today={today} />
         ))}
       </ul>
       <div className="flex flex-wrap items-center gap-1">

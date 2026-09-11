@@ -21,7 +21,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import BuildSidebar from "@/components/nav/BuildSidebar";
 import FavoritesFlyout from "@/components/nav/FavoritesFlyout";
@@ -155,6 +163,21 @@ export default function NavShell({
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // The More menu is PORTALED and viewport-clamped (Tyler, 2026-09-11): it was
+  // `absolute` with hand-picked anchor classes (top-0 / bottom-0 / -translate-y-1/2)
+  // chosen to "open away from the kebab so it stays on screen". Those classes
+  // only know where the kebab sits in its own container, not where the viewport
+  // ends, so a rail kebab low on the screen still ran the menu off the bottom —
+  // the `max-h-[calc(100vh-1rem)]` on the panel capped its HEIGHT but not its
+  // starting offset, so it clipped anyway. Same failure and same fix as the
+  // item kebab and the color swatch panel.
+  const kebabWrapRef = useRef<HTMLDivElement>(null);
+  const [menuCoords, setMenuCoords] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  } | null>(null);
   const [launcherOpen, setLauncherOpen] = useState(false);
   // Tools-group + Favorites popovers: hover-intent open (hover-capable
   // pointers) or click-toggle (touch), with outside-click dismiss.
@@ -253,11 +276,67 @@ export default function NavShell({
   useEffect(() => {
     if (!menuOpen) return;
     function onClick(e: MouseEvent) {
-      if (!(e.target as Element).closest?.("[data-nav-kebab]")) setMenuOpen(false);
+      // The panel portals to <body>, so it is no longer inside the kebab
+      // wrapper — without [data-nav-menu] here, a mousedown on the "Move menu"
+      // buttons inside it would close the menu before their click landed.
+      if (!(e.target as Element).closest?.("[data-nav-kebab],[data-nav-menu]")) {
+        setMenuOpen(false);
+      }
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
+
+  // Place the More menu in VIEWPORT coordinates. Horizontal: beside a side rail
+  // (so it doesn't cover the rail), else aligned to the kebab's right edge.
+  // Vertical: grow away from whichever half of the screen the kebab sits in, so
+  // a kebab near the bottom opens upward instead of off the edge — then clamp,
+  // and hand the panel a maxHeight so a long menu scrolls rather than clips.
+  const placeMenu = useCallback(() => {
+    const el = kebabWrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const m = 8;
+    const W = 192; // w-48
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left =
+      navPosition === "left"
+        ? r.right + m
+        : navPosition === "right"
+          ? r.left - W - m
+          : r.right - W;
+    left = Math.max(m, Math.min(left, vw - W - m));
+    if (r.top + r.height / 2 > vh / 2) {
+      setMenuCoords({
+        left,
+        bottom: Math.max(m, vh - r.bottom),
+        maxHeight: Math.max(120, r.bottom - m),
+      });
+    } else {
+      setMenuCoords({
+        left,
+        top: Math.max(m, r.top),
+        maxHeight: Math.max(120, vh - r.top - m),
+      });
+    }
+  }, [navPosition]);
+
+  useLayoutEffect(() => {
+    if (menuOpen) placeMenu();
+  }, [menuOpen, placeMenu]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    // Capture-phase scroll catches inner scroll containers, so the menu stays
+    // glued to its kebab.
+    window.addEventListener("resize", placeMenu);
+    window.addEventListener("scroll", placeMenu, true);
+    return () => {
+      window.removeEventListener("resize", placeMenu);
+      window.removeEventListener("scroll", placeMenu, true);
+    };
+  }, [menuOpen, placeMenu]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const slotActive = (slot: ShellSlot): boolean =>
@@ -594,13 +673,26 @@ export default function NavShell({
     );
   }
 
-  // The shared More dropdown. `posClass` anchors it relative to the kebab; the
-  // Build entry is the highlighted, glowing primary action.
-  const renderMenu = (posClass: string) => (
-    <div
-      role="menu"
-      className={`absolute z-50 max-h-[calc(100vh-1rem)] w-48 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${posClass}`}
-    >
+  // The shared More dropdown, portaled to <body> and positioned by placeMenu in
+  // viewport coordinates (see there for why the old anchor classes clipped).
+  // `data-nav-menu` keeps the outside-click handler from treating clicks inside
+  // it as "outside". The Build entry is the highlighted, glowing primary action.
+  const renderMenu = () =>
+    menuCoords &&
+    createPortal(
+      <div
+        role="menu"
+        data-nav-menu
+        style={{
+          position: "fixed",
+          left: menuCoords.left,
+          top: menuCoords.top,
+          bottom: menuCoords.bottom,
+          width: 192,
+          maxHeight: menuCoords.maxHeight,
+        }}
+        className="z-[60] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50"
+      >
       {/* The Work-side door (destination-named "Build"). The More menu only
           renders in Work mode — in Build the whole Work chrome is replaced by the
           sidebar, whose "Back to Work" is the way out — so this is always Build. */}
@@ -697,8 +789,9 @@ export default function NavShell({
           </div>
         </>
       )}
-    </div>
-  );
+      </div>,
+      document.body
+    );
 
   // The Search / + New / More controls that trail the DESKTOP bottom pill (the
   // full-label variant). The mobile fixed bar uses its own tighter trailing set
@@ -714,7 +807,7 @@ export default function NavShell({
         <PlusIcon />
         New
       </button>
-      <div data-nav-kebab className="relative">
+      <div ref={kebabWrapRef} data-nav-kebab className="relative">
         <button
           onClick={() => setMenuOpen((o) => !o)}
           aria-label="Menu"
@@ -725,7 +818,7 @@ export default function NavShell({
           <KebabIcon horizontal={false} />
           More
         </button>
-        {menuOpen && renderMenu("right-0 bottom-full mb-2")}
+        {menuOpen && renderMenu()}
       </div>
     </>
   );
@@ -880,7 +973,7 @@ export default function NavShell({
                 <PlusIcon />
                 New
               </button>
-              <div data-nav-kebab className="relative">
+              <div ref={kebabWrapRef} data-nav-kebab className="relative">
                 <button
                   onClick={() => setMenuOpen((o) => !o)}
                   aria-label="Menu"
@@ -890,15 +983,7 @@ export default function NavShell({
                 >
                   <KebabIcon horizontal={false} />
                 </button>
-                {/* Open toward the screen, away from the kebab: when the cluster
-                    hugs the left edge (compact-left) the menu aligns left so it
-                    doesn't run off-screen; otherwise it aligns right. */}
-                {menuOpen &&
-                  renderMenu(
-                    `top-full mt-2 ${
-                      density === "compact" && anchor === "top" ? "left-0" : "right-0"
-                    }`
-                  )}
+                {menuOpen && renderMenu()}
               </div>
             </div>
           </div>
@@ -989,7 +1074,7 @@ export default function NavShell({
               <PlusIcon />
               {railSize === "fat" && "New"}
             </button>
-            <div data-nav-kebab className="relative">
+            <div ref={kebabWrapRef} data-nav-kebab className="relative">
               <button
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-label="Menu"
@@ -1002,19 +1087,7 @@ export default function NavShell({
                 <KebabIcon horizontal={true} />
                 {railSize === "fat" && "More"}
               </button>
-              {menuOpen &&
-                renderMenu(
-                  // Open the menu away from where the kebab sits so it stays on
-                  // screen: cluster at the top → open downward; at the bottom →
-                  // upward; centered → centered on the kebab.
-                  `${navPosition === "left" ? "left-full ml-2" : "right-full mr-2"} ${
-                    density === "compact" && anchor === "top"
-                      ? "top-0"
-                      : density === "compact" && anchor === "center"
-                        ? "top-1/2 -translate-y-1/2"
-                        : "bottom-0"
-                  }`
-                )}
+              {menuOpen && renderMenu()}
             </div>
           </div>
 
