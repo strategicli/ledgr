@@ -405,6 +405,11 @@ Build your own kinds of item at \`/build/types\`.
 - **Every item shows what links to it,** both directions, grouped by type.
 - **Typed relation fields** ("Author", "Attendees", "Tags") live under
   Properties. Everything else shows under **Linked here**.
+- **On a task, linking lives in the rail.** A **Linked** row sits with Project,
+  Tags and People (they are all links, after all): the "+" adds one, and the
+  caret opens the list of what is already connected. The full **Linked here**
+  panel under the body is still where you check things off, change their dates,
+  or unlink them.
 - **Create as you link.** Typing a name that does not exist makes it. That
   includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
   yet can be added to the meeting from the meeting, without leaving to create
@@ -462,7 +467,27 @@ Ledgr is its own task manager. Nothing else needs to be running.
   without one.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
-  deadline.
+  deadline. On a task they sit as a pair at the top of the details rail,
+  Schedule then Due.
+- **Dates move together.** Bump a task and its whole checklist follows: every
+  dated subtask shifts by the same number of days, all the way down, and the
+  deadline keeps whatever gap it had from the plan date. A repeating task
+  carries its deadline and its subtasks forward each time it advances, so
+  nothing is left dated to last cycle. You never set a rule for this \u2014 the gap
+  is simply whatever the two dates currently are, and changing either one
+  restates it.
+- **Moved something by mistake?** When a bump carries subtasks along, a toast
+  says how many moved and offers **Undo**, which puts every one of them back
+  exactly where it was.
+- **Pin a date to hold it still.** Open the Due row and it says "Follows the
+  plan date"; click that to pin, and the deadline becomes a hard external date
+  that ignores every move (Apr 15, a grant deadline, a hand-off). A pinned
+  deadline shows a small pin on the rail row, so you can tell at a glance that a
+  bump won't carry it.
+- **A deadline before the plan date gets flagged,** not blocked \u2014 sometimes you
+  genuinely missed it. Where the deadline is still ahead, one click moves the
+  plan onto it. A deadline on the same day as the plan simply doesn't print, so
+  rows stop showing you the same date twice.
 - **Six priorities,** P1 to P6, colour-coded. They drive the checkbox colour, row
   chips and grouping.
 - **Subtasks nest,** with an "n of m done" rollup and a breadcrumb. **Add
@@ -479,8 +504,10 @@ Ledgr is its own task manager. Nothing else needs to be running.
   weekend, Next week, No date), a month calendar, a free-text box ("next fri
   9am"), and Time / Repeat controls. It edits what's shown — the scheduled
   date if the task has one, otherwise the due date — and a repeat glyph
-  beside it marks a repeating task. The same picker now backs the Schedule
-  and Due popovers on the task page.
+  beside it marks a repeating task. The same picker backs the Schedule popover
+  on the task page. Clicking a date still changes that date, everywhere in the
+  app: a chip reading "due Sep 14" edits the deadline, a plain date edits the
+  plan.
 - **Reschedule fast:** Today / Tomorrow / +1wk chips, or type "in 3 days" or
   "next Tuesday".
 - **Roll overdue tasks forward** in one click from Today. It moves the plan and
@@ -874,8 +901,9 @@ note after it — an embedded image becomes the note alone. Purging an item from
 Trash deletes its files with it.
 
 **Every item shows its own files.** An item carrying files gets a collapsible
-**Files** section above Export & sharing (it appears the moment your first
-upload lands): each file with Open, **Copy link** (a markdown link to paste
+**Files** section above Export & sharing — on a task it sits in the details
+rail instead, just above Linked (it appears the moment your first upload
+lands): each file with Open, **Copy link** (a markdown link to paste
 back into the body), Share, and Delete — plus a "not linked" mark when nothing
 in the item points at the file anymore. So a link you backspaced out of the
 body is never stranded invisibly, and **dragging a file row into the body
