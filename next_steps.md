@@ -36,11 +36,23 @@ Five things Tyler raised while testing the ADR-252 preview.
 - **The rail's `Linked` row got the Version History shape** — a caret to open, the count as a chip — reusing the existing `.cs-caret` / `.canvas-section-count` rules, so it adds no CSS and inherits the owner's section skin. The "+" sits outside the `<summary>` deliberately: a button inside one toggles the disclosure.
 - **`Add subtask` responds to hover**, taking the owner's accent. It read as inert text before.
 
+## ✅ SHIPPED — tasks: no stray "+ Relate", Version History moves to the rail (2026-09-11, non-core)
+
+- **`+ Relate` survived on the task canvas** despite `addBar={false}`, because `RelatedPanel` has a THIRD early return I had missed when gating the other two: an item can *have* relations and still list none here, since its typed fields (Project, Tags) and People claim them all — and that exit returned the add bar unconditionally. Exactly the case Tyler hit: two links, both claimed, so the panel bailed out through the one door that ignored the flag. Now gated like its siblings.
+- **Version History moved into the rail, directly under Linked.** Both are disclosures, and both answer "what else is attached to this task" rather than being part of the work, so they read better together in the details column than trailing the body. `ItemUtilitiesFooter` gained a `history` prop so the main pane renders Files only; Files stays there because a file list needs the width, and it only renders when the item has files.
+
 ## 🐛 OPEN — `verify-sync.mts` is FLAKY (pre-existing, found 2026-09-11)
 
-Fails intermittently on the check `and the last edit is what landed (draft 3)`. Confirmed **not** caused by ADR-252: with that work stashed, 3 of 6 runs on `main` failed the same way. It is in `verify:ci`, so it will redden CI at random and train people to re-run rather than read it, which is the worse cost.
+Fails intermittently, on **two different checks**:
 
-Reads like a timing/ordering race in the draft-conflict fixture (last-write-wins resolved by a timestamp two edits can share). Likely fix: order the fixture's edits by an explicit sequence rather than wall-clock, or space them deterministically.
+```
+FAIL  and the last edit is what landed  (draft 3)
+FAIL  the assignment survives an unrelated preference written later elsewhere  (A={} B={})
+```
+
+Confirmed **not** caused by any of this branch's work: with it stashed, 4 of 6 runs on `main` failed, showing both messages. It is in `verify:ci`, so it reddens CI at random and trains people to re-run rather than read it, which is the worse cost.
+
+Both reads are last-write-wins races resolved by a timestamp two writes can share (`A={} B={}` is two empty settings blobs, i.e. neither write is visible). Likely fix: order the fixture's writes by an explicit sequence rather than wall-clock, or space them deterministically.
 
 ## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
 

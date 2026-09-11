@@ -31,6 +31,7 @@ export default async function ItemUtilitiesFooter({
   currentText,
   filesSection = true,
   exportSharing = true,
+  history = true,
   bare = false,
 }: {
   itemId: string;
@@ -45,6 +46,10 @@ export default async function ItemUtilitiesFooter({
   // nowhere to find it (the safety property ADR-237 exists for), and revisions
   // are a task's only undo for a clobbered description.
   exportSharing?: boolean;
+  // The TASK canvas renders Version History in its RAIL instead (Tyler,
+  // 2026-09-11), directly under Linked, so it opts out of the copy here rather
+  // than showing the same panel twice.
+  history?: boolean;
   // Drop the centered reading column, for a host that already provides one (the
   // task canvas renders this inside its two-pane main column).
   bare?: boolean;
@@ -82,7 +87,9 @@ export default async function ItemUtilitiesFooter({
           </details>
         </div>
       )}
-      <HistoryPanel itemId={itemId} currentText={currentText} bare={bare} />
+      {history && (
+        <HistoryPanel itemId={itemId} currentText={currentText} bare={bare} />
+      )}
     </>
   );
 }

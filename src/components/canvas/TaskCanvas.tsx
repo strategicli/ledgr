@@ -22,6 +22,7 @@ import FocusStar from "@/components/today/FocusStar";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import LinkedRow from "@/components/canvas/rail/LinkedRow";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
+import HistoryPanel from "@/components/canvas/HistoryPanel";
 import { getType } from "@/lib/types";
 import { getItem } from "@/lib/items";
 import { resolveStatusSchema } from "@/lib/status";
@@ -155,6 +156,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
                 itemId={item.id}
                 currentText={bodyMarkdown(item.body)}
                 exportSharing={false}
+                history={false}
                 bare
               />
             </div>
@@ -247,6 +249,16 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
               <CustomProperties itemId={item.id} typeKey="task" schema={scalarFields} initial={props} hideHeading bare />
             </div>
           )}
+
+          {/* Version History, in the rail directly under Linked (Tyler,
+              2026-09-11). It's a disclosure like Linked is, and both are "what
+              else is attached to this task" rather than part of the work, so
+              they belong together in the details column rather than trailing
+              the body. Files stay in the main pane — a file list needs the
+              width, and it only renders when there ARE files. */}
+          <div className={`${RAIL_ROW} ${RAIL_STATIC}`}>
+            <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} bare />
+          </div>
 
           {/* Focus today: a one-tap star, kept in plain sight (not behind a
               popover) since it's a frequent daily action. */}

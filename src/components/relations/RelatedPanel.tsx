@@ -139,7 +139,15 @@ export default async function RelatedPanel({
   // Suggested edges render with the existing confirm/reject row (the relatedTo
   // view filter is confirmed-only). Everything else groups by type for the lens.
   const unclaimed = related.filter((r) => !claimed.has(r.id));
-  if (unclaimed.length === 0 && passages.length === 0) return emptyState;
+  // The THIRD place this panel can bail out, and the one that kept "+ Relate"
+  // alive on the task canvas after the other two were gated: an item can HAVE
+  // relations and still have nothing to list here, because its typed fields
+  // (Project, Tags) and People claimed them all. It must respect `addBar` like
+  // the other two exits, or a host that owns its own add affordance gets a
+  // stray one back exactly when every link is accounted for elsewhere.
+  if (unclaimed.length === 0 && passages.length === 0) {
+    return showAddBar ? emptyState : null;
+  }
   const suggested = unclaimed.filter((r) => r.matchState === "suggested");
   const confirmed = unclaimed.filter((r) => r.matchState !== "suggested");
 
