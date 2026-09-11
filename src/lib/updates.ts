@@ -186,6 +186,14 @@ export type UpdateReport = {
  * builder; in "on" mode it is allowed, because that mode is only correct when
  * the instance migrates during its build (npm run build:satellite).
  */
+// A LOCAL PEER (LH2, ADR-206): not a Vercel deploy at all, and a supervisor told
+// the app where its signal dir is. Both must hold: a Vercel deploy with a stray
+// LEDGR_SUPERVISOR_DIR must never take the signal path, and a local `next start`
+// without a supervisor has nothing to signal.
+export function isLocalPeerInstance(instance: InstanceIdentity): boolean {
+  return !instance.vercelEnv && !!instance.supervisorDir;
+}
+
 export function resolveApplicability(
   instance: InstanceIdentity,
   code: CodeStatus
@@ -197,7 +205,7 @@ export function resolveApplicability(
   // told the app where its signal dir is. Both conditions must hold — a Vercel
   // deploy with a stray LEDGR_SUPERVISOR_DIR must never take this path, and a
   // local `next start` without a supervisor has nothing to signal.
-  const isLocalPeer = !instance.vercelEnv && !!instance.supervisorDir;
+  const isLocalPeer = isLocalPeerInstance(instance);
   // Fail CLOSED, on both paths: permission is granted only by a mode we
   // recognize, never by the absence of a mode we refuse. getInstanceIdentity
   // already normalizes an unknown value to "off", but this gate is what stands
@@ -253,7 +261,16 @@ export function resolveApplicability(
 export async function getUpdateReport(): Promise<UpdateReport> {
   const instance = getInstanceIdentity();
   const [code, schema] = await Promise.all([
-    getCodeStatus(instance.sha, instance.upstreamRepo, instance.branch, instance.isSatellite),
+    // A satellite AND a local peer can both be behind upstream; only a Vercel
+    // deploy of the upstream repo itself is a "source" that updates on push.
+    // (Bug, 2026-09-11: passing isSatellite alone read every hub as a source,
+    // so the Update button never rendered on the machine the button was for.)
+    getCodeStatus(
+      instance.sha,
+      instance.upstreamRepo,
+      instance.branch,
+      instance.isSatellite || isLocalPeerInstance(instance)
+    ),
     getSchemaStatus(),
   ]);
   const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);
