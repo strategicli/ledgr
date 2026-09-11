@@ -399,6 +399,11 @@ Build your own kinds of item at \`/build/types\`.
 - **Every item shows what links to it,** both directions, grouped by type.
 - **Typed relation fields** ("Author", "Attendees", "Tags") live under
   Properties. Everything else shows under **Linked here**.
+- **On a task, linking lives in the rail.** A **Linked** row sits with Project,
+  Tags and People (they are all links, after all): the "+" adds one, and the
+  caret opens the list of what is already connected. The full **Linked here**
+  panel under the body is still where you check things off, change their dates,
+  or unlink them.
 - **Create as you link.** Typing a name that does not exist makes it. That
   includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
   yet can be added to the meeting from the meeting, without leaving to create

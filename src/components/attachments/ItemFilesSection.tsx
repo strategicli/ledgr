@@ -23,10 +23,10 @@ export default function ItemFilesSection({
 }: {
   itemId: string;
   initial: FileRow[];
-  // The arrange-grid "Files" card (MarkdownCanvas): the card frame already
-  // provides the header and placement, so render just the live panel — always,
-  // even empty, since the owner placed the card deliberately and its empty
-  // state carries the "+ Add file" affordance.
+  // The arrange-grid "Files" card (MarkdownCanvas) and the task canvas's
+  // footer: the host already provides the header/placement, so render just the
+  // live panel. (It used to render even when empty; it no longer does — see
+  // below.)
   bare?: boolean;
 }) {
   const [rows, setRows] = useState<FileRow[]>(initial);
@@ -65,6 +65,13 @@ export default function ItemFilesSection({
     };
   }, [itemId]);
 
+  // Nothing to show costs nothing (Tyler, 2026-09-11): an item with no files
+  // renders no Files UI at all, in EVERY mode. `bare` used to mean "render even
+  // when empty" for the arrange-grid card, which is how a "No files yet." line
+  // plus an upload button ended up sitting under items that had never had a
+  // file. The grid card simply collapses instead, and the section reappears the
+  // moment an upload event arrives (the listener above stays mounted).
+  if (rows.length === 0) return null;
   if (bare) {
     return (
       <FilePanel
@@ -74,7 +81,6 @@ export default function ItemFilesSection({
       />
     );
   }
-  if (rows.length === 0) return null;
   return (
     <div className="canvas-section-wrap mx-auto w-full max-w-3xl px-2 sm:px-8 md:px-12">
       <details className="canvas-section">

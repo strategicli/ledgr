@@ -37,7 +37,6 @@ import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import AddRelation from "./AddRelation";
-import NewRelatedTask from "./NewRelatedTask";
 import RelatedGroupView from "./RelatedGroupView";
 import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
 import RelationActions from "./RelationActions";
@@ -82,10 +81,13 @@ export default async function RelatedPanel({
   ]);
 
   // The add affordances ride along whether or not anything is linked yet.
+  // "+ Relate" only. "+ Task" is gone (Tyler, 2026-09-11): it created a RELATED
+  // task, not a subtask, a distinction invisible sitting beside "Add subtask" on
+  // the same page — so it read as a duplicate of the thing right above it.
+  // NewRelatedTask is kept, just unrendered (defer-by-hiding).
   const addBar = (
     <div className="flex flex-wrap items-center gap-1">
       <AddRelation itemId={itemId} />
-      <NewRelatedTask hostId={itemId} />
     </div>
   );
 

@@ -67,7 +67,10 @@ export default function FilePanel({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<FileRow[]>(initial);
-  const [busy, setBusy] = useState(false);
+  // Only the setter is read now: the "+ Add file" button that consumed `busy`
+  // is gone (below), but the upload path still tracks in-flight state so
+  // restoring the affordance needs no rewiring.
+  const [, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const add = async (files: File[]) => {
@@ -103,9 +106,6 @@ export default function FilePanel({
 
   return (
     <div className="flex flex-col gap-1">
-      {rows.length === 0 && (
-        <p className="text-sm text-ink-subtle">No files yet.</p>
-      )}
       <ul className="flex flex-col gap-1">
         {rows.map((f) => (
           <li key={f.id} className="flex items-center gap-2 text-sm">
@@ -185,15 +185,13 @@ export default function FilePanel({
           </li>
         ))}
       </ul>
+      {/* No "+ Add file" button (Tyler, 2026-09-11, sitewide): files arrive by
+          pasting or dropping into the body, through MCP, or from email-in, so a
+          dedicated upload button earned a row on every item for a path nobody
+          used. The input and its upload handler stay MOUNTED and wired
+          (defer-by-hiding, not deleted) so restoring the affordance is one
+          button. */}
       <div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => inputRef.current?.click()}
-          className="text-left text-sm text-ink-subtle transition-colors hover:text-ink disabled:opacity-50"
-        >
-          {busy ? "Uploading…" : "+ Add file"}
-        </button>
         <input
           ref={inputRef}
           type="file"
