@@ -8,7 +8,13 @@ The live, near-term work queue. Start here each session. When you finish a slice
 
 **How.** No schema change: `theme` in the settings blob (`settings.ts` THEMES). One variable block per theme in `globals.css` beside the existing `.light` (ADR-141 tier 1 makes every neutral utility follow). The nine text colors are repainted on light pages by attribute match on the stored hex (`LIGHT_TEXT_COLORS` in `colors.ts`, mirrored in `globals.css`); highlights are alpha washes and needed nothing. The 13 per-input `[color-scheme:dark]` guards were deleted so native date pickers follow the theme. `print-html.ts` is var-based now, with the same four looks.
 
-**Not done.** The PWA manifest splash stays dark (fetched once, cached by the OS). No "follow system" option. The offline landing page (`public/offline.html`) stays dark.
+**Not done (deliberate, out of scope).** The PWA manifest splash stays dark (fetched once, cached by the OS). No "follow system" option. The offline landing page (`public/offline.html`) stays dark.
+
+**Remaining on this branch before it merges (pushed to GitHub 2026-09-11, no PR yet):**
+- Brandon's own eyeball pass in each theme on the surfaces the automated check did not walk: Desk, a task list, an item canvas with a real body (colored text, highlights, comments, a toggle block), Search, Planner, the Build sidebar. Anything still dark on a light theme is a hardcoded color to move onto a token.
+- Decide whether Gray should stay a softer dark (as built) or become a light gray.
+- Judge the nine light-page text colors (`LIGHT_TEXT_COLORS` in `colors.ts`) on real notes and tune any that read wrong; the `globals.css` block must be kept in step.
+- Then `/ship` (ordinary merge; nothing core, no ADR needed; note the additive share-API argument in `COLLAB.md`).
 
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 
