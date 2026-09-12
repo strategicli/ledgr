@@ -2,6 +2,41 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-257, branch `feat/local-install-sweep`)
+
+A local install used to need `supervisor/config.json` edited and the service
+restarted to change its branch or update behavior. That broke ADR-222's rule:
+a setting a person changes belongs in the GUI, not a config file. This batch
+moves that control into the app and the tray, and splits Updates into three
+focused pages.
+
+1. **Update policy is now a GUI setting.** Build → Updates → Update policy lets
+   the owner pick auto-checking (with an interval) or manual-only, the branch
+   to follow, and the repository, stored in `<dataDir>/update-policy.json`.
+   The service re-reads that file every minute, no restart needed.
+   `supervisor/config.json`'s `branch` and `update.mode` now only seed the
+   file on first start; editing them afterward changes nothing.
+2. **A local install now sees its own pending commits**, even when it follows
+   the shared repository, instead of wrongly claiming it auto-updates with no
+   button to press.
+3. **GitHub reads need no token.** The version check and Changelog work on a
+   public repository with nothing configured. Only writes (collab notes, a
+   satellite's fork merge) still need `GITHUB_TOKEN`.
+4. **The Build sidebar has a new SYSTEM group** (after MAINTAIN): Updates,
+   Network, and two new pages, Scheduled Jobs and Backups, split out of what
+   used to be one long Updates page.
+5. **The Windows tray icon gained a real status window** ("Ledgr status…"):
+   a Status tab (running state, version, update policy, disk use, scheduled
+   jobs, sync role) and a Settings tab that edits the same update policy file.
+6. **The stale boot-warning bug is fixed.** The service now re-asks Windows
+   Task Scheduler on every start, so an old "one catch" warning from a
+   previous build clears on the next restart instead of lingering.
+7. **The setup wizard (`npm run local:setup`) asks three new questions**, each
+   with a flag: `--branch`, `--auto-update yes|no`, `--update-every <minutes>`.
+
+**Known step:** the running service predates this code, so `npm run
+local:restart` is needed once, on each machine already running the
+supervisor, to seed the update-policy file and clear any stale boot warning.
 ## ✅ SHIPPED — `image` is a property kind on any type (2026-09-11, ADR-255, branch `feat/image-property-kind`, Tyler agreed)
 
 Any type can now carry a picture field. Pick "Image (upload or URL)" as a field kind in the type builder, name it anything, and every record of that type gets the same click-to-upload box the person page already had.
@@ -13,7 +48,7 @@ Any type can now carry a picture field. Pick "Image (upload or URL)" as a field 
 - A per-field wide "cover" display style (v1 is one 112px square box for every image kind).
 - The drag-to-position cropper already queued for person's Image (v1 stays a deterministic center crop).
 
-## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
+## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-257, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
 
@@ -39,7 +74,7 @@ Tyler: "Due date vs schedule is mucking up the UI and really confusing the syste
 
 ## ✅ SHIPPED — item-canvas polish batch (2026-09-11, branch `feat/date-anchoring`, non-core)
 
-Five things Tyler raised while testing the ADR-253 preview.
+Five things Tyler raised while testing the ADR-257 preview.
 
 - **The kebab menu could open below the window.** `ItemActionsMenu`'s two panels were `absolute right-0` with no idea where the viewport ends, so on a short window the lower actions were simply unreachable — the same failure the color swatch panel had (#369) and now the same fix: both panels portal to `<body>` and use `useAnchoredPanel`, the placement half of `ui/Popover`, which clamps both horizontal edges and flips above the trigger when below is cramped. Two follow-ons that are easy to miss: a portaled panel is no longer inside `wrapRef`, so the outside-click test had to learn about it or every click inside the menu would close it; and `MoveUnderMenu` gets an explicit `className=""` because its `DEFAULT_CLASS` carries its own absolute positioning and card chrome, which would fight the new wrapper.
 - **`+ Task` is gone** (sitewide). It created a *related* task, not a subtask — a distinction invisible sitting beside "Add subtask" on the same page. `NewRelatedTask` kept, unrendered.
@@ -76,7 +111,7 @@ Both reads are last-write-wins races resolved by a timestamp two writes can shar
 
 ## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
 
-Not caused by ADR-253; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
+Not caused by ADR-257; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
 
 ```
 FAIL the projection honors interval + byday — got [09-21, 09-24, 10-05, 10-08], want [09-07, 09-10, 09-21, 09-24]
@@ -84,7 +119,7 @@ FAIL get_item projects the bounded series      — got [09-11, 09-18, 09-25], wa
 FAIL get_item reports the next uncompleted date — got 09-11, want 09-04
 ```
 
-The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-253 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
+The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-257 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
 
 ## ✅ FIXED — image uploads worked everywhere except the domain the app runs on (2026-09-09, ops only, no code change)
 

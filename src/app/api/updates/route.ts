@@ -32,7 +32,7 @@ export async function POST() {
     instance.sha,
     instance.upstreamRepo,
     instance.branch,
-    instance.isSatellite
+    instance.isSatellite || instance.isLocalPeer
   );
   const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);
 

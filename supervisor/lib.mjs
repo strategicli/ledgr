@@ -1375,3 +1375,92 @@ export function elevatedPowershellArgs(scriptPath) {
     `try { $p = Start-Process -FilePath ${quoted} -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode } catch { exit ${ELEVATION_CANCELLED} }`,
   ];
 }
+
+// ── Update policy: the GUI-editable half of `config.update` ─────────────────
+//
+// WHY A FILE, NOT job_state. Snapshots and the sync mode keep their owner
+// override in the database because only the app reads them. The update policy
+// has two readers that have no database and no login: the supervisor itself
+// (whose whole job is to work when the app is down) and the tray icon (which
+// exists so the owner can act while sitting at the machine, signed into
+// nothing). A JSON file in dataDir, next to the other signal files, is the one
+// home all three surfaces can reach. It is per-machine by nature, so it never
+// syncs, which is correct.
+//
+// `config.update` and `config.branch` stay as the INSTALL-TIME SEED (and the
+// testing escape hatch): the supervisor writes this file from them on first
+// boot when it is missing, then re-reads the file every tick. Editing config
+// afterwards changes nothing until the file is deleted (ADR-222: the config
+// file is never the owner's lever).
+
+export const UPDATE_POLICY_MODES = ["auto", "manual"];
+
+export function updatePolicyPath(dataDir) {
+  return join(dataDir, "update-policy.json");
+}
+
+/** Tolerant parse. null when the text is not a policy at all. */
+export function parseUpdatePolicy(text) {
+  let v;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  // "prompted" is the old config word for the same thing; read it, never write it.
+  const mode = v.mode === "auto" ? "auto" : v.mode === "manual" || v.mode === "prompted" ? "manual" : null;
+  if (!mode) return null;
+  const every = Number(v.everyMinutes);
+  return {
+    mode,
+    everyMinutes: Number.isFinite(every) && every >= 1 ? Math.round(every) : 15,
+    branch: typeof v.branch === "string" && v.branch.trim() ? v.branch.trim() : "main",
+    // The git remote URL (what `git remote set-url` takes), or "" for "leave
+    // origin alone". Not owner/repo: a non-GitHub host would have neither.
+    repo: typeof v.repo === "string" ? v.repo.trim() : "",
+    updatedAt: typeof v.updatedAt === "string" ? v.updatedAt : null,
+  };
+}
+
+export function serializeUpdatePolicy(p) {
+  const norm = parseUpdatePolicy(JSON.stringify({ ...p, mode: p.mode ?? "manual" })) ?? {
+    mode: "manual",
+    everyMinutes: 15,
+    branch: "main",
+    repo: "",
+  };
+  return (
+    JSON.stringify(
+      {
+        mode: norm.mode,
+        everyMinutes: norm.everyMinutes,
+        branch: norm.branch,
+        repo: norm.repo,
+        updatedAt: p.updatedAt ?? new Date().toISOString(),
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+/** The policy a fresh install starts with: what config.json asked for. */
+export function policyFromConfig(cfg, originUrl = "") {
+  return {
+    mode: cfg.update.mode === "auto" ? "auto" : "manual",
+    everyMinutes: Math.max(1, Math.round(cfg.update.pollIntervalMs / 60_000)),
+    branch: cfg.branch,
+    repo: originUrl,
+  };
+}
+
+/**
+ * Pure: is an automatic check due? `lastCheckedAt` is epoch ms of the last
+ * fetch this process made (null = never, so the first tick after boot checks).
+ */
+export function updateCheckDue(policy, lastCheckedAt, now) {
+  if (policy.mode !== "auto") return false;
+  if (lastCheckedAt === null) return true;
+  return now - lastCheckedAt >= policy.everyMinutes * 60_000;
+}

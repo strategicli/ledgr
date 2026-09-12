@@ -15,8 +15,8 @@ const { BUILD_NAV, BUILD_ENTRIES, isBuildPath } = await import("../src/lib/build
 const { isNavIcon } = await import("../src/lib/nav-icons");
 
 check(
-  "three groups, in order DATA / INTERFACE / MAINTAIN",
-  BUILD_NAV.map((g) => g.label).join(",") === "DATA,INTERFACE,MAINTAIN"
+  "four groups, in order DATA / INTERFACE / MAINTAIN / SYSTEM",
+  BUILD_NAV.map((g) => g.label).join(",") === "DATA,INTERFACE,MAINTAIN,SYSTEM"
 );
 check(
   "BUILD_ENTRIES flattens every group entry",

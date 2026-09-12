@@ -62,6 +62,7 @@ import {
   schtasksQueryArgs,
   startupCaveat,
   parseStartupRequest,
+  parseStartupState,
   schtasksCreateArgs,
   schtasksDeleteArgs,
   serializeStartupState,
@@ -81,6 +82,12 @@ import {
   parseSupervisorState,
   serializeSupervisorState,
   codeFingerprint,
+  parseSchtasksScope,
+  updatePolicyPath,
+  parseUpdatePolicy,
+  serializeUpdatePolicy,
+  policyFromConfig,
+  updateCheckDue,
   AWAIT_PID_ENV,
   AWAIT_PID_TIMEOUT_MS,
   PG_START_ATTEMPTS,
@@ -523,7 +530,9 @@ function startApp(ptr) {
   const nextBin = join(ptr.dir, "node_modules", "next", "dist", "bin", "next");
   const env = {
     ...process.env,
-    ...assembleAppEnv(cfg, ptr.sha, {
+    // The branch the app is told about is the policy's, so Build → Updates
+    // asks "am I current?" about the ref this install actually follows now.
+    ...assembleAppEnv({ ...cfg, branch: readPolicy().branch }, ptr.sha, {
       cronTokenHash: CRON_TOKEN_HASH,
       inheritedApiTokens: process.env.LEDGR_API_TOKENS,
     }),
@@ -582,12 +591,55 @@ let updating = false;
  * working tree and staged changes all irrelevant, which is why nothing on this
  * path touches the working tree any more.
  */
+// ── Update policy (the GUI-editable half of config.update) ───────────────────
+//
+// Read from <dataDir>/update-policy.json on EVERY use, never cached: the app
+// page and the tray window write it, and "takes effect within a minute, no
+// restart" is the promise. config.json is only the seed (see lib.mjs).
+
+function originUrl() {
+  const r = git(["remote", "get-url", "origin"]);
+  return r.ok ? r.stdout : "";
+}
+
+function readPolicy() {
+  try {
+    const p = parseUpdatePolicy(readFileSync(updatePolicyPath(cfg.dataDir), "utf8"));
+    if (p) return p;
+  } catch {
+    // missing or half-written: fall through to the seed
+  }
+  return policyFromConfig(cfg, "");
+}
+
+function seedPolicyIfMissing() {
+  const p = updatePolicyPath(cfg.dataDir);
+  if (existsSync(p)) return;
+  const seed = policyFromConfig(cfg, originUrl());
+  writeFileSync(p, serializeUpdatePolicy(seed), "utf8");
+  log("update policy seeded from config", seed);
+}
+
+/** Point origin where the policy says, when they differ. Logged, never silent. */
+function applyPolicyRepo(policy) {
+  if (!policy.repo) return;
+  const cur = originUrl();
+  if (!cur || cur === policy.repo) return;
+  const r = git(["remote", "set-url", "origin", policy.repo]);
+  log(r.ok ? "origin repointed by update policy" : "could not repoint origin", {
+    from: cur,
+    to: policy.repo,
+    ...(r.ok ? {} : { stderr: r.stderr }),
+  });
+}
+
 function targetSha({ fetch = true } = {}) {
+  const branch = readPolicy().branch;
   if (fetch) {
-    const fetched = git(["fetch", "origin", cfg.branch]);
+    const fetched = git(["fetch", "origin", branch]);
     if (!fetched.ok) return { ok: false, error: `git fetch: ${fetched.stderr}` };
   }
-  const ref = git(["rev-parse", `origin/${cfg.branch}`]);
+  const ref = git(["rev-parse", `origin/${branch}`]);
   if (ref.ok && ref.stdout) return { ok: true, sha: ref.stdout };
   // No remote-tracking ref yet: a first boot with no network, or a clone
   // fetched under a different refspec. HEAD is the honest answer there, and it
@@ -602,7 +654,7 @@ async function applyUpdate(reason, { fetch = true } = {}) {
   if (updating) return;
   updating = true;
   try {
-    log("update starting", { reason, branch: cfg.branch });
+    log("update starting", { reason, branch: readPolicy().branch });
     const target = targetSha({ fetch });
     if (!target.ok) {
       log("update FAILED: could not resolve the target commit", { error: target.error });
@@ -903,6 +955,40 @@ function applyStartupRequest(req) {
 }
 
 
+/**
+ * Re-ask Windows what the boot task actually is, and rewrite the record.
+ *
+ * startup-state.json used to be written once, at registration, and read
+ * forever. A caveat recorded by an older build ("Windows will only run it while
+ * you are signed in") outlived the truth: on 2026-09-12 the live task was S4U,
+ * Interactive/Background — correct — while the app still showed the warning,
+ * because the app reads this file and never asks Windows. The CLI re-queries;
+ * now the record does too, on every start, so the two cannot disagree.
+ */
+function refreshStartupState() {
+  if (!isWin) return;
+  const p = startupStatePath(cfg.dataDir);
+  if (!existsSync(p)) return;
+  let recorded;
+  try {
+    recorded = parseStartupState(readFileSync(p, "utf8"));
+  } catch {
+    return;
+  }
+  if (!recorded?.enabled || !recorded.ok) return;
+  const q = run("schtasks", schtasksQueryArgs());
+  if (!q.ok) return; // task gone or unreadable: leave the record, nothing better to say
+  const scope = parseSchtasksScope(q.stdout) ?? recorded.scope;
+  const caveat = startupCaveat(scope, parseSchtasksLogonMode(q.stdout));
+  if (scope === recorded.scope && caveat === recorded.caveat) return;
+  writeFileSync(
+    p,
+    serializeStartupState({ ...recorded, scope, caveat, at: recorded.at }),
+    "utf8"
+  );
+  log("startup record refreshed from Task Scheduler", { scope, caveat: caveat ? "interactive-only" : null });
+}
+
 setInterval(() => {
   if (!existsSync(startupSignal)) return;
   let raw = "";
@@ -1079,16 +1165,25 @@ if (cfg.crons.length > 0) {
   setInterval(() => void cronTick(), 60_000).unref?.();
 }
 
-if (cfg.update.mode === "auto") {
-  setInterval(() => {
-    if (updating) return;
-    const target = targetSha();
-    // Against what we are SERVING, not against the checkout's HEAD: "am I
-    // running the branch's tip?" is the actual question, and the old form
-    // asked it of a ref this install does not control.
-    if (target.ok && liveBuild()?.sha !== target.sha) void applyUpdate("auto poll");
-  }, cfg.update.pollIntervalMs).unref?.();
-}
+// The automatic check runs on a fixed one-minute beat and asks the POLICY
+// whether it is due, so switching it off, changing the interval, or moving to
+// another branch or repo from the app or the tray takes effect within a minute
+// with no restart. (It used to be one setInterval sized from config.json at
+// boot, which is exactly the "edit a file and restart the service" shape
+// ADR-222 rules out.)
+let lastUpdateCheckAt = null;
+setInterval(() => {
+  if (updating) return;
+  const policy = readPolicy();
+  if (!updateCheckDue(policy, lastUpdateCheckAt, Date.now())) return;
+  lastUpdateCheckAt = Date.now();
+  applyPolicyRepo(policy);
+  const target = targetSha();
+  // Against what we are SERVING, not against the checkout's HEAD: "am I
+  // running the branch's tip?" is the actual question, and the old form
+  // asked it of a ref this install does not control.
+  if (target.ok && liveBuild()?.sha !== target.sha) void applyUpdate("auto poll");
+}, 60_000).unref?.();
 
 // ── Boot + shutdown ──────────────────────────────────────────────────────────
 
@@ -1339,6 +1434,8 @@ await acquireLock();
 // Before the app starts, so the state file exists (and says "nothing due yet")
 // from the first moment the app can be asked about it.
 primeCronState();
+seedPolicyIfMissing();
+refreshStartupState();
 await startPostgres();
 const ptr = liveBuild();
 if (ptr) {
@@ -1347,7 +1444,7 @@ if (ptr) {
   // No fetch on first boot: a fresh clone is already current, and an origin
   // hiccup must not block the very first build.
   log("no live build yet; building the target branch as already fetched", {
-    branch: cfg.branch,
+    branch: readPolicy().branch,
   });
   await applyUpdate("first run", { fetch: false });
   if (!liveBuild()) {

@@ -8,8 +8,16 @@
 //
 // Same posture as the Graph/Todoist clients: a typed error distinguishes "never
 // configured" (visible, benign) from "GitHub said no" (a real failure to
-// surface). When GITHUB_TOKEN is unset the Changelog page shows a "not
-// configured" note instead of crashing.
+// surface).
+//
+// READS NEED NO TOKEN (2026-09-12). GitHub serves a public repository's
+// commits, compares and file contents anonymously (60 requests an hour per
+// address, and every read here is cached for a minute or for ever), so the
+// Changelog and the "am I behind?" check work on a fresh install with nothing
+// configured. Only WRITES — the satellite fork merge and the collab-notes
+// commits — need GITHUB_TOKEN, and those still say "not configured" without
+// one. A private repository read without a token fails as a plain 404, which
+// surfaces as "unknown", never as "current".
 
 const API = "https://api.github.com";
 const API_VERSION = "2022-11-28";
@@ -26,7 +34,8 @@ export class GithubError extends Error {
 }
 
 export type GithubConfig = {
-  token: string;
+  // Null when GITHUB_TOKEN is unset: reads go out anonymously, writes refuse.
+  token: string | null;
   // owner/repo, e.g. "strategicli/ledgr".
   repo: string;
   // Branch whose commit history feeds the Changelog (the deploy branch).
@@ -39,13 +48,11 @@ export type GithubConfig = {
   notesPath: string;
 };
 
-// Null when GITHUB_TOKEN is unset; callers surface "not configured" rather than
-// crash (the storage/Graph posture). A classic PAT or fine-grained token with
-// Contents read+write on the repo covers both the changelog reads and the notes
-// commits.
+// Always returns a config: reads work without a token. A classic PAT or
+// fine-grained token with Contents read+write on the repo is what the notes
+// commits (and a satellite's fork merge) need; see hasGithubToken.
 export function getGithubConfig(): GithubConfig | null {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) return null;
+  const token = process.env.GITHUB_TOKEN || null;
   const repo = process.env.GITHUB_REPO || "strategicli/ledgr";
   const branch = process.env.GITHUB_BRANCH || "main";
   const notesBranch = process.env.GITHUB_NOTES_BRANCH || branch;
@@ -53,12 +60,26 @@ export function getGithubConfig(): GithubConfig | null {
   return { token, repo, branch, notesBranch, notesPath };
 }
 
+/** True when writes are possible. Reads never need this. */
+export function hasGithubToken(): boolean {
+  return !!process.env.GITHUB_TOKEN;
+}
+
 function requireConfig(): GithubConfig {
   const cfg = getGithubConfig();
   if (!cfg) {
-    throw new GithubError("GitHub not configured (GITHUB_TOKEN unset)", "not_configured");
+    throw new GithubError("GitHub not configured", "not_configured");
   }
   return cfg;
+}
+
+/** For writes: the config, with a token, or the typed "not configured" error. */
+function requireToken(): GithubConfig & { token: string } {
+  const cfg = requireConfig();
+  if (!cfg.token) {
+    throw new GithubError("GitHub writes need GITHUB_TOKEN", "not_configured");
+  }
+  return { ...cfg, token: cfg.token };
 }
 
 type FetchOpts = RequestInit & { revalidate?: number | false };
@@ -71,7 +92,7 @@ async function gh(cfg: GithubConfig, path: string, opts: FetchOpts = {}): Promis
   return fetch(`${API}${path}`, {
     ...init,
     headers: {
-      authorization: `Bearer ${cfg.token}`,
+      ...(cfg.token ? { authorization: `Bearer ${cfg.token}` } : {}),
       accept: "application/vnd.github+json",
       "x-github-api-version": API_VERSION,
       ...headers,
@@ -238,7 +259,7 @@ export async function readNotes(): Promise<CollabNotes> {
 
 // Ensures the notes branch exists, creating it from the deploy branch's head if
 // not. A no-op when notes live on the deploy branch (the default).
-async function ensureNotesBranch(cfg: GithubConfig): Promise<void> {
+async function ensureNotesBranch(cfg: GithubConfig & { token: string }): Promise<void> {
   if (cfg.notesBranch === cfg.branch) return;
   const ref = await gh(cfg, `/repos/${cfg.repo}/git/ref/heads/${encodeURIComponent(cfg.notesBranch)}`, {
     revalidate: 0,
@@ -267,7 +288,7 @@ export async function writeNotes(
   priorSha: string | null,
   authorEmail: string
 ): Promise<{ sha: string }> {
-  const cfg = requireConfig();
+  const cfg = requireToken();
   await ensureNotesBranch(cfg);
   // priorSha drives optimistic concurrency for normal edits. When it's null
   // (first write, or just after the notes branch was created carrying the file
@@ -425,6 +446,9 @@ export async function applyCodeUpdate(
 ): Promise<ApplyUpdateResult> {
   const cfg = requireConfig();
   const token = process.env.LEDGR_UPDATE_TOKEN || cfg.token;
+  if (!token) {
+    throw new GithubError("Pulling an update into a fork needs GITHUB_TOKEN or LEDGR_UPDATE_TOKEN", "not_configured");
+  }
   const data = await ghJson<{ merge_type?: string; message?: string }>(
     { ...cfg, token },
     `/repos/${forkRepo}/merge-upstream`,

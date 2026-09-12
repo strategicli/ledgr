@@ -88,6 +88,7 @@ const base: InstanceIdentity = {
   selfUpdate: "off",
   vercelEnv: "production",
   supervisorDir: null,
+  isLocalPeer: false,
 };
 const behind = (touchesSchema: boolean): CodeStatus => ({
   state: "behind",
@@ -163,6 +164,7 @@ const localPeer: InstanceIdentity = {
   vercelEnv: null,
   supervisorDir: "/data/ledgr",
   selfUpdate: "on",
+  isLocalPeer: true,
 };
 
 // The compare-against-upstream gate (bug, 2026-09-11): a hub is not a fork, but

@@ -227,7 +227,7 @@ export function summarizeSync(opts: {
       tone: "warn",
       headline: "Syncing normally, but scheduled work needs a look.",
       detail: jobs[0],
-      action: { label: "Fix it", href: "/build/updates#scheduled-work" },
+      action: { label: "Fix it", href: "/build/jobs#scheduled-work" },
     };
   }
   if (attention > 0) {

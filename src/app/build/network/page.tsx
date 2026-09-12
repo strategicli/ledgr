@@ -511,8 +511,8 @@ export default async function Network() {
               Every copy of Ledgr you run adds itself to this list and checks in
               once a day, so this is the one place that knows about all of them at
               once. It is how the scheduled-work picker on{" "}
-              <Link href="/build/updates#scheduled-work" className="hover:underline">
-                Updates
+              <Link href="/build/jobs#scheduled-work" className="hover:underline">
+                Scheduled Jobs
               </Link>{" "}
               can send a job to a machine you are not sitting at.
             </p>
@@ -549,8 +549,11 @@ export default async function Network() {
       </section>
 
       <p className="mt-8 text-sm text-ink-muted">
-        Which machine runs the shared scheduled jobs, and whether this copy is
-        running the latest Ledgr, both live on{" "}
+        Which machine runs the shared scheduled jobs lives on{" "}
+        <Link href="/build/jobs" className="hover:underline">
+          Scheduled Jobs
+        </Link>
+        . Whether this copy is running the latest Ledgr lives on{" "}
         <Link href="/build/updates" className="hover:underline">
           Updates
         </Link>
