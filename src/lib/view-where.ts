@@ -83,6 +83,10 @@ export function opsForKind(kind: string): WhereOp[] {
       return ["eq", "gt", "lt", "gte", "lte", "set", "empty"];
     case "checkbox":
       return ["checked", "unchecked"];
+    // image (ADR-255) is a picture, not searchable text: the rule builder only
+    // offers "is set" / "is empty".
+    case "image":
+      return ["set", "empty"];
     case "select":
       return ["anyOf", "noneOf", "set", "empty"];
     case "multi_select":

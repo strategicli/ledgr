@@ -20,8 +20,8 @@ import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import ItemLayoutGrid from "@/components/canvas/ItemLayoutGrid";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import CustomProperties from "@/components/build/CustomProperties";
-import PersonImageBox from "@/components/people/PersonImageBox";
-import { personImage } from "@/lib/person-image";
+import ImageBox from "@/components/build/ImageBox";
+import { imageUrl, personImage } from "@/lib/person-image";
 import SaveOffline from "@/components/canvas/SaveOffline";
 import ShareLink from "@/components/canvas/ShareLink";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
@@ -218,7 +218,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         // The person's built-in Image edits through the picture box (upload /
         // URL / remove — ADR-202 addendum 4), not a bare url row.
         if (item.type === "person" && key === "image") {
-          return <PersonImageBox itemId={item.id} initial={personImage(item.properties)} />;
+          return <ImageBox itemId={item.id} propKey="image" initial={personImage(item.properties)} />;
         }
         const def = propertySchema.find((p) => p.key === key);
         return def ? (
@@ -293,6 +293,10 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
 
   // Classic stacked canvas (null layout, not arranging) — unchanged.
   // ("Customize layout" now lives in the canvas "⋯" actions menu.)
+  const propsObj = (item.properties as Record<string, unknown>) ?? {};
+  // Image-kind properties (ADR-255) get their own box beside the person
+  // picture rather than a bare url row in Properties below.
+  const imageProps = propertySchema.filter((p) => p.kind === "image");
   return (
     <>
       <ItemEditor
@@ -309,10 +313,22 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         collapsibleToolbar
       />
       {/* The person's picture (ADR-202 addendum 4): a square box — click to
-          upload (center-cropped square) or paste a URL. Feeds every avatar. */}
-      {item.type === "person" && (
-        <div className="mx-auto w-full max-w-3xl px-2 pt-2 sm:px-8 md:px-12">
-          <PersonImageBox itemId={item.id} initial={personImage(item.properties)} />
+          upload (center-cropped square) or paste a URL. Feeds every avatar.
+          Any other image-kind property on the type (ADR-255) gets its own box
+          in the same row, right beside it. */}
+      {(item.type === "person" || imageProps.length > 0) && (
+        <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-3 px-2 pt-2 sm:px-8 md:px-12">
+          {item.type === "person" && (
+            <ImageBox itemId={item.id} propKey="image" initial={personImage(item.properties)} />
+          )}
+          {imageProps.map((def) => (
+            <ImageBox
+              key={def.key}
+              itemId={item.id}
+              propKey={def.key}
+              initial={imageUrl(propsObj[def.key])}
+            />
+          ))}
         </div>
       )}
       {/* Block-anchor back-link (ADR-090): a promoted task points to the exact
@@ -359,14 +375,12 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
             <CustomProperties
               itemId={item.id}
               typeKey={item.type}
-              // The person's Image edits through the picture box above, so the
-              // raw url row would repeat it.
-              schema={
-                item.type === "person"
-                  ? propertySchema.filter((pr) => pr.key !== "image")
-                  : propertySchema
-              }
-              initial={(item.properties as Record<string, unknown>) ?? {}}
+              // The person's Image and every image-kind property already have
+              // their own box above, so a repeat row here would double them up.
+              schema={propertySchema.filter(
+                (pr) => pr.kind !== "image" && !(item.type === "person" && pr.key === "image")
+              )}
+              initial={propsObj}
               locked={locked}
               hideHeading
               bare

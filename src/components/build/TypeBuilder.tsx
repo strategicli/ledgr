@@ -24,6 +24,7 @@ const KINDS: { kind: PropertyKind; label: string }[] = [
   { kind: "date", label: "Date" },
   { kind: "checkbox", label: "Checkbox (yes/no)" },
   { kind: "url", label: "URL" },
+  { kind: "image", label: "Image (upload or URL)" },
   // Labelled by what they DO, not by their storage: both are text, and the
   // reason to pick one is the tap-to-call / tap-to-mail link it renders.
   { kind: "phone", label: "Phone (tap to call)" },

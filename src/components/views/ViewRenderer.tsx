@@ -18,6 +18,7 @@ import { SelectBodyCell, SelectHeaderCell } from "@/components/selection/SelectT
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { contactLink } from "@/lib/contact-links";
+import { imageUrl } from "@/lib/person-image";
 import { propInstant } from "@/lib/placement";
 import type { Progress } from "@/lib/subtasks";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
@@ -229,6 +230,12 @@ function columnCell(
   const text = columnText(item, col, tz);
   if (!text || col.source !== "property") return text;
   const kind = propertyKinds[col.key];
+  if (kind === "image") {
+    const src = imageUrl(text);
+    if (!src) return text;
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" className="h-6 w-6 rounded object-cover" />;
+  }
   if (kind !== "phone" && kind !== "email") return text;
   const link = contactLink(kind, col.key, text);
   if (!link) return text;

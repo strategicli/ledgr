@@ -1,12 +1,14 @@
-// The person page's picture box (Tyler, 2026-08-18 — ADR-202 addendum 4): a
-// square box near the title that shows the person's Image, and clicking it
-// opens the two ways to set one — upload a file, or paste a URL — plus Remove.
-// An upload is center-cropped to a SQUARE on a canvas before it leaves the
-// browser (Tyler: "force the user to trim the image down to a square"; v1 is a
-// deterministic center crop — a drag-to-position cropper can layer on later)
-// and capped at 512px, so avatars stay small. The bytes go browser → presigned
-// R2 PUT (the standard attachment path) and the stable public URL lands in the
-// person's built-in `image` property, which every avatar reads.
+// The picture box for ANY image-kind property (ADR-255), not just the person
+// page (Tyler, 2026-08-18 — ADR-202 addendum 4, the original built-in — person
+// is one caller of this generic box). A square box near the title shows the
+// property's image, and clicking it opens the two ways to set one — upload a
+// file, or paste a URL — plus Remove. An upload is center-cropped to a SQUARE
+// on a canvas before it leaves the browser (Tyler: "force the user to trim the
+// image down to a square"; v1 is a deterministic center crop — a drag-to-
+// position cropper can layer on later) and capped at 512px, so avatars stay
+// small. The bytes go browser → presigned R2 PUT (the standard attachment
+// path) and the stable public URL lands in the given property, which for
+// person's built-in `image` is what every avatar reads.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -30,11 +32,13 @@ async function squareJpeg(file: File): Promise<Blob> {
   );
 }
 
-export default function PersonImageBox({
+export default function ImageBox({
   itemId,
+  propKey,
   initial,
 }: {
   itemId: string;
+  propKey: string;
   initial: string | null;
 }) {
   const router = useRouter();
@@ -67,7 +71,7 @@ export default function PersonImageBox({
       const res = await fetch(`/api/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyPatch: { image: next } }),
+        body: JSON.stringify({ propertyPatch: { [propKey]: next } }),
       });
       if (!res.ok) throw new Error(String(res.status));
       setImage(next);
@@ -90,14 +94,14 @@ export default function PersonImageBox({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           itemId,
-          filename: "person-image.jpg",
+          filename: `${propKey}.jpg`,
           contentType: "image/jpeg",
           sizeBytes: blob.size,
         }),
       });
       if (!reserve.ok) throw new Error(String(reserve.status));
-      // fileUrl, not publicUrl: the `image` property stores the stable
-      // /files/<id> address so it survives a storage change (ADR-228).
+      // fileUrl, not publicUrl: the property stores the stable /files/<id>
+      // address so it survives a storage change (ADR-228).
       const { uploadUrl, fileUrl } = (await reserve.json()) as {
         uploadUrl: string;
         fileUrl: string;

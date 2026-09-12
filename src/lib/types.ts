@@ -60,6 +60,10 @@ export const PROPERTY_KINDS = [
   "date",
   "checkbox",
   "url",
+  // An image property stores the same plain string a url does (an http(s) URL
+  // or a stable /files/<id> attachment address, ADR-228); the kind only
+  // changes rendering (ADR-255).
+  "image",
   "phone",
   "email",
   "select",

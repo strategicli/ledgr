@@ -13,6 +13,8 @@ import { contactInputType, contactLink } from "@/lib/contact-links";
 import { beginSave, endSave } from "@/lib/save-status";
 import type { PropertyDef } from "@/lib/types";
 import { propInstant } from "@/lib/placement";
+import ImageBox from "./ImageBox";
+import { imageUrl } from "@/lib/person-image";
 
 // datetime-local speaks the BROWSER's zone, which for a single-user app is the
 // owner's zone in practice. ponytail: if a device ever edits from another zone,
@@ -247,6 +249,10 @@ export default function CustomProperties({
             }}
           />
         );
+      // The picture box (ADR-255) carries its own upload/paste/remove UI, so
+      // it needs no defaultValue/onBlur wiring like the scalar controls above.
+      case "image":
+        return <ImageBox itemId={itemId} propKey={prop.key} initial={imageUrl(v)} />;
       case "number":
         return (
           <input
@@ -410,7 +416,10 @@ export default function CustomProperties({
               </a>
             );
           })()}
-          {filled && (
+          {/* Image already has its own Remove inside the box's popup, so the
+              row-level clear here would just duplicate it (skipped for
+              "image"; ADR-255). */}
+          {filled && prop.kind !== "image" && (
             <button
               type="button"
               onClick={() => {
