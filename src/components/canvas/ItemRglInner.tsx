@@ -1,7 +1,9 @@
 // The item-canvas grid (ADR-069, Feature B) — the graduated spike engine. One
-// react-grid-layout grid for the whole item window, each field its own card. A
-// flow card's height follows its content (measured natural height → rows, fed
-// back as RGL `h`); a fixed card is a set cell whose content scrolls. The
+// react-grid-layout grid for the whole item window, each field its own card.
+// Every card's height follows its content (measured natural height → rows, fed
+// back as RGL `h`); nothing scrolls inside a cell. The stored `mode` (flow/fixed,
+// ADR-069) is still parsed for back-compat but no longer rendered — the fixed
+// box produced scrollbars and dead space (ADR-256, 2026-09-11). The
 // feedback loop is broken exactly as the /scratch/layout spike proved: measure
 // the card's NATURAL height (never the RGL box), rAF-debounced, only re-set state
 // when the row count changes.
@@ -38,7 +40,6 @@ import {
   GRID_COLS,
   GRID_MARGIN,
   GRID_ROW_HEIGHT,
-  isFlowable,
   type Breakpoint,
   type CanvasLayout,
   type CardId,
@@ -79,33 +80,26 @@ function stripCell(c: Cell): Cell {
   return { i: c.i, x: c.x, y: c.y, w: c.w, h: c.h };
 }
 
-// One grid cell. A flow card measures its own natural height and reports rows up;
-// a fixed card fills the RGL box and scrolls inside it. In arrange mode the card
-// gets a frame + a header (drag handle, pin, hide); read-only it's chrome-free so
-// a customized item still reads like a document.
+// One grid cell. It measures its own natural height and reports rows up. In
+// arrange mode the card gets a frame + a header (drag handle, hide); read-only
+// it's chrome-free so a customized item still reads like a document.
 function CardCell({
   id,
-  mode,
   arrange,
   node,
   onRows,
-  onTogglePin,
   onHide,
 }: {
   id: CardId;
-  mode: "flow" | "fixed";
   arrange: boolean;
   node: ReactNode;
   onRows: (id: CardId, rows: number) => void;
-  onTogglePin: (id: CardId) => void;
   onHide: (id: CardId) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastRows = useRef(0);
-  const flow = mode === "flow";
 
   useEffect(() => {
-    if (!flow) return;
     const el = ref.current;
     if (!el) return;
     let raf = 0;
@@ -126,19 +120,18 @@ function CardCell({
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [flow, id, onRows]);
+  }, [id, onRows]);
 
   return (
     <div
       ref={ref}
       className={`flex flex-col ${
         arrange ? "rounded-lg border border-neutral-800 bg-neutral-900/40" : ""
-      } ${flow ? "" : "h-full overflow-hidden"}`}
+      }`}
     >
       {arrange && (
         // No per-card label (Brandon, 2026-06-17): the field/panel below names
-        // itself, so the header is just the drag handle + flow/fixed toggle +
-        // hide. The drag handle takes the full width so the card is easy to grab.
+        // itself, so the header is just the drag handle + hide. The drag handle takes the full width so the card is easy to grab.
         <header className="flex shrink-0 items-center gap-1.5 border-b border-neutral-800 px-2 py-1 text-xs">
           <span
             className="canvas-drag flex-1 cursor-grab select-none text-neutral-600"
@@ -147,24 +140,6 @@ function CardCell({
           >
             ⠿
           </span>
-          {isFlowable(id) && (
-            <button
-              onClick={() => onTogglePin(id)}
-              aria-pressed={!flow}
-              className={`cancel-drag shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
-                flow
-                  ? "border-neutral-700 text-neutral-500 hover:border-neutral-500 hover:text-neutral-300"
-                  : "border-[var(--accent)] text-[var(--accent)]"
-              }`}
-              title={
-                flow
-                  ? "Pin to a fixed cell (content scrolls inside)"
-                  : "Unpin — height follows content"
-              }
-            >
-              {flow ? "Flow" : "Fixed"}
-            </button>
-          )}
           <button
             onClick={() => onHide(id)}
             className="cancel-drag shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:border-red-500 hover:text-red-300"
@@ -177,9 +152,7 @@ function CardCell({
       {/* cancel-drag so typing/scrolling inside never starts a drag; the panels
           carry their own canvas chrome, neutralized by .canvas-card-content. */}
       <div
-        className={`canvas-card-content cancel-drag min-h-0 ${arrange ? "p-2" : ""} ${
-          flow ? "" : "flex-1 overflow-auto"
-        }`}
+        className={`canvas-card-content cancel-drag min-h-0 ${arrange ? "p-2" : ""}`}
       >
         {node}
       </div>
@@ -258,20 +231,19 @@ export default function ItemRglInner({
   );
 
   // Build RGL's per-breakpoint Layouts from the stored cells (visible cards only),
-  // attaching width-only resize handles to flow cards so dragging the bottom edge
-  // can't fight the auto-height.
+  // with width-only resize handles so dragging the bottom edge can't fight the
+  // auto-height.
   const layouts: Layouts = useMemo(() => {
     const out: Layouts = { lg: [], md: [], sm: [] };
     for (const bp of BREAKPOINTS) {
       const byId = new Map(cells[bp].map((c) => [c.i, c]));
       out[bp] = visibleIds.map((id): Layout => {
         const c = byId.get(id) ?? { i: id, x: 0, y: 9999, w: GRID_COLS[bp], h: 4 };
-        const flow = (cards[id]?.mode ?? "flow") === "flow";
-        return { ...c, minW: 2, ...(flow ? { resizeHandles: ["e", "w"] } : {}) };
+        return { ...c, minW: 2, resizeHandles: ["e", "w"] };
       });
     }
     return out;
-  }, [cells, cards, visibleIds]);
+  }, [cells, visibleIds]);
 
   const persist = useCallback(
     (cardsState: Record<CardId, CardMeta>, cellsState: Record<Breakpoint, Cell[]>) => {
@@ -408,20 +380,6 @@ export default function ItemRglInner({
   // it fires).
   const handleGestureEnd = useCallback(() => schedulePersist(), [schedulePersist]);
 
-  const handleTogglePin = useCallback(
-    (id: CardId) => {
-      setCards((prev) => ({
-        ...prev,
-        [id]: {
-          ...prev[id],
-          mode: prev[id]?.mode === "flow" ? "fixed" : "flow",
-        },
-      }));
-      schedulePersist();
-    },
-    [schedulePersist]
-  );
-
   const handleHide = useCallback(
     (id: CardId) => {
       setCards((prev) => ({
@@ -487,11 +445,9 @@ export default function ItemRglInner({
         <div key={id}>
           <CardCell
             id={id}
-            mode={cards[id]?.mode ?? "flow"}
             arrange={arrange}
             node={nodes[id]}
             onRows={handleRows}
-            onTogglePin={handleTogglePin}
             onHide={handleHide}
           />
         </div>
@@ -538,7 +494,7 @@ export default function ItemRglInner({
           ))}
         </div>
         <span className="text-xs text-neutral-500">
-          Switch width to arrange each layout. Drag ⠿, resize edges, pin, or hide.
+          Switch width to arrange each layout. Drag ⠿, resize edges, or hide.
           Auto-saves to every item of this type.
         </span>
         <div className="ml-auto flex items-center gap-2">

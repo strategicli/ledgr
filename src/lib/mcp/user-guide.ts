@@ -805,7 +805,10 @@ beside".
 - **Each type gets a canvas that fits it** — a document layout for prose, a
   compact rail for tasks, a two-pane notes-plus-details layout for meetings.
 - **Rearrange it yourself** by adding \`?arrange=1\` to the URL: every field and
-  section becomes a resizable card, saved per type and per screen size.
+  section becomes a card you can drag, widen, or hide, saved per type and per
+  screen size. A card is always exactly as tall as its content (nothing scrolls
+  inside a card), and the Details, Save Offline, Share, and Version History
+  cards always settle beneath everything else.
 - **Lock an item** from its ⋯ menu to make it read-only.
 - **Version history** snapshots the body as you write, and restores.
 - **A cross-device guard** stops a stale tab from overwriting a newer edit. If
