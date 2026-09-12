@@ -1095,15 +1095,18 @@ export default function AddTaskCard({
           host (a project's Tasks card), the picker is hidden and the actions get
           the full row. */}
       <div className={`mt-3 flex items-center gap-2 ${lockDestination || parentId ? "justify-end" : "justify-between"}`}>
+        {/* min-w-0 + w-full: a <select> is as wide as its LONGEST option, so one
+            long project title used to push Cancel/Add past the card edge. Now the
+            picker takes the free space and the buttons never move. */}
         {!lockDestination && !parentId && (
-          <span className="relative inline-flex items-center text-sm text-neutral-300">
+          <span className="relative inline-flex min-w-0 flex-1 items-center text-sm text-neutral-300">
             <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconPlus : IconInbox}</span>
             <select
               value={effDest}
               onChange={(e) => setDest(e.target.value)}
               disabled={!!projectMatch?.project}
               aria-label="Destination"
-              className="appearance-none rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
+              className="w-full min-w-0 appearance-none truncate rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
             >
               {host && host.role !== "project" && <option value={host.id}>{host.label}</option>}
               <option value="inbox">Inbox</option>
@@ -1112,7 +1115,7 @@ export default function AddTaskCard({
             <span className="pointer-events-none absolute right-0 text-neutral-500">{IconChevron}</span>
           </span>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={onCancel} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700">Cancel</button>
           <button type="button" disabled={!title.trim() || busy} onClick={() => void create()} className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40">
             {busy ? "Adding…" : submitLabel ?? (parentId ? "Add subtask" : "Add task")}
