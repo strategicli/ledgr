@@ -4167,3 +4167,17 @@ So the missing pieces were three, and small: the spine was trapped in a page, th
 **What is deferred.** A per-field wide "cover" display style (v1 renders every image kind as the same 112px square box); a drag-to-reposition cropper (v1 stays a deterministic center crop, same as person's); avatars for non-person types on cards and chips.
 
 **Why avatars stay keyed to person's `image`.** Card chips and task rows read `properties.image` directly, with no type-schema lookup, because the perf rule says list rendering can't afford one (Principle 8). Generalizing "the avatar is the first image-kind property" would push that lookup into every list row. So a second person picture, or another type's image, shows on the record and in list columns, but not on chips — deliberately, not an oversight.
+
+## ADR-256: item grid cards always flow; the footer cards always sink to the bottom
+
+**Date:** 2026-09-11 · **Status:** accepted (not core: the stored `canvas_layout` shape is unchanged, `mode` is still parsed) · **Requested by:** Brandon
+
+**Context.** On grid-layout types (those with a saved layout, e.g. Hiring Candidate), Brandon saw scrollbars inside property cards, half-empty cards, and properties rendered below the Type/Created/Updated block and the Save Offline / Share rows, in both the side panel and the full page. He asked for a system fix, not a per-type one: tiles that fit their content and rearrange cleanly at any width.
+
+**Root causes.** (1) System and custom property cards defaulted to ADR-069's `fixed` mode: a set 2-row box whose content scrolls. Short content left the box mostly empty; tall content (a textarea, an image box) scrolled inside it. (2) Even flow cards rounded their measured height UP to whole 40px rows (a 52px step with the margin), so a one-line field cost 92px. (3) `reconcile` appended a newly added property at the very bottom of the saved layout, beneath the footer cards.
+
+**Decision.** Every card renders as flow: height follows content, nothing scrolls inside a cell. The row unit drops from 40px to 8px (a 20px step), so the dead space under any card is at most one step. `reconcile`, which already runs on every read, now sinks the four footer cards (`saveOffline`, `share`, `history`, `meta`) beneath all content cards on every breakpoint, preserving their arrangement relative to each other. So a property added later, or a footer card dragged upward while arranging, settles back beneath the content on the next load.
+
+**What is hidden, not deleted.** The Flow/Fixed pin button is gone from the arrange header and `CardCell` ignores `mode`; the stored `mode` field is still parsed and preserved (`parseCards`, `reconcile`), so no saved layout is rewritten and the fixed rendering could be restored from the data. `scripts/verify-canvas-layout.mts` covers the footer sink.
+
+**Alternatives declined.** Merging the four footer cards into one card (a vocabulary change that drops ids from saved layouts; the sink already gives the same reading order). Enforcing the footer rule inside the drag handler (the read-time rule is one function and also fixes already-saved layouts).
