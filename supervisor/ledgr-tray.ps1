@@ -222,14 +222,87 @@ function Get-EveryText($Job) {
   return "every $m min"
 }
 
+# WHY `$script:` EVERYWHERE BELOW. WinForms fires event handlers on the message
+# loop, in SCRIPT scope, not inside the function that built the form. A handler
+# that names a function-local control finds $null, and a function nested inside
+# New-StatusForm does not exist at all from there ("The term 'Load-Policy' is not
+# recognized", 2026-09-12). So every control a handler touches is script-scoped,
+# and the two refreshers are top-level functions.
+
+function Load-Policy {
+  $p = Read-JsonFile $script:policyPath
+  if ($p) {
+    if ($p.mode -eq "manual") { $script:radioManual.Checked = $true } else { $script:radioAuto.Checked = $true }
+    if ($p.everyMinutes) { $script:numEvery.Value = [Math]::Min([Math]::Max([int]$p.everyMinutes, 1), 1440) }
+    $script:txtBranch.Text = if ($p.branch) { $p.branch } else { "main" }
+    $script:txtRepo.Text = if ($p.repo) { $p.repo } else { "" }
+  } else {
+    $script:radioAuto.Checked = $true
+    $script:numEvery.Value = 15
+    $script:txtBranch.Text = "main"
+    $script:txtRepo.Text = ""
+  }
+  $script:numEvery.Enabled = $script:radioAuto.Checked
+  $script:lblSaved.Text = ""
+}
+
+function Refresh-Status {
+  $state = Get-PeerState
+  $stateText = switch ($state) { "serving" { "Running" } "starting" { "Starting" } default { "Not running" } }
+  $script:lblState.Text = "State: $stateText  (app port $AppPort, db port $DbPort)"
+
+  $live = Get-LiveInfo
+  if ($live -and $live.sha) {
+    $sha7 = $live.sha.Substring(0, [Math]::Min(7, $live.sha.Length))
+    $script:lblVersion.Text = "Version: $sha7 - Updated $(Format-Ago $live.flippedAt)"
+  } else {
+    $script:lblVersion.Text = "Version: unknown"
+  }
+
+  $policy = if ($DataDir) { Read-JsonFile (Join-Path $DataDir "update-policy.json") } else { $null }
+  if (-not $policy) {
+    $script:lblUpdate.Text = "Updates: no update policy written yet (the service writes one on its first start)"
+  } elseif ($policy.mode -eq "manual") {
+    $script:lblUpdate.Text = "Updates: only when you press Update now in Ledgr (branch $($policy.branch))"
+  } else {
+    $script:lblUpdate.Text = "Updates: checks every $($policy.everyMinutes) min on branch $($policy.branch)"
+  }
+
+  $cron = if ($DataDir) { Read-JsonFile (Join-Path $DataDir "cron-state.json") } else { $null }
+  $script:listJobs.Items.Clear()
+  if ($cron -and $cron.jobs) {
+    foreach ($j in $cron.jobs) {
+      $item = New-Object System.Windows.Forms.ListViewItem($j.label)
+      $item.SubItems.Add((Get-EveryText $j)) | Out-Null
+      $item.SubItems.Add((Format-Ago $j.lastOkAt)) | Out-Null
+      $item.SubItems.Add($j.state) | Out-Null
+      $script:listJobs.Items.Add($item) | Out-Null
+    }
+  } else {
+    $item = New-Object System.Windows.Forms.ListViewItem("No record yet")
+    $item.SubItems.Add(""); $item.SubItems.Add(""); $item.SubItems.Add("")
+    $script:listJobs.Items.Add($item) | Out-Null
+  }
+
+  $config = Read-JsonFile $ConfigPath
+  if ($config -and $config.role -eq "hub") {
+    $script:lblSync.Text = "Sync: Role: hub"
+  } elseif ($config -and $config.role -eq "spoke") {
+    $n = if ($config.hubs) { @($config.hubs).Count } else { 0 }
+    $script:lblSync.Text = "Sync: Role: spoke, syncing to $n hub(s)"
+  } else {
+    $script:lblSync.Text = "Sync: unknown"
+  }
+}
+
 function New-StatusForm {
-  $form = New-Object System.Windows.Forms.Form
-  $form.Text = "Ledgr"
-  $form.ClientSize = New-Object System.Drawing.Size 520, 560
-  $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
-  $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
-  $form.MaximizeBox = $false
-  $form.MinimizeBox = $true
+  $script:form = New-Object System.Windows.Forms.Form
+  $script:form.Text = "Ledgr"
+  $script:form.ClientSize = New-Object System.Drawing.Size 520, 560
+  $script:form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+  $script:form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
+  $script:form.MaximizeBox = $false
+  $script:form.MinimizeBox = $true
 
   $tabs = New-Object System.Windows.Forms.TabControl
   $tabs.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -239,38 +312,38 @@ function New-StatusForm {
   $tabs.TabPages.Add($tabSettings) | Out-Null
 
   # -- Status tab --------------------------------------------------------------
-  $lblState = New-Object System.Windows.Forms.Label
-  $lblState.SetBounds(12, 12, 480, 20)
-  $lblVersion = New-Object System.Windows.Forms.Label
-  $lblVersion.SetBounds(12, 34, 480, 20)
-  $lblUpdate = New-Object System.Windows.Forms.Label
-  $lblUpdate.SetBounds(12, 56, 480, 20)
+  $script:lblState = New-Object System.Windows.Forms.Label
+  $script:lblState.SetBounds(12, 12, 480, 20)
+  $script:lblVersion = New-Object System.Windows.Forms.Label
+  $script:lblVersion.SetBounds(12, 34, 480, 20)
+  $script:lblUpdate = New-Object System.Windows.Forms.Label
+  $script:lblUpdate.SetBounds(12, 56, 480, 20)
 
   $lblDiskHeader = New-Object System.Windows.Forms.Label
   $lblDiskHeader.SetBounds(12, 86, 200, 18)
   $lblDiskHeader.Text = "Disk use"
   $lblDiskHeader.Font = New-Object System.Drawing.Font($lblDiskHeader.Font, [System.Drawing.FontStyle]::Bold)
-  $lblDisk = New-Object System.Windows.Forms.Label
-  $lblDisk.SetBounds(12, 106, 480, 76)
-  $lblDisk.Text = "measuring..."
+  $script:lblDisk = New-Object System.Windows.Forms.Label
+  $script:lblDisk.SetBounds(12, 106, 480, 76)
+  $script:lblDisk.Text = "measuring..."
 
   $lblJobsHeader = New-Object System.Windows.Forms.Label
   $lblJobsHeader.SetBounds(12, 190, 200, 18)
   $lblJobsHeader.Text = "Scheduled jobs"
   $lblJobsHeader.Font = New-Object System.Drawing.Font($lblJobsHeader.Font, [System.Drawing.FontStyle]::Bold)
 
-  $listJobs = New-Object System.Windows.Forms.ListView
-  $listJobs.SetBounds(12, 210, 480, 190)
-  $listJobs.View = [System.Windows.Forms.View]::Details
-  $listJobs.FullRowSelect = $true
-  $listJobs.GridLines = $true
-  $listJobs.Columns.Add("Job", 150) | Out-Null
-  $listJobs.Columns.Add("Every", 110) | Out-Null
-  $listJobs.Columns.Add("Last success", 110) | Out-Null
-  $listJobs.Columns.Add("State", 90) | Out-Null
+  $script:listJobs = New-Object System.Windows.Forms.ListView
+  $script:listJobs.SetBounds(12, 210, 480, 190)
+  $script:listJobs.View = [System.Windows.Forms.View]::Details
+  $script:listJobs.FullRowSelect = $true
+  $script:listJobs.GridLines = $true
+  $script:listJobs.Columns.Add("Job", 150) | Out-Null
+  $script:listJobs.Columns.Add("Every", 110) | Out-Null
+  $script:listJobs.Columns.Add("Last success", 110) | Out-Null
+  $script:listJobs.Columns.Add("State", 90) | Out-Null
 
-  $lblSync = New-Object System.Windows.Forms.Label
-  $lblSync.SetBounds(12, 408, 480, 20)
+  $script:lblSync = New-Object System.Windows.Forms.Label
+  $script:lblSync.SetBounds(12, 408, 480, 20)
 
   $btnOpen = New-Object System.Windows.Forms.Button
   $btnOpen.SetBounds(12, 480, 110, 28)
@@ -292,47 +365,47 @@ function New-StatusForm {
   $btnClose = New-Object System.Windows.Forms.Button
   $btnClose.SetBounds(412, 480, 80, 28)
   $btnClose.Text = "Close"
-  $btnClose.add_Click({ $form.Close() })
+  $btnClose.add_Click({ $script:form.Close() })
 
   $tabStatus.Controls.AddRange(@(
-      $lblState, $lblVersion, $lblUpdate, $lblDiskHeader, $lblDisk,
-      $lblJobsHeader, $listJobs, $lblSync, $btnOpen, $btnData, $btnLogs, $btnClose
+      $script:lblState, $script:lblVersion, $script:lblUpdate, $lblDiskHeader, $script:lblDisk,
+      $lblJobsHeader, $script:listJobs, $script:lblSync, $btnOpen, $btnData, $btnLogs, $btnClose
     ))
 
   # -- Settings tab -------------------------------------------------------------
-  $policyPath = if ($DataDir) { Join-Path $DataDir "update-policy.json" } else { "" }
+  $script:policyPath = if ($DataDir) { Join-Path $DataDir "update-policy.json" } else { "" }
 
-  $radioAuto = New-Object System.Windows.Forms.RadioButton
-  $radioAuto.SetBounds(12, 14, 220, 22)
-  $radioAuto.Text = "Check for updates automatically"
+  $script:radioAuto = New-Object System.Windows.Forms.RadioButton
+  $script:radioAuto.SetBounds(12, 14, 220, 22)
+  $script:radioAuto.Text = "Check for updates automatically"
 
   $lblEvery1 = New-Object System.Windows.Forms.Label
   $lblEvery1.SetBounds(32, 42, 40, 22)
   $lblEvery1.Text = "every"
-  $numEvery = New-Object System.Windows.Forms.NumericUpDown
-  $numEvery.SetBounds(74, 40, 70, 22)
-  $numEvery.Minimum = 1
-  $numEvery.Maximum = 1440
-  $numEvery.Value = 15
+  $script:numEvery = New-Object System.Windows.Forms.NumericUpDown
+  $script:numEvery.SetBounds(74, 40, 70, 22)
+  $script:numEvery.Minimum = 1
+  $script:numEvery.Maximum = 1440
+  $script:numEvery.Value = 15
   $lblEvery2 = New-Object System.Windows.Forms.Label
   $lblEvery2.SetBounds(150, 42, 80, 22)
   $lblEvery2.Text = "minutes"
 
-  $radioManual = New-Object System.Windows.Forms.RadioButton
-  $radioManual.SetBounds(12, 70, 400, 22)
-  $radioManual.Text = "Only when I press Update now in Ledgr"
+  $script:radioManual = New-Object System.Windows.Forms.RadioButton
+  $script:radioManual.SetBounds(12, 70, 400, 22)
+  $script:radioManual.Text = "Only when I press Update now in Ledgr"
 
   $lblBranch = New-Object System.Windows.Forms.Label
   $lblBranch.SetBounds(12, 108, 480, 18)
   $lblBranch.Text = "Branch to follow"
-  $txtBranch = New-Object System.Windows.Forms.TextBox
-  $txtBranch.SetBounds(12, 128, 300, 22)
+  $script:txtBranch = New-Object System.Windows.Forms.TextBox
+  $script:txtBranch.SetBounds(12, 128, 300, 22)
 
   $lblRepo = New-Object System.Windows.Forms.Label
   $lblRepo.SetBounds(12, 160, 480, 18)
   $lblRepo.Text = "Repository (git URL)"
-  $txtRepo = New-Object System.Windows.Forms.TextBox
-  $txtRepo.SetBounds(12, 180, 480, 22)
+  $script:txtRepo = New-Object System.Windows.Forms.TextBox
+  $script:txtRepo.SetBounds(12, 180, 480, 22)
 
   $lblNote = New-Object System.Windows.Forms.Label
   $lblNote.SetBounds(12, 206, 480, 40)
@@ -344,158 +417,94 @@ function New-StatusForm {
   $btnSave.SetBounds(12, 254, 90, 28)
   $btnSave.Text = "Save"
 
-  $lblSaved = New-Object System.Windows.Forms.Label
-  $lblSaved.SetBounds(112, 258, 380, 22)
+  $script:lblSaved = New-Object System.Windows.Forms.Label
+  $script:lblSaved.SetBounds(112, 258, 380, 22)
 
-  $numEvery.Enabled = $radioAuto.Checked
-  $radioAuto.add_CheckedChanged({ $numEvery.Enabled = $radioAuto.Checked })
+  $script:numEvery.Enabled = $script:radioAuto.Checked
+  $script:radioAuto.add_CheckedChanged({ $script:numEvery.Enabled = $script:radioAuto.Checked })
 
-  function Load-Policy {
-    $p = Read-JsonFile $policyPath
-    if ($p) {
-      if ($p.mode -eq "manual") { $radioManual.Checked = $true } else { $radioAuto.Checked = $true }
-      if ($p.everyMinutes) { $numEvery.Value = [Math]::Min([Math]::Max([int]$p.everyMinutes, 1), 1440) }
-      $txtBranch.Text = if ($p.branch) { $p.branch } else { "main" }
-      $txtRepo.Text = if ($p.repo) { $p.repo } else { "" }
-    } else {
-      $radioAuto.Checked = $true
-      $numEvery.Value = 15
-      $txtBranch.Text = "main"
-      $txtRepo.Text = ""
-    }
-    $numEvery.Enabled = $radioAuto.Checked
-    $lblSaved.Text = ""
-  }
 
   $btnSave.add_Click({
-      $branch = $txtBranch.Text.Trim()
+      $branch = $script:txtBranch.Text.Trim()
       if (-not $branch) {
         [System.Windows.Forms.MessageBox]::Show("Branch to follow can't be empty.", "Ledgr",
           [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         return
       }
-      $minutes = [int]$numEvery.Value
+      $minutes = [int]$script:numEvery.Value
       if ($minutes -lt 1 -or $minutes -gt 1440) {
         [System.Windows.Forms.MessageBox]::Show("Minutes must be between 1 and 1440.", "Ledgr",
           [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         return
       }
-      if (-not $policyPath) {
+      if (-not $script:policyPath) {
         [System.Windows.Forms.MessageBox]::Show("No data folder is configured; can't save.", "Ledgr",
           [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
         return
       }
       $policy = [ordered]@{
-        mode          = if ($radioManual.Checked) { "manual" } else { "auto" }
+        mode          = if ($script:radioManual.Checked) { "manual" } else { "auto" }
         everyMinutes  = $minutes
         branch        = $branch
-        repo          = $txtRepo.Text.Trim()
+        repo          = $script:txtRepo.Text.Trim()
         updatedAt     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
       }
       $json = $policy | ConvertTo-Json -Depth 3
       $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-      [System.IO.File]::WriteAllText($policyPath, $json, $utf8NoBom)
-      $lblSaved.Text = "Saved. Takes effect within a minute."
+      [System.IO.File]::WriteAllText($script:policyPath, $json, $utf8NoBom)
+      $script:lblSaved.Text = "Saved. Takes effect within a minute."
     })
 
   $tabSettings.Controls.AddRange(@(
-      $radioAuto, $lblEvery1, $numEvery, $lblEvery2, $radioManual,
-      $lblBranch, $txtBranch, $lblRepo, $txtRepo, $lblNote, $btnSave, $lblSaved
+      $script:radioAuto, $lblEvery1, $script:numEvery, $lblEvery2, $script:radioManual,
+      $lblBranch, $script:txtBranch, $lblRepo, $script:txtRepo, $lblNote, $btnSave, $script:lblSaved
     ))
 
   $tabs.TabPages[0] = $tabStatus
   $tabs.TabPages[1] = $tabSettings
-  $form.Controls.Add($tabs)
+  $script:form.Controls.Add($tabs)
 
   # -- Refresh (status tab only; settings load once on open) -------------------
-  function Refresh-Status {
-    $state = Get-PeerState
-    $stateText = switch ($state) { "serving" { "Running" } "starting" { "Starting" } default { "Not running" } }
-    $lblState.Text = "State: $stateText  (app port $AppPort, db port $DbPort)"
-
-    $live = Get-LiveInfo
-    if ($live -and $live.sha) {
-      $sha7 = $live.sha.Substring(0, [Math]::Min(7, $live.sha.Length))
-      $lblVersion.Text = "Version: $sha7 - Updated $(Format-Ago $live.flippedAt)"
-    } else {
-      $lblVersion.Text = "Version: unknown"
-    }
-
-    $policy = if ($DataDir) { Read-JsonFile (Join-Path $DataDir "update-policy.json") } else { $null }
-    if (-not $policy) {
-      $lblUpdate.Text = "Updates: no update policy written yet (the service writes one on its first start)"
-    } elseif ($policy.mode -eq "manual") {
-      $lblUpdate.Text = "Updates: only when you press Update now in Ledgr (branch $($policy.branch))"
-    } else {
-      $lblUpdate.Text = "Updates: checks every $($policy.everyMinutes) min on branch $($policy.branch)"
-    }
-
-    $cron = if ($DataDir) { Read-JsonFile (Join-Path $DataDir "cron-state.json") } else { $null }
-    $listJobs.Items.Clear()
-    if ($cron -and $cron.jobs) {
-      foreach ($j in $cron.jobs) {
-        $item = New-Object System.Windows.Forms.ListViewItem($j.label)
-        $item.SubItems.Add((Get-EveryText $j)) | Out-Null
-        $item.SubItems.Add((Format-Ago $j.lastOkAt)) | Out-Null
-        $item.SubItems.Add($j.state) | Out-Null
-        $listJobs.Items.Add($item) | Out-Null
-      }
-    } else {
-      $item = New-Object System.Windows.Forms.ListViewItem("No record yet")
-      $item.SubItems.Add(""); $item.SubItems.Add(""); $item.SubItems.Add("")
-      $listJobs.Items.Add($item) | Out-Null
-    }
-
-    $config = Read-JsonFile $ConfigPath
-    if ($config -and $config.role -eq "hub") {
-      $lblSync.Text = "Sync: Role: hub"
-    } elseif ($config -and $config.role -eq "spoke") {
-      $n = if ($config.hubs) { @($config.hubs).Count } else { 0 }
-      $lblSync.Text = "Sync: Role: spoke, syncing to $n hub(s)"
-    } else {
-      $lblSync.Text = "Sync: unknown"
-    }
-  }
 
   # Disk-size measuring runs after the form is shown, via a one-shot timer, so
   # opening the window never blocks on walking builds\ (which can hold several
   # node_modules trees).
-  $diskTimer = New-Object System.Windows.Forms.Timer
-  $diskTimer.Interval = 200
-  $diskTimer.add_Tick({
-      $diskTimer.Stop()
+  $script:diskTimer = New-Object System.Windows.Forms.Timer
+  $script:diskTimer.Interval = 200
+  $script:diskTimer.add_Tick({
+      $script:diskTimer.Stop()
       if ($DataDir) {
         $dbBytes = Get-DirBytes (Join-Path $DataDir "pg")
         $buildsBytes = Get-DirBytes (Join-Path $DataDir "builds")
         $snapBytes = Get-DirBytes (Join-Path $DataDir "snapshots")
         $total = $dbBytes + $buildsBytes + $snapBytes
-        $lblDisk.Text =
+        $script:lblDisk.Text =
         "Database: $(Format-Bytes $dbBytes)`r`n" +
         "Builds: $(Format-Bytes $buildsBytes)`r`n" +
         "Snapshots: $(Format-Bytes $snapBytes)`r`n" +
         "Total: $(Format-Bytes $total)"
       } else {
-        $lblDisk.Text = "No data folder configured."
+        $script:lblDisk.Text = "No data folder configured."
       }
     })
 
-  $pollTimer = New-Object System.Windows.Forms.Timer
-  $pollTimer.Interval = [Math]::Max(3, $PollSeconds) * 1000
-  $pollTimer.add_Tick({ Refresh-Status })
+  $script:pollTimer = New-Object System.Windows.Forms.Timer
+  $script:pollTimer.Interval = [Math]::Max(3, $PollSeconds) * 1000
+  $script:pollTimer.add_Tick({ Refresh-Status })
 
-  $form.add_Shown({
+  $script:form.add_Shown({
       Load-Policy
       Refresh-Status
-      $diskTimer.Start()
-      $pollTimer.Start()
+      $script:diskTimer.Start()
+      $script:pollTimer.Start()
     })
-  $form.add_FormClosed({
-      $diskTimer.Stop(); $diskTimer.Dispose()
-      $pollTimer.Stop(); $pollTimer.Dispose()
+  $script:form.add_FormClosed({
+      $script:diskTimer.Stop(); $script:diskTimer.Dispose()
+      $script:pollTimer.Stop(); $script:pollTimer.Dispose()
       $script:statusForm = $null
     })
 
-  return $form
+  return $script:form
 }
 
 function Show-StatusWindow {
