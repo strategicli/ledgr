@@ -60,6 +60,10 @@ export const PROPERTY_KINDS = [
   "date",
   "checkbox",
   "url",
+  // An image property stores the same plain string a url does (an http(s) URL
+  // or a stable /files/<id> attachment address, ADR-228); the kind only
+  // changes rendering (ADR-255).
+  "image",
   "phone",
   "email",
   "select",
@@ -96,6 +100,13 @@ export type PropertyDef = {
   // every existing filter/sort on the start key is untouched. Unset = a single
   // date. Declared once here, so no manual "which field is the end" wiring.
   withEnd?: boolean;
+  // `date` kind only (ADR-254): when true the field carries a wall-clock TIME as
+  // well as a day. The value is then a full ISO instant ("2026-09-11T02:06:00Z")
+  // instead of a day scalar ("2026-09-10"); readers tell the two apart by length
+  // (placement.ts propInstant), so a field flipped on later keeps its old
+  // day-only values readable, and a cleared time falls back to a day. Combined
+  // with withEnd, one field is a timed range (a work-log entry's 9:06–9:15 PM).
+  withTime?: boolean;
 };
 
 export type TypeDefinition = {
@@ -227,6 +238,9 @@ export function parsePropertySchema(raw: unknown): PropertyDef[] {
     // Tolerant: only honored for `date`, only when literally true.
     if (def.kind === "date" && e.withEnd === true) {
       def.withEnd = true;
+    }
+    if (def.kind === "date" && e.withTime === true) {
+      def.withTime = true;
     }
     if (KINDS_WITH_OPTIONS.includes(def.kind)) {
       if (!Array.isArray(e.options)) bad(`property '${key}' needs options`);

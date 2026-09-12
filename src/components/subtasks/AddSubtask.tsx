@@ -16,7 +16,10 @@ export default function AddSubtask({ parentId }: { parentId: string }) {
     <InlineAddTask
       parentId={parentId}
       label="Add subtask"
-      buttonClassName="flex items-center gap-1.5 rounded px-2 py-1 text-sm text-ink hover:bg-surface-2"
+      // Hover feedback (Tyler, 2026-09-11): the row read as inert text, with nothing
+      // to say it would do something. The label takes the owner's accent on hover,
+      // matching the "+" glyph that already carries it.
+      buttonClassName="flex items-center gap-1.5 rounded px-2 py-1 text-sm text-ink transition-colors hover:bg-surface-2 hover:text-[var(--accent)]"
     />
   );
 }

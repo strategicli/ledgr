@@ -25,7 +25,17 @@ import { announceFloatingOpen } from "@/lib/floating";
 
 type Hit = { id: string; type: string; title: string };
 
-export default function AddRelation({ itemId }: { itemId: string }) {
+export default function AddRelation({
+  itemId,
+  rail = false,
+}: {
+  itemId: string;
+  // Rail mode (ADR-253): render the compact "+" used by the rail's other
+  // relation rows (Project / Tags / People) instead of the "+ Relate" pill, so
+  // the task rail's Linked row matches its siblings. The picker itself is
+  // identical either way.
+  rail?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -129,6 +139,20 @@ export default function AddRelation({ itemId }: { itemId: string }) {
   }
 
   if (!open) {
+    if (rail) {
+      return (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Link an item"
+          className="flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-surface-2 hover:text-ink"
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      );
+    }
     return (
       <button
         onClick={() => setOpen(true)}

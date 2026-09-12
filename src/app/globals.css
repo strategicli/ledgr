@@ -1,18 +1,19 @@
 @import "tailwindcss";
 
-/* Dark is the default theme (Brandon's preference); these tokens are the
-   single place a future light theme plugs in (e.g. a .light class on <html>
-   set by a toggle), so pages should style from the tokens or neutral dark
-   classes, never hardcode light backgrounds. Palette shadows Notion's dark
-   mode (Notion-default, CLAUDE.md rule 6). */
+/* Dark is the default theme; the other themes ([data-theme=light|gray|sepia],
+   below) are a data attribute on <html> set by layout.tsx from settings.theme.
+   An attribute, not a class, because Tailwind owns `.sepia` (the filter
+   utility) and would tint the whole page instead of re-skinning it. Pages style from
+   the tokens or neutral classes and never hardcode a background, so one class
+   re-skins the whole app. Palette shadows Notion's dark mode. */
 :root {
-  /* Dark is the only theme today. Setting color-scheme globally makes the
-     browser's native controls (scrollbars, date/select pickers, form fields)
-     render dark unconditionally — so they no longer depend on Tailwind's
-     @layer base winning the CSS load-order race, which is what produced the
-     intermittent dark-scrollbar / native-border "unstyled" flashes. Per-input
-     [color-scheme:dark] utilities scattered through the canvas components are now
-     redundant guards. A future light theme flips this on the .light class. */
+  /* Setting color-scheme globally makes the browser's native controls
+     (scrollbars, date/select pickers, form fields) follow the theme without
+     depending on Tailwind's @layer base winning the CSS load-order race, which
+     is what produced the intermittent dark-scrollbar "unstyled" flashes. Each
+     theme block below sets its own; components must NOT carry a per-input
+     [color-scheme:dark] utility (it would force a black picker on a light
+     theme). */
   color-scheme: dark;
   --background: #191919;
   --foreground: #d4d4d4;
@@ -35,7 +36,7 @@
      S1 · The token layer (ui-refresh, ADR-141)
      -------------------------------------------------------------------
      TWO tiers, both light-mode-ready. Colors live here as variables so a
-     future `.light` class flips them in ONE place instead of touching the
+     theme attribute flips them in ONE place instead of touching the
      ~2,790 hardcoded neutral usages across the app.
 
      TIER 1 — the neutral RAMP as variables. Tailwind v4 lets us redefine
@@ -44,7 +45,7 @@
      / `border-neutral-700` already reads through a runtime variable. The
      DARK values below are Tailwind v4's own neutral oklch values verbatim,
      so this is a PURE INDIRECTION with zero visual change in dark mode;
-     `.light` overrides them (inverted ramp) to flip the whole app at once.
+     a theme block overrides them (e.g. an inverted ramp) to flip the whole app at once.
 
      TIER 2 — a SEMANTIC layer refreshed components style from directly:
        bg-surface-{0,1,2,3}  border-line / border-line-strong
@@ -99,7 +100,7 @@
      (--ink-muted / text-neutral-400) left it dim and hard to read inside the
      band. Pin selected text to full-strength white and tint the band with the
      owner's accent. Alpha over a dark page always lands mid-dark, so white
-     stays legible whatever accent is picked; `.light` flips the ink to dark. */
+     stays legible whatever accent is picked; the light themes flip the ink to dark. */
   --selection-bg: color-mix(in srgb, var(--accent) 40%, transparent);
   --selection-ink: #ffffff;
 
@@ -140,11 +141,11 @@
   --z-top: 70;
 }
 
-/* Light-mode PROOF (S1 mechanism only — the theme itself is a later slice).
-   Flipping this ramp + semantic set is the entire cost of light mode later,
-   because tier 1 routes every neutral utility through these vars. Reachable
-   today only via the dev proof screen at /dev/theme (gated off in prod). */
-.light {
+/* ===== THEMES (settings.theme → data-theme on <html>; dev proof at /dev/theme) =====
+   Flipping the ramp + semantic set is the entire cost of a theme, because tier 1
+   routes every neutral utility through these vars. Each theme's --surface-0 is
+   mirrored in settings.ts THEME_PAGE_COLOR (the mobile title-bar color). */
+[data-theme="light"] {
   color-scheme: light;
   --background: #ffffff;
   --foreground: #1f1f1f;
@@ -182,6 +183,96 @@
   --cs-count: #7a7a7a;
 }
 
+/* Gray: a softer dark. The dark ramp lifted two stops so nothing goes near
+   black; same shape, lower contrast. Still a dark color-scheme. */
+[data-theme="gray"] {
+  color-scheme: dark;
+  --background: #2b2b2b;
+  --foreground: #dcdcdc;
+  --n-50: oklch(0.985 0 0);
+  --n-100: oklch(0.97 0 0);
+  --n-200: oklch(0.93 0 0);
+  --n-300: oklch(0.88 0 0);
+  --n-400: oklch(0.75 0 0);
+  --n-500: oklch(0.62 0 0);
+  --n-600: oklch(0.52 0 0);
+  --n-700: oklch(0.45 0 0);
+  --n-800: oklch(0.36 0 0);
+  --n-900: oklch(0.30 0 0);
+  --n-950: oklch(0.25 0 0);
+  --surface-0: #2b2b2b;
+  --surface-1: #333333;
+  --surface-2: #3d3d3d;
+  --surface-3: #454545;
+  --line: #3a3a3a;
+  --line-strong: #4a4a4a;
+  --ink: #e6e6e6;
+  --ink-muted: #b0b0b0;
+  --ink-subtle: #8a8a8a;
+  --ink-faint: #666666;
+  --cs-card: #333333;
+  --cs-border: #3e3e3e;
+  --cs-divider: #3a3a3a;
+  --cs-label: #a8a8a8;
+  --cs-count: #9a9a9a;
+}
+
+/* Sepia: the light theme on warm paper. Same inverted ramp as the light theme, tinted
+   toward amber (hue ~75) so grays read as parchment rather than concrete. */
+[data-theme="sepia"] {
+  color-scheme: light;
+  --background: #f4ecd8;
+  --foreground: #3b2f1e;
+  --n-50: oklch(0.25 0.03 75);
+  --n-100: oklch(0.32 0.03 75);
+  --n-200: oklch(0.42 0.03 75);
+  --n-300: oklch(0.50 0.03 75);
+  --n-400: oklch(0.58 0.03 75);
+  --n-500: oklch(0.64 0.03 75);
+  --n-600: oklch(0.74 0.03 75);
+  --n-700: oklch(0.86 0.03 75);
+  --n-800: oklch(0.90 0.03 75);
+  --n-900: oklch(0.93 0.03 75);
+  --n-950: oklch(0.96 0.02 75);
+  --surface-0: #f4ecd8;
+  --surface-1: #ede3cc;
+  --surface-2: #e5dac0;
+  --surface-3: #faf4e6;
+  --line: #e0d5bd;
+  --line-strong: #cdbf9f;
+  --ink: #3b2f1e;
+  --ink-muted: #6b5a3e;
+  --ink-subtle: #8c7b5e;
+  --ink-faint: #b3a58a;
+  --selection-bg: color-mix(in srgb, var(--accent) 22%, transparent);
+  --selection-ink: #2a2014;
+  --mark-ink: #2a2014;
+  --cs-card: #ede3cc;
+  --cs-border: #e0d5bd;
+  --cs-divider: #e8dfc8;
+  --cs-label: #7a6a4c;
+  --cs-count: #8c7b5e;
+}
+
+/* Text colors on a light page. The palette's nine text colors (colors.ts
+   BLOCKNOTE_COLORS) are bright, tuned for a dark canvas, and stored inline in
+   the body as exactly `<span style="color:#hex">`. A light page can't change
+   what is stored, so it repaints by attribute match, one darker shade per
+   color. Highlights need no remap: they are alpha washes that read on either
+   page. `!important` is required: an inline style beats any selector, and
+   repainting the inline color is the whole job here. print-html.ts carries the
+   same table (LIGHT_TEXT_COLORS in colors.ts) for the self-contained share
+   document; keep the two in step. */
+[data-theme="light"] span[style*="color:#a1a1aa"], [data-theme="sepia"] span[style*="color:#a1a1aa"] { color: #52525b !important; }
+[data-theme="light"] span[style*="color:#c08552"], [data-theme="sepia"] span[style*="color:#c08552"] { color: #8a5a2b !important; }
+[data-theme="light"] span[style*="color:#f23a4a"], [data-theme="sepia"] span[style*="color:#f23a4a"] { color: #c81e2e !important; }
+[data-theme="light"] span[style*="color:#fb923c"], [data-theme="sepia"] span[style*="color:#fb923c"] { color: #c2410c !important; }
+[data-theme="light"] span[style*="color:#facc15"], [data-theme="sepia"] span[style*="color:#facc15"] { color: #a16207 !important; }
+[data-theme="light"] span[style*="color:#4ade80"], [data-theme="sepia"] span[style*="color:#4ade80"] { color: #15803d !important; }
+[data-theme="light"] span[style*="color:#60a5fa"], [data-theme="sepia"] span[style*="color:#60a5fa"] { color: #1d4ed8 !important; }
+[data-theme="light"] span[style*="color:#c084fc"], [data-theme="sepia"] span[style*="color:#c084fc"] { color: #7e22ce !important; }
+[data-theme="light"] span[style*="color:#f472b6"], [data-theme="sepia"] span[style*="color:#f472b6"] { color: #be185d !important; }
+
 /* Apply the interface-density scale at the root. font-size: 100% resolves to the
    browser's base (typically 16px), so this multiplies it by --ui-scale and every
    rem follows. Deliberately on the root font-size rather than per-component, so
@@ -200,9 +291,9 @@ html {
   --font-mono: var(--font-geist-mono);
 
   /* Tier 1 — route every neutral utility through the runtime ramp vars so a
-     single `.light` flip re-themes the whole app. `inline` makes utilities emit
+     single theme block re-themes the whole app. `inline` makes utilities emit
      `var(--n-800)` directly (not a second indirection), so overriding --n-* on
-     .light is all it takes. Dark values are Tailwind's own, so nothing shifts. */
+     a theme block is all it takes. Dark values are Tailwind's own, so nothing shifts. */
   --color-neutral-50: var(--n-50);
   --color-neutral-100: var(--n-100);
   --color-neutral-200: var(--n-200);

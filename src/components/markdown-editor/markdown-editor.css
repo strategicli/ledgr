@@ -146,7 +146,7 @@
 }
 
 .ledgr-prose code {
-  background: #262626;
+  background: var(--surface-2);
   border-radius: 0.25rem;
   padding: 0.05rem 0.3rem;
   font-size: 0.85em;

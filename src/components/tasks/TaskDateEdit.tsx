@@ -18,6 +18,7 @@ import DayPickerPanel from "@/components/ui/DayPickerPanel";
 import ScheduledTimeControl from "@/components/canvas/ScheduledTimeControl";
 import RecurrenceControl from "@/components/canvas/RecurrenceControl";
 import { showToast } from "@/components/ui/ActionToast";
+import { reportDateShift } from "@/lib/date-shift-toast";
 import { DEFAULT_DURATION_MINUTES, type ScheduledTime } from "@/lib/scheduled-time";
 import type { RecurrenceRule } from "@/lib/recurrence";
 
@@ -114,6 +115,13 @@ export default function TaskDateEdit({
       });
       if (!res.ok) throw new Error(String(res.status));
       close?.();
+      // Anchoring (ADR-253) may have carried this task's subtasks along. The undo
+      // re-runs onCommitted too, since the trees these rows live in are client
+      // state router.refresh() can't reach.
+      reportDateShift(await res.json(), () => {
+        onCommitted?.();
+        router.refresh();
+      });
       onCommitted?.();
       router.refresh();
     } catch {

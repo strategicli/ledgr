@@ -432,7 +432,7 @@ export const itemTools: McpTool[] = [
         urgency: { type: "number", enum: [...URGENCIES], description: "New priority 1–6, or null to clear." },
         url: { type: "string", description: "New URL, or null to clear." },
         properties: { type: "object", description: "Replace the whole custom-properties object. Prefer propertyPatch to change one key without clobbering the rest." },
-        propertyPatch: { type: "object", description: "Merge these custom-property keys into the existing properties (atomic per-key; other keys untouched). Set a key to null to clear it." },
+        propertyPatch: { type: "object", description: "Merge these custom-property keys into the existing properties (atomic per-key; other keys untouched). Set a key to null to clear it. An image-kind property takes an image URL string, or null to remove it." },
         inbox: { type: "boolean", description: "Move into (true) or out of (false) the inbox." },
       },
       required: ["id"],

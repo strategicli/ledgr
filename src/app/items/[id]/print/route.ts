@@ -72,11 +72,12 @@ export async function GET(
   // tell at a glance that it isn't the preacher's own annotated manuscript.
   // The owner's accent, so an accent highlight ("My highlight") keeps its color
   // in a document that carries no app context (getSettings is request-cached).
-  const accent = (await getSettings(owner.id)).highlightColor;
+  const ownerSettings = await getSettings(owner.id);
+  const accent = ownerSettings.highlightColor;
   const html = renderPrintDocument(
     booth ? `${resolved.title} — Presentation Copy` : resolved.title,
     printBody,
-    { mentions, comments: showComments, accent }
+    { mentions, comments: showComments, accent, theme: ownerSettings.theme }
   );
 
   return new NextResponse(html, {

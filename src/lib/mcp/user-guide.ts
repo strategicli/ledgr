@@ -376,6 +376,12 @@ Build your own kinds of item at \`/build/types\`.
 
 - **Properties** can be text, number, date, checkbox, URL, phone, email, select,
   multi-select, or a relation to another type.
+- **A date field can carry a time, an end, or both.** On a Date property, tick
+  **Include a time of day** and the record shows a date-and-time picker instead
+  of a plain date; tick **Has an end (a range)** and a second "to" picker
+  appears beside it. A time log's Date can be one 9:06 to 9:15 PM range that
+  the Planner and a History spine place by the hour. Values you already saved
+  as plain days stay readable; nothing rewrites them.
 - **Phone and email fields are tappable.** Pick the Phone or Email kind and the
   value becomes a tap-to-call or tap-to-mail link, on the record and in a table
   view, with the right keyboard on a phone. Type the number however you like —
@@ -403,6 +409,11 @@ Build your own kinds of item at \`/build/types\`.
 - **Every item shows what links to it,** both directions, grouped by type.
 - **Typed relation fields** ("Author", "Attendees", "Tags") live under
   Properties. Everything else shows under **Linked here**.
+- **On a task, linking lives in the rail.** A **Linked** row sits with Project,
+  Tags and People (they are all links, after all): the "+" adds one, and the
+  caret opens the list of what is already connected. The full **Linked here**
+  panel under the body is still where you check things off, change their dates,
+  or unlink them.
 - **Create as you link.** Typing a name that does not exist makes it. That
   includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
   yet can be added to the meeting from the meeting, without leaving to create
@@ -458,9 +469,34 @@ Ledgr is its own task manager. Nothing else needs to be running.
   in the same panel. Project cards' people circles and a task row's person
   chips then show the face, falling back to initials or the person glyph
   without one.
+- **Any type can carry a picture.** Add a field of kind "Image (upload or
+  URL)" to a type at Build → Types, and every record of that type gets the
+  same click-to-upload box the person page has — upload a photo or paste a
+  direct image URL, Remove in the same panel. A list view's column for that
+  field shows a small thumbnail instead of the raw address.
 - **Two dates, on purpose.** *Scheduled* is when you plan to do it; *due* is the
   deadline. Most of the app sorts by the plan date and falls back to the
-  deadline.
+  deadline. On a task they sit as a pair at the top of the details rail,
+  Schedule then Due.
+- **Dates move together.** Bump a task and its whole checklist follows: every
+  dated subtask shifts by the same number of days, all the way down, and the
+  deadline keeps whatever gap it had from the plan date. A repeating task
+  carries its deadline and its subtasks forward each time it advances, so
+  nothing is left dated to last cycle. You never set a rule for this \u2014 the gap
+  is simply whatever the two dates currently are, and changing either one
+  restates it.
+- **Moved something by mistake?** When a bump carries subtasks along, a toast
+  says how many moved and offers **Undo**, which puts every one of them back
+  exactly where it was.
+- **Pin a date to hold it still.** Open the Due row and it says "Follows the
+  plan date"; click that to pin, and the deadline becomes a hard external date
+  that ignores every move (Apr 15, a grant deadline, a hand-off). A pinned
+  deadline shows a small pin on the rail row, so you can tell at a glance that a
+  bump won't carry it.
+- **A deadline before the plan date gets flagged,** not blocked \u2014 sometimes you
+  genuinely missed it. Where the deadline is still ahead, one click moves the
+  plan onto it. A deadline on the same day as the plan simply doesn't print, so
+  rows stop showing you the same date twice.
 - **Six priorities,** P1 to P6, colour-coded. They drive the checkbox colour, row
   chips and grouping.
 - **Subtasks nest,** with an "n of m done" rollup and a breadcrumb. **Add
@@ -477,8 +513,10 @@ Ledgr is its own task manager. Nothing else needs to be running.
   weekend, Next week, No date), a month calendar, a free-text box ("next fri
   9am"), and Time / Repeat controls. It edits what's shown — the scheduled
   date if the task has one, otherwise the due date — and a repeat glyph
-  beside it marks a repeating task. The same picker now backs the Schedule
-  and Due popovers on the task page.
+  beside it marks a repeating task. The same picker backs the Schedule popover
+  on the task page. Clicking a date still changes that date, everywhere in the
+  app: a chip reading "due Sep 14" edits the deadline, a plain date edits the
+  plan.
 - **Reschedule fast:** Today / Tomorrow / +1wk chips, or type "in 3 days" or
   "next Tuesday".
 - **Roll overdue tasks forward** in one click from Today. It moves the plan and
@@ -712,7 +750,9 @@ A view is a saved filter, sort and layout you reach by name. Build them at
 - **Place items by your own date property.** The calendar and agenda **Date
   field** now offers a type's own date properties beside the built-in ones, so a
   type that keeps its date in a property (a log entry's Date, a journal's Date)
-  can finally land on a calendar, a timeline, or a History spine.
+  can finally land on a calendar, a timeline, or a History spine. If that
+  property includes a time of day, the entry lands at its hour, and a table
+  column shows the day and clock rather than a raw timestamp.
 - **Filter on anything,** including your own properties, with operators that fit
   the property kind.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
@@ -769,7 +809,10 @@ beside".
 - **Each type gets a canvas that fits it** — a document layout for prose, a
   compact rail for tasks, a two-pane notes-plus-details layout for meetings.
 - **Rearrange it yourself** by adding \`?arrange=1\` to the URL: every field and
-  section becomes a resizable card, saved per type and per screen size.
+  section becomes a card you can drag, widen, or hide, saved per type and per
+  screen size. A card is always exactly as tall as its content (nothing scrolls
+  inside a card), and the Details, Save Offline, Share, and Version History
+  cards always settle beneath everything else.
 - **Lock an item** from its ⋯ menu to make it read-only.
 - **Version history** snapshots the body as you write, and restores.
 - **A cross-device guard** stops a stale tab from overwriting a newer edit. If
@@ -822,7 +865,10 @@ an exported file changes nothing here.
 The **Share link** control mints an unguessable, read-only link to a single item.
 No sign-in for whoever you send it to. You can revoke it, and each press makes a
 fresh one, so a leaked link can be killed on its own. Comments are never
-included.
+included. **Opens in** picks the theme the shared page starts in (it defaults
+to your own). The page itself has an **Appearance** dropdown at the top right,
+so whoever you send it to can switch between Dark, Light, Gray, and Sepia; their
+browser remembers the choice for every Ledgr document they open.
 
 ## Presentation export
 
@@ -870,8 +916,9 @@ note after it — an embedded image becomes the note alone. Purging an item from
 Trash deletes its files with it.
 
 **Every item shows its own files.** An item carrying files gets a collapsible
-**Files** section above Export & sharing (it appears the moment your first
-upload lands): each file with Open, **Copy link** (a markdown link to paste
+**Files** section above Export & sharing — on a task it sits in the details
+rail instead, just above Linked (it appears the moment your first upload
+lands): each file with Open, **Copy link** (a markdown link to paste
 back into the body), Share, and Delete — plus a "not linked" mark when nothing
 in the item points at the file anymore. So a link you backspaced out of the
 body is never stranded invisibly, and **dragging a file row into the body
@@ -1032,7 +1079,7 @@ Three, all plain Markdown over MCP:
 | Area | What you can change |
 |---|---|
 | You | Display name, timezone |
-| Appearance | Accent colour, interface density (desktop and mobile separately), text size, section style |
+| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, interface density (desktop and mobile separately), text size, section style |
 | Navigation | Position (top, bottom, left, right), spacing |
 | Editor | Which toolbar buttons show; collapsible headings; toggle blocks |
 | Capture | Which actions appear on the task capture card |

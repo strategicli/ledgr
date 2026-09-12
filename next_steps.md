@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-253, branch `feat/local-install-sweep`)
+## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-257, branch `feat/local-install-sweep`)
 
 A local install used to need `supervisor/config.json` edited and the service
 restarted to change its branch or update behavior. That broke ADR-222's rule:
@@ -37,6 +37,149 @@ focused pages.
 **Known step:** the running service predates this code, so `npm run
 local:restart` is needed once, on each machine already running the
 supervisor, to seed the update-policy file and clear any stale boot warning.
+## ✅ SHIPPED — `image` is a property kind on any type (2026-09-11, ADR-255, branch `feat/image-property-kind`, Tyler agreed)
+
+Any type can now carry a picture field. Pick "Image (upload or URL)" as a field kind in the type builder, name it anything, and every record of that type gets the same click-to-upload box the person page already had.
+
+**What shipped.** `image` added to `PROPERTY_KINDS` (a plain string, same contract as `url`: an http(s) URL or a stable `/files/<id>` address, ADR-228; additive, no migration). `PersonImageBox` generalized to `src/components/build/ImageBox.tsx`'s `ImageBox`, taking a `propKey` prop; person's two mounts pass `propKey="image"` and are unchanged in behavior. `CustomProperties.tsx` renders an `ImageBox` for any image-kind field; the classic canvas renders one beside the person box for every image-kind property on the type. Views: a filter offers only is-set/is-empty, and a table column shows a 24px thumbnail. MCP: `create_type`/`update_type` accept the kind (no code change needed), `update_item`'s `propertyPatch` fills/clears it, and `attach_file` gained an optional `propertyKey` that writes the upload's address straight into an image property (`embedInBody` then defaults to false).
+
+**Follow-ups, not done here:**
+
+- A per-field wide "cover" display style (v1 is one 112px square box for every image kind).
+- The drag-to-position cropper already queued for person's Image (v1 stays a deterministic center crop).
+
+## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-257, branch `feat/date-anchoring`, Brandon agreed)
+
+Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
+
+**What was actually wrong**, because none of it was the model:
+
+- **The deadline had no way to move.** ADR-076's `maintainDueOffset` did exactly the right thing and had **no GUI control anywhere**, default off, settable only over MCP. A lever you reach by asking Claude is the ADR-222 failure: the feature had a builder attached.
+- **Subtasks only followed their parent if they carried a stored offset, and exactly ONE control in the codebase ever wrote one** (`SubtaskSchedule.tsx`, and only while the parent was already dated). Tyler's checklist came from MCP `add_subtasks`, so five of six were frozen forever. He proved it mid-conversation by bumping the parent to Sep 14; one subtask moved.
+- **The rail showed two equally-weighted date rows** on every task, when most tasks want one.
+
+**What shipped.** Children shift by DELTA, so nothing has to be stamped and Tyler's existing stragglers started tracking with no migration. A deadline shifts with its own plan date, on edit, on recurrence advance, and on a calendar log edit. `properties.datePins` is the single opt-out. The deadline folds into the Schedule popover and rides that row's summary. A deadline before the plan date is flagged with a one-click fix (offered only when it hasn't already passed). `deadlineDisplay` is one shared rule so no two rows disagree: same day as the plan hides, before it or overdue alerts, genuinely later shows quietly. Inline click-to-edit is preserved everywhere, per Tyler's explicit ask.
+
+**Corrected same day after Tyler tested the preview:** the deadline is a peer rail row again (folding it into the Schedule popover made it invisible on any task without one — "why did due disappear?" is the right question to ask of a control with no label), and the task footer was over-trimmed: hiding all of `ItemUtilitiesFooter` also hid **Files** (ADR-237's anti-stranding property) and **Version History** (a task's only undo for a clobbered description). Both restored below Linked; only Export & sharing stays off. Rail order is now Schedule, Due, Priority, Tags, People, Project, Linked, custom fields, Focus today.
+
+**Canvas cleanup rode along** (non-core): `+ Task` is gone from tasks (it made a *related* task, not a subtask — invisible next to "Add subtask"); `+ Relate` moved into the rail as a `Linked` row beside Project/Tags/People; `Linked here` moved inside the main pane, fixing the misalignment (it had been re-centering `max-w-3xl` against the full width, rail included); Export & sharing no longer renders on tasks.
+
+**Core, and agreed** (Brandon, 2026-09-11). It changes what `due_date` means and adds a stored property. No migration, no API break, no dependency.
+
+**Left open, deliberately:**
+
+- **`relativeSchedule` still drives the template apply path** (`deriveOffsetChildren`) and only that path, because a prototype carries no concrete dates for anchoring to measure against. Worth revisiting if templates ever grow real dates, but it is correct as is and pinned by the verify suite.
+- **`rail/DueRow.tsx` is now unreferenced**, kept per defer-by-hiding with a header explaining where the deadline went.
+- **`rollOverdueScheduled` is deliberately outside anchoring.** The "Roll N overdue → today" bulk UPDATE moves only `scheduled_date`: its leave-the-deadline-alone rule is the older and stronger one (ADR-078, a missed deadline stays a fact), and the roll flattens every stale task onto today independently, so overdue children are already caught by the predicate and a per-row delta would move them twice. **The narrow gap left open:** a FUTURE-dated child of an overdue parent keeps its date while the parent jumps forward, closing the spacing between them. Needs a subtask dated ahead of an already-late parent, so it is rare. Named rather than silently decided — pick a semantic if it ever bites.
+
+## ✅ SHIPPED — item-canvas polish batch (2026-09-11, branch `feat/date-anchoring`, non-core)
+
+Five things Tyler raised while testing the ADR-257 preview.
+
+- **The kebab menu could open below the window.** `ItemActionsMenu`'s two panels were `absolute right-0` with no idea where the viewport ends, so on a short window the lower actions were simply unreachable — the same failure the color swatch panel had (#369) and now the same fix: both panels portal to `<body>` and use `useAnchoredPanel`, the placement half of `ui/Popover`, which clamps both horizontal edges and flips above the trigger when below is cramped. Two follow-ons that are easy to miss: a portaled panel is no longer inside `wrapRef`, so the outside-click test had to learn about it or every click inside the menu would close it; and `MoveUnderMenu` gets an explicit `className=""` because its `DEFAULT_CLASS` carries its own absolute positioning and card chrome, which would fight the new wrapper.
+- **`+ Task` is gone** (sitewide). It created a *related* task, not a subtask — a distinction invisible sitting beside "Add subtask" on the same page. `NewRelatedTask` kept, unrendered.
+- **`+ Add file` is gone** (sitewide), and the Files UI no longer renders at all when an item has none. "No files yet." plus an upload button was costing a row on every item for a path nobody used; files arrive by paste, drop, the toolbar's Attach, `/file`, MCP, or email-in. The hidden input and upload handler stay mounted (defer-by-hiding), so restoring it is one button. **This was partly my regression:** `ItemFilesSection`'s `bare` meant "render even when empty" for the arrange-grid card, and passing it from the task canvas is what put the empty state under every task.
+- **The rail's `Linked` row got the Version History shape** — a caret to open, the count as a chip — reusing the existing `.cs-caret` / `.canvas-section-count` rules, so it adds no CSS and inherits the owner's section skin. The "+" sits outside the `<summary>` deliberately: a button inside one toggles the disclosure.
+- **`Add subtask` responds to hover**, taking the owner's accent. It read as inert text before.
+
+## ✅ SHIPPED — tasks: no stray "+ Relate", Version History moves to the rail (2026-09-11, non-core)
+
+- **`+ Relate` survived on the task canvas** despite `addBar={false}`, because `RelatedPanel` has a THIRD early return I had missed when gating the other two: an item can *have* relations and still list none here, since its typed fields (Project, Tags) and People claim them all — and that exit returned the add bar unconditionally. Exactly the case Tyler hit: two links, both claimed, so the panel bailed out through the one door that ignored the flag. Now gated like its siblings.
+- **Version History moved into the rail, directly under Linked.** Both are disclosures, and both answer "what else is attached to this task" rather than being part of the work, so they read better together in the details column than trailing the body. `ItemUtilitiesFooter` gained a `history` prop so the main pane renders Files only; Files stays there because a file list needs the width, and it only renders when the item has files.
+
+## ✅ SHIPPED — Files into the task rail, and the nav More menu stops clipping (2026-09-11, non-core)
+
+- **Files moved into the task rail, directly above Linked.** Everything about a task lives in the rail now; the body pane is the work. It renders unconditionally but SELF-HIDES: the component returns null with zero files and stays mounted listening for upload events, so the section appears the moment the first file lands without a reload — gating it on a server-side count would have cost exactly that. `ItemFilesSection` gained a `column` prop (keep the collapsible section, drop the centered reading column). With Files gone from the main pane, `ItemUtilitiesFooter` held nothing for a task and was removed from that canvas entirely.
+- **The rail's collapse chevron got aligned, un-slabbed, and accented only where it earns it.** Vertically it was sticky at `top-4` while a `railPanel` rail is a card with its own `p-4`, so the rail's first row starts 1rem lower — that mismatch read as "not aligned"; panel rails now offset to `top-8`. Horizontally the circle sat 6px left of where the rail begins: the boundary strip is `w-3` with a `w-6` button centred in it, so the circle's centre landed on the strip's centre rather than the rail's edge — `translate-x-1.5` (half the strip) puts it on the line. The collapsed state was a full-height bordered, tinted strip acting as one big reopen target; it is **just the arrow** now. And the colour is split deliberately: shape is shared (`TOGGLE_BASE`) so the two can't drift, but the open-state chevron stays **gray** as ordinary chrome while only the **collapsed** one takes the owner's accent — that's the state where it is the single thing on screen that brings the rail back.
+- **The file row wrapped instead of scrolling sideways.** In the 248px rail the row's six siblings all competed for one line: the filename collapsed to nothing (the screenshot showed a size and three buttons, no name) and the buttons pushed the panel into a horizontal scroll. The name side is now one flex item asking for 12rem, the actions another, on a wrapping row — so they drop to their own line in a narrow host while a wide one renders the single line it always did.
+- **The nav "More" menu could run off the bottom** — the third instance of this bug class after the color swatch panel (#369) and the item kebab. It was `absolute` with hand-picked anchor classes (`top-0` / `bottom-0` / `-translate-y-1/2`) chosen to "open away from the kebab so it stays on screen". Those classes only know where the kebab sits in its own container, not where the viewport ends, and the `max-h-[calc(100vh-1rem)]` capped the panel's HEIGHT without touching its starting offset, so it clipped anyway. Now portaled to `<body>` with viewport coordinates: beside a side rail horizontally, growing away from whichever half of the screen the kebab occupies vertically, clamped, with a real `maxHeight` so a long menu scrolls. The portal needed `data-nav-menu` on the panel, since the outside-click handler matched `[data-nav-kebab]` on the wrapper the panel used to live inside — without it a mousedown on the "Move menu" buttons would close the menu before their click landed.
+
+**Worth noticing:** that is three separate components with the same root cause. A shared "floating panel" primitive already exists (`useAnchoredPanel`), and each of these was hand-rolled positioning that predated or ignored it. Any *new* floating panel should use it; a sweep for remaining `absolute`-positioned popups would likely find more.
+
+## 🐛 OPEN — `verify-sync.mts` is FLAKY (pre-existing, found 2026-09-11)
+
+Fails intermittently, on **two different checks**:
+
+```
+FAIL  and the last edit is what landed  (draft 3)
+FAIL  the assignment survives an unrelated preference written later elsewhere  (A={} B={})
+```
+
+Confirmed **not** caused by any of this branch's work: with it stashed, 4 of 6 runs on `main` failed, showing both messages. It is in `verify:ci`, so it reddens CI at random and trains people to re-run rather than read it, which is the worse cost.
+
+Both reads are last-write-wins races resolved by a timestamp two writes can share (`A={} B={}` is two empty settings blobs, i.e. neither write is visible). Likely fix: order the fixture's writes by an explicit sequence rather than wall-clock, or space them deterministically.
+
+## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
+
+Not caused by ADR-257; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
+
+```
+FAIL the projection honors interval + byday — got [09-21, 09-24, 10-05, 10-08], want [09-07, 09-10, 09-21, 09-24]
+FAIL get_item projects the bounded series      — got [09-11, 09-18, 09-25], want [09-04, 09-11, 09-18, 09-25]
+FAIL get_item reports the next uncompleted date — got 09-11, want 09-04
+```
+
+The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-257 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
+
+## ✅ FIXED — image uploads worked everywhere except the domain the app runs on (2026-09-09, ops only, no code change)
+
+Tyler pasted an image into a note and got a toast reading `storage upload failed (network)`. That string is `xhr.onerror` in `src/components/attachments/upload.ts:65`, the branch that fires when the browser's PUT to R2 never gets a usable HTTP response, which is what a failed CORS preflight looks like from XHR: no status to report, so the message can only say "network".
+
+**Root cause: the production bucket did not allow the app's own origin.** A preflight probe told the whole story at once.
+
+```
+OPTIONS $R2_ENDPOINT/ledgr/probe   Origin: https://ledgr.tylerjcollins.com   -> 403 Forbidden
+OPTIONS $R2_ENDPOINT/ledgr/probe   Origin: https://ledgr-sandy.vercel.app    -> 204 + allow headers
+```
+
+**Why it hid for nine days.** The 2026-08-31 custom-domain move did add `https://ledgr.tylerjcollins.com` to `scripts/r2-cors.mjs` and did run it. The apply reported success. It had gone to `ledgr-dev`, because that script took its bucket from `.env.local`'s `R2_BUCKET`, and on Tyler's machine that names the dev bucket. So the dev bucket allowed the custom domain and production never did, while `next_steps.md` and the runbook both recorded the origin as applied. Nothing was broken by a deploy and nothing logged an error: the last verified browser upload was 2026-08-29 from the old `ledgr-sandy.vercel.app` origin, which kept working the whole time, and browser uploads simply were not exercised from the custom domain until today. Server-side writes (MCP `attach_file`, email-in) were never affected, since they do not preflight.
+
+**Fixed by adding the origin to the policy of record and rerunning it:** `~/.config/cloudflare/set-ledgr-r2-cors.py` (backup at `set-ledgr-r2-cors.py.bak-20260909`). That script, not the repo one, is what production's bucket answers to, because the app's S3 token is object-scoped and cannot write bucket config at all. Verified after: preflight returns 204 with `Access-Control-Allow-Origin` echoed for the custom domain, the vercel.app origin, and localhost. No wait was needed for `MaxAgeSeconds`, since browsers cache only successful preflights and the 403 was never cached.
+
+**The guardrail, which is the part worth keeping.** `scripts/r2-cors.mjs` now refuses to apply without an explicit `--bucket=<name>`, and names the bucket in every line it prints, including `--show`. A silent default that resolves to a dev bucket on a dev machine is how a successful-looking write misses production, and the same trap was live for anyone who ran the script from either install. The policy in that file also moved from a bare `PUT` to `PUT/GET/HEAD` plus an exposed `etag`, matching what production actually carries, so applying the repo policy to the prod bucket can no longer quietly narrow it. `runbook.md` §1 now says which tool owns which bucket instead of implying the repo script owns both.
+
+**Still open, small:**
+
+- **Brandon needs a heads-up**, since the script is shared and applying it now takes a flag. A COLLAB.md note is not written yet.
+- **The dev bucket's policy is still the old PUT-only shape.** Harmless, and it self-corrects the next time anyone applies from the repo script with `--bucket=ledgr-dev`.
+- **Nothing verifies this class of bug.** The two origin lists are one list in two files, in two languages, and agreement between them is currently a convention held by comments. A pure check that parses both and fails when they diverge would be cheap and would have caught the 8/31 drift the day it happened.
+## ✅ BUILT — themes: Dark, Light, Gray, Sepia (2026-09-11, branch `feat/themes`)
+
+**What you can do now.** Settings → Theme picks the app's look (Dark stays the default). It applies on every device and on the first paint (the class is set on `<html>` server-side), and the mobile title bar follows the page color. Share links carry an "Opens in" theme (defaults to your own); the shared page has an **Appearance** picker at the top right so the reader can switch, and their browser remembers the choice for every Ledgr document.
+
+**How.** No schema change: `theme` in the settings blob (`settings.ts` THEMES). One variable block per theme in `globals.css` beside the existing `.light` (ADR-141 tier 1 makes every neutral utility follow). The nine text colors are repainted on light pages by attribute match on the stored hex (`LIGHT_TEXT_COLORS` in `colors.ts`, mirrored in `globals.css`); highlights are alpha washes and needed nothing. The 13 per-input `[color-scheme:dark]` guards were deleted so native date pickers follow the theme. `print-html.ts` is var-based now, with the same four looks.
+
+**Not done (deliberate, out of scope).** The PWA manifest splash stays dark (fetched once, cached by the OS). No "follow system" option. The offline landing page (`public/offline.html`) stays dark.
+
+**Remaining on this branch before it merges (pushed to GitHub 2026-09-11, no PR yet):**
+- Brandon's own eyeball pass in each theme on the surfaces the automated check did not walk: Desk, a task list, an item canvas with a real body (colored text, highlights, comments, a toggle block), Search, Planner, the Build sidebar. Anything still dark on a light theme is a hardcoded color to move onto a token.
+- Decide whether Gray should stay a softer dark (as built) or become a light gray.
+- Judge the nine light-page text colors (`LIGHT_TEXT_COLORS` in `colors.ts`) on real notes and tune any that read wrong; the `globals.css` block must be kept in step.
+- Then `/ship` (ordinary merge; nothing core, no ADR needed; note the additive share-API argument in `COLLAB.md`).
+## ✅ FIXED — record-page property fields no longer grow a horizontal scrollbar (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
+
+On a record page laid out as a grid (any type with a saved layout; first seen on Hiring Candidates), every text/URL/textarea property card showed a horizontal scrollbar under the field on Windows, and the textarea card scrolled its label to the bottom. A property card defaults to 4 of 12 columns with `overflow-auto`; the row inside is a 128px label + a 224px `w-56` control, wider than the card. The control's `max-w-full` never capped it because its wrapper `<span>` could not shrink below its content. The wrapper is now `min-w-0` (`src/components/build/CustomProperties.tsx`), so the control shrinks to the card and nothing spills. The wide side-by-side layout is unchanged.
+
+## ✅ FIXED — the add-task card's Cancel / Add task buttons no longer spill past the card (2026-09-11, branch `fix/add-task-footer-overflow`)
+
+Brandon's screenshot of the quick-add card showed "Add task" sitting outside the card's right edge, with the Inbox picker stretched across the whole row. A `<select>` is as wide as its longest option, and one long project title in the destination list made the picker wider than the room left for it, so the buttons were pushed out. The picker's wrapper is now `min-w-0 flex-1` and the select `w-full truncate` (`src/components/tasks/AddTaskCard.tsx`), so the picker takes the free space and long titles show with an ellipsis; the button group is `shrink-0`. Verified in the dev preview at desktop and 375px with a 95-character option injected. The earlier same-day fix (mirror `<mark>` colour, below) addressed a different symptom and stands.
+
+## ✅ FIXED — the quick-add card no longer doubles a highlighted word (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
+
+Typing a date word ("tomorrow") into the add-task title showed it as bold, doubled white text. The card draws the highlight pill on a hidden mirror copy of the title under the textarea, and that copy uses `<mark>`. ADR-251's global `mark { color: var(--mark-ink) }` is an unlayered rule, so it beat the mirror's Tailwind `text-transparent` utility and the mirror's word showed through. The mirror mark now sets its color inline (`src/components/tasks/AddTaskCard.tsx`), which no stylesheet rule can override. Only overlay of its kind in the app (`text-transparent` + `<mark>`), so nothing else needed the same guard.
+## ✅ FIXED — the Update button never appeared on a local hub (2026-09-11)
+
+**Symptom (Brandon, bc-edgewood hub):** Build → Updates said "This instance deploys straight from the shared repository, so it picks up every change automatically" while showing an old version, and offered no button. **Cause:** `getUpdateReport` asked GitHub for a compare only when the instance was a satellite fork. A hub is not a fork, so it was classed as a "source" that never lags, and the supervisor-signal apply path built in ADR-206 was unreachable from the page. **Fix:** the compare now runs for a satellite OR a local peer (`isLocalPeerInstance`, exported from `src/lib/updates.ts`); a Vercel deploy of the upstream repo is still a source. Three checks added to `verify-updates.mts`. The hub still needs `GITHUB_TOKEN` in its environment to compare; without it the page now says so instead of claiming it is current. **Until the hub carries this fix,** trigger an update by hand from the laptop: create the file `update-requested` in the supervisor's `dataDir` (from the repo folder, PowerShell: `$d=(Get-Content supervisor\config.json | ConvertFrom-Json).dataDir; New-Item -ItemType File -Force (Join-Path $d 'update-requested')`).
+
+## ✅ SHIPPED — the work log becomes a timed history (2026-09-11, ADR-254, Tyler agreed, branch `claude/day-log-time-tracking-ddb8b1`)
+
+**The ask (Brandon).** Log Entry's Start/End were text ("9:06 PM"), so nothing could place an entry by the hour. Make them real times and read the whole log on the vertical History spine.
+
+**Built.** A `withTime` flag on the `date` kind, beside `withEnd` (ADR-254, core, both agreed). Log Entry's Date becomes one timed range: start in `logdate`, end in `logdate__end`, both ISO instants. Readers detect instant vs day from the value, so existing day-only values need no rewrite. Type builder gained two checkboxes on a Date row (time of day, end/range); the record page gained a date-and-time picker and, for the first time, a "to" input for a `withEnd` field. Table cells format a timed property as day + clock. `verify-placement.mts` covers it.
+
+**Migration.** `scripts/convert-log-times.mts` (machine API, Basic auth from `/build/api`, dry run by default, JSON backup + `--rollback`). "All day" rows keep a day-only date. Run order after deploy: tick both boxes on Log Entry → Date in `/build/types`, dry-run the script, apply, spot-check the "Work Log" History view at hour grain, then hide the old Start/End text fields.
+
+**Not done here.** The builder's date picker still writes only `startField`; a Planner view of a range must name `endField: { prop: "logdate__end" }` (the MCP-created Work Log view does). The record picker uses the browser's zone.
 
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 
@@ -54,6 +197,7 @@ supervisor, to seed the update-policy file and clear any stale boot warning.
 **Still open, cheap, and worth doing when convenient:** two stray `@example.invalid` test users are sitting in the live production `users` table from old verification runs, and the Vercel connector in claude.ai is authorized to an account that cannot see the `ledgr` project (re-authorize it in claude.ai connector settings; the local `vercel` CLI is fine as `brandonscollins`). Neither touches wake-ups.
 
 **Verify it worked** from the Neon Console's Monitoring tab, which draws exactly when the compute was awake and costs nothing to read. Do not check by querying the database, since every check wakes the thing being measured.
+
 ## ✅ FIXED — highlighted text is bright now, and changing your accent updates highlights live (2026-09-09, ADR-251)
 
 Two follow-ups to ADR-250, both reported by Tyler within minutes of it going live.

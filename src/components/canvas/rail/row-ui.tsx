@@ -29,6 +29,16 @@ export function TargetGlyph({ className = "" }: { className?: string }) {
   );
 }
 
+// A pushpin: "this date stands still while its anchor moves" (ADR-253).
+export function PinGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className={`${GLYPH} ${className}`} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 17v5" />
+      <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" />
+    </svg>
+  );
+}
+
 export function FlagGlyph({ className = "" }: { className?: string }) {
   return (
     <svg aria-hidden viewBox="0 0 24 24" className={`${GLYPH} ${className}`} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

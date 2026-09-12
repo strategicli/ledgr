@@ -321,7 +321,7 @@ check("the supervisor entrypoint exists", existsSync("supervisor/ledgr-superviso
   const shell = readFileSync("supervisor/ledgr-supervisor.mjs", "utf8");
   check(
     "the update target is the tracked branch's remote ref, never the checkout's HEAD",
-    // The branch comes from the update policy file now (ADR-253), not cfg.
+    // The branch comes from the update policy file now (ADR-257), not cfg.
     shell.includes("`origin/${branch}`") && !shell.includes('"pull", "--ff-only"')
   );
   check(

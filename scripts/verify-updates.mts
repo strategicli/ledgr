@@ -17,6 +17,7 @@ import {
   type InstanceIdentity,
 } from "../src/lib/updates";
 import type { CodeStatus } from "../src/lib/github/client";
+import { isLocalPeerInstance } from "../src/lib/updates";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -165,6 +166,19 @@ const localPeer: InstanceIdentity = {
   selfUpdate: "on",
   isLocalPeer: true,
 };
+
+// The compare-against-upstream gate (bug, 2026-09-11): a hub is not a fork, but
+// it can still be behind, so it must be checked like a satellite is. Only a
+// Vercel deploy of the upstream repo itself is a "source" that never lags.
+check("a local peer is eligible for the upstream compare", isLocalPeerInstance(localPeer));
+check(
+  "a Vercel source deploy is not (it updates on push)",
+  !isLocalPeerInstance({ ...base, isSatellite: false, deployRepo: "strategicli/ledgr", vercelEnv: "production", supervisorDir: null })
+);
+check(
+  "a stray supervisor dir on a Vercel deploy does not make it a peer",
+  !isLocalPeerInstance({ ...localPeer, vercelEnv: "production" })
+);
 
 check(
   "a local peer with self-update on may apply, via the supervisor signal",

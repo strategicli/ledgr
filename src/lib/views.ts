@@ -298,6 +298,14 @@ function propertyConditionSql(key: string, c: WhereCondition): SQL | null {
   // "value present as scalar OR as an array element" — the equality/membership atom.
   const has = (v: string) =>
     sql`(${items.properties} @> ${JSON.stringify({ [key]: v })}::jsonb or ${items.properties} @> ${JSON.stringify({ [key]: [v] })}::jsonb)`;
+  // A date rule's value is a bare YYYY-MM-DD from <input type="date">, while a
+  // date property stores a full ISO timestamp ("2026-06-01T00:00:00.000Z"), so
+  // comparing raw text got the day itself wrong ("on or before June 1" excluded
+  // June 1, "is on" never matched). Compare the stored value's day instead.
+  // ponytail: shape-sniffing the value stands in for a kind hint the condition
+  // doesn't carry; add `date: true` next to `numeric` if a text property ever
+  // needs to compare a YYYY-MM-DD literal verbatim.
+  const dayLiteral = !c.numeric && /^\d{4}-\d{2}-\d{2}$/.test(c.value ?? "");
   const cmp = (op: SQL) => {
     if (c.value == null) return null;
     if (c.numeric) {
@@ -305,19 +313,34 @@ function propertyConditionSql(key: string, c: WhereCondition): SQL | null {
       if (!Number.isFinite(n)) return null;
       return sql`(case when ${text} ~ ${NUMERIC_RE} then (${text})::numeric end) ${op} ${n}`;
     }
+    if (dayLiteral) return sql`left(${text}, 10) ${op} ${c.value}`;
     return sql`${text} ${op} ${c.value}`;
   };
+  // A number property stores a JSON number, so jsonb containment against the
+  // rule's string value ({"score":"5"} vs {"score":5}) never matched; compare
+  // numerically. Same day-vs-timestamp mismatch for dates.
+  const eqExact = (v: string) =>
+    c.numeric || dayLiteral ? cmp(sql`=`) : has(v);
   switch (c.op) {
     case "set":
       return present;
     case "empty":
       return absent;
+    // A checkbox stores JSON true; anything else (false, absent, "") is unchecked.
+    case "checked":
+      return sql`${items.properties} @> ${JSON.stringify({ [key]: true })}::jsonb`;
+    case "unchecked":
+      return sql`not (${items.properties} @> ${JSON.stringify({ [key]: true })}::jsonb)`;
     case "contains":
       return c.value != null ? sql`${text} ilike ${`%${c.value}%`}` : null;
     case "eq":
-      return c.value != null ? has(c.value) : null;
-    case "neq":
-      return c.value != null ? sql`not ${has(c.value)}` : null;
+      return c.value != null ? eqExact(c.value) : null;
+    case "neq": {
+      if (c.value == null) return null;
+      const e = eqExact(c.value);
+      // A missing value is "not X" too, so include null rows.
+      return e ? sql`(${e} is not true)` : null;
+    }
     case "gt":
       return cmp(sql`>`);
     case "lt":
