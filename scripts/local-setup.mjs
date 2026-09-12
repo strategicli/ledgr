@@ -67,6 +67,9 @@ Flags (each replaces one prompt; --yes answers the rest with defaults):
   --db-port <n>           Postgres port (default 5433)
   --owner-email <email>   the local owner identity (must match the users row)
   --machine-name <name>   what to call this machine in the app (default: hostname)
+  --branch <name>         git branch this install follows (default main)
+  --auto-update yes|no    check for and apply new versions on its own (default yes)
+  --update-every <min>    minutes between those checks (default 15)
   --hub-url <url>         spoke only: the hub to sync against
   --hub-token <token>     spoke only: the one-time device token minted on the hub
   --backup <path>         restore this pg_dump as the initial data (implies --fill restore)
@@ -216,6 +219,51 @@ const machineName = await answer("Name for this machine", {
   },
 });
 
+// ── Updates: the seed the service turns into update-policy.json ─────────────
+//
+// Asked here so a first install never needs a config edit. Everything below is
+// changeable later from Build → Updates or the tray icon without a restart.
+if (!flags.branch && rl) {
+  console.log(
+    "\nWhich git branch should this install follow? main is every change as it\n" +
+      "lands; a release branch (prod-<name>) moves only when someone deliberately\n" +
+      "ships. You can change this later from the app.\n"
+  );
+}
+const branch = await answer("Branch to follow", {
+  flagValue: flags.branch,
+  flagName: "--branch",
+  def: "main",
+  validate: (v) => {
+    const s = String(v ?? "").trim();
+    if (!s || /s/.test(s) || s.includes("..")) throw new Error("a single git branch name, please");
+    return s;
+  },
+});
+const autoUpdate = await answer("Apply new versions automatically? (yes/no)", {
+  flagValue: flags["auto-update"],
+  flagName: "--auto-update",
+  def: "yes",
+  validate: (v) => {
+    const s = String(v ?? "").trim().toLowerCase();
+    if (["y", "yes", "true", "on"].includes(s)) return true;
+    if (["n", "no", "false", "off"].includes(s)) return false;
+    throw new Error("answer yes or no");
+  },
+});
+const updateEveryMinutes = autoUpdate
+  ? await answer("Check how often, in minutes", {
+      flagValue: flags["update-every"],
+      flagName: "--update-every",
+      def: "15",
+      validate: (v) => {
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 1 || n > 1440) throw new Error("a whole number of minutes, 1 to 1440");
+        return n;
+      },
+    })
+  : 15;
+
 /** Ask the local Tailscale CLI, if it is there. Not installed is a normal
  * answer, so nothing here throws. */
 function readTailscale() {
@@ -323,7 +371,10 @@ if (fill === "pull" && !fromUrl) {
 // ── Write supervisor/config.json ─────────────────────────────────────────────
 
 const configPath = flags.config ? resolve(flags.config) : join(repoDir, "supervisor", "config.json");
-const config = buildPeerConfig({ role, dataDir, ownerEmail, appPort, dbPort, hubUrl, hubToken, machineName });
+const config = buildPeerConfig({
+  role, dataDir, ownerEmail, appPort, dbPort, hubUrl, hubToken, machineName,
+  branch, autoUpdate, updateEveryMinutes,
+});
 // The validator of record: the exact parse the supervisor does at boot.
 const normalized = normalizeConfig(config, dirname(configPath));
 

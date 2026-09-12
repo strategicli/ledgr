@@ -80,7 +80,11 @@ dashboards and navigation, an AI assistant should call \`describe_workspace\` an
 - **Work** is your daily surface. It is glanceable and works on a phone. Its
   navigation bar is yours to configure.
 - **Build** is where you shape the system: types, views, dashboards, navigation,
-  and the maintenance tools. It is desktop-first, with a fixed left sidebar.
+  and the maintenance tools. It is desktop-first, with a fixed left sidebar,
+  grouped as **DATA** (the data model), **INTERFACE** (how you see and reach
+  it), **MAINTAIN** (understand and care for what exists), and **SYSTEM** (the
+  software and the machine it runs on: Updates, Network, Scheduled Jobs,
+  Backups).
 
 Switch between them with **Ctrl/⌘+Shift+B**, the **Build** button in the Work
 "More" menu, or "Back to Work" at the bottom of the Build sidebar.
@@ -171,7 +175,7 @@ Save a YouTube video the way you save anything else and Ledgr can write the
 whole transcript into that link item, so the words are searchable, readable
 offline, and quotable without scrubbing through the video.
 
-- **Switch it on** at \`/build/updates\` → **Video transcripts**. It is off until
+- **Switch it on** at \`/build/jobs\` → **Video transcripts**. It is off until
   you turn it on.
 - **It starts as soon as you save.** A video saved on the copy doing the work
   begins at once; anything else is picked up within ten minutes.
@@ -1050,7 +1054,7 @@ at \`/build/navigation\`, Home and Today at \`/dashboards\`, type visibility at
 - **The database is backed up** weekly, with daily snapshots.
 - **On an instance running on your own machine,** the whole database can also be
   snapshotted every hour and kept on a thinning schedule, so recent mistakes have
-  a recent restore point (see Snapshots under "Staying up to date").
+  a recent restore point (see Snapshots under "Backups").
 - **\`/health\`** reports whether everything is running.
 
 # Staying up to date
@@ -1067,7 +1071,10 @@ running. Those are two separate things, and the page reports them separately.
   every change automatically and the page tells you so. On an instance running
   on your own machine, **Update now** hands the update to the background service
   that runs it, which rebuilds and restarts in place; if anything about the
-  update fails, the version you were on keeps serving.
+  update fails, the version you were on keeps serving. Checking for updates and
+  reading the version history need no GitHub token: those only read a public
+  repository. A token is only needed to write, for the shared collab notes and
+  a satellite's fork merge.
 - **Database.** Some updates change the database structure. When the code has
   moved ahead of the database, the page names the changes still to apply. That
   gap is the usual reason pages start failing right after an update.
@@ -1075,6 +1082,25 @@ running. Those are two separate things, and the page reports them separately.
 Whether the Update button appears at all is a setting on the instance, because
 an update that changes the database needs the database migrated as part of
 applying it. When it is not available, the page says why.
+
+**Update policy** (only on a machine you run yourself) decides how that instance
+looks for new versions, without editing any file or signing in to Windows:
+
+- **Check on its own, or only when you press Update now.** Left on its own, it
+  checks every so many minutes and applies what it finds; switched off, nothing
+  happens until you press the button yourself.
+- **How often**, in minutes, when it checks on its own.
+- **The branch to follow** — \`main\` for every change as it lands, or a release
+  branch for one that moves only when someone deliberately ships it.
+- **The repository**, if this instance should follow a different fork. Leave it
+  blank to keep the one it already follows.
+
+A saved change takes effect within a minute, with no restart. The same form is
+also on the tray icon's Settings tab (see "The dot near the clock" below), so you
+can change it from the desktop without opening a browser. Even when an instance
+follows the shared repository rather than its own fork, it still checks for its
+own pending commits and lists them here — it is not only "receives every push
+automatically" the way a satellite reads.
 
 The **Changelog** (\`/changelog\`) has the full history behind each version.
 
@@ -1095,29 +1121,17 @@ signed in, it says that too — a reboot nobody logs into is the exact case *alw
 on* exists for, so it should not happen, and if it does the page tells you what to
 try. If a change cannot be applied at all, the page still shows the
 exact command to run instead. It will not quietly let you believe a reboot is
-covered when it is not.
-
-**Scheduled jobs on this machine.** An instance in the cloud gets its nightly
-work from the platform it runs on. One on your own machine has no such timer, so
-it runs its own — and Updates lists them: what each job is, how often it runs,
-when it last succeeded, when it runs next, and the reason if the last attempt
-failed. Two are on by default, because every copy of Ledgr needs to do them for
-itself: emptying expired Trash (which is also what keeps the sync log from
-growing forever) and refreshing the connection suggestions behind Discover and
-Loose Ends. The rest — the OneDrive export, calendar sync, email-in, Todoist —
-are off unless you turn them on, because each writes somewhere shared and only
-one device should be doing it. A job marked as one only this device should run is
-labelled as such in the list. A failure is also recorded in this instance's error
-log, so it counts on the health report rather than passing quietly.
+covered when it is not. The service re-checks this registration with Windows on
+every start, so an old warning here does not outlive the restart that fixed it.
 
 **This machine's Ledgr service** (only on a machine you run yourself). The
 service is what holds the database, serves the app and triggers the scheduled
-work below. It starts with the computer, so most of the time there is nothing to
-do here. Two things it will tell you. If an update has arrived that the running
-service predates — an update can change the service itself, and a running one
-keeps the version it started with — it says so, because until it restarts, part
-of what you installed is not in effect. And after a restart it says whether that
-came back healthy.
+work covered under "Scheduled Jobs" below. It starts with the computer, so most
+of the time there is nothing to do here. Two things it will tell you. If an
+update has arrived that the running service predates — an update can change the
+service itself, and a running one keeps the version it started with — it says
+so, because until it restarts, part of what you installed is not in effect. And
+after a restart it says whether that came back healthy.
 
 **Restart it** is a button, not a command to type. It asks first, tells you what
 it costs (Ledgr on that machine is unreachable for about half a minute, from your
@@ -1147,6 +1161,30 @@ restart and stop the service without a terminal. Stopping the *icon* and
 stopping *Ledgr* are deliberately worded as different things, because they are.
 Turn the icon on with \`npm run local:tray\`, off with the same command and
 \`-- --uninstall\`; either way the service itself is untouched.
+
+**Ledgr status…**, on the same right-click menu, opens a small window with two
+tabs. **Status** shows whether it is running, its version and when it last
+updated, its update policy, disk use per data folder, its scheduled jobs, and its
+place in the sync network, plus buttons to open Ledgr, its data folder, or its
+logs. **Settings** is the same update-policy form described above. Both read and
+write the machine directly, with nothing to sign in to.
+
+# Scheduled Jobs
+
+\`/build/jobs\` covers what runs on a schedule, on which machine, and how often.
+
+**Scheduled jobs on this machine.** An instance in the cloud gets its nightly
+work from the platform it runs on. One on your own machine has no such timer, so
+it runs its own — and this page lists them: what each job is, how often it runs,
+when it last succeeded, when it runs next, and the reason if the last attempt
+failed. Two are on by default, because every copy of Ledgr needs to do them for
+itself: emptying expired Trash (which is also what keeps the sync log from
+growing forever) and refreshing the connection suggestions behind Discover and
+Loose Ends. The rest — the OneDrive export, calendar sync, email-in, Todoist —
+are off unless you turn them on, because each writes somewhere shared and only
+one device should be doing it. A job marked as one only this device should run is
+labelled as such in the list. A failure is also recorded in this instance's error
+log, so it counts on the health report rather than passing quietly.
 
 **Scheduled work.** Some jobs write somewhere shared: one OneDrive folder, one
 mailbox, one Todoist account. Exactly one of your machines may do each of them,
@@ -1189,9 +1227,17 @@ machine: in the cloud it has to finish inside a one-minute limit, so it copies
 about 30 items a night, and on your own machine there is no limit and it clears
 the whole queue at once.
 
-**Snapshots.** Also on your own machine: a complete copy of the database, taken
-every hour, so a mistake bigger than one item can be answered by looking at how
-things were an hour ago instead of waiting for the weekly backup.
+**Video transcripts** are also covered on this page — see "Video transcripts"
+under "Capturing things" above for what they do and how to switch them on.
+
+# Backups
+
+\`/build/backups\` covers restore points on this machine, and where the weekly
+backup and export run.
+
+**Snapshots.** On your own machine: a complete copy of the database, taken every
+hour, so a mistake bigger than one item can be answered by looking at how things
+were an hour ago instead of waiting for the weekly backup.
 
 They are **off until you switch them on**, since they cost disk space, and the
 switch is a checkbox on this page: *Keep hourly restore points on this machine*.
@@ -1213,6 +1259,10 @@ if you had just typed them. Instead, a terminal command
 (\`npm run local:snapshot -- browse <time>\`) opens the chosen snapshot as a
 separate read-only copy, so you (or Claude) can look through it and copy out what
 you need. The page names the command.
+
+**The weekly database backup and the OneDrive export** run as scheduled jobs like
+any other. Which machine does them is chosen on \`/build/jobs\` under "Scheduled
+work," not here.
 
 # The sync network
 

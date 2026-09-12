@@ -191,7 +191,7 @@ const spokeCfg = buildPeerConfig({
 
 check("a hub gets no hubs list and no device token (v1: hub never syncs upstream)", hubCfg.hubs.length === 0 && hubCfg.deviceToken === "");
 check("a spoke gets its hub + token", spokeCfg.hubs.length === 1 && spokeCfg.hubs[0] === "https://hub.example.com" && spokeCfg.deviceToken === "tok123");
-check("both roles carry update + cadence defaults", hubCfg.update.mode === "prompted" && hubCfg.cadence.pullMs === 10000 && spokeCfg.cadence.pushDebounceMs === 2000);
+check("both roles carry update + cadence defaults", hubCfg.update.mode === "auto" && hubCfg.cadence.pullMs === 10000 && spokeCfg.cadence.pushDebounceMs === 2000);
 
 // Round-trip through the supervisor's own validator — the exact parse it does
 // at boot — then through env assembly, proving the sync vars land only on

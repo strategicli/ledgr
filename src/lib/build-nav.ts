@@ -1,7 +1,8 @@
 // The Build-mode left sidebar structure (ADR-063): the hardcoded taxonomy of
-// the system tools, grouped under three verbs — DATA (build the data model),
+// the system tools, grouped under four verbs — DATA (build the data model),
 // INTERFACE (build how you see and reach it), MAINTAIN (understand and care for
-// what exists). This is the single source of truth for two surfaces:
+// what exists), SYSTEM (the software and the machine it runs on). This is the
+// single source of truth for two surfaces:
 //
 //   1. BuildSidebar renders these groups + entries directly.
 //   2. The Work nav's destination picker offers them as a "Build tools" category
@@ -13,7 +14,7 @@
 // library. The sidebar is a system surface, not user-configurable (no DB row).
 import type { NavIconKey } from "@/lib/nav-icons";
 
-export type BuildGroupLabel = "DATA" | "INTERFACE" | "MAINTAIN";
+export type BuildGroupLabel = "DATA" | "INTERFACE" | "MAINTAIN" | "SYSTEM";
 
 // A per-owner setting flag that, when false, hides an entry from the Build
 // sidebar. The taxonomy itself stays static (single source of truth); the
@@ -96,26 +97,6 @@ export const BUILD_NAV: BuildGroup[] = [
         icon: "book",
         keywords: ["help", "docs", "documentation", "manual", "how to"],
       },
-      // Updates: is this instance running the latest Ledgr, and has its database
-      // caught up with the code it's running? Lives in MAINTAIN because it is
-      // care-and-feeding, not construction. It earns a doorway of its own rather
-      // than a corner of the Changelog: the Changelog answers "what changed",
-      // this answers "am I behind", and only the second one has a button.
-      {
-        label: "Updates",
-        href: "/build/updates",
-        icon: "repeat",
-        keywords: ["update", "upgrade", "version", "migrate", "latest"],
-      },
-      // Network (ADR-209): the sync topology — hubs this instance syncs TO,
-      // devices that sync FROM it. Split out of Updates the moment a third
-      // node made two buried sections illegible.
-      {
-        label: "Network",
-        href: "/build/network",
-        icon: "affiliate",
-        keywords: ["sync", "hub", "spoke", "device", "peer", "topology", "replication"],
-      },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
       // Loose Ends (ADR-127 Phase 3): under-connected items + their top
       // suggested links — the relatedness engine inverted across the corpus.
@@ -140,6 +121,46 @@ export const BUILD_NAV: BuildGroup[] = [
       // so personal/cosmetic settings don't require entering Build. Label stays
       // "User Settings" everywhere (never bare "Settings").
       { label: "User Settings", href: "/settings", icon: "tools" },
+    ],
+  },
+  // SYSTEM = the software and the machine it runs on (updates, network,
+  // scheduled jobs, backups), split out of MAINTAIN 2026-09-12 because those
+  // four are about running Ledgr, not caring for the data in it.
+  {
+    label: "SYSTEM",
+    entries: [
+      // Updates: is this instance running the latest Ledgr, and has its database
+      // caught up with the code it's running? It earns a doorway of its own
+      // rather than a corner of the Changelog: the Changelog answers "what
+      // changed", this answers "am I behind", and only the second one has a
+      // button.
+      {
+        label: "Updates",
+        href: "/build/updates",
+        icon: "repeat",
+        keywords: ["update", "upgrade", "version", "migrate", "latest"],
+      },
+      // Network (ADR-209): the sync topology — hubs this instance syncs TO,
+      // devices that sync FROM it. Split out of Updates the moment a third
+      // node made two buried sections illegible.
+      {
+        label: "Network",
+        href: "/build/network",
+        icon: "affiliate",
+        keywords: ["sync", "hub", "spoke", "device", "peer", "topology", "replication"],
+      },
+      {
+        label: "Scheduled Jobs",
+        href: "/build/jobs",
+        icon: "repeat",
+        keywords: ["jobs", "cron", "schedule", "transcripts", "youtube", "export", "owner"],
+      },
+      {
+        label: "Backups",
+        href: "/build/backups",
+        icon: "download",
+        keywords: ["backup", "snapshot", "restore", "recovery"],
+      },
     ],
   },
 ];

@@ -87,6 +87,7 @@ const base: InstanceIdentity = {
   selfUpdate: "off",
   vercelEnv: "production",
   supervisorDir: null,
+  isLocalPeer: false,
 };
 const behind = (touchesSchema: boolean): CodeStatus => ({
   state: "behind",
@@ -162,6 +163,7 @@ const localPeer: InstanceIdentity = {
   vercelEnv: null,
   supervisorDir: "/data/ledgr",
   selfUpdate: "on",
+  isLocalPeer: true,
 };
 
 check(

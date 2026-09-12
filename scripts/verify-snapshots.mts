@@ -376,9 +376,9 @@ ok("the endpoint, not the scheduler, is what the owner's switch reaches", () => 
 
   // The whole point: the Snapshots section never sends the owner to a config
   // file. Everything between its heading and the next one is fair game.
-  const page = readFileSync(resolve("src/app/build/updates/page.tsx"), "utf8");
+  const page = readFileSync(resolve("src/app/build/backups/page.tsx"), "utf8");
   const from = page.indexOf("Snapshots</h2>");
-  assert.ok(from > 0, "no Snapshots section on the Updates page");
+  assert.ok(from > 0, "no Snapshots section on the Backups page");
   const section = page.slice(from);
   assert.doesNotMatch(
     section,

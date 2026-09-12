@@ -2,6 +2,42 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-253, branch `feat/local-install-sweep`)
+
+A local install used to need `supervisor/config.json` edited and the service
+restarted to change its branch or update behavior. That broke ADR-222's rule:
+a setting a person changes belongs in the GUI, not a config file. This batch
+moves that control into the app and the tray, and splits Updates into three
+focused pages.
+
+1. **Update policy is now a GUI setting.** Build → Updates → Update policy lets
+   the owner pick auto-checking (with an interval) or manual-only, the branch
+   to follow, and the repository, stored in `<dataDir>/update-policy.json`.
+   The service re-reads that file every minute, no restart needed.
+   `supervisor/config.json`'s `branch` and `update.mode` now only seed the
+   file on first start; editing them afterward changes nothing.
+2. **A local install now sees its own pending commits**, even when it follows
+   the shared repository, instead of wrongly claiming it auto-updates with no
+   button to press.
+3. **GitHub reads need no token.** The version check and Changelog work on a
+   public repository with nothing configured. Only writes (collab notes, a
+   satellite's fork merge) still need `GITHUB_TOKEN`.
+4. **The Build sidebar has a new SYSTEM group** (after MAINTAIN): Updates,
+   Network, and two new pages, Scheduled Jobs and Backups, split out of what
+   used to be one long Updates page.
+5. **The Windows tray icon gained a real status window** ("Ledgr status…"):
+   a Status tab (running state, version, update policy, disk use, scheduled
+   jobs, sync role) and a Settings tab that edits the same update policy file.
+6. **The stale boot-warning bug is fixed.** The service now re-asks Windows
+   Task Scheduler on every start, so an old "one catch" warning from a
+   previous build clears on the next restart instead of lingering.
+7. **The setup wizard (`npm run local:setup`) asks three new questions**, each
+   with a flag: `--branch`, `--auto-update yes|no`, `--update-every <minutes>`.
+
+**Known step:** the running service predates this code, so `npm run
+local:restart` is needed once, on each machine already running the
+supervisor, to seed the update-policy file and clear any stale boot warning.
+
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 
 **Where it came from.** Brandon's 2026-09-08 audit of the cloud database found it being woken roughly 40 to 140 times a day, on an install where the cloud copy is meant to be a near-idle archive. The framing that made the fix obvious: a serverless database parks its compute after five minutes idle and that delay cannot be shortened on the free plan, so **one tiny query costs the same as a busy minute**. Count wake-ups, not queries. An hourly job with nothing to do keeps the database awake two hours a day.
