@@ -172,19 +172,29 @@ export function buildPeerConfig({
   hubUrl = "",
   hubToken = "",
   machineName = "",
+  // The update SEED (2026-09-12): what the service writes into
+  // <dataDir>/update-policy.json on its first start. After that the owner
+  // changes all three from Build → Updates or the tray icon, and these keys
+  // are not consulted again.
+  branch = "main",
+  autoUpdate = true,
+  updateEveryMinutes = 15,
 }) {
   const spoke = role === "spoke";
   return {
     role,
     dataDir,
     repoDir: "..",
-    branch: "main",
+    branch,
     appPort,
     dbPort,
     ownerEmail,
     hubs: spoke && hubUrl ? [hubUrl] : [],
     deviceToken: spoke && hubToken ? hubToken : "",
-    update: { mode: "prompted", pollIntervalMs: 900000 },
+    update: {
+      mode: autoUpdate ? "auto" : "prompted",
+      pollIntervalMs: Math.max(1, Math.round(Number(updateEveryMinutes) || 15)) * 60_000,
+    },
     cadence: { pushDebounceMs: 2000, pullMs: 10000 },
     // The name this machine goes by in the roster (ADR-220). ASKED rather than
     // taken silently from the hostname, because two machines answering to one

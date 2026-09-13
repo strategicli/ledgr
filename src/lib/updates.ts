@@ -21,6 +21,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { createLogger, isDebugMode } from "@/lib/log";
 import { getCodeStatus, type CodeStatus } from "@/lib/github/client";
+import { githubSlugOf, readUpdatePolicySync } from "@/lib/update-policy";
 import journal from "../../drizzle/meta/_journal.json";
 
 const log = createLogger("updates");
@@ -123,7 +124,13 @@ export type InstanceIdentity = {
   // update-requested signal file can be written. Null everywhere else, which
   // is what keeps the local apply path fail-closed.
   supervisorDir: string | null;
+  // A supervised local peer (not a Vercel deploy, and a supervisor told the app
+  // where its data dir is). Its "am I behind?" is answered against the branch
+  // the supervisor follows, whatever repo that is — even the shared one, which
+  // used to make the page call a local peer a "source" that updates itself.
+  isLocalPeer: boolean;
 };
+
 
 function normalizeMode(raw: string | undefined): SelfUpdateMode {
   if (raw === "on" || raw === "safe") return raw;
@@ -139,10 +146,23 @@ export function getInstanceIdentity(): InstanceIdentity {
   const sha = process.env.VERCEL_GIT_COMMIT_SHA || process.env.LEDGR_BUILD_SHA || null;
   const owner = process.env.VERCEL_GIT_REPO_OWNER;
   const slug = process.env.VERCEL_GIT_REPO_SLUG;
+  const vercelEnv = process.env.VERCEL_ENV ?? null;
+  const supervisorDir = process.env.LEDGR_SUPERVISOR_DIR || null;
+  const isLocalPeer = !vercelEnv && !!supervisorDir;
+  // A local peer's repo and branch are whatever its update policy says today
+  // (the file the Updates page and the tray edit), not what its env said at
+  // start. Env stays as the fallback for a service that has not written one.
+  const policy = isLocalPeer ? readUpdatePolicySync(supervisorDir) : null;
+  const policyRepo = policy?.repo ? githubSlugOf(policy.repo) : null;
   const deployRepo =
-    process.env.LEDGR_UPDATE_REPO || (owner && slug ? `${owner}/${slug}` : null);
-  const upstreamRepo = process.env.GITHUB_REPO || "strategicli/ledgr";
-  const branch = process.env.GITHUB_BRANCH || "main";
+    policyRepo ||
+    process.env.LEDGR_UPDATE_REPO ||
+    (owner && slug ? `${owner}/${slug}` : null);
+  const sharedRepo = process.env.GITHUB_REPO || "strategicli/ledgr";
+  // A local peer is compared within the repo it follows; everyone else within
+  // the shared one (a synced fork's commits are upstream's own commits).
+  const upstreamRepo = isLocalPeer && deployRepo ? deployRepo : sharedRepo;
+  const branch = policy?.branch || process.env.GITHUB_BRANCH || "main";
   return {
     sha,
     shortSha: sha ? sha.slice(0, 7) : null,
@@ -150,10 +170,11 @@ export function getInstanceIdentity(): InstanceIdentity {
     upstreamRepo,
     branch,
     isSatellite:
-      !!deployRepo && deployRepo.toLowerCase() !== upstreamRepo.toLowerCase(),
+      !!deployRepo && deployRepo.toLowerCase() !== sharedRepo.toLowerCase(),
     selfUpdate: normalizeMode(process.env.LEDGR_SELF_UPDATE),
-    vercelEnv: process.env.VERCEL_ENV ?? null,
-    supervisorDir: process.env.LEDGR_SUPERVISOR_DIR || null,
+    vercelEnv,
+    supervisorDir,
+    isLocalPeer,
   };
 }
 
@@ -186,6 +207,14 @@ export type UpdateReport = {
  * builder; in "on" mode it is allowed, because that mode is only correct when
  * the instance migrates during its build (npm run build:satellite).
  */
+// A LOCAL PEER (LH2, ADR-206): not a Vercel deploy at all, and a supervisor told
+// the app where its signal dir is. Both must hold: a Vercel deploy with a stray
+// LEDGR_SUPERVISOR_DIR must never take the signal path, and a local `next start`
+// without a supervisor has nothing to signal.
+export function isLocalPeerInstance(instance: InstanceIdentity): boolean {
+  return !instance.vercelEnv && !!instance.supervisorDir;
+}
+
 export function resolveApplicability(
   instance: InstanceIdentity,
   code: CodeStatus
@@ -197,7 +226,7 @@ export function resolveApplicability(
   // told the app where its signal dir is. Both conditions must hold — a Vercel
   // deploy with a stray LEDGR_SUPERVISOR_DIR must never take this path, and a
   // local `next start` without a supervisor has nothing to signal.
-  const isLocalPeer = !instance.vercelEnv && !!instance.supervisorDir;
+  const isLocalPeer = isLocalPeerInstance(instance);
   // Fail CLOSED, on both paths: permission is granted only by a mode we
   // recognize, never by the absence of a mode we refuse. getInstanceIdentity
   // already normalizes an unknown value to "off", but this gate is what stands
@@ -253,7 +282,16 @@ export function resolveApplicability(
 export async function getUpdateReport(): Promise<UpdateReport> {
   const instance = getInstanceIdentity();
   const [code, schema] = await Promise.all([
-    getCodeStatus(instance.sha, instance.upstreamRepo, instance.branch, instance.isSatellite),
+    // A satellite AND a local peer can both be behind upstream; only a Vercel
+    // deploy of the upstream repo itself is a "source" that updates on push.
+    // (Bug, 2026-09-11: passing isSatellite alone read every hub as a source,
+    // so the Update button never rendered on the machine the button was for.)
+    getCodeStatus(
+      instance.sha,
+      instance.upstreamRepo,
+      instance.branch,
+      instance.isSatellite || isLocalPeerInstance(instance)
+    ),
     getSchemaStatus(),
   ]);
   const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);

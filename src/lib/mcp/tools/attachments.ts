@@ -29,6 +29,7 @@ import {
 import { asUuid } from "@/lib/api";
 import { ItemError, getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
+import { getType } from "@/lib/types";
 import { optEnum, optInt, optString, reqString } from "./args";
 import type { McpTool } from "./wire";
 
@@ -257,6 +258,12 @@ export const attachmentTools: McpTool[] = [
             "Append the markdown reference to the item body (default true). Set " +
             "false to attach the file without changing the body.",
         },
+        propertyKey: {
+          type: "string",
+          description:
+            "Write the uploaded file's stable address into this image-kind custom " +
+            "property of the item; embedInBody then defaults to false.",
+        },
       },
       required: ["itemId"],
       additionalProperties: false,
@@ -269,7 +276,24 @@ export const attachmentTools: McpTool[] = [
       const argFilename = optString(args, "filename");
       const argContentType = optString(args, "contentType");
       const alt = optString(args, "alt");
-      const embedInBody = args.embedInBody !== false; // default true
+      const propertyKey = optString(args, "propertyKey");
+      // A propertyKey write is the point of the call, so don't also embed in
+      // the body unless explicitly asked (still honored if set true).
+      const embedInBody = args.embedInBody === true || (args.embedInBody !== false && !propertyKey);
+
+      if (propertyKey) {
+        // Refuse early, before spending an upload, if the key isn't declared
+        // as an image property on the item's type.
+        const item = await getItem(ownerId, itemId);
+        const typeDef = await getType(item.type).catch(() => null);
+        const prop = typeDef?.propertySchema.find((p) => p.key === propertyKey);
+        if (!prop || prop.kind !== "image") {
+          throw new ItemError(
+            "bad_request",
+            `propertyKey '${propertyKey}' is not an image-kind property on type '${item.type}'`
+          );
+        }
+      }
 
       if (!sourceUrl && (dataBase64 === undefined || dataBase64 === null)) {
         throw new ItemError("bad_request", "provide sourceUrl or dataBase64");
@@ -316,6 +340,9 @@ export const attachmentTools: McpTool[] = [
         await appendReferenceToBody(ownerId, itemId, ref);
         embedded = true;
       }
+      if (propertyKey) {
+        await updateItem(ownerId, itemId, { propertyPatch: { [propertyKey]: attachment.fileUrl } });
+      }
 
       return {
         id: attachment.id,
@@ -326,6 +353,7 @@ export const attachmentTools: McpTool[] = [
         fileUrl: attachment.fileUrl,
         publicUrl: attachment.publicUrl,
         embedded,
+        propertyKey,
         // Only present once usage crosses 80% — so it reads as a warning when
         // it appears, rather than a number to tune out on every upload.
         storageWarning: attachment.usage.message ?? undefined,

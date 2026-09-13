@@ -178,7 +178,7 @@ ok("normal never means normal while something needs a look", () => {
   const stale = sum(status(), { jobWarnings: ["Offline backup last ran 9 days ago on PC."] });
   assert.equal(stale.tone, "warn");
   assert.match(stale.detail, /9 days/);
-  assert.equal(stale.action?.href, "/build/updates#scheduled-work");
+  assert.equal(stale.action?.href, "/build/jobs#scheduled-work");
 
   const device = sum(status(), { devicesNeedingAttention: 2 });
   assert.equal(device.tone, "warn");

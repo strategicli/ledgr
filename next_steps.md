@@ -12,6 +12,52 @@ Three corrections after Tyler tested the 2026-09-11 batch on a `file` item.
 
 **Still unverified:** whether the file Tyler was looking at shows in the file canvas's LEAD panel. If that panel is empty too, the attachment row is parented to a different item than the one displaying it, which is a data question, not this one. The footer section reads the same query, so it would be empty as well.
 
+## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-257, branch `feat/local-install-sweep`)
+
+A local install used to need `supervisor/config.json` edited and the service
+restarted to change its branch or update behavior. That broke ADR-222's rule:
+a setting a person changes belongs in the GUI, not a config file. This batch
+moves that control into the app and the tray, and splits Updates into three
+focused pages.
+
+1. **Update policy is now a GUI setting.** Build → Updates → Update policy lets
+   the owner pick auto-checking (with an interval) or manual-only, the branch
+   to follow, and the repository, stored in `<dataDir>/update-policy.json`.
+   The service re-reads that file every minute, no restart needed.
+   `supervisor/config.json`'s `branch` and `update.mode` now only seed the
+   file on first start; editing them afterward changes nothing.
+2. **A local install now sees its own pending commits**, even when it follows
+   the shared repository, instead of wrongly claiming it auto-updates with no
+   button to press.
+3. **GitHub reads need no token.** The version check and Changelog work on a
+   public repository with nothing configured. Only writes (collab notes, a
+   satellite's fork merge) still need `GITHUB_TOKEN`.
+4. **The Build sidebar has a new SYSTEM group** (after MAINTAIN): Updates,
+   Network, and two new pages, Scheduled Jobs and Backups, split out of what
+   used to be one long Updates page.
+5. **The Windows tray icon gained a real status window** ("Ledgr status…"):
+   a Status tab (running state, version, update policy, disk use, scheduled
+   jobs, sync role) and a Settings tab that edits the same update policy file.
+6. **The stale boot-warning bug is fixed.** The service now re-asks Windows
+   Task Scheduler on every start, so an old "one catch" warning from a
+   previous build clears on the next restart instead of lingering.
+7. **The setup wizard (`npm run local:setup`) asks three new questions**, each
+   with a flag: `--branch`, `--auto-update yes|no`, `--update-every <minutes>`.
+
+**Known step:** the running service predates this code, so `npm run
+local:restart` is needed once, on each machine already running the
+supervisor, to seed the update-policy file and clear any stale boot warning.
+## ✅ SHIPPED — `image` is a property kind on any type (2026-09-11, ADR-255, branch `feat/image-property-kind`, Tyler agreed)
+
+Any type can now carry a picture field. Pick "Image (upload or URL)" as a field kind in the type builder, name it anything, and every record of that type gets the same click-to-upload box the person page already had.
+
+**What shipped.** `image` added to `PROPERTY_KINDS` (a plain string, same contract as `url`: an http(s) URL or a stable `/files/<id>` address, ADR-228; additive, no migration). `PersonImageBox` generalized to `src/components/build/ImageBox.tsx`'s `ImageBox`, taking a `propKey` prop; person's two mounts pass `propKey="image"` and are unchanged in behavior. `CustomProperties.tsx` renders an `ImageBox` for any image-kind field; the classic canvas renders one beside the person box for every image-kind property on the type. Views: a filter offers only is-set/is-empty, and a table column shows a 24px thumbnail. MCP: `create_type`/`update_type` accept the kind (no code change needed), `update_item`'s `propertyPatch` fills/clears it, and `attach_file` gained an optional `propertyKey` that writes the upload's address straight into an image property (`embedInBody` then defaults to false).
+
+**Follow-ups, not done here:**
+
+- A per-field wide "cover" display style (v1 is one 112px square box for every image kind).
+- The drag-to-position cropper already queued for person's Image (v1 stays a deterministic center crop).
+
 ## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
@@ -107,6 +153,43 @@ OPTIONS $R2_ENDPOINT/ledgr/probe   Origin: https://ledgr-sandy.vercel.app    -> 
 - **Brandon needs a heads-up**, since the script is shared and applying it now takes a flag. A COLLAB.md note is not written yet.
 - **The dev bucket's policy is still the old PUT-only shape.** Harmless, and it self-corrects the next time anyone applies from the repo script with `--bucket=ledgr-dev`.
 - **Nothing verifies this class of bug.** The two origin lists are one list in two files, in two languages, and agreement between them is currently a convention held by comments. A pure check that parses both and fails when they diverge would be cheap and would have caught the 8/31 drift the day it happened.
+## ✅ BUILT — themes: Dark, Light, Gray, Sepia (2026-09-11, branch `feat/themes`)
+
+**What you can do now.** Settings → Theme picks the app's look (Dark stays the default). It applies on every device and on the first paint (the class is set on `<html>` server-side), and the mobile title bar follows the page color. Share links carry an "Opens in" theme (defaults to your own); the shared page has an **Appearance** picker at the top right so the reader can switch, and their browser remembers the choice for every Ledgr document.
+
+**How.** No schema change: `theme` in the settings blob (`settings.ts` THEMES). One variable block per theme in `globals.css` beside the existing `.light` (ADR-141 tier 1 makes every neutral utility follow). The nine text colors are repainted on light pages by attribute match on the stored hex (`LIGHT_TEXT_COLORS` in `colors.ts`, mirrored in `globals.css`); highlights are alpha washes and needed nothing. The 13 per-input `[color-scheme:dark]` guards were deleted so native date pickers follow the theme. `print-html.ts` is var-based now, with the same four looks.
+
+**Not done (deliberate, out of scope).** The PWA manifest splash stays dark (fetched once, cached by the OS). No "follow system" option. The offline landing page (`public/offline.html`) stays dark.
+
+**Remaining on this branch before it merges (pushed to GitHub 2026-09-11, no PR yet):**
+- Brandon's own eyeball pass in each theme on the surfaces the automated check did not walk: Desk, a task list, an item canvas with a real body (colored text, highlights, comments, a toggle block), Search, Planner, the Build sidebar. Anything still dark on a light theme is a hardcoded color to move onto a token.
+- Decide whether Gray should stay a softer dark (as built) or become a light gray.
+- Judge the nine light-page text colors (`LIGHT_TEXT_COLORS` in `colors.ts`) on real notes and tune any that read wrong; the `globals.css` block must be kept in step.
+- Then `/ship` (ordinary merge; nothing core, no ADR needed; note the additive share-API argument in `COLLAB.md`).
+## ✅ FIXED — record-page property fields no longer grow a horizontal scrollbar (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
+
+On a record page laid out as a grid (any type with a saved layout; first seen on Hiring Candidates), every text/URL/textarea property card showed a horizontal scrollbar under the field on Windows, and the textarea card scrolled its label to the bottom. A property card defaults to 4 of 12 columns with `overflow-auto`; the row inside is a 128px label + a 224px `w-56` control, wider than the card. The control's `max-w-full` never capped it because its wrapper `<span>` could not shrink below its content. The wrapper is now `min-w-0` (`src/components/build/CustomProperties.tsx`), so the control shrinks to the card and nothing spills. The wide side-by-side layout is unchanged.
+
+## ✅ FIXED — the add-task card's Cancel / Add task buttons no longer spill past the card (2026-09-11, branch `fix/add-task-footer-overflow`)
+
+Brandon's screenshot of the quick-add card showed "Add task" sitting outside the card's right edge, with the Inbox picker stretched across the whole row. A `<select>` is as wide as its longest option, and one long project title in the destination list made the picker wider than the room left for it, so the buttons were pushed out. The picker's wrapper is now `min-w-0 flex-1` and the select `w-full truncate` (`src/components/tasks/AddTaskCard.tsx`), so the picker takes the free space and long titles show with an ellipsis; the button group is `shrink-0`. Verified in the dev preview at desktop and 375px with a 95-character option injected. The earlier same-day fix (mirror `<mark>` colour, below) addressed a different symptom and stands.
+
+## ✅ FIXED — the quick-add card no longer doubles a highlighted word (2026-09-11, branch `claude/quick-add-dialogue-bug-b9b331`)
+
+Typing a date word ("tomorrow") into the add-task title showed it as bold, doubled white text. The card draws the highlight pill on a hidden mirror copy of the title under the textarea, and that copy uses `<mark>`. ADR-251's global `mark { color: var(--mark-ink) }` is an unlayered rule, so it beat the mirror's Tailwind `text-transparent` utility and the mirror's word showed through. The mirror mark now sets its color inline (`src/components/tasks/AddTaskCard.tsx`), which no stylesheet rule can override. Only overlay of its kind in the app (`text-transparent` + `<mark>`), so nothing else needed the same guard.
+## ✅ FIXED — the Update button never appeared on a local hub (2026-09-11)
+
+**Symptom (Brandon, bc-edgewood hub):** Build → Updates said "This instance deploys straight from the shared repository, so it picks up every change automatically" while showing an old version, and offered no button. **Cause:** `getUpdateReport` asked GitHub for a compare only when the instance was a satellite fork. A hub is not a fork, so it was classed as a "source" that never lags, and the supervisor-signal apply path built in ADR-206 was unreachable from the page. **Fix:** the compare now runs for a satellite OR a local peer (`isLocalPeerInstance`, exported from `src/lib/updates.ts`); a Vercel deploy of the upstream repo is still a source. Three checks added to `verify-updates.mts`. The hub still needs `GITHUB_TOKEN` in its environment to compare; without it the page now says so instead of claiming it is current. **Until the hub carries this fix,** trigger an update by hand from the laptop: create the file `update-requested` in the supervisor's `dataDir` (from the repo folder, PowerShell: `$d=(Get-Content supervisor\config.json | ConvertFrom-Json).dataDir; New-Item -ItemType File -Force (Join-Path $d 'update-requested')`).
+
+## ✅ SHIPPED — the work log becomes a timed history (2026-09-11, ADR-254, Tyler agreed, branch `claude/day-log-time-tracking-ddb8b1`)
+
+**The ask (Brandon).** Log Entry's Start/End were text ("9:06 PM"), so nothing could place an entry by the hour. Make them real times and read the whole log on the vertical History spine.
+
+**Built.** A `withTime` flag on the `date` kind, beside `withEnd` (ADR-254, core, both agreed). Log Entry's Date becomes one timed range: start in `logdate`, end in `logdate__end`, both ISO instants. Readers detect instant vs day from the value, so existing day-only values need no rewrite. Type builder gained two checkboxes on a Date row (time of day, end/range); the record page gained a date-and-time picker and, for the first time, a "to" input for a `withEnd` field. Table cells format a timed property as day + clock. `verify-placement.mts` covers it.
+
+**Migration.** `scripts/convert-log-times.mts` (machine API, Basic auth from `/build/api`, dry run by default, JSON backup + `--rollback`). "All day" rows keep a day-only date. Run order after deploy: tick both boxes on Log Entry → Date in `/build/types`, dry-run the script, apply, spot-check the "Work Log" History view at hour grain, then hide the old Start/End text fields.
+
+**Not done here.** The builder's date picker still writes only `startField`; a Planner view of a range must name `endField: { prop: "logdate__end" }` (the MCP-created Work Log view does). The record picker uses the browser's zone.
 
 ## ✅ DONE — Neon was never asleep, and two of the reasons are now fixed (2026-09-09, ADR-252)
 

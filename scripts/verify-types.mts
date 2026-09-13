@@ -57,8 +57,9 @@ const ownerId = tempUser.id;
 
 try {
   // --- parseTypeInput ---
-  check("PROPERTY_KINDS has the scalar + option + relation kinds", PROPERTY_KINDS.length === 10);
+  check("PROPERTY_KINDS has the scalar + option + relation kinds", PROPERTY_KINDS.length === 11);
   check("PROPERTY_KINDS includes relation", PROPERTY_KINDS.includes("relation"));
+  check("PROPERTY_KINDS includes image", PROPERTY_KINDS.includes("image"));
   // phone/email (ADR-192): scalar text with a declared intent. Pinned here
   // because the kind list is the core contract in schema.md — a kind appearing
   // or vanishing should fail a test, not slip through.

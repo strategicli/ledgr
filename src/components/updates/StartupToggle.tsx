@@ -66,6 +66,9 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
   }
 
   const on = report.state?.enabled === true && report.state.ok;
+  // A registered task Windows will only run while signed in must not read as
+  // "before anyone signs in" one line above the box that says otherwise.
+  const caveat = on && !!report.state?.caveat;
 
   return (
     <div>
@@ -74,7 +77,9 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
           ? "Applying…"
           : on
             ? report.state?.scope === "always"
-              ? "On — starts at boot, before anyone signs in."
+              ? caveat
+                ? "On, with one catch: see below."
+                : "On — starts at boot, before anyone signs in."
               : "On — starts when you sign in."
             : "Off — this device does not come back on its own after a reboot."}
       </p>
@@ -93,7 +98,7 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
       </label>
       <p className="ui-meta mt-1 text-ink-subtle">
         {scope === "always"
-          ? "What a hub needs: your phone and Claude can reach it whether or not anyone is signed in. Windows will ask for an administrator prompt, and needs a saved password for the task if nobody will be logged in."
+          ? "What a hub needs: your phone and Claude can reach it whether or not anyone is signed in. Windows asks for an administrator prompt once. No password is stored: the task is registered the passwordless way and runs with nobody signed in."
           : "No administrator prompt. The device comes up after you log in, which is right for a laptop or desktop you use."}
       </p>
 

@@ -721,7 +721,12 @@ export default function AddTaskCard({
                   // (the bg just bleeds past the text). Kept to ~1.5px so two adjacent
                   // tokens ("Saturday" + "every week") leave a visible gap rather than
                   // merging. py rounds it into a pill.
-                  s.hl ? <mark key={i} className="rounded px-[1.5px] py-0.5 -mx-[1.5px] bg-[var(--accent)]/35 text-transparent">{s.text}</mark> : <span key={i}>{s.text}</span>
+                  // color is INLINE, not `text-transparent`: globals.css paints every
+                  // <mark> bright (`mark { color: var(--mark-ink) }`, ADR-251) from an
+                  // unlayered rule, which beats any Tailwind utility regardless of
+                  // specificity. Without this the mirror's word shows through the
+                  // textarea as doubled white text (the recurring "quick add" glitch).
+                  s.hl ? <mark key={i} style={{ color: "transparent" }} className="rounded px-[1.5px] py-0.5 -mx-[1.5px] bg-[var(--accent)]/35">{s.text}</mark> : <span key={i}>{s.text}</span>
                 )}
           </div>
           <textarea
@@ -1055,7 +1060,7 @@ export default function AddTaskCard({
                     value={typeof val === "string" ? val.slice(0, 10) : null}
                     onCommit={(ymd) => set(`${ymd}T00:00:00.000Z`)}
                     ariaLabel={def.label}
-                    className={`${box} [color-scheme:dark]`}
+                    className={box}
                   />
                 ) : def.kind === "checkbox" ? (
                   <input
@@ -1090,15 +1095,18 @@ export default function AddTaskCard({
           host (a project's Tasks card), the picker is hidden and the actions get
           the full row. */}
       <div className={`mt-3 flex items-center gap-2 ${lockDestination || parentId ? "justify-end" : "justify-between"}`}>
+        {/* min-w-0 + w-full: a <select> is as wide as its LONGEST option, so one
+            long project title used to push Cancel/Add past the card edge. Now the
+            picker takes the free space and the buttons never move. */}
         {!lockDestination && !parentId && (
-          <span className="relative inline-flex items-center text-sm text-neutral-300">
+          <span className="relative inline-flex min-w-0 flex-1 items-center text-sm text-neutral-300">
             <span className="pointer-events-none absolute left-1.5 text-neutral-500">{destProject ? IconPlus : IconInbox}</span>
             <select
               value={effDest}
               onChange={(e) => setDest(e.target.value)}
               disabled={!!projectMatch?.project}
               aria-label="Destination"
-              className="appearance-none rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
+              className="w-full min-w-0 appearance-none truncate rounded-md bg-transparent py-1 pl-7 pr-5 text-sm text-neutral-300 outline-none disabled:opacity-100"
             >
               {host && host.role !== "project" && <option value={host.id}>{host.label}</option>}
               <option value="inbox">Inbox</option>
@@ -1107,7 +1115,7 @@ export default function AddTaskCard({
             <span className="pointer-events-none absolute right-0 text-neutral-500">{IconChevron}</span>
           </span>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={onCancel} className="rounded-md bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-700">Cancel</button>
           <button type="button" disabled={!title.trim() || busy} onClick={() => void create()} className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40">
             {busy ? "Adding…" : submitLabel ?? (parentId ? "Add subtask" : "Add task")}

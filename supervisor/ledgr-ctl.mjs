@@ -52,6 +52,8 @@ import {
   STARTUP_TASK_NAME,
   cronStatePath,
   parseCronState,
+  parseUpdatePolicy,
+  updatePolicyPath,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -223,6 +225,25 @@ async function doStatus() {
     `  app         ${report.serving ? `answering on :${cfg.appPort} (HTTP ${http})` : `not answering on :${cfg.appPort}`}`
   );
   console.log(`  build       ${report.build ? report.build.sha : "none flipped yet"}`);
+  // The update policy is a file the app page and the tray window edit, so the
+  // CLI reads the same file rather than quoting config.json's stale seed.
+  {
+    let policy = null;
+    try {
+      policy = parseUpdatePolicy(readFileSync(updatePolicyPath(cfg.dataDir), "utf8"));
+    } catch {
+      // none written yet (a supervisor from before this, or one not started)
+    }
+    console.log(
+      `  updates     ${
+        !policy
+          ? "no policy written yet (the service writes one on its first start)"
+          : policy.mode === "auto"
+            ? `checked every ${policy.everyMinutes} min on origin/${policy.branch}`
+            : `only when asked from the app (origin/${policy.branch})`
+      }`
+    );
+  }
   if (!boot.supported) {
     console.log("  at boot     not managed here on this platform (see supervisor/README.md)");
   } else if (!boot.registered) {
@@ -730,7 +751,8 @@ async function doTray() {
       "  Green   Ledgr is running\n" +
       "  Amber   starting up, or the app is down while the database is fine\n" +
       "  Red     not running\n" +
-      "Right-click it to open Ledgr, check the ports, start, restart or stop.\n" +
+      "Right-click it to open Ledgr, open the status window (version, disk use,\n" +
+      "jobs, and the update policy you can edit there), start, restart or stop.\n" +
       "Turn it off with: npm run local:tray -- --uninstall"
   );
   return 0;

@@ -1,5 +1,6 @@
-// Reads a person's picture off its properties (the built-in `image` url field,
-// migration 0053 / ADR-202 addendum 3). Pure + client-safe. Only a real image
+// Validates any image-kind property's value (originally the person's built-in
+// `image` url field, migration 0053 / ADR-202 addendum 3; generalized to any
+// image-kind property, ADR-255). Pure + client-safe. Only a real image
 // address counts — anything else (a stray string, a data: URI someone pasted)
 // falls back to the avatar's initials/glyph rather than a broken <img>.
 //
@@ -10,9 +11,12 @@
 // started storing the relative address.
 import { parseAttachmentUrl } from "./attachment-url";
 
-export function personImage(properties: unknown): string | null {
-  const v = (properties as Record<string, unknown> | null | undefined)?.image;
+export function imageUrl(v: unknown): string | null {
   if (typeof v !== "string") return null;
   if (/^https?:\/\//i.test(v)) return v;
   return parseAttachmentUrl(v) ? v : null;
+}
+
+export function personImage(properties: unknown): string | null {
+  return imageUrl((properties as Record<string, unknown> | null | undefined)?.image);
 }

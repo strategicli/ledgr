@@ -39,7 +39,7 @@ The ordinary desktop-app checkbox, and it is a real choice:
 | Scope | What it means |
 | --- | --- |
 | `--logon` | Starts when you sign in. **No administrator prompt.** Right for a laptop or desktop you use. |
-| `--always` | Starts at boot, before anyone signs in. What a **hub** needs, since your phone and Claude reach it whether or not you are at the desk. Expect an administrator prompt, and give the task a saved password in Task Scheduler if nobody will be logged in — without one Windows will not run it while logged out. |
+| `--always` | Starts at boot, before anyone signs in. What a **hub** needs, since your phone and Claude reach it whether or not you are at the desk. Expect an administrator prompt. The task is registered the passwordless way (S4U), so it runs with nobody signed in and needs no saved Windows password. The service also re-checks this registration with Windows on every start and refreshes its recorded state, so a stale warning from an older build clears itself on the next restart instead of lingering. |
 
 ```
 npm run local:startup -- --logon
@@ -58,6 +58,22 @@ would believe your hub survives a reboot when it does not.
 the systemd user unit to create; `npm run local:startup` says so rather than
 pretending. Automating those is queued.
 
+### The tray icon (Windows)
+
+`npm run local:tray` puts a small icon in the notification area: green when
+Ledgr is running, amber while it starts up or the app is down with a healthy
+database, red when nothing is running. Right-click it to open Ledgr, start,
+restart, or stop the service, or open **Ledgr status…**, a window with two
+tabs. **Status** is read-only: run state, the build version and when it last
+updated, the update policy, disk use per data folder, the scheduled jobs
+table, and this machine's role in the sync network, plus buttons to open
+Ledgr, its data folder, and its logs. **Settings** edits the update policy
+(auto-check cadence, branch, repository) — the same `update-policy.json` the
+service itself reads every minute, so a saved change there needs no restart.
+It is the only thing the tray writes: it never touches `config.json` and
+never restarts anything on its own. Turn the icon off with the same command
+and `-- --uninstall`; the service itself is untouched either way.
+
 ## Configure
 
 ```
@@ -67,14 +83,14 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | Key | Meaning |
 | --- | --- |
 | `role` | `hub` or `spoke`. Informational: it changes no behavior on its own. What a hub actually does differently is get published (the Funnel); which copy runs the shared scheduled jobs is set in the app, not by this field (ADR-225). |
-| `dataDir` | Where everything lives: `pg/` (the database cluster), `builds/` (app builds), `live.json` (which build serves), `update-requested` (the signal file). Outside the repo. |
+| `dataDir` | Where everything lives: `pg/` (the database cluster), `builds/` (app builds), `live.json` (which build serves), `update-requested` (the signal file), `update-policy.json` (the owner's update-check settings; see `branch` and `update.mode` below). Outside the repo. |
 | `repoDir` | The git clone the supervisor fetches and builds from. Defaults to the repo this file lives in. It only ever **fetches** and adds detached worktrees, so sharing the clone with a checkout somebody develops in is safe: the working tree, the current branch and any staged changes are never touched or read. |
-| `branch` | Branch to track (default `main`). The supervisor builds **`origin/<branch>`**, not the clone's `HEAD` — so a peer tracking a release branch (`prod-brandon`) keeps serving that release while the shared clone sits on `main`. Also passed to the app as `GITHUB_BRANCH`, so Build → Updates asks "am I current?" about the same ref. |
+| `branch` | Branch to track, only at install time (default `main`). The service writes this into `update-policy.json` the first time it starts, then re-reads that file every minute and ignores this key from then on. To change the branch afterwards, use **Build → Updates → Update policy** in the app (or the tray icon's Settings tab), not this file. The supervisor builds **`origin/<branch>`** from the policy, not the clone's `HEAD` — so a peer tracking a release branch (`prod-brandon`) keeps serving that release while the shared clone sits on `main`. Also passed to the app as `GITHUB_BRANCH`, so Build → Updates asks "am I current?" about the same ref. |
 | `appPort` / `dbPort` | The app and Postgres ports (defaults 3000 / 5433). |
 | `ownerEmail` | Becomes `LEDGR_LOCAL_OWNER_EMAIL`: the no-login local owner identity (plan decision 5). Must match the owner's `users.email`. |
 | `hubs` / `deviceToken` | Ordered hub URLs plus this device's sync token (minted on the hub). Both set arms the in-app sync loop; either missing leaves sync off. |
-| `syncMode` | The **initial** push mode only: `full` (default) pushes and pulls, `pull-only` never sends this device's own changes. Threaded through as `LEDGR_SYNC_MODE`. Once the app is running, the owner changes it from **/build/updates → Sync → Mode**, which stores an override in `job_state` that the sync loop re-reads every tick — so arming or disarming a peer needs no config edit and no restart, and this key stops being consulted. See "Arming sync safely" below. |
-| `update.mode` | `prompted` (default): updates apply only when the app's Update button writes the signal file. `auto`: the supervisor also polls git every `pollIntervalMs` and applies on its own. Pair `auto` with a **release** branch rather than `main` if you want the peer to move only when you deliberately ship — `branch: "prod-brandon"` + `mode: "auto"` makes a local peer track the same commits as the cloud deployment, arriving within `pollIntervalMs` of each `npm run release:prod`. Keep-last-good still applies: a failed migrate or build leaves the previous build serving. |
+| `syncMode` | The **initial** push mode only: `full` (default) pushes and pulls, `pull-only` never sends this device's own changes. Threaded through as `LEDGR_SYNC_MODE`. Once the app is running, the owner changes it from **Build → Network**, which stores an override in `job_state` that the sync loop re-reads every tick — so arming or disarming a peer needs no config edit and no restart, and this key stops being consulted. See "Arming sync safely" below. |
+| `update.mode` / `update.pollIntervalMs` | The install-time SEED only, same as `branch` above: the service writes them into `update-policy.json` on first start, then re-reads that file every minute and ignores these keys. `mode: "prompted"` (default) means the file starts as manual — only the app's Update button applies an update. `mode: "auto"` seeds the file to check on its own every `pollIntervalMs`. After that first write, change how often and whether it checks on its own from **Build → Updates → Update policy** in the app, or the tray icon's Settings tab — not this file. Pair an auto policy with a **release** branch rather than `main` if you want the peer to move only when you deliberately ship — `branch: "prod-brandon"` + auto checking makes a local peer track the same commits as the cloud deployment, arriving within its check interval of each `npm run release:prod`. Keep-last-good still applies: a failed migrate or build leaves the previous build serving. |
 | `crons` | Which scheduled jobs this peer triggers for itself (ADR-214). The default set is right for every install and needs no entry here; the app decides which machine actually does the shared ones (ADR-225). A testing escape hatch, not the owner's switch. See "Scheduled jobs" below. |
 | `tunePostgres` | RAM-sized Postgres settings (ADR-215), on by default: `shared_buffers` = RAM/8 clamped 128MB–1GB (a real Ledgr database fits entirely, so page-heavy queries stop evicting themselves), SSD `random_page_cost` 1.1, `work_mem` 16MB. `false` restores the library's stock settings on the next restart; nothing on disk changes either way. |
 | `postgresFlags` | Extra raw server flags, appended AFTER the tuned set (e.g. `["-c", "random_page_cost=4"]` on a spinning disk). For a repeated `-c`, Postgres takes the last one, so a manual flag always beats its tuned counterpart. |
@@ -425,12 +441,23 @@ missing (the Postgres tools warn-and-continue rather than blocking, since
 starting empty doesn't need them), clones the repo into
 `%LOCALAPPDATA%\Ledgr\app` (override with `-InstallDir`), runs `npm ci`, and
 hands off to the cross-platform wizard — `npm run local:setup` — which asks
-hub-or-spoke, fills the initial data, writes `supervisor/config.json` (never
-clobbering without `--force`), and offers the Task Scheduler registration.
-Every prompt has a flag override (`node scripts/local-setup.mjs --help`), so
-it also runs unattended. On macOS/Linux the wizard is the same; only the
-bootstrap differs (`install.sh` is deferred to post-cutover — clone + `npm ci`
-by hand, then `npm run local:setup`).
+hub-or-spoke, fills the initial data, asks which branch to follow and how it
+should check for updates, writes `supervisor/config.json` (never clobbering
+without `--force`), and offers the Task Scheduler registration. Every prompt
+has a flag override (`node scripts/local-setup.mjs --help`), so it also runs
+unattended:
+
+- `--branch <name>` — the git branch this install follows (default `main`).
+- `--auto-update yes|no` — check for and apply new versions on its own
+  (default `yes`).
+- `--update-every <minutes>` — minutes between those checks (default `15`).
+
+These three seed `update-policy.json` on first start (see `branch` and
+`update.mode` above); afterwards they are changed from **Build → Updates →
+Update policy** in the app or the tray icon's Settings tab, not by re-running
+the wizard. On macOS/Linux the wizard is the same; only the bootstrap differs
+(`install.sh` is deferred to post-cutover — clone + `npm ci` by hand, then
+`npm run local:setup`).
 
 **Initial data, three ways** (the wizard's "Initial data" question):
 
