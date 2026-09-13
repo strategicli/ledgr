@@ -1,9 +1,9 @@
 // The item's files, as a panel (Files as a first-class citizen, ADR-236): one
 // row per attachment — filename opens the file in a new tab (/files/<id>; HTML
-// and PDFs render, everything else downloads), a Share button copies a public
-// link gated by the item's share token, and Remove deletes it (ConfirmButton,
-// the project standard). "+ Add file" uploads through the shared presign
-// handshake. One component serves both homes: the `file` type's canvas
+// and PDFs render, everything else downloads), Download saves it to disk under
+// its real filename, Copy link yields a markdown link, Share copies a public
+// link gated by the item's share token, and Delete removes it (ConfirmButton,
+// the project standard). One component serves both homes: the `file` type's canvas
 // (FileCanvas) and the Files record card (WidgetCanvas), so the two can't
 // drift — the LinkList/MilestoneList pattern.
 "use client";
@@ -56,6 +56,28 @@ async function copyFileShareLink(itemId: string, attachmentId: string) {
   await navigator.clipboard.writeText(
     `${window.location.origin}${attachmentUrlWithShare(attachmentId, token)}`
   );
+}
+
+// Save a file to disk under its real name (Tyler, 2026-09-12). Opening
+// /files/<id> is a NAVIGATION to a 302 into R2, so `<a download>` is ignored
+// (the attribute is same-origin only) and the browser renders whatever R2's
+// content-type says it can render — a JSON backup or an image opens in a tab
+// instead of landing in Downloads. So fetch the bytes and hand the blob to a
+// synthetic link: the app server still never touches them (the fetch follows
+// the redirect straight to R2, which allows GET from our origins —
+// scripts/r2-cors.mjs), and the filename is ours to set.
+async function downloadFile(id: string, filename: string) {
+  const res = await fetch(attachmentUrl(id));
+  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoked on the next tick: Safari needs the object URL to outlive the click.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export default function FilePanel({
@@ -156,6 +178,22 @@ export default function FilePanel({
                 on touch and hid Delete from the first real user (Tyler,
                 2026-08-29) — "scope the UI" (Brandon, 2026-06-21). */}
             <span className="ml-auto flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                title={`Download ${f.filename} to this device`}
+                className="rounded px-1.5 py-0.5 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink"
+                onClick={() =>
+                  downloadFile(f.id, f.filename).catch(() => {
+                    // Whatever blocked the blob (an offline tab, a CORS gap on
+                    // a new origin), opening the file still works — say so
+                    // rather than failing silently.
+                    showToast("Couldn't download — opening it instead");
+                    window.open(attachmentUrl(f.id), "_blank", "noopener");
+                  })
+                }
+              >
+                Download
+              </button>
               <button
                 type="button"
                 title="Copy a markdown link to this file — paste it anywhere in a body"

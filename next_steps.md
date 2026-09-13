@@ -2,6 +2,16 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — Files show everywhere again, + Task comes back, files download (2026-09-12, non-core)
+
+Three corrections after Tyler tested the 2026-09-11 batch on a `file` item.
+
+- **The Files section was missing on the file canvas.** It was the one canvas passing `filesSection={false}` to `ItemUtilitiesFooter` ("its panel leads"), which was defensible until Files became a rail row on tasks and the utilities stack became the single sitewide answer to "is a file attached?". Now every canvas that renders the footer renders the section, the file canvas included: it repeats that canvas's lead panel, collapsed and one row, and one predictable place beats one type where the answer sits somewhere else. Tasks remain the deliberate exception (rail row, ADR-253).
+- **`+ Task` is back, minus the two places it was actually wrong.** Removing it sitewide was too wide a swing at a narrow problem: the complaint was that it reads as a duplicate of "Add subtask", which only exists on a task. On a note, a person, a meeting or a link, "make a task about this" is what the panel is for. It is now gated off for `task` and for widget-home records (canvas id `widgets` — Project, Pursuit, custom hubs), which have their own Tasks widget. `RelatedPanel` resolves `hostType`/`hostDef` before the nothing-linked-yet return so the gate holds on an item with no links at all.
+- **Every file row has a Download button.** `<a download>` is same-origin only, and `/files/<id>` is a 302 into R2, so the attribute was always ignored and the browser just rendered whatever R2's content-type allowed — a JSON backup opened in a tab instead of landing in Downloads. The button fetches the bytes and hands the blob to a synthetic link, so the filename is ours and the app server still never touches the bytes (the fetch follows the redirect straight to R2, which already allows GET from our origins — `scripts/r2-cors.mjs`). Failure falls back to opening it, with a toast.
+
+**Still unverified:** whether the file Tyler was looking at shows in the file canvas's LEAD panel. If that panel is empty too, the attachment row is parented to a different item than the one displaying it, which is a data question, not this one. The footer section reads the same query, so it would be empty as well.
+
 ## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-257, branch `feat/local-install-sweep`)
 
 A local install used to need `supervisor/config.json` edited and the service
@@ -48,7 +58,7 @@ Any type can now carry a picture field. Pick "Image (upload or URL)" as a field 
 - A per-field wide "cover" display style (v1 is one 112px square box for every image kind).
 - The drag-to-position cropper already queued for person's Image (v1 stays a deterministic center crop).
 
-## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-257, branch `feat/date-anchoring`, Brandon agreed)
+## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
 
@@ -74,7 +84,7 @@ Tyler: "Due date vs schedule is mucking up the UI and really confusing the syste
 
 ## ✅ SHIPPED — item-canvas polish batch (2026-09-11, branch `feat/date-anchoring`, non-core)
 
-Five things Tyler raised while testing the ADR-257 preview.
+Five things Tyler raised while testing the ADR-253 preview.
 
 - **The kebab menu could open below the window.** `ItemActionsMenu`'s two panels were `absolute right-0` with no idea where the viewport ends, so on a short window the lower actions were simply unreachable — the same failure the color swatch panel had (#369) and now the same fix: both panels portal to `<body>` and use `useAnchoredPanel`, the placement half of `ui/Popover`, which clamps both horizontal edges and flips above the trigger when below is cramped. Two follow-ons that are easy to miss: a portaled panel is no longer inside `wrapRef`, so the outside-click test had to learn about it or every click inside the menu would close it; and `MoveUnderMenu` gets an explicit `className=""` because its `DEFAULT_CLASS` carries its own absolute positioning and card chrome, which would fight the new wrapper.
 - **`+ Task` is gone** (sitewide). It created a *related* task, not a subtask — a distinction invisible sitting beside "Add subtask" on the same page. `NewRelatedTask` kept, unrendered.
@@ -111,7 +121,7 @@ Both reads are last-write-wins races resolved by a timestamp two writes can shar
 
 ## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
 
-Not caused by ADR-257; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
+Not caused by ADR-253; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
 
 ```
 FAIL the projection honors interval + byday — got [09-21, 09-24, 10-05, 10-08], want [09-07, 09-10, 09-21, 09-24]
@@ -119,7 +129,7 @@ FAIL get_item projects the bounded series      — got [09-11, 09-18, 09-25], wa
 FAIL get_item reports the next uncompleted date — got 09-11, want 09-04
 ```
 
-The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-257 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
+The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-253 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
 
 ## ✅ FIXED — image uploads worked everywhere except the domain the app runs on (2026-09-09, ops only, no code change)
 
