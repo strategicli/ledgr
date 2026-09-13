@@ -61,7 +61,14 @@ export default async function FileCanvas(canvasProps: CanvasProps) {
       />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
-      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} filesSection={false} />
+      {/* The Files section stays ON here (Tyler, 2026-09-12): every type other
+          than task answers "is a file attached?" in the same place, the
+          utilities stack, and a `file` item is where that question gets asked
+          most. It repeats the panel above, collapsed and one row wide — the
+          lead panel is the file as the OBJECT (ADR-236), this is the item's
+          file inventory, and the repetition is cheaper than the one type
+          where the answer is somewhere else. */}
+      <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
     </>
   );
 }

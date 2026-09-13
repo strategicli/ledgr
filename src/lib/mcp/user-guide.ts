@@ -404,6 +404,11 @@ Build your own kinds of item at \`/build/types\`.
   caret opens the list of what is already connected. The full **Linked here**
   panel under the body is still where you check things off, change their dates,
   or unlink them.
+- **+ Relate and + Task.** Under the panel, **+ Relate** links something that
+  already exists, and **+ Task** creates a task already attached to this item
+  (you can still send it to the Inbox or another project). **+ Task** is hidden
+  on tasks and on project-style pages, where "Add subtask" and the Tasks widget
+  already do that job.
 - **Create as you link.** Typing a name that does not exist makes it. That
   includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
   yet can be added to the meeting from the meeting, without leaving to create
@@ -895,8 +900,9 @@ Trash deletes its files with it.
 **Every item shows its own files.** An item carrying files gets a collapsible
 **Files** section above Export & sharing — on a task it sits in the details
 rail instead, just above Linked (it appears the moment your first upload
-lands): each file with Open, **Copy link** (a markdown link to paste
-back into the body), Share, and Delete — plus a "not linked" mark when nothing
+lands): each file with Open, **Download** (saves it to your device under its
+real filename, instead of opening in a tab), **Copy link** (a markdown link to
+paste back into the body), Share, and Delete — plus a "not linked" mark when nothing
 in the item points at the file anymore. So a link you backspaced out of the
 body is never stranded invisibly, and **dragging a file row into the body
 links it right where it lands** — no re-upload. On a type with a customized

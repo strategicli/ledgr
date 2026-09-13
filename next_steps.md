@@ -2,6 +2,16 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — Files show everywhere again, + Task comes back, files download (2026-09-12, non-core)
+
+Three corrections after Tyler tested the 2026-09-11 batch on a `file` item.
+
+- **The Files section was missing on the file canvas.** It was the one canvas passing `filesSection={false}` to `ItemUtilitiesFooter` ("its panel leads"), which was defensible until Files became a rail row on tasks and the utilities stack became the single sitewide answer to "is a file attached?". Now every canvas that renders the footer renders the section, the file canvas included: it repeats that canvas's lead panel, collapsed and one row, and one predictable place beats one type where the answer sits somewhere else. Tasks remain the deliberate exception (rail row, ADR-253).
+- **`+ Task` is back, minus the two places it was actually wrong.** Removing it sitewide was too wide a swing at a narrow problem: the complaint was that it reads as a duplicate of "Add subtask", which only exists on a task. On a note, a person, a meeting or a link, "make a task about this" is what the panel is for. It is now gated off for `task` and for widget-home records (canvas id `widgets` — Project, Pursuit, custom hubs), which have their own Tasks widget. `RelatedPanel` resolves `hostType`/`hostDef` before the nothing-linked-yet return so the gate holds on an item with no links at all.
+- **Every file row has a Download button.** `<a download>` is same-origin only, and `/files/<id>` is a 302 into R2, so the attribute was always ignored and the browser just rendered whatever R2's content-type allowed — a JSON backup opened in a tab instead of landing in Downloads. The button fetches the bytes and hands the blob to a synthetic link, so the filename is ours and the app server still never touches the bytes (the fetch follows the redirect straight to R2, which already allows GET from our origins — `scripts/r2-cors.mjs`). Failure falls back to opening it, with a toast.
+
+**Still unverified:** whether the file Tyler was looking at shows in the file canvas's LEAD panel. If that panel is empty too, the attachment row is parented to a different item than the one displaying it, which is a data question, not this one. The footer section reads the same query, so it would be empty as well.
+
 ## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
