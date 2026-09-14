@@ -564,6 +564,15 @@ Add a Tool menu everywhere — so a "Chapter" type becomes a Chapters card on
 your Book, with its own "+ Add chapter" and a full-page drill-down. Build the
 shape your work actually has.
 
+**Your own fields show up on the page.** A project-style record carries a
+**Properties** card holding the type's own fields, the scalar ones (a Scope
+select, a Live URL, a Stack) and the relation ones alike, editable right there.
+Until 2026-09-14 it didn't: fields rendered only on plain document pages, so a
+field you added to a project-style type was invisible on every record that had
+it, and the only way to set one was the list page's select mode. The card shows
+on any project-style type that actually defines fields, and like every other
+tool it can be removed and added back from the menu.
+
 **Finishing a project.** The record header carries a **Mark this project done**
 checkbox beside the status pill. It does two things at once: sets the project to
 its Done status, and completes everything still open inside it, so a finished
@@ -1050,8 +1059,11 @@ connected; that dead-end tab is the client closing its one-time listener.
 - **Handle files** — attach by URL or upload, then embed in the body.
 - **Link things** — relate and unrelate items, and confirm suggested links.
 - **Build the workspace** — create and edit types, views and dashboards, add
-  widgets, arrange a record's sections, and rearrange your nav. It reads
-  \`describe_workspace\` first and should confirm with you before committing.
+  widgets, arrange a record's sections, set the tab strip on a type's list page,
+  and rearrange your nav. It reads \`describe_workspace\` first and should confirm
+  with you before committing. Asking for "a tab on Projects for my personal ones"
+  is a single request now: it builds the view and puts it on the strip, instead
+  of building the view and leaving you the Build click.
 
 ## Two features that are off until you turn them on
 

@@ -53,6 +53,21 @@ export const WIDGET_CATALOG: WidgetDefinition[] = [
     hideOnDisable: false,
   },
   {
+    // The type's own custom fields on a widget-home record. Without this, a
+    // Project's scalar and relation properties had nowhere to render at all:
+    // WidgetCanvas renders neither CustomProperties nor RelationProperties, so a
+    // field added in Build was invisible and uneditable on every record that
+    // used it (found 2026-09-14, a Scope select on Project). Catalog-level, not
+    // Project-specific, because every widget-home type has the same hole.
+    id: "properties",
+    label: "Properties",
+    kind: "property",
+    requires: ["custom_properties"],
+    cardinality: "one",
+    scope: ["record"],
+    hideOnDisable: false,
+  },
+  {
     id: "status",
     label: "Status",
     kind: "property",
@@ -285,6 +300,7 @@ export function widgetById(id: string): WidgetDefinition | undefined {
 // type-capability gate has one place to live.
 const SATISFIABLE = new Set<string>([
   "overview_md",
+  "custom_properties",
   "status",
   "tasks",
   "notes",

@@ -304,6 +304,9 @@ async function dataForWidget(
     return { ...base, status: { key: record.status, category: record.statusCategory } };
   }
   if (def.id === "overview") return base; // canvas reads record.body directly
+  // Properties: the canvas reads the type's propertySchema + the record's own
+  // properties object directly, the same way the markdown canvas does.
+  if (def.id === "properties") return base;
 
   // Derived widgets.
   if (def.id === "nextAction") {

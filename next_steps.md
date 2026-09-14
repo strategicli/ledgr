@@ -2,6 +2,49 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## 🟡 BUILT, NEEDS BRANDON — type edits stop destroying icons and status colors, + properties on project records, + list tabs over MCP (2026-09-14, ADR-258, branch `fix/type-edits-preserve-presentation`)
+
+Tyler asked for a Scope field on his Project type and a tab on the project list
+page. Adding the field silently destroyed the type's icon and all of his custom
+status colors, with no way to get either back.
+
+One shape, twice: `update_type` and `set_type_statuses` replace wholesale, while
+`list_types` returned neither the icon nor the colors, so read-before-write could
+not preserve what it was never shown. `parseCommon` maps an omitted `icon` to
+`null`; the status mapper falls back to `CATEGORY_DEFAULT_COLOR` for any term
+resent without a color. Config has no revision history, the live instance is
+hosted, and the working copy's `.env.local` points at a stale database, so there
+was no restore path either.
+
+- **`update_type` patches now.** The merge sits at the MCP handler: read the
+  stored type, fill in the omitted fields, then hand it to `parseTypeInput`,
+  whose "patch" mode is untouched because the Build form legitimately posts
+  everything. `propertySchema` still replaces when sent, `icon: ""` still clears,
+  `label` is no longer required.
+- **`set_type_statuses` keeps a term's color** when it is resent by key without
+  one. Only a genuinely new key falls back to the category color.
+- **`list_types` returns `icon` and each term's `color`,** which is what makes a
+  deliberate round-trip possible at all.
+- **A `properties` widget** (catalog + `WidgetCanvas`) pairs `CustomProperties`
+  with `RelationProperties` on project-style records, which rendered the type's
+  own fields nowhere before this. It follows the Overview self-healing rule in
+  the same file: shown when the composition asks, or when the type defines fields
+  and the owner has not hidden it, because `reconcileComposition` never back-fills
+  a new widget into a stored composition.
+- **`set_list_tabs`** reads the effective strip with only `typeKey`, replaces it
+  with `tabs`, restores defaults on `reset`. Normalizes before `parseLenses` (a
+  view tab's label defaults to the view's name) and refuses an unknown `viewId`
+  by name, since `parseLenses` silently drops malformed entries.
+
+`typecheck`, `lint`, `build` green. `verify:ci` green except `verify-sync.mts`,
+the known flake logged below (same two messages; it passes in isolation both with
+and without this work).
+
+**Why it needs Brandon:** it changes the behavior of two existing MCP tools,
+which is the half of ADR-183's carve-out that stays core. No schema change, no
+wire break, and any caller sending a complete payload sees no difference.
+
+
 ## ✅ SHIPPED — nav tools/favorites popovers can't run off the screen any more (2026-09-14, non-core)
 
 Tyler: a nav group ("Other") with several children opened a menu that ran past
