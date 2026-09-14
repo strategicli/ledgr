@@ -2,6 +2,28 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — nav tools/favorites popovers can't run off the screen any more (2026-09-14, non-core)
+
+Tyler: a nav group ("Other") with several children opened a menu that ran past
+the bottom of the viewport on a short screen. Same failure as the old kebab bug,
+same fix. The popovers were `absolute` with hand-picked anchor classes
+(`top-full mt-2 left-0` under the top bar, `top-0` beside a rail): those know
+where the trigger sits in its own container, not where the screen ends, and the
+`max-h-[calc(100vh-1rem)]` capped the panel's HEIGHT without moving its starting
+offset, so a low rail slot or a laptop-height top bar clipped anyway.
+
+Every tools/favorites popover now portals to `<body>` and is placed in viewport
+coordinates by `placePop` (`src/components/nav/NavShell.tsx`), the sibling of
+`placeMenu` that already does this for More: it clamps horizontally, grows away
+from whichever half of the screen the trigger sits in, and hands the panel a
+measured `maxHeight` so a long group scrolls instead of clipping. `popMetaRef`
+carries the opening popover's width and its layout's grow direction
+(`PopMode`: side / above / below / mobile), armed by the trigger. The portaled
+wrapper carries the hover handlers too, so dragging the pointer from the trigger
+onto the menu still doesn't dismiss it. The phone bar keeps its static centered
+anchor and gains a `maxHeight` so a long group can't run off the top instead.
+`FavoritesFlyout` loses its `posClass` prop — it's always positioned now.
+
 ## ✅ SHIPPED — Files show everywhere again, + Task comes back, files download (2026-09-12, non-core)
 
 Three corrections after Tyler tested the 2026-09-11 batch on a `file` item.
