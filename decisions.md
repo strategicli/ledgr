@@ -4207,7 +4207,7 @@ The same sweep turned up three misreadings on the Updates page. The "Registered,
 ## ADR-258: type edits patch instead of replacing, and the owner's presentation choices survive a round-trip
 
 **Date:** 2026-09-14
-**Status:** proposed — needs Brandon's agreement before merge. Mostly additive (a response field, a new tool, a catalog widget), but it **changes the behavior of two existing MCP tools**, which is the half of ADR-183's carve-out that stays core. Nothing about it changes the database, and no existing caller that sends a complete payload sees any difference.
+**Status:** accepted, shipped 2026-09-14 (PR #385). Mostly additive (a response field, a new tool, a catalog widget), but it **changes the behavior of two existing MCP tools**, which is the half of ADR-183's carve-out that stays core. Nothing about it changes the database, and no existing caller that sends a complete payload sees any difference.
 
 **Context.** Tyler asked for a Scope field on his Project type and a tab on the project list page. Adding the field cost him the type's icon and every one of his custom status colors, and neither loss was recoverable.
 

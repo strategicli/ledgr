@@ -100,6 +100,7 @@ export default function CustomProperties({
   initial,
   hideHeading = false,
   bare = false,
+  wide = false,
   locked = false,
 }: {
   itemId: string;
@@ -112,6 +113,10 @@ export default function CustomProperties({
   hideHeading?: boolean;
   // Drop the wide centered-column padding for a narrow rail (task canvas).
   bare?: boolean;
+  // Lay the filled rows out across the available width instead of one narrow
+  // column (Tyler, 2026-09-14). For a wide surface like the project canvas,
+  // where a single stacked column leaves most of the row empty.
+  wide?: boolean;
   // When true (the item lock toggle): every field (and its clear button) is
   // disabled and can't be clicked into, via a disabled <fieldset> wrapper.
   locked?: boolean;
@@ -468,7 +473,13 @@ export default function CustomProperties({
       <fieldset disabled={locked} className="contents">
         <div className={`flex flex-col gap-2 ${locked ? "opacity-60" : ""}`}>
           {rowProps.length > 0 && (
-            <dl className="flex flex-col gap-2">
+            <dl
+              className={
+                wide
+                  ? "grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2 xl:grid-cols-3"
+                  : "flex flex-col gap-2"
+              }
+            >
               {rowProps.map((prop) =>
                 renderRow(prop, isFilled(values[prop.key], prop.kind), editing.has(prop.key))
               )}

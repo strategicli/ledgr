@@ -538,34 +538,6 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
         </div>
       )}
 
-      {/* The type's own fields: scalar ones over items.properties, relation ones
-          over relation edges, the same pairing MarkdownCanvas uses so a field
-          behaves identically wherever its type happens to render. Image-kind
-          properties are excluded for the same reason as there: they get their
-          own box rather than a text row. */}
-      {showProperties && propertySchema.length > 0 && (
-        <CanvasSection icon="properties" title="Properties" className="mb-5">
-          <div className="flex flex-col gap-2">
-            <CustomProperties
-              itemId={item.id}
-              typeKey={item.type}
-              schema={propertySchema.filter((pr) => pr.kind !== "image")}
-              initial={propsObj}
-              locked={locked}
-              hideHeading
-              bare
-            />
-            <RelationProperties
-              ownerId={ownerId}
-              itemId={item.id}
-              typeKey={item.type}
-              props={propertySchema}
-              hideHeading
-            />
-          </div>
-        </CanvasSection>
-      )}
-
       {cardWidgets.length === 0 ? (
         <EmptyState>No sections yet. Use “Add section” below to add one.</EmptyState>
       ) : (
@@ -601,6 +573,41 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
             };
           })}
         />
+      )}
+
+      {/* The type's own fields: scalar ones over items.properties, relation ones
+          over relation edges, the same pairing MarkdownCanvas uses so a field
+          behaves identically wherever its type happens to render. Image-kind
+          properties are excluded for the same reason as there: they get their
+          own box rather than a text row.
+
+          BELOW the tool cards, not above them (Tyler, 2026-09-14): the cards are
+          what a project is read for, and a field strip between the header and
+          the grid pushed them down the page. `wide` lays the fields out across
+          the full width instead of one narrow column, which left most of the
+          row empty on this canvas. */}
+      {showProperties && propertySchema.length > 0 && (
+        <CanvasSection icon="properties" title="Properties" className="mt-5 mb-5">
+          <div className="flex flex-col gap-3">
+            <CustomProperties
+              itemId={item.id}
+              typeKey={item.type}
+              schema={propertySchema.filter((pr) => pr.kind !== "image")}
+              initial={propsObj}
+              locked={locked}
+              hideHeading
+              bare
+              wide
+            />
+            <RelationProperties
+              ownerId={ownerId}
+              itemId={item.id}
+              typeKey={item.type}
+              props={propertySchema}
+              hideHeading
+            />
+          </div>
+        </CanvasSection>
       )}
 
       <div className="flex items-center justify-between gap-3">

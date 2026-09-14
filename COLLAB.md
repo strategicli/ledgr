@@ -204,11 +204,11 @@ Rule of thumb: a change to **core** (data model, the canonical body format, the 
 
 ## Tyler — current
 
-- **🟠 NEEDS YOUR AGREEMENT — CORE-ish, ADR-258 on `fix/type-edits-preserve-presentation`: type edits stop destroying the owner's icon and status colors.** Adding one property to my Project type over MCP wiped the type's icon and every custom status color, and nothing could restore them. `update_type` and `set_type_statuses` replace wholesale while `list_types` returned neither field, so read-before-write literally could not preserve them: an omitted `icon` parses to `null`, and a term resent without a color falls to the category default. Config has no revisions, so the loss was permanent.
+- **✅ SHIPPED (2026-09-14, PR #385), ADR-258 — heads-up, not a gate: type edits stop destroying the owner's icon and status colors.** Adding one property to my Project type over MCP wiped the type's icon and every custom status color, and nothing could restore them. `update_type` and `set_type_statuses` replace wholesale while `list_types` returned neither field, so read-before-write literally could not preserve them: an omitted `icon` parses to `null`, and a term resent without a color falls to the category default. Config has no revisions, so the loss was permanent.
 
   **The fix:** `update_type` patches (merge at the MCP handler, `parseTypeInput` and the Build form contract untouched, `propertySchema` still replaces when sent, `icon: ""` still clears); `set_type_statuses` keeps a term's stored color per key; `list_types` returns `icon` and `color`.
 
-  **Why it needs you:** it changes the behavior of two existing MCP tools, which is the half of ADR-183's carve-out that stays core. No schema change, no wire break, and any caller that sends a complete payload sees no difference. If you'd rather the merge live behind an explicit flag than be the default, say so and I'll change it.
+  **What to know:** it changes the behavior of two existing MCP tools. No schema change, no wire break, and any caller that sends a complete payload sees no difference. If you'd rather the merge live behind an explicit flag than be the default, say so and I'll change it.
 
   **Two additive things ride along** (solo per the carve-out, flagged so you're not surprised): a **`properties` widget** so project-style records finally render their type's own fields, which `WidgetCanvas` did nowhere before, so any field you added to a project-style type has been invisible on its records; and **`set_list_tabs`**, which puts a saved view on a type's list-page tab strip over MCP instead of only from Build. The properties card will start appearing on your project-style records that define fields, following the same self-healing rule the Overview already uses.
 
