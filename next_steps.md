@@ -2,6 +2,40 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — mention chips keep their icon on load, and the project Properties card moves below the tools (2026-09-14, non-core)
+
+Tyler: an @-mention written into a body over MCP rendered with the generic
+fallback glyph instead of its type's icon, corrected itself the moment he edited
+the canvas, then reverted on the next visit.
+
+**Root cause, and it is a load-order bug, not an icon bug.** The editor is
+constructed with `content: ""` on purpose (ADR-159: `setContent` on a ready
+editor parses markdown correctly where the constructor path does not), and the
+body arrives in a later effect via `setContent(..., { emitUpdate: false })`. The
+type-aware backfill (`GET /api/items?ids=`) ran once when the editor became
+ready, which is BEFORE the body existed: it collected zero mention ids, set
+`ready`, and stopped. The `editor.on("update")` retry never fired either, because
+loading a body deliberately is not a user edit. So every chip sat on the
+unresolved glyph until the first keystroke, and again on the next visit.
+
+- The backfill now reads `editor.getMarkdown() || initialMarkdown`, so it sees
+  the incoming body while the editor is still empty, and takes `initialMarkdown`
+  as a dependency so a host swapping documents re-resolves too. The chips mount
+  before the fetch returns either way; the existing rerender pass paints them.
+- **`POST /api/render-markdown` now resolves mentions too.** Separate gap, same
+  family, found while chasing the first: it called `markdownToHtml(toRender)`
+  with no mentions map, and that branch renders a mention with no type class and
+  no glyph at all. Print/share already passed the map; the Preview/read seam
+  never did.
+- **The project Properties card moved BELOW the tool cards** and lays its fields
+  out across the width (`wide` on `CustomProperties`: a responsive grid instead
+  of one narrow column). Above the grid it pushed the cards, which are what a
+  project is actually read for, down the page.
+
+`typecheck`, `lint`, `build` green; `verify:ci` green except the known
+`verify-sync.mts` flake logged below.
+
+
 ## 🟡 BUILT, NEEDS BRANDON — type edits stop destroying icons and status colors, + properties on project records, + list tabs over MCP (2026-09-14, ADR-258, branch `fix/type-edits-preserve-presentation`)
 
 Tyler asked for a Scope field on his Project type and a tab on the project list
