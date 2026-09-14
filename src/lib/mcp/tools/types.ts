@@ -50,8 +50,11 @@ export const typeTools: McpTool[] = [
       "list_items when you need the exact type key or the property keys to set. " +
       "Each type also reports how it tracks completion — statusMode (none | " +
       "checkbox | select) and, for select, its STATUS TERMS in order with each " +
-      "one's category and which is the default. Those are the exact status keys " +
-      "create_item/update_item accept; change them with set_type_statuses.",
+      "one's category, color, and which is the default. Those are the exact " +
+      "status keys create_item/update_item accept; change them with " +
+      "set_type_statuses. The type's `icon` and each term's `color` are the " +
+      "owner's choices: read them here and resend them if you rewrite a type, " +
+      "so an edit can't quietly flatten someone's palette.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async () => {
@@ -60,6 +63,12 @@ export const typeTools: McpTool[] = [
         types: defs.map((t) => ({
           key: t.key,
           label: t.label,
+          // The icon and the per-status colors are the owner's choices, and a
+          // read that omits them makes a lossless round-trip impossible: an
+          // update_type/set_type_statuses caller had nothing to resend, so it
+          // silently reset them. Both writes preserve on omission now; returning
+          // them here is the other half, so a model can also set them knowingly.
+          icon: t.icon,
           isSystem: t.isSystem,
           showInQuickCapture: t.showInQuickCapture,
           statusMode: t.statusMode,
@@ -71,6 +80,7 @@ export const typeTools: McpTool[] = [
                   key: s.key,
                   label: s.label,
                   category: s.category,
+                  color: s.color,
                   ...(s.isDefault ? { isDefault: true } : {}),
                 })),
                 statusesAreCustom: t.statusSchema != null,
@@ -140,34 +150,55 @@ export const typeTools: McpTool[] = [
     name: "update_type",
     title: "Update type",
     description:
-      "Edit an existing type by key. This REPLACES the type's editable fields " +
-      "(label, icon, propertySchema, showInQuickCapture, capability) wholesale, " +
-      "so to add one property you must resend the FULL propertySchema — read the " +
-      "current one (list_types/describe_workspace) and append your addition, or " +
-      "you'll drop the rest. The key is immutable and can't change here. System " +
-      "types (task, event, note, link, person) can be edited but not deleted. " +
-      "Confirm with the owner before changing a type that's in use.",
+      "Edit an existing type by key. This PATCHES: a field you omit keeps its " +
+      "stored value, so adding one property or renaming the label can't wipe the " +
+      "icon, the capability, or the rest of the schema. `propertySchema` is still " +
+      "the one field that replaces wholesale WHEN YOU SEND IT (it's a list, not a " +
+      "set of keys), so to add a property read the current one (list_types) and " +
+      "resend it with your addition appended. Pass icon:\"\" to deliberately clear " +
+      "the icon. The key is immutable and can't change here. System types (task, " +
+      "event, note, link, person) can be edited but not deleted. Confirm with the " +
+      "owner before changing a type that's in use.",
     inputSchema: {
       type: "object",
       properties: {
         key: { type: "string", description: "The type's key (slug) to edit." },
-        label: { type: "string", description: "Display name (required — resend the current one if unchanged)." },
-        icon: { type: "string", description: "Optional icon key." },
+        label: { type: "string", description: "Display name. Omit to keep the current one." },
+        icon: { type: "string", description: "Icon key. Omit to keep the current one; pass \"\" to clear it." },
         propertySchema: {
           type: "array",
-          description: "The FULL property list to store (replaces the existing one). See create_type for the per-field shape.",
+          description: "The FULL property list to store (replaces the existing one) — omit it entirely to leave the schema untouched. See create_type for the per-field shape.",
           items: { type: "object" },
         },
         showInQuickCapture: { type: "boolean", description: "Show in the quick-capture picker." },
         capability: { type: "string", description: "Bespoke-tool capability id, or omit/empty for the default canvas." },
       },
-      required: ["key", "label"],
+      required: ["key"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     handler: async (_ownerId, args) => {
       const key = reqString(args, "key").toLowerCase();
-      const updated = await updateType(key, parseTypeInput(args, "patch"));
+      // PATCH, not replace. parseTypeInput's "patch" mode is shaped for the Build
+      // form, which always posts every field, so an omitted key reads as "clear
+      // it" — over MCP that silently destroyed the owner's icon on any edit that
+      // only meant to add a property (2026-09-14, Tyler's project type). The form
+      // contract is left alone; the merge happens here, at the model's boundary,
+      // by filling omitted fields from the stored type before parsing.
+      const current = await getType(key);
+      const merged: Record<string, unknown> = {
+        ...args,
+        label: "label" in args ? args.label : current.label,
+        icon: "icon" in args ? args.icon : current.icon,
+        propertySchema:
+          "propertySchema" in args ? args.propertySchema : current.propertySchema,
+        showInQuickCapture:
+          "showInQuickCapture" in args
+            ? args.showInQuickCapture
+            : current.showInQuickCapture,
+        capability: "capability" in args ? args.capability : current.capability,
+      };
+      const updated = await updateType(key, parseTypeInput(merged, "patch"));
       return typeView(updated);
     },
   },
@@ -286,6 +317,15 @@ export const typeTools: McpTool[] = [
       }
 
       if (!Array.isArray(raw)) throw new ItemError("bad_request", "statuses must be an array");
+      // A term's color is the owner's choice, and list_types didn't return colors
+      // until now, so a read-then-resend round-trip had no way to carry one: every
+      // term came back colorless and got flattened to its category default, which
+      // is how Tyler's project board lost its palette on 2026-09-14. Keep the
+      // stored color for any key the caller isn't explicitly recoloring; only a
+      // genuinely new term falls back to the category color.
+      const storedColors = new Map(
+        resolveStatusSchema((await getType(key)).statusSchema).map((s) => [s.key, s.color])
+      );
       const seen = new Set<string>();
       const statuses: StatusDef[] = raw.map((entry, i) => {
         const at = `statuses[${i}]`;
@@ -316,7 +356,7 @@ export const typeTools: McpTool[] = [
         const color =
           typeof e.color === "string" && /^#[0-9a-fA-F]{6}$/.test(e.color.trim())
             ? e.color.trim()
-            : CATEGORY_DEFAULT_COLOR[cat];
+            : (storedColors.get(k) ?? CATEGORY_DEFAULT_COLOR[cat]);
         return {
           key: k,
           label,

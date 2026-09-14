@@ -112,9 +112,16 @@ to other items — carries a \`targetType\` and \`cardinality\` of \`single\` or
 - A type's \`key\` is a lowercase slug, immutable once created (it is the stable
   identifier behind every item and relation). The \`label\` is the display name
   and can change freely.
-- \`update_type\` replaces the type's editable fields wholesale. To add one
-  property, read the current schema (\`list_types\`), then resend the **full**
-  \`propertySchema\` with your addition appended — otherwise you drop the rest.
+- \`update_type\` **patches**: a field you leave out keeps its stored value, so
+  renaming a label can't wipe the icon or the capability. The one field that
+  still replaces wholesale *when you send it* is \`propertySchema\`, because it
+  is a list: to add one property, read the current schema (\`list_types\`), then
+  resend the **full** list with your addition appended. Pass \`icon: ""\` when
+  you actually mean to clear the icon.
+- **The owner's presentation choices are theirs.** A type's \`icon\` and each
+  status term's \`color\` are picked by hand and noticed immediately when they
+  change. \`list_types\` returns both, and the writes preserve them on omission,
+  so neither can be lost to a round-trip. If you deliberately restyle one, say so.
 - Prefer one well-shaped bespoke type over many tiny ones. "Make me a place to
   track sermons" = a \`sermon\` type with the few properties that matter
   (e.g. a \`series\` select, a \`date\`, a \`passage\` relation), not a pile of
@@ -158,6 +165,25 @@ status, a due/scheduled/meeting date window, a related item, or a custom
 - \`update_view\` is a full replace (read it via \`list_views\` first); **system
   views can't be edited.**
 - Use \`run_view\` to see what a view currently returns before or after editing.
+
+## List tabs (\`set_list_tabs\`)
+
+A saved view is reached by name; a **list tab** puts one on a type's own list
+page (\`/list/<key>\`), in the strip across the top. That is the difference
+between a view the owner has to go find and a view that is simply *there* when
+they open Projects, so when someone asks for "a tab", this is the tool, not
+\`create_view\` alone. Create the view first, then add it as a tab.
+
+- Every type gets four virtual defaults free (Recent, Newest, A to Z, Most
+  linked). Projects also lead with **Board** (the status kanban) and close with
+  **Completed**; events lead with Calendar and Agenda.
+- Writing a strip **replaces** the whole thing, defaults included, so call
+  \`set_list_tabs\` with only \`typeKey\` first to read the current strip, then
+  resend it with your addition in place. \`reset: true\` restores the defaults.
+- Tab kinds: \`view\` (a saved view, by \`viewId\`), \`sort\` (the plain list in an
+  order), \`board\` and \`completed\` (a type's own kanban and its finished
+  archive), plus \`calendar\` and \`timeline\` on events. A view tab's label
+  defaults to the view's name.
 
 ## Dashboards & widgets (\`create_dashboard\`, \`add_widget\`)
 
