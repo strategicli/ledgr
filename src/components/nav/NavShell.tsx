@@ -119,6 +119,12 @@ const POSITIONS: { value: NavPosition; label: string }[] = [
 
 // The collapse arrow steps fat → thin → hidden → fat.
 const NEXT_RAIL: Record<RailSize, RailSize> = { fat: "thin", thin: "hidden", hidden: "fat" };
+// Which way a layout's tools/favorites popover grows from its trigger: beside it
+// (side rails), up off the bottom pill, down from the top bar, or the phone
+// bar's static centered anchor. placePop reads this.
+type PopMode = "side" | "above" | "below" | "mobile";
+const TOOLS_POP_W = 208; // w-52
+const FAVORITES_POP_W = 256; // w-64
 const RAIL_NEXT_LABEL: Record<RailSize, string> = {
   fat: "Collapse to icons",
   thin: "Hide menu",
@@ -188,6 +194,20 @@ export default function NavShell({
     hoverClose,
     toggle: toggleTools,
   } = useHoverPopover("[data-nav-tools]");
+  // A tools/favorites popover is PORTALED and viewport-clamped, exactly like the
+  // More menu above and for the same reason (Tyler, 2026-09-14): the old
+  // `absolute` anchor classes knew where the trigger sat in its own container
+  // but not where the viewport ended, so a group with several children ran off
+  // the bottom of a short screen — a rail slot low down, the top bar on a
+  // laptop. One popover is open at a time, so one ref + one set of coords does
+  // for all of them; popMetaRef carries the opening popover's width and which
+  // way it should grow, armed by the trigger that opens it.
+  const popWrapRef = useRef<HTMLDivElement>(null);
+  const popMetaRef = useRef<{ width: number; mode: PopMode }>({
+    width: TOOLS_POP_W,
+    mode: "side",
+  });
+  const [popCoords, setPopCoords] = useState<CSSProperties | null>(null);
   // The phone bottom bar is the first row of the pull-up drawer (ADR-143): the
   // Launcher panel owns the swipe/drag gesture for the whole surface, so the
   // old per-bar swipe-up detection (S6a) is gone.
@@ -337,6 +357,65 @@ export default function NavShell({
       window.removeEventListener("scroll", placeMenu, true);
     };
   }, [menuOpen, placeMenu]);
+
+  // Place a tools/favorites popover in VIEWPORT coordinates (see popWrapRef).
+  // Horizontal: beside the trigger for a rail, centered on it above the bottom
+  // pill, left-aligned under the top bar — then clamped to the screen. Vertical:
+  // grow away from whichever half the trigger sits in, and hand the panel a
+  // maxHeight so a long list scrolls instead of clipping.
+  const placePop = useCallback(() => {
+    const el = popWrapRef.current;
+    if (!el) return;
+    const { width: W, mode } = popMetaRef.current;
+    // The phone bar's popover is statically centered above it (MOBILE_POPOVER_STYLE).
+    if (mode === "mobile") return;
+    const r = el.getBoundingClientRect();
+    const m = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left =
+      mode === "side"
+        ? navPosition === "left"
+          ? r.right + m
+          : r.left - W - m
+        : mode === "above"
+          ? r.left + r.width / 2 - W / 2
+          : r.left;
+    left = Math.max(m, Math.min(left, vw - W - m));
+    // A side popover sits beside its trigger (aligned to its near edge); an
+    // above/below one clears the trigger entirely.
+    if (r.top + r.height / 2 > vh / 2) {
+      const edge = mode === "side" ? r.bottom : r.top - m;
+      setPopCoords({
+        position: "fixed",
+        left,
+        bottom: Math.max(m, vh - edge),
+        maxHeight: Math.max(120, edge - m),
+      });
+    } else {
+      const edge = mode === "side" ? r.top : r.bottom + m;
+      setPopCoords({
+        position: "fixed",
+        left,
+        top: Math.max(m, edge),
+        maxHeight: Math.max(120, vh - edge - m),
+      });
+    }
+  }, [navPosition]);
+
+  useLayoutEffect(() => {
+    if (openTools) placePop();
+  }, [openTools, placePop]);
+
+  useEffect(() => {
+    if (!openTools) return;
+    window.addEventListener("resize", placePop);
+    window.addEventListener("scroll", placePop, true);
+    return () => {
+      window.removeEventListener("resize", placePop);
+      window.removeEventListener("scroll", placePop, true);
+    };
+  }, [openTools, placePop]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const slotActive = (slot: ShellSlot): boolean =>
@@ -489,40 +568,46 @@ export default function NavShell({
   }
 
   // A popover opened from the mobile fixed bar is centered above the bar, pinned
-  // to the viewport. It must be portaled to <body>: the pill has `backdrop-blur`
-  // (and a centering transform), and each makes a `position: fixed` descendant
-  // resolve against the pill's box, not the viewport — so an in-tree fixed
-  // popover lands wrong. The portal escapes that. This replaces the old
-  // per-trigger rect-measurement (popRect + fixedPopoverStyle): a static
-  // viewport-centered anchor is enough now the scroll strip is gone (Q7), and it
-  // can't overflow a screen edge the way a slot-centered `absolute` popover would.
+  // to the viewport, and capped so a long group scrolls rather than running off
+  // the top. A static anchor is enough here now the scroll strip is gone (Q7).
   const MOBILE_POPOVER_STYLE: CSSProperties = {
     position: "fixed",
     left: "50%",
     transform: "translateX(-50%)",
     bottom: "calc(4.75rem + env(safe-area-inset-bottom))",
+    maxHeight: "calc(100vh - 6rem - env(safe-area-inset-bottom))",
   };
-  // Wrapped in `data-nav-tools` so the outside-click closer still counts clicks
-  // inside it as "inside" (the portal moves it out of the trigger's subtree).
-  const mountMobilePopover = (node: ReactNode) =>
+  // Every tools/favorites popover portals to <body>. On the mobile bar it has to:
+  // the pill has `backdrop-blur` and a centering transform, and each makes a
+  // `position: fixed` descendant resolve against the pill's box, not the
+  // viewport. On desktop it's what lets placePop position the panel in viewport
+  // coordinates instead of inside a container that doesn't know where the screen
+  // ends. Wrapped in `data-nav-tools` so the outside-click closer still counts
+  // clicks inside it as "inside", and carrying the hover handlers so dragging the
+  // pointer from the trigger onto the menu doesn't dismiss it (the portal moves
+  // it out of the trigger's subtree).
+  const mountPopover = (id: string, node: ReactNode) =>
     typeof document === "undefined"
       ? null
-      : createPortal(<div data-nav-tools>{node}</div>, document.body);
+      : createPortal(
+          <div data-nav-tools onMouseEnter={() => hoverOpen(id)} onMouseLeave={hoverClose}>
+            {node}
+          </div>,
+          document.body
+        );
 
-  // The popover a tools group opens. Desktop layouts anchor it `absolute` to the
-  // slot's `relative` wrapper via `posClass`; the mobile bar (`mobileBar`) anchors
-  // it `fixed`, centered above the bar (portaled by the caller).
+  // The popover a tools group opens: always `fixed`, positioned by `style` —
+  // placePop's measured coords on desktop, MOBILE_POPOVER_STYLE on the phone bar.
   function toolsPopover(
     slot: Extract<ShellSlot, { kind: "tools" }>,
     id: string,
-    posClass: string,
-    mobileBar = false
+    style: CSSProperties
   ) {
     return (
       <div
         role="menu"
-        style={mobileBar ? MOBILE_POPOVER_STYLE : undefined}
-        className={`${mobileBar ? "fixed max-w-[calc(100vw-1rem)]" : "absolute"} z-50 max-h-[calc(100vh-1rem)] w-52 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50 ${mobileBar ? "" : posClass}`}
+        style={style}
+        className="fixed z-50 w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl shadow-black/50"
       >
         <p className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
           {slot.label}
@@ -534,20 +619,24 @@ export default function NavShell({
 
   // One slot renderer for every layout: a destination (link, or the search
   // palette button), or a tools group button that toggles its popover.
-  // `classNameFor` is the layout's class builder; `toolsPos` anchors the popover.
+  // `classNameFor` is the layout's class builder; `popMode` says which way this
+  // layout's popovers grow (see placePop) — "mobile" is the phone fixed bar.
   // The count always rides the icon's corner (CountBubble), in every layout.
   function renderSlot(
     slot: ShellSlot,
     id: string,
     classNameFor: (active: boolean) => string,
     showLabel: boolean,
-    toolsPos: string,
-    // On the mobile fixed bar, tools/favorites popovers portal to <body> and
-    // center above the bar so they escape the pill's blur/transform and can't
-    // overflow a screen edge.
-    mobileBar = false
+    popMode: PopMode
   ) {
+    const mobileBar = popMode === "mobile";
     const className = classNameFor(slotActive(slot));
+    // Tell placePop how wide this popover is and which way it grows, before the
+    // open that triggers the measurement.
+    const arm = (width: number) => {
+      popMetaRef.current = { width, mode: popMode };
+    };
+    const popStyle: CSSProperties | null = mobileBar ? MOBILE_POPOVER_STYLE : popCoords;
     const inner = (
       <>
         <IconWithCount icon={slot.icon} count={slot.count} />
@@ -561,8 +650,12 @@ export default function NavShell({
         <div
           key={id}
           data-nav-tools
+          ref={open ? popWrapRef : null}
           className="relative"
-          onMouseEnter={() => hoverOpen(id)}
+          onMouseEnter={() => {
+            arm(TOOLS_POP_W);
+            hoverOpen(id);
+          }}
           onMouseLeave={hoverClose}
         >
           <button
@@ -570,6 +663,7 @@ export default function NavShell({
               // On the bar row, first collapse the drawer so the popover opens
               // against the docked bar (its fixed anchor assumes the bottom edge).
               if (mobileBar) setLauncherOpen(false);
+              arm(TOOLS_POP_W);
               toggleTools(id);
             }}
             aria-haspopup="menu"
@@ -580,10 +674,7 @@ export default function NavShell({
           >
             {inner}
           </button>
-          {open &&
-            (mobileBar
-              ? mountMobilePopover(toolsPopover(slot, id, "", true))
-              : toolsPopover(slot, id, toolsPos))}
+          {open && popStyle && mountPopover(id, toolsPopover(slot, id, popStyle))}
         </div>
       );
     }
@@ -619,8 +710,12 @@ export default function NavShell({
         <div
           key={id}
           data-nav-tools
+          ref={open ? popWrapRef : null}
           className="relative"
-          onMouseEnter={() => hoverOpen(id)}
+          onMouseEnter={() => {
+            arm(FAVORITES_POP_W);
+            hoverOpen(id);
+          }}
           onMouseLeave={hoverClose}
         >
           <button
@@ -628,6 +723,7 @@ export default function NavShell({
               // Collapse the drawer first so the flyout opens against the
               // docked bar (its fixed anchor assumes the bottom edge).
               if (mobileBar) setLauncherOpen(false);
+              arm(FAVORITES_POP_W);
               toggleTools(id);
             }}
             aria-haspopup="menu"
@@ -639,17 +735,11 @@ export default function NavShell({
             {inner}
           </button>
           {open &&
-            (mobileBar
-              ? mountMobilePopover(
-                  <FavoritesFlyout
-                    posClass=""
-                    fixedStyle={MOBILE_POPOVER_STYLE}
-                    onNavigate={() => setOpenTools(null)}
-                  />
-                )
-              : (
-                <FavoritesFlyout posClass={toolsPos} onNavigate={() => setOpenTools(null)} />
-              ))}
+            popStyle &&
+            mountPopover(
+              id,
+              <FavoritesFlyout fixedStyle={popStyle} onNavigate={() => setOpenTools(null)} />
+            )}
         </div>
       );
     }
@@ -860,7 +950,7 @@ export default function NavShell({
       } ${extraClass}`}
     >
       {barSlots.map(({ slot, id }) =>
-        renderSlot(slot, id, pillSlot, true, "bottom-full mb-2 left-1/2 -translate-x-1/2")
+        renderSlot(slot, id, pillSlot, true, "above")
       )}
       {pillTrailingControls}
     </div>
@@ -893,7 +983,7 @@ export default function NavShell({
           control reachable instead of pushing Search/New off the edge. */}
       <div className="no-scrollbar flex min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto">
         {mobileBarSlots.slice(0, RECOMMENDED_MOBILE_NAV_SLOTS).map(({ slot, id }) =>
-          renderSlot(slot, id, pillSlotMobile, slotActive(slot), "", true)
+          renderSlot(slot, id, pillSlotMobile, slotActive(slot), "mobile")
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">{mobileTrailingControls}</div>
@@ -961,7 +1051,7 @@ export default function NavShell({
           >
             <Logo className="-ml-1" />
             {desktopSlots.map(({ slot, id }) =>
-              renderSlot(slot, id, topSlot, true, "top-full mt-2 left-0")
+              renderSlot(slot, id, topSlot, true, "below")
             )}
             <div className={`flex items-center gap-1 ${density === "spread" ? "ml-auto" : ""}`}>
               {syncEnabled && <SyncPill tooltipSide="bottom" />}
@@ -1050,7 +1140,7 @@ export default function NavShell({
                 id,
                 railSize === "fat" ? railFatSlot : railThinSlot,
                 railSize === "fat",
-                `${navPosition === "left" ? "left-full ml-2" : "right-full mr-2"} top-0`
+                "side"
               )
             )}
           </div>
