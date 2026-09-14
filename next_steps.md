@@ -2,6 +2,34 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — describe_workspace returns nav slot icons, so editing the nav can't re-icon it (2026-09-14, non-core)
+
+Third instance of one bug shape in one day, and the first two are ADR-258: **a
+read that omits a field, plus a write that replaces wholesale, silently destroys
+whatever the read dropped.** Here it cost Tyler every icon in his nav rail.
+
+`slotView` returned `{ type, label, href, kind }` and no `icon`, for slots, tools
+groups, and group children alike. `update_nav` replaces the entire middle-slot
+list, so the ordinary flow (read the nav, change one slot, send the list back)
+posted every slot without an icon. `parseNavDestination` defaults a missing icon
+to `NAV_ICON_FALLBACK` instead of refusing the slot, so the nav came back intact
+in every respect except that all of it wore the generic glyph. The type icons
+were never touched, which is why Build → Types looked right the whole time and
+only the rail looked wrong.
+
+- `slotView` now returns `icon` on destinations, tools groups, and children, plus
+  `badge` (same exposure: it round-trips through the parser and was being dropped
+  the same way).
+- `update_nav`'s description says outright that dropping `icon` re-icons the nav
+  rather than being refused.
+
+**The general lesson, now three for three:** before resending anything to a
+wholesale-replace write, check that the read returns every field the write
+accepts. Where it does not, the round-trip is lossy no matter how careful the
+caller is. Worth an audit of the remaining replace-style tools (`update_view` is
+the obvious next one) rather than waiting to find the fourth.
+
+
 ## ✅ SHIPPED — mention chips keep their icon on load, and the project Properties card moves below the tools (2026-09-14, non-core)
 
 Tyler: an @-mention written into a body over MCP rendered with the generic
