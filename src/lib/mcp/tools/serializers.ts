@@ -116,15 +116,37 @@ export function dashView(d: Dashboard) {
 }
 
 // A nav slot, compactly: a destination's route, or a tools group's children.
+// `icon` is returned on every slot and child, and that is load-bearing, not
+// detail: update_nav REPLACES the whole slot list, so a caller reads the nav,
+// edits one slot, and sends the list back. While this view omitted icons, that
+// round-trip stamped the owner's entire nav with the generic fallback glyph,
+// because parseNavDestination defaults a missing icon to NAV_ICON_FALLBACK
+// rather than rejecting the slot (2026-09-14, Tyler's rail). Same shape as the
+// type icon/color loss in ADR-258: a lossy read plus a wholesale write silently
+// destroys a presentation choice. Anything added to a slot belongs here too.
 function slotView(slot: NavSlotConfig) {
   if (slot.type === "tools") {
     return {
       type: "tools" as const,
       label: slot.label,
-      children: slot.children.map((c) => ({ label: c.label, href: c.href, kind: c.kind })),
+      icon: slot.icon,
+      children: slot.children.map((c) => ({
+        label: c.label,
+        href: c.href,
+        kind: c.kind,
+        icon: c.icon,
+        ...(c.badge ? { badge: c.badge } : {}),
+      })),
     };
   }
-  return { type: "destination" as const, label: slot.label, href: slot.href, kind: slot.kind };
+  return {
+    type: "destination" as const,
+    label: slot.label,
+    href: slot.href,
+    kind: slot.kind,
+    icon: slot.icon,
+    ...(slot.badge ? { badge: slot.badge } : {}),
+  };
 }
 
 // The navigation shape describe_workspace + update_nav report: the layout knobs,
