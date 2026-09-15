@@ -1,10 +1,18 @@
-// Client half of the paper canvas (Papers module; v5 feedback). Three surfaces —
-// Quote Bank · Outline · Draft — and the single writer of the paper's
+// Client half of the paper canvas (Papers module; v5 feedback). Five surfaces —
+// Notes · Shape · Quote Bank · Outline · Draft — and the single writer of the paper's
 // items.properties (so nothing races a generic properties panel). The Quote Bank
 // is where quotes are pasted and filed to a section; the Outline (sections →
 // paragraphs → filed quotes, modeled on ty-docs/1peter_outline_viewer.html) is
 // the drafting reference (with a Preview + HTML output); the Draft is the
 // canonical markdown body the writer composes themselves.
+//
+// Notes (Tyler, 2026-09-14) is the ordinary markdown writing surface, first in
+// the strip: the body is the canonical draft and the scaffold is structured
+// data, so the loose thinking a paper starts as — the argument you're circling,
+// what the professor actually asked for, a thought to come back to — had
+// nowhere to live. It rides in properties.notes and therefore must be written
+// through buildProps like every other key this component owns, since a
+// wholesale properties write from here would otherwise drop it.
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,15 +20,17 @@ import { bodyMarkdown, makeMarkdownBody, wordCountOf } from "@/lib/body";
 import { useItemAutosave } from "@/components/chord-editor/useItemAutosave";
 import { buildOutlineHtml } from "@/lib/papers/outline-html";
 import type { OutlineSection, PaperMeta as Meta, QuoteEntry } from "@/lib/papers/types";
+import NotesTab from "@/components/canvas/NotesTab";
 import OutlineTab from "@/components/paper-editor/OutlineTab";
 import PaperMarkdownArea from "@/components/paper-editor/PaperMarkdownArea";
 import PaperMeta from "@/components/paper-editor/PaperMeta";
 import QuoteBank from "@/components/paper-editor/QuoteBank";
 import ShapeTab from "@/components/paper-editor/ShapeTab";
 
-// Four surfaces in order: Shape (set up sections) → Quote Bank (gather + file all
-// quotes) → Outline (notes + filed quotes + Preview/clean page) → Draft (write).
-type Tab = "shape" | "quotes" | "outline" | "draft";
+// Five surfaces in order: Notes (think) → Shape (set up sections) → Quote Bank
+// (gather + file all quotes) → Outline (notes + filed quotes + Preview/clean
+// page) → Draft (write).
+type Tab = "notes" | "shape" | "quotes" | "outline" | "draft";
 
 type Props = {
   itemId: string;
@@ -101,13 +111,16 @@ function migrateScaffold(props: Record<string, unknown>): {
 // initial object is preserved untouched on every write.
 const META_KEYS: (keyof Meta)[] = ["school", "paper_type", "course", "author", "location", "paper_date", "stage"];
 
+function initialNotesOf(props: Record<string, unknown>): string {
+  return typeof props.notes === "string" ? props.notes : "";
+}
+
 export default function PaperCanvasClient({ itemId, initialTitle, initialBody, initialProperties, createdAt }: Props) {
   const initialProps = (initialProperties as Record<string, unknown> | null) ?? {};
 
-  // Workflow order: Shape (set up sections) → Quote Bank (gather + file) → Draft.
-  const [tab, setTab] = useState<Tab>("shape");
   const [title, setTitle] = useState(initialTitle);
   const [draft, setDraft] = useState(() => bodyMarkdown(initialBody));
+  const [notes, setNotes] = useState(() => initialNotesOf(initialProps));
   // Migrate older scaffolds once on load (recovers pre-rebuild sections + quote
   // assignments) — a lazy initializer runs exactly once, so section/paragraph
   // ids stay stable across renders without reading a ref during render.
@@ -134,6 +147,12 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
     return { meta: m, dateSeeded };
   });
   const [meta, setMeta] = useState<Meta>(init.meta);
+  // Workflow order: Notes (think) → Shape → Quote Bank → Outline → Draft. A
+  // paper with nothing shaped and nothing drafted is one that hasn't started,
+  // so it opens on Notes; anything further along keeps the old Shape landing.
+  const [tab, setTab] = useState<Tab>(() =>
+    migrated.sections.length === 0 && !bodyMarkdown(initialBody).trim() ? "notes" : "shape"
+  );
 
   const basePropsRef = useRef(initialProps);
   const draftRef = useRef<HTMLTextAreaElement>(null);
@@ -141,11 +160,17 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
 
   // Rebuild the full properties object: preserve unknown/system keys, overwrite
   // the keys this canvas owns.
-  const buildProps = (over?: { meta?: Meta; sections?: OutlineSection[]; quotes?: QuoteEntry[] }) => ({
+  const buildProps = (over?: {
+    meta?: Meta;
+    sections?: OutlineSection[];
+    quotes?: QuoteEntry[];
+    notes?: string;
+  }) => ({
     ...basePropsRef.current,
     ...(over?.meta ?? meta),
     sections: over?.sections ?? sections,
     quoteBank: over?.quotes ?? quotes,
+    notes: over?.notes ?? notes,
   });
 
   // Persist once on mount when we seeded the date and/or upgraded an older
@@ -160,6 +185,10 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
   const commitDraft = (text: string) => {
     setDraft(text);
     patch({ body: makeMarkdownBody(text) });
+  };
+  const commitNotes = (next: string) => {
+    setNotes(next);
+    patch({ properties: buildProps({ notes: next }) });
   };
   const commitSections = (next: OutlineSection[]) => {
     setSections(next);
@@ -209,6 +238,7 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
   };
 
   const tabs: [Tab, string][] = [
+    ["notes", "Notes"],
     ["shape", "Shape"],
     ["quotes", "Quote Bank"],
     ["outline", "Outline"],
@@ -263,6 +293,14 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
       </div>
 
       <div className="py-4">
+        {tab === "notes" && (
+          <NotesTab
+            itemId={itemId}
+            initialNotes={notes}
+            onChange={commitNotes}
+            placeholder="Thinking space — the argument you're circling, what the assignment actually asks for, anything to come back to. Not part of the draft or the export."
+          />
+        )}
         {tab === "shape" && <ShapeTab sections={sections} onSections={commitSections} />}
         {tab === "quotes" && (
           <QuoteBank sections={sections} quotes={quotes} onSections={commitSections} onQuotes={commitQuotes} />

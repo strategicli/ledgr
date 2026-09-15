@@ -29,7 +29,7 @@ import {
   MARKDOWN_FORMAT,
   type ItemBody,
 } from "@/lib/body";
-import { extractBodyText } from "@/lib/body-text";
+import { extractBodyText, notesMarkdown } from "@/lib/body-text";
 // Type-only (erased at runtime): types.ts imports ItemError from items.ts, so
 // a value import of getType would form a circular dependency. getType is
 // loaded dynamically inside moveItemType instead.
@@ -290,7 +290,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
       type: input.type,
       title: input.title ?? "",
       body,
-      bodyText: extractBodyText(body),
+      bodyText: extractBodyText(body, input.properties),
       status: statusKey,
       statusCategory: statusCat,
       dueDate: input.dueDate ?? null,
@@ -635,9 +635,28 @@ export async function updateItem(
     }
   }
   if (patch.inbox !== undefined) set.inbox = patch.inbox;
+  // body_text carries the canvas Notes tab's markdown alongside the body
+  // (body-text.ts), so a notes-only save has to recompute it too — otherwise
+  // notes written on a paper or a song would never reach search. The notes this
+  // write lands on are resolved here in JS because the propertyPatch branch
+  // merges in SQL, so `set.properties` can't be read back; an untouched write
+  // falls through to the stored object and recomputes nothing.
+  const nextProperties =
+    patch.properties !== undefined
+      ? patch.properties
+      : patch.propertyPatch !== undefined
+        ? {
+            ...((existing[0].properties as Record<string, unknown> | null) ?? {}),
+            ...patch.propertyPatch,
+          }
+        : existing[0].properties;
+  const notesChanged =
+    notesMarkdown(nextProperties) !== notesMarkdown(existing[0].properties);
   if (writeBody) {
     set.body = patch.body;
-    set.bodyText = extractBodyText(patch.body);
+    set.bodyText = extractBodyText(patch.body, nextProperties);
+  } else if (notesChanged) {
+    set.bodyText = extractBodyText(existing[0].body, nextProperties);
   }
   if (Object.keys(set).length === 0) {
     // A patch that carried only a no-op body (the editor's on-open phantom
@@ -982,7 +1001,7 @@ export async function restoreRevision(
   const body = rev[0].body;
   const rows = await db
     .update(items)
-    .set({ body, bodyText: extractBodyText(body) })
+    .set({ body, bodyText: extractBodyText(body, current.properties) })
     .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
   // The restored body's mentions + passage refs are the live ones now.

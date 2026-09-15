@@ -2,6 +2,46 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+
+## ✅ SHIPPED — a Notes tab on papers and songs, first in the strip (2026-09-14, non-core)
+
+Tyler: "songs and papers really need a writing canvas to them." Both types spend
+their body on a finished artifact — a song's ChordPro chart, a paper's canonical
+draft — and their canvases are built around producing that artifact. Neither had
+anywhere to put the thinking that comes *before* one, so it went into a separate
+note and lost its connection to the record. (Found the hard way: a song idea
+filed tonight ended up as a song item plus a loose sibling note.)
+
+**Notes is the ordinary markdown surface, mounted over `properties.notes`
+instead of over the body.** It is literally `BodyEditor`, so rich/source/preview,
+the slash menu, @-mentions and attachments all come along — a note written here
+behaves like a note written anywhere else. New shared component
+`src/components/canvas/NotesTab.tsx`; both canvases render it as their first tab.
+
+- **Songs** (`ChordCanvasClient`): strip is now Notes · Lyrics · Edit · Preview.
+  The chart-only controls (Copy for Planning Center, Save lyrics, Transpose) hide
+  on Notes. Written as a per-key `propertyPatch`, because the generic Properties
+  panel below the canvas writes the same object and a wholesale replace from here
+  would clobber Key/Tempo/Themes.
+- **Papers** (`PaperCanvasClient`): strip is now Notes · Shape · Quote Bank ·
+  Outline · Draft. That component is the single writer of its properties, so
+  notes go through `buildProps` like every other key it owns.
+- **Landing:** a record that hasn't started opens on Notes (song: no chart
+  sections; paper: no sections and no draft). Anything further along keeps its
+  old landing, so nothing moves under an in-flight paper.
+
+**The part that isn't the tab: search.** `body_text` is app-maintained and was
+the only text index, so notes parked in `properties` would have been invisible to
+search — a drawer things fall into. `extractBodyText` now takes the properties
+alongside the body and folds the notes in, and `updateItem` recomputes
+`body_text` when the notes change *without* a body write (resolving the next
+notes in JS, since the `propertyPatch` branch merges in SQL and `set.properties`
+can't be read back). `restoreRevision` passes the current properties through so
+restoring an old body doesn't drop the notes half of the index.
+
+**Deliberately not done:** notes stay out of print, share, `.docx` export and
+`flattenTabs`. They're working material, not the artifact. Revisit if that turns
+out to be the wrong call in use.
 ## ✅ SHIPPED — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-259, branch `feat/memory-supersedes`, PR #388, non-core)
 
 Came out of a sourced review of durable-memory practice (the Ledgr note
