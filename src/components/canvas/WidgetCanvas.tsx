@@ -32,6 +32,9 @@ import MindmapWidget from "@/components/canvas/widgets/MindmapWidget";
 import FilePanel from "@/components/attachments/FilePanel";
 import ProjectPeople from "@/components/canvas/widgets/ProjectPeople";
 import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
+import CanvasSection from "@/components/canvas/CanvasSection";
+import CustomProperties from "@/components/build/CustomProperties";
+import RelationProperties from "@/components/relations/RelationProperties";
 import type { CanvasProps } from "@/lib/modules";
 import { bodyMarkdown } from "@/lib/body";
 import { resolveComposition, widgetLimit, widgetTitle, type Composition } from "@/lib/composition";
@@ -50,7 +53,7 @@ import { getType } from "@/lib/types";
 // is a section card. Overview joined the header 2026-08-17 (Tyler): the
 // project's one-paragraph identity reads directly under the title as an
 // inline-editable block, not as a peer of the collection cards.
-const HEADER_WIDGETS = new Set(["status", "people", "progress", "overview"]);
+const HEADER_WIDGETS = new Set(["status", "people", "progress", "overview", "properties"]);
 
 // Card title overrides — the Notes collection reads as "Docs" on a project
 // (Tyler's wording), without renaming the widget everywhere else.
@@ -74,6 +77,7 @@ const PROJECT_SECTIONS = new Set([
   "status",
   "people",
   "progress",
+  "properties",
 ]);
 
 const CATEGORY_DOT: Record<string, string> = {
@@ -443,6 +447,26 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
   const hasOverviewText = bodyMarkdown(item.body).trim().length > 0;
   const showOverview = Boolean(overviewData) || (hasOverviewText && !overviewHidden);
 
+  // Properties, on the same self-healing rule as the Overview above and for the
+  // same reason: this canvas rendered the type's custom fields NOWHERE, so a
+  // Scope select added on Build was invisible and uneditable on every project
+  // that had it (2026-09-14). A stored composition is never back-filled with a
+  // new catalog widget (reconcileComposition only drops vanished ones), so
+  // waiting for the composition to list it would leave every existing record
+  // blind. Show it when the layout asks for it, OR whenever the type actually
+  // defines fields and the owner hasn't deliberately hidden the section.
+  const propertySchema = typeDef?.propertySchema ?? [];
+  const propsObj = (item.properties as Record<string, unknown> | null) ?? {};
+  const propertiesHidden = composition.widgets.some(
+    (w) => w.defId === "properties" && w.hidden
+  );
+  const showProperties =
+    headerWidgets.some((d) => d.def.id === "properties") ||
+    (propertySchema.length > 0 && !propertiesHidden);
+  // A locked record (items.properties.locked, the canvas "⋯" menu) renders its
+  // fields read-only, matching MarkdownCanvas.
+  const locked = Boolean(propsObj.locked);
+
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const statusMode = typeDef?.statusMode ?? "checkbox";
   const showStatus = Boolean(statusData) && statusMode !== "none" && statuses.length > 0;
@@ -549,6 +573,41 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
             };
           })}
         />
+      )}
+
+      {/* The type's own fields: scalar ones over items.properties, relation ones
+          over relation edges, the same pairing MarkdownCanvas uses so a field
+          behaves identically wherever its type happens to render. Image-kind
+          properties are excluded for the same reason as there: they get their
+          own box rather than a text row.
+
+          BELOW the tool cards, not above them (Tyler, 2026-09-14): the cards are
+          what a project is read for, and a field strip between the header and
+          the grid pushed them down the page. `wide` lays the fields out across
+          the full width instead of one narrow column, which left most of the
+          row empty on this canvas. */}
+      {showProperties && propertySchema.length > 0 && (
+        <CanvasSection icon="properties" title="Properties" className="mt-5 mb-5">
+          <div className="flex flex-col gap-3">
+            <CustomProperties
+              itemId={item.id}
+              typeKey={item.type}
+              schema={propertySchema.filter((pr) => pr.kind !== "image")}
+              initial={propsObj}
+              locked={locked}
+              hideHeading
+              bare
+              wide
+            />
+            <RelationProperties
+              ownerId={ownerId}
+              itemId={item.id}
+              typeKey={item.type}
+              props={propertySchema}
+              hideHeading
+            />
+          </div>
+        </CanvasSection>
       )}
 
       <div className="flex items-center justify-between gap-3">

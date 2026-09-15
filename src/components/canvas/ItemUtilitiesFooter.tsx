@@ -12,7 +12,11 @@
 // invisibly: it's listed here with a "not linked" chip, a Copy link to put it
 // back, and Delete to remove it for real. Client-mounted and event-fed
 // (ItemFilesSection) so it appears the moment the FIRST upload lands, without
-// a reload. The file canvas passes filesSection={false} (its panel leads).
+// a reload. EVERY canvas that renders this footer gets it — the file canvas
+// included, whose own lead panel repeats it (Tyler, 2026-09-12): one place to
+// look sitewide beats one type where the answer is somewhere else. Tasks are
+// the exception and don't render this footer at all; Files is a rail row there
+// (ADR-253).
 //
 // A server component — the controls are client islands, the wrappers are
 // plain markup. MarkdownCanvas's arrange grid places Save Offline / Share /
@@ -37,7 +41,8 @@ export default async function ItemUtilitiesFooter({
   itemId: string;
   // The live body markdown, for the Version History "vs. current" diff.
   currentText: string;
-  // The file canvas renders its own panel up top, so it opts out here.
+  // Kept as an escape hatch for a canvas that truly owns the whole story; no
+  // canvas turns it off today (the file canvas used to — see the header).
   filesSection?: boolean;
   // The TASK canvas opts out (Tyler, 2026-09-11): Save Offline, Share link and
   // the presentation export are BODY-shaped features, and a task's body is a

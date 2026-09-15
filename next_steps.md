@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ BUILT, unpushed — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-258, branch `feat/memory-supersedes`, non-core)
+## ✅ SHIPPED — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-259, branch `feat/memory-supersedes`, PR #388, non-core)
 
 Came out of a sourced review of durable-memory practice (the Ledgr note
 "Durable memory for an AI assistant: research review and Ledgr
@@ -23,6 +23,142 @@ changes, no migration:
 Still open from the same review, Brandon to decide: a review queue on Build →
 AI Memory (62), a distillation step in the Meeting Minutes prompt (63), and a
 20-question quarterly recall check (64). Declined: an access counter (61).
+## ✅ SHIPPED — describe_workspace returns nav slot icons, so editing the nav can't re-icon it (2026-09-14, non-core)
+
+Third instance of one bug shape in one day, and the first two are ADR-258: **a
+read that omits a field, plus a write that replaces wholesale, silently destroys
+whatever the read dropped.** Here it cost Tyler every icon in his nav rail.
+
+`slotView` returned `{ type, label, href, kind }` and no `icon`, for slots, tools
+groups, and group children alike. `update_nav` replaces the entire middle-slot
+list, so the ordinary flow (read the nav, change one slot, send the list back)
+posted every slot without an icon. `parseNavDestination` defaults a missing icon
+to `NAV_ICON_FALLBACK` instead of refusing the slot, so the nav came back intact
+in every respect except that all of it wore the generic glyph. The type icons
+were never touched, which is why Build → Types looked right the whole time and
+only the rail looked wrong.
+
+- `slotView` now returns `icon` on destinations, tools groups, and children, plus
+  `badge` (same exposure: it round-trips through the parser and was being dropped
+  the same way).
+- `update_nav`'s description says outright that dropping `icon` re-icons the nav
+  rather than being refused.
+
+**The general lesson, now three for three:** before resending anything to a
+wholesale-replace write, check that the read returns every field the write
+accepts. Where it does not, the round-trip is lossy no matter how careful the
+caller is. Worth an audit of the remaining replace-style tools (`update_view` is
+the obvious next one) rather than waiting to find the fourth.
+
+
+## ✅ SHIPPED — mention chips keep their icon on load, and the project Properties card moves below the tools (2026-09-14, non-core)
+
+Tyler: an @-mention written into a body over MCP rendered with the generic
+fallback glyph instead of its type's icon, corrected itself the moment he edited
+the canvas, then reverted on the next visit.
+
+**Root cause, and it is a load-order bug, not an icon bug.** The editor is
+constructed with `content: ""` on purpose (ADR-159: `setContent` on a ready
+editor parses markdown correctly where the constructor path does not), and the
+body arrives in a later effect via `setContent(..., { emitUpdate: false })`. The
+type-aware backfill (`GET /api/items?ids=`) ran once when the editor became
+ready, which is BEFORE the body existed: it collected zero mention ids, set
+`ready`, and stopped. The `editor.on("update")` retry never fired either, because
+loading a body deliberately is not a user edit. So every chip sat on the
+unresolved glyph until the first keystroke, and again on the next visit.
+
+- The backfill now reads `editor.getMarkdown() || initialMarkdown`, so it sees
+  the incoming body while the editor is still empty, and takes `initialMarkdown`
+  as a dependency so a host swapping documents re-resolves too. The chips mount
+  before the fetch returns either way; the existing rerender pass paints them.
+- **`POST /api/render-markdown` now resolves mentions too.** Separate gap, same
+  family, found while chasing the first: it called `markdownToHtml(toRender)`
+  with no mentions map, and that branch renders a mention with no type class and
+  no glyph at all. Print/share already passed the map; the Preview/read seam
+  never did.
+- **The project Properties card moved BELOW the tool cards** and lays its fields
+  out across the width (`wide` on `CustomProperties`: a responsive grid instead
+  of one narrow column). Above the grid it pushed the cards, which are what a
+  project is actually read for, down the page.
+
+`typecheck`, `lint`, `build` green; `verify:ci` green except the known
+`verify-sync.mts` flake logged below.
+
+
+## 🟡 BUILT, NEEDS BRANDON — type edits stop destroying icons and status colors, + properties on project records, + list tabs over MCP (2026-09-14, ADR-258, branch `fix/type-edits-preserve-presentation`)
+
+Tyler asked for a Scope field on his Project type and a tab on the project list
+page. Adding the field silently destroyed the type's icon and all of his custom
+status colors, with no way to get either back.
+
+One shape, twice: `update_type` and `set_type_statuses` replace wholesale, while
+`list_types` returned neither the icon nor the colors, so read-before-write could
+not preserve what it was never shown. `parseCommon` maps an omitted `icon` to
+`null`; the status mapper falls back to `CATEGORY_DEFAULT_COLOR` for any term
+resent without a color. Config has no revision history, the live instance is
+hosted, and the working copy's `.env.local` points at a stale database, so there
+was no restore path either.
+
+- **`update_type` patches now.** The merge sits at the MCP handler: read the
+  stored type, fill in the omitted fields, then hand it to `parseTypeInput`,
+  whose "patch" mode is untouched because the Build form legitimately posts
+  everything. `propertySchema` still replaces when sent, `icon: ""` still clears,
+  `label` is no longer required.
+- **`set_type_statuses` keeps a term's color** when it is resent by key without
+  one. Only a genuinely new key falls back to the category color.
+- **`list_types` returns `icon` and each term's `color`,** which is what makes a
+  deliberate round-trip possible at all.
+- **A `properties` widget** (catalog + `WidgetCanvas`) pairs `CustomProperties`
+  with `RelationProperties` on project-style records, which rendered the type's
+  own fields nowhere before this. It follows the Overview self-healing rule in
+  the same file: shown when the composition asks, or when the type defines fields
+  and the owner has not hidden it, because `reconcileComposition` never back-fills
+  a new widget into a stored composition.
+- **`set_list_tabs`** reads the effective strip with only `typeKey`, replaces it
+  with `tabs`, restores defaults on `reset`. Normalizes before `parseLenses` (a
+  view tab's label defaults to the view's name) and refuses an unknown `viewId`
+  by name, since `parseLenses` silently drops malformed entries.
+
+`typecheck`, `lint`, `build` green. `verify:ci` green except `verify-sync.mts`,
+the known flake logged below (same two messages; it passes in isolation both with
+and without this work).
+
+**Why it needs Brandon:** it changes the behavior of two existing MCP tools,
+which is the half of ADR-183's carve-out that stays core. No schema change, no
+wire break, and any caller sending a complete payload sees no difference.
+
+
+## ✅ SHIPPED — nav tools/favorites popovers can't run off the screen any more (2026-09-14, non-core)
+
+Tyler: a nav group ("Other") with several children opened a menu that ran past
+the bottom of the viewport on a short screen. Same failure as the old kebab bug,
+same fix. The popovers were `absolute` with hand-picked anchor classes
+(`top-full mt-2 left-0` under the top bar, `top-0` beside a rail): those know
+where the trigger sits in its own container, not where the screen ends, and the
+`max-h-[calc(100vh-1rem)]` capped the panel's HEIGHT without moving its starting
+offset, so a low rail slot or a laptop-height top bar clipped anyway.
+
+Every tools/favorites popover now portals to `<body>` and is placed in viewport
+coordinates by `placePop` (`src/components/nav/NavShell.tsx`), the sibling of
+`placeMenu` that already does this for More: it clamps horizontally, grows away
+from whichever half of the screen the trigger sits in, and hands the panel a
+measured `maxHeight` so a long group scrolls instead of clipping. `popMetaRef`
+carries the opening popover's width and its layout's grow direction
+(`PopMode`: side / above / below / mobile), armed by the trigger. The portaled
+wrapper carries the hover handlers too, so dragging the pointer from the trigger
+onto the menu still doesn't dismiss it. The phone bar keeps its static centered
+anchor and gains a `maxHeight` so a long group can't run off the top instead.
+`FavoritesFlyout` loses its `posClass` prop — it's always positioned now.
+
+## ✅ SHIPPED — Files show everywhere again, + Task comes back, files download (2026-09-12, non-core)
+
+Three corrections after Tyler tested the 2026-09-11 batch on a `file` item.
+
+- **The Files section was missing on the file canvas.** It was the one canvas passing `filesSection={false}` to `ItemUtilitiesFooter` ("its panel leads"), which was defensible until Files became a rail row on tasks and the utilities stack became the single sitewide answer to "is a file attached?". Now every canvas that renders the footer renders the section, the file canvas included: it repeats that canvas's lead panel, collapsed and one row, and one predictable place beats one type where the answer sits somewhere else. Tasks remain the deliberate exception (rail row, ADR-253).
+- **`+ Task` is back, minus the two places it was actually wrong.** Removing it sitewide was too wide a swing at a narrow problem: the complaint was that it reads as a duplicate of "Add subtask", which only exists on a task. On a note, a person, a meeting or a link, "make a task about this" is what the panel is for. It is now gated off for `task` and for widget-home records (canvas id `widgets` — Project, Pursuit, custom hubs), which have their own Tasks widget. `RelatedPanel` resolves `hostType`/`hostDef` before the nothing-linked-yet return so the gate holds on an item with no links at all.
+- **Every file row has a Download button.** `<a download>` is same-origin only, and `/files/<id>` is a 302 into R2, so the attribute was always ignored and the browser just rendered whatever R2's content-type allowed — a JSON backup opened in a tab instead of landing in Downloads. The button fetches the bytes and hands the blob to a synthetic link, so the filename is ours and the app server still never touches the bytes (the fetch follows the redirect straight to R2, which already allows GET from our origins — `scripts/r2-cors.mjs`). Failure falls back to opening it, with a toast.
+
+**Still unverified:** whether the file Tyler was looking at shows in the file canvas's LEAD panel. If that panel is empty too, the attachment row is parented to a different item than the one displaying it, which is a data question, not this one. The footer section reads the same query, so it would be empty as well.
 
 ## ✅ SHIPPED — the local install is managed from the app and the tray: update policy, SYSTEM group, honest boot warning (2026-09-12, ADR-257, branch `feat/local-install-sweep`)
 
@@ -70,7 +206,7 @@ Any type can now carry a picture field. Pick "Image (upload or URL)" as a field 
 - A per-field wide "cover" display style (v1 is one 112px square box for every image kind).
 - The drag-to-position cropper already queued for person's Image (v1 stays a deterministic center crop).
 
-## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-257, branch `feat/date-anchoring`, Brandon agreed)
+## ✅ SHIPPED — dates follow their anchor now (2026-09-11, ADR-253, branch `feat/date-anchoring`, Brandon agreed)
 
 Tyler: "Due date vs schedule is mucking up the UI and really confusing the system." The screenshot was a recurring sermon-edit task whose six subtasks all read `Sep 11 · due Aug 28`. One rule replaces three separate failures: **a date tracks its anchor unless it is pinned.**
 
@@ -96,7 +232,7 @@ Tyler: "Due date vs schedule is mucking up the UI and really confusing the syste
 
 ## ✅ SHIPPED — item-canvas polish batch (2026-09-11, branch `feat/date-anchoring`, non-core)
 
-Five things Tyler raised while testing the ADR-257 preview.
+Five things Tyler raised while testing the ADR-253 preview.
 
 - **The kebab menu could open below the window.** `ItemActionsMenu`'s two panels were `absolute right-0` with no idea where the viewport ends, so on a short window the lower actions were simply unreachable — the same failure the color swatch panel had (#369) and now the same fix: both panels portal to `<body>` and use `useAnchoredPanel`, the placement half of `ui/Popover`, which clamps both horizontal edges and flips above the trigger when below is cramped. Two follow-ons that are easy to miss: a portaled panel is no longer inside `wrapRef`, so the outside-click test had to learn about it or every click inside the menu would close it; and `MoveUnderMenu` gets an explicit `className=""` because its `DEFAULT_CLASS` carries its own absolute positioning and card chrome, which would fight the new wrapper.
 - **`+ Task` is gone** (sitewide). It created a *related* task, not a subtask — a distinction invisible sitting beside "Add subtask" on the same page. `NewRelatedTask` kept, unrendered.
@@ -133,7 +269,7 @@ Both reads are last-write-wins races resolved by a timestamp two writes can shar
 
 ## 🐛 OPEN — `verify-mcp-tasks.mts` has 3 date-rotted failures (pre-existing, found 2026-09-11)
 
-Not caused by ADR-257; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
+Not caused by ADR-253; confirmed identical on `main` by stashing. Three checks hardcode occurrence dates (`2026-09-04`, `2026-09-07`) that have now drifted into the past, so the projections legitimately no longer contain them:
 
 ```
 FAIL the projection honors interval + byday — got [09-21, 09-24, 10-05, 10-08], want [09-07, 09-10, 09-21, 09-24]
@@ -141,7 +277,7 @@ FAIL get_item projects the bounded series      — got [09-11, 09-18, 09-25], wa
 FAIL get_item reports the next uncompleted date — got 09-11, want 09-04
 ```
 
-The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-257 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
+The fix is to anchor the fixtures relative to "today" the way the other suites do, not to a literal. Left alone here to keep the ADR-253 diff honest. It is DB-backed so it isn't in `verify:ci`, which is why it rotted unnoticed.
 
 ## ✅ FIXED — image uploads worked everywhere except the domain the app runs on (2026-09-09, ops only, no code change)
 

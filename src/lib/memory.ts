@@ -16,7 +16,7 @@ import { queryViewItems } from "@/lib/views";
 
 export const MEMORY_TYPE = "memory";
 
-// The invalidation edge (ADR-258): OLD memory --supersedes--> NEW memory. The
+// The invalidation edge (ADR-259): OLD memory --supersedes--> NEW memory. The
 // old one is never deleted or rewritten; its stump and its search hits render
 // "SUPERSEDED <date> -><new id>" so a reader stops having to compare ages.
 export const SUPERSEDES_ROLE = "supersedes";
@@ -98,7 +98,7 @@ export async function getMemoryStumps(
   );
   // An archived memory is retired: out of the always-on set and out of the
   // browse, but kept (never deleted) for the record. MCP has no trash tool, so
-  // status=archived is how an agent retires a memory (ADR-258).
+  // status=archived is how an agent retires a memory (ADR-259).
   const live = rows.filter((r) => r.statusCategory !== "archived");
   // Filter before the cap: a pinned memory nobody has touched in months must
   // still load, so the limit applies to what's chosen, not to what's scanned.
@@ -157,7 +157,7 @@ export async function supersededByFor(
 }
 
 // The read-time hedge rendered after a memory's age, in stumps and in
-// search_items hits alike (ADR-258): "" | ", STALE" | ", SUPERSEDED <date> -><id>".
+// search_items hits alike (ADR-259): "" | ", STALE" | ", SUPERSEDED <date> -><id>".
 // SUPERSEDED wins over STALE: a replaced fact is not merely old, it is retired.
 export function memoryMarker(
   horizon: MemoryHorizon | null,
@@ -170,7 +170,7 @@ export function memoryMarker(
   return horizon && ageDays > STALE_AFTER_DAYS[horizon] ? ", STALE" : "";
 }
 
-// Near-duplicate check for `remember` (ADR-258): existing live memories whose
+// Near-duplicate check for `remember` (ADR-259): existing live memories whose
 // title is trigram-similar to the candidate. Advisory only, never blocks the
 // write; the calling agent decides supersede / update / link / proceed.
 // ponytail: full-string pg_trgm similarity at a low floor; add an FTS leg if
@@ -198,7 +198,7 @@ export async function findSimilarMemoryTitles(
     .limit(limit);
 }
 
-// `about`-link nudge for `remember` (ADR-258): live people and projects whose
+// `about`-link nudge for `remember` (ADR-259): live people and projects whose
 // full title appears inside the candidate memory title. Deterministic substring
 // match, no model. Titles under 4 characters are skipped so "AI" or "PCO" can't
 // match everything.

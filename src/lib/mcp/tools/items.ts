@@ -65,11 +65,11 @@ export const itemTools: McpTool[] = [
         limit: optInt(args, "limit"),
       });
       // A retired (archived) memory stays in the store for the record but is
-      // no longer a claim to recall, so it drops out of memory search (ADR-258).
+      // no longer a claim to recall, so it drops out of memory search (ADR-259).
       // Other types keep their archived rows: "find that archived note" is real.
       const rows = found.filter((r) => !(r.type === MEMORY_TYPE && r.statusCategory === "archived"));
       // Memory hits carry their age (ADR-230) plus the same STALE / SUPERSEDED
-      // marker the stump index renders (ADR-258): Tier 2 memories are reached
+      // marker the stump index renders (ADR-259): Tier 2 memories are reached
       // by search, so the hedge has to appear here or it never appears.
       const memoryIds = rows.filter((r) => r.type === MEMORY_TYPE).map((r) => r.id);
       const superseded = await supersededByFor(ownerId, memoryIds);

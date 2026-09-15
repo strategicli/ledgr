@@ -35,8 +35,10 @@ import { resolvePassageRefs } from "@/lib/passages/refs";
 import { getSettings } from "@/lib/settings";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
+import { canvasIdForType } from "@/lib/modules";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import AddRelation from "./AddRelation";
+import NewRelatedTask from "./NewRelatedTask";
 import RelatedGroupView from "./RelatedGroupView";
 import RelatedRow, { type RelatedRowItem } from "./RelatedRow";
 import RelationActions from "./RelationActions";
@@ -80,14 +82,25 @@ export default async function RelatedPanel({
     resolvePassageRefs(ownerId, itemId),
   ]);
 
+  const hostType = hostRows[0]?.type ?? "";
+  // This item's type → its relation fields + its canvas (both read below too).
+  const hostDef = hostType ? await getType(hostType).catch(() => null) : null;
+
   // The add affordances ride along whether or not anything is linked yet.
-  // "+ Relate" only. "+ Task" is gone (Tyler, 2026-09-11): it created a RELATED
-  // task, not a subtask, a distinction invisible sitting beside "Add subtask" on
-  // the same page — so it read as a duplicate of the thing right above it.
-  // NewRelatedTask is kept, just unrendered (defer-by-hiding).
+  // "+ Task" is back everywhere EXCEPT tasks and project-shaped records (Tyler,
+  // 2026-09-12). The 2026-09-11 removal was too wide: on a note, a person or a
+  // meeting, "add a task about this" is the point of the panel and there is no
+  // "Add subtask" beside it to confuse it with. Where there IS one — a task
+  // (subtasks) or a widget-home record like Project/Pursuit (its own Tasks
+  // widget) — a second, subtly different "new task" button is the duplicate
+  // that started this, so it stays hidden there.
+  const showNewTask =
+    hostType !== "task" &&
+    canvasIdForType(hostType, ownerId, hostDef?.capability) !== "widgets";
   const addBar = (
     <div className="flex flex-wrap items-center gap-1">
       <AddRelation itemId={itemId} />
+      {showNewTask && <NewRelatedTask hostId={itemId} />}
     </div>
   );
 
@@ -104,11 +117,10 @@ export default async function RelatedPanel({
   }
 
   const labels = new Map(typeRows.map((t) => [t.key, t.label]));
-  const hostType = hostRows[0]?.type ?? "";
 
-  // This item's type → its relation fields (role sections). Those items render
-  // under Properties, so claim them here to avoid listing them twice.
-  const hostDef = hostType ? await getType(hostType).catch(() => null) : null;
+  // hostType/hostDef are resolved above (the add bar needs them before the
+  // nothing-linked-yet return). This item's relation fields render under
+  // Properties, so claim those items here to avoid listing them twice.
   const relationFields = (hostDef?.propertySchema ?? []).filter((p) => p.kind === "relation");
   const byRole = relationFields.length
     ? await outgoingRelationsByRole(ownerId, itemId, relationFields.map((f) => f.key))

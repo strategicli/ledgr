@@ -939,7 +939,18 @@ export default function MarkdownEditor({
     const resolve = async () => {
       const store = mentionStorage(editor) as MentionStorage | undefined;
       if (!store) return;
-      const ids = collectMentionIdsFromMarkdown(editor.getMarkdown());
+      // Fall back to the INCOMING body while the editor is still empty. The
+      // editor is constructed with `content: ""` and the body arrives in a later
+      // effect via setContent with emitUpdate:false (see below), so on mount this
+      // ran against an empty doc, found no ids, and the "update" listener that
+      // would retry never fired, because loading deliberately isn't an edit.
+      // Every chip therefore wore the unresolved fallback glyph until the user
+      // typed something, and wore it again on the next visit (Tyler, 2026-09-14).
+      // The chips mount before this fetch returns either way; the rerender pass
+      // below is what paints them, so reading the id set early is safe.
+      const ids = collectMentionIdsFromMarkdown(
+        editor.getMarkdown() || initialMarkdown
+      );
       if (ids.length === 0) {
         store.resolved = new Map();
         store.ready = true;
@@ -970,7 +981,9 @@ export default function MarkdownEditor({
       if (timer) clearTimeout(timer);
       editor.off("update", schedule);
     };
-  }, [editor]);
+    // initialMarkdown is a dependency so a host swapping in a different document
+    // ("reload from saved") re-resolves its mentions too, for the same reason.
+  }, [editor, initialMarkdown]);
 
   // A "✓ task" badge (or any deep link to a line) fires ledgr-open-item; navigate
   // there with the SPA router rather than a full reload.

@@ -166,7 +166,7 @@ export const memoryTools: McpTool[] = [
       // bad/hallucinated id fails the whole call rather than creating the memory
       // and then leaving it partially (or un-) linked when relateItems throws.
       await assertOwnedItems(ownerId, supersedes ? [...about, supersedes] : about);
-      // Advisory checks (ADR-258), computed before the write so the candidate
+      // Advisory checks (ADR-259), computed before the write so the candidate
       // itself can't appear in its own overlap list. Neither blocks the write.
       const [overlap, aboutSuggestions] = await Promise.all([
         findSimilarMemoryTitles(ownerId, title),

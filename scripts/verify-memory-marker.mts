@@ -1,4 +1,4 @@
-// ADR-258 verification: the STALE / SUPERSEDED marker and the stump line that
+// ADR-259 verification: the STALE / SUPERSEDED marker and the stump line that
 // carries it. Pure functions only (no DB): memoryMarker and renderStumpIndex.
 //   npx tsx scripts/verify-memory-marker.mts
 import { memoryMarker, renderStumpIndex, type MemoryStump } from "../src/lib/memory";

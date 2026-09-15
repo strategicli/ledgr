@@ -414,6 +414,11 @@ Build your own kinds of item at \`/build/types\`.
   caret opens the list of what is already connected. The full **Linked here**
   panel under the body is still where you check things off, change their dates,
   or unlink them.
+- **+ Relate and + Task.** Under the panel, **+ Relate** links something that
+  already exists, and **+ Task** creates a task already attached to this item
+  (you can still send it to the Inbox or another project). **+ Task** is hidden
+  on tasks and on project-style pages, where "Add subtask" and the Tasks widget
+  already do that job.
 - **Create as you link.** Typing a name that does not exist makes it. That
   includes an event's **+ person** and **+ group**: someone who isn't in Ledgr
   yet can be added to the meeting from the meeting, without leaving to create
@@ -558,6 +563,15 @@ reverse: flip **Offer as a tool** on the same edit page and the type joins the
 Add a Tool menu everywhere — so a "Chapter" type becomes a Chapters card on
 your Book, with its own "+ Add chapter" and a full-page drill-down. Build the
 shape your work actually has.
+
+**Your own fields show up on the page.** A project-style record carries a
+**Properties** card holding the type's own fields, the scalar ones (a Scope
+select, a Live URL, a Stack) and the relation ones alike, editable right there.
+Until 2026-09-14 it didn't: fields rendered only on plain document pages, so a
+field you added to a project-style type was invisible on every record that had
+it, and the only way to set one was the list page's select mode. The card shows
+on any project-style type that actually defines fields, and like every other
+tool it can be removed and added back from the menu.
 
 **Finishing a project.** The record header carries a **Mark this project done**
 checkbox beside the status pill. It does two things at once: sets the project to
@@ -918,8 +932,9 @@ Trash deletes its files with it.
 **Every item shows its own files.** An item carrying files gets a collapsible
 **Files** section above Export & sharing — on a task it sits in the details
 rail instead, just above Linked (it appears the moment your first upload
-lands): each file with Open, **Copy link** (a markdown link to paste
-back into the body), Share, and Delete — plus a "not linked" mark when nothing
+lands): each file with Open, **Download** (saves it to your device under its
+real filename, instead of opening in a tab), **Copy link** (a markdown link to
+paste back into the body), Share, and Delete — plus a "not linked" mark when nothing
 in the item points at the file anymore. So a link you backspaced out of the
 body is never stranded invisibly, and **dragging a file row into the body
 links it right where it lands** — no re-upload. On a type with a customized
@@ -1044,8 +1059,11 @@ connected; that dead-end tab is the client closing its one-time listener.
 - **Handle files** — attach by URL or upload, then embed in the body.
 - **Link things** — relate and unrelate items, and confirm suggested links.
 - **Build the workspace** — create and edit types, views and dashboards, add
-  widgets, arrange a record's sections, and rearrange your nav. It reads
-  \`describe_workspace\` first and should confirm with you before committing.
+  widgets, arrange a record's sections, set the tab strip on a type's list page,
+  and rearrange your nav. It reads \`describe_workspace\` first and should confirm
+  with you before committing. Asking for "a tab on Projects for my personal ones"
+  is a single request now: it builds the view and puts it on the strip, instead
+  of building the view and leaving you the Build click.
 
 ## Two features that are off until you turn them on
 
