@@ -96,10 +96,14 @@ export async function getMemoryStumps(
     { field: "updatedAt", dir: "desc" },
     opts.includeAll ? limit : PINNED_SCAN_LIMIT
   );
+  // An archived memory is retired: out of the always-on set and out of the
+  // browse, but kept (never deleted) for the record. MCP has no trash tool, so
+  // status=archived is how an agent retires a memory (ADR-258).
+  const live = rows.filter((r) => r.statusCategory !== "archived");
   // Filter before the cap: a pinned memory nobody has touched in months must
   // still load, so the limit applies to what's chosen, not to what's scanned.
   const chosen = (
-    opts.includeAll ? rows : rows.filter((r) => memoryFacets(r.properties).pinned)
+    opts.includeAll ? live : live.filter((r) => memoryFacets(r.properties).pinned)
   ).slice(0, limit);
   const ids = chosen.map((r) => r.id);
   const [linkedMap, supersededMap] = await Promise.all([
@@ -119,7 +123,7 @@ export async function getMemoryStumps(
       linked: linkedMap.get(r.id) ?? [],
     };
   });
-  return { stumps, total: rows.length };
+  return { stumps, total: live.length };
 }
 
 // For a set of memories, the live newer memory each one points at with a

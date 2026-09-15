@@ -60,10 +60,14 @@ export const itemTools: McpTool[] = [
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
-      const rows = await searchItems(ownerId, reqString(args, "query"), {
+      const found = await searchItems(ownerId, reqString(args, "query"), {
         type: optString(args, "type"),
         limit: optInt(args, "limit"),
       });
+      // A retired (archived) memory stays in the store for the record but is
+      // no longer a claim to recall, so it drops out of memory search (ADR-258).
+      // Other types keep their archived rows: "find that archived note" is real.
+      const rows = found.filter((r) => !(r.type === MEMORY_TYPE && r.statusCategory === "archived"));
       // Memory hits carry their age (ADR-230) plus the same STALE / SUPERSEDED
       // marker the stump index renders (ADR-258): Tier 2 memories are reached
       // by search, so the hedge has to appear here or it never appears.
