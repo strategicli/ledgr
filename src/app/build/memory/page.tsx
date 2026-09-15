@@ -42,6 +42,11 @@ function StumpRow({ stump }: { stump: MemoryStump }) {
           {stump.title || "Untitled memory"}
         </Link>
         {stump.pinned ? <Badge tone="green">always-on</Badge> : <Badge>on demand</Badge>}
+        {stump.supersededBy && (
+          <Link href={`/items/${stump.supersededBy.id}`} title={`Replaced on ${stump.supersededBy.date}; opens the newer memory`}>
+            <Badge tone="accent">superseded</Badge>
+          </Link>
+        )}
         {stump.kind && <Badge>{stump.kind}</Badge>}
         {stump.horizon && <Badge>{stump.horizon}</Badge>}
         <span className="shrink-0 text-xs text-neutral-600">{dateFmt.format(new Date(stump.updatedAt))}</span>

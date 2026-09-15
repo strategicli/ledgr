@@ -2,6 +2,27 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-259, branch `feat/memory-supersedes`, PR #388, non-core)
+
+Came out of a sourced review of durable-memory practice (the Ledgr note
+"Durable memory for an AI assistant: research review and Ledgr
+recommendations (2026-09-14)" holds the 74 numbered findings). Four small
+changes, no migration:
+
+1. **A memory can be superseded.** `remember` takes `supersedes: <old id>`;
+   the old memory is kept and renders `SUPERSEDED <date> -><new id>` in
+   stumps and in `search_items` hits. After-the-fact pairs use
+   `relate_items(old, new, role: "supersedes")`.
+2. **STALE now shows in search hits too**, appended to the memory `age` field.
+3. **`remember` warns, never blocks:** `possibleOverlap` (trigram-similar
+   titles) and `aboutSuggestions` (people/projects named in the title when
+   `about` is empty), plus a `hint`.
+4. **Horizon rule tightened:** hostnames, URLs, ports, versions, rosters,
+   prices, and install/project state are seasonal, never evergreen.
+
+Still open from the same review, Brandon to decide: a review queue on Build →
+AI Memory (62), a distillation step in the Meeting Minutes prompt (63), and a
+20-question quarterly recall check (64). Declined: an access counter (61).
 ## ✅ SHIPPED — describe_workspace returns nav slot icons, so editing the nav can't re-icon it (2026-09-14, non-core)
 
 Third instance of one bug shape in one day, and the first two are ADR-258: **a

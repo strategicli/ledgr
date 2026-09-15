@@ -1075,7 +1075,10 @@ Both are in **User Settings**.
   mark **pinned** load into every session; everything else is searched out when a
   task mentions the person, project, or system it covers. Pin standing rules
   ("always hand me PowerShell, never bash"), not facts about people. Each stump
-  shows its age, so a claim that was true a year ago reads as one.
+  shows its age, so a claim that was true a year ago reads as one. When the
+  world changes, the assistant files a new memory that **supersedes** the old
+  one: the old stump stays, marked superseded with a link to its replacement,
+  so nothing is ever silently rewritten or lost.
 - **Live editing context** lets an assistant see which note you have open and
   what you have highlighted, so "rework this sentence" works. Nothing is tracked
   while it is off.
