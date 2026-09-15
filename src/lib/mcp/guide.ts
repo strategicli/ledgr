@@ -244,7 +244,11 @@ the rest, and when to write something new.
 - **\`horizon\` is a truth property.** Does this claim stay true as time passes?
   \`evergreen\` = true indefinitely. \`seasonal\` = true for a season, expected to
   stop being true. \`episodic\` = true of a single moment. **Horizon never decides
-  what loads.**
+  what loads.** Reserve \`evergreen\` for identity, convictions, standing
+  preferences, and how-to-work-with-the-owner rules. Anything that carries a
+  hostname, URL, port, version number, roster, price, or the current state of an
+  install or project is \`seasonal\`, even when it feels permanent: an evergreen
+  memory is never flagged STALE, so a misfiled one hides its own decay forever.
 - **\`pinned\` is a load property.** Must you have this in front of you on every
   single run? That is the only question pinning answers.
 
@@ -285,6 +289,9 @@ compact form when you want the full picture.
 One compact line per memory: a short id, \`[kind/horizon]\` abbreviations, the
 date and relative age from \`updatedAt\`, then the title. A \`seasonal\` or
 \`episodic\` memory older than 90 days also renders \`STALE\` in that parenthetical.
+A memory that a newer one replaced renders \`SUPERSEDED <date> -><new id>\`
+instead: read the new one, not this one. Both markers also appear on memory hits
+from \`search_items\`, in the \`age\` field.
 
 A stump is a body-free pointer. \`get_item\` its id for the detail and the people,
 projects, and notes it links to. Nothing is ever auto-deleted: "this was true
@@ -309,14 +316,20 @@ or a project decision that is not obvious from the items themselves.
 ## File new, don't rewrite history
 
 **Never edit an old seasonal memory to keep it accurate.** When the situation
-changes, file a NEW dated memory. Both surface with their ages rendered, and the
-reader works out which is current. Edit in place only to fix something that was
-wrong when it was written, not because the world moved on.
+changes, file a NEW dated memory and pass the old one's id as \`supersedes\`.
+The old memory stays (nothing is deleted), and from then on its stump and its
+search hits render \`SUPERSEDED <date> -><new id>\`, so no reader has to compare
+ages to find the current claim. Edit in place only to fix something that was
+wrong when it was written, not because the world moved on. To link a pair after
+the fact: \`relate_items(oldId, newId, role: "supersedes")\`.
 
 Before filing, check for an existing memory covering the same ground: an
 evergreen fact that just needs sharpening is an \`update_item\`, not a second
-near-identical stump. Add a missing link with \`relate_items\` rather than
-restating the connection in prose.
+near-identical stump. \`remember\` helps: its response lists \`possibleOverlap\`
+(existing memories with a similar title) and, when you passed no \`about\`,
+\`aboutSuggestions\` (people and projects named in the title). Act on both. Add
+a missing link with \`relate_items\` rather than restating the connection in
+prose.
 
 ## What is not a memory
 

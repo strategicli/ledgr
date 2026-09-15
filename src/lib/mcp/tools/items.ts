@@ -13,7 +13,7 @@ import {
 } from "@/lib/editor/block-anchor";
 import { ItemError, URGENCIES, getItem } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
-import { MEMORY_TYPE, memoryAge } from "@/lib/memory";
+import { MEMORY_TYPE, memoryAge, memoryFacets, memoryMarker, supersededByFor } from "@/lib/memory";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
@@ -64,15 +64,26 @@ export const itemTools: McpTool[] = [
         type: optString(args, "type"),
         limit: optInt(args, "limit"),
       });
+      // Memory hits carry their age (ADR-230) plus the same STALE / SUPERSEDED
+      // marker the stump index renders (ADR-258): Tier 2 memories are reached
+      // by search, so the hedge has to appear here or it never appears.
+      const memoryIds = rows.filter((r) => r.type === MEMORY_TYPE).map((r) => r.id);
+      const superseded = await supersededByFor(ownerId, memoryIds);
       return {
         count: rows.length,
-        // Memory hits carry their age (ADR-230): a memory's title often states
-        // something that was true when it was filed, so a bare title reads as
-        // current forever. Only memories get this; every other type is dated by
-        // its own fields.
         items: rows.map((r) => ({
           ...rowView(r),
-          ...(r.type === MEMORY_TYPE ? { age: memoryAge(r.updatedAt) } : {}),
+          ...(r.type === MEMORY_TYPE
+            ? {
+                age:
+                  memoryAge(r.updatedAt) +
+                  memoryMarker(
+                    memoryFacets(r.properties).horizon,
+                    r.updatedAt,
+                    superseded.get(r.id) ?? null
+                  ),
+              }
+            : {}),
           snippet: r.snippet,
         })),
       };
