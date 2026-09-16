@@ -3,6 +3,48 @@
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
 
+## 🐛 FIXED IN CODE, STILL BROKEN IN PROD — an agent's guessed scaffold made a paper unopenable (2026-09-16)
+
+An agent filling a paper over MCP guessed the scaffold's shape and the guesses
+were wrong: `{title, body}` for a section (real: `{id, title, paragraphs[]}`) and
+`{quote, source, citation, note}` for a quote (real: `{id, text, source:{kind,…}}`).
+Nothing rejected them, and Tyler could no longer open the record at all.
+
+**Root cause was ours, not the agent's.** `migrateScaffold` did
+`props.sections as OutlineSection[]` — a compile-time cast that checks nothing at
+runtime. `items.properties` is untyped JSON, so the bad rows reached `ShapeTab`,
+`OutlineTab`, `QuoteBank` and `lib/papers/outline.ts`, all of which do
+`s.paragraphs.map(...)` unguarded. A missing array there doesn't degrade one tab,
+it throws during render and takes the whole record down.
+
+`healScaffold` (`src/lib/papers/normalize.ts`) now coerces both arrays before
+anything renders, losslessly. Healthy scaffolds come back byte-identical.
+
+**⚠️ The fix is on `feat/bespoke-type-surfaces`, which is NOT merged.** Production
+is two days old, so the broken paper stays broken until this lands and deploys.
+There is no data repair to run: the healer fixes it on open and persists on save.
+
+## 🔜 OWED — the write boundary still doesn't reject a malformed scaffold
+
+Out of the incident above. `elements` on `SurfaceDef` now DESCRIBES the shape of a
+structured surface (surfaced via `list_types` and `get_item`), which is what
+would have stopped the guessing. It does not enforce anything. Still owed:
+
+- **Reject unknown/malformed keys on a structured surface write**, naming the
+  accepted ones. A typo like `heading` instead of `title` currently stores
+  verbatim and renders as an empty section. Brandon's standing steer applies:
+  warn about orphaned data, never rewrite it.
+- **A partial-edit path for `sections`/`quoteBank`.** `propertyPatch` replaces the
+  whole array, so an agent appending one quote has to read-modify-write the bank,
+  and a concurrent UI edit is lost. Notes have `edit_item_body` for exactly this
+  reason; these need the equivalent.
+- **Check whether a paper's `properties.notes` picked up a child note's body.**
+  Reported from the same session: notes came back holding the text of a separate
+  "Assignment Brief" child note. Nothing in the code copies a child's body into
+  `properties.notes` (the 2026-09-14 work folds notes INTO `body_text`, the search
+  index, not the other way), so the likeliest answer is the agent wrote it there.
+  Needs a look at the real record before assuming either way.
+
 ## ✅ BUILT, NEEDS TESTING — the MCP and the API know about bespoke types (2026-09-16, ADR-260 + ADR-261)
 
 Tyler: "did we update the MCP to account for bespoke types? Like songs or Papers?
