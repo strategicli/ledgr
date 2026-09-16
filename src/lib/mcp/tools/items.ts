@@ -5,18 +5,20 @@
 // MCP writes validate exactly like /api/items writes.
 import { asUuid, parseItemPayload } from "@/lib/api";
 import { BODY_WINDOW_CHARS, bodyMarkdown, isLargeBody, makeMarkdownBody, windowBody } from "@/lib/body";
+import { resolveSurfaceTarget, resolveSurfaces } from "@/lib/item-surfaces";
 import {
   ensureAnchorOnLine,
   findLineByText,
   lineWithBlockId,
   stripAnchorFromLine,
 } from "@/lib/editor/block-anchor";
-import { ItemError, URGENCIES, getItem } from "@/lib/items";
+import { ItemError, URGENCIES, getItem, getItemType } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
 import { MEMORY_TYPE, memoryAge, memoryFacets, memoryMarker, supersededByFor } from "@/lib/memory";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
+import { listTypes } from "@/lib/types";
 import {
   DATE_PROPERTIES,
   DUE_WINDOWS,
@@ -160,7 +162,15 @@ export const itemTools: McpTool[] = [
       "ebook) is PAGED so it can't flood the context: the read returns the first " +
       `~${BODY_WINDOW_CHARS} characters with a truncation marker, plus a bodyInfo ` +
       "object {totalChars, offset, returnedChars, truncated, nextOffset}. To read " +
-      "more, call get_item again with bodyOffset set to the previous nextOffset.",
+      "more, call get_item again with bodyOffset set to the previous nextOffset. " +
+      "A BESPOKE type (paper, song, or a type carrying one of their bespoke tools) " +
+      "also returns `surfaces`: the named places its content lives, each with what " +
+      "belongs there and what is currently stored. A paper returns Notes, Shape, " +
+      "Quote Bank, Outline and Draft; a song returns Notes and Chart. The surface " +
+      "whose storage is the body reports no `content` of its own — that is the " +
+      "top-level `body` field above it (which is also the one that pages) — and is " +
+      "flagged `isBody: true`. Read `surfaces` before writing: it is what tells you " +
+      "that a paper's notes are NOT its draft, and that a song's body is ChordPro.",
     inputSchema: {
       type: "object",
       properties: {
@@ -219,6 +229,32 @@ export const itemTools: McpTool[] = [
         matchState: r.matchState,
       }));
 
+      // The type's named surfaces with their stored content (ADR-260). One
+      // request-cached type lookup, no per-surface fan-out. The body-storage
+      // surface deliberately carries no content: it would duplicate `body`
+      // verbatim (doubling a long paper's cost) and would sidestep the paging
+      // above, so it is reported as `isBody` and points back at that field.
+      const surfaces = (await resolveSurfaces(item)).map((sf) => {
+        const isBody = sf.storage.kind === "body";
+        return {
+          id: sf.id,
+          label: sf.label,
+          storage: sf.storage,
+          format: sf.format,
+          description: sf.description,
+          empty: sf.empty,
+          ...(sf.primary ? { primary: true } : {}),
+          ...(sf.readOnly ? { readOnly: true } : {}),
+          ...(isBody ? { isBody: true } : { content: sf.content }),
+        };
+      });
+      // Only worth reporting when the type actually has more than the plain body,
+      // so an ordinary note/task response is byte-for-byte what it always was.
+      const surfaceView =
+        surfaces.length > 1 || surfaces.some((sf) => !("isBody" in sf))
+          ? { surfaces }
+          : {};
+
       const fullText = bodyMarkdown(item.body);
       const paging = bodyOffset !== undefined || bodyLimit !== undefined;
       // A normal-size body (and no explicit paging) returns whole and byte-for-
@@ -226,7 +262,7 @@ export const itemTools: McpTool[] = [
       // caller that explicitly pages, takes the windowed path below.
       const recurrence = recurrenceView(item.properties);
       if (!isLargeBody(fullText) && !paging) {
-        return { ...rowView(item), body: fullText, ...recurrence, related: relatedView };
+        return { ...rowView(item), body: fullText, ...recurrence, ...surfaceView, related: relatedView };
       }
 
       const win = windowBody(fullText, { offset: bodyOffset, limit: bodyLimit });
@@ -241,6 +277,7 @@ export const itemTools: McpTool[] = [
         ...rowView(item),
         body,
         ...recurrence,
+        ...surfaceView,
         bodyInfo: {
           totalChars: win.totalChars,
           offset: win.offset,
@@ -425,7 +462,13 @@ export const itemTools: McpTool[] = [
       "item's relations use the relations on create_item, not this tool. Marking " +
       "a RECURRING task done here is the right way to complete its current " +
       "occurrence: the series advances to the next date instead of closing. To " +
-      "change the repeat rule itself, use set_recurrence, not properties.",
+      "change the repeat rule itself, use set_recurrence, not properties. " +
+      "On a BESPOKE type, write to a named SURFACE instead of guessing: pass " +
+      "`surface` (an id from list_types/get_item, e.g. \"notes\") with `content`, " +
+      "and it lands wherever that surface actually lives. This is how you add " +
+      "notes to a paper without touching its draft, or to a song without " +
+      "corrupting its ChordPro chart. Read-only surfaces (a paper's Shape, Quote " +
+      "Bank and Outline) are refused with the list of writable ids.",
     inputSchema: {
       type: "object",
       properties: {
@@ -449,6 +492,8 @@ export const itemTools: McpTool[] = [
         properties: { type: "object", description: "Replace the whole custom-properties object. Prefer propertyPatch to change one key without clobbering the rest." },
         propertyPatch: { type: "object", description: "Merge these custom-property keys into the existing properties (atomic per-key; other keys untouched). Set a key to null to clear it. An image-kind property takes an image URL string, or null to remove it." },
         inbox: { type: "boolean", description: "Move into (true) or out of (false) the inbox." },
+        surface: { type: "string", description: "Write to this named surface instead of a specific field — an id from the type's `surfaces` (list_types / get_item), e.g. \"notes\", \"draft\", \"chart\". Requires `content`. Routes to the body or the backing property automatically, so a caller never has to know which. Read-only surfaces are refused." },
+        content: { type: "string", description: "The content to write to `surface`, replacing what it holds. Use the surface's own `format`: markdown for a paper's Notes or Draft, ChordPro for a song's Chart." },
       },
       required: ["id"],
       additionalProperties: false,
@@ -456,6 +501,47 @@ export const itemTools: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
       const id = asUuid(args.id, "id");
+      // A surface-targeted write (ADR-260) is translated into the ordinary patch
+      // fields BEFORE parsing, so it goes down exactly the same validation,
+      // revision-snapshot and body_text path as a direct write. `content` alone
+      // is meaningless, and `surface` alone is a no-op, so both are required
+      // together and rejected clearly rather than silently ignored.
+      const surfaceId = optString(args, "surface");
+      const surfaceContent = optString(args, "content");
+      if ((surfaceId === undefined) !== (surfaceContent === undefined)) {
+        throw new ItemError(
+          "bad_request",
+          "`surface` and `content` go together: pass both to write a named surface, or neither"
+        );
+      }
+      if (surfaceId !== undefined && surfaceContent !== undefined) {
+        const { type } = await getItemType(ownerId, id);
+        const defs = await listTypes({ includeHidden: true });
+        const capability = defs.find((t) => t.key === type)?.capability ?? null;
+        const target = resolveSurfaceTarget(type, surfaceId, capability);
+        if (!target.ok) {
+          throw new ItemError(
+            "bad_request",
+            target.reason === "unknown"
+              ? `unknown surface '${surfaceId}' on type '${type}'; it has: ${target.known.join(", ")}`
+              : `surface '${surfaceId}' is read-only (it is structured or derived — edit what it is built from); writable surfaces: ${target.known.join(", ")}`
+          );
+        }
+        // The body write goes in as a plain markdown wrapper; createItem/
+        // updateItem re-stamp it with the type's canonical format, so a song's
+        // chart is stored as chordpro without this path knowing about formats.
+        if (target.surface.storage.kind === "body") {
+          args = { ...args, bodyMarkdown: surfaceContent };
+        } else if (target.surface.storage.kind === "property") {
+          const prev = (args.propertyPatch ?? {}) as Record<string, unknown>;
+          args = {
+            ...args,
+            propertyPatch: { ...prev, [target.surface.storage.key]: surfaceContent },
+          };
+        }
+        delete (args as Record<string, unknown>).surface;
+        delete (args as Record<string, unknown>).content;
+      }
       const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"], ["id"]), "patch");
       // Catch the empty patch here, where we can name the tool's own fields
       // (bodyMarkdown especially — the shared lib's "no fields to update"
