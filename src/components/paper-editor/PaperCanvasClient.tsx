@@ -20,9 +20,11 @@ import { bodyMarkdown, makeMarkdownBody, wordCountOf } from "@/lib/body";
 import { useItemAutosave } from "@/components/chord-editor/useItemAutosave";
 import { buildOutlineHtml } from "@/lib/papers/outline-html";
 import type { OutlineSection, PaperMeta as Meta, QuoteEntry } from "@/lib/papers/types";
+import { healScaffold } from "@/lib/papers/normalize";
 import NotesTab from "@/components/canvas/NotesTab";
 import OutlineTab from "@/components/paper-editor/OutlineTab";
-import PaperMarkdownArea from "@/components/paper-editor/PaperMarkdownArea";
+import BodyEditor from "@/components/markdown-editor/BodyEditor";
+import { uploadAttachment } from "@/components/attachments/upload";
 import PaperMeta from "@/components/paper-editor/PaperMeta";
 import QuoteBank from "@/components/paper-editor/QuoteBank";
 import ShapeTab from "@/components/paper-editor/ShapeTab";
@@ -73,10 +75,22 @@ function migrateScaffold(props: Record<string, unknown>): {
   quotes: QuoteEntry[];
   changed: boolean;
 } {
-  let changed = false;
+  // Heal FIRST, once, for both arrays. `props` is untyped JSON and every renderer
+  // reaches straight into `s.paragraphs.map(...)` (ShapeTab, OutlineTab,
+  // QuoteBank, lib/papers/outline.ts), so a section written without that array
+  // threw and took the WHOLE RECORD down rather than degrading one tab. That is
+  // how an agent guessing the shape over MCP made a real paper unopenable. This
+  // used to be `props.sections as OutlineSection[]`, a compile-time cast that
+  // checks nothing at runtime. healScaffold coerces losslessly (lib/papers/normalize.ts).
+  const healed = healScaffold(props);
+  let changed = healed.changed;
+  if (healed.changed) {
+    console.warn("[paper] healed a malformed scaffold:", healed.repairs);
+  }
+
   let sections: OutlineSection[];
   if (Array.isArray(props.sections)) {
-    sections = props.sections as OutlineSection[];
+    sections = healed.sections;
   } else if (Array.isArray(props.shape)) {
     sections = (props.shape as { title?: string }[]).map((sp) => ({
       id: uuid(),
@@ -92,7 +106,9 @@ function migrateScaffold(props: Record<string, unknown>): {
   }
 
   const sectionIdByTitle = new Map(sections.map((s) => [s.title, s.id]));
-  const rawQuotes = Array.isArray(props.quoteBank) ? (props.quoteBank as Array<Record<string, unknown>>) : [];
+  // Already healed above, so every entry has id/text/source.kind and the
+  // citation engine can't be handed a half-formed quote.
+  const rawQuotes = healed.quotes as unknown as Array<Record<string, unknown>>;
   const quotes: QuoteEntry[] = rawQuotes.map((q) => {
     if (q.paragraphId || q.sectionId) return q as unknown as QuoteEntry;
     const { section, ...rest } = q as { section?: string } & Record<string, unknown>;
@@ -155,7 +171,6 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
   );
 
   const basePropsRef = useRef(initialProps);
-  const draftRef = useRef<HTMLTextAreaElement>(null);
   const { patch, saveState } = useItemAutosave(itemId);
 
   // Rebuild the full properties object: preserve unknown/system keys, overwrite
@@ -181,6 +196,12 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Same presigned-upload handshake NotesTab and ItemEditor use, resolved to the
+  // stable /files/<id> address the markdown stores (fileUrl, not publicUrl,
+  // ADR-228).
+  const uploadDraftFile = async (file: File) =>
+    (await uploadAttachment(itemId, file)).fileUrl;
 
   const commitDraft = (text: string) => {
     setDraft(text);
@@ -318,12 +339,12 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
         {tab === "draft" && (
           <div className="flex flex-col gap-3">
             <PaperMeta meta={meta} onChange={commitMeta} />
-            <PaperMarkdownArea
-              ref={draftRef}
-              value={draft}
+            <BodyEditor
+              itemId={itemId}
+              initialMarkdown={draft}
               onChange={commitDraft}
-              ariaLabel="Paper draft"
-              placeholder={"Write the paper in markdown. Copy citations from the Outline as you go."}
+              uploadFile={uploadDraftFile}
+              preserveFootnotes
             />
           </div>
         )}

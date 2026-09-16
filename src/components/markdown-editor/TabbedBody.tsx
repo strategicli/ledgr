@@ -30,6 +30,9 @@ export type TabbedBodyProps = {
   onRequestSave?: () => Promise<void>;
   promoteToMeetingId?: string;
   promotedRefs?: PromotedRefs;
+  // Papers only: forwarded straight to the active tab's editor so `[^id]`
+  // footnote markers survive a save (FootnoteMarkdownFix, extensions.ts).
+  preserveFootnotes?: boolean;
   // When false (a locked item): the editor is read-only and the tab controls
   // (add / rename / delete) are hidden, so the body can't be restructured.
   editable?: boolean;
@@ -72,6 +75,7 @@ export default function TabbedBody({
   onRequestSave,
   promoteToMeetingId,
   promotedRefs,
+  preserveFootnotes = false,
   editable = true,
   controlledSection,
   readingFirst,
@@ -317,6 +321,7 @@ export default function TabbedBody({
         focusSignal={focusSignal}
         toolbarOpen={toolbarOpen}
         viewControls={viewControls}
+        preserveFootnotes={preserveFootnotes}
       />
     </div>
   );

@@ -257,6 +257,24 @@ export async function getItem(ownerId: string, id: string) {
   return rows[0];
 }
 
+// Just the item's type (ADR-260), for a surface-targeted write: resolving which
+// surface `surface: "notes"` means needs the type, and nothing else. A deliberately
+// tiny read — loading the whole row through getItem would drag a paper's entire
+// draft body across for an update that only touches its notes.
+export async function getItemType(
+  ownerId: string,
+  id: string
+): Promise<{ type: string }> {
+  const rows = await getDb()
+    .select({ type: items.type })
+    .from(items)
+    .where(
+      and(eq(items.id, id), eq(items.ownerId, ownerId), isNull(items.deletedAt))
+    );
+  if (rows.length === 0) throw new ItemError("not_found", "item not found");
+  return rows[0];
+}
+
 // Just the item's updated_at (ADR-134), for the canvas's refresh-on-focus check:
 // the open editor re-reads this when its tab regains focus and, if it moved past
 // what the client last saw, surfaces a "changed on another device" banner. A

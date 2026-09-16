@@ -30,6 +30,7 @@ import {
   type ItemBody,
 } from "@/lib/body";
 import { extractBodyText, notesMarkdown } from "@/lib/body-text";
+import { canonicalFormatForType } from "@/lib/modules";
 // Type-only (erased at runtime): types.ts imports ItemError from items.ts, so
 // a value import of getType would form a circular dependency. getType is
 // loaded dynamically inside moveItemType instead.
@@ -138,16 +139,53 @@ export type ItemPatch = Partial<ItemInput> & {
   expectedBodyDigest?: string;
 };
 
-async function assertTypeExists(type: string) {
+async function assertTypeExists(type: string): Promise<string | null> {
   // A soft-deleted type (ADR-058) is excluded: you can't create or retype an
   // item into a type that's sitting in Trash.
+  //
+  // Returns the type's attached bespoke-tool `capability`, because the caller
+  // needs it to resolve the canonical body format (ADR-260) and this row is
+  // already being read — one column, no extra query.
   const rows = await getDb()
-    .select({ key: types.key })
+    .select({ key: types.key, capability: types.capability })
     .from(types)
     .where(and(eq(types.key, type), isNull(types.deletedAt)));
   if (rows.length === 0) {
     throw new ItemError("bad_request", `unknown type '${type}'`);
   }
+  return rows[0].capability ?? null;
+}
+
+// Stamp a written body with the type's CANONICAL format (ADR-260).
+//
+// The body contract is { format, text } and the format is a property of the TYPE
+// (`canonicalFormatForType`) — a song's body is ChordPro, not markdown. Every
+// writer that composed a body from a plain markdown string, though, hardcoded
+// `{ format: "markdown" }`: all six MCP write paths did, and so did anything
+// POSTing `bodyMarkdown` to the REST API. On a song that silently broke three
+// things downstream, none of which raise an error: the chord chart stopped
+// rendering (print-html gates on the format), search indexed the chords and
+// directives instead of the lyrics (body-text routes chordpro through
+// chordProToText), and {{item.*}} token resolution started running over a chart
+// (item-tokens-service only resolves markdown).
+//
+// Fixing it here rather than in each caller makes it structural: the format can
+// no longer depend on which door a write came through. A body that already
+// carries the right format passes through untouched, and a type whose canonical
+// format IS markdown is a no-op, so this changes nothing for ordinary items.
+// `body` is `unknown` on ItemInput/ItemPatch (callers hand in whatever they
+// composed), so narrow before touching it: anything that isn't a well-formed
+// { format, text } passes through untouched for the existing validation to
+// reject, exactly as it did before.
+function stampCanonicalFormat(
+  body: unknown,
+  type: string,
+  capability: string | null
+): unknown {
+  if (!isItemBody(body)) return body;
+  const canonical = canonicalFormatForType(type, undefined, capability);
+  if (body.format === canonical) return body;
+  return { ...body, format: canonical };
 }
 
 // Parent must be the owner's own live item, and (on update) not the item
@@ -261,7 +299,7 @@ function requireStatusKey(
 }
 
 export async function createItem(ownerId: string, input: ItemInput) {
-  await assertTypeExists(input.type);
+  const capability = await assertTypeExists(input.type);
   // is_template is set explicitly on a prototype root, else inherited from a
   // template parent (ADR-093), so a subtask under a prototype is template
   // content too without any caller doing anything special.
@@ -282,7 +320,9 @@ export async function createItem(ownerId: string, input: ItemInput) {
 
   const { inbox, destinationId } = await resolveRoute(ownerId, input);
 
-  const body = input.body ?? null;
+  // The type's canonical format wins over whatever the caller composed (ADR-260):
+  // a song's body is ChordPro even when it arrived as a plain markdown string.
+  const body = stampCanonicalFormat(input.body ?? null, input.type, capability);
   const rows = await getDb()
     .insert(items)
     .values({
@@ -451,9 +491,28 @@ export async function updateItem(
     );
   if (existing.length === 0) throw new ItemError("not_found", "item not found");
 
-  if (patch.type !== undefined) await assertTypeExists(patch.type);
+  let typeCapability: string | null | undefined;
+  if (patch.type !== undefined) typeCapability = await assertTypeExists(patch.type);
   if (patch.parentId != null) {
     await assertValidParent(ownerId, patch.parentId, id);
+  }
+
+  // Re-stamp a written body with the type's canonical format (ADR-260), before
+  // the no-op comparison below so it compares the format that will actually be
+  // stored. The extra type lookup is paid ONLY when a body is being written and
+  // the patch didn't already resolve the capability by changing the type, so an
+  // ordinary status/date update costs nothing. Retyping an item (note → song)
+  // re-stamps too, which is what makes `move_item_type` land a valid ChordPro
+  // body instead of one still labelled markdown.
+  if (patch.body !== undefined) {
+    const effectiveType = patch.type ?? existing[0].type;
+    if (typeCapability === undefined) {
+      typeCapability = await assertTypeExists(effectiveType);
+    }
+    patch = {
+      ...patch,
+      body: stampCanonicalFormat(patch.body, effectiveType, typeCapability),
+    };
   }
 
   // The category this status change moves into (if the patch changes status).
