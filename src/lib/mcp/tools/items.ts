@@ -242,6 +242,7 @@ export const itemTools: McpTool[] = [
           storage: sf.storage,
           format: sf.format,
           description: sf.description,
+          ...(sf.elements ? { elements: sf.elements } : {}),
           empty: sf.empty,
           ...(sf.primary ? { primary: true } : {}),
           ...(sf.readOnly ? { readOnly: true } : {}),

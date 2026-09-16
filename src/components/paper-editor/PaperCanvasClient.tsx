@@ -20,6 +20,7 @@ import { bodyMarkdown, makeMarkdownBody, wordCountOf } from "@/lib/body";
 import { useItemAutosave } from "@/components/chord-editor/useItemAutosave";
 import { buildOutlineHtml } from "@/lib/papers/outline-html";
 import type { OutlineSection, PaperMeta as Meta, QuoteEntry } from "@/lib/papers/types";
+import { healScaffold } from "@/lib/papers/normalize";
 import NotesTab from "@/components/canvas/NotesTab";
 import OutlineTab from "@/components/paper-editor/OutlineTab";
 import BodyEditor from "@/components/markdown-editor/BodyEditor";
@@ -74,10 +75,22 @@ function migrateScaffold(props: Record<string, unknown>): {
   quotes: QuoteEntry[];
   changed: boolean;
 } {
-  let changed = false;
+  // Heal FIRST, once, for both arrays. `props` is untyped JSON and every renderer
+  // reaches straight into `s.paragraphs.map(...)` (ShapeTab, OutlineTab,
+  // QuoteBank, lib/papers/outline.ts), so a section written without that array
+  // threw and took the WHOLE RECORD down rather than degrading one tab. That is
+  // how an agent guessing the shape over MCP made a real paper unopenable. This
+  // used to be `props.sections as OutlineSection[]`, a compile-time cast that
+  // checks nothing at runtime. healScaffold coerces losslessly (lib/papers/normalize.ts).
+  const healed = healScaffold(props);
+  let changed = healed.changed;
+  if (healed.changed) {
+    console.warn("[paper] healed a malformed scaffold:", healed.repairs);
+  }
+
   let sections: OutlineSection[];
   if (Array.isArray(props.sections)) {
-    sections = props.sections as OutlineSection[];
+    sections = healed.sections;
   } else if (Array.isArray(props.shape)) {
     sections = (props.shape as { title?: string }[]).map((sp) => ({
       id: uuid(),
@@ -93,7 +106,9 @@ function migrateScaffold(props: Record<string, unknown>): {
   }
 
   const sectionIdByTitle = new Map(sections.map((s) => [s.title, s.id]));
-  const rawQuotes = Array.isArray(props.quoteBank) ? (props.quoteBank as Array<Record<string, unknown>>) : [];
+  // Already healed above, so every entry has id/text/source.kind and the
+  // citation engine can't be handed a half-formed quote.
+  const rawQuotes = healed.quotes as unknown as Array<Record<string, unknown>>;
   const quotes: QuoteEntry[] = rawQuotes.map((q) => {
     if (q.paragraphId || q.sectionId) return q as unknown as QuoteEntry;
     const { section, ...rest } = q as { section?: string } & Record<string, unknown>;

@@ -34,8 +34,14 @@ const PAPER_SURFACES: SurfaceDef[] = [
     storage: { kind: "property", key: "sections" },
     format: "json",
     description:
-      "The paper's section scaffold: an ordered list of sections the outline and quote bank file against. Structured data, edited through the Shape tab.",
+      "The paper's section scaffold: an ordered array of sections the outline and quote bank file against. Structured data, edited through the Shape tab. Each section holds an array of paragraphs, and quotes file under a section or a paragraph by id.",
     readOnly: true,
+    elements: {
+      "!id": "Stable unique id for the section (a uuid). Quotes reference it by sectionId.",
+      "!title": "The section heading. Becomes a `##` header in the draft skeleton.",
+      note: "The writer's prose plan for the section (markdown). Optional.",
+      "!paragraphs": "Array of { !id, title?, note? }. REQUIRED, and must be present even if empty of content: every renderer maps over it, so a section without it cannot be displayed. A section with no real paragraphs still carries one placeholder entry.",
+    },
   },
   {
     id: "quotes",
@@ -43,8 +49,16 @@ const PAPER_SURFACES: SurfaceDef[] = [
     storage: { kind: "property", key: "quoteBank" },
     format: "json",
     description:
-      "Gathered quotes with their sources and the section each is filed under, used to generate Midwestern Style Manual citations. Structured data, edited through the Quote Bank tab.",
+      "Gathered quotes with their sources and where each is filed, used to generate Midwestern Style Manual citations. Structured data, edited through the Quote Bank tab.",
     readOnly: true,
+    elements: {
+      "!id": "Stable unique id for the quote (a uuid).",
+      "!text": "The quoted text itself. NOT `quote` — that key is ignored.",
+      "!source": "An object, NOT a citation string. Either { kind: \"book\", author, authorLast, title, shortTitle, editor?, city, publisher, year } or { kind: \"video\", author, authorLast, title, shortTitle, url, accessed }. The `kind` discriminant is what the citation engine switches on.",
+      page: "Page number as a string (books only). Optional.",
+      sectionId: "Files the quote under a section, by that section's id. Optional.",
+      paragraphId: "Files it under a specific paragraph, by that paragraph's id. Takes precedence over sectionId. Optional; a quote with neither is Unsorted.",
+    },
   },
   {
     id: "outline",

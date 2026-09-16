@@ -127,6 +127,17 @@ export type SurfaceDef = {
   primary?: boolean;
   // Structured or projected surfaces an agent should not free-write as text.
   readOnly?: boolean;
+  // For a "json" surface: the shape of ONE element of the array, as
+  // `key: description` pairs, with a `!` prefix marking a required key.
+  //
+  // This exists because of the 2026-09-16 incident: an agent filled a paper's
+  // Shape and Quote Bank by GUESSING the element shape (`{title, body}` for a
+  // section, `{quote, source, citation, note}` for a quote). Both guesses were
+  // wrong, nothing rejected them, and the record became unopenable. Naming the
+  // format and saying "these are structured" was not enough: a caller also needs
+  // to know what one row LOOKS like. Descriptive, not enforcing — the enforcing
+  // half is still owed (see next_steps.md).
+  elements?: Record<string, string>;
 };
 
 // The surface every ordinary type has: its markdown body, and nothing else.

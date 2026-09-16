@@ -91,6 +91,7 @@ export const typeTools: McpTool[] = [
             storage: s.storage,
             format: s.format,
             description: s.description,
+            ...(s.elements ? { elements: s.elements } : {}),
             ...(s.primary ? { primary: true } : {}),
             ...(s.readOnly ? { readOnly: true } : {}),
           })),
