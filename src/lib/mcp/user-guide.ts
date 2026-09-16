@@ -167,7 +167,9 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
 - **From your own app:** create a credential in **User Settings → API
-  credentials** and post to the HTTP API. \`/build/api\` has the details.
+  credentials** and post to the HTTP API. The same credential reads content back
+  out, whole and unaltered, which is how an app moves a note's text somewhere
+  else without anything retyping it. \`/build/api\` has the details.
 
 ## Video transcripts
 

@@ -4292,3 +4292,30 @@ The Draft now mounts `BodyEditor` with `preserveFootnotes`. `PaperMarkdownArea` 
 **Also here.** The Notes surface on both papers and songs gets canvas tabs (`tabsEnabled` on its `BodyEditor`). Thinking space is exactly the content that wants splitting, and tabs are sections of the same markdown string, so `properties.notes` is still one string and `extractBodyText` still folds all of it into `body_text`. Tabs are deliberately **not** enabled on a paper's Draft: the Draft is the canonical artifact the .docx renders from, and a tab marker there would flatten into a stray `## Title` heading in the exported document.
 
 **Consequences.** `scripts/verify-markdown-escape.mts` gains five checks covering the escaping, the round-trip, and that the exporter's own regex matches the result, including one asserting the fix stays opt-in. The .docx path itself is unchanged and `verify-papers.mts` still passes.
+
+## ADR-262: the machine API can read a body, and refuses what it does not understand
+
+**Date:** 2026-09-16
+**Status:** accepted (Tyler-directed). **Not core**, under the ADR-183 carve-out: every change here is purely additive — a new route, two new query parameters, a new opt-in — and an existing caller's request comes back byte-for-byte what it did before. The one clause worth naming out loud is "list queries never select `body`" (CLAUDE.md rule 8), which this deliberately puts a door in; see below.
+
+**Context.** `/api/machine/items` exists so that a bulk or byte-exact content move is not a retyping job. It could write a body and never read one, which broke the single workflow it was built for.
+
+The case that surfaced it: copying two notes into a paper's `notes` property. The 94KB one worked only because an MCP `get_item` result that large spills to a file on disk, where `jq` could pick it up and push it back — an accident of tooling, not a supported path. The 10.7KB one fit in context, never touched disk, and had to be retyped into the payload character by character. It came out **10,736 characters against 10,737**. Every element anyone would think to check had been checked individually: emoji variation selectors, escaped tildes, `&amp;` entities, trailing newlines. The missing character was invisible and unlocatable without a reference copy, which is precisely the silent corruption this surface is supposed to make impossible.
+
+Four smaller failures cost time on the way there, and they share a cause: the route ignored what it did not recognize. `?id=<uuid>` was dropped on the floor and answered with an unfiltered list, so a request for one item returned a different one under a 200. `?includeBody`, `?fields` likewise. And `GET /api/machine/items/<uuid>` matched no route, fell through to the Next.js page tree, and returned the app's **HTML shell** — which to a script that does not sniff content types is indistinguishable from a successful fetch.
+
+**Decision.** Four parts.
+
+1. **`?includeBody=true` on the list.** Off by default, so no existing payload changes size. On, each row carries its stored `{ format, text }` object — the same shape PATCH accepts, so a read feeds back into a write with nothing to reshape. Implemented as `listItemsWithBodies`, a separate function from `listItems` rather than a flag branching the `.select()`: a ternary there would have handed every existing caller a union row type, and keeping them separate means the body-free query stays the one everything in the app reaches for. Both share `listClauses`, so they cannot filter differently.
+
+2. **`GET /api/machine/items/<uuid>`**, the token half of `GET /api/items/[id]`. Same `getItem`, same `resolveSurfaces` (ADR-260), so it returns the body, the custom `properties`, and the named surfaces. Naming the surfaces matters more here than in the app: on a bespoke type the real content is in `properties` — a paper's Notes, Shape and Quote Bank — so a copy that only moves the body moves half the record.
+
+3. **A JSON 404 for everything unmatched under `/api/machine`** (`[...unmatched]/route.ts`), answering every method. A wrong answer shaped like a right one costs more than an error. It deliberately does not authenticate: "this endpoint does not exist" is not a secret, and a 401 would send a caller hunting for a credential problem that is not there.
+
+4. **Unknown query parameters are a 400** naming both what was not understood and what would have been. Silence turned a typo into a wrong-item result.
+
+`?id=` also became a real filter, one uuid or a comma-separated set, each validated — the bulk read that pairs with the existing batch PATCH.
+
+**On rule 8.** "List queries never select `body`" is a performance rule, not a correctness one, and its purpose survives an opt-in that is off by default and that nothing in the app sets. The exemption is bounded rather than trusted: `MAX_BODY_ROWS = 25` caps a body-carrying page (bodies are unbounded text; a 94KB note is real), and the response says so when it caps rather than truncating quietly. `scripts/verify-items.mts`'s assertion that the default list SQL selects no body still passes unchanged.
+
+**Consequences.** `scripts/verify-machine-read.mts` (24 checks, DB-backed) runs the real handlers with a real minted credential — no HTTP server, no mocks — and covers the lot: the unchanged default payload, byte-identical bodies with the character count asserted both ways, a lossless read → PATCH → re-read round trip, JSON 404s from both new paths, every rejection, and the cap. `/build/api` gains a **Reading content** section documenting the parameters, the cap, the 400s, and that `body` is the `{ format, text }` object on read and on write — the bare-string rejection on write is an existing gotcha, and the symmetry is the thing that makes a byte-exact copy possible.

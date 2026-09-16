@@ -35,13 +35,18 @@ function StatusDot({ ok }: { ok: boolean }) {
   );
 }
 
-// The api-scoped surface a credential opens. Kept in step with the five routes
-// that call verifyApiRequest (credentials.ts) — if a sixth is added, list it here.
+// The api-scoped surface a credential opens. Kept in step with the routes that
+// call verifyApiRequest (credentials.ts) — if another is added, list it here.
 const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "GET / POST / PATCH",
     path: "/api/machine/items",
-    what: "read and write items (GET filters: type — one key or comma-separated — status, statusCategory, relatedTo, parentId, q)",
+    what: "read and write items (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies)",
+  },
+  {
+    method: "GET",
+    path: "/api/machine/items/<id>",
+    what: "read one item whole: body, custom properties, and its named surfaces",
   },
   {
     method: "POST",
@@ -85,6 +90,20 @@ export default async function ApiTokens() {
   -u "<keyID>:<secret>" \\
   -H "Content-Type: application/json" \\
   -d '{"type":"note","title":"Hello from your app"}'`;
+  const curlReadBody = `# one item, whole: body, properties, surfaces
+curl -u "<keyID>:<secret>" ${origin}/api/machine/items/<id>
+
+# several at once, with bodies
+curl -u "<keyID>:<secret>" \\
+  "${origin}/api/machine/items?id=<id>,<id>&includeBody=true"`;
+  const curlCopy = `# copy one item's body onto another, byte for byte
+BODY=$(curl -s -u "<keyID>:<secret>" \\
+  "${origin}/api/machine/items/<sourceId>" | jq -c '.item.body')
+
+curl -X PATCH ${origin}/api/machine/items \\
+  -u "<keyID>:<secret>" \\
+  -H "Content-Type: application/json" \\
+  -d "{\\"id\\":\\"<targetId>\\",\\"body\\":$BODY}"`;
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
@@ -149,7 +168,7 @@ export default async function ApiTokens() {
           <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
             api
           </code>{" "}
-          opens these five routes and nothing else. It acts as you, so anything
+          opens these routes and nothing else. It acts as you, so anything
           it writes lands in your items.
         </p>
         <div className="mt-3 overflow-x-auto">
@@ -188,6 +207,84 @@ export default async function ApiTokens() {
             {curlWrite}
           </pre>
         </div>
+      </section>
+
+      {/* Reading content — the half this surface was missing until ADR-262 */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">Reading content</h2>
+        <p className="mt-2 text-sm text-ink-muted">
+          A list is body-free by default, because bodies are unbounded text and
+          most callers are after titles and dates. When you actually want the
+          content, ask for it: <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">includeBody=true</code>{" "}
+          on the list, or the per-item route, which returns one item whole.
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+          {curlReadBody}
+        </pre>
+        <ul className="mt-4 flex flex-col gap-2 ui-row text-ink-muted">
+          <li>
+            <strong className="text-ink">
+              <code className="font-mono text-xs">body</code> is the same object
+              on read and on write
+            </strong>{" "}
+            —{" "}
+            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+              {`{"format":"markdown","text":"…"}`}
+            </code>
+            , never a bare string. A write that sends a plain string is refused
+            with <em>body must be a &#123; format, text &#125; object or null</em>. That
+            symmetry is the point: a read result feeds straight back into a
+            write with nothing to reshape, which is what makes a byte-exact copy
+            possible.
+          </li>
+          <li>
+            <strong className="text-ink">
+              <code className="font-mono text-xs">format</code> is the type&rsquo;s,
+              not always markdown
+            </strong>{" "}
+            — a song&rsquo;s body comes back as{" "}
+            <code className="font-mono text-xs">chordpro</code>. Send back what
+            you were given rather than hardcoding a format.
+          </li>
+          <li>
+            <strong className="text-ink">
+              <code className="font-mono text-xs">properties</code> carries the
+              rest
+            </strong>{" "}
+            — a bespoke type keeps real content there, not only in the body: a
+            paper&rsquo;s Notes, Shape and Quote Bank all live in{" "}
+            <code className="font-mono text-xs">properties</code>. The per-item
+            route also returns{" "}
+            <code className="font-mono text-xs">surfaces</code>, which names each
+            one and says where it is stored, so a copy can tell the draft from
+            the scratch pad.
+          </li>
+          <li>
+            <strong className="text-ink">Bodies are capped at 25 rows</strong> per
+            list response. Past that, page with{" "}
+            <code className="font-mono text-xs">offset</code>, or name the ids you
+            want with <code className="font-mono text-xs">id=</code>.
+          </li>
+          <li>
+            <strong className="text-ink">
+              An unknown query parameter is a 400
+            </strong>
+            , naming what it did not understand and what it would have. Nothing
+            is silently ignored, and no endpoint under{" "}
+            <code className="font-mono text-xs">/api/machine</code> ever answers
+            with an HTML page: a path that does not exist is a JSON 404.
+          </li>
+        </ul>
+        <div className="mt-4">
+          <p className="mb-1.5 ui-meta">Copy content from one item to another</p>
+          <pre className="overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+            {curlCopy}
+          </pre>
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="ui-section-label">Other permissions</h2>
         <p className="mt-3 ui-meta">
           A credential may also carry{" "}
           <code className="font-mono">mcp</code> (the MCP endpoint, for AI
