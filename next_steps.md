@@ -3,7 +3,50 @@
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
 
-## 🐛 FIXED IN CODE, STILL BROKEN IN PROD — an agent's guessed scaffold made a paper unopenable (2026-09-16)
+## ✅ BUILT, NEEDS TESTING ON A DEPLOY — the machine API can read a body (2026-09-16, ADR-262)
+
+Tyler hit this copying two notes into a paper's `notes` property. `/api/machine/items`
+could WRITE a body and never read one, which is the one workflow it exists for.
+The 94KB note only made it because an MCP `get_item` result that large spills to
+a file on disk, where `jq` could pick it up: an accident of tooling. The 10.7KB
+one fit in context, never touched disk, and had to be retyped into the payload.
+It came out **10,736 characters against 10,737**, with every element anyone would
+think to check (emoji variation selectors, escaped tildes, `&amp;` entities,
+trailing newlines) verified individually. The missing character was unlocatable
+without a reference copy.
+
+Built:
+
+- **`?includeBody=true`** on `GET /api/machine/items`, off by default so no
+  existing payload changes. Returns the stored `{format, text}` object, the same
+  shape PATCH accepts. Capped at `MAX_BODY_ROWS = 25` and the response says when
+  it caps (`src/lib/items.ts` `listItemsWithBodies`).
+- **`GET /api/machine/items/<uuid>`** — one item whole: body, `properties`, and
+  its named `surfaces` (ADR-260), through the same `getItem`/`resolveSurfaces` as
+  the in-app route.
+- **A JSON 404 catch-all** at `src/app/api/machine/[...unmatched]/route.ts`. An
+  unmatched machine path used to fall through to the page tree and answer with
+  the app's HTML shell, which any script that doesn't sniff content types reads
+  as success.
+- **Unknown query params are a 400** naming them and naming what IS accepted.
+  `?id=` also became a real filter (one uuid or comma-separated); it used to be
+  ignored, so a request for one item came back as a different one under a 200.
+
+`scripts/verify-machine-read.mts` — 24 checks, DB-backed, runs the real handlers
+with a real minted credential. All pass locally against the dev DB.
+
+**Still owed:** the acceptance run against Tyler's production
+(`https://ledgr.tylerjcollins.com`) — bodies of `544e7faa-…` and `0279c3f9-…`
+at exactly 10737 and 91422 characters. That needs a deploy and a credential, so
+it is Tyler's to run:
+
+```
+curl -s -u "<keyID>:<secret>" \
+  "https://ledgr.tylerjcollins.com/api/machine/items?id=544e7faa-4f47-4e38-9bdf-c565ccd2d97c,0279c3f9-cee6-4559-8729-50faef3fe255&includeBody=true" \
+  | jq '.items[] | {title, chars: (.body.text | length)}'
+```
+
+## ✅ FIXED AND MERGED — an agent's guessed scaffold made a paper unopenable (2026-09-16)
 
 An agent filling a paper over MCP guessed the scaffold's shape and the guesses
 were wrong: `{title, body}` for a section (real: `{id, title, paragraphs[]}`) and
@@ -20,9 +63,11 @@ it throws during render and takes the whole record down.
 `healScaffold` (`src/lib/papers/normalize.ts`) now coerces both arrays before
 anything renders, losslessly. Healthy scaffolds come back byte-identical.
 
-**⚠️ The fix is on `feat/bespoke-type-surfaces`, which is NOT merged.** Production
-is two days old, so the broken paper stays broken until this lands and deploys.
-There is no data repair to run: the healer fixes it on open and persists on save.
+**Merged 2026-09-16 in PR #390** (`feat/bespoke-type-surfaces` → `main`, merge
+commit `63cc97c`), so it deploys with `main` on Tyler's instance. There is no
+data repair to run: the healer fixes the record on open and persists on save, so
+the paper should open once that build is live. Worth one click to confirm rather
+than assuming.
 
 ## 🔜 OWED — the write boundary still doesn't reject a malformed scaffold
 
