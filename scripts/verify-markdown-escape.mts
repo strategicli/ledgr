@@ -34,7 +34,7 @@ try { Object.defineProperty(globalThis, "navigator", { value: { userAgent: "node
 const { Editor } = await import("@tiptap/core");
 const StarterKit = (await import("@tiptap/starter-kit")).default;
 const { Markdown } = await import("@tiptap/markdown");
-const { TextColor, Highlight, MarkdownEscapeFix, OrderedListTextFix } =
+const { TextColor, Highlight, MarkdownEscapeFix, OrderedListTextFix, FootnoteMarkdownFix } =
   await import("../src/components/markdown-editor/extensions");
 // The palette is the source of truth for the hex a colored span carries. Taken
 // from it rather than hardcoded: this test used to spell red "#e03e3e" (the
@@ -52,12 +52,13 @@ function check(name: string, ok: boolean, detail = "") {
   if (!ok) failures += 1;
 }
 
-function editorFor(withFix: boolean, withOrderedListFix = true) {
+function editorFor(withFix: boolean, withOrderedListFix = true, withFootnoteFix = false) {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const exts: unknown[] = [StarterKit, Markdown.configure({ indentation: { style: "space", size: 4 } }), TextColor, Highlight];
   if (withFix) exts.push(MarkdownEscapeFix);
   if (withOrderedListFix) exts.push(OrderedListTextFix);
+  if (withFootnoteFix) exts.push(FootnoteMarkdownFix);
   return new Editor({ element: el as any, extensions: exts as any, content: "", contentType: "markdown" } as any);
 }
 
@@ -183,6 +184,46 @@ topLevelAfter.commands.setContent(orderedTopLevel, { emitUpdate: false, contentT
 check(
   "sanity: top-level ordered list with a span was already fine",
   topLevelAfter.getMarkdown().trim() === orderedTopLevel.trim()
+);
+
+// --- footnotes (ADR-260) ---------------------------------------------------
+// Papers carry `[^id]` markers and their `[^id]: …` definitions. They are NOT in
+// the shared dialect — msm-docx.ts hand-parses them — so the serializer escapes
+// them like any other markdown-significant text, which was harmless while the
+// paper Draft was a raw textarea and became corruption the moment it moved onto
+// this editor: `\[^1\]` no longer matches the exporter's definition regex, so
+// every citation is dropped from the .docx without an error anywhere.
+const footnoteSrc = [
+  "A claim that needs support.[^a1]",
+  "",
+  "[^a1]: Author Name, *Some Title* (Place: Publisher, 2020), 41.",
+].join("\n");
+
+const fnWithout = editorFor(true, false, false);
+fnWithout.commands.setContent(footnoteSrc, { emitUpdate: false, contentType: "markdown" } as any);
+const fnWithoutOut = fnWithout.getMarkdown();
+check(
+  "without the fix, footnote markers come back escaped (the bug)",
+  fnWithoutOut.includes("\\[^"),
+  fnWithoutOut
+);
+
+const fnWith = editorFor(true, false, true);
+fnWith.commands.setContent(footnoteSrc, { emitUpdate: false, contentType: "markdown" } as any);
+const fnWithOut = fnWith.getMarkdown();
+check("with the fix, no escaped footnote markers survive", !fnWithOut.includes("\\[^"), fnWithOut);
+check(
+  "with the fix, a footnoted paragraph round-trips byte-for-byte",
+  fnWithOut.trim() === footnoteSrc.trim(),
+  fnWithOut
+);
+check(
+  "the exporter's own definition regex matches the round-tripped text",
+  fnWithOut.split(/\r?\n/).some((l) => /^\[\^([^\]]+)\]:\s?(.*)$/.test(l))
+);
+check(
+  "the fix is opt-in: an ordinary note still escapes a literal [^ sequence",
+  fnWithoutOut.includes("\\[^")
 );
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);

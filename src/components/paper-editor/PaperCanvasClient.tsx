@@ -22,7 +22,8 @@ import { buildOutlineHtml } from "@/lib/papers/outline-html";
 import type { OutlineSection, PaperMeta as Meta, QuoteEntry } from "@/lib/papers/types";
 import NotesTab from "@/components/canvas/NotesTab";
 import OutlineTab from "@/components/paper-editor/OutlineTab";
-import PaperMarkdownArea from "@/components/paper-editor/PaperMarkdownArea";
+import BodyEditor from "@/components/markdown-editor/BodyEditor";
+import { uploadAttachment } from "@/components/attachments/upload";
 import PaperMeta from "@/components/paper-editor/PaperMeta";
 import QuoteBank from "@/components/paper-editor/QuoteBank";
 import ShapeTab from "@/components/paper-editor/ShapeTab";
@@ -155,7 +156,6 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
   );
 
   const basePropsRef = useRef(initialProps);
-  const draftRef = useRef<HTMLTextAreaElement>(null);
   const { patch, saveState } = useItemAutosave(itemId);
 
   // Rebuild the full properties object: preserve unknown/system keys, overwrite
@@ -181,6 +181,12 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Same presigned-upload handshake NotesTab and ItemEditor use, resolved to the
+  // stable /files/<id> address the markdown stores (fileUrl, not publicUrl,
+  // ADR-228).
+  const uploadDraftFile = async (file: File) =>
+    (await uploadAttachment(itemId, file)).fileUrl;
 
   const commitDraft = (text: string) => {
     setDraft(text);
@@ -318,12 +324,12 @@ export default function PaperCanvasClient({ itemId, initialTitle, initialBody, i
         {tab === "draft" && (
           <div className="flex flex-col gap-3">
             <PaperMeta meta={meta} onChange={commitMeta} />
-            <PaperMarkdownArea
-              ref={draftRef}
-              value={draft}
+            <BodyEditor
+              itemId={itemId}
+              initialMarkdown={draft}
               onChange={commitDraft}
-              ariaLabel="Paper draft"
-              placeholder={"Write the paper in markdown. Copy citations from the Outline as you go."}
+              uploadFile={uploadDraftFile}
+              preserveFootnotes
             />
           </div>
         )}

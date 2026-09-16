@@ -39,6 +39,7 @@ import {
 } from "@/lib/colors";
 import {
   EmptyListItemFix,
+  FootnoteMarkdownFix,
   Highlight,
   LedgrImage,
   LedgrMention,
@@ -124,6 +125,13 @@ export type MarkdownEditorProps = {
   // blockRef → the task it was promoted to (ADR-090): shows a "✓ task" badge on
   // those lines instead of the promote button, and links to the task.
   promotedRefs?: PromotedRefs;
+  // Papers only: keep `[^id]` footnote markers and their definitions out of the
+  // serializer's backslash-escaping, so a citation survives a save on the rich
+  // surface. Footnotes are not in the shared dialect (they are hand-parsed by the
+  // Papers module and its .docx renderer), so this is OPT-IN — an ordinary note
+  // must keep treating `\[^…\]` as the literal text the owner typed. See
+  // FootnoteMarkdownFix in extensions.ts.
+  preserveFootnotes?: boolean;
   // Controlled visibility of the formatting bar on desktop (S5): the collapse
   // toggle now lives in BodyEditor's mode-row, which owns this state (and its
   // per-item persistence). When false the bar renders NOTHING on desktop (zero
@@ -555,6 +563,7 @@ export default function MarkdownEditor({
   promoteToMeetingId,
   onRequestSave,
   promotedRefs,
+  preserveFootnotes = false,
   toolbarOpen = true,
   viewControls,
   compact = false,
@@ -659,6 +668,10 @@ export default function MarkdownEditor({
       // backslash-escaped, which otherwise compounded on every rich⇄source flip.
       // See MarkdownEscapeFix in extensions.ts.
       MarkdownEscapeFix,
+      // Papers only (opt-in): the same manager-patching discipline, undoing the
+      // escaping on `[^id]` footnote markers so a citation survives a save. Off
+      // by default so an ordinary note keeps `\[^…\]` as literal typed text.
+      ...(preserveFootnotes ? [FootnoteMarkdownFix] : []),
       // Also right after Markdown (same manager-patching discipline): keeps an
       // empty bullet from being read as a setext heading underline, in both
       // directions. See EmptyListItemFix / spaceEmptyListItems.
