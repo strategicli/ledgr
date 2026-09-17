@@ -62,7 +62,20 @@ function putWithProgress(
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
         : reject(new Error(`storage upload failed (${xhr.status})`));
-    xhr.onerror = () => reject(new Error("storage upload failed (network)"));
+    // XHR cannot tell a CORS rejection from a dead connection — the browser
+    // hides the preflight result on purpose — and CORS is by far the likelier
+    // of the two here, because the bucket's allowed-origin list has to be
+    // re-applied by hand every time an install's address changes and nothing
+    // fails until someone tries to upload. Name it, so the next person doesn't
+    // spend an afternoon on it: `node scripts/r2-cors.mjs --check` answers it
+    // in one command (2026-09-16).
+    xhr.onerror = () =>
+      reject(
+        new Error(
+          "Couldn't reach file storage. Its allowed-address list (CORS) may not " +
+            "include this address — see runbook §1."
+        )
+      );
     xhr.send(file);
   });
 }

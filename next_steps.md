@@ -2,6 +2,29 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — Build -> Network advertises the install's published address (2026-09-17, ADR-260, non-core)
+
+Brandon's hub moved onto a Cloudflare Tunnel at `https://ledgr.brasco.fyi` on
+2026-09-13, and "How other devices reach this one" kept offering the tailnet
+name. It could not know: that list is built from the Tailscale CLI and the
+machine's own network interfaces, and a tunnel is invisible to both.
+
+`reachableAddresses()` now takes an optional `publicUrl` and ranks it first,
+labelled **Public address** and marked as the one to use. It comes from the
+install's own `NEXT_PUBLIC_APP_URL` — already set, already what the R2 CORS
+script reads — via a bracketed `process.env[...]` so Next cannot inline it as
+undefined at build time. A blank, unparseable, or localhost value is ignored, so
+a plain dev run never hands out an address that points at the reader.
+
+Shipped alongside the finished R2/CORS batch from 2026-09-16: `npm run
+r2:cors:check`, the credential-reading and paste-ready-JSON fallbacks in
+`scripts/r2-cors.mjs`, the runbook write-up (including the public-development-URL
+finding), the `hub-reachable` comment, a CORS-naming upload error message, and
+three one-off scripts from the people backfill and the note import.
+
+**Verified:** `verify-network-addresses.mts` (14 new checks), `verify-user-guide.mts`,
+tsc and eslint clean. User guide updated in the same PR (ADR-189).
+
 ## ✅ SHIPPED — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-259, branch `feat/memory-supersedes`, PR #388, non-core)
 
 Came out of a sourced review of durable-memory practice (the Ledgr note

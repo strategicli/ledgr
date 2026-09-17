@@ -5,18 +5,21 @@
 // shows its OWN addresses rather than making the owner work out the form.
 //
 // Ordered by preference, and the order is the advice:
+//   0. The published address, when the install has one. Nothing here can detect
+//      a Cloudflare Tunnel or a Funnel, so it is read from this install's own
+//      NEXT_PUBLIC_APP_URL rather than sniffed (2026-09-17: Brandon's hub moved
+//      to https://ledgr.brasco.fyi and this page still advertised the tailnet).
 //   1. The tailnet hostname (MagicDNS). Readable, and it survives a re-address,
 //      which the raw 100.x does not.
 //   2. The tailnet IP. Same reachability, uglier, works if MagicDNS is off.
 //   3. The LAN address. Works only on this network — worth showing, worth
 //      labelling as limited.
 //
-// A device that can join the tailnet (a phone, a laptop) needs no Funnel at
-// all: tailnet-internal addressing is enough and is more private. Funnel is
-// only for callers that cannot join a tailnet, and the load-bearing one is the
-// claude.ai MCP connector, because that fetch comes from Anthropic's servers
-// rather than a device the owner controls. So Funnel is a separate, later step
-// and is deliberately not detected here.
+// A device that can join the tailnet (a phone, a laptop) needs no public address
+// at all: tailnet-internal addressing is enough and is more private. A public
+// address is only for callers that cannot join a tailnet, and the load-bearing
+// one is the claude.ai MCP connector, because that fetch comes from Anthropic's
+// servers rather than a device the owner controls.
 export type ReachableAddress = {
   url: string;
   label: string;
@@ -95,6 +98,24 @@ export function isTailnetIp(ip: string): boolean {
 }
 
 /**
+ * The published address, if this install has one worth handing out. A localhost
+ * value is what a plain dev run carries, and telling another device to visit
+ * localhost is worse than saying nothing.
+ */
+export function normalizePublicUrl(raw: string | null | undefined): string | null {
+  if (!raw || !raw.trim()) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  const h = u.hostname.toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost")) return null;
+  return u.origin;
+}
+
+/**
  * The list a hub shows. Pure, so the ordering and the labelling are testable
  * without a tailnet.
  */
@@ -102,16 +123,29 @@ export function reachableAddresses(opts: {
   tailscale: TailscaleState;
   lanIps: string[];
   port: number;
+  // This install's own published address, if it has one: the Cloudflare Tunnel
+  // / Funnel / reverse-proxy hostname already configured as NEXT_PUBLIC_APP_URL.
+  // Nothing in here can detect a tunnel, so it is told to us.
+  publicUrl?: string | null;
 }): ReachableAddress[] {
   const out: ReachableAddress[] = [];
   const { tailscale: ts, port } = opts;
 
+  const published = normalizePublicUrl(opts.publicUrl);
+  if (published) {
+    out.push({
+      url: published,
+      label: "Public address",
+      note: "Use this one. It works from anywhere, including callers that cannot join your tailnet. The Claude connector is the one that matters.",
+      preferred: true,
+    });
+  }
   if (ts.running && ts.dnsName) {
     out.push({
       url: `http://${ts.dnsName}:${port}`,
       label: "Tailnet hostname",
-      note: "Use this one. It works from any device signed into your tailnet, anywhere, and it keeps working if the addresses change.",
-      preferred: true,
+      note: "Works from any device signed into your tailnet, anywhere, and it keeps working if the addresses change.",
+      preferred: out.length === 0,
     });
   }
   for (const ip of ts.running ? ts.ips.filter((i) => !i.includes(":")) : []) {

@@ -25,7 +25,8 @@
 # PER-INSTANCE, AND THIS REPO IS SHARED. Brandon and Tyler build from one repo,
 # so this probes only what the `LEDGR_HUB_URL` repo variable names and does
 # nothing at all when it is unset. Set it to a hub's public origin with no
-# trailing slash, e.g. https://bc-edgewood.char-arcturus.ts.net. Point it at a
+# trailing slash, e.g. https://ledgr.brasco.fyi (Brandon's hub moved from its
+# Tailscale Funnel address to a Cloudflare Tunnel on 2026-09-13). Point it at a
 # cloud deployment and it would report that instead, which is not the intent.
 name: hub-reachable
 
