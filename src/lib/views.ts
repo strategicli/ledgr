@@ -11,7 +11,12 @@ import { type ItemStatus, type Urgency } from "@/lib/item-enums";
 import { toPriority } from "@/lib/priority";
 import { ItemError, listColumns } from "@/lib/items";
 import { appTimezoneSync, todayBounds, zonedMidnightUtc } from "@/lib/today";
-import { parseWhere, type WhereCondition, type WhereGroup } from "@/lib/view-where";
+import {
+  parseWhere,
+  resolveRelativeValue,
+  type WhereCondition,
+  type WhereGroup,
+} from "@/lib/view-where";
 import { BUILTIN_DATES, type DateRef, type BuiltinDate } from "@/lib/placement";
 import {
   DEFAULT_PROJECT_CARD,
@@ -291,7 +296,17 @@ function joinBool(parts: (SQL | null)[], connector: "and" | "or"): SQL | null {
 // top-level jsonb containment (index-friendly, and matches a multi_select array
 // element or a scalar select alike); comparisons cast to numeric when hinted,
 // else compare as text (ISO dates sort lexically, ADR-008).
-function propertyConditionSql(key: string, c: WhereCondition): SQL | null {
+function propertyConditionSql(key: string, raw: WhereCondition): SQL | null {
+  // Relative value tokens (view-where.ts) resolve here, at query time, in the
+  // owner's timezone — so "days is @dayofmonth" is a rotation that never needs
+  // editing. Resolution happens BEFORE anything reads the value, because the
+  // numeric cast and the YYYY-MM-DD sniff below both branch on its shape.
+  const today = todayBounds(new Date(), appTimezoneSync()).today;
+  const c: WhereCondition = {
+    ...raw,
+    value: resolveRelativeValue(raw.value, today),
+    values: raw.values?.map((v) => resolveRelativeValue(v, today) ?? v),
+  };
   const text = sql`(${items.properties} ->> ${key})`;
   const present = sql`(${items.properties} -> ${key} is not null and ${items.properties} ->> ${key} <> '')`;
   const absent = sql`(${items.properties} -> ${key} is null or ${items.properties} ->> ${key} = '')`;

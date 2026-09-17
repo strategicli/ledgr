@@ -776,7 +776,9 @@ A view is a saved filter, sort and layout you reach by name. Build them at
   property includes a time of day, the entry lands at its hour, and a table
   column shows the day and clock rather than a raw timestamp.
 - **Filter on anything,** including your own properties, with operators that fit
-  the property kind.
+  the property kind. A day-of-month or date field can filter against "today"
+  itself, so a rule like "day is today" always matches the current date without
+  editing the view.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
   filters.
 - **Sort by anything,** including priority and custom properties.
@@ -800,6 +802,28 @@ gradient or image background with an adjustable scrim.
 
 **Dashboards are for doing, not just reading.** Rows have the row menu, list
 widgets have an inline add, board widgets drag, and removals are undoable.
+
+## Daily Devotions
+
+\`Daily Devotions\` on your Work nav is a dashboard for a devotional rhythm
+built on the day of the month: today's attribute of God, today's morning and
+evening prayer from *A Diary of Private Prayers*, your open prayer requests,
+recent journal entries, and a quiet Library row for the books and your own
+devotional writings.
+
+- **Attribute of God** is its own type: one item per attribute, tagged with the
+  day or days of the month it belongs to.
+- **Book** holds a devotional book as one parent item with a child item per
+  entry or chapter, the same shape as a commentary. *A Diary of Private
+  Prayers* carries a day and a time of day (morning or evening) on each entry;
+  *New Morning Mercies* and *Whiter Than Snow* carry a chapter or a calendar
+  date instead, so they read but don't rotate.
+- **The three-year Bible reading plan** is one long reference note, not a set
+  of items: it's an archive to browse or print, not something Ledgr tracks
+  day by day.
+- **Your own devotional writings** carry a "Devotional Writing" tag, so the
+  Library row's link always finds them; tag a new one the same way to add it
+  to the shelf.
 
 ## Planner
 
