@@ -101,10 +101,11 @@ export const workspaceTools: McpTool[] = [
       "children:[destinations] }. `mobileNavSlots` is a separate phone list (null " +
       "mirrors desktop). Read the current nav via describe_workspace first, keep " +
       "it to ~4–5 slots, and confirm with the owner. Only the fields you pass " +
-      "change; passing navSlots REPLACES the whole middle-slot list. Resend each " +
-      "slot's `icon` when you do — describe_workspace returns it, and a slot sent " +
-      "without one is stored with the generic fallback glyph rather than refused, " +
-      "so dropping it quietly re-icons the owner's whole nav.",
+      "change; passing navSlots REPLACES the whole middle-slot list, so send the " +
+      "slots you want to keep, not just the new one. Resend each slot's `icon` " +
+      "when you do — describe_workspace returns it. A slot sent without one keeps " +
+      "the icon already stored at that href, and only a genuinely new slot with " +
+      "no icon falls back to the generic glyph.",
     inputSchema: {
       type: "object",
       properties: {
