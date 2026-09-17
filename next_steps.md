@@ -2,6 +2,16 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — devotional import: relative view tokens + the Daily Devotions dashboard (2026-09-17, ADR-264, branch `feat/view-today-tokens`)
+
+Brandon's Notion "Daily Devotions" page retired into Ledgr: a `@dayofmonth`/`@today` relative-value token for view rules, new `attribute` and `book` types, a `Devotional Writing` tag, five saved views, and a "Daily Devotions" dashboard on the Work nav.
+
+**What shipped.** `view-where.ts` gained two reserved token strings resolved at query time in `views.ts`'s `propertyConditionSql`, in the owner's timezone; `RuleBuilder.tsx` offers them as pickable chips. Data (all written over the machine API, `~/.ledgr-api.env`, since the hub Postgres isn't reachable from this machine): a 1,087-day Bible-reading-plan note (archive only, no items — the daily reading happens in Logos); 25 `attribute` items covering all 31 days; a `book` type holding *A Diary of Private Prayers* (62 entries), *New Morning Mercies* (366) and *Whiter Than Snow* (54) as parent + children, the commentary-import shape; 8 of Brandon's own devotional writings as notes, tagged `Devotional Writing`. Views: "Today's Attribute", "Today's Prayers", "Open Prayer Requests", "Recent Journal", "Devotional Writings". Dashboard: "Daily Devotions" (5 widgets, the Library row a `container` holding the writings view + 3 book links), added to the Work nav. User guide updated (ADR-189): a new "Daily Devotions" section plus a bullet on the saved-views token.
+
+**Verified:** `scripts/verify-view-tokens.mts` (new, pure), `verify-view-rules.mts`, `verify-views.mts`, `verify-dashboards.mts`, `verify-user-guide.mts` all pass; typecheck and lint clean.
+
+**Left for a later session, by Brandon's choice:** no completion/read tracking on any of it (date-driven, not check-off-driven); the reading plan stays a note, not items, since Logos is the actual reading tool.
+
 ## ✅ SHIPPED — Build -> Network advertises the install's published address (2026-09-17, ADR-263, non-core)
 
 Brandon's hub moved onto a Cloudflare Tunnel at `https://ledgr.brasco.fyi` on
