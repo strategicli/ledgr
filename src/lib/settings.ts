@@ -610,6 +610,50 @@ function parseNavSlots(raw: unknown, max: number, fallback: NavSlotConfig[]): Na
     .slice(0, max);
 }
 
+// Carry a nav slot's presentation (icon, badge) over from the slot already at
+// that href when a write leaves it out. parseNavDestination stamps a missing
+// icon with the generic bullet-list fallback rather than refusing the slot, so
+// ANY caller that read the nav lossily and wrote the whole list back silently
+// re-iconed the owner's entire toolbar. MCP update_nav did exactly that twice
+// (2026-09-14, and again 2026-09-17 on Brandon's rail). #387 taught one reader
+// to return icons; this fixes the seam every writer routes through, so the next
+// lossy caller cannot do it again. Same lesson as ADR-258's type icon/color
+// loss: a lossy read plus a wholesale write destroys a presentation choice.
+// A caller that DOES send an icon still wins, so this never blocks a real edit.
+export function keepNavPresentation(
+  incoming: unknown,
+  current: NavSlotConfig[] | null | undefined
+): unknown {
+  if (!Array.isArray(incoming) || !current?.length) return incoming;
+  // Keyed by href for destinations; a tools group has no route, so by label.
+  const known = new Map<string, { icon: string; badge?: NavBadge }>();
+  const remember = (key: string, v: { icon: string; badge?: NavBadge }) => {
+    if (!known.has(key)) known.set(key, v); // first wins on a duplicate href
+  };
+  for (const s of current) {
+    if (s.type === "tools") {
+      remember(`tools:${s.label}`, { icon: s.icon });
+      for (const c of s.children) remember(c.href, c);
+    } else {
+      remember(s.href, s);
+    }
+  }
+  const fill = (raw: unknown): unknown => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+    const r = { ...(raw as Record<string, unknown>) };
+    const prev = known.get(
+      r.type === "tools" ? `tools:${String(r.label ?? "")}` : String(r.href ?? "")
+    );
+    if (prev) {
+      if (!isIconRef(r.icon)) r.icon = prev.icon;
+      if (r.badge === undefined && prev.badge) r.badge = prev.badge;
+    }
+    if (Array.isArray(r.children)) r.children = r.children.map(fill);
+    return r;
+  };
+  return incoming.map(fill);
+}
+
 // Parse a stored list of item ids (favorites; pinned-outline items): keep only
 // well-formed uuid strings, dedupe (first occurrence wins, preserving order),
 // and cap the count. Anything that isn't an array yields the empty list.
@@ -876,7 +920,20 @@ export async function updateSettings(
   ownerId: string,
   patch: Partial<UserSettings>
 ): Promise<UserSettings> {
-  const next = parseSettings({ ...(await getSettings(ownerId)), ...patch });
+  const before = await getSettings(ownerId);
+  const merged: Record<string, unknown> = { ...before, ...patch };
+  if (patch.navSlots !== undefined) {
+    merged.navSlots = keepNavPresentation(patch.navSlots, before.navSlots);
+  }
+  if (patch.mobileNavSlots !== undefined) {
+    // A first custom phone list is normally built from the desktop one, so fall
+    // back to the desktop slots when no phone list is stored yet.
+    merged.mobileNavSlots = keepNavPresentation(
+      patch.mobileNavSlots,
+      before.mobileNavSlots ?? before.navSlots
+    );
+  }
+  const next = parseSettings(merged);
   await getDb().update(users).set({ settings: next }).where(eq(users.id, ownerId));
   return next;
 }
