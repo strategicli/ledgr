@@ -116,6 +116,11 @@ export default async function Network() {
         tailscale,
         lanIps: await readLanIps(),
         port: Number(process.env.PORT) || 3000,
+        // Bracket access on purpose: Next inlines the dotted form of a
+        // NEXT_PUBLIC_* var at build time, and the supervisor builds with its own
+        // environment rather than the app's, so the dotted form can bake in as
+        // undefined here. The supervisor DOES pass it to `next start`.
+        publicUrl: process.env["NEXT_PUBLIC_APP_URL"],
       })
     : [];
 

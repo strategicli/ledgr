@@ -1432,9 +1432,12 @@ in the middle you get both in one line.
 - **Other devices reach this instance at.** On an instance running on your own
   machine, this lists the addresses to hand to another device, best first, each
   with a **Copy** button — so adding a spoke is copy from one screen, paste into
-  another, with nothing to work out. The tailnet name is the one to use: it
-  works from any device signed into your tailnet, from anywhere, and it keeps
-  working if the addresses change. A local-network address is offered too and
+  another, with nothing to work out. If the instance has a published address
+  (the public hostname it is configured to answer on), that one is listed first
+  and is the one to use: it works from anywhere, including callers that cannot
+  join your tailnet. Otherwise the tailnet name is the one to use: it works from
+  any device signed into your tailnet, from anywhere, and it keeps working if the
+  addresses change. A local-network address is offered too and
   labelled for what it is: only good on that network. Nothing is exposed to the
   internet by any of this — a phone or laptop that can join your tailnet needs
   no more than this. Publishing the instance publicly is a separate step, and

@@ -50,8 +50,24 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 
 > **R2 provisioning (one-time, blocks live uploads):** Cloudflare dashboard → R2 → create bucket `ledgr` → Manage API tokens → create an Object Read & Write token scoped to the bucket → fill the FOUR `R2_*` vars (ADR-231 deleted `R2_PUBLIC_BASE_URL`; the bucket stays **private** — do NOT enable public access or an r2.dev URL, `/files/<id>` serves reads through presigned redirects) locally and in EVERY Vercel environment you use — **Preview included**, or preview uploads 503 (bitten 2026-08-29) — then set the CORS policy below, then paste an image into any item body and confirm it renders.
 >
+> **Check that the bucket is actually private, don't assume it (found on 2026-09-17).** ADR-231 made the bucket private and deleted `R2_PUBLIC_BASE_URL` from the app, but that only changed the code. Brandon's bucket still had Cloudflare's **public development URL** switched on, so any object was readable with no credentials at `https://pub-<id>.r2.dev/<key>` — for ten months, while the docs above said the opposite. Nothing pointed at it: no code read the var (only comments mentioned it), and of 24,267 items exactly one contained the string "r2.dev", in prose. It was switched off on 2026-09-17 and the dead var deleted from `supervisor/config.json` and `.env.local`; no restart was needed, because nothing read it. **Verify, per bucket:**
+>
+> ```bash
+> curl -s -o /dev/null -w "%{http_code}\n" "https://pub-<id>.r2.dev/<a real object key>"
+> ```
+>
+> `404` is what you want, on a key you know exists. `200` means the bucket is public and the switch is at Cloudflare → R2 → bucket → **Settings → Public Development URL**. Two things make this low-drama rather than a breach: listing still requires a signature, so the bucket can't be enumerated, and keys are two random UUIDs, so they can't be guessed. What it does cost is revocation — any public link that ever escaped keeps working forever, which is the exact guarantee ADR-231 was meant to buy. The lesson generalizes past R2: a setting removed from the code is not a setting removed from the provider.
+>
 > **One bucket per DATABASE (ADR-237), not per person.** The orphan-files sweep reconciles a bucket against one database's `attachments` rows, and `attachments` is not in the synced set — so any bucket shared by two databases makes each database see the other's files as orphans, and Delete-all becomes cross-database destruction. Tyler's split: prod (`ledgr_prod`) → bucket `ledgr`; dev/preview DB → bucket `ledgr-dev` (created 2026-08-29 via `~/.config/cloudflare/provision-ledgr-dev-bucket.py`; same S3 credentials, only `R2_BUCKET` differs per environment). Brandon's cloud+local pair shares one bucket over two UNSYNCED attachment tables, so the sweep **refuses to run on any syncing install** (hub with live peers, or spoke) until attachment rows join sync — that guard is `assertBucketIsOurs()` in `src/lib/attachments.ts`.
 
+> **R2 CORS — start here when "attaching a file does nothing".** One command answers it, on any install, with no credentials and no permissions:
+>
+> ```bash
+> npm run r2:cors:check
+> ```
+>
+> It sends the real browser preflight for every origin and prints `OK`/`FAIL` per line, marking this install's own address. A `FAIL` on your own address is the whole bug: browser uploads from there die in preflight, while server-side writes (email-in, MCP `attach_file`) keep working because they never preflight. `npm run r2:cors` applies the fix and re-verifies; if the token can't write bucket settings it prints the paste-ready JSON and the direct dashboard link instead of just failing. The origin list lives in `scripts/r2-cors.mjs`, and the script appends **this install's own `NEXT_PUBLIC_APP_URL`** automatically, so a new install needs no edit to that file.
+>
 > **R2 CORS (one-time, blocks browser uploads):** presigned uploads PUT straight from the browser to the bucket, and a fresh R2 bucket has **no CORS policy**, so the preflight gets 403 and every upload fails. The app's R2 token is object-scoped (deliberately) and cannot set bucket config, so apply it in the dashboard: Cloudflare → R2 → `ledgr` bucket → Settings → CORS policy → add:
 >
 > ```json
@@ -61,6 +77,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 >       "https://ledgr-teal.vercel.app",
 >       "https://ledgr-sandy.vercel.app",
 >       "https://*.vercel.app",
+>       "https://ledgr.brasco.fyi",
 >       "https://bc-edgewood.char-arcturus.ts.net",
 >       "http://localhost:3000"
 >     ],
@@ -71,7 +88,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 > ]
 > ```
 >
-> Only PUT needs CORS; reads go through `/files/<id>`'s 302 to a presigned URL as top-level navigations or `<img>` requests, which never preflight. The `https://*.vercel.app` wildcard is what lets **branch previews** upload; it is not an access-control hole — the presigned signature is the credential, CORS just has to not block the browser. `scripts/r2-cors.mjs` holds the same policy in code (`--show` to inspect, no flag to apply; needs an Admin-scoped token in `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` to write). Update the origins when the app domain or the R2 custom domain changes. **Both instances' buckets carry this superset list** — each install has its OWN bucket, so listing the other's origins is harmless, and one shared list means rerunning the script from either machine can't clobber the other's origins. Tyler's bucket got the policy 2026-08-29 via `~/.config/cloudflare/set-ledgr-r2-cors.py` (Cloudflare API with the account global key, since his S3 token is object-scoped) after every browser upload died as "Load failed" — the 2026-08-28 provisioning had skipped this step.
+> Only PUT needs CORS; reads go through `/files/<id>`'s 302 to a presigned URL as top-level navigations or `<img>` requests, which never preflight. The `https://*.vercel.app` wildcard is what lets **branch previews** upload; it is not an access-control hole — the presigned signature is the credential, CORS just has to not block the browser. `scripts/r2-cors.mjs` holds the same policy in code (`--check` to verify, `--show` to inspect, no flag to apply; writing needs an Admin Read & Write token, which can be supplied for one run as `R2_CORS_ACCESS_KEY_ID`/`R2_CORS_SECRET_ACCESS_KEY` so the app's env keeps its object-scoped token). It reads credentials from `supervisor/config.json` → `extraEnv` or `.env.local`, whichever exists. Update the origins when the app domain or the R2 custom domain changes — **and run `npm run r2:cors:check` after any such move**, because nothing else fails until someone tries to upload. That is exactly how it broke on 2026-09-16: the local install moved to the Cloudflare Tunnel address on 2026-09-13, the new origin was added to the script but never reached the bucket (the object-scoped token 403s on the write, and the script treated that as a dead end), so every file insertion from `https://ledgr.brasco.fyi` failed for three days while `localhost:3000` kept working. **Both instances' buckets carry this superset list** — each install has its OWN bucket, so listing the other's origins is harmless, and one shared list means rerunning the script from either machine can't clobber the other's origins. Tyler's bucket got the policy 2026-08-29 via `~/.config/cloudflare/set-ledgr-r2-cors.py` (Cloudflare API with the account global key, since his S3 token is object-scoped) after every browser upload died as "Load failed" — the 2026-08-28 provisioning had skipped this step.
 >
 > **One bucket, several origins (2026-08-26).** The cloud install and the local install share this bucket, so the policy must list **every** origin at once: a `PUT ?cors` replaces the whole policy, there is no per-origin append. The local install is reached at its Tailscale hostname (`NEXT_PUBLIC_APP_URL` in `supervisor/config.json`), and that origin was missing until 2026-08-26 — server-side writes (email-in, MCP `attach_file`) worked fine because they never preflight, so the gap showed up only as browser uploads failing from a phone while the same upload from `localhost:3000` on the PC succeeded. Verify any origin without touching the bucket:
 >

@@ -4,6 +4,7 @@
 // Run: npx tsx scripts/verify-network-addresses.mts
 import {
   isTailnetIp,
+  normalizePublicUrl,
   parseTailscaleStatus,
   reachableAddresses,
   TAILSCALE_ABSENT,
@@ -139,6 +140,56 @@ check("another private range is not tailnet", !isTailnetIp("10.0.0.5"));
 check(
   "no addresses at all is an empty list, not a crash",
   reachableAddresses({ tailscale: TAILSCALE_ABSENT, lanIps: [], port: 3000 }).length === 0
+);
+
+// ── The published address (2026-09-17) ──────────────────────────────────────
+//
+// A tunnel cannot be detected from in here, so it is read from the install's own
+// NEXT_PUBLIC_APP_URL. It outranks the tailnet name: it is what the owner is
+// actually typing, and it is the only one a caller off the tailnet can use.
+
+check("a published address is kept, trailing slash and all", normalizePublicUrl("https://ledgr.example.com/") === "https://ledgr.example.com");
+check("an unset address is nothing", normalizePublicUrl(undefined) === null);
+check("a blank address is nothing", normalizePublicUrl("   ") === null);
+check("junk is nothing, not a crash", normalizePublicUrl("not a url") === null);
+check("localhost is never handed to another device", normalizePublicUrl("http://localhost:3000") === null);
+check("nor is the loopback IP", normalizePublicUrl("http://127.0.0.1:3000") === null);
+
+{
+  const list = reachableAddresses({
+    tailscale: {
+      installed: true,
+      running: true,
+      dnsName: "hub.example-tailnet.ts.net",
+      ips: ["100.82.212.62"],
+      detail: null,
+    },
+    lanIps: ["192.168.1.40"],
+    port: 3000,
+    publicUrl: "https://ledgr.example.com",
+  });
+  check("the published address comes first", list[0].url === "https://ledgr.example.com");
+  check("and it is the recommended one", list[0].preferred);
+  check("still exactly one recommendation", list.filter((a) => a.preferred).length === 1);
+  check("the tailnet name is still offered below it", list[1].url === "http://hub.example-tailnet.ts.net:3000");
+  check("the port is not bolted onto the published address", !list[0].url.includes(":3000"));
+}
+
+{
+  // A tunnelled install with no tailnet at all still has something to hand out.
+  const list = reachableAddresses({
+    tailscale: TAILSCALE_ABSENT,
+    lanIps: [],
+    port: 3000,
+    publicUrl: "https://ledgr.example.com",
+  });
+  check("a published address alone is enough", list.length === 1 && list[0].preferred);
+}
+
+check(
+  "a localhost NEXT_PUBLIC_APP_URL adds nothing",
+  reachableAddresses({ tailscale: TAILSCALE_ABSENT, lanIps: [], port: 3000, publicUrl: "http://localhost:3000" })
+    .length === 0
 );
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
