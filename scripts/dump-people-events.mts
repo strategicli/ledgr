@@ -9,7 +9,12 @@ for (const line of readFileSync(envFile, "utf8").replace(/^\uFEFF/, "").split(/\
 const { getDb } = await import("../src/db");
 const { sql } = await import("drizzle-orm");
 const db = getDb();
-const q = async (s: any) => ((await db.execute(s)) as any).rows ?? (await db.execute(s));
+type Row = Record<string, unknown>;
+// node-postgres returns { rows }, the Neon HTTP driver returns the array itself.
+const q = async (s: Parameters<typeof db.execute>[0]): Promise<Row[]> => {
+  const r = await db.execute(s);
+  return Array.isArray(r) ? (r as Row[]) : ((r as { rows?: Row[] }).rows ?? []);
+};
 const owners = await q(sql`select id, email from users`);
 const people = await q(sql`select id, owner_id, title, properties from items where type='person' and deleted_at is null`);
 const groups = await q(sql`select id, owner_id, title from items where type='group' and deleted_at is null`);

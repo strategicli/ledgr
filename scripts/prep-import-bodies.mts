@@ -151,7 +151,8 @@ function flush() {
   fs.writeFileSync(out, JSON.stringify(result));
   delete (result as Record<string, unknown>)._invalid;
 }
-let n = 0, changed = 0, coercedCount = 0, slow = 0, resumed = done.size;
+let n = 0, changed = 0, coercedCount = 0, slow = 0;
+const resumed = done.size;
 for (const nb of notebooks) {
   const dir = path.join(VAULT, nb);
   let files: string[]; try { files = fs.readdirSync(dir).filter(f => f.endsWith(".md")); } catch { continue; }

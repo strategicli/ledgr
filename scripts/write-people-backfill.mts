@@ -33,12 +33,20 @@ if (tierPrefixes) props = props.filter((p) => tierPrefixes.some((t) => p.tier.st
 props.sort((a, b) => (b.meeting_date || "").localeCompare(a.meeting_date || ""));   // newest first
 props = props.slice(0, limit);
 
-const owner = (await db.execute(sql`select owner_id from items where id = ${props[0].event_id}`)) as any;
-const ownerId: string = (owner.rows ?? owner)[0].owner_id;
+type Row = Record<string, string>;
+// node-postgres returns { rows }, the Neon HTTP driver returns the array itself.
+const rows = (r: unknown): Row[] =>
+  Array.isArray(r) ? (r as Row[]) : ((r as { rows?: Row[] }).rows ?? []);
+
+const ownerId: string = rows(
+  await db.execute(sql`select owner_id from items where id = ${props[0].event_id}`)
+)[0].owner_id;
 
 // Existing confirmed edges, re-read now (not from the dump) so a re-run skips what's already there.
-const ex = (await db.execute(sql`select source_id, target_id, role from relations where match_state = 'confirmed'`)) as any;
-const have = new Set<string>((ex.rows ?? ex).map((r: any) => `${r.source_id}|${r.target_id}|${r.role}`));
+const ex = await db.execute(
+  sql`select source_id, target_id, role from relations where match_state = 'confirmed'`
+);
+const have = new Set<string>(rows(ex).map((r) => `${r.source_id}|${r.target_id}|${r.role}`));
 
 const log = proposalsPath.replace(/\.json$/, `.write-${Date.now()}.log`);
 let written = 0, skipped = 0, failed = 0, i = 0;
