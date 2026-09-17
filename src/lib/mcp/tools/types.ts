@@ -20,6 +20,7 @@ import {
   setTypeStatusConfig,
   updateType,
 } from "@/lib/types";
+import { surfacesForType } from "@/lib/modules";
 import { optEnum, reqString } from "./args";
 import { typeView } from "./serializers";
 import type { McpTool } from "./wire";
@@ -54,7 +55,15 @@ export const typeTools: McpTool[] = [
       "status keys create_item/update_item accept; change them with " +
       "set_type_statuses. The type's `icon` and each term's `color` are the " +
       "owner's choices: read them here and resend them if you rewrite a type, " +
-      "so an edit can't quietly flatten someone's palette.",
+      "so an edit can't quietly flatten someone's palette. " +
+      "A BESPOKE type also reports `capability` (the bespoke tool attached to it) " +
+      "and `surfaces` — the named places content lives on that type. Most types " +
+      "have one surface (the markdown body); a paper has Notes, Shape, Quote Bank, " +
+      "Outline and Draft, and a song has Notes and Chart. Read `surfaces` before " +
+      "writing to a bespoke type: each entry says what belongs there, which format " +
+      "it holds, whether it is read-only, and which one is the `primary` finished " +
+      "artifact that exports render from. Writing prose into a song's ChordPro " +
+      "chart, or scratch notes into a paper's draft, is the mistake this prevents.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async () => {
@@ -71,6 +80,21 @@ export const typeTools: McpTool[] = [
           icon: t.icon,
           isSystem: t.isSystem,
           showInQuickCapture: t.showInQuickCapture,
+          // The attached bespoke tool, and the surfaces it brings (ADR-260).
+          // describe_workspace already reported `capability`; list_types — the
+          // read every model is told to call FIRST — did not, so a song and a
+          // paper arrived looking like ordinary single-body types.
+          ...(t.capability ? { capability: t.capability } : {}),
+          surfaces: surfacesForType(t.key, undefined, t.capability).map((s) => ({
+            id: s.id,
+            label: s.label,
+            storage: s.storage,
+            format: s.format,
+            description: s.description,
+            ...(s.elements ? { elements: s.elements } : {}),
+            ...(s.primary ? { primary: true } : {}),
+            ...(s.readOnly ? { readOnly: true } : {}),
+          })),
           statusMode: t.statusMode,
           // The effective terms, not the raw column: a type storing null
           // inherits the system default, and that's what its items actually use.

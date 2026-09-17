@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ SHIPPED — Build -> Network advertises the install's published address (2026-09-17, ADR-260, non-core)
+## ✅ SHIPPED — Build -> Network advertises the install's published address (2026-09-17, ADR-263, non-core)
 
 Brandon's hub moved onto a Cloudflare Tunnel at `https://ledgr.brasco.fyi` on
 2026-09-13, and "How other devices reach this one" kept offering the tailnet
@@ -25,7 +25,203 @@ three one-off scripts from the people backfill and the note import.
 **Verified:** `verify-network-addresses.mts` (14 new checks), `verify-user-guide.mts`,
 tsc and eslint clean. User guide updated in the same PR (ADR-189).
 
-## ✅ SHIPPED — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-259, branch `feat/memory-supersedes`, PR #388, non-core)
+## ✅ BUILT, NEEDS TESTING ON A DEPLOY — the machine API can read a body (2026-09-16, ADR-262)
+
+Tyler hit this copying two notes into a paper's `notes` property. `/api/machine/items`
+could WRITE a body and never read one, which is the one workflow it exists for.
+The 94KB note only made it because an MCP `get_item` result that large spills to
+a file on disk, where `jq` could pick it up: an accident of tooling. The 10.7KB
+one fit in context, never touched disk, and had to be retyped into the payload.
+It came out **10,736 characters against 10,737**, with every element anyone would
+think to check (emoji variation selectors, escaped tildes, `&amp;` entities,
+trailing newlines) verified individually. The missing character was unlocatable
+without a reference copy.
+
+Built:
+
+- **`?includeBody=true`** on `GET /api/machine/items`, off by default so no
+  existing payload changes. Returns the stored `{format, text}` object, the same
+  shape PATCH accepts. Capped at `MAX_BODY_ROWS = 25` and the response says when
+  it caps (`src/lib/items.ts` `listItemsWithBodies`).
+- **`GET /api/machine/items/<uuid>`** — one item whole: body, `properties`, and
+  its named `surfaces` (ADR-260), through the same `getItem`/`resolveSurfaces` as
+  the in-app route.
+- **A JSON 404 catch-all** at `src/app/api/machine/[...unmatched]/route.ts`. An
+  unmatched machine path used to fall through to the page tree and answer with
+  the app's HTML shell, which any script that doesn't sniff content types reads
+  as success.
+- **Unknown query params are a 400** naming them and naming what IS accepted.
+  `?id=` also became a real filter (one uuid or comma-separated); it used to be
+  ignored, so a request for one item came back as a different one under a 200.
+
+`scripts/verify-machine-read.mts` — 24 checks, DB-backed, runs the real handlers
+with a real minted credential. All pass locally against the dev DB.
+
+**Still owed:** the acceptance run against Tyler's production
+(`https://ledgr.tylerjcollins.com`) — bodies of `544e7faa-…` and `0279c3f9-…`
+at exactly 10737 and 91422 characters. That needs a deploy and a credential, so
+it is Tyler's to run:
+
+```
+curl -s -u "<keyID>:<secret>" \
+  "https://ledgr.tylerjcollins.com/api/machine/items?id=544e7faa-4f47-4e38-9bdf-c565ccd2d97c,0279c3f9-cee6-4559-8729-50faef3fe255&includeBody=true" \
+  | jq '.items[] | {title, chars: (.body.text | length)}'
+```
+
+## ✅ FIXED AND MERGED — an agent's guessed scaffold made a paper unopenable (2026-09-16)
+
+An agent filling a paper over MCP guessed the scaffold's shape and the guesses
+were wrong: `{title, body}` for a section (real: `{id, title, paragraphs[]}`) and
+`{quote, source, citation, note}` for a quote (real: `{id, text, source:{kind,…}}`).
+Nothing rejected them, and Tyler could no longer open the record at all.
+
+**Root cause was ours, not the agent's.** `migrateScaffold` did
+`props.sections as OutlineSection[]` — a compile-time cast that checks nothing at
+runtime. `items.properties` is untyped JSON, so the bad rows reached `ShapeTab`,
+`OutlineTab`, `QuoteBank` and `lib/papers/outline.ts`, all of which do
+`s.paragraphs.map(...)` unguarded. A missing array there doesn't degrade one tab,
+it throws during render and takes the whole record down.
+
+`healScaffold` (`src/lib/papers/normalize.ts`) now coerces both arrays before
+anything renders, losslessly. Healthy scaffolds come back byte-identical.
+
+**Merged 2026-09-16 in PR #390** (`feat/bespoke-type-surfaces` → `main`, merge
+commit `63cc97c`), so it deploys with `main` on Tyler's instance. There is no
+data repair to run: the healer fixes the record on open and persists on save, so
+the paper should open once that build is live. Worth one click to confirm rather
+than assuming.
+
+## 🔜 OWED — the write boundary still doesn't reject a malformed scaffold
+
+Out of the incident above. `elements` on `SurfaceDef` now DESCRIBES the shape of a
+structured surface (surfaced via `list_types` and `get_item`), which is what
+would have stopped the guessing. It does not enforce anything. Still owed:
+
+- **Reject unknown/malformed keys on a structured surface write**, naming the
+  accepted ones. A typo like `heading` instead of `title` currently stores
+  verbatim and renders as an empty section. Brandon's standing steer applies:
+  warn about orphaned data, never rewrite it.
+- **A partial-edit path for `sections`/`quoteBank`.** `propertyPatch` replaces the
+  whole array, so an agent appending one quote has to read-modify-write the bank,
+  and a concurrent UI edit is lost. Notes have `edit_item_body` for exactly this
+  reason; these need the equivalent.
+- **Check whether a paper's `properties.notes` picked up a child note's body.**
+  Reported from the same session: notes came back holding the text of a separate
+  "Assignment Brief" child note. Nothing in the code copies a child's body into
+  `properties.notes` (the 2026-09-14 work folds notes INTO `body_text`, the search
+  index, not the other way), so the likeliest answer is the agent wrote it there.
+  Needs a look at the real record before assuming either way.
+
+## ✅ BUILT, NEEDS TESTING — the MCP and the API know about bespoke types (2026-09-16, ADR-260 + ADR-261)
+
+Tyler: "did we update the MCP to account for bespoke types? Like songs or Papers?
+If not we need to." We had not. Grepping `src/lib/mcp/` for "song", "paper" or
+"chordpro" returned two hits, both inside prose in `user-guide.ts`.
+
+**The bug worth knowing about first: every MCP write corrupted songs.** All six
+write paths hardcoded `makeMarkdownBody` (`args.ts:205`, `context.ts`,
+`attachments.ts`, `items.ts`, `memory.ts`, `records.ts`), while `song` declares
+`canonicalFormat: CHORDPRO_FORMAT`. So an agent-written song stored a ChordPro
+chart labelled markdown, and three things broke with no error anywhere: the chord
+chart stopped rendering (`print-html.ts:217` gates on the format), search indexed
+chords and directives instead of lyrics (`body-text.ts:32`), and `{{item.*}}`
+token resolution started running over a chart (`item-tokens-service.ts:215`).
+`canonicalFormatForType()` already existed and answered this exactly; nothing
+called it. **Fixed in the mutation layer, not per caller** — `createItem` and
+`updateItem` re-stamp a written body with the type's canonical format, so the
+REST API is fixed by the same change and the format can't depend on which door a
+write came through. Existing mis-stamped songs heal on their next write; there is
+no backfill, deliberately.
+
+**Surfaces are now a real part of the module contract (ADR-260, core).**
+`SurfaceDef` on `ModuleTypeDef`/`ModuleCapability`: id, label, storage
+(`body` | `property` | `derived`), format, description, `primary`, `readOnly`.
+Papers declare five (Notes, Shape, Quote Bank, Outline, Draft), songs two
+(Notes, Chart). One resolver, `src/lib/item-surfaces.ts`, pairs each with its
+stored content, and **both** MCP `get_item` and `GET /api/items/[id]` call it, so
+they can't drift. The data was always on the wire — both handed back
+`properties` wholesale — but nothing named it, which is why an agent asked to
+"add my notes to this paper" appended to the draft.
+
+- `list_types` now reports `capability` (it was the one reader that dropped it,
+  while `describe_workspace` and `typeView` both returned it) and `surfaces`.
+- `get_item` returns `surfaces` with content. The body surface carries no
+  `content` and is flagged `isBody`: duplicating it would double a long paper's
+  response and bypass the large-body paging.
+- `update_item` takes `surface` + `content`, routing to the body or the backing
+  property. Unknown ids are refused with the real list; read-only ones with the
+  *writable* list. It rewrites its own args and goes down the ordinary patch
+  path, so validation, revisions and `body_text` are untouched.
+
+**Papers' Draft is a real canvas now (ADR-261), and that nearly broke citations.**
+The textarea's header claimed the parent splices citations at the caret through a
+forwarded ref — stale, `draftRef` was never read by anything. But driving the
+editor headlessly showed `@tiptap/markdown` escapes every footnote marker on
+serialize (`[^1]` → `\[^1\]`), and `msm-docx.ts` skips any marker whose
+definition it can't match, so a straight swap would have dropped every citation
+from the .docx silently. New opt-in `FootnoteMarkdownFix` extension, threaded as
+`preserveFootnotes` and set only by the Draft. `PaperMarkdownArea` is left in the
+tree unused (defer-by-hiding) if the rich surface proves wrong for academic prose.
+
+**Notes got tabs** on both types. Not the Draft: a tab marker there would flatten
+into a stray `## Title` heading in the exported .docx.
+
+**Verification.** New `scripts/verify-surfaces.mts` (30 pure checks, all pass).
+`verify-markdown-escape.mts` gained five footnote checks including one asserting
+the fix stays opt-in. `verify-module-registry`, `verify-bespoke-capability`,
+`verify-body-contract`, `verify-songs`, `verify-papers`, `verify-canvas-tabs`,
+`verify-mcp-write-args`, `verify-mcp-large-body` and `verify-user-guide` all pass.
+`verify-mcp` (1) and `verify-mcp-records` (3) fail identically on clean `main` —
+pre-existing, not from this work.
+
+**What still needs doing.**
+- **Test it on the rig.** Nothing here has been exercised against a real paper or
+  song in the browser; the proof so far is typecheck plus the verify scripts.
+- `create_item` takes no `surface` argument yet — creating a paper still writes
+  the body then patches notes.
+- The exporters (`song-chordpro-pco`, the .docx route) are still unreachable over
+  MCP.
+- The pre-existing `verify-mcp` / `verify-mcp-records` failures are still open.
+
+## ✅ SHIPPED — a Notes tab on papers and songs, first in the strip (2026-09-14, non-core)
+
+Tyler: "songs and papers really need a writing canvas to them." Both types spend
+their body on a finished artifact — a song's ChordPro chart, a paper's canonical
+draft — and their canvases are built around producing that artifact. Neither had
+anywhere to put the thinking that comes *before* one, so it went into a separate
+note and lost its connection to the record. (Found the hard way: a song idea
+filed tonight ended up as a song item plus a loose sibling note.)
+
+**Notes is the ordinary markdown surface, mounted over `properties.notes`
+instead of over the body.** It is literally `BodyEditor`, so rich/source/preview,
+the slash menu, @-mentions and attachments all come along — a note written here
+behaves like a note written anywhere else. New shared component
+`src/components/canvas/NotesTab.tsx`; both canvases render it as their first tab.
+
+- **Songs** (`ChordCanvasClient`): strip is now Notes · Lyrics · Edit · Preview.
+  The chart-only controls (Copy for Planning Center, Save lyrics, Transpose) hide
+  on Notes. Written as a per-key `propertyPatch`, because the generic Properties
+  panel below the canvas writes the same object and a wholesale replace from here
+  would clobber Key/Tempo/Themes.
+- **Papers** (`PaperCanvasClient`): strip is now Notes · Shape · Quote Bank ·
+  Outline · Draft. That component is the single writer of its properties, so
+  notes go through `buildProps` like every other key it owns.
+- **Landing:** a record that hasn't started opens on Notes (song: no chart
+  sections; paper: no sections and no draft). Anything further along keeps its
+  old landing, so nothing moves under an in-flight paper.
+
+**The part that isn't the tab: search.** `body_text` is app-maintained and was
+the only text index, so notes parked in `properties` would have been invisible to
+search — a drawer things fall into. `extractBodyText` now takes the properties
+alongside the body and folds the notes in, and `updateItem` recomputes
+`body_text` when the notes change *without* a body write (resolving the next
+notes in JS, since the `propertyPatch` branch merges in SQL and `set.properties`
+can't be read back). `restoreRevision` passes the current properties through so
+restoring an old body doesn't drop the notes half of the index.
+
+**Deliberately not done:** notes stay out of print, share, `.docx` export and
+`flattenTabs`. They're working material, not the artifact. Revisit if that turns
+out to be the wrong call in use.## ✅ SHIPPED — AI memory: `supersedes` edge, STALE/SUPERSEDED in search hits, overlap + about-link nudges on `remember` (2026-09-14, ADR-259, branch `feat/memory-supersedes`, PR #388, non-core)
 
 Came out of a sourced review of durable-memory practice (the Ledgr note
 "Durable memory for an AI assistant: research review and Ledgr

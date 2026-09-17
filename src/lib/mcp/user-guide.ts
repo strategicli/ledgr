@@ -167,7 +167,9 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
 - **From your own app:** create a credential in **User Settings → API
-  credentials** and post to the HTTP API. \`/build/api\` has the details.
+  credentials** and post to the HTTP API. The same credential reads content back
+  out, whole and unaltered, which is how an app moves a note's text somewhere
+  else without anything retyping it. \`/build/api\` has the details.
 
 ## Video transcripts
 
@@ -403,6 +405,12 @@ Build your own kinds of item at \`/build/types\`.
   you name yourself.
 - **Workflows and wikis** at \`/build/new\` ask a few questions and generate a
   type, its properties, and starter views in one go.
+- **A paper or a song opens on Notes.** Both types spend their main body on a
+  finished artifact (a paper's draft, a song's chord chart), so each has a
+  separate Notes tab for the thinking that comes first. Notes take tabs of their
+  own, so you can keep sources, argument and feedback side by side on one record.
+  Notes stay out of print, share, the .docx export and the Planning Center copy:
+  they are working material, not the artifact.
 
 ## Relations
 
@@ -1470,6 +1478,10 @@ Listed so you do not go looking.
 - **Todoist sync is off** and is not the normal setup. Ledgr is its own task
   manager. Todoist remains an option your instance can be configured to use.
 - **Footnotes, superscripts and citations** are not in the shared editor.
-  Footnotes work only inside the Papers module, which uses a plain text area.
+  Footnotes work only inside the Papers module. The Draft tab is now the normal
+  writing canvas (slash menu, mentions, attachments, rich/source/preview), and
+  it is the one surface that keeps \`[^id]\` markers and their \`[^id]:\` definitions
+  intact through a save, because the .docx export reads them. Typed anywhere
+  else, that syntax is just literal text.
 - **Nested toggles** are a known limitation.
 `;

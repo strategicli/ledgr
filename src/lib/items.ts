@@ -68,10 +68,27 @@ export type ListOptions = {
   // client list the tasks tagged with a tag item or filed under a project
   // item (GET /api/machine/items?relatedTo=…).
   relatedTo?: string;
+  // Restrict to these exact item ids (the machine API's ?id=a,b,c form). Lets a
+  // token client read a known set in one call instead of guessing at a title
+  // query -- and, paired with includeBody, is the bulk body-read path (ADR-262).
+  ids?: string[];
   trash?: boolean;
   limit?: number;
   offset?: number;
+  // Opt in to selecting `body` (ADR-262). OFF by default, and the only way it
+  // ever turns on is a caller asking for it explicitly, so "list queries never
+  // select body" (CLAUDE.md rule 8) still holds for every list the app renders.
+  // The exemption exists for the machine API's copy-content path: reading a
+  // body to write it somewhere else verbatim was the one job the HTTP surface
+  // was built for and the one job it could not do. Callers that set this are
+  // capped hard (MAX_BODY_ROWS) so an opt-in can't become an unbounded pull.
+  includeBody?: boolean;
 };
+
+// The ceiling on how many rows may carry a body in one list response. Bodies are
+// unbounded text (a 94KB note is real), so the cap is what keeps the exemption
+// above from turning into a full-table export.
+export const MAX_BODY_ROWS = 25;
 
 // Everything except body, body_text, search, owner_id. The body exclusion is
 // a non-negotiable (CLAUDE.md rule 8); properties stays because table views
@@ -116,9 +133,15 @@ export const itemColumns = {
   composition: items.composition,
 };
 
-// Exposed as a query builder (not just results) so verification can assert
-// the generated SQL carries owner_id and no body.
-export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
+// listColumns plus the raw body, for the opt-in read above. Deliberately not
+// itemColumns: a body read wants the body, not the record-page-only fields.
+const listColumnsWithBody = { ...listColumns, body: items.body };
+
+// The WHERE / ORDER BY / LIMIT half of a list query, shared by the body-free
+// builder and the opt-in body one so the two can't filter differently. Split out
+// rather than branching the `.select()` inline: a ternary there would hand every
+// existing caller a union row type.
+function listClauses(ownerId: string, opts: ListOptions) {
   const where: SQL[] = [eq(items.ownerId, ownerId)];
   where.push(opts.trash ? isNotNull(items.deletedAt) : isNull(items.deletedAt));
   // Template prototypes (and their subtrees) never appear in a user-facing list,
@@ -132,6 +155,7 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
         : eq(items.type, opts.type)
     );
   }
+  if (opts.ids) where.push(inArray(items.id, opts.ids));
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
   if (opts.inbox !== undefined) where.push(eq(items.inbox, opts.inbox));
@@ -188,18 +212,54 @@ export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
   }
   orderBy.push(opts.trash ? desc(items.deletedAt) : desc(items.updatedAt));
 
-  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const ceiling = opts.includeBody ? MAX_BODY_ROWS : 200;
+  return {
+    where: and(...where),
+    orderBy,
+    limit: Math.min(Math.max(opts.limit ?? 50, 1), ceiling),
+    offset: Math.max(opts.offset ?? 0, 0),
+  };
+}
+
+// Exposed as a query builder (not just results) so verification can assert
+// the generated SQL carries owner_id and no body.
+export function listItemsQuery(ownerId: string, opts: ListOptions = {}) {
+  const c = listClauses(ownerId, opts);
   return getDb()
     .select(listColumns)
     .from(items)
-    .where(and(...where))
-    .orderBy(...orderBy)
-    .limit(limit)
-    .offset(Math.max(opts.offset ?? 0, 0));
+    .where(c.where)
+    .orderBy(...c.orderBy)
+    .limit(c.limit)
+    .offset(c.offset);
+}
+
+// The same list, carrying each row's raw `{ format, text }` body (ADR-262).
+// Deliberately its own function rather than a flag on the one above: the
+// body-free query stays the default everything in the app reaches for, and a
+// body read is something a caller has to name. Capped at MAX_BODY_ROWS.
+export function listItemsWithBodiesQuery(ownerId: string, opts: ListOptions = {}) {
+  const c = listClauses(ownerId, { ...opts, includeBody: true });
+  return getDb()
+    .select(listColumnsWithBody)
+    .from(items)
+    .where(c.where)
+    .orderBy(...c.orderBy)
+    .limit(c.limit)
+    .offset(c.offset);
 }
 
 export async function listItems(ownerId: string, opts: ListOptions = {}) {
   return listItemsQuery(ownerId, opts);
+}
+
+// Rows carrying bodies. The machine API's copy-content path is the only caller;
+// anything rendering a list wants listItems (CLAUDE.md rule 8).
+export async function listItemsWithBodies(
+  ownerId: string,
+  opts: ListOptions = {}
+) {
+  return listItemsWithBodiesQuery(ownerId, opts);
 }
 
 // The body-free row shape every list-shaped query returns (listColumns). Named
@@ -253,6 +313,24 @@ export async function getItem(ownerId: string, id: string) {
     .select(itemColumns)
     .from(items)
     .where(and(eq(items.id, id), eq(items.ownerId, ownerId)));
+  if (rows.length === 0) throw new ItemError("not_found", "item not found");
+  return rows[0];
+}
+
+// Just the item's type (ADR-260), for a surface-targeted write: resolving which
+// surface `surface: "notes"` means needs the type, and nothing else. A deliberately
+// tiny read — loading the whole row through getItem would drag a paper's entire
+// draft body across for an update that only touches its notes.
+export async function getItemType(
+  ownerId: string,
+  id: string
+): Promise<{ type: string }> {
+  const rows = await getDb()
+    .select({ type: items.type })
+    .from(items)
+    .where(
+      and(eq(items.id, id), eq(items.ownerId, ownerId), isNull(items.deletedAt))
+    );
   if (rows.length === 0) throw new ItemError("not_found", "item not found");
   return rows[0];
 }

@@ -363,6 +363,50 @@ export const EmptyListItemFix = Extension.create({
   },
 });
 
+// Footnote markers survive the rich editor (Tyler, 2026-09-16). Footnotes
+// (`[^id]` markers plus their `[^id]: text` definitions) are deliberately NOT in
+// the shared body dialect — they are hand-parsed by the Papers module and its
+// .docx renderer (CLAUDE.md; src/lib/papers/msm-docx.ts) and render as literal
+// text everywhere else. "Literal text" was fine while the Draft tab was a raw
+// textarea, but the moment the Draft moved onto the shared Tiptap surface the
+// markers stopped surviving a save: @tiptap/markdown backslash-escapes
+// markdown-significant characters in every text node on serialize, so
+// `[^1]` came back as `\[^1\]` and `[^1]: John Calvin…` as `\[^1\]: …`.
+// msm-docx's `/^\[\^([^\]]+)\]:/` definition matcher then finds nothing, every
+// marker is dropped as "a marker with no definition" (allocRuns), and the paper
+// exports with its citations silently gone — the module's actual deliverable.
+//
+// This is the same class of bug as MarkdownEscapeFix above and takes the same
+// shape: the serializer is right to escape text it emits AS markdown, but these
+// markers are read back literally by a hand-written parser, so the escapes are
+// pure corruption. Patching `serialize` (not encodeTextForMarkdown) because a
+// footnote marker carries no mark to key off — it is bare text, so the fix has
+// to be a pass over the finished document.
+//
+// OPT-IN, not global: only a host that actually speaks footnotes should get it
+// (the Papers Draft), because un-escaping `\[^…\]` in an ordinary note would
+// rewrite text the owner typed literally. MarkdownEditor adds it only when
+// `preserveFootnotes` is set.
+const ESCAPED_FOOTNOTE_RE = /\\\[\^([^\]\\]+)\\\]/g;
+
+export function unescapeFootnotes(markdown: string): string {
+  return markdown.replace(ESCAPED_FOOTNOTE_RE, "[^$1]");
+}
+
+export const FootnoteMarkdownFix = Extension.create({
+  name: "footnoteMarkdownFix",
+  // Same onBeforeCreate discipline as the two fixes above: register AFTER
+  // Markdown so the manager exists to patch.
+  onBeforeCreate() {
+    const mgr = (this.editor as unknown as { markdown?: Record<string, unknown> }).markdown;
+    if (!mgr) return;
+    const serialize = mgr.serialize;
+    if (typeof serialize !== "function") return;
+    const bound = (serialize as (doc: unknown) => string).bind(mgr);
+    mgr.serialize = (doc: unknown) => unescapeFootnotes(bound(doc));
+  },
+});
+
 // Inline HTML dialect elements (<span style=color>, <mark>, <ins class="slide">)
 // survive inside an ORDERED list item exactly as they do inside a bullet (Brandon,
 // 2026-08-13 — confirmed from a sermon note corrupted twice: a colored span nested
