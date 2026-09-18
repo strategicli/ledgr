@@ -2,6 +2,17 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — three additive MCP setup tools (2026-09-18, ADR-183 carve-out, branch `feat/mcp-setup-tools`)
+
+`update_type` gains `hidden` (hide a type from quick capture/+New/list tabs/nav
+options, same as the Build → Types Hide column); `list_types` gains `hidden` per
+type plus an `includeHidden` arg. New `assign_dashboards` sets the Home and/or
+Today dashboard, same as /dashboards' "Set as Home"/"Set as Today". New
+`set_capture_routes` routes an arrival path to the Inbox, filed, or a project,
+same as /build/capture; `describe_workspace` gains a `captureRoutes` summary.
+All purely additive (no existing caller's behavior changes), so no ADR per
+ADR-183. User guide and COLLAB.md updated in the same PR.
+
 ## ✅ SHIPPED — devotional import: relative view tokens + the Daily Devotions dashboard (2026-09-17, ADR-264, branch `feat/view-today-tokens`)
 
 Brandon's Notion "Daily Devotions" page retired into Ledgr: a `@dayofmonth`/`@today` relative-value token for view rules, new `attribute` and `book` types, a `Devotional Writing` tag, five saved views, and a "Daily Devotions" dashboard on the Work nav.
