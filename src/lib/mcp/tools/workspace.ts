@@ -3,14 +3,16 @@
 // navigation. Both are thin wrappers over the same owner-scoped libs the
 // Build REST routes use.
 import { listDashboards } from "@/lib/dashboards";
-import { ItemError } from "@/lib/items";
+import { getItem, ItemError } from "@/lib/items";
 import { BUILD_NAV } from "@/lib/build-nav";
+import { INBOX_SOURCES, routeFor } from "@/lib/inbox-sources";
 import {
   NAV_DENSITIES,
   NAV_POSITIONS,
   RAIL_ANCHORS,
   RAIL_SIZES,
   SEARCH_MODES,
+  SETTINGS_UUID_RE,
   getSettings,
   updateSettings,
   type NavSlotConfig,
@@ -28,6 +30,16 @@ import { optEnum, reqString } from "./args";
 import { dashView, navView } from "./serializers";
 import type { McpTool } from "./wire";
 
+// The effective capture-routing table (ADR-249): every source with its
+// stored route or default, the shape both describe_workspace and
+// set_capture_routes return.
+function captureRoutesView(settings: UserSettings) {
+  return INBOX_SOURCES.map((s) => {
+    const r = routeFor(settings.inboxRoutes, s.key);
+    return { key: s.key, label: s.label, route: r.destinationId ?? (r.inbox ? "inbox" : "filed") };
+  });
+}
+
 export const workspaceTools: McpTool[] = [
   {
     name: "describe_workspace",
@@ -37,7 +49,8 @@ export const workspaceTools: McpTool[] = [
       "workspace so you can shape it correctly. Returns the types (key, label, " +
       "property count), saved views (id, name, layout), dashboards (id, name, and " +
       "a short widget list), the navigation (layout knobs + the configurable " +
-      "slots + the assigned home/today dashboards), and the catalog of Build " +
+      "slots + the assigned home/today dashboards), captureRoutes (where each " +
+      "arrival path lands — see set_capture_routes), and the catalog of Build " +
       "tools a nav slot can point at. These are summaries — call list_types for a " +
       "type's full property schema, or list_views for a view's full filter/sort. " +
       "Call this first, then create_type / create_view / create_dashboard / " +
@@ -69,6 +82,7 @@ export const workspaceTools: McpTool[] = [
         })),
         dashboards: dashboardDefs.map(dashView),
         nav: navView(settings),
+        captureRoutes: captureRoutesView(settings),
         // Per-type list-page tab strips the owner has customized, as labels only
         // (set_list_tabs reads one type's full strip). A type that isn't listed
         // is on the virtual defaults, which is most of them.
@@ -149,6 +163,69 @@ export const workspaceTools: McpTool[] = [
       }
       const settings = await updateSettings(ownerId, patch);
       return navView(settings);
+    },
+  },
+  {
+    name: "set_capture_routes",
+    title: "Route where captures land",
+    description:
+      "Set where one or more arrival paths land (ADR-249), same control as " +
+      "/build/capture. The seven sources: quick_capture (the q-key capture box), " +
+      "share_target (phone share sheet), web_clipper (browser bookmarklet), " +
+      "email_in (email sync), todoist (Todoist inbox sync), mention_create " +
+      "(new item from an @-mention that doesn't exist yet), and ai_mcp (items " +
+      "Claude files here). Each source's route is \"inbox\" (queue for triage), " +
+      "\"filed\" (file straight away, skip the Inbox), or a project item's id. " +
+      "Pass only the sources you're changing; the rest keep their stored route. " +
+      "When nothing routes to the Inbox and it's empty, the Inbox drops out of " +
+      "the nav — the page itself keeps working either way.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        routes: {
+          type: "object",
+          description:
+            "Map of source key → \"inbox\" | \"filed\" | a project item id (UUID). " +
+            "See the description for the seven source keys.",
+        },
+      },
+      required: ["routes"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async (ownerId, args) => {
+      const raw = args.routes;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new ItemError("bad_request", "routes must be an object");
+      }
+      const validKeys = new Set<string>(INBOX_SOURCES.map((s) => s.key));
+      const entries = Object.entries(raw as Record<string, unknown>);
+      for (const [source, value] of entries) {
+        if (!validKeys.has(source)) {
+          throw new ItemError(
+            "bad_request",
+            `routes has unknown source "${source}"; must be one of: ` +
+              INBOX_SOURCES.map((s) => `${s.key} (${s.label})`).join(", ")
+          );
+        }
+        if (typeof value !== "string") {
+          throw new ItemError("bad_request", `routes.${source} must be a string`);
+        }
+        if (value !== "inbox" && value !== "filed") {
+          if (!SETTINGS_UUID_RE.test(value)) {
+            throw new ItemError(
+              "bad_request",
+              `routes.${source} must be "inbox", "filed", or a project item id`
+            );
+          }
+          // Confirms the item exists and is this owner's (throws not_found).
+          await getItem(ownerId, value);
+        }
+      }
+      const settings = await getSettings(ownerId);
+      const merged = { ...settings.inboxRoutes, ...(raw as Record<string, string>) };
+      const updated = await updateSettings(ownerId, { inboxRoutes: merged });
+      return { routes: captureRoutesView(updated) };
     },
   },
   {

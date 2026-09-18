@@ -1095,7 +1095,10 @@ connected; that dead-end tab is the client closing its one-time listener.
   and rearrange your nav. It reads \`describe_workspace\` first and should confirm
   with you before committing. Asking for "a tab on Projects for my personal ones"
   is a single request now: it builds the view and puts it on the strip, instead
-  of building the view and leaving you the Build click.
+  of building the view and leaving you the Build click. It can also hide a type
+  from everyday surfaces, set which dashboard opens as Home or Today, and choose
+  where each capture path lands — the Inbox, filed straight away, or a project —
+  the same controls as Build → Types, /dashboards, and /build/capture.
 
 ## Two features that are off until you turn them on
 

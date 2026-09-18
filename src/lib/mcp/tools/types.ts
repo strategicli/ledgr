@@ -17,6 +17,7 @@ import {
   getType,
   listTypes,
   parseTypeInput,
+  setTypeHidden,
   setTypeStatusConfig,
   updateType,
 } from "@/lib/types";
@@ -49,6 +50,8 @@ export const typeTools: McpTool[] = [
       "custom properties (key, label, kind, select options, and a relation " +
       "field's target type + cardinality). Call this before create_item/" +
       "list_items when you need the exact type key or the property keys to set. " +
+      "A hidden type (see update_type) is omitted unless you pass " +
+      "includeHidden:true. " +
       "Each type also reports how it tracks completion — statusMode (none | " +
       "checkbox | select) and, for select, its STATUS TERMS in order with each " +
       "one's category, color, and which is the default. Those are the exact " +
@@ -64,10 +67,16 @@ export const typeTools: McpTool[] = [
       "it holds, whether it is read-only, and which one is the `primary` finished " +
       "artifact that exports render from. Writing prose into a song's ChordPro " +
       "chart, or scratch notes into a paper's draft, is the mistake this prevents.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeHidden: { type: "boolean", description: "Include types hidden from everyday surfaces (default false)." },
+      },
+      additionalProperties: false,
+    },
     annotations: { readOnlyHint: true, openWorldHint: false },
-    handler: async () => {
-      const defs = await listTypes();
+    handler: async (_ownerId, args) => {
+      const defs = await listTypes({ includeHidden: args.includeHidden === true });
       return {
         types: defs.map((t) => ({
           key: t.key,
@@ -79,6 +88,7 @@ export const typeTools: McpTool[] = [
           // them here is the other half, so a model can also set them knowingly.
           icon: t.icon,
           isSystem: t.isSystem,
+          hidden: t.hidden,
           showInQuickCapture: t.showInQuickCapture,
           // The attached bespoke tool, and the surfaces it brings (ADR-260).
           // describe_workspace already reported `capability`; list_types — the
@@ -196,6 +206,13 @@ export const typeTools: McpTool[] = [
         },
         showInQuickCapture: { type: "boolean", description: "Show in the quick-capture picker." },
         capability: { type: "string", description: "Bespoke-tool capability id, or omit/empty for the default canvas." },
+        hidden: {
+          type: "boolean",
+          description:
+            "Hide the type from everyday surfaces (quick capture, +New menus, list " +
+            "tabs, nav destination options). The type and its items are untouched. " +
+            "Same switch as the Hide column on Build → Types.",
+        },
       },
       required: ["key"],
       additionalProperties: false,
@@ -222,7 +239,14 @@ export const typeTools: McpTool[] = [
             : current.showInQuickCapture,
         capability: "capability" in args ? args.capability : current.capability,
       };
-      const updated = await updateType(key, parseTypeInput(merged, "patch"));
+      let updated = await updateType(key, parseTypeInput(merged, "patch"));
+      // hidden isn't a parseTypeInput field (setTypeHidden is its own column
+      // write, same as the Build → Types "Hide" toggle), so it's applied after
+      // the PATCH and the type re-read so the returned view reflects it.
+      if ("hidden" in args && typeof args.hidden === "boolean") {
+        await setTypeHidden(key, args.hidden);
+        updated = await getType(key);
+      }
       return typeView(updated);
     },
   },
