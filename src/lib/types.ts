@@ -131,6 +131,8 @@ export type TypeDefinition = {
   // chips/checkboxes. Presentation only; status_category stays the plumbing.
   statusMode: StatusMode;
   showInQuickCapture: boolean;
+  // Quick-add card shows a Status chip for this type (ADR-268).
+  quickCaptureStatus: boolean;
   // Whether this type's items show a Listen (read-aloud) control on the canvas.
   listenEnabled: boolean;
   // Nested under listenEnabled: redirect to Microsoft Edge instead of playing
@@ -362,6 +364,7 @@ function rowToDefinition(row: typeof types.$inferSelect): TypeDefinition {
     // multi-status type's own statuses); otherwise unset resolves to 'none'.
     statusMode: resolveStatusMode(row.statusMode, statusSchema != null),
     showInQuickCapture: row.showInQuickCapture,
+    quickCaptureStatus: row.quickCaptureStatus,
     listenEnabled: row.listenEnabled,
     listenOpenInEdge: row.listenOpenInEdge,
     capability: row.capability,
@@ -499,6 +502,16 @@ export async function setTypeQuickCapture(
 ): Promise<void> {
   await getType(key); // existence (throws not_found)
   await getDb().update(types).set({ showInQuickCapture }).where(eq(types.key, key));
+}
+
+// Toggle the Status chip on a type's quick-add card (ADR-268). Same standalone
+// setter shape as setTypeQuickCapture.
+export async function setTypeQuickCaptureStatus(
+  key: string,
+  quickCaptureStatus: boolean
+): Promise<void> {
+  await getType(key); // existence (throws not_found)
+  await getDb().update(types).set({ quickCaptureStatus }).where(eq(types.key, key));
 }
 
 // Set WHICH of a type's properties render as chips on the quick-capture card

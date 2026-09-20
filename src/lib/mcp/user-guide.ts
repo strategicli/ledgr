@@ -129,7 +129,9 @@ Press **q** or **+ New**. A capture card opens with a type picker.
   the card as a small control (a date, a choice, a linked item) you can fill
   before you press Add. Choose which fields at \`/build/types\`: open the type's
   row, and under **Quick capture** tick the fields to show as chips (or tick
-  "Show as a chip" on the field itself under **Edit fields**). On the
+  "Show as a chip" on the field itself under **Edit fields**). A type with
+  statuses can tick **Status** there too, so the card offers its status
+  dropdown (or a Done box). On the
   Task row the built-in chips (Deadline, Priority, Tag, Person, Group) are
   there too. A task's unticked fields wait in the card's ⋯ menu.
 - **Type \`@\` to link something** while capturing. \`@/person bob\` narrows the

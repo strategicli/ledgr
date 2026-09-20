@@ -196,6 +196,11 @@ export const types = pgTable("types", {
   // capturable; the builder toggles it so a "data only" custom type can stay
   // out of the curated dropdown.
   showInQuickCapture: boolean("show_in_quick_capture").notNull().default(true),
+  // ADR-268: whether the quick-add card for this type shows a Status chip
+  // (a dropdown in `select` mode, a Done checkbox in `checkbox` mode). Status
+  // is a built-in column, not a property, so its chip flag can't ride
+  // property_schema like the fields' `quickCapture` does. Default off.
+  quickCaptureStatus: boolean("quick_capture_status").notNull().default(false),
   // Whether this type's items get a Listen (read-aloud) control on the canvas.
   // Default false — opt-in per type from Build → Types. Off = MarkdownCanvas
   // never mounts ListenBar for this type's items.

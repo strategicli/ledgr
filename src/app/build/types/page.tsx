@@ -80,6 +80,7 @@ export default async function BuildTypes() {
                 quickCapture: p.quickCapture === true,
               }))}
               quickAddHidden={t.key === "task" ? settings.quickAddHidden : null}
+              statusChip={t.key === "task" || t.statusMode === "none" ? null : t.quickCaptureStatus}
             />
           ))}
         </ul>

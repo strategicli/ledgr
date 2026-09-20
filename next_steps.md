@@ -14,7 +14,9 @@ create as `properties` + `relateTo`. Build → Types row: "Chips on the card"
 checkboxes with a `?` tooltip, built-in task chips wired to `quickAddHidden`.
 Route `quick-capture` takes `quickCaptureProperties`; MCP `update_type` takes
 the same, `list_types` reports the flag. Guide updated. The type builder's edit form
-has the flag as a per-field checkbox too.
+has the flag as a per-field checkbox too. Follow-up same day (PR after #404):
+a built-in **Status** chip per type via one additive column
+`types.quick_capture_status` (migration 0062), dropdown or Done box by mode.
 
 ## ✅ SHIPPED — list-rule setext fix; Duplicate; Desk panel menu info + Open outside Desk (2026-09-20, non-core, branch `feat/duplicate-desk-menu-list-rule-fix`)
 

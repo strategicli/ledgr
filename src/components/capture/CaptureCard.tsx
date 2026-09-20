@@ -18,6 +18,7 @@ import MentionTitleField, { type LinkedItem } from "@/components/capture/Mention
 import { enqueueCapture } from "@/lib/outbox";
 import PropertyEditor, { captureValues, type CaptureValues } from "@/components/capture/PropertyEditor";
 import type { PropertyDef } from "@/lib/types";
+import { resolveStatusSchema, type StatusDef, type StatusMode } from "@/lib/status";
 
 // --- inline SVG icons (16px, currentColor), matching AddTaskCard's set ---
 function I({ d, extra }: { d: string; extra?: React.ReactNode }) {
@@ -129,6 +130,11 @@ function SimpleCapture({
   const [busy, setBusy] = useState(false);
   const [linked, setLinked] = useState<LinkedItem[]>([]);
   const [schema, setSchema] = useState<PropertyDef[]>([]);
+  // The built-in Status chip (ADR-268): the type's resolved statuses + mode when
+  // its quickCaptureStatus flag is on, else null. `status` is the picked key
+  // ("" = the type's default, so nothing is sent).
+  const [statusChip, setStatusChip] = useState<{ mode: StatusMode; statuses: StatusDef[] } | null>(null);
+  const [status, setStatus] = useState("");
   const [openProps, setOpenProps] = useState<string[]>([]);
   const [vals, setVals] = useState<CaptureValues>({});
 
@@ -143,6 +149,10 @@ function SimpleCapture({
         const props = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]) : [];
         setSchema(props);
         setOpenProps(props.filter((p) => p.quickCapture).map((p) => p.key));
+        const t = d?.type as { quickCaptureStatus?: boolean; statusMode?: StatusMode; statusSchema?: StatusDef[] | null } | undefined;
+        if (t?.quickCaptureStatus && t.statusMode && t.statusMode !== "none") {
+          setStatusChip({ mode: t.statusMode, statuses: resolveStatusSchema(t.statusSchema ?? null) });
+        }
       })
       .catch(() => {});
     return () => {
@@ -175,6 +185,7 @@ function SimpleCapture({
     // so an offline replay keeps them too.
     const captured = captureValues(schema, vals);
     if (Object.keys(captured.properties).length) body.properties = captured.properties;
+    if (status) body.status = status;
     const relateTo = [
       ...linked.map((l) => ({ targetId: l.id, role: "related" })),
       ...captured.relateTo,
@@ -220,8 +231,9 @@ function SimpleCapture({
         />
       )}
 
-      {openProps.length > 0 && (
+      {(openProps.length > 0 || statusChip) && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          {statusChip && <StatusControl chip={statusChip} value={status} onChange={setStatus} />}
           {openProps.map((key) => {
             const def = schema.find((p) => p.key === key);
             if (!def) return null;
@@ -255,3 +267,39 @@ function SimpleCapture({
     </div>
   );
 }
+
+// The Status chip's control (ADR-268): a dropdown of the type's statuses in
+// `select` mode (the default status preselected, so leaving it alone sends
+// nothing), or a Done checkbox in `checkbox` mode that picks the first status in
+// the `done` category.
+function StatusControl({
+  chip,
+  value,
+  onChange,
+}: {
+  chip: { mode: StatusMode; statuses: StatusDef[] };
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  const box = "rounded border border-neutral-700 bg-transparent px-2 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-500";
+  if (chip.mode === "checkbox") {
+    const done = chip.statuses.find((s) => s.category === "done");
+    if (!done) return null;
+    return (
+      <label className="inline-flex items-center gap-1.5 text-sm text-neutral-400">
+        <input type="checkbox" checked={value === done.key} onChange={(e) => onChange(e.target.checked ? done.key : "")} aria-label="Done" className="accent-[var(--accent)]" />
+        Done
+      </label>
+    );
+  }
+  const def = chip.statuses.find((s) => s.isDefault) ?? chip.statuses[0];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-neutral-400">
+      Status
+      <select value={value || def?.key || ""} onChange={(e) => onChange(e.target.value === def?.key ? "" : e.target.value)} aria-label="Status" className={box}>
+        {chip.statuses.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+      </select>
+    </span>
+  );
+}
+
