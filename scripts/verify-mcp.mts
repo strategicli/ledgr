@@ -89,15 +89,27 @@ const EXPECTED = [
   // record/project shaping (ADR-181)
   "get_record_layout", "set_record_layout", "set_type_layout", "add_to_record",
   "set_type_statuses",
+  // calendar feed
+  "list_calendar_feed", "add_calendar_event",
+  // trash
+  "delete_item", "restore_item",
+  // setup tools (2026-09-18) + list tabs
+  "set_capture_routes", "set_list_tabs", "assign_dashboards",
   // share links (2026-09-20, ADR-183 carve-out)
   "share_item", "list_share_links", "revoke_share_link",
 ];
 // The always-on tool set (AI Memory tools are gated off for the dummy owner —
 // asserted separately below), so tools/list here is exactly EXPECTED.
-check(
-  "tools/list returns the always-on tools",
-  EXPECTED.every((n) => toolList.some((t) => t.name === n)) && toolList.length === EXPECTED.length
-);
+{
+  const actual = toolList.map((t) => t.name);
+  const missing = EXPECTED.filter((n) => !actual.includes(n));
+  const extra = actual.filter((n) => !EXPECTED.includes(n));
+  check(
+    "tools/list returns exactly the always-on tools",
+    missing.length === 0 && extra.length === 0,
+    [missing.length ? `missing: ${missing.join(", ")}` : "", extra.length ? `not in EXPECTED: ${extra.join(", ")}` : ""].filter(Boolean).join("; ")
+  );
+}
 check("every tool has an object inputSchema", toolList.every((t) => t.inputSchema?.type === "object" && !!t.inputSchema.properties));
 check("every tool has a non-empty description", toolList.every((t) => typeof t.description === "string" && t.description.length > 0));
 check("read tools are flagged readOnly", ["search_items", "list_items", "get_item", "list_types", "list_views", "run_view", "list_templates", "describe_workspace", "list_subtasks", "get_record_layout"].every((n) => toolList.find((t) => t.name === n)!.annotations.readOnlyHint === true));
