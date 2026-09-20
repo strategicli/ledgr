@@ -18,6 +18,7 @@ const { items, types, users } = await import("../src/db/schema");
 const {
   parseTypeInput,
   parsePropertySchema,
+  setTypeQuickCaptureStatus,
   createType,
   getType,
   listTypes,
@@ -163,6 +164,8 @@ try {
     ],
   }, "patch"));
   check("updateType changed the label", updated.label === "Candidate");
+  await setTypeQuickCaptureStatus(k1, true);
+  check("setTypeQuickCaptureStatus turned the Status chip on", (await getType(k1)).quickCaptureStatus === true);
   check("updateType toggled showInQuickCapture", updated.showInQuickCapture === false);
   check("updateType grew the schema", updated.propertySchema.length === 2);
 

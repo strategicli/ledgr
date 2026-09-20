@@ -19,6 +19,7 @@ import {
   parseTypeInput,
   setTypeHidden,
   setTypeQuickCaptureProperties,
+  setTypeQuickCaptureStatus,
   setTypeStatusConfig,
   updateType,
 } from "@/lib/types";
@@ -91,6 +92,8 @@ export const typeTools: McpTool[] = [
           isSystem: t.isSystem,
           hidden: t.hidden,
           showInQuickCapture: t.showInQuickCapture,
+          // The quick-add card shows a Status chip for this type (ADR-268).
+          quickCaptureStatus: t.quickCaptureStatus,
           // The attached bespoke tool, and the surfaces it brings (ADR-260).
           // describe_workspace already reported `capability`; list_types — the
           // read every model is told to call FIRST — did not, so a song and a
@@ -210,6 +213,14 @@ export const typeTools: McpTool[] = [
           items: { type: "object" },
         },
         showInQuickCapture: { type: "boolean", description: "Show in the quick-capture picker." },
+        quickCaptureStatus: {
+          type: "boolean",
+          description:
+            "Show a Status chip on the quick-add card for this type (a dropdown of " +
+            "its statuses, or a Done checkbox in checkbox mode). Same as the " +
+            "'Status' checkbox under 'Chips on the card' on Build → Types. No " +
+            "effect on a type with statusMode 'none', or on task.",
+        },
         quickCaptureProperties: {
           type: "array",
           items: { type: "string" },
@@ -259,6 +270,10 @@ export const typeTools: McpTool[] = [
       // the PATCH and the type re-read so the returned view reflects it.
       if ("hidden" in args && typeof args.hidden === "boolean") {
         await setTypeHidden(key, args.hidden);
+        updated = await getType(key);
+      }
+      if (typeof args.quickCaptureStatus === "boolean") {
+        await setTypeQuickCaptureStatus(key, args.quickCaptureStatus);
         updated = await getType(key);
       }
       if (Array.isArray(args.quickCaptureProperties)) {

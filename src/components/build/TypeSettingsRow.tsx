@@ -107,6 +107,7 @@ export default function TypeSettingsRow({
   listenOpenInEdge,
   properties,
   quickAddHidden,
+  statusChip,
 }: {
   typeKey: string;
   label: string;
@@ -121,6 +122,9 @@ export default function TypeSettingsRow({
   properties: { key: string; label: string; quickCapture: boolean }[];
   // settings.quickAddHidden, passed for the task row only (null elsewhere).
   quickAddHidden: string[] | null;
+  // The built-in Status chip's state, or null when this type has no status
+  // (statusMode "none") or is the task type, whose card has its own done-ness.
+  statusChip: boolean | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -233,6 +237,19 @@ export default function TypeSettingsRow({
                     </label>
                   );
                 })}
+              {statusChip != null && (
+                <label className="flex items-center gap-2 text-sm text-ink-muted">
+                  <input
+                    type="checkbox"
+                    checked={statusChip}
+                    disabled={busy}
+                    onChange={() => void post("quick-capture", { quickCaptureStatus: !statusChip })}
+                    className="accent-[var(--accent)]"
+                  />
+                  Status
+                  <span className="text-xs text-ink-faint">built-in</span>
+                </label>
+              )}
               {properties.map((p) => (
                 <label key={p.key} className="flex items-center gap-2 text-sm text-ink-muted">
                   <input
@@ -251,7 +268,7 @@ export default function TypeSettingsRow({
                   {p.label}
                 </label>
               ))}
-              {properties.length === 0 && !quickAddHidden && (
+              {properties.length === 0 && !quickAddHidden && statusChip == null && (
                 <p className="text-xs text-ink-subtle">
                   This type has no fields yet. Add some with &ldquo;Edit fields&rdquo; below and they&rsquo;ll appear here.
                 </p>

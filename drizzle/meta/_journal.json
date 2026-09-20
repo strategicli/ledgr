@@ -435,6 +435,13 @@
       "when": 1788024739049,
       "tag": "0061_file_type",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1789924614999,
+      "tag": "0062_types_quick_capture_status",
+      "breakpoints": true
     }
   ]
 }

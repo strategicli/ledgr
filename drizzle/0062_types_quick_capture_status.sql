@@ -1,0 +1,1 @@
+ALTER TABLE "types" ADD COLUMN "quick_capture_status" boolean DEFAULT false NOT NULL;
