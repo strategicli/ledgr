@@ -89,6 +89,8 @@ const EXPECTED = [
   // record/project shaping (ADR-181)
   "get_record_layout", "set_record_layout", "set_type_layout", "add_to_record",
   "set_type_statuses",
+  // share links (2026-09-20, ADR-183 carve-out)
+  "share_item", "list_share_links", "revoke_share_link",
 ];
 // The always-on tool set (AI Memory tools are gated off for the dummy owner —
 // asserted separately below), so tools/list here is exactly EXPECTED.
@@ -249,6 +251,25 @@ try {
   check("unrelate_items removes the edge", (unrel.removed as number) >= 1);
   const noteAfter = await callJson(ownerId, "get_item", { id: note.id as string });
   check("unrelate_items leaves no edge but keeps both items", typeof noteAfter.id === "string" && !(noteAfter.related as Json[]).some((r) => r.id === entity.id));
+
+  // share_item / list_share_links / revoke_share_link (thin over lib/share).
+  const before = await callJson(ownerId, "list_share_links", { id: note.id as string });
+  check("list_share_links: unshared item reports shared=false", before.shared === false && before.activeCount === 0);
+  const s1 = await callJson(ownerId, "share_item", { id: note.id as string, theme: "sepia", showIcons: false });
+  const s2 = await callJson(ownerId, "share_item", { id: note.id as string });
+  check("share_item returns an absolute /share/<token> url with baked options", typeof s1.url === "string" && (s1.url as string).includes(`/share/${s1.token}`) && (s1.options as Json).theme === "sepia" && (s1.options as Json).showIcons === false && Object.keys(s2.options as Json).length === 0);
+  check("share_item mints a fresh token each call", s1.token !== s2.token);
+  const two = await callJson(ownerId, "list_share_links", { id: note.id as string });
+  check("list_share_links counts two live links, newest first", two.shared === true && two.activeCount === 2 && two.revokedCount === 0 && (two.links as Json[])[0].token === s2.token);
+  const r1 = await callJson(ownerId, "revoke_share_link", { token: s1.url as string });
+  check("revoke_share_link accepts the full url and revokes one", r1.revoked === 1 && r1.token === s1.token);
+  const rAgain = await callJson(ownerId, "revoke_share_link", { token: s1.token as string });
+  check("revoke_share_link is idempotent", rAgain.revoked === 0);
+  const rAll = await callJson(ownerId, "revoke_share_link", { id: note.id as string });
+  check("revoke_share_link by id revokes every remaining live link", rAll.revoked === 1);
+  const after = await callJson(ownerId, "list_share_links", { id: note.id as string });
+  check("list_share_links after revoke: shared=false, history kept", after.shared === false && after.activeCount === 0 && after.revokedCount === 2);
+  await expectErr("share_item rejects a bad theme", ownerId, "share_item", { id: note.id as string, theme: "neon" });
 
   // list_views / run_view over a view made through the lib (task was set done).
   const view = await createView(ownerId, parseViewInput({
@@ -441,6 +462,9 @@ try {
   // owner scoping holds for the new tools too.
   await expectErr("owner2 cannot run_view owner1's view", owner2Id, "run_view", { id: view.id });
   await expectErr("owner2 cannot relate owner1's items", owner2Id, "relate_items", { sourceId: note.id as string, targetId: entity.id as string });
+  await expectErr("owner2 cannot share owner1's item", owner2Id, "share_item", { id: note.id as string });
+  const o2links = await callJson(owner2Id, "list_share_links", { id: note.id as string });
+  check("owner2 sees no share links on owner1's item", (o2links.links as Json[]).length === 0);
   await expectErr("owner2 cannot apply_template onto owner1's item", owner2Id, "apply_template", { id: template.id, targetId: applyTarget.id as string });
 
   // Validation / error surfacing (isError results, not thrown).

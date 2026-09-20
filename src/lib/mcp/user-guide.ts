@@ -955,6 +955,12 @@ to your own). The page itself has an **Appearance** dropdown at the top right,
 so whoever you send it to can switch between Dark, Light, Gray, and Sepia; their
 browser remembers the choice for every Ledgr document they open.
 
+Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
+same theme and icon options) and hands back the URL to paste into an email, a
+Teams message, or another item; \`list_share_links\` answers "is this shared,
+since when, how many links"; \`revoke_share_link\` kills one link or every live
+link on an item. Ledgr does not count how many times a link was opened.
+
 ## Presentation export
 
 For a talk or a sermon. Mark the spans you want on screen with the **slide mark**,

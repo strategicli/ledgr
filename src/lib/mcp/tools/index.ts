@@ -23,6 +23,7 @@ import { itemTools } from "./items";
 import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
 import { recordTools } from "./records";
 import { relationTools } from "./relations";
+import { shareTools } from "./share";
 import { taskTools } from "./tasks";
 import { templateTools } from "./templates";
 import { trashTools } from "./trash";
@@ -42,6 +43,7 @@ const TOOLS: McpTool[] = [
   ...calendarTools,
   ...typeTools,
   ...relationTools,
+  ...shareTools,
   ...trashTools,
   ...viewTools,
   ...templateTools,
