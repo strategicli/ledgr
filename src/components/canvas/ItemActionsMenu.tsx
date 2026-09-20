@@ -19,6 +19,7 @@ import ChangeTypeDialog from "./ChangeTypeDialog";
 import ActionGlyph from "./action-icons";
 import WordCount from "./WordCount";
 import MoveUnderMenu from "@/components/items/MoveUnderMenu";
+import { showToast } from "@/components/ui/ActionToast";
 import { announceFloatingOpen, onOtherFloatingOpen } from "@/lib/floating";
 
 const rowClass =
@@ -201,6 +202,29 @@ export default function ItemActionsMenu({
     }
   }
 
+  // Clone this item (subtree, relations, dates; not attachments) beside it as
+  // "<title> - Copy" (POST /api/items/[id]/duplicate). Nothing on this page
+  // changes, so the toast carries the way over to the copy for whoever wants it;
+  // it closes on its own after 8s or on ✕.
+  async function duplicate() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/items/${itemId}/duplicate`, { method: "POST" });
+      if (!res.ok) throw new Error(String(res.status));
+      const copy = (await res.json()) as { id: string; title: string };
+      setOpen(false);
+      showToast(`Created "${copy.title}"`, undefined, {
+        link: { label: "Open the copy", href: `/items/${copy.id}` },
+        durationMs: 8000,
+      });
+    } catch {
+      showToast("Couldn’t duplicate this item");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       ref={(el) => {
@@ -335,6 +359,16 @@ export default function ItemActionsMenu({
           >
             <ActionGlyph icon="subtask" />
             Make subtask of…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void duplicate()}
+            disabled={busy}
+            className={`${rowClass} disabled:opacity-50`}
+          >
+            <ActionGlyph icon="templateSave" />
+            Duplicate
           </button>
           <div className="my-1 h-px bg-neutral-800" />
           <SaveAsTemplateButton

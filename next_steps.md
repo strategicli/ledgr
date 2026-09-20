@@ -2,6 +2,23 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ SHIPPED — list-rule setext fix; Duplicate; Desk panel menu info + Open outside Desk (2026-09-20, non-core, branch `feat/duplicate-desk-menu-list-rule-fix`)
+
+**Bug:** a horizontal rule inside a list item serialized flush under the item's
+text (`- text\n    ---`), which CommonMark and marked both read as a setext H2 on
+the next load, so a bullet grew into a heading after one save (Brandon's "Made to
+Stick - Seminar" import). `spaceEmptyListItems` now also blank-lines an indented
+`---` (serialize, render, export all share it), and the editor's parse patch runs
+it too plus decodes `&nbsp;` (marked passed the entity through as literal text,
+then the serializer escaped it to `&amp;nbsp;`). Checks in
+`scripts/verify-list-markdown.mts`. **Duplicate** in the item ⋯ menu:
+`POST /api/items/[id]/duplicate` → `duplicateItem` (rides `cloneItemSubtree`:
+body, dates, url, properties, subtree, relations; not attachments; status resets
+to the type default), titled "… - Copy", with an 8s toast carrying "Open the
+copy" (`showToast` gained `link` + `durationMs`). **Desk panel ⋯ menu** shows
+Created/Updated/word count for the active item and ends with "Open outside Desk"
+(new browser tab; in-place navigation inside the installed PWA). Guide updated.
+
 ## ✅ BUILT, NEEDS A DEPLOY — Trash over the machine API and MCP (2026-09-19, ADR-267, branch `feat/machine-trash`)
 
 The import agent reported there is "a Delete system" it can't reach from the API

@@ -16,7 +16,8 @@
 // (markdown-it) agree on it, because both follow the spec.
 //
 // One blank line before the empty item removes the ambiguity: it closes the
-// paragraph, so the marker opens a real (if loose) list. Run it on the way IN so
+// paragraph, so the marker opens a real (if loose) list. The same blank line
+// heals an indented `---` under list text (see INDENTED_RULE below). Run it on the way IN so
 // bodies written before this fix heal when they load, and on the way OUT so the
 // canonical markdown we store is never ambiguous for anything downstream (the
 // OneDrive export, pandoc, the print/share view).
@@ -25,6 +26,15 @@
 // just closes that item, which parses correctly today and stays tight. Only the
 // case that misparses gets the blank line.
 const EMPTY_ITEM = /^( *)(?:[-+*]|\d{1,9}[.)])[ \t]*$/;
+// An INDENTED dash rule (`    ---`): a horizontal rule inside a list item. The
+// editor's serializer (@tiptap/markdown) emits it flush under the item's text,
+// with no blank line, and that line-then-dashes shape is the same setext trap
+// as the empty bullet: the sentence above becomes an <h2> on the next load
+// (Brandon, 2026-09-20: a bullet in an imported seminar note grew into a heading
+// after one save). Only the indented form is healed; a top-level `text\n---` is
+// left alone because there the editor already writes blank lines around a
+// rule, so any flush form is an import's intentional setext heading.
+const INDENTED_RULE = /^ +-{3,}[ \t]*$/;
 const LIST_ITEM = /^( *)(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
 const CODE_FENCE = /^ *(?:`{3,}|~{3,})/;
 // The sentinel the editor's parse side stands in for "empty list item" — see
@@ -43,6 +53,8 @@ export function spaceEmptyListItems(markdown: string): string {
       const empty = EMPTY_ITEM.exec(line);
       const prevItem = LIST_ITEM.exec(prev);
       if (empty && (!prevItem || prevItem[1].length < empty[1].length)) {
+        out.push("");
+      } else if (INDENTED_RULE.test(line)) {
         out.push("");
       }
     }

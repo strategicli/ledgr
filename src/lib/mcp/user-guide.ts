@@ -867,6 +867,11 @@ the arrangement survives closing the app.
 Send things there from any row menu or mention chip with "Open in Desk" or "Open
 beside".
 
+Each panel's ⋯ menu shows the active item's Created and Updated dates and its
+word count at the top, and ends with **Open outside Desk**, which opens that
+tab's own full page in a new browser tab (inside the installed app it simply
+takes you there).
+
 ## Item pages
 
 - **Opening from a list** docks a peek panel beside it on a wide screen, a modal
@@ -879,6 +884,9 @@ beside".
   inside a card), and the Details, Save Offline, Share, and Version History
   cards always settle beneath everything else.
 - **Lock an item** from its ⋯ menu to make it read-only.
+- **Duplicate an item** from its ⋯ menu: the copy keeps the body, dates,
+  properties, subitems and links (not attached files) and is titled
+  "… - Copy". A short notice offers "Open the copy"; ignore it to stay put.
 - **Version history** snapshots the body as you write, and restores.
 - **A cross-device guard** stops a stale tab from overwriting a newer edit. If
   you have no unsaved work, it just reloads quietly.

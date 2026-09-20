@@ -107,6 +107,27 @@ check(
   ).includes("keep me")
 );
 
+// --- an indented rule under list text (Brandon, 2026-09-20) -----------------
+// The editor serializes a horizontal rule inside a list item flush under the
+// item's text; that shape is a setext underline, so the bullet came back as an
+// <h2>. The pass separates it, on both the serialize and the parse side.
+check(
+  "indented `---` under list text gets a blank line",
+  spaceEmptyListItems("- A\n    ---\n\n    B\n") === "- A\n\n    ---\n\n    B\n"
+);
+check(
+  "top-level `---` under text is left alone (an intentional setext heading)",
+  spaceEmptyListItems("Title\n---\n") === "Title\n---\n"
+);
+check(
+  "an already-separated indented rule is untouched",
+  spaceEmptyListItems("- A\n\n    ---\n") === "- A\n\n    ---\n"
+);
+const ruled = markdownToHtml("- A\n    ---\n\n    B\n- C\n");
+check("render: the bullet stays a bullet, the rule stays a rule", !/<h[1-6]/.test(ruled) && /<hr/.test(ruled), ruled.replace(/\n/g, ""));
+const ruledEditor = marked.parse(hydrateEmptyListItems(spaceEmptyListItems("- A\n    ---\n\n    B\n"))) as string;
+check("editor parse: no heading from an indented rule", !/<h[1-6]/.test(ruledEditor) && /<hr/.test(ruledEditor));
+
 // --- round-trip stability --------------------------------------------------
 // The editor re-serializes tight markdown; running the pass twice must not keep
 // adding blank lines (that would churn saves on every open).

@@ -183,3 +183,26 @@ export async function cloneItemSubtree(
 ): Promise<{ rootId: string; count: number }> {
   return cloneNode(ownerId, sourceId, overrides.parentId ?? null, reset, overrides, 0, null);
 }
+
+// Duplicate an item in place (the ⋯ menu's "Duplicate", 2026-09-20): the same
+// type, body, dates, url, properties, subtree, and outgoing relations, as a
+// sibling of the original, titled "<title> - Copy". Attachments are not copied
+// (the body's /files/<id> links still point at the original's files). Status
+// takes the type's not-started default rather than the original's, on purpose:
+// a duplicate is a fresh copy, not a second "done".
+export async function duplicateItem(
+  ownerId: string,
+  id: string
+): Promise<{ id: string; title: string }> {
+  const src = await getItem(ownerId, id);
+  const title = `${src.title.trim() || "Untitled"} - Copy`;
+  const { rootId } = await cloneItemSubtree(ownerId, id, {
+    title,
+    parentId: src.parentId ?? null,
+    dueDate: src.dueDate ?? null,
+    scheduledDate: src.scheduledDate ?? null,
+    inbox: src.inbox ?? false,
+    isTemplate: src.isTemplate ?? false,
+  });
+  return { id: rootId, title };
+}
