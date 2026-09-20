@@ -107,6 +107,12 @@ export type PropertyDef = {
   // day-only values readable, and a cleared time falls back to a day. Combined
   // with withEnd, one field is a timed range (a work-log entry's 9:06–9:15 PM).
   withTime?: boolean;
+  // Quick add (ADR-268): when true this property renders as a settable chip on
+  // the quick-capture card for the type, beside the built-ins. Unset = it stays
+  // in the card's "More" menu (task) or off the card (other types). Toggled per
+  // property on Build → Types, or via `quickCaptureProperties` on the type's
+  // quick-capture route / MCP update_type.
+  quickCapture?: boolean;
 };
 
 export type TypeDefinition = {
@@ -242,6 +248,7 @@ export function parsePropertySchema(raw: unknown): PropertyDef[] {
     if (def.kind === "date" && e.withTime === true) {
       def.withTime = true;
     }
+    if (e.quickCapture === true) def.quickCapture = true;
     if (KINDS_WITH_OPTIONS.includes(def.kind)) {
       if (!Array.isArray(e.options)) bad(`property '${key}' needs options`);
       const options = Array.from(
@@ -492,6 +499,22 @@ export async function setTypeQuickCapture(
 ): Promise<void> {
   await getType(key); // existence (throws not_found)
   await getDb().update(types).set({ showInQuickCapture }).where(eq(types.key, key));
+}
+
+// Set WHICH of a type's properties render as chips on the quick-capture card
+// (ADR-268): `keys` is the full set to show; every other property's flag is
+// cleared. Unknown keys are ignored so a stale key can't make the write fail.
+export async function setTypeQuickCaptureProperties(
+  key: string,
+  keys: string[]
+): Promise<void> {
+  const current = await getType(key);
+  const want = new Set(keys);
+  const propertySchema = current.propertySchema.map((p) => {
+    const { quickCapture: _drop, ...rest } = p;
+    return want.has(p.key) ? { ...rest, quickCapture: true } : rest;
+  });
+  await getDb().update(types).set({ propertySchema }).where(eq(types.key, key));
 }
 
 // Toggle whether a type's items show a Listen (read-aloud) control (the Build →

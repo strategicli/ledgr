@@ -13,6 +13,7 @@ import "@/lib/modules/register";
 import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema, type StatusMode } from "@/lib/status";
 import { listTypes } from "@/lib/types";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,10 @@ export default async function BuildTypes() {
   if (!owner) redirect("/sign-in");
 
   // includeHidden so hidden types appear here (dimmed) to be un-hidden.
-  const types = await listTypes({ includeHidden: true });
+  const [types, settings] = await Promise.all([
+    listTypes({ includeHidden: true }),
+    getSettings(owner.id),
+  ]);
   const capabilities = attachableCapabilities(owner.id);
 
   return (
@@ -52,8 +56,8 @@ export default async function BuildTypes() {
         </div>
         <p className="mt-1 text-sm text-neutral-500">
           The shapes your items take. Each type carries its own custom fields.
-          Click a row to open its settings — quick capture, Listen, and
-          visibility. Hide a built-in you don&rsquo;t use; it stays out of
+          Click a row to open its settings — quick capture (and which fields
+          show as chips on its card), Listen, and visibility. Hide a built-in you don&rsquo;t use; it stays out of
           capture, menus, and tabs without deleting anything.
         </p>
 
@@ -70,6 +74,12 @@ export default async function BuildTypes() {
               showInQuickCapture={t.showInQuickCapture}
               listenEnabled={t.listenEnabled}
               listenOpenInEdge={t.listenOpenInEdge}
+              properties={t.propertySchema.map((p) => ({
+                key: p.key,
+                label: p.label,
+                quickCapture: p.quickCapture === true,
+              }))}
+              quickAddHidden={t.key === "task" ? settings.quickAddHidden : null}
             />
           ))}
         </ul>

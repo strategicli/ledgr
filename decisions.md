@@ -4389,3 +4389,21 @@ Four smaller failures cost time on the way there, and they share a cause: the ro
 **What is not here, on purpose.** No hard delete and no purge trigger on either surface: the purge is a scheduled machine job and stays one. No `restore` batch route on the HTTP side (per-id is enough and keeps restore deliberate). No cascade options: the unit semantics (children go with the parent, come back with it if trashed together) are the app's and are not parameterized.
 
 **Consequences.** `scripts/verify-machine-trash.mts` (23 checks, DB-backed, real handlers and tool handlers with a real minted credential): single delete with cascade, out of the live list and into `?trash=true`, 404 on a double delete, restore of the unit, 404 restoring a live item, all three batch body shapes, partial failure by index, 400 when nothing trashed, 401 without a credential, and the two tools including dedupe, partial failure, cascade, and their annotations. `/build/api` gains **Deleting and restoring**; the guide's capture section says an assistant can clean up after itself.
+
+## ADR-268: a type's properties can be quick-add chips, one optional flag on the property
+
+**Date:** 2026-09-20. **Status:** proposed, Brandon; needs Tyler's agree (touches the `PropertyDef` shape in `types.property_schema`). Built on `feat/quick-add-property-chips`.
+
+**Context.** The quick-add card (the `q` key) offered rich chips only for the task type, and those were hard-coded in `AddTaskCard` with one global hide-list (`settings.quickAddHidden`). Every other type got a bare title + description card. Brandon wants the owner to say, per type and per property, what shows on the card, from Build → Types, and for an agent to do the same over MCP.
+
+**Decision.** Add one optional boolean to `PropertyDef`: `quickCapture?: boolean`. It is stored inside the existing `types.property_schema` jsonb next to `withEnd`/`withTime`, parsed tolerantly (kept only when literally `true`), and means "render this property as a settable control on the quick-add card for this type." No new column, no migration, an older reader ignores the key.
+
+- **Rendering.** A shared `PropertyEditor` (`src/components/capture/PropertyEditor.tsx`) renders one compact control per kind (date, checkbox, select, multi_select, number, text/url/phone/email, and a typeahead picker for `relation` against its `targetType`). Both capture cards use it: the task card opens flagged properties on mount (unflagged ones stay in its existing ⋯ menu), and `SimpleCapture` renders flagged properties for every other type. Values ride the same `POST /api/items` as `properties`; relation picks become `relateTo` edges with role = the property key (ADR-067's edge shape, ADR-202's atomic create), so an offline replay keeps them.
+- **Build UI.** The Build → Types row, under the Quick capture switch, gains "Chips on the card": one checkbox per property, a `?` hover tooltip, and on the task row the five built-in chips wired to the same `settings.quickAddHidden` that Settings → Quick Add edits (one place for every quick-add switch of a type; Settings keeps its section).
+- **API.** `POST /api/types/[key]/quick-capture` now also accepts `{ quickCaptureProperties: string[] }` (the full set to flag; either field may be sent alone). `setTypeQuickCaptureProperties` rewrites the flags on the stored schema; unknown keys are ignored.
+- **MCP.** `list_types` reports `quickCapture: true` per property. `update_type` gains `quickCaptureProperties: string[]`; `create_type`/`update_type`'s `propertySchema` accept the flag directly. Purely additive (ADR-183 carve-out), but the flag itself is a data-model addition, hence this ADR.
+
+**Rejected.** A separate `types.quick_capture_properties` column (a second place to keep in sync with the schema on rename/delete); a per-type override of the built-in task chips (the global hide-list already covers the only type that has built-ins).
+
+**Consequences.** A property renamed or removed in the type builder carries or drops its flag with it, since the flag lives on the property. The type builder's own form (`/build/types/[key]/edit`) doesn't expose the flag yet; the row checkbox and MCP are the levers. Check: `scripts/verify-types.mts`.
+

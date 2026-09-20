@@ -18,6 +18,7 @@ import {
   listTypes,
   parseTypeInput,
   setTypeHidden,
+  setTypeQuickCaptureProperties,
   setTypeStatusConfig,
   updateType,
 } from "@/lib/types";
@@ -134,6 +135,8 @@ export const typeTools: McpTool[] = [
             // stores a full ISO instant instead of a day (ADR-166 / ADR-254).
             ...(p.withEnd ? { withEnd: true } : {}),
             ...(p.withTime ? { withTime: true } : {}),
+            // Shown as a settable chip on the quick-add card (ADR-268).
+            ...(p.quickCapture ? { quickCapture: true } : {}),
           })),
         })),
       };
@@ -153,7 +156,9 @@ export const typeTools: McpTool[] = [
       "string array) | relation (a typed link — set `targetType` to the type key " +
       "it links to, or omit for any, plus `cardinality` single|many). A `date` " +
       "field may set `withTime: true` (stores a full ISO instant, not a day) " +
-      "and/or `withEnd: true` (its end lives at `<key>__end`). Example: a " +
+      "and/or `withEnd: true` (its end lives at `<key>__end`). Any field may set " +
+      "`quickCapture: true` to appear as a settable chip on the quick-add card " +
+      "(the q key). Example: a " +
       "'sermon' type with a `series` select, a `date`, and a `passage` relation. " +
       "Call describe_workspace/list_types first to avoid duplicating an existing " +
       "type, and confirm the shape with the owner before creating.",
@@ -205,6 +210,15 @@ export const typeTools: McpTool[] = [
           items: { type: "object" },
         },
         showInQuickCapture: { type: "boolean", description: "Show in the quick-capture picker." },
+        quickCaptureProperties: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "The FULL list of property keys to show as settable chips on the " +
+            "quick-add card (the q key); every other property's chip is turned " +
+            "off. Same switch as the 'Chips on the card' checkboxes on Build → " +
+            "Types. Omit to leave chips as they are. Unknown keys are ignored.",
+        },
         capability: { type: "string", description: "Bespoke-tool capability id, or omit/empty for the default canvas." },
         hidden: {
           type: "boolean",
@@ -245,6 +259,13 @@ export const typeTools: McpTool[] = [
       // the PATCH and the type re-read so the returned view reflects it.
       if ("hidden" in args && typeof args.hidden === "boolean") {
         await setTypeHidden(key, args.hidden);
+        updated = await getType(key);
+      }
+      if (Array.isArray(args.quickCaptureProperties)) {
+        await setTypeQuickCaptureProperties(
+          key,
+          args.quickCaptureProperties.filter((k): k is string => typeof k === "string")
+        );
         updated = await getType(key);
       }
       return typeView(updated);
