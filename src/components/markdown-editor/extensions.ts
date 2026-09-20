@@ -350,9 +350,20 @@ export const EmptyListItemFix = Extension.create({
     const parse = mgr.parse;
     if (typeof parse === "function") {
       const bound = (parse as (md: string) => unknown).bind(mgr);
+      // Parse also runs spaceEmptyListItems so an indented `---` flush under
+      // list text (a body saved before that serializer fix) loads as the rule
+      // it was, not a heading — and decodes `&nbsp;` (imports) to the real
+      // character, because marked hands the entity through as literal text
+      // that the serializer then escapes to `&amp;nbsp;`.
       mgr.parse = (markdown: string) =>
         typeof markdown === "string"
-          ? stripSentinelText(bound(hydrateEmptyListItems(markdown)))
+          ? stripSentinelText(
+              bound(
+                hydrateEmptyListItems(
+                  spaceEmptyListItems(markdown.replace(/&nbsp;/g, "\u00a0"))
+                )
+              )
+            )
           : bound(markdown);
     }
     const serialize = mgr.serialize;

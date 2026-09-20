@@ -9,15 +9,29 @@
 
 import { useEffect, useState } from "react";
 
-export type ToastPayload = { text: string; undo?: () => void };
+export type ToastPayload = {
+  text: string;
+  undo?: () => void;
+  // An optional follow-up link ("Open the copy" after Duplicate): a hard nav so
+  // it escapes any intercept modal, like the ⋯ menu's own links.
+  link?: { label: string; href: string };
+  // How long the toast stays up; defaults to DISMISS_MS. The ✕ closes it sooner.
+  durationMs?: number;
+};
 
 const EVENT = "ledgr:toast";
 const DISMISS_MS = 6000;
 
 // Fire a toast from anywhere on the client. `undo` runs when the user taps Undo.
-export function showToast(text: string, undo?: () => void) {
+export function showToast(
+  text: string,
+  undo?: () => void,
+  opts: Pick<ToastPayload, "link" | "durationMs"> = {}
+) {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent<ToastPayload>(EVENT, { detail: { text, undo } }));
+  window.dispatchEvent(
+    new CustomEvent<ToastPayload>(EVENT, { detail: { text, undo, ...opts } })
+  );
 }
 
 export default function ActionToast() {
@@ -35,7 +49,7 @@ export default function ActionToast() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), DISMISS_MS);
+    const t = setTimeout(() => setToast(null), toast.durationMs ?? DISMISS_MS);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -54,6 +68,14 @@ export default function ActionToast() {
           >
             Undo
           </button>
+        )}
+        {toast.link && (
+          <a
+            href={toast.link.href}
+            className="shrink-0 rounded px-1.5 py-0.5 font-medium text-[color:var(--accent)] hover:bg-surface-2"
+          >
+            {toast.link.label}
+          </a>
         )}
         <button
           onClick={() => setToast(null)}

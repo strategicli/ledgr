@@ -25,6 +25,11 @@ export type DocState = {
   title: string; // last title loaded/synced
   type: string; // the item's type key (ADR-147 D4: drives canvas-tabs enablement)
   body: unknown; // last body loaded ({ format, text }); preserves non-md formats
+  // Created / last-edited stamps as loaded, for the panel ⋯ menu's info block
+  // (the same Created/Updated the full canvas shows). Not kept live: a save
+  // refreshes them only on the next open, which is what the full canvas does too.
+  createdAt: string | null;
+  updatedAt: string | null;
   // Live text the focused editor has published (reflects unsaved edits). Seeded
   // from the loaded item so a twin has something to show before the first edit.
   liveTitle: string;
@@ -59,6 +64,8 @@ export function ensureDoc(id: string): void {
     title: "",
     type: "",
     body: null,
+    createdAt: null,
+    updatedAt: null,
     liveTitle: "",
     liveMarkdown: "",
     dirty: false,
@@ -76,6 +83,8 @@ export function ensureDoc(id: string): void {
         title,
         type,
         body: item.body ?? null,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+        updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : null,
         liveTitle: title,
         liveMarkdown: md,
         dirty: false,
@@ -89,6 +98,8 @@ export function ensureDoc(id: string): void {
         title: prev?.title ?? "",
         type: prev?.type ?? "",
         body: prev?.body ?? null,
+        createdAt: prev?.createdAt ?? null,
+        updatedAt: prev?.updatedAt ?? null,
         liveTitle: prev?.liveTitle ?? "",
         liveMarkdown: prev?.liveMarkdown ?? "",
         dirty: prev?.dirty ?? false,

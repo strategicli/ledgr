@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { DeskLeaf, DeskTab } from "@/lib/desk/layout";
+import { wordCountOf } from "@/lib/body";
 import { parseTabs } from "@/lib/editor/canvas-tabs";
 import { useDesk } from "./DeskContext";
 import { useDoc } from "./desk-doc-store";
@@ -61,7 +62,7 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
             {isFocused ? "Editing" : "Viewing"}
           </span>
         )}
-        <PanelMenu leafId={leaf.id} />
+        <PanelMenu leafId={leaf.id} active={active} />
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -466,13 +467,30 @@ function useTabLabel(tab: DeskTab): string {
   return doc?.liveTitle?.trim() || (doc?.status === "loading" ? "Loading…" : "Untitled");
 }
 
-// The ⋯ panel menu: panel-scoped actions only (ADR-147 D3) — split the panel,
-// close the panel. Tab-scoped actions (open in full page / move / close a tab)
-// moved to each tab's right-click menu (TabContextMenu).
-function PanelMenu({ leafId }: { leafId: string }) {
+// Compact date for the info block ("Jan 3, 2021"), the full canvas's format.
+const CHROME_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+// True inside the installed PWA (no browser tabs to open into).
+function isStandalone(): boolean {
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  );
+}
+
+// The ⋯ panel menu: panel-scoped actions (ADR-147 D3) — split the panel, close
+// the panel — plus, for the active tab (Brandon, 2026-09-20): the item's
+// Created/Updated/word-count info block at the top (what the full canvas keeps
+// in ITS ⋯ menu), and "Open outside Desk" at the bottom, which opens the tab's
+// own full page in a new browser tab, or navigates in place inside the
+// installed PWA where a new tab would leave the app. Other tab-scoped actions
+// (move / close a tab) live in each tab's right-click menu (TabContextMenu).
+function PanelMenu({ leafId, active }: { leafId: string; active: DeskTab | null }) {
   const { actions } = useDesk();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const doc = useDoc(active?.kind === "item" ? active.itemId : "");
+  const info = open && active?.kind === "item" && doc?.status === "ready" ? doc : null;
 
   useEffect(() => {
     if (!open) return;
@@ -511,6 +529,16 @@ function PanelMenu({ leafId }: { leafId: string }) {
           role="menu"
           className="absolute right-0 top-9 z-50 min-w-[12rem] rounded-card border border-line-strong bg-surface-3 p-1 shadow-2xl shadow-black/50"
         >
+          {info && (
+            <>
+              <div className="px-2 py-1.5 text-xs text-ink-subtle">
+                {info.createdAt && <div>Created {CHROME_DATE.format(new Date(info.createdAt))}</div>}
+                {info.updatedAt && <div>Updated {CHROME_DATE.format(new Date(info.updatedAt))}</div>}
+                <div>{wordCountOf(info.liveMarkdown).toLocaleString()} words</div>
+              </div>
+              <div className="my-1 border-t border-line" />
+            </>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -545,6 +573,30 @@ function PanelMenu({ leafId }: { leafId: string }) {
           >
             ✕ Close panel
           </button>
+          {active && (
+            <>
+              <div className="my-1 border-t border-line" />
+              <a
+                role="menuitem"
+                href={fullPageHref(active)}
+                target="_blank"
+                rel="noopener"
+                title="Open this tab's own full page in a new browser tab"
+                className={itemClass}
+                onClick={(e) => {
+                  // Inside the installed app a new tab would open the system
+                  // browser and leave the PWA, so just go there in place.
+                  if (isStandalone()) {
+                    e.preventDefault();
+                    window.location.assign(fullPageHref(active));
+                  }
+                  setOpen(false);
+                }}
+              >
+                ↗ Open outside Desk
+              </a>
+            </>
+          )}
         </div>
       )}
     </div>
