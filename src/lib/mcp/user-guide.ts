@@ -404,6 +404,9 @@ Build your own kinds of item at \`/build/types\`.
   row reorder stages **within** their group — which is exactly the left-to-right
   order a board's columns read in, so a stage you add later doesn't have to stay
   stuck at the end.
+  A type with status switched on shows its status picker at the top of every
+  item of that type, and a saved view on that type offers those same stages,
+  by name, in its Status filter and rules, alongside the four group buckets.
 - **Hide a type you do not use.** It disappears from capture, "+ New", tabs and
   pickers without deleting anything.
 - **Deleting a type is undoable.** It goes to Trash as a restorable unit, and can

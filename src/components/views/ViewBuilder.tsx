@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import RuleBuilder, { type RuleSubjectOption } from "@/components/views/RuleBuilder";
-import type { StatusMode } from "@/lib/status";
+import { resolveStatusSchema, type StatusDef, type StatusMode } from "@/lib/status";
 import type { PropertyDef } from "@/lib/types";
 import type { WhereGroup } from "@/lib/view-where";
 import { CALENDAR_MODES, TIMELINE_ZOOMS } from "@/lib/views";
@@ -37,12 +37,15 @@ const LAYOUTS = ["list", "table", "board", "calendar", "agenda"] as const;
 // Status filter is by CATEGORY now (S2): statuses are user-defined per type, so
 // a generic view filters by the bucket. "active" = not started + in progress.
 const STATUS_CATEGORY_OPTS = [
-  { value: "active", label: "active" },
-  { value: "not_started", label: "not started" },
-  { value: "in_progress", label: "in progress" },
-  { value: "done", label: "done" },
-  { value: "archived", label: "archived (closed)" },
+  { value: "active", label: "any active" },
+  { value: "not_started", label: "any not started" },
+  { value: "in_progress", label: "any in progress" },
+  { value: "done", label: "any done" },
+  { value: "archived", label: "any archived (closed)" },
 ];
+// A concrete type's own statuses ride in the same <select>, encoded "key:<slug>"
+// so they don't collide with the category buckets.
+const STATUS_KEY_PREFIX = "key:";
 // Task priority P1–P6 (ADR-096; 1 highest, 6 = no special priority). Stored as
 // the numeric `urgency` column; the option value is the number, label is "P1"…
 const PRIORITY_OPTS = [1, 2, 3, 4, 5, 6].map((n) => ({
@@ -177,8 +180,15 @@ export default function ViewBuilder({
     label: string;
     propertySchema?: PropertyDef[];
     statusMode?: StatusMode;
+    statusSchema?: StatusDef[] | null;
   }[];
 }) {
+  // The type's own statuses as options; none for "any type" (keys are per-type).
+  function statusOptsFor(typeKey: string): { value: string; label: string }[] {
+    if (!typeKey) return [];
+    return resolveStatusSchema(types.find((t) => t.key === typeKey)?.statusSchema ?? null)
+      .map((s) => ({ value: s.key, label: s.label }));
+  }
   // A type's select/multi_select properties, as group-by options encoded
   // "prop:<key>" so they share the one Group-by control with the built-in
   // fields. A board grouped by one of these reads as a workflow board.
@@ -262,7 +272,7 @@ export default function ViewBuilder({
       }
     }
     if (showsUrgency(typeKey)) opts.push({ subject: "priority", label: "Priority" });
-    if (usesStatus(typeKey)) opts.push({ subject: "status", label: "Status" });
+    if (usesStatus(typeKey)) opts.push({ subject: "status", label: "Status", statuses: statusOptsFor(typeKey) });
     return opts;
   }
   // Whether the view's type surfaces status at all (ADR-106). A type whose mode
@@ -305,8 +315,11 @@ export default function ViewBuilder({
   const [name, setName] = useState(initial?.name ?? "");
   const [layout, setLayout] = useState<string>(initial?.layout ?? "list");
   const [type, setType] = useState(t0);
+  // Either "key:<slug>" (one exact status of the type) or a category bucket.
   const [statusCategory, setStatusCategory] = useState<string>(
-    initial?.filter.statusCategory ?? ""
+    initial?.filter.status
+      ? STATUS_KEY_PREFIX + initial.filter.status
+      : initial?.filter.statusCategory ?? ""
   );
   const [urgency, setUrgency] = useState<string>(
     showsUrgency(t0) ? (initial?.filter.urgency != null ? String(initial.filter.urgency) : "") : ""
@@ -441,7 +454,13 @@ export default function ViewBuilder({
     const filter: Record<string, unknown> = {};
     if (type) filter.type = type;
     // Don't persist a status filter on a type that doesn't use status (ADR-106).
-    if (statusCategory && usesStatus(type)) filter.statusCategory = statusCategory;
+    if (statusCategory && usesStatus(type)) {
+      if (statusCategory.startsWith(STATUS_KEY_PREFIX)) {
+        filter.status = statusCategory.slice(STATUS_KEY_PREFIX.length);
+      } else {
+        filter.statusCategory = statusCategory;
+      }
+    }
     if (urgency) filter.urgency = Number(urgency);
     if (relatedTo) filter.relatedTo = relatedTo;
     if (dateWindow) {
@@ -608,6 +627,9 @@ export default function ViewBuilder({
               className={selectClass}
             >
               <Opt value="" label="any" />
+              {statusOptsFor(type).map((s) => (
+                <Opt key={STATUS_KEY_PREFIX + s.value} value={STATUS_KEY_PREFIX + s.value} label={s.label} />
+              ))}
               {STATUS_CATEGORY_OPTS.map((s) => (
                 <Opt key={s.value} value={s.value} label={s.label} />
               ))}

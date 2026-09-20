@@ -47,7 +47,7 @@ export default async function LongformCanvas(canvasProps: CanvasProps) {
   // so drop it from the editable field strip WHEN SET, to avoid showing it
   // twice. A URL-less item keeps the field — otherwise a fresh link's page had
   // no way to set (or upload, ADR-237) its URL at all.
-  const fields = topStripFields(item.type).filter((f) => f !== "url" || !item.url);
+  const fields = topStripFields(item.type, typeDef?.statusMode).filter((f) => f !== "url" || !item.url);
   const strip: StripValues = {
     status: item.status,
     dueDate: item.dueDate?.toISOString() ?? null,

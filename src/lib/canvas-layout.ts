@@ -170,10 +170,11 @@ function sinkFooter(cells: Cell[]): Cell[] {
 // a type never gets a card for a field it shouldn't have.
 export function cardVocabulary(
   type: string,
-  propertySchema: PropertyDef[]
+  propertySchema: PropertyDef[],
+  statusMode?: string | null
 ): CardId[] {
   const ids: CardId[] = ["title"];
-  for (const f of topStripFields(type)) ids.push(`sys:${f}`);
+  for (const f of topStripFields(type, statusMode)) ids.push(`sys:${f}`);
   ids.push("body");
   if (type === "task") ids.push("recurrence", "recurrenceCalendar", "subtasks");
   if (type === "event") ids.push("meetingPrep", "meetingNotes", "meetingTranscripts");
@@ -255,9 +256,10 @@ function pack(ids: CardId[], cols: number, forceW?: number): Cell[] {
 // when a user opens Arrange on a type that has none saved.
 export function defaultLayout(
   type: string,
-  propertySchema: PropertyDef[]
+  propertySchema: PropertyDef[],
+  statusMode?: string | null
 ): CanvasLayout {
-  const vocab = cardVocabulary(type, propertySchema);
+  const vocab = cardVocabulary(type, propertySchema, statusMode);
   const cards: Record<CardId, CardMeta> = {};
   for (const id of vocab) cards[id] = { mode: "flow" };
   return {
@@ -390,9 +392,10 @@ export function deriveResponsive(layout: CanvasLayout): CanvasLayout {
 export function reconcile(
   layout: CanvasLayout,
   type: string,
-  propertySchema: PropertyDef[]
+  propertySchema: PropertyDef[],
+  statusMode?: string | null
 ): CanvasLayout {
-  const vocab = cardVocabulary(type, propertySchema);
+  const vocab = cardVocabulary(type, propertySchema, statusMode);
   const vocabSet = new Set(vocab);
 
   const cards: Record<CardId, CardMeta> = {};

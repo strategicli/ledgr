@@ -27,7 +27,7 @@ export type RuleSubjectOption =
   | { subject: "property"; key: string; label: string; kind: string; options?: string[]; numeric?: boolean }
   | { subject: "relation"; key: string; label: string; targetType?: string | null }
   | { subject: "priority"; label: string }
-  | { subject: "status"; label: string };
+  | { subject: "status"; label: string; statuses?: { value: string; label: string }[] };
 
 // Encode/decode a subject option as the <select> value.
 function encodeSubject(o: RuleSubjectOption): string {
@@ -41,11 +41,11 @@ function subjectKind(o: RuleSubjectOption): string {
 
 const PRIORITY_VALUES = [1, 2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: `P${n}` }));
 const STATUS_VALUES = [
-  { value: "active", label: "Active" },
-  { value: "not_started", label: "Not started" },
-  { value: "in_progress", label: "In progress" },
-  { value: "done", label: "Done" },
-  { value: "archived", label: "Archived" },
+  { value: "active", label: "Any active" },
+  { value: "not_started", label: "Any not started" },
+  { value: "in_progress", label: "Any in progress" },
+  { value: "done", label: "Any done" },
+  { value: "archived", label: "Any archived" },
 ];
 
 const selectClass =
@@ -206,8 +206,10 @@ function ConditionValue({
       );
     }
     if (cond.subject === "status") {
+      // The type's own statuses first, then the category buckets.
+      const own = option?.subject === "status" ? option.statuses ?? [] : [];
       return (
-        <OptionMultiPick options={STATUS_VALUES} selected={values} onChange={(v) => onChange({ values: v })} />
+        <OptionMultiPick options={[...own, ...STATUS_VALUES]} selected={values} onChange={(v) => onChange({ values: v })} />
       );
     }
     // select / multi_select property
