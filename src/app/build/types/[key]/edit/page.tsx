@@ -102,6 +102,7 @@ export default async function EditType({
           typeKey={key}
           initialMode={type.statusMode}
           initial={type.statusSchema}
+          initialQuickCaptureStatus={type.quickCaptureStatus}
         />
         {/* Tools (default sections) only apply to types whose records resolve
             to the widget canvas — project, pursuit, and custom types with the
