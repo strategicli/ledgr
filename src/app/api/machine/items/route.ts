@@ -9,7 +9,7 @@ import {
   type ItemStatus,
   type ListOptions,
 } from "@/lib/items";
-import { createItem, updateItem } from "@/lib/item-mutations";
+import { createItem, softDeleteItem, updateItem } from "@/lib/item-mutations";
 import {
   applyRelateTo,
   applyTags,
@@ -99,6 +99,7 @@ const LIST_PARAMS = new Set([
   "limit",
   "offset",
   "includeBody",
+  "trash",
 ]);
 
 // CORS is open for the same reason /api/machine/capture's is (see the comment
@@ -107,7 +108,7 @@ const LIST_PARAMS = new Set([
 // which triggers a preflight this route must answer.
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -129,8 +130,10 @@ export function OPTIONS() {
 // ?type= (one key or comma-separated) &status= &statusCategory= (a category or
 // "active") &relatedTo=<itemId> (confirmed edge either direction — tasks tagged
 // with a tag item / filed under a project item) &parentId= &q= &limit= &offset=,
-// plus ?id= (one uuid or comma-separated — read a known set) and
-// ?includeBody=true.
+// plus ?id= (one uuid or comma-separated — read a known set),
+// ?includeBody=true, and ?trash=true (ADR-267: list what is IN Trash instead
+// of what is live — the read that pairs with DELETE and restore, so a caller
+// can see what it trashed and pick what to bring back).
 //
 // includeBody is off by default, so an existing caller's payload is unchanged
 // byte for byte (ADR-262). Turned on, each row carries its raw `{ format, text }`
@@ -213,6 +216,13 @@ export async function GET(request: Request) {
     if (limit !== null) opts.limit = Number(limit) || undefined;
     const offset = params.get("offset");
     if (offset !== null) opts.offset = Number(offset) || undefined;
+
+    const rawTrash = params.get("trash");
+    if (rawTrash !== null) {
+      const parsed = parseBoolParam("trash", rawTrash);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      opts.trash = parsed.value;
+    }
 
     const rawIncludeBody = params.get("includeBody");
     let includeBody = false;
@@ -309,6 +319,62 @@ export async function POST(request: Request) {
 // One entry's failure in a batch response. `id` is present only when the
 // item itself was written and a follow-on step (tags, relateTo) failed.
 type BatchError = { index: number; id?: string; error: string };
+
+// DELETE /api/machine/items — move items to Trash (ADR-267). Body: a bare
+// { id }, { ids: [...] }, or { items: [{ id }, …] } (the same batch shape POST
+// and PATCH take), max MAX_BATCH. This is the app's own delete and nothing
+// more: SOFT, to Trash, 30-day purge, cascading to each item's live children
+// as one unit — the same softDeleteItem behind DELETE /api/items/[id]. There
+// is no hard delete on this surface (CLAUDE.md: soft-delete only). An id that
+// isn't live (unknown, or already in Trash) is reported in `errors` and the
+// rest still go. Response: { count, deleted: [{ id, count }], errors };
+// `count` per row is how many rows went (the item plus its children). 200 if
+// anything was trashed, 400 if nothing was.
+export async function DELETE(request: Request) {
+  const identity = await verifyApiRequest(request.headers.get("authorization"));
+  if (!identity) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
+  const ownerId = await resolveMachineOwner();
+  if (!ownerId) {
+    return json({ error: "owner not configured" }, 503);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON" }, 400);
+  }
+
+  const b = (body ?? {}) as { id?: unknown; ids?: unknown; items?: unknown };
+  let rawIds: unknown[];
+  if (Array.isArray(b.ids)) rawIds = b.ids;
+  else if (Array.isArray(b.items)) rawIds = b.items.map((e) => (e as { id?: unknown })?.id);
+  else if (b.id !== undefined) rawIds = [b.id];
+  else return json({ error: "pass { id }, { ids: [...] } or { items: [{ id }] }" }, 400);
+  if (rawIds.length === 0) {
+    return json({ count: 0, deleted: [], errors: [] });
+  }
+  if (rawIds.length > MAX_BATCH) {
+    return json({ error: `too many items (max ${MAX_BATCH} per request)` }, 400);
+  }
+
+  const deleted: { id: string; count: number }[] = [];
+  const errors: BatchError[] = [];
+  for (let i = 0; i < rawIds.length; i++) {
+    try {
+      const id = asUuid(rawIds[i], "id");
+      const r = await softDeleteItem(ownerId, id);
+      deleted.push({ id, count: r.deleted });
+    } catch (err) {
+      errors.push({ index: i, error: await describeBatchError(err, i) });
+    }
+  }
+
+  return json({ count: deleted.length, deleted, errors }, deleted.length > 0 ? 200 : 400);
+}
 
 // An ItemError is an expected 4xx outcome and is reported verbatim; anything
 // else is captured to error_log (rule 9) and reported by correlation id.

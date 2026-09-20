@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asUuid, errorResponse } from "@/lib/api";
 import { verifyApiRequest } from "@/lib/auth/credentials";
 import { getItem } from "@/lib/items";
+import { softDeleteItem } from "@/lib/item-mutations";
 import { resolveSurfaces } from "@/lib/item-surfaces";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { unknownParams } from "@/lib/machine/query";
@@ -29,7 +30,7 @@ export const dynamic = "force-dynamic";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -84,6 +85,32 @@ export async function GET(request: Request, context: Context) {
   } catch (err) {
     // errorResponse maps ItemError("not_found") to a JSON 404 and captures
     // anything else with a correlation id (rule 9).
+    return cors(await errorResponse(err));
+  }
+}
+
+// DELETE /api/machine/items/[id] — move this one item to Trash (ADR-267): the
+// token half of DELETE /api/items/[id], through the same softDeleteItem. Soft
+// and reversible (POST /api/machine/items/[id]/restore), cascading to the
+// item's live children as one unit, never a hard delete. Response:
+// { id, deleted: <rows that went, the item plus its children> }. An id that is
+// unknown or already in Trash is a JSON 404.
+export async function DELETE(request: Request, context: Context) {
+  const identity = await verifyApiRequest(request.headers.get("authorization"));
+  if (!identity) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
+  const ownerId = await resolveMachineOwner();
+  if (!ownerId) {
+    return json({ error: "owner not configured" }, 503);
+  }
+
+  try {
+    const id = asUuid((await context.params).id, "id");
+    const r = await softDeleteItem(ownerId, id);
+    return json({ id, deleted: r.deleted });
+  } catch (err) {
     return cors(await errorResponse(err));
   }
 }

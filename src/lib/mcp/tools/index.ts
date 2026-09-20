@@ -25,6 +25,7 @@ import { recordTools } from "./records";
 import { relationTools } from "./relations";
 import { taskTools } from "./tasks";
 import { templateTools } from "./templates";
+import { trashTools } from "./trash";
 import { typeTools } from "./types";
 import { viewTools } from "./views";
 import type { McpTool, McpToolDef, ToolCallResult } from "./wire";
@@ -41,6 +42,7 @@ const TOOLS: McpTool[] = [
   ...calendarTools,
   ...typeTools,
   ...relationTools,
+  ...trashTools,
   ...viewTools,
   ...templateTools,
   ...workspaceTools,
