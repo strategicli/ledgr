@@ -53,15 +53,21 @@ export default function StatusSchemaEditor({
   typeKey,
   initialMode,
   initial,
+  initialQuickCaptureStatus = false,
 }: {
   typeKey: string;
   // The type's resolved display mode (ADR-106).
   initialMode: StatusMode;
   // The type's stored statusSchema (null = inheriting the system default).
   initial: StatusDef[] | null;
+  // ADR-268: whether the quick-add card offers a Status chip for this type.
+  // Lives here because it only makes sense while a status mode is on; saved
+  // through the type's quick-capture route beside the statuses PATCH.
+  initialQuickCaptureStatus?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<StatusMode>(initialMode);
+  const [quickChip, setQuickChip] = useState(initialQuickCaptureStatus);
   // Inherit-vs-custom only applies inside "Custom statuses" (select) mode.
   const [custom, setCustom] = useState(initial != null);
   // Seed custom editing from the inherited default when the type has none yet,
@@ -152,6 +158,17 @@ export default function StatusSchemaEditor({
         const d = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(d.error ?? `save failed (${res.status})`);
       }
+      // The Status chip flag: a mode of "none" has nothing to offer, so it's
+      // cleared then; otherwise it follows the checkbox.
+      const wantChip = mode !== "none" && quickChip;
+      if (wantChip !== initialQuickCaptureStatus) {
+        const qc = await fetch(`/api/types/${typeKey}/quick-capture`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quickCaptureStatus: wantChip }),
+        });
+        if (!qc.ok) throw new Error(`saving the quick-add chip failed (${qc.status})`);
+      }
       setSaved(true);
       router.refresh();
     } catch (e) {
@@ -190,6 +207,25 @@ export default function StatusSchemaEditor({
           </label>
         ))}
       </div>
+
+      {mode !== "none" && typeKey !== "task" && (
+        <label className="mt-1 flex items-start gap-2 border-t border-neutral-800/60 pt-3 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            className="ledgr-check ledgr-check-sm mt-0.5"
+            checked={quickChip}
+            onChange={(e) => setQuickChip(e.target.checked)}
+          />
+          <span className="flex flex-col">
+            <span>Show Status as a chip on the quick-add card</span>
+            <span className="text-xs text-neutral-500">
+              {mode === "select"
+                ? "The card offers this type's status dropdown, so you can pick a stage before you press Add."
+                : "The card offers a Done checkbox, so you can capture something already finished."}
+            </span>
+          </span>
+        </label>
+      )}
 
       {mode === "select" && (
         <div className="mt-1 flex flex-col gap-3 border-t border-neutral-800/60 pt-3">
