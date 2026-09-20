@@ -66,7 +66,6 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   const locked = Boolean(
     (item.properties as Record<string, unknown> | null)?.locked
   );
-  const fields = topStripFields(item.type);
   const strip: StripValues = {
     status: item.status,
     dueDate: item.dueDate?.toISOString() ?? null,
@@ -80,6 +79,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // The type's custom fields (Build surface). A user type resolves through the
   // default canvas, so this is where its properties get an editable surface.
   const typeDef = await getType(item.type).catch(() => null);
+  const fields = topStripFields(item.type, typeDef?.statusMode);
   const propertySchema = typeDef?.propertySchema ?? [];
   // The type's resolved statuses (S2) for the status dropdown (labels + colors).
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
@@ -261,7 +261,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       return null;
     };
 
-    const order = cardVocabulary(item.type, propertySchema);
+    const order = cardVocabulary(item.type, propertySchema, typeDef?.statusMode);
     const nodes: Record<CardId, ReactNode> = {};
     const labels: Record<CardId, string> = {};
     for (const id of order) {
@@ -272,8 +272,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       }
     }
     const initialLayout = savedLayout
-      ? reconcile(savedLayout, item.type, propertySchema)
-      : defaultLayout(item.type, propertySchema);
+      ? reconcile(savedLayout, item.type, propertySchema, typeDef?.statusMode)
+      : defaultLayout(item.type, propertySchema, typeDef?.statusMode);
 
     return (
       <>

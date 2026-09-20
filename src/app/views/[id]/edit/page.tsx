@@ -54,6 +54,7 @@ export default async function EditView({ params }: Context) {
             label: t.label,
             propertySchema: t.propertySchema,
             statusMode: t.statusMode,
+            statusSchema: t.statusSchema,
           }))}
         />
       </div>

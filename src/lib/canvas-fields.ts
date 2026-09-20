@@ -27,8 +27,12 @@ const TOP_STRIP: Record<string, CanvasField[]> = {
 
 // Custom types (§3.6) get no built-in strip until the Build surface lets
 // them declare their own.
-export function topStripFields(type: string): CanvasField[] {
-  return TOP_STRIP[type] ?? [];
+export function topStripFields(type: string, statusMode?: string | null): CanvasField[] {
+  const base = TOP_STRIP[type] ?? [];
+  // A type that turned status on (statusMode checkbox/select, ADR-106) shows it
+  // in the strip even when this table has no row for it (a custom type such as
+  // a prayer request), otherwise its statuses are unreachable from the canvas.
+  return statusMode && statusMode !== "none" && !base.includes("status") ? ["status", ...base] : base;
 }
 
 // The collapsed bottom "Fields" section (PRD §4.13): everything the top strip

@@ -3,7 +3,7 @@
 // columns store exactly these shapes, so today's hardcoded list pages become
 // stored system views later without a query rewrite. Same discipline as
 // every list read: owner-scoped, body-free listColumns, live items only.
-import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, or, sql, type SQL } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { getDb } from "@/db";
 import { items, relations, views } from "@/db/schema";
@@ -427,23 +427,32 @@ function priorityConditionSql(c: WhereCondition): SQL | null {
   }
 }
 
-// The status-category built-in as a rule condition. "active" expands to the two
-// open buckets, mirroring the scalar statusCategory filter.
+// The status built-in as a rule condition. A value is either a category bucket
+// ("active" expands to the two open buckets, mirroring the scalar statusCategory
+// filter) or a type's own status KEY (exact match on items.status); the two
+// sets are OR'd.
 function statusConditionSql(c: WhereCondition): SQL | null {
   const cats = new Set<string>();
+  const keys = new Set<string>();
   const add = (v: string) => {
     if (v === "active") {
       cats.add("not_started");
       cats.add("in_progress");
     } else if (["not_started", "in_progress", "done", "archived"].includes(v)) {
       cats.add(v);
+    } else {
+      keys.add(v);
     }
   };
   if (c.op === "anyOf") (c.values ?? []).forEach(add);
   else if (c.op === "eq" && c.value != null) add(c.value);
   else return null;
   const list = [...cats] as ("not_started" | "in_progress" | "done" | "archived")[];
-  return list.length ? inArray(items.statusCategory, list) : null;
+  const parts: SQL[] = [];
+  if (list.length) parts.push(inArray(items.statusCategory, list));
+  if (keys.size) parts.push(inArray(items.status, [...keys]));
+  if (!parts.length) return null;
+  return parts.length === 1 ? parts[0] : (or(...parts) ?? null);
 }
 
 function conditionSql(c: WhereCondition): SQL | null {
