@@ -83,6 +83,15 @@ try {
     ]);
     check("relation normalizes targetType lowercase + bad cardinality -> many", rel.targetType === "person" && rel.cardinality === "many");
   }
+  {
+    // ADR-268: the quick-add chip flag survives the parser only when literally true.
+    const [a, b] = parsePropertySchema([
+      { key: "a", label: "A", kind: "text", quickCapture: true },
+      { key: "b", label: "B", kind: "text", quickCapture: "yes" },
+    ]);
+    check("quickCapture: true is kept", a.quickCapture === true);
+    check("quickCapture non-boolean is dropped", b.quickCapture === undefined);
+  }
   await throws("relation rejects a non-slug targetType", () => parsePropertySchema([{ key: "x", label: "X", kind: "relation", targetType: "1bad" }]), "bad_request");
   await throws("relation rejects reserved key 'mention'", () => parsePropertySchema([{ key: "mention", label: "M", kind: "relation" }]), "bad_request");
   await throws("relation rejects reserved key 'related'", () => parsePropertySchema([{ key: "related", label: "R", kind: "relation" }]), "bad_request");

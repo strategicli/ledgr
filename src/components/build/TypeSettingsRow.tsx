@@ -46,6 +46,37 @@ function Switch({
   );
 }
 
+// The "?" hover tooltip (the CSS-tooltip standard, 2026-06-15): no JS, no dep.
+function Help({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex cursor-help">
+      <span
+        aria-label="What does this do?"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-line-strong text-[10px] leading-none text-ink-subtle"
+      >
+        ?
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-64 rounded border border-neutral-700 bg-neutral-900 p-2 text-xs normal-case text-neutral-300 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
+// The task card's built-in chips, hidden per id in settings.quickAddHidden
+// (the same list Settings → Quick Add edits). Shown here only on the task row
+// so every quick-add switch for a type lives in one place (ADR-268).
+const TASK_BUILTIN_CHIPS = [
+  { id: "deadline", label: "Deadline (due date)" },
+  { id: "priority", label: "Priority" },
+  { id: "tags", label: "Tag" },
+  { id: "person", label: "Person" },
+  { id: "group", label: "Group" },
+];
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -74,6 +105,8 @@ export default function TypeSettingsRow({
   showInQuickCapture,
   listenEnabled,
   listenOpenInEdge,
+  properties,
+  quickAddHidden,
 }: {
   typeKey: string;
   label: string;
@@ -84,19 +117,24 @@ export default function TypeSettingsRow({
   showInQuickCapture: boolean;
   listenEnabled: boolean;
   listenOpenInEdge: boolean;
+  // The type's properties with their chip flag (ADR-268).
+  properties: { key: string; label: string; quickCapture: boolean }[];
+  // settings.quickAddHidden, passed for the task row only (null elsewhere).
+  quickAddHidden: string[] | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
-  const post = async (path: string, body: Record<string, boolean>) => {
+  const post = async (path: string, body: Record<string, unknown>) => {
     if (busy) return;
     setBusy(true);
     setError(false);
     try {
-      const res = await fetch(`/api/types/${typeKey}/${path}`, {
-        method: "POST",
+      const url = path === "settings" ? "/api/settings" : `/api/types/${typeKey}/${path}`;
+      const res = await fetch(url, {
+        method: path === "settings" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -166,6 +204,60 @@ export default function TypeSettingsRow({
               }
             />
           </div>
+
+          {showInQuickCapture && (
+            <div className="ml-2 flex flex-col gap-1.5 border-l border-line pl-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="ui-row font-semibold text-ink">Chips on the card</div>
+                <Help text="Each checked field shows on the quick-add card as a small control you can set before you press Add. Unchecked fields stay off the card (a task keeps them in its ⋯ menu). You can still fill them in on the item afterwards." />
+              </div>
+              {quickAddHidden &&
+                TASK_BUILTIN_CHIPS.map((c) => {
+                  const shown = !quickAddHidden.includes(c.id);
+                  return (
+                    <label key={c.id} className="flex items-center gap-2 text-sm text-ink-muted">
+                      <input
+                        type="checkbox"
+                        checked={shown}
+                        disabled={busy}
+                        onChange={() => {
+                          const set = new Set(quickAddHidden);
+                          if (shown) set.add(c.id);
+                          else set.delete(c.id);
+                          void post("settings", { quickAddHidden: [...set] });
+                        }}
+                        className="accent-[var(--accent)]"
+                      />
+                      {c.label}
+                      <span className="text-xs text-ink-faint">built-in</span>
+                    </label>
+                  );
+                })}
+              {properties.map((p) => (
+                <label key={p.key} className="flex items-center gap-2 text-sm text-ink-muted">
+                  <input
+                    type="checkbox"
+                    checked={p.quickCapture}
+                    disabled={busy}
+                    onChange={() =>
+                      void post("quick-capture", {
+                        quickCaptureProperties: properties
+                          .filter((q) => (q.key === p.key ? !p.quickCapture : q.quickCapture))
+                          .map((q) => q.key),
+                      })
+                    }
+                    className="accent-[var(--accent)]"
+                  />
+                  {p.label}
+                </label>
+              ))}
+              {properties.length === 0 && !quickAddHidden && (
+                <p className="text-xs text-ink-subtle">
+                  This type has no fields yet. Add some with &ldquo;Edit fields&rdquo; below and they&rsquo;ll appear here.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-start justify-between gap-3">
             <div>

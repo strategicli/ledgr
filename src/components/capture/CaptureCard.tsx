@@ -16,6 +16,8 @@ import { useRouter } from "next/navigation";
 import AddTaskCard from "@/components/tasks/AddTaskCard";
 import MentionTitleField, { type LinkedItem } from "@/components/capture/MentionTitleField";
 import { enqueueCapture } from "@/lib/outbox";
+import PropertyEditor, { captureValues, type CaptureValues } from "@/components/capture/PropertyEditor";
+import type { PropertyDef } from "@/lib/types";
 
 // --- inline SVG icons (16px, currentColor), matching AddTaskCard's set ---
 function I({ d, extra }: { d: string; extra?: React.ReactNode }) {
@@ -100,16 +102,17 @@ export default function CaptureCard({
       {type === "task" ? (
         <AddTaskCard onDone={onDone} onCancel={onCancel} />
       ) : (
-        <SimpleCapture type={type} onDone={onDone} onCancel={onCancel} />
+        <SimpleCapture key={type} type={type} onDone={onDone} onCancel={onCancel} />
       )}
     </>
   );
 }
 
 // A lean capture card for any non-task type, styled to match AddTaskCard: a
-// title with "@"-mention linking (MentionTitleField) and an optional
-// description. Always lands in the Inbox (ADR-010). Offline-safe via the outbox
-// (T5, ADR-080).
+// title with "@"-mention linking (MentionTitleField), an optional description,
+// and one settable control per property the type flags for quick add (ADR-268,
+// Build → Types → Quick capture). Always lands in the Inbox (ADR-010).
+// Offline-safe via the outbox (T5, ADR-080).
 function SimpleCapture({
   type,
   onDone,
@@ -125,6 +128,27 @@ function SimpleCapture({
   const [showDesc, setShowDesc] = useState(false);
   const [busy, setBusy] = useState(false);
   const [linked, setLinked] = useState<LinkedItem[]>([]);
+  const [schema, setSchema] = useState<PropertyDef[]>([]);
+  const [openProps, setOpenProps] = useState<string[]>([]);
+  const [vals, setVals] = useState<CaptureValues>({});
+
+  // The type's chip-flagged properties. The card is keyed by type, so a picker
+  // change remounts it with fresh state and this runs once per mount.
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/types/${type}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live) return;
+        const props = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]) : [];
+        setSchema(props);
+        setOpenProps(props.filter((p) => p.quickCapture).map((p) => p.key));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [type]);
 
   // Esc closes. MentionTitleField registers its own capture-phase Esc listener
   // first (child effects run before parent effects) and swallows Escape while
@@ -147,6 +171,15 @@ function SimpleCapture({
     setBusy(true);
     const body: Record<string, unknown> = { type, title: raw, source: "quick_capture" };
     if (description.trim()) body.body = { format: "markdown", text: description.trim() };
+    // Property values + every edge ride the create itself (`relateTo`, ADR-202),
+    // so an offline replay keeps them too.
+    const captured = captureValues(schema, vals);
+    if (Object.keys(captured.properties).length) body.properties = captured.properties;
+    const relateTo = [
+      ...linked.map((l) => ({ targetId: l.id, role: "related" })),
+      ...captured.relateTo,
+    ];
+    if (relateTo.length) body.relateTo = relateTo;
     try {
       const res = await fetch("/api/items", {
         method: "POST",
@@ -154,18 +187,6 @@ function SimpleCapture({
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
-      if (linked.length > 0) {
-        const { item } = (await res.json()) as { item: { id: string } };
-        await Promise.all(
-          linked.map((l) =>
-            fetch(`/api/items/${item.id}/relations`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ targetId: l.id, role: "related" }),
-            }).catch(() => {})
-          )
-        );
-      }
       router.refresh();
       onDone();
     } catch {
@@ -197,6 +218,27 @@ function SimpleCapture({
           aria-label="Description"
           className="mt-2 w-full bg-transparent text-sm text-neutral-300 outline-none placeholder:text-neutral-600"
         />
+      )}
+
+      {openProps.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {openProps.map((key) => {
+            const def = schema.find((p) => p.key === key);
+            if (!def) return null;
+            return (
+              <PropertyEditor
+                key={key}
+                def={def}
+                value={vals[key]}
+                onChange={(v) => setVals((cur) => ({ ...cur, [key]: v }))}
+                onRemove={() => {
+                  setOpenProps((cur) => cur.filter((k) => k !== key));
+                  setVals((cur) => { const next = { ...cur }; delete next[key]; return next; });
+                }}
+              />
+            );
+          })}
+        </div>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2">

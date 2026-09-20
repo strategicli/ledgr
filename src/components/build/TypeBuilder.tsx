@@ -64,6 +64,8 @@ type Row = {
   // `date` kind only: range end + wall-clock time (ADR-166 / ADR-254).
   withEnd: boolean;
   withTime: boolean;
+  // Show as a settable chip on the quick-add card (ADR-268).
+  quickCapture: boolean;
 };
 
 function Field({
@@ -178,6 +180,7 @@ export default function TypeBuilder({
     cardinality: p?.cardinality ?? "many",
     withEnd: p?.withEnd === true,
     withTime: p?.withTime === true,
+    quickCapture: p?.quickCapture === true,
   });
 
   const [label, setLabel] = useState(initial?.label ?? "");
@@ -205,6 +208,7 @@ export default function TypeBuilder({
       cardinality: p.cardinality ?? "many",
       withEnd: p.withEnd === true,
       withTime: p.withTime === true,
+      quickCapture: p.quickCapture === true,
     }))
   );
   const [busy, setBusy] = useState(false);
@@ -266,6 +270,7 @@ export default function TypeBuilder({
         if (r.withEnd) def.withEnd = true;
         if (r.withTime) def.withTime = true;
       }
+      if (r.quickCapture) def.quickCapture = true;
       schema.push(def);
     }
     return { schema };
@@ -592,6 +597,16 @@ export default function TypeBuilder({
                 </label>
               </div>
             )}
+            <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <input
+                type="checkbox"
+                className="ledgr-check"
+                checked={row.quickCapture}
+                onChange={(e) => updateRow(row.id, { quickCapture: e.target.checked })}
+              />
+              Show as a chip on the quick-add card
+              <span className="text-neutral-600">(set it before you press Add)</span>
+            </label>
             {NEEDS_OPTIONS.includes(row.kind) && (
               <input
                 value={row.optionsText}

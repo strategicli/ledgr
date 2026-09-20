@@ -36,10 +36,10 @@ import {
 import { loadTypes, type TypeMeta } from "@/components/search/type-token";
 import { GROUP_TYPE } from "@/lib/events/people";
 import { announceFloatingOpen } from "@/lib/floating";
-import DateInput from "@/components/ui/DateInput";
 import { showToast } from "@/components/ui/ActionToast";
 import DayPickerPanel from "@/components/ui/DayPickerPanel";
 import type { PropertyDef } from "@/lib/types";
+import PropertyEditor, { captureValues } from "@/components/capture/PropertyEditor";
 
 function localTodayYmd(): string {
   const d = new Date();
@@ -330,7 +330,9 @@ export default function AddTaskCard({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const schema = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]) : [];
-        setTaskSchema(schema.filter((pr) => pr.kind !== "relation" && pr.kind !== "multi_select"));
+        setTaskSchema(schema);
+        // Chip-flagged properties (ADR-268) start open; the rest wait in the kebab.
+        setOpenProps(schema.filter((pr) => pr.quickCapture).map((pr) => pr.key));
       })
       .catch(() => setTaskSchema([]));
   }, []);
@@ -488,10 +490,10 @@ export default function AddTaskCard({
     if (urg != null) body.urgency = urg;
     const props: Record<string, unknown> = {};
     if (rec) props.recurrence = rec;
-    // Kebab-opened custom properties: only committed values ride along.
-    for (const [k, v] of Object.entries(extraProps)) {
-      if (v !== "" && v != null) props[k] = v;
-    }
+    // Chip / kebab-opened custom properties: only committed values ride along;
+    // relation-kind values become `relateTo` edges below (role = property key).
+    const captured = captureValues(taskSchema ?? [], extraProps);
+    Object.assign(props, captured.properties);
     if (Object.keys(props).length) body.properties = props;
     if (description.trim()) body.body = { format: "markdown", text: description.trim() };
 
@@ -517,6 +519,7 @@ export default function AddTaskCard({
       relateTo.push({ targetId: destId, role: destId === host?.id ? host.role ?? "related" : "project" });
     }
     for (const l of linked) relateTo.push({ targetId: l.id, role: "related" });
+    relateTo.push(...captured.relateTo);
     for (const t of pendingTags) {
       if (t.id) relateTo.push({ targetId: t.id, role: TAGS_ROLE });
     }
@@ -1051,42 +1054,7 @@ export default function AddTaskCard({
               setOpenProps((cur) => cur.filter((k) => k !== key));
               setExtraProps((cur) => { const next = { ...cur }; delete next[key]; return next; });
             };
-            const box = "rounded border border-neutral-700 bg-transparent px-2 py-0.5 text-sm text-neutral-200 outline-none focus:border-neutral-500";
-            return (
-              <span key={key} className="inline-flex items-center gap-1.5 text-sm text-neutral-400">
-                {def.label}
-                {def.kind === "date" ? (
-                  <DateInput
-                    value={typeof val === "string" ? val.slice(0, 10) : null}
-                    onCommit={(ymd) => set(`${ymd}T00:00:00.000Z`)}
-                    ariaLabel={def.label}
-                    className={box}
-                  />
-                ) : def.kind === "checkbox" ? (
-                  <input
-                    type="checkbox"
-                    checked={val === true}
-                    onChange={(e) => set(e.target.checked)}
-                    aria-label={def.label}
-                    className="accent-[var(--accent)]"
-                  />
-                ) : def.kind === "select" ? (
-                  <select value={typeof val === "string" ? val : ""} onChange={(e) => set(e.target.value)} aria-label={def.label} className={box}>
-                    <option value="">—</option>
-                    {(def.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    type={def.kind === "number" ? "number" : "text"}
-                    value={typeof val === "string" || typeof val === "number" ? String(val) : ""}
-                    onChange={(e) => set(def.kind === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
-                    aria-label={def.label}
-                    className={`${box} w-36`}
-                  />
-                )}
-                <button type="button" aria-label={`Remove ${def.label}`} onClick={drop} className="text-neutral-600 hover:text-red-400">{IconX}</button>
-              </span>
-            );
+            return <PropertyEditor key={key} def={def} value={val} onChange={set} onRemove={drop} />;
           })}
         </div>
       )}

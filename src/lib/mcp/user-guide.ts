@@ -125,6 +125,13 @@ Press **q** or **+ New**. A capture card opens with a type picker.
   out the date, the priority and the repeat rule, shows them as chips, and
   leaves the title clean. It understands "every other Tuesday", "first Sunday of
   the month" and "the 3rd of the month".
+- **Set fields as you capture.** Any field a type flags for quick add shows on
+  the card as a small control (a date, a choice, a linked item) you can fill
+  before you press Add. Choose which fields at \`/build/types\`: open the type's
+  row, and under **Quick capture** tick the fields to show as chips (or tick
+  "Show as a chip" on the field itself under **Edit fields**). On the
+  Task row the built-in chips (Deadline, Priority, Tag, Person, Group) are
+  there too. A task's unticked fields wait in the card's ⋯ menu.
 - **Type \`@\` to link something** while capturing. \`@/person bob\` narrows the
   picker to one type. Picking an item adds a removable "Linked" chip.
 - **Offline captures queue up** and send themselves when you reconnect. A pill
