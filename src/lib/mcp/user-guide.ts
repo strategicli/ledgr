@@ -175,6 +175,11 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
   the details.
 - **Tagging over MCP:** \`create_item\` and \`update_item\` take \`tags\` as
   names too, so an assistant filing notes never has to look a tag up first.
+- **Undoing over MCP or the API:** \`delete_item\` / \`restore_item\` (and
+  \`DELETE /api/machine/items\`, \`POST …/<id>/restore\`) are the app's own
+  Trash: soft, 30 days, children travel with their parent. An assistant that
+  filed a duplicate can clean up after itself without you clicking through
+  Trash, and nothing over these doors hard-deletes.
 
 ## Video transcripts
 

@@ -39,14 +39,19 @@ function StatusDot({ ok }: { ok: boolean }) {
 // call verifyApiRequest (credentials.ts) — if another is added, list it here.
 const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
-    method: "GET / POST / PATCH",
+    method: "GET / POST / PATCH / DELETE",
     path: "/api/machine/items",
-    what: "read and write items, up to 500 per request (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies). A write may carry tags (names) and relateTo (ids)",
+    what: "read, write and trash items, up to 500 per request (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies, trash=true to list Trash). A write may carry tags (names) and relateTo (ids). DELETE moves to Trash",
   },
   {
-    method: "GET",
+    method: "GET / DELETE",
     path: "/api/machine/items/<id>",
-    what: "read one item whole: body, custom properties, and its named surfaces",
+    what: "read one item whole (body, custom properties, named surfaces), or move it to Trash",
+  },
+  {
+    method: "POST",
+    path: "/api/machine/items/<id>/restore",
+    what: "bring a trashed item back, with the children that went with it",
   },
   {
     method: "POST",
@@ -110,6 +115,17 @@ curl -X PATCH ${origin}/api/machine/items \\
   -u "<keyID>:<secret>" \\
   -H "Content-Type: application/json" \\
   -d '{"items":[{"id":"<id>","tags":["follow up"]},{"id":"<id>","tags":["follow up"]}]}'`;
+  const curlTrash = `# move one item to Trash (its live children go with it)
+curl -X DELETE -u "<keyID>:<secret>" ${origin}/api/machine/items/<id>
+
+# move several at once
+curl -X DELETE ${origin}/api/machine/items \\
+  -u "<keyID>:<secret>" -H "Content-Type: application/json" \\
+  -d '{"ids":["<id>","<id>"]}'
+
+# see what is in Trash, then bring one back
+curl -u "<keyID>:<secret>" "${origin}/api/machine/items?trash=true"
+curl -X POST -u "<keyID>:<secret>" ${origin}/api/machine/items/<id>/restore`;
   const curlCopy = `# copy one item's body onto another, byte for byte
 BODY=$(curl -s -u "<keyID>:<secret>" \\
   "${origin}/api/machine/items/<sourceId>" | jq -c '.item.body')
@@ -355,6 +371,48 @@ curl -X PATCH ${origin}/api/machine/items \\
             from 100, on both <code className="font-mono text-xs">POST</code>{" "}
             and <code className="font-mono text-xs">PATCH</code>. Names shared
             across a batch are resolved once.
+          </li>
+        </ul>
+      </section>
+
+      {/* Deleting and restoring — ADR-267 */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">Deleting and restoring</h2>
+        <p className="mt-2 text-sm text-ink-muted">
+          A delete over the API is the app&rsquo;s own delete and nothing more:
+          the item goes to <strong className="text-ink">Trash</strong>, out of
+          every list and search, and stays there for the retention window
+          (30 days by default) before the nightly purge removes it. There is no
+          hard delete on this surface. Live children (subtasks, child pages) go
+          with their parent as one unit and come back with it.
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+          {curlTrash}
+        </pre>
+        <ul className="mt-4 flex flex-col gap-2 ui-row text-ink-muted">
+          <li>
+            <strong className="text-ink">Batch bodies</strong> —{" "}
+            <code className="font-mono text-xs">{`{"id":"…"}`}</code>,{" "}
+            <code className="font-mono text-xs">{`{"ids":["…"]}`}</code> or{" "}
+            <code className="font-mono text-xs">{`{"items":[{"id":"…"}]}`}</code>,
+            up to 500. Each id is reported on its own: the response carries{" "}
+            <code className="font-mono text-xs">{`deleted: [{ id, count }]`}</code>{" "}
+            (how many rows went, the item plus its children) and{" "}
+            <code className="font-mono text-xs">errors</code> by index, so one
+            unknown or already-trashed id does not stop the rest.
+          </li>
+          <li>
+            <strong className="text-ink">Restore is by id</strong>, one at a
+            time. It brings back the item and the children trashed with it in
+            the same delete; a child trashed separately earlier stays put. An id
+            that is not in Trash is a JSON 404.
+          </li>
+          <li>
+            <strong className="text-ink">Over MCP</strong> the same two moves
+            are <code className="font-mono text-xs">delete_item</code> and{" "}
+            <code className="font-mono text-xs">restore_item</code>, each taking
+            one <code className="font-mono text-xs">id</code> or a list of{" "}
+            <code className="font-mono text-xs">ids</code>.
           </li>
         </ul>
       </section>

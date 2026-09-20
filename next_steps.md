@@ -2,6 +2,26 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ BUILT, NEEDS A DEPLOY — Trash over the machine API and MCP (2026-09-19, ADR-267, branch `feat/machine-trash`)
+
+The import agent reported there is "a Delete system" it can't reach from the API
+or MCP. True: soft-delete, cascade, the 30-day purge and restore have existed since
+slice 6 and the in-app routes call them, but no MCP tool and no `/api/machine/*`
+method did. Built, all over the same `softDeleteItem` / `restoreItem`, soft only:
+
+- **`DELETE /api/machine/items`** (`{id}` | `{ids}` | `{items:[{id}]}`, max 500,
+  per-id `deleted: [{id, count}]` + `errors` by index), **`DELETE
+  /api/machine/items/<id>`**, **`POST /api/machine/items/<id>/restore`**, and
+  **`?trash=true`** on the list.
+- **MCP `delete_item` / `restore_item`** (`id` and/or `ids`, max 100, per-id
+  outcomes; delete is `destructiveHint: true`). `src/lib/mcp/tools/trash.ts`.
+- `/build/api` → **Deleting and restoring**; guide's capture section updated.
+
+`scripts/verify-machine-trash.mts` (23 checks, DB-backed) green. No hard delete
+or purge trigger on either surface, on purpose.
+
+**Owed:** merge + deploy (the merge is Tyler's release, runbook §1j).
+
 ## ✅ BUILT, NEEDS A DEPLOY — the machine API tags and links on write, 500 a request (2026-09-19, ADR-266, branch `feat/machine-bulk-relations`)
 
 An agent importing Tyler's notes over `/api/machine/items` stalled: it could create
