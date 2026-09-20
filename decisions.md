@@ -4392,7 +4392,7 @@ Four smaller failures cost time on the way there, and they share a cause: the ro
 
 ## ADR-268: a type's properties can be quick-add chips, one optional flag on the property
 
-**Date:** 2026-09-20. **Status:** proposed, Brandon; needs Tyler's agree (touches the `PropertyDef` shape in `types.property_schema`). Built on `feat/quick-add-property-chips`.
+**Date:** 2026-09-20. **Status:** agreed (Brandon + Tyler, 2026-09-20; touches the `PropertyDef` shape in `types.property_schema`). Built on `feat/quick-add-property-chips`, PR #404.
 
 **Context.** The quick-add card (the `q` key) offered rich chips only for the task type, and those were hard-coded in `AddTaskCard` with one global hide-list (`settings.quickAddHidden`). Every other type got a bare title + description card. Brandon wants the owner to say, per type and per property, what shows on the card, from Build → Types, and for an agent to do the same over MCP.
 
@@ -4405,5 +4405,5 @@ Four smaller failures cost time on the way there, and they share a cause: the ro
 
 **Rejected.** A separate `types.quick_capture_properties` column (a second place to keep in sync with the schema on rename/delete); a per-type override of the built-in task chips (the global hide-list already covers the only type that has built-ins).
 
-**Consequences.** A property renamed or removed in the type builder carries or drops its flag with it, since the flag lives on the property. The type builder's own form (`/build/types/[key]/edit`) doesn't expose the flag yet; the row checkbox and MCP are the levers. Check: `scripts/verify-types.mts`.
+**Consequences.** A property renamed or removed in the type builder carries or drops its flag with it, since the flag lives on the property. The type builder's form (`/build/types/[key]/edit`) exposes the flag as a per-field checkbox, alongside the row checkboxes and MCP. Check: `scripts/verify-types.mts`.
 

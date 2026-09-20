@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ BUILT, NEEDS TYLER'S AGREE + A PR — quick-add chips per type and property (2026-09-20, ADR-268, branch `feat/quick-add-property-chips`)
+## ✅ BUILT, AGREED — quick-add chips per type and property (2026-09-20, ADR-268, PR #404)
 
 Brandon: the `q` card's chips were hard-coded to the task type; make them a Build
 setting per type and per property, reachable over API + MCP. Built as ONE optional
@@ -13,8 +13,8 @@ non-task `SimpleCapture` renders them for every other type; values ride the
 create as `properties` + `relateTo`. Build → Types row: "Chips on the card"
 checkboxes with a `?` tooltip, built-in task chips wired to `quickAddHidden`.
 Route `quick-capture` takes `quickCaptureProperties`; MCP `update_type` takes
-the same, `list_types` reports the flag. Guide updated. Open: the type builder's
-edit form doesn't expose the flag (row + MCP are the levers).
+the same, `list_types` reports the flag. Guide updated. The type builder's edit form
+has the flag as a per-field checkbox too.
 
 ## ✅ SHIPPED — list-rule setext fix; Duplicate; Desk panel menu info + Open outside Desk (2026-09-20, non-core, branch `feat/duplicate-desk-menu-list-rule-fix`)
 
