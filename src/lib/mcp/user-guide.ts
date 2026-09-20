@@ -167,9 +167,19 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
   a task instead. Attachments are linked back to the original mail, not copied.
 - **From an AI assistant:** any connected client can create items over MCP.
 - **From your own app:** create a credential in **User Settings → API
-  credentials** and post to the HTTP API. The same credential reads content back
-  out, whole and unaltered, which is how an app moves a note's text somewhere
-  else without anything retyping it. \`/build/api\` has the details.
+  credentials** and post to the HTTP API, up to 500 items a request. A write can
+  tag by name (\`tags: ["sermon prep"]\`, matched or created for you) and file
+  under a project by id (\`relateTo\`) in the same call. The same credential
+  reads content back out, whole and unaltered, which is how an app moves a
+  note's text somewhere else without anything retyping it. \`/build/api\` has
+  the details.
+- **Tagging over MCP:** \`create_item\` and \`update_item\` take \`tags\` as
+  names too, so an assistant filing notes never has to look a tag up first.
+- **Undoing over MCP or the API:** \`delete_item\` / \`restore_item\` (and
+  \`DELETE /api/machine/items\`, \`POST …/<id>/restore\`) are the app's own
+  Trash: soft, 30 days, children travel with their parent. An assistant that
+  filed a duplicate can clean up after itself without you clicking through
+  Trash, and nothing over these doors hard-deletes.
 
 ## Video transcripts
 

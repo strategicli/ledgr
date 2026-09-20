@@ -12,12 +12,13 @@ import {
   lineWithBlockId,
   stripAnchorFromLine,
 } from "@/lib/editor/block-anchor";
-import { ItemError, URGENCIES, getItem, getItemType } from "@/lib/items";
+import { ItemError, URGENCIES, getItem, getItemType, listItems } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
 import { MEMORY_TYPE, memoryAge, memoryFacets, memoryMarker, supersededByFor } from "@/lib/memory";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
+import { applyTags, parseTagNames } from "@/lib/tag-resolve";
 import { listTypes } from "@/lib/types";
 import {
   DATE_PROPERTIES,
@@ -432,13 +433,17 @@ export const itemTools: McpTool[] = [
         inbox: { type: "boolean", description: "true = capture into the inbox for later triage; default false (filed). Beats `source` whenever both are sent." },
         source: { type: "string", description: "Which arrival path this came from, when it isn't you: one of quick_capture, share_target, web_clipper, email_in, todoist, mention_create, ai_mcp. The owner's Capture settings say where each one files. Omit it and `inbox` both, and this lands wherever they route ai_mcp (filed, by default)." },
         relateTo: { type: "array", items: { type: "string" }, description: "Item ids to relate this new item to (confirmed edges)." },
+        tags: { type: "array", items: { type: "string" }, description: "Tag NAMES to put on the new item, e.g. [\"sermon prep\", \"elders\"]. Each is matched to an existing tag by title (exact, case-blind) or created when there is none, then linked — no need to look tag ids up first. Additive and idempotent." },
       },
       required: ["type"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     handler: async (ownerId, args) => {
-      const raw = buildWriteRaw(args, ["type", "source"], ["relateTo"]);
+      const raw = buildWriteRaw(args, ["type", "source"], ["relateTo", "tags"]);
+      // Validate the tag names before the create, so a bad list fails cleanly
+      // rather than leaving an untagged item behind an error.
+      const tagNames = parseTagNames(args.tags);
       // Name the arrival path when the caller named neither (ADR-249), so the
       // owner can route what Claude files. Purely additive: a caller that sends
       // `inbox` still wins outright, and ai_mcp defaults to filed, which is what
@@ -450,7 +455,8 @@ export const itemTools: McpTool[] = [
       for (const targetId of relateTo) {
         await relateItems(ownerId, created.id, targetId);
       }
-      return { ...rowView(created), relatedTo: relateTo };
+      const tags = await applyTags(ownerId, created.id, tagNames);
+      return { ...rowView(created), relatedTo: relateTo, ...(tags.length > 0 ? { tags } : {}) };
     },
   },
   {
@@ -459,8 +465,9 @@ export const itemTools: McpTool[] = [
     description:
       "Update fields on an existing item by id: title, status (e.g. mark a task " +
       "done), due date, urgency, body (bodyMarkdown replaces the whole body), " +
-      "custom properties, etc. Only the fields you pass change. To change an " +
-      "item's relations use the relations on create_item, not this tool. Marking " +
+      "custom properties, etc. Only the fields you pass change. Pass `tags` " +
+      "(names) to ADD tags to an existing item; for other relations use " +
+      "relate_items. Marking " +
       "a RECURRING task done here is the right way to complete its current " +
       "occurrence: the series advances to the next date instead of closing. To " +
       "change the repeat rule itself, use set_recurrence, not properties. " +
@@ -495,6 +502,7 @@ export const itemTools: McpTool[] = [
         inbox: { type: "boolean", description: "Move into (true) or out of (false) the inbox." },
         surface: { type: "string", description: "Write to this named surface instead of a specific field — an id from the type's `surfaces` (list_types / get_item), e.g. \"notes\", \"draft\", \"chart\". Requires `content`. Routes to the body or the backing property automatically, so a caller never has to know which. Read-only surfaces are refused." },
         content: { type: "string", description: "The content to write to `surface`, replacing what it holds. Use the surface's own `format`: markdown for a paper's Notes or Draft, ChordPro for a song's Chart." },
+        tags: { type: "array", items: { type: "string" }, description: "Tag NAMES to add to this item. Each is matched to an existing tag by title (exact, case-blind) or created when there is none, then linked. ADDITIVE: tags the item already has stay; to remove one use unrelate_items. May be the only field passed." },
       },
       required: ["id"],
       additionalProperties: false,
@@ -543,20 +551,32 @@ export const itemTools: McpTool[] = [
         delete (args as Record<string, unknown>).surface;
         delete (args as Record<string, unknown>).content;
       }
-      const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"], ["id"]), "patch");
+      const patch = parseItemPayload(buildWriteRaw(args, ["propertyPatch"], ["id", "tags"]), "patch");
+      const tagNames = parseTagNames(args.tags);
       // Catch the empty patch here, where we can name the tool's own fields
       // (bodyMarkdown especially — the shared lib's "no fields to update"
       // can't mention it, and used to fire exactly when a caller mis-named it).
-      if (Object.keys(patch).length === 0) {
+      // `tags` alone is a valid call (ADR-266): tag the item, touch no field.
+      if (Object.keys(patch).length === 0 && tagNames.length === 0) {
         throw new ItemError(
           "bad_request",
           "no fields to update: pass at least one of title, bodyMarkdown, status, " +
             "dueDate, scheduledDate, meetingAt, urgency, url, parentId, " +
-            "properties, propertyPatch, inbox"
+            "properties, propertyPatch, inbox, tags"
         );
       }
-      const updated = await updateItem(ownerId, id, patch);
-      return rowView(updated);
+      // A tags-only call reads the row back body-free (a paper's whole draft
+      // has no business riding along on "add a tag"); a not-found is a 404.
+      let updated;
+      if (Object.keys(patch).length > 0) {
+        updated = await updateItem(ownerId, id, patch);
+      } else {
+        const [row] = await listItems(ownerId, { ids: [id] });
+        if (!row) throw new ItemError("not_found", "item not found");
+        updated = row;
+      }
+      const tags = await applyTags(ownerId, id, tagNames);
+      return { ...rowView(updated), ...(tags.length > 0 ? { tags } : {}) };
     },
   },
   {

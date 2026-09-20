@@ -9,7 +9,14 @@ import {
   type ItemStatus,
   type ListOptions,
 } from "@/lib/items";
-import { createItem, updateItem } from "@/lib/item-mutations";
+import { createItem, softDeleteItem, updateItem } from "@/lib/item-mutations";
+import {
+  applyRelateTo,
+  applyTags,
+  newTagCache,
+  parseRelateTo,
+  parseTagNames,
+} from "@/lib/tag-resolve";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import {
   parseBoolParam,
@@ -28,7 +35,53 @@ import { STATUS_CATEGORIES, type StatusCategory } from "@/lib/status";
 // surface can't drift from the app contract or skip owner-scoping.
 export const dynamic = "force-dynamic";
 
-const MAX_BATCH = 100;
+// Entries per POST / PATCH request. Was 100; raised to 500 (ADR-266) because
+// the surface exists for bulk moves, and a 300-note import that has to be cut
+// into four requests is three chances to lose track of which slice landed.
+// Each entry is still validated and written on its own, so the ceiling bounds
+// one request's work, not the correctness of any entry.
+const MAX_BATCH = 500;
+
+// The optional write-time extras every POST / PATCH entry may carry alongside
+// the item fields (ADR-266): `tags: ["name", …]` resolves or creates tag items
+// by name and writes the `tags` edges, and `relateTo: [{ targetId, role? }]`
+// writes edges to items the caller already knows by id — the same field the
+// in-app POST /api/items accepts. Both are ADDITIVE on PATCH (existing tags
+// and edges stay) and idempotent (an edge that exists is confirmed, not
+// duplicated). parseItemPayload ignores keys it doesn't know, so these two
+// are pulled off the raw entry here, before the item is written; a malformed
+// value fails the whole entry up front rather than leaving a half-tagged row.
+type WriteExtras = {
+  tags: string[];
+  relateTo: ReturnType<typeof parseRelateTo>;
+};
+
+function parseWriteExtras(entry: unknown): WriteExtras {
+  const e = (entry ?? {}) as Record<string, unknown>;
+  return {
+    tags: parseTagNames(e.tags),
+    relateTo: parseRelateTo(e.relateTo),
+  };
+}
+
+// Apply the extras to a written item and decorate the response row with what
+// happened, only when the caller asked for either — an entry that sent
+// neither gets the same row it always did.
+async function applyWriteExtras(
+  ownerId: string,
+  item: { id: string },
+  extras: WriteExtras,
+  cache: ReturnType<typeof newTagCache>
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { ...item };
+  if (extras.tags.length > 0) {
+    out.tags = await applyTags(ownerId, item.id, extras.tags, cache);
+  }
+  if (extras.relateTo.length > 0) {
+    out.relatedTo = await applyRelateTo(ownerId, item.id, extras.relateTo);
+  }
+  return out;
+}
 
 // Every query parameter GET understands. An unknown one is a 400 naming it
 // (ADR-262), not a silent ignore: `?id=…` used to be dropped on the floor and
@@ -46,6 +99,7 @@ const LIST_PARAMS = new Set([
   "limit",
   "offset",
   "includeBody",
+  "trash",
 ]);
 
 // CORS is open for the same reason /api/machine/capture's is (see the comment
@@ -54,7 +108,7 @@ const LIST_PARAMS = new Set([
 // which triggers a preflight this route must answer.
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -76,8 +130,10 @@ export function OPTIONS() {
 // ?type= (one key or comma-separated) &status= &statusCategory= (a category or
 // "active") &relatedTo=<itemId> (confirmed edge either direction — tasks tagged
 // with a tag item / filed under a project item) &parentId= &q= &limit= &offset=,
-// plus ?id= (one uuid or comma-separated — read a known set) and
-// ?includeBody=true.
+// plus ?id= (one uuid or comma-separated — read a known set),
+// ?includeBody=true, and ?trash=true (ADR-267: list what is IN Trash instead
+// of what is live — the read that pairs with DELETE and restore, so a caller
+// can see what it trashed and pick what to bring back).
 //
 // includeBody is off by default, so an existing caller's payload is unchanged
 // byte for byte (ADR-262). Turned on, each row carries its raw `{ format, text }`
@@ -161,6 +217,13 @@ export async function GET(request: Request) {
     const offset = params.get("offset");
     if (offset !== null) opts.offset = Number(offset) || undefined;
 
+    const rawTrash = params.get("trash");
+    if (rawTrash !== null) {
+      const parsed = parseBoolParam("trash", rawTrash);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      opts.trash = parsed.value;
+    }
+
     const rawIncludeBody = params.get("includeBody");
     let includeBody = false;
     if (rawIncludeBody !== null) {
@@ -187,11 +250,14 @@ export async function GET(request: Request) {
 }
 
 // POST /api/machine/items — create one item (a bare item object) or a batch
-// ({ items: [...] }). A batch is the cron shape: push every new entry since the
-// last run. A malformed entry is reported in `errors` and skipped, never
-// dropping the rest — so one bad journal doesn't fail the whole push.
-// Response: { count, created: Item[], errors: [{ index, error }] }. Status is
-// 201 if anything was created, 400 if every entry failed.
+// ({ items: [...] }, max MAX_BATCH). A batch is the cron shape: push every new
+// entry since the last run. A malformed entry is reported in `errors` and
+// skipped, never dropping the rest — so one bad journal doesn't fail the whole
+// push. Each entry may also carry `tags: ["name", …]` and/or
+// `relateTo: [{ targetId, role? }]` (ADR-266); a created row then carries
+// `tags: [{ id, title, created }]` / `relatedTo: [{ targetId, role }]` saying
+// what was written. Response: { count, created: Item[], errors: [{ index,
+// error }] }. Status is 201 if anything was created, 400 if every entry failed.
 export async function POST(request: Request) {
   const identity = await verifyApiRequest(request.headers.get("authorization"));
   if (!identity) {
@@ -222,18 +288,27 @@ export async function POST(request: Request) {
   }
 
   const created: unknown[] = [];
-  const errors: { index: number; error: string }[] = [];
+  const errors: BatchError[] = [];
+  const tagCache = newTagCache();
   for (let i = 0; i < rawItems.length; i++) {
+    let item: { id: string } | null = null;
     try {
       const input = parseItemPayload(rawItems[i], "create");
-      created.push(await createItem(ownerId, input));
+      // Validate the extras BEFORE the create so a bad tag list fails the
+      // entry cleanly instead of leaving an untagged item behind an error.
+      const extras = parseWriteExtras(rawItems[i]);
+      item = await createItem(ownerId, input);
+      created.push(await applyWriteExtras(ownerId, item, extras, tagCache));
     } catch (err) {
-      if (err instanceof ItemError) {
-        errors.push({ index: i, error: err.message });
+      const error = await describeBatchError(err, i);
+      if (item) {
+        // The item exists; only its tags/edges didn't land. Report it as
+        // created AND name the failure with the id, so the caller can finish
+        // the job (POST /api/machine/relations) instead of creating a twin.
+        created.push(item);
+        errors.push({ index: i, id: item.id, error: `created, but tagging/relating failed: ${error}` });
       } else {
-        const correlationId = crypto.randomUUID();
-        await captureError("machine-items", err, { correlationId, detail: { index: i } });
-        errors.push({ index: i, error: `internal error (correlationId ${correlationId})` });
+        errors.push({ index: i, error });
       }
     }
   }
@@ -241,10 +316,83 @@ export async function POST(request: Request) {
   return json({ count: created.length, created, errors }, created.length > 0 ? 201 : 400);
 }
 
+// One entry's failure in a batch response. `id` is present only when the
+// item itself was written and a follow-on step (tags, relateTo) failed.
+type BatchError = { index: number; id?: string; error: string };
+
+// DELETE /api/machine/items — move items to Trash (ADR-267). Body: a bare
+// { id }, { ids: [...] }, or { items: [{ id }, …] } (the same batch shape POST
+// and PATCH take), max MAX_BATCH. This is the app's own delete and nothing
+// more: SOFT, to Trash, 30-day purge, cascading to each item's live children
+// as one unit — the same softDeleteItem behind DELETE /api/items/[id]. There
+// is no hard delete on this surface (CLAUDE.md: soft-delete only). An id that
+// isn't live (unknown, or already in Trash) is reported in `errors` and the
+// rest still go. Response: { count, deleted: [{ id, count }], errors };
+// `count` per row is how many rows went (the item plus its children). 200 if
+// anything was trashed, 400 if nothing was.
+export async function DELETE(request: Request) {
+  const identity = await verifyApiRequest(request.headers.get("authorization"));
+  if (!identity) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
+  const ownerId = await resolveMachineOwner();
+  if (!ownerId) {
+    return json({ error: "owner not configured" }, 503);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON" }, 400);
+  }
+
+  const b = (body ?? {}) as { id?: unknown; ids?: unknown; items?: unknown };
+  let rawIds: unknown[];
+  if (Array.isArray(b.ids)) rawIds = b.ids;
+  else if (Array.isArray(b.items)) rawIds = b.items.map((e) => (e as { id?: unknown })?.id);
+  else if (b.id !== undefined) rawIds = [b.id];
+  else return json({ error: "pass { id }, { ids: [...] } or { items: [{ id }] }" }, 400);
+  if (rawIds.length === 0) {
+    return json({ count: 0, deleted: [], errors: [] });
+  }
+  if (rawIds.length > MAX_BATCH) {
+    return json({ error: `too many items (max ${MAX_BATCH} per request)` }, 400);
+  }
+
+  const deleted: { id: string; count: number }[] = [];
+  const errors: BatchError[] = [];
+  for (let i = 0; i < rawIds.length; i++) {
+    try {
+      const id = asUuid(rawIds[i], "id");
+      const r = await softDeleteItem(ownerId, id);
+      deleted.push({ id, count: r.deleted });
+    } catch (err) {
+      errors.push({ index: i, error: await describeBatchError(err, i) });
+    }
+  }
+
+  return json({ count: deleted.length, deleted, errors }, deleted.length > 0 ? 200 : 400);
+}
+
+// An ItemError is an expected 4xx outcome and is reported verbatim; anything
+// else is captured to error_log (rule 9) and reported by correlation id.
+async function describeBatchError(err: unknown, index: number): Promise<string> {
+  if (err instanceof ItemError) return err.message;
+  const correlationId = crypto.randomUUID();
+  await captureError("machine-items", err, { correlationId, detail: { index } });
+  return `internal error (correlationId ${correlationId})`;
+}
+
 // PATCH /api/machine/items — update one item (a bare { id, ...patch }) or a
-// batch ({ items: [{ id, ...patch }] }, max 100). Each entry names its target
-// by `id` and carries the same fields POST accepts (title, status, parentId,
-// body, properties, …); every entry is validated through the same
+// batch ({ items: [{ id, ...patch }] }, max MAX_BATCH). Each entry names its
+// target by `id` and carries the same fields POST accepts (title, status,
+// parentId, body, properties, …) plus the same optional `tags` / `relateTo`
+// extras (ADR-266, additive: existing tags and edges stay). An entry carrying
+// only `id` + extras tags or links the item without touching its fields, and
+// its row in `updated` is then just { id, tags?, relatedTo? }. Every field
+// write is validated through the same
 // parseItemPayload + updateItem the in-app PATCH /api/items/:id uses, so this
 // surface can't drift from the app contract or skip owner-scoping — and
 // parent_id changes still go through assertValidParent (no cycles). Added
@@ -280,20 +428,33 @@ export async function PATCH(request: Request) {
   }
 
   const updated: unknown[] = [];
-  const errors: { index: number; error: string }[] = [];
+  const errors: BatchError[] = [];
+  const tagCache = newTagCache();
   for (let i = 0; i < rawItems.length; i++) {
+    let item: { id: string } | null = null;
     try {
       const entry = rawItems[i] as Record<string, unknown>;
       const id = asUuid(entry.id, "id");
       const patch = parseItemPayload(entry, "patch");
-      updated.push(await updateItem(ownerId, id, patch));
+      const extras = parseWriteExtras(entry);
+      // An entry that carries ONLY tags/relateTo (no item fields) is a valid
+      // "tag this existing item" call: skip the field update, which would
+      // otherwise refuse an empty patch, and just write the edges. Ownership
+      // and liveness are still asserted by relateItems on every edge.
+      const hasFields = Object.keys(patch).length > 0;
+      const hasExtras = extras.tags.length > 0 || extras.relateTo.length > 0;
+      if (!hasFields && !hasExtras) {
+        throw new ItemError("bad_request", "nothing to update");
+      }
+      item = hasFields ? await updateItem(ownerId, id, patch) : { id };
+      updated.push(await applyWriteExtras(ownerId, item, extras, tagCache));
     } catch (err) {
-      if (err instanceof ItemError) {
-        errors.push({ index: i, error: err.message });
+      const error = await describeBatchError(err, i);
+      if (item) {
+        updated.push(item);
+        errors.push({ index: i, id: item.id, error: `updated, but tagging/relating failed: ${error}` });
       } else {
-        const correlationId = crypto.randomUUID();
-        await captureError("machine-items", err, { correlationId, detail: { index: i } });
-        errors.push({ index: i, error: `internal error (correlationId ${correlationId})` });
+        errors.push({ index: i, error });
       }
     }
   }
