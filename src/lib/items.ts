@@ -87,8 +87,16 @@ export type ListOptions = {
 
 // The ceiling on how many rows may carry a body in one list response. Bodies are
 // unbounded text (a 94KB note is real), so the cap is what keeps the exemption
-// above from turning into a full-table export.
-export const MAX_BODY_ROWS = 25;
+// above from turning into a full-table export. Was 25 (ADR-262); raised to 100
+// (ADR-266) once the surface was in use for bulk moves and the cap was costing
+// four round trips per hundred notes. Still a page, not a dump: the response
+// says when it capped, and offset pages past it.
+export const MAX_BODY_ROWS = 100;
+
+// The ceiling on a body-free list page. Was 200; raised alongside MAX_BODY_ROWS
+// (ADR-266) so a bulk reader can walk an import back in fewer pages. Titles and
+// dates only, so 500 rows is a few tens of KB.
+export const MAX_LIST_ROWS = 500;
 
 // Everything except body, body_text, search, owner_id. The body exclusion is
 // a non-negotiable (CLAUDE.md rule 8); properties stays because table views
@@ -212,7 +220,7 @@ function listClauses(ownerId: string, opts: ListOptions) {
   }
   orderBy.push(opts.trash ? desc(items.deletedAt) : desc(items.updatedAt));
 
-  const ceiling = opts.includeBody ? MAX_BODY_ROWS : 200;
+  const ceiling = opts.includeBody ? MAX_BODY_ROWS : MAX_LIST_ROWS;
   return {
     where: and(...where),
     orderBy,

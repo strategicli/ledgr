@@ -41,7 +41,7 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "GET / POST / PATCH",
     path: "/api/machine/items",
-    what: "read and write items (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies)",
+    what: "read and write items, up to 500 per request (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies). A write may carry tags (names) and relateTo (ids)",
   },
   {
     method: "GET",
@@ -51,7 +51,7 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "POST",
     path: "/api/machine/relations",
-    what: "link items to each other",
+    what: "link items to each other by id (a write to /items can do this inline with tags / relateTo)",
   },
   {
     method: "GET",
@@ -96,6 +96,20 @@ curl -u "<keyID>:<secret>" ${origin}/api/machine/items/<id>
 # several at once, with bodies
 curl -u "<keyID>:<secret>" \\
   "${origin}/api/machine/items?id=<id>,<id>&includeBody=true"`;
+  const curlTags = `# create a note, tag it by NAME, and file it under a project, in one call
+curl -X POST ${origin}/api/machine/items \\
+  -u "<keyID>:<secret>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"type":"note","title":"Elders debrief",
+       "body":{"format":"markdown","text":"…"},
+       "tags":["sermon prep","elders"],
+       "relateTo":[{"targetId":"<projectId>","role":"project"}]}'
+
+# add tags to items that already exist (nothing else changes)
+curl -X PATCH ${origin}/api/machine/items \\
+  -u "<keyID>:<secret>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"items":[{"id":"<id>","tags":["follow up"]},{"id":"<id>","tags":["follow up"]}]}'`;
   const curlCopy = `# copy one item's body onto another, byte for byte
 BODY=$(curl -s -u "<keyID>:<secret>" \\
   "${origin}/api/machine/items/<sourceId>" | jq -c '.item.body')
@@ -260,8 +274,8 @@ curl -X PATCH ${origin}/api/machine/items \\
             the scratch pad.
           </li>
           <li>
-            <strong className="text-ink">Bodies are capped at 25 rows</strong> per
-            list response. Past that, page with{" "}
+            <strong className="text-ink">Bodies are capped at 100 rows</strong> per
+            list response, and the response says so when it caps. Past that, page with{" "}
             <code className="font-mono text-xs">offset</code>, or name the ids you
             want with <code className="font-mono text-xs">id=</code>.
           </li>
@@ -281,6 +295,68 @@ curl -X PATCH ${origin}/api/machine/items \\
             {curlCopy}
           </pre>
         </div>
+      </section>
+
+      {/* Tagging and linking on write — ADR-266 */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">Tagging and linking on write</h2>
+        <p className="mt-2 text-sm text-ink-muted">
+          A tag is an ordinary item, and tagging something is a link to it.
+          You never have to look a tag up: name it, and the write resolves it
+          or creates it. Every entry in a <code className="font-mono text-xs">POST</code>{" "}
+          or <code className="font-mono text-xs">PATCH</code> may carry both of
+          these alongside its fields.
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+          {curlTags}
+        </pre>
+        <ul className="mt-4 flex flex-col gap-2 ui-row text-ink-muted">
+          <li>
+            <strong className="text-ink">
+              <code className="font-mono text-xs">tags</code> takes names
+            </strong>{" "}
+            — <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">{`["sermon prep","elders"]`}</code>.
+            Each is matched to an existing tag by title, exactly and ignoring
+            case, or created when there is none, then linked. The row that
+            comes back lists them as{" "}
+            <code className="font-mono text-xs">{`tags: [{ id, title, created }]`}</code>,
+            so you can see which ones were new. Up to 50 per item.
+          </li>
+          <li>
+            <strong className="text-ink">
+              <code className="font-mono text-xs">relateTo</code> takes ids
+            </strong>{" "}
+            — <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">{`[{"targetId":"…","role":"project"}]`}</code>,
+            or a bare id for a plain link. It is how a note is filed under a
+            project or pointed at a person you already know the id of. Up to
+            50 per item.
+          </li>
+          <li>
+            <strong className="text-ink">Additive and repeatable</strong> — on{" "}
+            <code className="font-mono text-xs">PATCH</code>, tags and links the
+            item already has stay, and sending the same ones again changes
+            nothing. An entry with only an <code className="font-mono text-xs">id</code>{" "}
+            and <code className="font-mono text-xs">tags</code> tags the item
+            without touching its fields. Removing a tag is still{" "}
+            <code className="font-mono text-xs">unrelate</code> in the app or over MCP.
+          </li>
+          <li>
+            <strong className="text-ink">A bad list fails the entry before anything is written</strong>{" "}
+            — a <code className="font-mono text-xs">tags</code> that is not an
+            array of names is a named error for that entry and no item is
+            created. If the item is created and a link then fails (say, a{" "}
+            <code className="font-mono text-xs">relateTo</code> id that does
+            not exist), the row is still in <code className="font-mono text-xs">created</code>{" "}
+            and the error names its <code className="font-mono text-xs">id</code>,
+            so you finish the job rather than making a twin.
+          </li>
+          <li>
+            <strong className="text-ink">500 entries per request</strong>, up
+            from 100, on both <code className="font-mono text-xs">POST</code>{" "}
+            and <code className="font-mono text-xs">PATCH</code>. Names shared
+            across a batch are resolved once.
+          </li>
+        </ul>
       </section>
 
       <section className="mt-8">

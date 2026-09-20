@@ -2,6 +2,34 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
+## ✅ BUILT, NEEDS A DEPLOY — the machine API tags and links on write, 500 a request (2026-09-19, ADR-266, branch `feat/machine-bulk-relations`)
+
+An agent importing Tyler's notes over `/api/machine/items` stalled: it could create
+a note but not tag it, and tagging by hand was list-the-tag-type, match titles,
+POST the missing tags, POST an edge per pair to `/api/machine/relations`, in
+batches of 100. Built, per the agent's own pick ("accept `tags: ["name", …]` on
+POST, resolve or create the tag items, write the edges"):
+
+- **`tags: ["name", …]` and `relateTo: [{ targetId, role? }]`** on every POST /
+  PATCH entry. Tag names are matched to live `tag` items exactly and case-blind
+  (the `#tag` sigil's rule) or created, then linked with the `tags` role, all in
+  `src/lib/tag-resolve.ts`. Additive + idempotent on PATCH; `id` + `tags` alone
+  is a valid "tag this" call. Rows report `tags: [{id, title, created}]`.
+- **A created-but-unlinked item is reported WITH its id** (`created, but
+  tagging/relating failed: …`), so a retry finishes the job instead of making a twin.
+- **Ceilings:** 500 entries per request (was 100), `MAX_BODY_ROWS` 100 (was 25),
+  body-free page 500 (was 200).
+- **MCP `create_item` / `update_item` take `tags`** too, same resolver.
+- `/build/api` → **Tagging and linking on write**; guide's capture section updated.
+
+`scripts/verify-machine-write.mts` (30 checks, DB-backed) + `verify-machine-read`
+both green locally. Pure CI suite: 84/85, the one failure is the pre-existing
+`verify-markdown-escape` "repro without the fix" check, untouched by this branch.
+
+**Owed:** merge + deploy, then the agent re-runs its import against production.
+Tyler's Vercel deploys production from `main` (runbook §1j), so the merge IS the
+release for his instance.
+
 ## ✅ SHIPPED — search history, saved searches, palette memory; Sepia prose color (2026-09-18, non-core, branch `feat/search-history-and-sepia-prose`)
 
 Three search fixes. Quick search (⌘K) now keeps its last query and results across
