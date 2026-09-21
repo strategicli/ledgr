@@ -180,5 +180,36 @@ console.log("\n# No false positives");
   eq("title untouched", r.title, "Convert mp3 files");
 }
 
+console.log("\n# Kept as plain words (Backspace after a detected phrase, 2026-09-21)");
+{
+  const r = parseTaskTitle("Call Bob Sunday", TODAY, { ignore: ["sunday"] });
+  eq("ignored weekday stays in the title as typed", r.title, "Call Bob Sunday");
+  check("…and schedules nothing", r.scheduledDate === null && r.detections.length === 0);
+}
+{
+  const r = parseTaskTitle("Call Bob Sunday p1", TODAY, { ignore: ["sunday"] });
+  eq("other detections still fire around an ignored word", r.urgency, 1);
+  eq("…title keeps the word, drops the priority token", r.title, "Call Bob Sunday");
+}
+{
+  const r = parseTaskTitle("Send report by friday", TODAY, { ignore: ["friday"] });
+  eq("an ignored due phrase keeps its 'by' too", r.title, "Send report by friday");
+  check("…and sets no due date", r.dueDate === null);
+}
+{
+  const r = parseTaskTitle("Water plants every week", TODAY, { ignore: ["every week"] });
+  eq("an ignored repeat phrase stays", r.title, "Water plants every week");
+  check("…with no recurrence and no first occurrence", r.recurrence === null && r.scheduledDate === null);
+}
+{
+  const r = parseTaskTitle("Fix the sunday bulletin", TODAY, { ignore: ["sun"] });
+  eq("ignore is whole-phrase: 'sun' does not mask 'sunday'", r.scheduledDate, "2026-06-21");
+  eq("…so the real date still strips", r.title, "Fix the bulletin");
+}
+{
+  const r = parseTaskTitle("Call Bob Sunday", TODAY, { ignore: [] });
+  eq("an empty ignore list changes nothing", r.scheduledDate, "2026-06-21");
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

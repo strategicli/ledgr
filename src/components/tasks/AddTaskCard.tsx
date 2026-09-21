@@ -48,17 +48,24 @@ function localTodayYmd(): string {
 
 // --- inline title highlighting (shared shape with the old capture) ---
 type Seg = { text: string; hl?: boolean };
-function buildSegments(title: string, detections: { source: string }[]): Seg[] {
-  if (!title) return [];
+// Where each detected phrase sits in the title, as [start, end) offsets, sorted.
+// Shared by the highlight mirror and the Backspace-to-keep-the-word gesture so
+// the span you see highlighted is exactly the span the key acts on.
+function detectionRanges(title: string, detections: { source: string }[]): [number, number, string][] {
   const lower = title.toLowerCase();
-  const ranges: [number, number][] = [];
+  const ranges: [number, number, string][] = [];
   for (const d of detections) {
     const src = d.source?.trim();
     if (!src) continue;
     const idx = lower.indexOf(src.toLowerCase());
-    if (idx >= 0) ranges.push([idx, idx + src.length]);
+    if (idx >= 0) ranges.push([idx, idx + src.length, src]);
   }
   ranges.sort((a, b) => a[0] - b[0]);
+  return ranges;
+}
+function buildSegments(title: string, detections: { source: string }[]): Seg[] {
+  if (!title) return [];
+  const ranges = detectionRanges(title, detections);
   const segs: Seg[] = [];
   let pos = 0;
   for (const [start, end] of ranges) {
@@ -184,6 +191,11 @@ export default function AddTaskCard({
   const [due, setDue] = useState("");
   const [scheduled, setScheduled] = useState("");
   const [dateCleared, setDateCleared] = useState(false);
+  // Phrases the user un-detected with Backspace (Tyler, 2026-09-21): "Sunday"
+  // typed as a word, not a date. Each stays in the title as plain text and the
+  // parser looks past it. Pruned when the phrase leaves the title, so typing it
+  // again later detects again.
+  const [keptPlain, setKeptPlain] = useState<string[]>([]);
   const [urgency, setUrgency] = useState<Priority | null>(null);
   const [dest, setDest] = useState<string>(host?.id ?? "inbox");
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
@@ -396,7 +408,16 @@ export default function AddTaskCard({
     if (mOpen) announceFloatingOpen("task-mention");
   }, [mOpen]);
 
-  const preview = useMemo(() => (title.trim() ? parseTaskTitle(title, localTodayYmd()) : null), [title]);
+  // Only the kept phrases still in the title count (the state is pruned on
+  // typing, but setTitle has other callers — mention chips — so derive it too).
+  const activeKept = useMemo(() => {
+    const lower = title.toLowerCase();
+    return keptPlain.filter((p) => lower.includes(p));
+  }, [title, keptPlain]);
+  const preview = useMemo(
+    () => (title.trim() ? parseTaskTitle(title, localTodayYmd(), { ignore: activeKept }) : null),
+    [title, activeKept]
+  );
   // +project-name → file the task under a matching project (Tyler, 2026-08-12).
   // This used to be "#project", but "#" now belongs to tags and only tags: a
   // hash reads as a tag to everyone outside Todoist, and one sigil can't mean two
@@ -458,7 +479,7 @@ export default function AddTaskCard({
     const raw = title.trim();
     if (!raw || busy) return;
     await onBeforeCreate?.();
-    const p = parseTaskTitle(raw, localTodayYmd());
+    const p = parseTaskTitle(raw, localTodayYmd(), { ignore: activeKept });
     // Strip the sigil tokens that became structure — "#tag" and "+project" — since
     // each is now carried as a real relation rather than as words in the title.
     // "@" mentions are already consumed into chips, and a literal unmatched "@" the
@@ -686,6 +707,26 @@ export default function AddTaskCard({
         return;
       }
     }
+    // Backspace right after a detected phrase un-detects it instead of deleting
+    // a letter (Tyler, 2026-09-21): "Sunday" was meant as a word, so the
+    // highlight and the chip go, the word stays, and the next Backspace deletes
+    // normally. Caret at the phrase's end, or one past it across a single space,
+    // with nothing selected. Only the parser's detections: "#tag" and
+    // "+project" are sigils the user typed on purpose.
+    if (e.key === "Backspace" && !mOpen && preview) {
+      const el = e.currentTarget;
+      const at = el.selectionStart ?? 0;
+      if (at === (el.selectionEnd ?? at)) {
+        const hit = detectionRanges(title, preview.detections).find(
+          ([, end]) => at === end || (at === end + 1 && /\s/.test(title[end] ?? ""))
+        );
+        if (hit) {
+          e.preventDefault();
+          setKeptPlain((cur) => (cur.includes(hit[2]) ? cur : [...cur, hit[2]]));
+          return;
+        }
+      }
+    }
     if (e.key === "Enter") { e.preventDefault(); void create(); }
     if (e.key === "Escape") onCancel();
   }
@@ -737,7 +778,19 @@ export default function AddTaskCard({
             autoFocus={autoFocus}
             rows={1}
             value={title}
-            onChange={(e) => { setTitle(e.target.value); setCaret(e.target.selectionStart ?? 0); setSelected(0); setDismissedQuery(null); }}
+            onChange={(e) => {
+              const next = e.target.value;
+              setTitle(next);
+              setCaret(e.target.selectionStart ?? 0);
+              setSelected(0);
+              setDismissedQuery(null);
+              // A kept-plain phrase that left the title is forgotten, so typing
+              // it again later detects again.
+              if (keptPlain.length) {
+                const lower = next.toLowerCase();
+                setKeptPlain((cur) => (cur.every((p) => lower.includes(p)) ? cur : cur.filter((p) => lower.includes(p))));
+              }
+            }}
             // Enter submits (no newlines in a title) unless the "@" picker is open
             // (then Enter picks); Escape closes the picker first, else cancels.
             onKeyDown={onTitleKeyDown}
@@ -839,7 +892,16 @@ export default function AddTaskCard({
       <div className="mt-2 flex flex-wrap items-center gap-2 border-b border-neutral-800 pb-3">
         {showAction("deadline") && (
           <span className="relative" data-chip-pop>
-            <button type="button" className={`${chip} ${scheduleLabel ? "text-[var(--accent)]" : ""}`} onClick={() => setPickDate((v) => !v)}>
+            <button
+              type="button"
+              className={`${chip} ${scheduleLabel ? "text-[var(--accent)]" : ""}`}
+              onClick={() => setPickDate((v) => !v)}
+              title={
+                scheduleLabel && preview?.detections.some((d) => d.field !== "urgency")
+                  ? "Set from the words in the title. Meant them as plain words? Press Backspace right after the highlighted phrase to keep it and drop the date."
+                  : undefined
+              }
+            >
               {recurrenceLabel ? IconRepeat : IconCalendar} {scheduleLabel ?? "Date"}
               {scheduleLabel && (
                 <span role="button" aria-label="Clear date" onClick={(e) => { e.stopPropagation(); setDue(""); setScheduled(""); setDateCleared(true); }} className="text-neutral-500 hover:text-neutral-200">{IconX}</span>
