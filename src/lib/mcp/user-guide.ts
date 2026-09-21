@@ -994,6 +994,12 @@ The URL is the password. Rotate it from the same place if it leaks.
 
 - **Word (.docx)** for papers, rendered fresh from the Markdown each time.
 - **Chord charts** for songs, including a Planning Center Lyrics & Chords format.
+- **Over MCP,** \`export_item\` returns the same renders: the Planning Center
+  ChordPro as text, the .docx as a base64 file with its filename. \`list_types\`
+  shows which exports a type offers under \`exports\`. An assistant can also
+  create a paper or a song straight into the right place with
+  \`create_item\`'s \`surface\` + \`content\` (a paper's Notes or Draft, a
+  song's Chart), the same way \`update_item\` writes one.
 
 ## Attachments
 

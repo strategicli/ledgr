@@ -97,6 +97,8 @@ const EXPECTED = [
   "set_capture_routes", "set_list_tabs", "assign_dashboards",
   // share links (2026-09-20, ADR-183 carve-out)
   "share_item", "list_share_links", "revoke_share_link",
+  // exports (2026-09-21, ADR-183 carve-out)
+  "export_item",
 ];
 // The always-on tool set (AI Memory tools are gated off for the dummy owner —
 // asserted separately below), so tools/list here is exactly EXPECTED.

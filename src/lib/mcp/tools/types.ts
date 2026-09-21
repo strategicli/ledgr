@@ -25,6 +25,7 @@ import {
 } from "@/lib/types";
 import { surfacesForType } from "@/lib/modules";
 import { optEnum, reqString } from "./args";
+import { exportsForTypeView } from "./export";
 import { typeView } from "./serializers";
 import type { McpTool } from "./wire";
 
@@ -61,7 +62,8 @@ export const typeTools: McpTool[] = [
       "set_type_statuses. The type's `icon` and each term's `color` are the " +
       "owner's choices: read them here and resend them if you rewrite a type, " +
       "so an edit can't quietly flatten someone's palette. " +
-      "A BESPOKE type also reports `capability` (the bespoke tool attached to it) " +
+      "A BESPOKE type also reports `capability` (the bespoke tool attached to it), " +
+      "`exports` (what export_item can render it to) " +
       "and `surfaces` — the named places content lives on that type. Most types " +
       "have one surface (the markdown body); a paper has Notes, Shape, Quote Bank, " +
       "Outline and Draft, and a song has Notes and Chart. Read `surfaces` before " +
@@ -109,6 +111,11 @@ export const typeTools: McpTool[] = [
             ...(s.primary ? { primary: true } : {}),
             ...(s.readOnly ? { readOnly: true } : {}),
           })),
+          // The deterministic renders export_item offers for this type (a song's
+          // Planning Center ChordPro, a paper's .docx). Omitted when there are none.
+          ...(exportsForTypeView(t.key, t.capability).length > 0
+            ? { exports: exportsForTypeView(t.key, t.capability) }
+            : {}),
           statusMode: t.statusMode,
           // The effective terms, not the raw column: a type storing null
           // inherits the system default, and that's what its items actually use.

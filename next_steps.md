@@ -2,7 +2,7 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ BUILT, NEEDS A MERGE — Backspace keeps a detected day as a plain word (2026-09-21, non-core, branch `feat/task-date-word-backspace`)
+## ✅ SHIPPED — Backspace keeps a detected day as a plain word (2026-09-21, non-core, PR #409; merged untested at Tyler's direction)
 
 Tyler: typing "Sunday" into a task title sets the date, which is right, but
 sometimes the word is just the word. The ask: keep today's behavior, add one
@@ -27,8 +27,40 @@ phrase boundary, other detections unaffected, empty list). typecheck, lint,
 `verify-user-guide` green; `verify:ci` 84/85 with the pre-existing
 `verify-markdown-escape` repro check the only failure.
 
-**Owed:** Tyler tries it on the preview (the gesture is the one thing a pure
-test cannot press), then merge.
+**Owed:** the gesture itself has not been pressed in a browser (Tyler merged without
+time to test); the first time it misbehaves, this is the section to reopen.
+
+## ✅ SHIPPED — exports and surface-first creates over MCP (2026-09-21, ADR-183 carve-out, PR #408)
+
+The last two code items on the ADR-260/261 tail, both purely additive:
+
+- **`export_item`** (`src/lib/mcp/tools/export.ts`): renders an item through its
+  exporters and returns the result. A song's `song-chordpro-pco` comes back as
+  text; a paper's `docx` comes back base64-encoded with its filename, byte
+  count and footnote count, through the same `renderMsmDocx` + token resolution
+  the render-docx route uses. Text exporters come from `exportersForType`, so a
+  type borrowing the chord-chart tool exports too. `format` may be omitted when
+  the type offers exactly one; a wrong or missing one is refused naming the real
+  list. Nothing is stored (Principle 1). `ExporterDef` itself is untouched: the
+  .docx is offered by the tool, not by widening the core exporter contract.
+- **`list_types` reports `exports`** per type (id, label, fileExtension), omitted
+  when there are none, so an agent can discover the renders without guessing.
+- **`create_item` takes `surface` + `content`**, mirroring `update_item`: routes
+  to the body or the backing property before parsing, refuses unknown and
+  read-only surfaces with the real list, and refuses `bodyMarkdown` alongside a
+  body surface. Creating a paper with notes is one call now, and a song created
+  via `chart` is stamped ChordPro by the mutation layer like every other write.
+- **`verify-mcp-records.mts` is green again**: its three failing checks expected
+  the pre-Overview project widget set.
+- User guide: the "Other exports" section names the MCP path. `verify-mcp.mts`
+  EXPECTED list carries `export_item`.
+
+New `scripts/verify-mcp-export.mts` (26 checks, DB-backed) green; `verify-mcp`,
+`verify-mcp-records`, `verify-surfaces`, `verify-user-guide` green; typecheck +
+lint clean; `verify:ci` 84/85, the one failure the pre-existing
+`verify-markdown-escape` "repro without the fix" check, identical on `main`.
+
+**Owed, not code:** a browser pass over a real paper and song (carried from ADR-260/261).
 
 ## ✅ BUILT, AGREED — quick-add chips per type and property (2026-09-20, ADR-268, PR #404)
 
@@ -63,7 +95,7 @@ copy" (`showToast` gained `link` + `durationMs`). **Desk panel ⋯ menu** shows
 Created/Updated/word count for the active item and ends with "Open outside Desk"
 (new browser tab; in-place navigation inside the installed PWA). Guide updated.
 
-## ✅ BUILT, NEEDS A DEPLOY — Trash over the machine API and MCP (2026-09-19, ADR-267, branch `feat/machine-trash`)
+## ✅ SHIPPED — Trash over the machine API and MCP (2026-09-19, ADR-267, PR #401; on Tyler's production since the 2026-09-20 deploy)
 
 The import agent reported there is "a Delete system" it can't reach from the API
 or MCP. True: soft-delete, cascade, the 30-day purge and restore have existed since
@@ -81,9 +113,9 @@ method did. Built, all over the same `softDeleteItem` / `restoreItem`, soft only
 `scripts/verify-machine-trash.mts` (23 checks, DB-backed) green. No hard delete
 or purge trigger on either surface, on purpose.
 
-**Owed:** merge + deploy (the merge is Tyler's release, runbook §1j).
+**Done:** merged as PR #401 and deployed to Tyler's production 2026-09-20 (the `main` build at `cc40d98`).
 
-## ✅ BUILT, NEEDS A DEPLOY — the machine API tags and links on write, 500 a request (2026-09-19, ADR-266, branch `feat/machine-bulk-relations`)
+## ✅ SHIPPED — the machine API tags and links on write, 500 a request (2026-09-19, ADR-266, PR #400; on Tyler's production since the 2026-09-20 deploy)
 
 An agent importing Tyler's notes over `/api/machine/items` stalled: it could create
 a note but not tag it, and tagging by hand was list-the-tag-type, match titles,
@@ -107,7 +139,7 @@ POST, resolve or create the tag items, write the edges"):
 both green locally. Pure CI suite: 84/85, the one failure is the pre-existing
 `verify-markdown-escape` "repro without the fix" check, untouched by this branch.
 
-**Owed:** merge + deploy, then the agent re-runs its import against production.
+**Done:** merged as PR #400 and deployed 2026-09-20. **Still owed, not code:** the import agent re-runs its import against production.
 Tyler's Vercel deploys production from `main` (runbook §1j), so the merge IS the
 release for his instance.
 
@@ -324,11 +356,12 @@ pre-existing, not from this work.
 **What still needs doing.**
 - **Test it on the rig.** Nothing here has been exercised against a real paper or
   song in the browser; the proof so far is typecheck plus the verify scripts.
-- `create_item` takes no `surface` argument yet — creating a paper still writes
-  the body then patches notes.
-- The exporters (`song-chordpro-pco`, the .docx route) are still unreachable over
-  MCP.
-- The pre-existing `verify-mcp` / `verify-mcp-records` failures are still open.
+- ~~`create_item` takes no `surface` argument yet~~ — **DONE 2026-09-21** (see the
+  "exports and surface-first creates over MCP" section at the top).
+- ~~The exporters are still unreachable over MCP~~ — **DONE 2026-09-21**, `export_item`.
+- ~~The pre-existing `verify-mcp` / `verify-mcp-records` failures~~ — **FIXED**:
+  `verify-mcp` by PR #407 (the EXPECTED tool list), `verify-mcp-records` on
+  2026-09-21 (three checks predated the Overview widget leading the project set).
 
 ## ✅ SHIPPED — a Notes tab on papers and songs, first in the strip (2026-09-14, non-core)
 
@@ -451,7 +484,7 @@ unresolved glyph until the first keystroke, and again on the next visit.
 `verify-sync.mts` flake logged below.
 
 
-## 🟡 BUILT, NEEDS BRANDON — type edits stop destroying icons and status colors, + properties on project records, + list tabs over MCP (2026-09-14, ADR-258, branch `fix/type-edits-preserve-presentation`)
+## ✅ SHIPPED — type edits stop destroying icons and status colors, + properties on project records, + list tabs over MCP (2026-09-14, ADR-258, PR #385 merged 2026-09-14; posted to COLLAB.md as a heads-up, not a gate)
 
 Tyler asked for a Scope field on his Project type and a tab on the project list
 page. Adding the field silently destroyed the type's icon and all of his custom
@@ -997,7 +1030,7 @@ The hub now parks a change it cannot apply instead of re-sending it forever, rec
 **Not the cause, but worth knowing:** only 35 items carry embedded `data:image` URIs and they total 1.7 MB, so pasted images are not what is filling this.
 
 
-## 🔴 BUILT, AWAITING TYLER'S ACK — the web clipper carries no token (2026-08-30, ADR-238, branch `feat/clipper-session-auth`)
+## ✅ SHIPPED — the web clipper carries no token (2026-08-30, ADR-238, PR #348 merged 2026-08-30; the follow-up "one clip, one item" fix landed as PR #353)
 
 Brandon's clipper stopped working: ADR-224 made minted credentials a `lgrk_…:lgrs_…` PAIR, and the clipper setup's paste box takes one string, so the documented setup produced a bookmarklet that 401s. Rather than teach the box about pairs, the token is gone. The bookmarklet has saved through a popup on our own origin since the ADR-160 follow-up, and that popup carries the owner's session — so the credential was already in the browser.
 
