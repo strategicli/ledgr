@@ -222,6 +222,13 @@ export type TaskTitleDetection = {
   source: string; // the exact text removed from the title
 };
 
+export type ParseTaskTitleOptions = {
+  // Phrases the user has UN-detected (the `source` of an earlier detection,
+  // e.g. "sunday"): they stay in the title as plain words and match nothing.
+  // Whole-phrase, case-blind. See keepWordsPlain below.
+  ignore?: readonly string[];
+};
+
 export type ParsedTaskTitle = {
   title: string; // cleaned title (detected tokens stripped)
   scheduledDate: string | null;
@@ -412,11 +419,36 @@ function matchUrgency(
   return { urgency: URGENCY_BY_LEVEL[level], source };
 }
 
+// Mask every whole-phrase occurrence of the ignored phrases in the MATCHING
+// string with a control character no pattern can match, leaving the output
+// string alone. The two stay length-synced, so the word survives into the
+// cleaned title exactly as typed while every matcher looks straight past it.
+// "Sunday" typed as a word, not a date (Tyler, 2026-09-21): the user presses
+// Backspace right after the highlighted word and the card passes it here.
+const MASK = "\u0001";
+function keepWordsPlain(lower: string, ignore: readonly string[]): string {
+  let out = lower;
+  for (const phrase of ignore) {
+    const p = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!p) continue;
+    // Not \b: a phrase may start or end on a non-word char ("!1"), so the
+    // boundary is "no word char on either side" instead.
+    const re = new RegExp(`(?<!\\w)${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\w)`, "g");
+    out = out.replace(re, (m) => MASK.repeat(m.length));
+  }
+  return out;
+}
+
 // Parse a task title into a clean title + detected scheduled date, due deadline
 // ("by <date>"), recurrence (→ a stored RRULE via makeRecurrence), and urgency
 // (p1..p4 / !1..!4). Unmatched text is left untouched. Order matters: recurrence
 // is stripped before dates so "every monday" isn't also read as a weekday date.
-export function parseTaskTitle(input: string, todayYmd: string): ParsedTaskTitle {
+// `opts.ignore` names phrases to leave as plain words (see keepWordsPlain).
+export function parseTaskTitle(
+  input: string,
+  todayYmd: string,
+  opts: ParseTaskTitleOptions = {}
+): ParsedTaskTitle {
   const empty: ParsedTaskTitle = {
     title: input.trim(),
     scheduledDate: null,
@@ -428,7 +460,11 @@ export function parseTaskTitle(input: string, todayYmd: string): ParsedTaskTitle
   if (!isYmd(todayYmd) || !input.trim()) return empty;
 
   // Pad with spaces so \b patterns at the very ends still match cleanly.
-  const state = { lower: ` ${input.toLowerCase()} `, orig: ` ${input} ` };
+  const lower = ` ${input.toLowerCase()} `;
+  const state = {
+    lower: opts.ignore?.length ? keepWordsPlain(lower, opts.ignore) : lower,
+    orig: ` ${input} `,
+  };
   const detections: TaskTitleDetection[] = [];
 
   const rec = matchRecurrence(state);

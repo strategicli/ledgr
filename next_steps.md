@@ -2,7 +2,35 @@
 
 The live, near-term work queue. Start here each session. When you finish a slice, move it to "Recently done," pull the next item up, and check its box in `roadmap.md`.
 
-## ✅ BUILT, NEEDS A MERGE — exports and surface-first creates over MCP (2026-09-21, ADR-183 carve-out, branch `feat/mcp-create-surface-and-export`)
+## ✅ SHIPPED — Backspace keeps a detected day as a plain word (2026-09-21, non-core, PR #409; merged untested at Tyler's direction)
+
+Tyler: typing "Sunday" into a task title sets the date, which is right, but
+sometimes the word is just the word. The ask: keep today's behavior, add one
+gesture. **Backspace right after the highlighted phrase un-detects it**: the
+highlight and the Date chip go, the word stays in the title as typed, nothing is
+deleted, and the next Backspace deletes normally.
+
+- `parseTaskTitle(input, today, { ignore })` (`src/lib/nl-date.ts`): the ignored
+  phrases are masked in the MATCHING string with a control character, whole
+  phrase and case-blind, while the output string is untouched, so every matcher
+  looks past the word and it survives into the cleaned title. Pure; the MCP
+  `set_recurrence` caller is unchanged.
+- `AddTaskCard` keeps a `keptPlain` list: the key handler finds the detection
+  whose span ends at the caret (or one space before it), adds its `source`, and
+  the preview + `create()` pass the list through. Pruned when the phrase leaves
+  the title, so retyping detects again. `#tag` and `+project` are sigils typed
+  on purpose and are not part of this. The Date chip's tooltip names the gesture.
+- User guide: the quick-capture bullet and the action-line paragraph.
+
+`verify-nl-task.mts` gained six checks (ignored weekday / due / repeat, whole-
+phrase boundary, other detections unaffected, empty list). typecheck, lint,
+`verify-user-guide` green; `verify:ci` 84/85 with the pre-existing
+`verify-markdown-escape` repro check the only failure.
+
+**Owed:** the gesture itself has not been pressed in a browser (Tyler merged without
+time to test); the first time it misbehaves, this is the section to reopen.
+
+## ✅ SHIPPED — exports and surface-first creates over MCP (2026-09-21, ADR-183 carve-out, PR #408)
 
 The last two code items on the ADR-260/261 tail, both purely additive:
 
@@ -32,8 +60,7 @@ New `scripts/verify-mcp-export.mts` (26 checks, DB-backed) green; `verify-mcp`,
 lint clean; `verify:ci` 84/85, the one failure the pre-existing
 `verify-markdown-escape` "repro without the fix" check, identical on `main`.
 
-**Owed:** Tyler tests on the preview, then merge (his release, runbook §1j). Still
-owed from ADR-260/261 and not code: a browser pass over a real paper and song.
+**Owed, not code:** a browser pass over a real paper and song (carried from ADR-260/261).
 
 ## ✅ BUILT, AGREED — quick-add chips per type and property (2026-09-20, ADR-268, PR #404)
 

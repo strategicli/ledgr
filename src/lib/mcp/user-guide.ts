@@ -125,6 +125,11 @@ Press **q** or **+ New**. A capture card opens with a type picker.
   out the date, the priority and the repeat rule, shows them as chips, and
   leaves the title clean. It understands "every other Tuesday", "first Sunday of
   the month" and "the 3rd of the month".
+- **Meant the day as a word?** Type "Sunday" and it becomes the date, as above.
+  Press **Backspace** right after the highlighted word and it stays in the
+  title as plain text instead: the highlight and the Date chip go, nothing is
+  deleted, and the next Backspace deletes normally. Works for any detected
+  phrase (a date, "by Friday", a repeat, a priority).
 - **Set fields as you capture.** Any field a type flags for quick add shows on
   the card as a small control (a date, a choice, a linked item) you can fill
   before you press Add. Choose which fields at \`/build/types\`: open the type's
@@ -388,6 +393,8 @@ link a person or any other item. Those get parsed out of the line and set on the
 task instead of sitting in its name. A multi-word name is written the way a
 multi-word tag is: **@Elder-Board**. Anything that matches nothing is left alone
 as plain words, and you can still edit every field in the card before creating.
+A detected phrase you meant literally is kept with **Backspace** right after it,
+exactly as in quick capture.
 
 # Organizing
 
