@@ -408,7 +408,11 @@ export const itemTools: McpTool[] = [
       "Capture settings; set inbox=true to capture for later triage. Call list_types " +
       "first if unsure which type or custom properties exist. Pass parentId to " +
       "file it as a SUBTASK under another item. For a task that REPEATS, create " +
-      "it first, then call set_recurrence on the new id.",
+      "it first, then call set_recurrence on the new id. For a type with named " +
+      "SURFACES (a paper's Notes or Draft, a song's Chart — see `surfaces` on " +
+      "list_types) pass `surface` + `content` to put the content where that " +
+      "surface actually lives, instead of guessing between bodyMarkdown and a " +
+      "property key.",
     inputSchema: {
       type: "object",
       properties: {
@@ -434,12 +438,58 @@ export const itemTools: McpTool[] = [
         source: { type: "string", description: "Which arrival path this came from, when it isn't you: one of quick_capture, share_target, web_clipper, email_in, todoist, mention_create, ai_mcp. The owner's Capture settings say where each one files. Omit it and `inbox` both, and this lands wherever they route ai_mcp (filed, by default)." },
         relateTo: { type: "array", items: { type: "string" }, description: "Item ids to relate this new item to (confirmed edges)." },
         tags: { type: "array", items: { type: "string" }, description: "Tag NAMES to put on the new item, e.g. [\"sermon prep\", \"elders\"]. Each is matched to an existing tag by title (exact, case-blind) or created when there is none, then linked — no need to look tag ids up first. Additive and idempotent." },
+        surface: { type: "string", description: "Write the new item's content to this named surface — an id from the type's `surfaces` (list_types), e.g. \"notes\", \"draft\", \"chart\". Requires `content`. Routes to the body or the backing property automatically. Read-only surfaces are refused. Use bodyMarkdown OR a body surface, not both." },
+        content: { type: "string", description: "The content for `surface`. Use the surface's own `format`: markdown for a paper's Notes or Draft, ChordPro for a song's Chart." },
       },
       required: ["type"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     handler: async (ownerId, args) => {
+      // A surface-targeted create (ADR-260 follow-up) is translated into the
+      // ordinary create fields BEFORE parsing, exactly as update_item does, so
+      // it goes down the same validation and canonical-format path. Before
+      // this, creating a paper meant writing the body and then patching its
+      // notes in a second call.
+      const surfaceId = optString(args, "surface");
+      const surfaceContent = optString(args, "content");
+      if ((surfaceId === undefined) !== (surfaceContent === undefined)) {
+        throw new ItemError(
+          "bad_request",
+          "`surface` and `content` go together: pass both to write a named surface, or neither"
+        );
+      }
+      if (surfaceId !== undefined && surfaceContent !== undefined) {
+        const type = reqString(args, "type");
+        const defs = await listTypes({ includeHidden: true });
+        const capability = defs.find((t) => t.key === type)?.capability ?? null;
+        const target = resolveSurfaceTarget(type, surfaceId, capability);
+        if (!target.ok) {
+          throw new ItemError(
+            "bad_request",
+            target.reason === "unknown"
+              ? `unknown surface '${surfaceId}' on type '${type}'; it has: ${target.known.join(", ")}`
+              : `surface '${surfaceId}' is read-only (it is structured or derived — edit what it is built from); writable surfaces: ${target.known.join(", ")}`
+          );
+        }
+        if (target.surface.storage.kind === "body") {
+          if (args.bodyMarkdown !== undefined || args.body !== undefined) {
+            throw new ItemError(
+              "bad_request",
+              `surface '${surfaceId}' IS the body: pass bodyMarkdown or surface+content, not both`
+            );
+          }
+          args = { ...args, bodyMarkdown: surfaceContent };
+        } else if (target.surface.storage.kind === "property") {
+          const prev = (args.properties ?? {}) as Record<string, unknown>;
+          args = {
+            ...args,
+            properties: { ...prev, [target.surface.storage.key]: surfaceContent },
+          };
+        }
+        delete (args as Record<string, unknown>).surface;
+        delete (args as Record<string, unknown>).content;
+      }
       const raw = buildWriteRaw(args, ["type", "source"], ["relateTo", "tags"]);
       // Validate the tag names before the create, so a bad list fails cleanly
       // rather than leaving an untagged item behind an error.

@@ -3,6 +3,7 @@
 // stored (rule 8: index-backed, no extra query). Split out of the old
 // monolithic tools.ts (ADR-047).
 import type { Dashboard } from "@/lib/dashboards";
+import { exportsForTypeView } from "./export";
 import type { NavSlotConfig, UserSettings } from "@/lib/settings";
 import type { TypeDefinition } from "@/lib/types";
 import type { ViewDefinition } from "@/lib/views";
@@ -57,6 +58,11 @@ export function typeView(t: TypeDefinition) {
     hidden: t.hidden,
     showInQuickCapture: t.showInQuickCapture,
     ...(t.capability ? { capability: t.capability } : {}),
+    // The deterministic renders this type offers over export_item (a song's
+    // Planning Center ChordPro, a paper's .docx). Omitted when there are none.
+    ...(exportsForTypeView(t.key, t.capability).length > 0
+      ? { exports: exportsForTypeView(t.key, t.capability) }
+      : {}),
     properties: t.propertySchema.map((p) => ({
       key: p.key,
       label: p.label,

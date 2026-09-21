@@ -19,6 +19,7 @@ import { attachmentTools } from "./attachments";
 import { calendarTools } from "./calendar";
 import { contextTools, LIVE_CONTEXT_TOOL_NAMES } from "./context";
 import { dashboardTools } from "./dashboards";
+import { exportTools } from "./export";
 import { itemTools } from "./items";
 import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
 import { recordTools } from "./records";
@@ -45,6 +46,7 @@ const TOOLS: McpTool[] = [
   ...relationTools,
   ...shareTools,
   ...trashTools,
+  ...exportTools,
   ...viewTools,
   ...templateTools,
   ...workspaceTools,
