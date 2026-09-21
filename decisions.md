@@ -4409,3 +4409,35 @@ Four smaller failures cost time on the way there, and they share a cause: the ro
 
 **Consequences.** A property renamed or removed in the type builder carries or drops its flag with it, since the flag lives on the property. The type builder's form (`/build/types/[key]/edit`) exposes the flag as a per-field checkbox, alongside the row checkboxes and MCP. Check: `scripts/verify-types.mts`.
 
+
+---
+
+## ADR-269: notify and merge — the code process gets a lot lighter
+**Date:** 2026-09-21
+**Status:** accepted (Brandon + Tyler; supersedes the pre-merge ack half of the "Building together" contract, amends ADR-183's framing, and answers the 2026-09-19 proposal to Tyler)
+
+**Context:** Tyler said the process felt heavy every time either of us touched the code, and the numbers backed him up. 267 ADRs in 99 days, about 2.7 a day. 138 merges to `main` since 19 August. Two pre-merge "needs your ack" items outstanding, and **all seven** recorded acks were relayed through Brandon after the fact — Tyler's newest core item says outright "built at my direction, I didn't wait for it." `COLLAB.md` had grown to 324 lines while defining itself as "two short blocks." The ack gate was never actually running as designed, because usually only one of us is coding at a time. It cost writing time and bought nothing.
+
+The guardrails that caught real breakage are the cheap automated ones. CI caught what broke `main` twice in August, both of which had merged green under the old human process. That distinction, automated checks earn their keep and human gates did not, is the whole reasoning below.
+
+**Decision:**
+
+1. **Notify and merge.** Branch, PR, green CI, merge, post the heads-up. No pre-merge ack, no blocking core gate, no migration hold. If the other person objects, revert; a revert is a commit.
+2. **ADRs only for what is hard to undo or changes what something means:** a migration, a body-format change, an API change that breaks an existing caller, a principle, a reversal. Everything else lives in the PR description and git history. Target a few a month. An ADR for a UI copy change or a page layout should not exist.
+3. **Shared ground keeps the ADR, loses the gate.** The old core list (schema, body format, type/canvas model, module boundary, provider seams, cross-cutting invariants, the machine/MCP contract, the nine principles) still earns an ADR plus a `COLLAB.md` heads-up in the same PR. It no longer earns a wait. ADR-183's additive-MCP carve-out is unchanged and still skips the ADR too.
+4. **`COLLAB.md` goes back to two short blocks** — current plan plus the last few heads-ups, roughly half a dozen entries each. The accumulated history moved to `COLLAB_ARCHIVE.md` rather than being deleted outright, so nothing is lost while the live board stays readable.
+5. **Bookkeeping once per batch.** `next_steps.md` and `roadmap.md` update when a slice finishes, not on every PR. The **runbook and the user guide are the exception** and still update in the same PR, every time: people read those, not the process files.
+6. **Tyler's deploy model is unchanged — option C of the three offered.** `main` stays his production branch with `build:satellite`, and no check stands in front of it. A merge can reach his production database. What makes that survivable is the additive-migration rule (add a column, then backfill, never destroy live owner data): an additive migration that turns out unwanted leaves an unused column behind, which is a nuisance and not a loss. This is the posture the project already ran under; the change is that it is now stated rather than guarded by a `git diff … -- drizzle/` ritual that only ever ran on Brandon's machine.
+
+**What is explicitly not trimmed:** CI on every PR, never committing directly to `main`, every merge through a PR, additive migrations, soft-delete + revisions + the weekly backup + git revert as the safety net, and the nine principles.
+
+**Why / alternatives:**
+
+- *Option A (Tyler creates `prod-tyler`, `main` becomes a plain integration branch)* — the technically cleanest: merging becomes boring for both of us and the migration question leaves the process entirely. Rejected for now because it costs Tyler a one-time Vercel change plus a gitignored `.env.production.local`, and it means he stops picking up Brandon's merges for free. The door stays open: `RELEASE_TARGET_BRANCH=prod-tyler npm run release:prod` already works, so this is a settings change away whenever he wants it.
+- *Option B (keep one pre-merge `git diff origin/main --name-only -- drizzle/` check plus a 48-hour silent-consent window for migrations and breaking API changes)* — the honest middle. Rejected as still a ritual: it is one more thing to remember for a risk the additive rule already bounds, and a consent window nobody replies inside is the ack gate again under a different name.
+- *Keeping the ack gate* — rejected on the evidence. Seven of seven acks came after the fact, so the gate was already fiction; codifying the fiction is cheaper than pretending.
+- *Deleting `COLLAB.md` history outright* (what the proposal said) — softened to an archive file at Brandon's call. One `rm` undoes it if the archive turns out to be dead weight.
+
+**Consequences.** Older ADRs and the exploration docs still say "both-agree + ADR" in places; that wording is history and now reads as "ADR + heads-up." They are not rewritten, per this log's own never-rewrite-history rule. The `/ship` skill still carries the old Merge-mode gates and lives in a gitignored `.claude/`, so it is the one piece of this change that cannot land in the same PR — see the note in `next_steps.md`.
+
+**Affects:** `CLAUDE.md` ("Building together" rewritten; "When you finish a slice" → "When you finish a batch"; the body-dialect and batch-work bullets), `COLLAB.md` (reset to two blocks), `COLLAB_ARCHIVE.md` (new), `runbook.md` §1j, `next_steps.md`, and `.claude/skills/ship/SKILL.md` (untracked, needs a local trim).
