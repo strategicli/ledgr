@@ -87,7 +87,7 @@ try {
     eq(
       "the project starting set is the header strip + four cards",
       base.widgets.map((w) => w.defId),
-      ["status", "people", "progress", "tasks", "milestones", "notes", "meetings"]
+      ["overview", "status", "people", "progress", "tasks", "milestones", "notes", "meetings"]
     );
 
     const hidden = applyLayoutOps(base, { hide: ["meetings"] });
@@ -103,7 +103,7 @@ try {
 
     const ordered = applyLayoutOps(base, { order: ["notes", "tasks"] });
     eq("a partial order pulls those to the front, rest keep relative order", ordered.widgets.map((w) => w.defId), [
-      "notes", "tasks", "status", "people", "progress", "milestones", "meetings",
+      "notes", "tasks", "overview", "status", "people", "progress", "milestones", "meetings",
     ]);
 
     const opted = applyLayoutOps(base, { options: { tasks: { limit: 10 } } });
@@ -294,7 +294,7 @@ try {
 
     const layout = await call(owner.id, "get_record_layout", { id: project.id });
     eq("a real project's generated page has the four cards", ids(layout.sections), [
-      "status", "people", "progress", "tasks", "milestones", "notes", "meetings",
+      "overview", "status", "people", "progress", "tasks", "milestones", "notes", "meetings",
     ]);
 
     const added = await call(owner.id, "add_to_record", {
