@@ -44,6 +44,31 @@ check("ignores a plain https link", collectMentionIdsFromMarkdown("[x](https://e
 check("skips an empty ledgr id", collectMentionIdsFromMarkdown("see ledgr://item/ here").length === 0);
 check("empty markdown → no ids", collectMentionIdsFromMarkdown("").length === 0);
 
+// Only a uuid is an edge (2026-09-21). A prose body that SPELLS OUT the mention
+// syntax — a prompt or a how-to documenting `ledgr://item/<id>` — used to yield
+// "<id>" as an item id, which Postgres rejected with 22P02 on the `where id in
+// (…)` that every consumer runs. In syncMentionRelations that throw landed after
+// the item row had already committed, so edit_item_body reported "internal
+// error" on an edit it had written and the caller double-applied the retry.
+check("placeholder <id> in prose is not a mention", collectMentionIdsFromMarkdown("write it as [@Name](ledgr://item/<id>)").length === 0);
+check("non-uuid ids are ignored", collectMentionIdsFromMarkdown("ledgr://item/ANSWER_KEY_ID and ledgr://item/123").length === 0);
+check("a truncated uuid is not a mention", collectMentionIdsFromMarkdown(`ledgr://item/${id1.slice(0, 30)}`).length === 0);
+check("an uppercase uuid still counts", collectMentionIdsFromMarkdown(`ledgr://item/${id1.toUpperCase()}`).length === 1);
+
+// The reported body: long, emoji-laden, and carrying BOTH a real mention and a
+// documented placeholder. The real edge survives; the placeholder doesn't.
+const longEmojiMd = [
+  "# 📋 Daily Work Day Log 🗓️",
+  "",
+  `Owner: ${mentionToMarkdown(id1, "Roger")} ✅`,
+  "",
+  "To link an item, write `[@Title](ledgr://item/<id>)` — 🙌 substitute the real id.",
+  "",
+  "🚀 filler. ".repeat(4000),
+].join("\n");
+const longIds = collectMentionIdsFromMarkdown(longEmojiMd);
+check("long emoji body: keeps the real mention, drops the placeholder", longIds.length === 1 && longIds[0] === id1, longIds.join(","));
+
 // --- FTS text strip: keep prose, drop markup / URIs / hexes ----------------
 const richMd = [
   "# Sermon Notes",
