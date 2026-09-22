@@ -44,37 +44,6 @@ the code. **Three DB-backed scripts still carry the same pattern** and are the l
 already logged: `verify-mcp.mts`, `verify-meeting-prep.mts`, `verify-todoist-sync.mts`. They could not be fixed
 blind (no DB in the session that found this), so check them first when `verify:db` runs.
 
-## ▶️ OWED — trim the `/ship` skill to match ADR-269 (local step, cannot be done in a PR)
-
-ADR-269 made the process notify-and-merge, but `/ship` still runs the old Merge-mode
-gates: the overlap check, the migration callout, and the "core change needs both-agree
-plus an ADR" block. The skill lives at `.claude/skills/ship/SKILL.md`, and `.claude/`
-is gitignored, so **no PR can reach it** — it has to be edited on each machine that
-has it. Until that happens the skill and `CLAUDE.md` disagree, and the skill is the
-one that actually stops a merge.
-
-What to cut from Merge mode:
-
-- The **core / both-agree gate** — gone entirely. Shared ground gets an ADR and a
-  heads-up in the same PR; it does not get a block.
-- The **migration callout** — gone (option C). Migrations merge like anything else,
-  on the strength of the additive-migration rule.
-- The **overlap check** against the other person — keep it as a *print*, not a gate.
-  Knowing Tyler is in the same files is useful; being stopped by it is not.
-- The **ADR prompt** — reword from "did you make an architectural choice" to the
-  ADR-269 bar: hard to undo, or changes what something means.
-- The **bookkeeping prompt** — `next_steps.md` / `roadmap.md` once per batch. Keep
-  the runbook and user-guide prompts as they are; those are per-PR.
-
-What stays: CI green before merge, never commit to `main`, PR for every merge.
-
-**Worth fixing while you're in there:** the skill went missing on bc-desktop in
-September and git could not restore it, because `.claude/` is ignored. A narrow
-un-ignore (`.claude/*`, `!.claude/skills/`, `.claude/skills/*`, `!.claude/skills/ship/`)
-would put the one shared skill under version control without tracking anything else
-in `.claude/`, and would mean this kind of process change lands in one PR next time
-instead of being owed on every machine.
-
 ## 🔜 OWED — the write boundary still doesn't reject a malformed scaffold
 
 Out of the incident above. `elements` on `SurfaceDef` now DESCRIBES the shape of a
