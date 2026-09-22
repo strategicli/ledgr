@@ -249,28 +249,24 @@ The whole app runs on your own machine — Next.js + the codebase on disk, the D
 
 ---
 
-## 1j. Deploying to production (the release flow)
+## 1j. How each instance deploys
 
-**`main` is the shared integration line, but whether merging to it is a release DEPENDS ON WHOSE INSTANCE YOU MEAN. Check which flow you are on before you merge.** This section used to say flatly that `main` deploys nobody, which is true of Brandon's instance and false of Tyler's; the wrong half of that sentence was read as global on 2026-08-26 and used to tell Tyler a merge was safe when it was in fact a production deploy plus a production migration.
+Reference, not a checklist. Nothing here is a step to take before merging: merging to `main` needs no deploy consideration at all (ADR-269).
 
-- **Brandon (and Miles): a release branch, so merging to `main` is safe.** `prod-brandon` / `prod-miles` are pure pointers to `main`, and those are what Vercel deploys. A PR merged to `main` just lands code on the integration branch: no production build, nothing to "verify READY" from the merge itself. Deploy with `release:prod` below. (Never commit directly to a `prod-*` branch, it's a pointer, not a work branch.)
-- **Tyler: `main` IS the production branch, so merging to `main` IS the release.** There is no `prod-tyler` branch (the `release:prod` comment offers one via `RELEASE_TARGET_BRANCH`, but it was never adopted). The `tylerjaycollins-projects/ledgr` project deploys production straight from `main`, and its **Build Command is `npm run build:satellite`** (`node scripts/migrate.mjs && next build`), so **the migration runs against production during the build**. Consequences worth naming: a merge to `main` deploys his production ~60-90s later; a pending migration reaches his production DB the moment anything merges, whether or not that PR is the one that added it; and this path **skips the dev-canary ordering** that `release:prod` step 3 exists to provide, so a migration that would fail the gates gets no gate. Verify a merge the way a release is verified (below), not the way an integration push is.
+- **Brandon and Miles deploy on purpose.** `prod-brandon` / `prod-miles` are pointer branches to `main`, and those are what Vercel builds. Deploy with `npm run release:prod` below. (Never commit directly to a `prod-*` branch; it's a pointer, not a work branch.)
+- **Tyler's production tracks `main`.** His Vercel project builds production from `main` with `npm run build:satellite` (`node scripts/migrate.mjs && next build`), so his deploy and any pending migration follow a merge automatically. That is the arrangement he wants: he picks up shared work without running anything. If he ever prefers to deploy on purpose instead, he points Vercel's Production Branch at `prod-tyler` and runs `RELEASE_TARGET_BRANCH=prod-tyler npm run release:prod`; the script already supports it.
 
-**Before merging anything to `main`, know which of those two you are.** Since ADR-269 the process is **notify and merge**, with no pre-merge migration check and no "merge when someone is watching" — that was option C of three, chosen deliberately. So the paragraph above is not a warning to act on before each merge, it is the standing fact of Tyler's instance: a merge is his release, and a pending migration runs against his production database during the build.
-
-**What keeps that safe is the migration itself, not a ritual in front of it.** Migrations are additive and reversible (add a column, then backfill; never destroy or rewrite live owner data), so an unwanted one leaves an unused column behind rather than a hole. That rule is now load-bearing: it is the only thing standing between a merge and Tyler's production data. If a change genuinely cannot be expressed additively, that is the moment to talk to Tyler first — not because the process says to wait, but because nothing downstream will catch it.
-
-**The clean exit, if this ever stops feeling comfortable:** Tyler points his Vercel Production Branch at `prod-tyler`, keeps a gitignored `.env.production.local`, and deploys with `RELEASE_TARGET_BRANCH=prod-tyler npm run release:prod`. The script already supports it. `main` then becomes a plain integration branch for both instances and merging is boring again.
+Migrations are additive and reversible by rule (add a column, then backfill, never destroy live owner data), which is what lets both models run without ceremony in front of them.
 
 **Deploy with `npm run release:prod`** (`scripts/release-prod.mjs`), which does the whole thing in order and aborts before prod on any red gate:
 
 1. **preflight** — clean working tree + `git fetch`.
-2. **ff-merge** — fast-forward the deploy branch (`prod-brandon` by default; Tyler sets `RELEASE_TARGET_BRANCH=prod-tyler`) to `origin/main`.
+2. **ff-merge** — fast-forward the deploy branch (`prod-brandon` by default; `RELEASE_TARGET_BRANCH` overrides) to `origin/main`.
 3. **dev + gates** — migrate the **dev** Neon branch first (canary), then `lint`, `build`, and the core `verify-*` scripts against dev; **abort on the first failure** so a red gate can't reach prod.
-4. **migrate prod** — `npm run db:migrate:prod` (prod creds come only from `.env.production.local`, gitignored — never `.env.local`).
+4. **migrate prod** — `npm run db:migrate:prod` (prod creds come only from `.env.production.local`, gitignored, never `.env.local`).
 5. **push** — push the deploy branch → Vercel builds and deploys.
 
-Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `prod-*` push, `target: production`; the build lags the push ~60–90s) or the public `/health` endpoint. Migrating dev-before-prod means every migration is exercised by the verifies before it touches production. Posture is **be deliberate with production** (§0, ADR-119): additive/reversible changes, lean on the safety net. A deploy-model ADR is still to be written.
+Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `prod-*` push, `target: production`; the build lags the push ~60–90s) or the public `/health` endpoint. Migrating dev-before-prod means every migration is exercised by the verifies before it touches production.
 
 ---
 
@@ -280,7 +276,9 @@ Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `
 
 **What it does and does not block.** Per §1j, `main` deploys nobody *on Brandon's flow*, so **his production is never waiting on this**: `prod-brandon` only moves when you run `npm run release:prod`. On Tyler's flow `main` IS production, so a rate-limited window does stall his releases. What the cap actually stops is (a) the dev deployment that tracks `main`, and (b) **PR preview builds** — and (b) is the real consumer, because *every push to a PR branch rebuilds a preview in every project connected to the repo*. Three commits on one branch is six builds across two projects, for one PR.
 
-**The cheapest fix needs no Vercel change: squash locally before pushing.** One push per PR instead of four cuts builds fourfold. Do this by default.
+**Decided 2026-09-22: PR previews are off. Neither builder wants them.** This is a two-person project and nobody
+opens a preview URL to review a PR, so the previews were pure quota burn. Set it per project (below); squashing
+locally before pushing is still worth doing, but it is no longer the main lever.
 
 **To stop the automatic builds properly, the setting is per PROJECT, not in the repo.** This matters: `vercel.json` is checked in and shared, so `git.deploymentEnabled` or `ignoreCommand` there would also stop **Tyler's** project deploying. Use the dashboard's **Settings → Git → Ignored Build Step** on each project instead. The command's exit code decides, **inverted from intuition: exit 0 skips the build, exit 1 runs it.**
 
@@ -288,6 +286,8 @@ Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `
 | --- | --- | --- |
 | the dev deployment | `git log -1 --pretty=%B \| grep -qE '\[deploy\]' && exit 1 \|\| exit 0` | builds only for a commit whose message carries `[deploy]` — merge all day, then batch one build when you want it current |
 | the production project | `[ "$VERCEL_ENV" = "production" ] && exit 1 \|\| exit 0` | kills PR previews (the waste) while **never** touching `release:prod`, which is always a production build |
+
+**Status:** `devledgr` has its ignore step and is correctly skipping (its PR check reads "Deployment was blocked", which is the setting working, not a failure). **`ledgr` still needs it:** Vercel → project `ledgr` → Settings → Git → Ignored Build Step → paste the production-project command above. It cannot be set through the Vercel MCP, which is read-only on this account. Tyler's project is in his own team and is his to set if he wants it.
 
 Do **not** put a marker-based ignore step on the production project: it would block `release:prod` whenever the marker was absent.
 

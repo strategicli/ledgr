@@ -1,10 +1,12 @@
-# COLLAB_ARCHIVE.md — parked heads-ups (through 2026-09-21)
+# COLLAB_ARCHIVE.md — the retired heads-up board
 
-Everything that had accumulated in `COLLAB.md` before ADR-269 reset it to a two-block board. Kept because it is
-a readable record of how the two instances got here, not because anything reads it as a rule: the live board is
-`COLLAB.md`, decisions are in `decisions.md`, and history is in git log and PR titles. Newest first within each
-section, which is how it was written. Nothing here is current; treat any process instruction in it as superseded
-by CLAUDE.md "Building together."
+`COLLAB.md` is gone (ADR-269). It was a board where each of us announced work before merging it and waited
+for the other to ack. Neither of those happens any more: the PR description says what changed, and GitHub
+plus the in-app Changelog carry it from there.
+
+This file is everything that had accumulated there through 2026-09-21. It is kept as a readable record of
+how the two instances got here, not because anything reads it as a rule. Nothing in it is current, and any
+process instruction in it is superseded by CLAUDE.md "Building together."
 
 ---
 

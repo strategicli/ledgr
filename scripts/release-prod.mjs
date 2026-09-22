@@ -54,6 +54,22 @@ try {
     sh(`node --env-file-if-exists=.env.local --import tsx scripts/${v}`);
   }
 
+  // The rest of the DB-backed suites, against the dev branch we just migrated.
+  // REPORT-ONLY on purpose: until 2026-09-22 only the four above ran anywhere
+  // automatic, so ~15k lines of guard code had gone unexercised for months and
+  // some of it is certainly stale. Aborting a release on a guard nobody has run
+  // since August would punish the release for the backlog. It prints what fails
+  // instead; a script that fails here either gets fixed or deleted, and one that
+  // proves itself graduates into CORE_VERIFIES above.
+  try {
+    sh("npm run verify:db");
+  } catch {
+    console.log(
+      "\n^^ DB-backed verifies reported failures (NOT blocking this release).\n" +
+        "   Fix or delete each one: a guard that nobody trusts is worse than none.\n"
+    );
+  }
+
   stage(4, "migrate PROD");
   sh("npm run db:migrate:prod"); // prod, via .env.production.local
 
