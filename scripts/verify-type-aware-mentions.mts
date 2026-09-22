@@ -27,7 +27,11 @@ const personGlyph = mentionGlyphPaths({ type: "person", icon: "person", statusCa
 check("person uses its type icon (circle head)", personGlyph.includes("circle cx=\"12\" cy=\"8\""));
 
 // --- markdownToHtml: a body with one mention --------------------------------
-const ID = "abc-123";
+// A real uuid, because only a uuid is a mention id: items.id is a uuid column,
+// and a `ledgr://item/<not-a-uuid>` href is prose that happens to look like a
+// mention (mention-markdown.ts, 2026-09-21). The fixture used "abc-123" and so
+// stopped describing anything the app can produce.
+const ID = "3f2a91c6-7d48-4b55-9e10-a4c2b8d61f07";
 const body = `Follow up with [@Roger Smith](ledgr://item/${ID}) today.`;
 
 // 1) No map → plain mention link, unchanged from before the feature.

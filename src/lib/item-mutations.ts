@@ -276,6 +276,39 @@ async function snapshotRevision(
   `);
 }
 
+// The indexes a saved body implies: its revision snapshot, its @-mention edges,
+// and its passage refs. Every one of these runs AFTER the items row is already
+// committed, so a failure here must never be reported to the caller as a failed
+// write. It used to be: one bad mention href threw out of syncMentionRelations,
+// and `edit_item_body` answered "internal error" on a find-and-replace that had
+// in fact landed — the caller then retried it and double-applied a
+// non-idempotent edit (2026-09-21). A wrong answer about what was written is
+// worse than a stale derived index, so each step is captured and the write is
+// still reported as the success it was. This is the posture the activity-log
+// lines below already take; `source: "item-index"` is where a stale index shows
+// up in Build → Errors.
+async function indexSavedBody(
+  ownerId: string,
+  itemId: string,
+  body: unknown,
+  opts: { snapshot?: boolean } = {}
+): Promise<void> {
+  const steps: [string, () => Promise<unknown>][] = [];
+  if (opts.snapshot !== false && body != null) {
+    steps.push(["revision", () => snapshotRevision(itemId, body)]);
+  }
+  // Both run on a null body too: clearing a body clears its edges.
+  steps.push(["mentions", () => syncMentionRelations(ownerId, itemId, body)]);
+  steps.push(["passage_refs", () => syncPassageRefs(ownerId, itemId, body)]);
+  for (const [step, run] of steps) {
+    try {
+      await run();
+    } catch (err) {
+      await captureError("item-index", err, { detail: { itemId, step } });
+    }
+  }
+}
+
 // The write-path status guard (ADR-243). Statuses are user-defined per type, and
 // items.status is plain text, so nothing below this line stops a caller from
 // storing a key the type never had — it renders as nothing on the canvas and
@@ -354,9 +387,7 @@ export async function createItem(ownerId: string, input: ItemInput) {
     .returning(itemColumns);
   const created = rows[0];
   if (created.body != null) {
-    await snapshotRevision(created.id, created.body);
-    await syncMentionRelations(ownerId, created.id, created.body);
-    await syncPassageRefs(ownerId, created.id, created.body);
+    await indexSavedBody(ownerId, created.id, created.body);
   }
   // Activity log (ADR-111): a tracked record (a project) being born is the first
   // line of its own timeline. Best-effort — a failed log line never breaks the
@@ -737,11 +768,7 @@ export async function updateItem(
   // didn't move a date.
   let shiftedChildren: ShiftedChild[] = [];
   if (writeBody) {
-    if (updated.body != null) await snapshotRevision(id, updated.body);
-    // Runs on null bodies too: clearing a body clears its mention edges.
-    await syncMentionRelations(ownerId, id, updated.body);
-    // Same contract for passage @/refs — the passage_refs sibling of mentions.
-    await syncPassageRefs(ownerId, id, updated.body);
+    await indexSavedBody(ownerId, id, updated.body);
   }
   // A scheduled-date move carries the whole subtask tree with it (ADR-253):
   // every unpinned dated descendant shifts by the same number of days, so a
@@ -1063,9 +1090,10 @@ export async function restoreRevision(
     .set({ body, bodyText: extractBodyText(body, current.properties) })
     .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId)))
     .returning(itemColumns);
-  // The restored body's mentions + passage refs are the live ones now.
-  await syncMentionRelations(ownerId, itemId, body);
-  await syncPassageRefs(ownerId, itemId, body);
+  // The restored body's mentions + passage refs are the live ones now. No
+  // snapshot: the pre-restore body was force-snapshotted above, and the body
+  // being restored is already a revision.
+  await indexSavedBody(ownerId, itemId, body, { snapshot: false });
   return rows[0];
 }
 

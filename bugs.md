@@ -43,41 +43,13 @@ The `AND-of-words` filter was itself a deliberate fix (the comment at `items.ts:
 
 ---
 
-## 🐛 OPEN — a malformed `ledgr://item/` id 500s every body save (Tyler + Claude, 2026-08-31)
+## 🐛 OPEN — a mention quoted inside a code fence still becomes a real relation (Tyler + Claude, 2026-08-31; narrowed 2026-09-21)
 
-**Any body containing a `ledgr://item/` link whose id is not a valid UUID fails to save**, with `internal error` and a correlation id. It is not size- or encoding-related: a 24,000-char body saves fine, and bodies full of astral-plane emoji save fine.
+**What's left of the `ledgr://item/` bug.** The crash half is fixed (see below); this half is not. `collectMentionIdsFromMarkdown()` scans raw markdown with no awareness of code spans or fences, so a note that *documents* the mention syntax with a real id inside backticks — `` `[@Title](ledgr://item/9f8c2b14-…)` `` — silently creates a relation edge nobody asked for. It no longer throws, it just quietly wires up a link the writer meant as an example.
 
-**Root cause.** `collectMentionIdsFromMarkdown()` (`src/lib/editor/mention-markdown.ts:45`) scans for the mention prefix with:
+**Suggested fix.** Skip code spans and fences when collecting mentions. Worth writing an ADR for, since it changes what counts as a mention (ADR-037/ADR-040 territory) and could drop edges that already exist in bodies where the mention sits in a fence.
 
-```js
-const re = /ledgr:\/\/item\/([^)\s]+)/g;
-```
-
-It skips an **empty** id (`ledgr://item/`) but accepts any other garbage. So the literal placeholder `<id>` is collected and returned as though it were a real mention target. `syncMentionRelations()` then feeds it straight into `inArray(items.id, ...)` (`src/lib/mentions.ts:115`; `resolveMentions()` has the same exposure at `:52`), and because `items.id` is a `uuid` column, Postgres rejects the query with `invalid input syntax for type uuid`. The throw surfaces as a generic 500.
-
-The comment at `mention-markdown.ts:48-49` shows the intent was already there ("an empty id is skipped") — it just guards the wrong condition.
-
-**Repro** (any note id you own):
-
-```bash
-curl -u "$LEDGR_KEY:$LEDGR_SECRET" -X PATCH \
-  -H 'Content-Type: application/json' \
-  https://ledgr.tylerjcollins.com/api/machine/items \
-  -d '{"items":[{"id":"<note-uuid>","body":{"format":"markdown",
-       "text":"See [Title](ledgr://item/<id>) for the format."}}]}'
-# → 400 {"errors":[{"index":0,"error":"internal error (correlationId ...)"}]}
-```
-
-**Why it matters more than it looks.** The trigger is *documentation about Ledgr itself*. Any note explaining the mention syntax to a human, or any prompt/skill/runbook that quotes `[@Title](ledgr://item/<id>)` — which is exactly how the MCP tool descriptions and `CLAUDE.md` phrase it — is unsavable. It bit a real import: see "Affected data" below.
-
-**Second-order problem: it fires inside code spans.** In the file that surfaced this, the link sat inside backticks (`` `[Title](ledgr://item/<id>)` ``) and still threw. The extractor scans raw markdown with no awareness of code spans or fences, so a fenced example of the mention syntax also 500s. Fixing only the UUID guard leaves this half-fixed: a *well-formed* mention quoted inside a fence will still silently create a real relation nobody asked for.
-
-**Suggested fix**, smallest first:
-1. **Validate in the extractor.** Filter to a UUID shape in `collectMentionIdsFromMarkdown()`. This is the one-line fix and stops the 500 everywhere, since both call sites read through it.
-2. **Defend at the boundary anyway.** Even with (1), a body save should not be able to take down the whole request over link contents. Wrap the relation sync so a resolution failure logs and degrades to "no mention edges" rather than failing the save.
-3. **Skip code spans and fences** when collecting mentions, which also fixes the phantom-relation case above.
-
-Worth an ADR if you take (3), since it changes what counts as a mention (ADR-037/ADR-040 territory).
+**Fixed 2026-09-21 (was: "a malformed `ledgr://item/` id 500s every body save"):** any body holding a `ledgr://item/` link whose id was not a UUID failed to save with `internal error` and a correlation id. The trigger was documentation about Ledgr itself — the placeholder `ledgr://item/<id>` that the MCP tool descriptions and `CLAUDE.md` both use. `collectMentionIdsFromMarkdown()` skipped an *empty* id but accepted any other garbage, and `syncMentionRelations()` fed it into `inArray(items.id, …)`, which Postgres rejects with `invalid input syntax for type uuid` (22P02). Two changes: `mentionItemId()` now accepts only a UUID shape, and every consumer reads through it; and `indexSavedBody()` (`src/lib/item-mutations.ts`) makes the post-commit index work — revision snapshot, mention edges, passage refs — best-effort, so a derived-index failure is captured to `error_log` under `source: "item-index"` instead of reporting a committed write as a failed one. Also hit the print, share, and render-markdown reads, which resolve mentions the same way. Regression cases in `scripts/verify-body-contract.mts`.
 
 ---
 
@@ -98,7 +70,7 @@ HTTP 201  count: 35  errors: [{"index":6,"error":"internal error (...)"}]
 
 **Why it matters.** This is the batch-import failure mode: a partial failure is silently unreconcilable. A caller that retries the failed entries — the obvious response to a per-entry `errors` array — multiplies the orphans instead of fixing them. Retry is the documented pattern, so the API is actively encouraging the duplication.
 
-**Suggested fix.** Wrap each entry's insert + body + relation sync in a single transaction so a failed entry leaves nothing. Fixing bug 1 removes this particular trigger but not the class.
+**Suggested fix.** Wrap each entry's insert + body + relation sync in a single transaction so a failed entry leaves nothing. The bug above no longer triggers it (2026-09-21: the UUID guard stops the throw, and `indexSavedBody` can't fail a write that committed), but the class stands — any later step that throws after the insert still strands a row and reports `created: []`.
 
 ---
 
