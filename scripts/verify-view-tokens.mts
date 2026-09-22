@@ -14,6 +14,7 @@ import {
   relativeTokenLabel,
   resolveRelativeValue,
 } from "../src/lib/view-where";
+import { appTimezoneSync, todayBounds } from "../src/lib/today";
 import { buildWhereSql } from "../src/lib/views";
 
 let failures = 0;
@@ -45,7 +46,15 @@ check("tokens carry a human label", relativeTokenLabel(DAY_OF_MONTH_TOKEN) === "
 // The rotation filter as a saved view stores it: a multi_select "days" property
 // holding day numbers, matched against today.
 const dialect = new PgDialect();
-const today = String(new Date().getDate());
+// Resolve "today" the way buildWhereSql does: in the OWNER'S timezone
+// (`todayBounds(new Date(), appTimezoneSync())`, views.ts), not the runner's.
+// `new Date().getDate()` reads the runner's local date, which in CI is UTC, so
+// between UTC midnight and the app zone's midnight (about four hours a night on
+// the America/New_York default) the two disagreed by one and this script failed
+// for reasons that had nothing to do with the code. It went red in CI at
+// 2026-09-22T00:19Z exactly that way. A guard that is wrong for a sixth of every
+// day teaches people to ignore it, so it reads from the same clock as the code.
+const today = String(todayBounds(new Date(), appTimezoneSync()).today.d);
 
 const tokenSql = buildWhereSql({
   combinator: "and",

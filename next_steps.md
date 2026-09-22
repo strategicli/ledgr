@@ -35,6 +35,15 @@ proves itself moves into `CORE_VERIFIES` in `scripts/release-prod.mjs` as a hard
 Two known-flaky ones are already logged below (`verify-sync.mts`, `verify-mcp-tasks.mts`) and should be fixed or
 deleted in the same pass.
 
+**One root cause is already known, so start there.** `verify-view-tokens.mts` went red in CI at 2026-09-22T00:19Z
+because it computed "today" with `new Date().getDate()`, which is the runner's local date (UTC in CI), while the
+code resolves the token in the OWNER'S timezone (`todayBounds(new Date(), appTimezoneSync())`). Between UTC
+midnight and the app zone's midnight, about four hours a night on the `America/New_York` default, the two
+disagree by one and the guard fails for reasons unrelated to the code. Fixed there by reading the same clock as
+the code. **Three DB-backed scripts still carry the same pattern** and are the likely "date-rotted" failures
+already logged: `verify-mcp.mts`, `verify-meeting-prep.mts`, `verify-todoist-sync.mts`. They could not be fixed
+blind (no DB in the session that found this), so check them first when `verify:db` runs.
+
 ## ▶️ OWED — trim the `/ship` skill to match ADR-269 (local step, cannot be done in a PR)
 
 ADR-269 made the process notify-and-merge, but `/ship` still runs the old Merge-mode
