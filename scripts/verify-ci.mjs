@@ -13,10 +13,17 @@
 // failure this file exists to prevent, so the mechanism must not reintroduce it.
 //
 // The DB/server-backed suites (verify-mcp*, verify-items, verify-structures, …)
-// are excluded: they need real Neon credentials and a dev server, which CI has
-// no business holding. They stay a local/manual step — see runbook.md.
+// need real credentials, which CI has no business holding, so they are excluded
+// here and run with --backend instead (npm run verify:db) against the DEV
+// database. `release:prod` runs them at stage 3, right after it migrates dev.
+//
+// Why that matters: before 2026-09-22 only FOUR of the ~90 DB-backed scripts ran
+// anywhere automatic (release:prod's hard gates), so ~15k lines of guard code
+// only ever ran if someone typed the command. A check nobody runs is not a
+// check — the same sentence this file already opens with, applied to itself.
 //
 //   node scripts/verify-ci.mjs            # everything pure
+//   node scripts/verify-ci.mjs --backend  # the DB-backed suites, against dev
 //   node scripts/verify-ci.mjs --list     # just show the classification
 import { readdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -50,14 +57,31 @@ if (process.argv.includes("--list")) {
   process.exit(0);
 }
 
+// --backend runs the OTHER list, against whatever DATABASE_URL is in scope
+// (.env.local — the dev branch). Same runner, same reporting, so the two halves
+// can't drift apart.
+const BACKEND_MODE = process.argv.includes("--backend");
+const suite = BACKEND_MODE ? backend : pure;
+const label = BACKEND_MODE ? "DB-backed" : "pure";
+
+if (BACKEND_MODE && !process.env.DATABASE_URL) {
+  console.log(
+    "--backend needs DATABASE_URL (dev). Run it through `npm run verify:db`, " +
+      "which loads .env.local, and never point it at production."
+  );
+  process.exit(1);
+}
+
 console.log(
-  `Running ${pure.length} pure verify scripts (${backend.length} DB/server-backed ones skipped).\n`
+  BACKEND_MODE
+    ? `Running ${backend.length} DB-backed verify scripts against the dev database.\n`
+    : `Running ${pure.length} pure verify scripts (${backend.length} DB/server-backed ones skipped).\n`
 );
 
 // DATABASE_URL is cleared rather than merely absent: a developer running this
 // locally has one in .env.local, and a script that quietly depends on the DB
 // while dodging the regex above must fail HERE, not mysteriously in CI.
-const env = { ...process.env, DATABASE_URL: "" };
+const env = BACKEND_MODE ? { ...process.env } : { ...process.env, DATABASE_URL: "" };
 
 // Spawn tsx's own entry with this node, rather than shelling out to `npx tsx`
 // once per script. npx re-resolves the package on every single call, which on
@@ -70,7 +94,7 @@ const env = { ...process.env, DATABASE_URL: "" };
 const TSX = createRequire(import.meta.url).resolve("tsx/cli");
 
 const failed = [];
-for (const f of pure) {
+for (const f of suite) {
   const res = spawnSync(process.execPath, [TSX, join(DIR, f)], {
     encoding: "utf8",
     env,
@@ -90,8 +114,8 @@ if (failed.length) {
     const relevant = lines.filter((l) => /^FAIL|FAILURE|Error|error/.test(l));
     console.log((relevant.length ? relevant : lines.slice(-25)).join("\n"));
   }
-  console.log(`\n${failed.length} of ${pure.length} verify scripts FAILED.`);
+  console.log(`\n${failed.length} of ${suite.length} ${label} verify scripts FAILED.`);
   process.exit(1);
 }
 
-console.log(`\nAll ${pure.length} pure verify scripts passed.`);
+console.log(`\nAll ${suite.length} ${label} verify scripts passed.`);

@@ -82,7 +82,13 @@ tmp/
 .vercel
 .env*
 !.env.example
-.claude/
+# .claude/ is local harness config and stays ignored, EXCEPT the one shared skill.
+# /ship encodes the merge process both builders use, so it belongs in the repo: it
+# went missing on one machine in September and git could not restore it (ADR-269).
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/ship/
 ty-docs/
 
 # Prod-data backups written by one-shot migration scripts (ADR-144 etc.)

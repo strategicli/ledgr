@@ -31,6 +31,287 @@ stack (Next.js/Vercel, Neon, Drizzle, Clerk, R2), DB-canonical one-way export, e
 
 ---
 
+## Index
+
+All 268 entries in order. A *(superseded)* or *(reversed)* tag means a later entry replaced it;
+the original stays, because this log never rewrites history.
+
+<details>
+<summary>Expand the full list</summary>
+
+- [ADR-001](#adr-001-supporting-docs-split-into-five-files) Supporting docs split into five files
+- [ADR-002](#adr-002-repo-scaffold-choices) Repo scaffold choices
+- [ADR-003](#adr-003-schema-implementation-judgment-calls) Schema implementation judgment calls
+- [ADR-004](#adr-004-machine-api-tokens-as-hashed-env-entries-no-db-table) Machine API tokens as hashed env entries, no DB table
+- [ADR-005](#adr-005-trashrestore-semantics-purge-cron-auth-and-a-dev-only-ts-runner) Trash/restore semantics, purge-cron auth, and a dev-only TS runner
+- [ADR-006](#adr-006-editor-slice-judgment-calls-serializer-storage-mentions-dev-auth-stand-in) Editor slice judgment calls (serializer, storage, mentions, dev auth stand-in)
+- [ADR-007](#adr-007-item-canvas-via-intercepting-routes-hardcoded-field-zone-table) Item canvas via intercepting routes; hardcoded field-zone table
+- [ADR-008](#adr-008-today-is-computed-against-an-explicit-app-timezone-due-dates-and-meeting-times-use-different-day-boundaries) "Today" is computed against an explicit app timezone; due dates and meeting times use different day boundaries
+- [ADR-009](#adr-009-navigation-shell-as-a-hardcoded-slot-table-desktop-bar-vs-sidebar-resolved-by-a-live-toggle) Navigation shell as a hardcoded slot table; desktop bar-vs-sidebar resolved by a live toggle
+- [ADR-010](#adr-010-inbox-membership-is-an-explicit-boolean-column-set-on-arrival-cleared-only-by-deliberate-triage) Inbox membership is an explicit boolean column, set on arrival, cleared only by deliberate triage
+- [ADR-011](#adr-011-per-type-lists-ride-a-viewfilter-shape-a-views-row-can-store-the-url-carries-the-filter) Per-type lists ride a ViewFilter shape a `views` row can store; the URL carries the filter
+- [ADR-012](#adr-012-search-binds-raw-input-through-websearchtotsquery-snippets-via-tsheadline-over-capped-bodytext-the-date-filter-is-updatedat) Search binds raw input through `websearch_to_tsquery`; snippets via `ts_headline` over capped `body_text`; the date filter is `updated_at`
+- [ADR-013](#adr-013-quick-capture-is-a-nav-mounted-modal-with-q--ctrlk-shortcuts-captures-always-arrive-inbox-true) Quick capture is a nav-mounted modal with `q` / `Ctrl+K` shortcuts; captures always arrive `inbox: true`
+- [ADR-014](#adr-014-the-fts-document-covers-title-body-url-kind-and-property-values--weighted-always-on-no-toggle) The FTS document covers title, body, url, kind, and property values — weighted, always on, no toggle
+- [ADR-015](#adr-015-relations-write-path--un-relate-hits-the-pair-in-both-directions-mention-edges-belong-to-the-body-relating-over-a-suggested-edge-confirms-it) Relations write path — un-relate hits the pair in both directions; mention edges belong to the body; relating over a suggested edge confirms it
+- [ADR-016](#adr-016-pwa-shell--hand-rolled-conservative-service-worker-static-offline-page-get-share-target-stand-in-auth-stays-dev-only) PWA shell — hand-rolled conservative service worker; static offline page; GET share target; stand-in auth stays dev-only
+- [ADR-017](#adr-017-onedrive-export--app-only-filesreadwriteall-exporttarget-interface-one-updatedatexportedat-comparison-drives-everything) OneDrive export — app-only Files.ReadWrite.All; ExportTarget interface; one updated_at>exported_at comparison drives everything
+- [ADR-018](#adr-018-baked-in-fields-stay-core-to-their-type--status-due-date-urgency-and-subtasks-are-task-only-in-the-ui-the-columns-stay) Baked-in fields stay core to their type — status, due date, urgency, and subtasks are task-only in the UI; the columns stay
+- [ADR-019](#adr-019-pulpit-ready--one-self-contained-print-render-serves-the-pin-the-offline-copy-and-the-pdf-pins-verify-by-cache-round-trip) Pulpit Ready — one self-contained print render serves the pin, the offline copy, and the PDF; pins verify by cache round-trip
+- [ADR-020](#adr-020-observability--one-shared-json-line-logger-errorlog-over-sentry-debug-mode-stays-an-env-toggle) Observability — one shared JSON-line logger, error_log over Sentry, debug mode stays an env toggle
+- [ADR-021](#adr-021-weekly-backup-runs-in-github-actions-dumps-are-role-portable-artifacts-now-onedrive-when-the-registration-exists-restore-proven-in-a-throwaway-container) Weekly backup runs in GitHub Actions; dumps are role-portable; artifacts now, OneDrive when the registration exists; restore proven in a throwaway container
+- [ADR-022](#adr-022-microsoft-graph-auth--unattended-jobs-are-app-only-on-one-registration-delegated-for-calendar-is-the-existing-clerk-sign-in-the-canary-is-the-token-grant) Microsoft Graph auth — unattended jobs are app-only on one registration; "delegated for calendar" is the existing Clerk sign-in; the canary is the token grant
+- [ADR-023](#adr-023-calendar-sync--calendarview-per-occurrence-meetings-full-window-poll-calendar-arrivals-skip-the-inbox-cancel-flags-never-deletes) Calendar sync — calendarView per-occurrence meetings; full-window poll; calendar arrivals skip the Inbox; cancel flags, never deletes
+- [ADR-024](#adr-024-matchers--fixed-kind-precedence-with-fuzzy-as-last-resort-engine-made-edges-suggested-by-default-matchers-run-on-meeting-create-only) Matchers — fixed kind precedence with fuzzy as last resort; engine-made edges suggested by default; matchers run on meeting create only
+- [ADR-025](#adr-025-meeting-prep-is-a-live-canvas-panel-not-body-seeded-action-item-promotion-flows-the-task-back-into-prep) Meeting prep is a live canvas panel, not body-seeded; action-item promotion flows the task back into prep
+- [ADR-026](#adr-026-todoist-sync--batched-engine-behind-a-client-interface-three-way-due-reconcile-webhook-triggers-an-idempotent-full-sync) Todoist sync — batched engine behind a client interface; three-way due reconcile; webhook triggers an idempotent full sync
+- [ADR-027](#adr-027-email-in--messagesdelta-over-a-mailsource-html-reduced-to-text-paragraph-blocknote-move-out--properties-dedup-storage-gains-a-server-side-put) Email-in — messages/delta over a MailSource; HTML reduced to text-paragraph BlockNote; move-out + properties dedup; storage gains a server-side put
+- [ADR-028](#adr-028-tool-language-standardizes-to-generic-product-terms-pulpit-ready--save-offline-the-no-saturday-deploy-rule-applies-only-once-ledgr-is-in-real-sunday-use) Tool language standardizes to generic product terms; "Pulpit Ready" → "Save Offline"; the no-Saturday-deploy rule applies only once Ledgr is in real Sunday use
+- [ADR-029](#adr-029-view-builder--stored-view-definitions-with-five-layout-renderers-the-filtersortgrouping-jsonb-shapes-are-the-same-ones-the-list-pages-already-use) View builder — stored View Definitions with five layout renderers; the filter/sort/grouping jsonb shapes are the same ones the list pages already use
+- [ADR-030](#adr-030-embedded-query-views-are-an-interactive-panel-on-an-entity-remove--un-relate-create-inherits-the-relation-check-off-edits-in-place) Embedded query views are an interactive panel on an entity; remove = un-relate, create inherits the relation, check-off edits in place
+- [ADR-031](#adr-031-widget-dashboard--viewsdashboardorder-is-the-whole-config-nullable--pinned--position-native-drag-reorder-no-dnd-library) Widget dashboard — `views.dashboard_order` is the whole config (nullable = pinned + position); native drag-reorder, no DnD library
+- [ADR-032](#adr-032-a-views-date-filter-names-which-date-it-applies-to-default-due-date-or-a-meetings-when-and-adds-a-within-n-days-range) A view's date filter names which date it applies to (default due date, or a meeting's "When"), and adds a within-N-days range
+- [ADR-033](#adr-033-the-builder-only-offers-fields-a-views-type-actually-has-changing-the-type-reconciles-every-by-which-field-pick) The builder only offers fields a view's type actually has; changing the type reconciles every "by which field" pick
+- [ADR-034](#adr-034-push-notifications--web-push-hand-rolled-over-nodecrypto-behind-a-pushsender-daily-agenda-on-vercel-cron-hourly-prep-on-github-actions) Push notifications — Web Push hand-rolled over node:crypto behind a PushSender; daily agenda on Vercel cron, hourly prep on GitHub Actions
+- [ADR-035](#adr-035-public-share-links--unguessable-token--the-shared-print-render-revocation-is-a-stamp-the-print-document-shell-is-now-shared) Public share links — unguessable token → the shared print render; revocation is a stamp; the print document shell is now shared
+- [ADR-036](#adr-036-provider-interface-discipline-confirmed-for-auth--scheduler-enforced-by-a-static-seam-guard) Provider-interface discipline confirmed for auth + scheduler; enforced by a static seam guard
+- [ADR-037](#adr-037-the-markdown-epoch--markdown-canonical-body-bespoke-first-types-per-type-canvas-two-builder-model) The Markdown epoch — Markdown-canonical body, bespoke-first types, per-type canvas, two-builder model
+- [ADR-038](#adr-038-markdown-native-editor--adopt-tiptap-with-the-first-party-tiptapmarkdown-extension) Markdown-native editor — adopt Tiptap with the first-party `@tiptap/markdown` extension
+- [ADR-039](#adr-039-alphabuild-phase-posture--no-production-data-so-the-markdown-cutover-goes-direct-m3m4-collapse-not-staged) Alpha/build-phase posture — no production data, so the markdown cutover goes direct (M3+M4 collapse), not staged
+- [ADR-040](#adr-040-m3-executed--markdown-is-the-only-body-path-markdown-it-for-server-render-dev-data-wiped-not-migrated-blocknote-fully-removed) M3 executed — Markdown is the only body path; markdown-it for server render; dev data wiped, not migrated; BlockNote fully removed
+- [ADR-041](#adr-041-m5--the-per-type-canvas-seam-a-type-may-declare-its-own-canvas-shellcanvas-split-default--markdown) M5 — the per-type canvas seam (a type may declare its own canvas; shell/canvas split, default = markdown)
+- [ADR-042](#adr-042-the-foundational-build-delivers-the-module-capability-not-the-modules-themselves) The foundational build delivers the module *capability*, not the modules themselves
+- [ADR-043](#adr-043-m6--the-module-registration-boundary-a-module-contributes-type-canvas-exporters-integration-core-is-the-first-module-phase-m-complete) M6 — the module-registration boundary (a module contributes `{type, canvas, exporters, integration}`; core is the first module). Phase M complete.
+- [ADR-044](#adr-044-slice-33--the-build-surface--the-custom-type--property-builder-phase-3-tier-1) Slice 33 — the Build surface + the custom type & property builder (Phase 3, Tier 1)
+- [ADR-045](#adr-045-slice-34--per-type-item-templates-phase-3-tier-2a) Slice 34 — per-type item templates (Phase 3, Tier 2a)
+- [ADR-046](#adr-046-slice-35--workflow--wiki-structure-templates--board-grouping-by-a-custom-property-phase-3-tier-2b) Slice 35 — workflow & wiki structure templates + board grouping by a custom property (Phase 3, Tier 2b)
+- [ADR-047](#adr-047-slice-36--the-mcp-server-phase-3-tier-3-a-hand-rolled-streamable-http-endpoint-over-the-existing-item-libs) Slice 36 — the MCP server (Phase 3, Tier 3): a hand-rolled Streamable-HTTP endpoint over the existing item libs
+- [ADR-048](#adr-048-papers-module--tabbed-canvas-scaffold-in-properties-docx-via-route) Papers module — tabbed canvas, scaffold-in-properties, docx-via-route
+- [ADR-049](#adr-049-per-view-configurable-columns) Per-view configurable columns
+- [ADR-050](#adr-050-templates-can-preset-relations-peopleattendees-not-just-properties) Templates can preset relations (people/attendees), not just properties
+- [ADR-051](#adr-051-bespoke-tool-catalog--attach-a-module-capability-to-a-user-named-type-tylers-spike-promoted) Bespoke-tool catalog — attach a module capability to a user-named type (Tyler's spike, promoted)
+- [ADR-052](#adr-052-slice-37--the-weekly-health-check-phase-3-tier-3b-a-deterministic-scheduled-self-monitor) Slice 37 — the weekly health check (Phase 3, Tier 3b): a deterministic scheduled self-monitor
+- [ADR-053](#adr-053-per-owner-ui-settings-store--highlight-color-theming-v5-ui-batch) Per-owner UI settings store + highlight-color theming (v5 UI batch)
+- [ADR-054](#adr-054-changelog--shared-collab-notes--github-as-the-cross-deploy-shared-medium) Changelog + shared collab notes — GitHub as the cross-deploy shared medium
+- [ADR-055](#adr-055-retire-the-entity-meta-type--bespoke-person-drop-the-kind-column-universalize-the-interactive-related-list) Retire the `entity` meta-type → bespoke `person`; drop the `kind` column; universalize the interactive related list
+- [ADR-056](#adr-056-configurable-nav-slots--the-middle-nav-is-owner-config-not-a-hardcoded-table) Configurable nav slots — the middle nav is owner config, not a hardcoded table
+- [ADR-057](#adr-057-in-context-delete-confirmation-as-the-standard-type-delete-can-take-its-items) In-context delete confirmation as the standard; type-delete can take its items *(superseded)*
+- [ADR-058](#adr-058-types-are-soft-deleted-to-trash-recoverable-not-hard-deleted--supersedes-adr-057s-hard-delete) Types are soft-deleted to Trash (recoverable), not hard-deleted — supersedes ADR-057's hard-delete
+- [ADR-059](#adr-059-hide-a-type-from-everyday-surfaces-turn-off-built-ins-you-dont-use) Hide a type from everyday surfaces (turn off built-ins you don't use)
+- [ADR-060](#adr-060-pre-built-biblepassage-relational-database--verse-is-the-atomic-unit) Pre-built Bible/passage relational database — verse is the atomic unit
+- [ADR-061](#adr-061-notes-are-a-module-attachable-to-every-type-relations-are-the-primary-organizing-principle) Notes are a module attachable to every type; relations are the primary organizing principle
+- [ADR-062](#adr-062-shareprint-renders-the-canvas-a-per-property-include-in-share-flag-decides-whats-exposed) Share/Print renders the canvas; a per-property "include in share" flag decides what's exposed
+- [ADR-063](#adr-063-build-mode-gets-a-fixed-left-sidebar-workbuild-is-two-modes-one-rule-universal-command-palette) Build mode gets a fixed left sidebar; Work/Build is "two modes, one rule"; universal command palette
+- [ADR-064](#adr-064-customizable-dashboards--multiple-named-dashboards-widgets-as-jsonb-dashboard-level-focus) Customizable dashboards — multiple named dashboards, widgets as jsonb, dashboard-level focus
+- [ADR-065](#adr-065-customizable-dashboards--full-build-grid-widgets-focus-nav-hometoday-single-dashboard-model-retired) Customizable dashboards — full build (grid, widgets, focus, nav, Home/Today); single-dashboard model retired
+- [ADR-066](#adr-066-external-http-api--apimachineitems-read-out--write-in-under-a-new-api-token-scope) External HTTP API — `/api/machine/items` (read out / write in) under a new `api` token scope
+- [ADR-067](#adr-067-typed-relation-properties-un-deferred-the-unmarked-placeholder-type-and-one-create-on-miss-rule) Typed relation properties (un-deferred), the `unmarked` placeholder type, and one create-on-miss rule
+- [ADR-068](#adr-068-inline-editing-on-the-item-view--related-item-titles-and-labels-only-structure-fixes-punch-through-the-line) Inline editing on the item view — related-item titles, and labels-only structure fixes ("punch through the line")
+- [ADR-069](#adr-069-arrangeable-field-level-per-type-item-canvas-layout-feature-b) Arrangeable, field-level, per-type item canvas layout (Feature B)
+- [ADR-070](#adr-070-correct-the-person-types-issystem-flag-drift-fix) Correct the `person` type's `is_system` flag (drift fix)
+- [ADR-071](#adr-071-mcp-tool-additions--propertypatch-relations-views-templates) MCP tool additions — propertyPatch, relations, views, templates
+- [ADR-072](#adr-072-view--capture-papercuts--catch-all-capture-default-list-filter-by-property-kanban-drag-and-drop) View + capture papercuts — catch-all capture default, list-filter by property, kanban drag-and-drop
+- [ADR-073](#adr-073-tasks-go-fully-native--retire-todoist-as-the-task--notification-engine) Tasks go fully native — retire Todoist as the task + notification engine
+- [ADR-074](#adr-074-microsoft-only-providers-for-v10--defer-googleicloud-calendar--email-adapters) Microsoft-only providers for v1.0 — defer Google/iCloud calendar + email adapters
+- [ADR-075](#adr-075-no-confidential--privacy-tier-for-v10--platform-security-is-sufficient) No confidential / privacy tier for v1.0 — platform security is sufficient
+- [ADR-076](#adr-076-native-task-recurrence--model-c-per-date-completion-log-hand-rolled-rrule-subset-a-first-class-scheduled-column-virtualmaterialized-occurrences-via-one-clone-primitive) Native task recurrence — model (C) per-date completion log, hand-rolled RRULE subset, a first-class `scheduled` column, virtual/materialized occurrences via one clone primitive
+- [ADR-077](#adr-077-native-task-scheduling--hand-rolled-nl-dates-reschedule-shortcuts-a-deterministic-overdue-auto-roll-future-scheduled--deferred) Native task scheduling — hand-rolled NL dates, reschedule shortcuts, a deterministic overdue auto-roll, future-scheduled = deferred
+- [ADR-078](#adr-078-daily-focus-layer--a-day-stamped-marker--a-todays-focus-zone-soft-cap-no-carryover) Daily focus layer — a day-stamped marker + a "Today's Focus" zone, soft cap, no carryover
+- [ADR-079](#adr-079-reminders-without-todoist--a-published-ics-task-feed-hand-rolled--the-existing-web-push) Reminders without Todoist — a published ICS task feed (hand-rolled) + the existing web push
+- [ADR-080](#adr-080-offline-capture--a-localstorage-outbox-flushed-on-reconnect) Offline capture — a localStorage outbox flushed on reconnect
+- [ADR-081](#adr-081-the-tasks-provider-seam--native-is-the-default-adapter-todoist-optional-retire-todoist-on-brandons-instance) The `tasks` provider seam — native is the default adapter, Todoist optional; retire Todoist on Brandon's instance
+- [ADR-082](#adr-082-configurable-category-backed-statuses--per-type-status-schemas--a-done-checkbox-that-keys-off-a-fixed-category) Configurable, category-backed statuses — per-type status schemas + a done-checkbox that keys off a fixed category
+- [ADR-083](#adr-083-recurrence-completions-calendar--the-inverted-occurrence-edit-carve-out) Recurrence completions calendar + the inverted occurrence edit (carve-out)
+- [ADR-084](#adr-084-natural-language-quick-add--parse-daterecurrenceurgency-out-of-a-task-title) Natural-language quick-add — parse date/recurrence/urgency out of a task title
+- [ADR-085](#adr-085-relative-subtask-scheduling--a-stored-offset-from-the-parents-scheduled-date-set-by-calendar-pick) Relative subtask scheduling — a stored offset from the parent's scheduled date, set by calendar-pick
+- [ADR-086](#adr-086-tasks-polish-s6-loose-ends--ics-exdate-a-reminder-picker-a-focus-star-on-the-canvas-a-planned-marker-and-the-top-3-focus-widget) Tasks Polish S6 loose ends — ICS EXDATE, a reminder picker, a focus star on the canvas, a "planned" marker, and the Top-3 focus widget
+- [ADR-087](#adr-087-meeting-recording-v1a--the-transcript-child-type-the-transcript-panel--awaiting-minutes-view-and-the-principle-3-reading-for-a-claude-over-mcp-minutes-automation) Meeting recording v1a — the `transcript` child type, the Transcript panel + awaiting-minutes view, and the Principle-3 reading for a Claude-over-MCP minutes automation
+- [ADR-088](#adr-088-the-transcription-provider-seam--an-assemblyai-adapter-meeting-recording-v1b) The `transcription` provider seam + an AssemblyAI adapter (meeting recording v1b)
+- [ADR-089](#adr-089-audio-upload--auto-transcribe-pipeline--the-audio-retention-columnpurge-meeting-recording-v1b) Audio upload → auto-transcribe pipeline + the audio-retention column/purge (meeting recording v1b)
+- [ADR-090](#adr-090-block-anchors-obsidian-style-id--action-item--task-promotion-from-the-canvas) Block anchors (Obsidian-style `^id`) + action-item → task promotion from the canvas
+- [ADR-091](#adr-091-scheduled-time--duration-on-tasks-time-blocking-stage-a-timed-ics-blocks) Scheduled time + duration on tasks (time-blocking Stage A), timed ICS blocks
+- [ADR-092](#adr-092-email-in-attachments--link-dont-copy--r2-server-put-content-length-fix) Email-in attachments — link, don't copy (+ R2 server-PUT Content-Length fix)
+- [ADR-093](#adr-093-templates-redesign--templates-become-prototype-items-clone-to-apply-with-children-dynamic-variables-and-apply-to-existing) Templates redesign — templates become prototype items (clone-to-apply), with children, dynamic variables, and apply-to-existing
+- [ADR-094](#adr-094-calendar-events--rename-meetingevent-pull-on-add-calendar-list-tags-as-an-ordinary-type-and-a-configurable-event-task-pull-rule) Calendar events — rename meeting→event, pull-on-add calendar list, tags as an ordinary type, and a configurable event task-pull rule
+- [ADR-095](#adr-095-canvas-tabs--split-one-items-body-into-named-tabs-sections-of-the-same-markdown) Canvas tabs — split one item's body into named tabs (sections of the same markdown)
+- [ADR-096](#adr-096-task-priority-p1p6-replaces-the-4-level-urgency-enum) Task priority P1–P6 (replaces the 4-level `urgency` enum)
+- [ADR-097](#adr-097-item-lock-toggle--the-canvas--actions-menu) Item lock toggle + the canvas "⋯" actions menu
+- [ADR-098](#adr-098-favorites--a-star-toggle--a-nav-flyout-for-instant-access-to-key-items) Favorites — a star toggle + a nav flyout for instant access to key items
+- [ADR-099](#adr-099-recurrence-engine--monthly-ordinal-weekdays--day-of-month-amends-adr-076s-rrule-subset) Recurrence engine — monthly ordinal weekdays + day-of-month (amends ADR-076's RRULE subset)
+- [ADR-100](#adr-100-web-clipper--bookmarklet--share-target-capture-of-readable-page-content-no-images) Web clipper — bookmarklet + share-target capture of readable page content (no images)
+- [ADR-101](#adr-101-repo-moved-to-the-strategicli-github-org-and-made-public-to-keep-vercel-deploys-free) Repo moved to the `strategicli` GitHub org and made public (to keep Vercel deploys free)
+- [ADR-102](#adr-102-ai-shapes-the-workspace-over-mcp--config-write-tools--an-orientation-resource) AI shapes the workspace over MCP — config-write tools + an orientation resource
+- [ADR-103](#adr-103-weekly-db-backup-goes-to-onedrive-only-not-a-public-repo-github-artifact) Weekly DB backup goes to OneDrive only, not a public-repo GitHub artifact
+- [ADR-104](#adr-104-viewing-an-item-must-not-bump-its-edit-date-a-body-patch-is-a-no-op-when-the-text-is-unchanged) Viewing an item must not bump its edit date (a body PATCH is a no-op when the text is unchanged)
+- [ADR-105](#adr-105-per-type-list-tabs-list-lenses--default-sort-tabs--customizable-with-widgetview-tabs) Per-type list tabs ("list lenses") — default sort tabs + customizable, with widget/view tabs
+- [ADR-106](#adr-106-per-type-status-display-mode--none--done-checkbox--custom-statuses-presentation-over-the-adr-082-category-plumbing) Per-type status DISPLAY MODE — none / done-checkbox / custom-statuses (presentation over the ADR-082 category plumbing)
+- [ADR-107](#adr-107-interface-density-a-whole-ui-scale-knob-per-surface-driven-from-the-root-font-size) Interface density, a whole-UI scale knob (per surface), driven from the root font-size
+- [ADR-108](#adr-108-task-canvas-right-rail--compact-rows--a-single-schedule-popover-todoist-style-and-a-reusable-popover-primitive) Task canvas right rail — compact rows + a single Schedule popover (Todoist-style), and a reusable `Popover` primitive
+- [ADR-109](#adr-109-tasks-default-to-the-effective-plan-date-scheduled--due-the-task-canvas-regains-its-arrangeable-grid) Tasks default to the effective plan date (scheduled ?? due); the task canvas regains its arrangeable grid
+- [ADR-110](#adr-110-note-date-taken--an-editable-itemsnotedate-column) Note "date taken" — an editable `items.note_date` column
+- [ADR-111](#adr-111-dashboard-canvas--full-bleed-backgrounds-per-widget-appearance-any-item-embed-widgets-and-tabsection-containers) Dashboard canvas — full-bleed backgrounds, per-widget appearance, any-item embed widgets, and tab/section containers
+- [ADR-112](#adr-112-machine-api-write-endpoints-for-relations--attachments-notion-migration-load) Machine-API write endpoints for relations + attachments (Notion migration load)
+- [ADR-113](#adr-113-machine-api-item-update-patch-endpoint-notion-migration-load) Machine-API item-update (PATCH) endpoint (Notion migration load)
+- [ADR-114](#adr-114-floating-table-of-contents-per-type-stored-in-userssettings) Floating table of contents (per-type, stored in users.settings)
+- [ADR-115](#adr-115-flip-to-v10-production-alpha-posture-ends-adr-039-reversed) Flip to v1.0 production (alpha posture ends, ADR-039 reversed)
+- [ADR-116](#adr-116-list-paging-past-the-200-row-cap-load-more-true-count-window-growth) List paging past the 200-row cap (Load-more, true count, window growth)
+- [ADR-117](#adr-117-oauth-shim-for-the-mcp-server-connect-ledgrs-mcp-from-claudeai-and-the-claude-mobile-apps) OAuth shim for the MCP server (connect Ledgr's MCP from claude.ai and the Claude mobile apps)
+- [ADR-118](#adr-118-multi-select--bulk-item-operations-a-reusable-selection-layer-on-every-list) Multi-select + bulk item operations (a reusable selection layer on every list)
+- [ADR-119](#adr-119-production-deploys-reframed-to-be-deliberate-no-fixed-weekendsaturday-no-deploy-window-supersedes-adr-028s-rule-amends-adr-115-decision-3) Production deploys reframed to "be deliberate," no fixed weekend/Saturday no-deploy window (supersedes ADR-028's rule; amends ADR-115 Decision 3)
+- [ADR-120](#adr-120-dashboard-canvas-built-adr-111-dc1dc4--a-new-nested-list-parent--children-widget) Dashboard canvas built (ADR-111 DC1–DC4) + a new nested-list (parent + children) widget
+- [ADR-121](#adr-121-multi-select-is-opt-in-via-a-per-list-select-toggle-refines-adr-118s-always-reserved-checkbox) Multi-select is opt-in via a per-list "Select" toggle (refines ADR-118's always-reserved checkbox)
+- [ADR-122](#adr-122-web-clipper-setup-relocated-to-user-settings-discoverability-over-rebuild) Web-clipper setup relocated to User Settings (discoverability over rebuild)
+- [ADR-123](#adr-123-auto-match-events-to-people-via-a-guessing-layer--rules-routed-through-templates) Auto-match events to people via a guessing layer + rules routed through templates
+- [ADR-124](#adr-124-standardized-item-canvas-sections-canvassection--3-skins-and-relations--related-merged-into-properties--linked-here) Standardized item-canvas sections (CanvasSection + 3 skins), and "Relations + Related" merged into "Properties" + "Linked here"
+- [ADR-125](#adr-125-body-modes-rich--source--preview--a-large-body-size-gate) Body modes (rich / source / preview) + a large-body size gate
+- [ADR-126](#adr-126-page-large-bodies-on-the-mcp-getitem-read-path) Page large bodies on the MCP get_item read path
+- [ADR-127](#adr-127-discover--deterministic-related-item-suggestions-a-guessing-layer-over-the-relations-graph) Discover — deterministic related-item suggestions (a guessing layer over the relations graph)
+- [ADR-128](#adr-128-section-style-honored-on-grid-item-views--visible-save-feedback-on-the-settings-form) Section style honored on grid item views + visible save feedback on the settings form
+- [ADR-129](#adr-129-notification-center--persisted-notifications-over-the-existing-web-push-transport) Notification Center — persisted notifications over the existing Web Push transport
+- [ADR-130](#adr-130-pause-the-notification-center-detach-ui--crons-keep-everything-recoverable) Pause the notification center (detach UI + crons; keep everything recoverable)
+- [ADR-131](#adr-131-planner--a-viewsdisplay-jsonb-for-the-interactive-drag-to-schedule-calendar) Planner — a `views.display` jsonb for the interactive drag-to-schedule calendar
+- [ADR-132](#adr-132-type-cue-on-the-item-view--move-an-item-between-types) Type cue on the item view + move an item between types
+- [ADR-133](#adr-133-planner--read-only-calendar-overlay-plan-tasks-around-whats-already-scheduled) Planner — read-only calendar overlay (plan tasks around what's already scheduled)
+- [ADR-134](#adr-134-cross-device-edit-guard--optimistic-body-conflict-detection--refresh-on-focus) Cross-device edit guard — optimistic body-conflict detection + refresh-on-focus
+- [ADR-135](#adr-135-multi-select-on-related-panels--meeting-open-tasks-on-the-lens-system) Multi-select on related panels + meeting "Open tasks" on the lens system
+- [ADR-136](#adr-136-calendar-feed--event-timeline-as-bespoke-lenses-unify-events-onto-listevent) Calendar feed + event timeline as bespoke lenses; unify events onto `/list/event`
+- [ADR-137](#adr-137-ai-memory--a-memory-type--always-on-stumps--remember-read-over-mcp-behind-a-setting) AI Memory — a `memory` type + always-on "stumps" + `remember`, read over MCP, behind a setting
+- [ADR-138](#adr-138-project-type--widget-composed-homepages--pj1-containment--activity-log) Project Type & widget-composed homepages — PJ1: containment + activity log
+- [ADR-139](#adr-139-live-item-tokens--item-in-the-canonical-body-resolved-at-render-time) Live item tokens — `{{item.*}}` in the canonical body, resolved at render time
+- [ADR-140](#adr-140--mention-linking-in-quick-capture-and-the-task-add-card) `@`-mention linking in Quick Capture and the task-add card
+- [ADR-141](#adr-141-the-token-layer--a-semantic-surfaceinkline-vocabulary--a-light-mode-ready-neutral-ramp) The token layer — a semantic surface/ink/line vocabulary + a light-mode-ready neutral ramp
+- [ADR-142](#adr-142-the-mobile-interaction-standard--shared-rowmenu--a-global-undo-toast-row-actions-extended-by-swiperow--the-launcher) The mobile interaction standard — shared RowMenu + a global undo toast (row actions), extended by SwipeRow + the launcher
+- [ADR-143](#adr-143-the-mobile-bar-and-the-pull-up-launcher-are-one-surface-single-panel-drawer) The mobile bar and the pull-up launcher are ONE surface (single-panel drawer)
+- [ADR-144](#adr-144-one-people-model-on-events--role-unification-first-class-groups-absence-as-an-edge) One People model on events — role unification, first-class groups, absence as an edge
+- [ADR-145](#adr-145-collapsible-toggle-block--collapsible-headings-in-the-markdown-editor) Collapsible toggle block + collapsible headings in the markdown editor
+- [ADR-146](#adr-146-the-desk--a-desktop-only-multi-panel-workspace) The Desk — a desktop-only multi-panel workspace
+- [ADR-147](#adr-147-the-desk-round-two--send-menu-clarity-canvas-sections-as-panel-sub-tabs-in-panel-details-and-two-fixes) The Desk, round two — send-menu clarity, canvas sections as panel sub-tabs, in-panel details, and two fixes
+- [ADR-148](#adr-148-linktoline--an-mcp-tool-for-deep-links-to-a-body-line) `link_to_line` — an MCP tool for deep links to a body line
+- [ADR-149](#adr-149-passage-hub-lighter--a-reference-dimension-not-31k-verse-items-amends-adr-060) Passage hub, lighter — a reference dimension, not 31K verse items (amends ADR-060)
+- [ADR-150](#adr-150-attachfile--an-mcp-tool-to-add-an-image-or-file-to-an-item) `attach_file` — an MCP tool to add an image or file to an item
+- [ADR-151](#adr-151-timezone-is-a-per-owner-setting-resolved-at-request-time-replacing-the-build-time-env-constant) Timezone is a per-owner setting resolved at request time (replacing the build-time env constant)
+- [ADR-152](#adr-152-service-worker-v7--restore-the-missing-return-in-the-fetch-handlers-navigate-branch-fixes-double-respondwith) Service worker v7 — restore the missing `return` in the fetch handler's navigate branch (fixes double `respondWith`)
+- [ADR-153](#adr-153-live-time-tokens-now--the--picker-on-the-title-extends-adr-139) Live time tokens `{{now.*}}` + the `{{` picker on the title (extends ADR-139)
+- [ADR-154](#adr-154-the--picker-distinguishes-bakes-on-apply-from-live-preview-is-a-first-class-body-mode-slice-7) The `{{` picker distinguishes "bakes on apply" from "live"; Preview is a first-class body mode (slice 7)
+- [ADR-156](#adr-156-search-ranking-weights-recency-with-a-power-law-multiplier-strong-for-quick-mild-for-full-search) Search ranking weights recency with a power-law multiplier (strong for @/quick, mild for full search)
+- [ADR-157](#adr-157-bespoke-first-item-canvases--a-shared-longform-document-canvas-for-prose-types-note-link-journal) Bespoke-first item canvases — a shared longform document canvas for prose types (note, link, journal, …)
+- [ADR-158](#adr-158-bespoke-eventmeeting-canvas--a-two-pane-notes--sticky-collapsible-meeting-rail) Bespoke event/meeting canvas — a two-pane notes + sticky, collapsible meeting rail
+- [ADR-159](#adr-159-editor-loads-the-body-via-setcontent-not-the-constructor-content-path-fixes-the-standalone-inline-image-contentmatchat-crash) Editor loads the body via `setContent`, not the constructor `content` path (fixes the standalone-inline-image `contentMatchAt` crash)
+- [ADR-160](#adr-160-browser-minted-api-tokens-mcp--web-clipper-per-purpose-signing-secrets) Browser-minted API tokens (MCP + web clipper), per-purpose signing secrets
+- [ADR-161](#adr-161-editor-color-palette-retuned-for-the-dark-canvas--bright-text-colors-rgba-highlight-washes-underline-inherits-color) Editor color palette retuned for the dark canvas — bright text colors, rgba highlight washes, underline inherits color
+- [ADR-162](#adr-162-live-editing-context--a-notion-style-ai-note-editing-loop-activecontext-row--getactivecontextedititembody-mcp-tools) Live editing context — a Notion-style AI note-editing loop (active_context row + get_active_context/edit_item_body MCP tools)
+- [ADR-163](#adr-163-sort-views-and-list-tab-lenses-by-task-priority-urgency-added-to-the-sortlens-field-set) Sort views and list-tab lenses by task priority (urgency added to the sort/lens field set)
+- [ADR-164](#adr-164-filtersort-a-view-by-any-property-plus-an-andor-rules-layer-filterwhere-property-sort) Filter/sort a view by ANY property, plus an AND/OR rules layer (`filter.where`, property sort)
+- [ADR-165](#adr-165-desk-shows-every-panel-as-a-live-editor-source--followers-superseding-the-one-mounted-editor-rule) Desk shows every panel as a live editor (source + followers), superseding the one-mounted-editor rule
+- [ADR-166](#adr-166-the-planner-becomes-an-app-wide-scheduling-surface--a-placement-layer-a-range-rule-endat--withend-date-props-and-timeline-as-a-third-mode) The Planner becomes an app-wide scheduling surface — a placement layer, a range rule (`end_at` + `withEnd` date props), and Timeline as a third mode
+- [ADR-167](#adr-167-the-table-of-contents-is-container-relative-and-can-be-pinned-open-as-a-per-item-sidebar-extends-adr-114) The table of contents is container-relative and can be pinned open as a per-item sidebar (extends ADR-114)
+- [ADR-168](#adr-168-the-item-pages-chrome-row-is-sticky-and---item-chrome-h-is-the-one-offset-every-sticky-layer-in-the-canvas-stacks-under) The item page's chrome row is sticky, and `--item-chrome-h` is the one offset every sticky layer in the canvas stacks under
+- [ADR-169](#adr-169-date-pickers-commit-on-confirm-never-on-the-browsers-first-change) Date pickers commit on confirm, never on the browser's first `change`
+- [ADR-170](#adr-170-comments-on-the-body-are-criticmarkup-in-the-markdown-itself-not-a-side-table) Comments on the body are CriticMarkup in the markdown itself, not a side table
+- [ADR-171](#adr-171-the-machinemcp-contract-carries-all-8-dashboard-widget-kinds-not-4) The machine/MCP contract carries all 8 dashboard widget kinds, not 4
+- [ADR-172](#adr-172-fuzzy-search-is-per-criterion-confidence-scoring-with-dates-that-bend-a-curve-instead-of-drawing-a-line) Fuzzy search is per-criterion confidence scoring, with dates that bend a curve instead of drawing a line
+- [ADR-173](#adr-173-the-comment-card-is-a-popover-in-the-notes-own-coordinate-space-and-the-outline-lists-the-comments) The comment card is a popover in the note's own coordinate space, and the outline lists the comments
+- [ADR-174](#adr-174-a-comment-bridges-lines-by-repeating-its-note-not-by-widening-the-syntax-extends-adr-170) A comment bridges lines by repeating its note, not by widening the syntax (extends ADR-170)
+- [ADR-175](#adr-175-is-a-person-connected-has-one-answer--the-generic-edge-not-a-typed-field) "Is a person connected?" has one answer — the generic edge, not a typed field
+- [ADR-176](#adr-176-a-slide-mark-means-put-this-on-the-screen--its-own-channel-not-a-color) A slide mark means "put this on the screen" — its own channel, not a color
+- [ADR-177](#adr-177-backspace-in-a-list-deletes-the-line-and-an-empty-bullet-is-written-unambiguously) Backspace in a list deletes the line, and an empty bullet is written unambiguously
+- [ADR-178](#adr-178-underline-gets-a-toolbar-button-and-text-finally-renders-outside-the-editor) Underline gets a toolbar button, and `++text++` finally renders outside the editor
+- [ADR-179](#adr-179-a-third-token-purpose--browser-minted-labeled-app-tokens-build--api-tokens) A third token purpose — browser-minted, labeled app tokens (Build → API Tokens)
+- [ADR-180](#adr-180-subtasks-and-recurring-tasks-reach-the-mcp-surface-no-new-machinery) Subtasks and recurring tasks reach the MCP surface (no new machinery)
+- [ADR-181](#adr-181-mcp-shapes-a-project-end-to-end-and-layer-2-finally-has-a-writer) MCP shapes a project end to end, and Layer 2 finally has a writer
+- [ADR-182](#adr-182-one-search-icon-in-the-nav-and-the-owner-picks-what-it-opens) One Search icon in the nav, and the owner picks what it opens
+- [ADR-183](#adr-183-additive-mcp-surface-is-not-core-and-editing-a-repeat-rule-keeps-its-completion-log) Additive MCP surface is not core, and editing a repeat rule keeps its completion log
+- [ADR-184](#adr-184-a-missing-auth-key-fails-closed-and-an-unresolvable-session-says-so) A missing auth key fails closed, and an unresolvable session says so
+- [ADR-185](#adr-185-create-on-miss-asks-what-the-thing-is-instead-of-minting-an-untyped-stub) Create-on-miss asks what the thing is, instead of minting an untyped stub
+- [ADR-186](#adr-186-a-named-layer-scale-and-one-open-floating-panel-at-a-time) A named layer scale, and one open floating panel at a time
+- [ADR-187](#adr-187-optimistic-state-has-to-reach-the-row-not-just-the-control) Optimistic state has to reach the row, not just the control
+- [ADR-188](#adr-188-the-pre-merge-check-and-six-suites-nobody-was-running) The pre-merge check, and six suites nobody was running
+- [ADR-189](#adr-189-a-user-guide-held-once-and-served-three-ways) A user guide, held once and served three ways
+- [ADR-190](#adr-190-the-body-dialect-lists-only-what-is-built-the-four-pandoc-features-were-never-implemented) The body dialect lists only what is built (the four Pandoc features were never implemented)
+- [ADR-191](#adr-191-pwa-share-target-survives-a-cold-clerk-session-via-a-public-post--protected-get-claim-split) PWA share target survives a cold Clerk session via a public POST + protected GET claim split
+- [ADR-192](#adr-192-phone-and-email-property-kinds--declared-intent-over-a-guessed-key) `phone` and `email` property kinds — declared intent over a guessed key
+- [ADR-193](#adr-193-the-offline-fallback-page-is-a-live-directory-of-whats-pinned-derived-from-the-pin-cache-alone) The offline fallback page is a live directory of what's pinned, derived from the pin cache alone
+- [ADR-194](#adr-194-satellite-instances-update-themselves-from-build--updates-gated-on-the-schema-axis) Satellite instances update themselves from Build → Updates, gated on the schema axis
+- [ADR-195](#adr-195-read-aloud-is-a-per-type-toggle-plus-a-menu-entry-using-the-browsers-own-speech-engine) Read-aloud is a per-type toggle plus a menu entry, using the browser's own speech engine
+- [ADR-196](#adr-196-milestones-are-completable--checkbox-linked-task-or-date--and-can-claim-an-explicit-percent-of-the-project-bar) Milestones are completable — checkbox, linked task, or date — and can claim an explicit percent of the project bar
+- [ADR-197](#adr-197-a-project-renders-as-one-markdown-document--a-derived-projection-never-a-stored-copy) A project renders as one markdown document — a derived projection, never a stored copy
+- [ADR-198](#adr-198-the-project-review-timeline--the-everything-history-on-a-center-spine) The project review timeline — the everything-history on a center spine
+- [ADR-199](#adr-199-subtasks-ride-along-with-their-parents-project-the-full-task-list-becomes-a-real-task-surface-project--tag-become-built-in-project-cards-are-configurable-and-render-everywhere) Subtasks ride along with their parent's project; the full task list becomes a real task surface; project + tag become built-in; project cards are configurable and render everywhere
+- [ADR-200](#adr-200-custom-types-as-tools-task-grouping-favorite-highlights-and-the-passive-check-in) Custom types as tools, task grouping, favorite highlights, and the passive check-in
+- [ADR-201](#adr-201-mcp-write-tools-reject-unknown-arguments-instead-of-silently-dropping-them) MCP write tools reject unknown arguments instead of silently dropping them
+- [ADR-202](#adr-202-the-stacked-task-row--description-line-connections-strip-project-chip-click-to-edit-date--and-the-capped-excerpt-carve-out) The stacked task row — description line, connections strip, project chip, click-to-edit date — and the capped excerpt carve-out
+- [ADR-203](#adr-203-one-owner-resolution-per-request--the-vanished-chrome-incident) One owner resolution per request — the vanished-chrome incident
+- [ADR-204](#adr-204-widget-home-is-an-explicit-opt-in-for-custom-types-and-the-tool-card-add-works-for-custom-types) Widget-home is an explicit opt-in for custom types, and the tool-card add works for custom types
+- [ADR-205](#adr-205-the-today-subtask-fold--one-place-per-task-pre-expanded-overdue-never-hides) The Today subtask fold — one place per task, pre-expanded, overdue never hides
+- [ADR-206](#adr-206-local-hubspoke-alongside-cloud-sync-spine-local-runtime-cutover-plan) Local hub/spoke alongside cloud: sync spine, local runtime, cutover plan
+- [ADR-207](#adr-207-mcp-write-tools-accept-body-as-an-alias-for-bodymarkdown-reversing-adr-201s-rejected-alternative) MCP write tools accept `body` as an alias for `bodyMarkdown` (reversing ADR-201's rejected alternative)
+- [ADR-208](#adr-208-the-staleness-refusal--apimachinesync-refuses-a-cursor-that-predates-the-oldest-retained-op) The staleness refusal — /api/machine/sync refuses a cursor that predates the oldest retained op
+- [ADR-209](#adr-209-build--network--the-sync-topology-on-one-page-a-gui-editable-hub-list-with-a-token-per-hub-and-per-hub-status) Build → Network — the sync topology on one page, a GUI-editable hub list with a token per hub, and per-hub status
+- [ADR-210](#adr-210-per-hub-cadence-and-fallback-trust--pushing-to-every-hub-gating-only-the-pulls-and-asking-before-leaning-on-a-backup) Per-hub cadence and fallback trust — pushing to every hub, gating only the pulls, and asking before leaning on a backup
+- [ADR-211](#adr-211-start-when-the-computer-starts-as-a-real-choice-and-the-supervisors-missing-stop--status-verbs) "Start when the computer starts" as a real choice, and the supervisor's missing `stop` / `status` verbs
+- [ADR-212](#adr-212-tell-the-owner-what-to-type-at-the-hub-url-field-and-show-a-hub-its-own-reachable-addresses) Tell the owner what to type at the hub-URL field, and show a hub its own reachable addresses
+- [ADR-213](#adr-213-per-device-retention-holds--a-sleeping-peer-stops-pinning-the-hubs-oplog-and-going-cold-is-announced-rather-than-discovered) Per-device retention holds — a sleeping peer stops pinning the hub's oplog, and going cold is announced rather than discovered
+- [ADR-214](#adr-214-local-crons--a-self-hosted-peer-triggers-its-own-scheduled-work-and-only-the-jobs-that-are-safe-to-double-run) Local crons — a self-hosted peer triggers its own scheduled work, and only the jobs that are safe to double-run
+- [ADR-215](#adr-215-the-performance-pass--measure-everything-rewrite-the-two-oall-items-queries-tune-local-postgres-and-the-three-list-indexes) The performance pass — measure everything, rewrite the two O(all-items) queries, tune local Postgres, and the three list indexes
+- [ADR-216](#adr-216-the-stale-signed-out-chrome-after-sign-in--nav-self-heals-with-one-refresh) The stale signed-out chrome after sign-in — Nav self-heals with one refresh
+- [ADR-217](#adr-217-local-snapshots--tiered-pgdump-restore-points-from-one-number-and-browse-only-recovery) Local snapshots — tiered pg_dump restore points from one number, and browse-only recovery
+- [ADR-218](#adr-218-one-machine-per-shared-job--a-single-synced-slot-re-read-before-every-run) One machine per shared job — a single synced slot, re-read before every run
+- [ADR-219](#adr-219-the-network-page-answers-first--one-sentence-one-action-evidence-below) The Network page answers first — one sentence, one action, evidence below
+- [ADR-220](#adr-220-the-roster--one-synced-row-per-copy-so-any-copy-can-name-another) The roster — one synced row per copy, so any copy can name another
+- [ADR-221](#adr-221-two-more-jobs-move-cadence-becomes-an-interval-and-hub-stops-being-a-word-the-owner-reads) Two more jobs move, cadence becomes an interval, and "hub" stops being a word the owner reads
+- [ADR-222](#adr-222-the-gui-owns-every-setting-the-owner-has-three-surfaces-stopped-lying-about-it) The GUI owns every setting the owner has; three surfaces stopped lying about it
+- [ADR-223](#adr-223-finishing-a-project--a-checkbox-that-completes-whats-inside-the-board-as-the-projects-front-door-and-two-order-bugs-behind-it) Finishing a project — a checkbox that completes what's inside, the board as the project's front door, and two order bugs behind it
+- [ADR-224](#adr-224-api-credentials--a-key-id-and-a-secret-you-create-in-the-app-revocable-by-a-row-flip) API credentials — a key ID and a secret you create in the app, revocable by a row flip
+- [ADR-225](#adr-225-ownership-is-the-only-switch-and-the-picker-stops-promising-a-speed-the-network-does-not-have) Ownership is the only switch, and the picker stops promising a speed the network does not have
+- [ADR-226](#adr-226-userssettings-merges-per-key-because-one-blob-made-every-preference-a-race) `users.settings` merges per key, because one blob made every preference a race
+- [ADR-227](#adr-227-a-restart-button-because-the-app-cannot-restart-its-own-parent) A Restart button, because the app cannot restart its own parent
+- [ADR-228](#adr-228-item-bodies-store-a-stable-attachment-address-not-the-storage-providers-url) item bodies store a stable attachment address, not the storage provider's URL
+- [ADR-229](#adr-229-a-pid-is-not-an-identity--the-peer-comes-back-from-an-unclean-reboot-on-its-own-and-says-so-from-the-notification-area) a pid is not an identity — the peer comes back from an unclean reboot on its own, and says so from the notification area
+- [ADR-230](#adr-230-horizon-says-what-stays-true-pinned-says-what-loads--the-always-on-set-is-pinned-and-nothing-else) `horizon` says what stays true, `pinned` says what loads — the always-on set is pinned and nothing else
+- [ADR-231](#adr-231-the-bucket-is-private--a-share-token-not-an-unguessable-id-is-what-lets-an-anonymous-reader-see-a-file) the bucket is private — a share token, not an unguessable id, is what lets an anonymous reader see a file
+- [ADR-232](#adr-232-a-resource-may-be-relevant-to-several-records-a-thing-that-completes-lives-in-exactly-one) a resource may be relevant to several records; a thing that completes lives in exactly one
+- [ADR-233](#adr-233-postgres-is-started-through-pgctl-because-the-at-boot-task-runs-elevated-and-postgres-refuses-to-run-as-an-administrator) Postgres is started through `pg_ctl`, because the at-boot task runs elevated and Postgres refuses to run as an administrator
+- [ADR-234](#adr-234-a-push-batch-is-bounded-by-bytes-as-well-as-by-count-because-a-count-cannot-bound-a-payload-that-carries-bodies) a push batch is bounded by bytes as well as by count, because a count cannot bound a payload that carries bodies
+- [ADR-235](#adr-235-an-expired-delta-token-is-a-resync-instruction-not-a-failure-to-retry) an expired delta token is a resync instruction, not a failure to retry
+- [ADR-236](#adr-236-files-as-a-first-class-citizen--any-file-in-the-editor-and-a-file-type-where-the-item-is-the-file) files as a first-class citizen — any file in the editor, and a `file` type where the item IS the file
+- [ADR-237](#adr-237-deleting-a-reference-is-not-deleting-the-file--purge-deletes-bytes-and-data-hygiene-sweeps-orphans) deleting a reference is not deleting the file — purge deletes bytes, and Data Hygiene sweeps orphans
+- [ADR-238](#adr-238-the-web-clipper-carries-no-credential--the-relay-popup-is-already-signed-in) the web clipper carries no credential — the relay popup is already signed in
+- [ADR-239](#adr-239-a-hub-that-keeps-failing-is-retried-more-slowly-not-every-ten-seconds) a hub that keeps failing is retried more slowly, not every ten seconds
+- [ADR-240](#adr-240-only-when-there-are-changes-makes-the-cadence-an-idle-heartbeat) "only when there are changes" makes the cadence an idle heartbeat
+- [ADR-241](#adr-241-a-change-the-hub-cannot-apply-is-parked-not-re-sent-forever) a change the hub cannot apply is parked, not re-sent forever
+- [ADR-242](#adr-242-saved-youtube-videos-transcribe-themselves-as-a-scheduled-job-rather-than-a-second-service) saved YouTube videos transcribe themselves, as a scheduled job rather than a second service
+- [ADR-243](#adr-243-a-status-is-whatever-the-type-says-it-is-on-write-as-well-as-on-read) a status is whatever the type says it is, on write as well as on read
+- [ADR-244](#adr-244-the-transcript-job-starts-the-work-and-answers-instead-of-holding-the-request-open) the transcript job starts the work and answers, instead of holding the request open
+- [ADR-245](#adr-245-flaky-was-the-network-not-the-app-measure-the-hub-from-outside-and-stop-the-laptop-competing-with-itself) "flaky" was the network, not the app. Measure the hub from outside, and stop the laptop competing with itself
+- [ADR-246](#adr-246-the-hourly-snapshot-froze-the-whole-server-for-two-and-a-half-minutes-and-that-was-the-flaky-all-along) the hourly snapshot froze the whole server for two and a half minutes, and that was the "flaky" all along
+- [ADR-247](#adr-247-the-project-review-timeline-becomes-a-rendering-the-view-engine-can-use-not-one-pages-private-display) the project review timeline becomes a rendering the view engine can use, not one page's private display
+- [ADR-248](#adr-248-a-sessionless-driver-has-to-carry-the-sync-origin-inside-the-statement) a sessionless driver has to carry the sync origin inside the statement
+- [ADR-249](#adr-249-the-inbox-is-a-routing-choice-per-arrival-source-not-a-fact-about-capture) the Inbox is a routing choice per arrival source, not a fact about capture
+- [ADR-250](#adr-250-the-owners-accent-becomes-a-tenth-highlight-and-it-stores-a-reference-instead-of-a-color) the owner's accent becomes a tenth highlight, and it stores a reference instead of a color
+- [ADR-251](#adr-251-a-highlight-may-claim-the-foreground-but-only-where-the-text-has-no-color-of-its-own) a highlight may claim the foreground, but only where the text has no color of its own
+- [ADR-252](#adr-252-the-sync-cadence-is-the-fastest-a-copy-is-contacted-and-only-on-changes-decides-whether-to-bother) the sync cadence is the fastest a copy is contacted, and "only on changes" decides whether to bother
+- [ADR-253](#adr-253-a-date-tracks-its-anchor-unless-it-is-pinned) a date tracks its anchor unless it is pinned
+- [ADR-254](#adr-254-a-date-property-can-carry-a-time-of-day-withtime-so-one-field-is-a-timed-range) a date property can carry a time of day (`withTime`), so one field is a timed range
+- [ADR-255](#adr-255-image-is-a-property-kind-on-any-type) image is a property kind on any type
+- [ADR-256](#adr-256-item-grid-cards-always-flow-the-footer-cards-always-sink-to-the-bottom) item grid cards always flow; the footer cards always sink to the bottom
+- [ADR-257](#adr-257-the-update-policy-is-a-file-the-service-re-reads-and-the-installs-own-pages-get-a-system-group) the update policy is a file the service re-reads, and the install's own pages get a SYSTEM group
+- [ADR-258](#adr-258-type-edits-patch-instead-of-replacing-and-the-owners-presentation-choices-survive-a-round-trip) type edits patch instead of replacing, and the owner's presentation choices survive a round-trip
+- [ADR-259](#adr-259-a-memory-can-be-superseded-and-remember-warns-about-overlap-and-missing-links) a memory can be superseded, and `remember` warns about overlap and missing links
+- [ADR-260](#adr-260-a-types-content-lives-on-named-surfaces-and-every-reader-resolves-the-same-list) a type's content lives on named surfaces, and every reader resolves the same list
+- [ADR-261](#adr-261-the-paper-draft-is-the-shared-editor-and-footnote-markers-are-protected-from-it) the paper Draft is the shared editor, and footnote markers are protected from it
+- [ADR-262](#adr-262-the-machine-api-can-read-a-body-and-refuses-what-it-does-not-understand) the machine API can read a body, and refuses what it does not understand
+- [ADR-263](#adr-263-an-install-advertises-its-published-address-read-from-its-own-config) an install advertises its published address, read from its own config
+- [ADR-264](#adr-264-relative-value-tokens-dayofmonth-today-for-view-rules) relative value tokens (`@dayofmonth`, `@today`) for view rules
+- [ADR-265](#adr-265-a-nav-write-carries-presentation-over-never-defaults-it) a nav write carries presentation over, never defaults it
+- [ADR-266](#adr-266-the-machine-api-tags-and-links-on-write-and-takes-a-bulk-import-in-one-request) the machine API tags and links on write, and takes a bulk import in one request
+- [ADR-267](#adr-267-trash-is-reachable-over-the-machine-api-and-mcp) Trash is reachable over the machine API and MCP
+- [ADR-268](#adr-268-a-types-properties-can-be-quick-add-chips-one-optional-flag-on-the-property) a type's properties can be quick-add chips, one optional flag on the property
+- [ADR-269](#adr-269-branch-pr-green-ci-merge) branch, PR, green CI, merge
+
+</details>
+
+---
+
 ## Build decisions (newest at the bottom)
 
 ## ADR-001: Supporting docs split into five files
@@ -4409,3 +4690,35 @@ Four smaller failures cost time on the way there, and they share a cause: the ro
 
 **Consequences.** A property renamed or removed in the type builder carries or drops its flag with it, since the flag lives on the property. The type builder's form (`/build/types/[key]/edit`) exposes the flag as a per-field checkbox, alongside the row checkboxes and MCP. Check: `scripts/verify-types.mts`.
 
+
+---
+
+## ADR-269: branch, PR, green CI, merge
+**Date:** 2026-09-21 (revised 2026-09-22)
+**Status:** accepted (Brandon + Tyler). Retires the pre-merge ack, the both-agree core gate, the `COLLAB.md` heads-up board, and the per-slice bookkeeping habit.
+
+**Context:** Tyler said the process felt heavy every time either of us touched the code, and the numbers agreed. 267 ADRs in 99 days, about 2.7 a day. 138 merges to `main` since 19 August. All seven recorded acks were relayed through Brandon after the fact, and Tyler's newest core item said outright "built at my direction, I didn't wait for it." `COLLAB.md` had reached 324 lines while defining itself as "two short blocks." None of it was protecting anything: the two breakages that reached `main` in August both merged green past the human process and were caught by CI.
+
+**Decision:**
+
+1. **The process is: branch, PR, green CI, merge.** That is the whole thing.
+2. **No heads-ups, no acks, no waiting, for anything.** `COLLAB.md` is retired (contents in `COLLAB_ARCHIVE.md`). The PR description is the record; GitHub and the in-app Changelog carry it from there. Nobody announces work before merging it and nobody waits for a reply.
+3. **ADRs are a record, never a gate.** `decisions.md` is where a decision is written down after it is made. An agent never says "that needs an ADR," never asks whether to write one, and never pauses for one: it makes the change and writes the entry as part of the work. Write one when the choice is hard to undo or changes what something means (a migration, the canonical body format, an API change that breaks an existing caller, a principle, a reversal). That is a few a month. Everything else lives in the PR description.
+4. **Migrations are additive and reversible.** Add a column, then backfill; never destroy or rewrite live owner data. This is the one rule worth being conservative about, and it is what lets everything above run without a gate in front of it.
+5. **No deploy ceremony, and no warnings about it.** Tyler's production tracks `main` and migrates on build, which is the arrangement he wants: he picks up shared work without running anything. Merging needs no deploy consideration, so nothing in the docs asks anyone to check, flag, or time a merge around it. `runbook.md` §1j describes how each instance deploys as reference, not as a checklist.
+6. **Working files stay short.** `next_steps.md` is what is next, not a log of what shipped; finished sections move to `next_steps_archive.md`. `roadmap.md` is the phase checklist. Both update when something lands, not on every push. `decisions.md` gains an index at the top so 268 entries stay usable. The runbook and the user guide are the exception and still update in the same PR, every time, because people read those.
+7. **Every verify script has to prove its worth.** Before this, 85 of 175 ran in CI and exactly 4 more ran on a release, so about 15,000 lines of guard code ran only when somebody typed the command. `npm run verify:db` now runs the DB-backed suites against the dev branch, and `release:prod` runs it at stage 3 right after it migrates dev. It is report-only: a guard that fails there gets fixed or deleted, and one that proves itself is promoted into the release's hard gates.
+
+**What is not trimmed:** CI on every PR, never committing directly to `main`, every merge through a PR, additive migrations, soft-delete plus revisions plus the weekly backup plus git revert as the safety net, and the nine principles.
+
+**Why / alternatives:**
+
+- *Keeping the ack gate* was rejected on the evidence: seven of seven acks came after the fact, so the gate was already fiction. Codifying reality is cheaper than pretending.
+- *Keeping a pre-merge migration check* (`git diff origin/main --name-only -- drizzle/`, with a silent-consent window) was considered and rejected. It is a ritual in front of a risk the additive rule already bounds, and a consent window nobody replies inside is the ack gate under a new name.
+- *Moving Tyler to a `prod-tyler` release branch* is the technically cleanest option and stays available (`RELEASE_TARGET_BRANCH=prod-tyler npm run release:prod` already works). Not adopted, because Tyler wants merges to reach him automatically and neither builder wants to think about the other's deploy.
+- *Deleting the accumulated `COLLAB.md` and `next_steps.md` history outright* was softened to archive files. One `rm` finishes the job if they turn out to be dead weight.
+- *Making the DB-backed verifies a hard release gate* was rejected for now: most have not run since August, so some are certainly stale, and aborting a release on a backlog punishes the release. Report-only surfaces the list without holding anything up.
+
+**Consequences.** Older ADRs and exploration docs still say "both-agree + ADR"; that is history and now reads as "write it down." They are not rewritten, per this log's own never-rewrite-history rule. The `/ship` skill still carries the old gates and lives in a gitignored `.claude/`, so it cannot be fixed in a PR; the item at the top of `next_steps.md` says what to cut. *(Done 2026-09-21: the skill was rewritten to this process, and `.gitignore` now un-ignores `.claude/skills/ship/` narrowly so the next process change lands in one PR instead of being owed on every machine.)*
+
+**Affects:** `CLAUDE.md`, `COLLAB.md` (deleted), `COLLAB_ARCHIVE.md` (new), `next_steps.md`, `next_steps_archive.md` (new), `runbook.md` §1j and §1j-1, `scripts/verify-ci.mjs` (`--backend`), `scripts/release-prod.mjs`, `package.json` (`verify:db`), and `.claude/skills/ship/SKILL.md` (untracked, needs a local trim).

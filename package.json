@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "verify:ci": "node scripts/verify-ci.mjs",
     "verify:list": "node scripts/verify-ci.mjs --list",
+  "verify:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/verify-ci.mjs --backend",
     "ci": "npm run typecheck && npm run lint && npm run build && npm run verify:ci",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.mjs",
