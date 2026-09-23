@@ -230,7 +230,8 @@ check(
 );
 check(
   "the resolved flag is what gets inserted, not a second copy of the rule",
-  /\n\s+inbox,\n/.test(mutations)
+  // \r? so a Windows (CRLF) checkout passes too.
+  /\n\s+inbox,\r?\n/.test(mutations)
 );
 
 console.log(
