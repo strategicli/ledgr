@@ -272,20 +272,31 @@ export default function AddTaskCard({
   // makes, stripping the token from the title. No match leaves the words alone
   // — the "+project" rule: never delete a word and do nothing in its place.
   useEffect(() => {
-    const tokens = parseMentionTokens(initialTitle ?? "");
-    if (tokens.length === 0) return;
+    const mentions = parseMentionTokens(initialTitle ?? "");
+    if (mentions.length === 0) return;
     let live = true;
     void (async () => {
-      for (const t of tokens) {
-        const res = await fetch(
-          `/api/items?q=${encodeURIComponent(t.name)}&limit=8`
-        ).catch(() => null);
-        if (!res || !res.ok || !live) continue;
-        const d = (await res.json()) as { items: LinkedItem[] };
-        const hit = (d.items ?? []).find(
-          (i) => (i.title || "").trim().toLowerCase() === t.name.toLowerCase()
-        );
-        if (!hit || !live) continue;
+      for (const candidates of mentions) {
+        // Longest candidate first: "@Zach Samz" before "@Zach".
+        let t: (typeof candidates)[number] | null = null;
+        let hit: LinkedItem | undefined;
+        for (const c of candidates) {
+          const res = await fetch(
+            `/api/items?q=${encodeURIComponent(c.name)}&limit=8`
+          ).catch(() => null);
+          if (!live) return;
+          if (!res || !res.ok) continue;
+          const d = (await res.json()) as { items: LinkedItem[] };
+          hit = (d.items ?? []).find(
+            (i) => (i.title || "").trim().toLowerCase() === c.name.toLowerCase()
+          );
+          if (hit) {
+            t = c;
+            break;
+          }
+        }
+        if (!hit || !t || !live) continue;
+        const token = t.token;
         if (hit.type === TAG_TYPE) {
           setPickedTags((cur) =>
             cur.some((x) => x.name.toLowerCase() === hit.title.toLowerCase())
@@ -299,7 +310,7 @@ export default function AddTaskCard({
               : [...cur, { id: hit.id, title: hit.title, type: hit.type ?? null }]
           );
         }
-        setTitle((cur) => cur.split(t.token).join(" ").replace(/\s+/g, " ").trim());
+        setTitle((cur) => cur.split(token).join(" ").replace(/\s+/g, " ").trim());
       }
     })();
     return () => {

@@ -99,17 +99,29 @@ export function stripConsumedTokens(
 // but text that arrives already written never had a pick — so a promoted line's
 // "@Roger" would otherwise stay as literal words and link nothing. Same rules as
 // "#": one token, dashes expand to spaces, matching is exact and case-blind
-// (resolved by the caller against a search). Multi-word names are written
-// "@Elder-Board", the way a multi-word tag is.
-export function parseMentionTokens(text: string): { token: string; name: string }[] {
-  const out: { token: string; name: string }[] = [];
+// (resolved by the caller against a search). A name may also be written with
+// spaces ("@Zach Samz", the way AI-written triage notes put it), so each "@"
+// yields its candidates LONGEST FIRST, up to four words, stopping at another
+// sigil or a "p1"–"p4" priority. The caller takes the first candidate that
+// exactly matches an item, so "@Zach Samz" beats a shorter "Zach" and
+// "@Roger and" falls back to "Roger".
+export function parseMentionTokens(text: string): { token: string; name: string }[][] {
+  const out: { token: string; name: string }[][] = [];
   const seen = new Set<string>();
-  for (const m of text.matchAll(/(?:^|\s)(@([\w-]+))/g)) {
-    const name = m[2].replace(/-/g, " ").trim();
-    const key = name.toLowerCase();
-    if (!name || seen.has(key)) continue;
+  for (const m of text.matchAll(/(?:^|\s)@([\w-]+)((?:\s+[\w'-]+){0,3})/g)) {
+    const more = m[2].match(/\s+[\w'-]+/g) ?? [];
+    const stop = more.findIndex((w) => /^p[1-4]$/i.test(w.trim()));
+    if (stop >= 0) more.length = stop;
+    const candidates: { token: string; name: string }[] = [];
+    for (let k = more.length; k >= 0; k--) {
+      const token = "@" + m[1] + more.slice(0, k).join("");
+      const name = token.slice(1).replace(/-/g, " ").replace(/\s+/g, " ").trim();
+      if (name) candidates.push({ token, name });
+    }
+    const key = candidates[0]?.name.toLowerCase();
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-    out.push({ token: m[1], name });
+    out.push(candidates);
   }
   return out;
 }
