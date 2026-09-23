@@ -6,6 +6,63 @@ Anything that stops being live moves to `next_steps_archive.md`, which holds the
 
 ---
 
+## 📚 LONG-TERM — no user should meet a size cap on a note (Tyler, 2026-09-22)
+
+**Where it stands:** ADR-270 made the 100K large-body gate per tab on tabbed canvases,
+so a long work split into tabs never trips it. That is a workaround, not the answer.
+Tyler's feedback on ADR-125: the whole-body cap came from Brandon's niche use (read-only
+imported PDFs/ebooks at 1M+ characters) and shouldn't be a hard ceiling for every user.
+"A user should be able to write a book using Ledgr," untabbed if they want.
+
+**The real fix is the editor, not the threshold.** The freeze is one ProseMirror
+`contenteditable` tree re-serialized per keystroke (ADR-125's measurement). Options to
+weigh:
+- **Section-windowed rich editing:** split an untabbed body at `#`/`##` headings (like
+  tabs, but automatic and invisible) and mount only the sections around the viewport.
+  Reuses TabbedBody's "one section per editor" trick without asking the writer to tab.
+- **Debounced/incremental serialization:** stop calling `getMarkdown()` on the whole doc
+  each keystroke; serialize on idle or only the changed top-level nodes. May lift the
+  practical ceiling well past 100K on its own. Measure first.
+- **Keep the gate only for imports:** a large body that arrived by import/upload (the
+  PDF-as-text case) opens in Preview; a body a person wrote keeps rich editing.
+
+Pick after measuring where the current editor actually starts to lag (typing latency at
+100K, 250K, 500K), since the 100K line was set against crash reports, not a typing test.
+
+## 🔜 OWED — templates can be applied over MCP but not made (found 2026-09-22)
+
+**The gap:** `src/lib/mcp/tools/templates.ts` exposes only `list_templates` and
+`apply_template`. Making, editing, or deleting a template is UI-only: the routes
+under `/api/templates` are `requireOwner()` session auth, so neither the MCP nor
+the machine API can reach them. Found while building a "Sermon Notes" template
+for Tyler: Claude could write the prototype content as a normal note
+(`e8083919-…`) but had to hand back the "Save as template" click, then clean up
+the source note afterward.
+
+**The fix is wiring, not new logic.** `src/lib/templates.ts` already has every
+function, so each tool is a thin owner-scoped wrapper, additive per the ADR-183
+carve-out:
+- `create_template` — from an existing item (`createTemplateFromItem`, with an
+  option to trash the source once cloned), or from scratch (`type`, `name`,
+  title, body, properties → `createTemplate` + a prototype). The from-scratch
+  path is the one agents want most, since it skips the throwaway source note.
+- `update_template` — rename, set/clear `isDefault` for its type, edit
+  `applyConfig` date rules (`updateTemplate`). Editing the prototype's body/props
+  already works through `update_item` on `prototypeItemId`, as long as
+  `list_templates` returns that id (check that it does).
+- `delete_template` (`deleteTemplate`) and `duplicate_template`
+  (`duplicateTemplate`).
+- Mirror them on the machine API (`/api/machine/templates`) so a script can
+  make a template with a byte-exact body.
+
+**Gotchas to cover in the tool descriptions:** the `{{ask:Label}}` /
+`{{today:long}}` token vocabulary (`src/lib/template-vars.ts`) versus the live
+`{{now.*}}` / `{{item.*}}` tokens (`item-tokens.ts`), since mixing them up bakes
+the wrong date; and that canvas tabs are just `<!-- tab: Title -->` lines in the
+prototype body.
+
+---
+
 ## ▶️ TWO-CLICK JOB FOR BRANDON — turn off PR previews on the `ledgr` Vercel project
 
 Decided 2026-09-22: neither builder reviews a PR from a preview URL, so previews are quota burn. `devledgr`

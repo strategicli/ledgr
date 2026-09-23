@@ -8,10 +8,19 @@
 // and on each keystroke it's re-fed its own emitted markdown (a no-op guard in
 // MarkdownEditor: getMarkdown() === initialMarkdown → no reset), so the cursor
 // is never disturbed.
+//
+// Per-tab size gate (ADR-270): BodyEditor no longer gates a tabbed body as a
+// whole, because only the active tab is ever mounted in Tiptap. The gate lives
+// here instead: a tab whose own section is at/above LARGE_BODY_THRESHOLD is
+// edited in the raw-markdown textarea, and every other tab stays rich. So a
+// long work (a book, a paper's notes with every source in its own tab) can grow
+// without limit as long as each tab stays under ~100K characters.
 "use client";
 
 import { useEffect, useState, type RefObject } from "react";
 import LazyMarkdownEditor from "./LazyMarkdownEditor";
+import RawMarkdownEditor from "./RawMarkdownEditor";
+import { isLargeBody } from "@/lib/body";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import type { PromotedRefs } from "./block-anchor-extension";
 import {
@@ -190,6 +199,16 @@ export default function TabbedBody({
   }
 
   const editorInitial = tabs ? (tabs[activeIdx]?.body ?? "") : untabbed;
+  // Measured when the tab mounts (a switch or structural change remounts it),
+  // like BodyEditor's whole-body gate: a tab that grows past the line while it's
+  // open stays in its current editor until the next mount, never mid-keystroke.
+  const editorKey = tabs ? `tab-${activeIdx}-${tabs.length}` : "untabbed";
+  const [largeTab, setLargeTab] = useState({ key: editorKey, large: isLargeBody(editorInitial) });
+  // Render-time adjustment (the lastInitial pattern above), not an effect.
+  if (largeTab.key !== editorKey) {
+    setLargeTab({ key: editorKey, large: isLargeBody(editorInitial) });
+  }
+  const activeTabLarge = largeTab.large;
 
   // Point BodyEditor's controls-row "+ tab" icon at our addTab (always the latest
   // closure), and tell it whether any tab exists so it can hide the icon once the
@@ -305,10 +324,31 @@ export default function TabbedBody({
         </div>
       ) : null}
 
+      {activeTabLarge ? (
+        // One oversized tab (ADR-270): same banner language as BodyEditor's
+        // large-body gate, scoped to this tab. The view-mode pill normally rides
+        // the rich editor's toolbar, so it moves into the banner here.
+        <>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200/80">
+            <span className="min-w-0">
+              This tab is large, so it opens as raw markdown text for speed. Other tabs
+              are unaffected; splitting this one into smaller tabs brings back the rich
+              editor.
+            </span>
+            {viewControls && <div className="flex shrink-0 items-center gap-1">{viewControls}</div>}
+          </div>
+          <RawMarkdownEditor
+            key={editorKey}
+            initialMarkdown={editorInitial}
+            onChange={onEditorChange}
+            editable={editable}
+          />
+        </>
+      ) : (
       <LazyMarkdownEditor
         // Remount on tab switch / structural change so the editor reloads the
         // active tab's content; stable key when untabbed.
-        key={tabs ? `tab-${activeIdx}-${tabs.length}` : "untabbed"}
+        key={editorKey}
         itemId={itemId}
         initialMarkdown={editorInitial}
         uploadFile={uploadFile}
@@ -323,6 +363,7 @@ export default function TabbedBody({
         viewControls={viewControls}
         preserveFootnotes={preserveFootnotes}
       />
+      )}
     </div>
   );
 }

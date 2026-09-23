@@ -11,6 +11,8 @@
 // (visible-text.ts is pure and dependency-free too — the markup-stripping the
 // word count needs, with no parser dragged in here.)
 import { visibleTextOf } from "@/lib/editor/visible-text";
+// Pure line matching for the `<!-- tab: … -->` marker, not markdown parsing.
+import { hasTabs } from "@/lib/editor/canvas-tabs";
 
 export const MARKDOWN_FORMAT = "markdown";
 
@@ -27,6 +29,20 @@ export const LARGE_BODY_THRESHOLD = 100_000;
 // True once a body's markdown is large enough to skip the rich editor (ADR-125).
 export function isLargeBody(text: string | null | undefined): boolean {
   return (text?.length ?? 0) >= LARGE_BODY_THRESHOLD;
+}
+
+// The canvas's whole-body gate (ADR-270). The freeze ADR-125 guards against is
+// ONE Tiptap document of that size, and a tabbed canvas never mounts one: it
+// mounts only the active tab's section. So on a tab-enabled canvas whose body
+// actually has tabs, the whole body is never "large" — the gate moves down to
+// each tab (TabbedBody applies isLargeBody to the active section). Untabbed
+// bodies, and bodies on types without tabs, keep the whole-body gate unchanged.
+export function isLargeForCanvas(
+  text: string | null | undefined,
+  tabsEnabled: boolean
+): boolean {
+  if (!isLargeBody(text)) return false;
+  return !(tabsEnabled && hasTabs(text));
 }
 
 // The default character window the MCP read path (get_item) returns from a large

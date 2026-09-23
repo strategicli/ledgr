@@ -307,6 +307,7 @@ the original stays, because this log never rewrites history.
 - [ADR-267](#adr-267-trash-is-reachable-over-the-machine-api-and-mcp) Trash is reachable over the machine API and MCP
 - [ADR-268](#adr-268-a-types-properties-can-be-quick-add-chips-one-optional-flag-on-the-property) a type's properties can be quick-add chips, one optional flag on the property
 - [ADR-269](#adr-269-branch-pr-green-ci-merge) branch, PR, green CI, merge
+- [ADR-270](#adr-270-the-large-body-gate-is-per-tab-on-a-tabbed-canvas) the large-body gate is per tab on a tabbed canvas
 
 </details>
 
@@ -1923,6 +1924,7 @@ Six issues surfaced clicking through the shipped slice; all fixed, same slice/po
 4. **Size-aware revisions** (`src/lib/items.ts`, `snapshotRevision`): a large body throttles to a 60-min debounce and a 10-snapshot cap (vs 5-min / 50 for normal), so a multi-MB document can't pile up ~50× its size in history and pressure Neon's ~0.5GB free tier (revisions are 44MB of the 187MB DB today). Small bodies are byte-for-byte unchanged.
 **Why / alternatives:** *Bespoke large-note path* — rejected for the unified source/preview toggle: same fix, less code, and it's a feature on every note (Brandon's reframe). *Split monster notes into Pt 1/Pt 2 items* — rejected: fragments search/backlinks/relations and fights the "one document I'm reading" model; the freeze is `contenteditable`, not size. *Separate "raw edit" route with manual save + back button* (Brandon's first sketch) — rejected for inline: the `<textarea>` is already as raw as Notepad, and inline reuses `ItemEditor`'s debounced autosave and keeps the item's context. *Render preview on the client* — rejected: markdown-it is server-only by rule (Principle 5 / markdown-render.ts); a tiny endpoint keeps that seam. *Bound the FTS input now* — deferred: measured tsvectors are ~13% of the limit, so it's a distant ceiling (the lever, `left(body_text, N)` in the generated column, is noted if ever needed). **Known minor gap:** in-app preview doesn't carry the sermon highlight-color CSS (`mark.hl-*` lives in the print/share doc CSS), so highlights show as the browser default in preview; large imported docs rarely use them, and rich mode (where colors are authored) is unaffected. **Tradeoff accepted:** source mode has no @-mention menu / color picker / drag-drop images (you're editing source); the banner makes this explicit, and rich↔source round-trips on normal notes pass through Tiptap's serializer (may re-normalize formatting) — large notes are immune since rich never runs on them, preserving imported text exactly.
 **Affects:** new `src/components/markdown-editor/BodyEditor.tsx`, `RawMarkdownEditor.tsx`, `MarkdownPreview.tsx`, `src/app/api/render-markdown/route.ts`; `src/lib/body.ts` (`LARGE_BODY_THRESHOLD`, `isLargeBody`), `src/components/markdown-editor/ItemEditor.tsx` (renders `BodyEditor`), `src/lib/items.ts` (size-aware `snapshotRevision`). No schema change, no migration; fully additive and reversible.
+**Amended by ADR-270 (2026-09-22):** the gate is per tab on a tabbed canvas. Tyler's feedback on this ADR, recorded for the long-term fix: the 100K whole-body cap was sized to one niche use (Brandon's read-only imported PDFs and ebooks) and should not be a hard ceiling for every user of every note. Someone writing a book in Ledgr will pass it. The per-tab gate is the interim answer; the real one (make the rich editor itself scale) is queued in `next_steps.md`.
 
 ## ADR-126: Page large bodies on the MCP get_item read path
 **Date:** 2026-06-27
@@ -4722,3 +4724,25 @@ Four smaller failures cost time on the way there, and they share a cause: the ro
 **Consequences.** Older ADRs and exploration docs still say "both-agree + ADR"; that is history and now reads as "write it down." They are not rewritten, per this log's own never-rewrite-history rule. The `/ship` skill still carries the old gates and lives in a gitignored `.claude/`, so it cannot be fixed in a PR; the item at the top of `next_steps.md` says what to cut. *(Done 2026-09-21: the skill was rewritten to this process, and `.gitignore` now un-ignores `.claude/skills/ship/` narrowly so the next process change lands in one PR instead of being owed on every machine.)*
 
 **Affects:** `CLAUDE.md`, `COLLAB.md` (deleted), `COLLAB_ARCHIVE.md` (new), `next_steps.md`, `next_steps_archive.md` (new), `runbook.md` §1j and §1j-1, `scripts/verify-ci.mjs` (`--backend`), `scripts/release-prod.mjs`, `package.json` (`verify:db`), and `.claude/skills/ship/SKILL.md` (untracked, needs a local trim).
+
+## ADR-270: the large-body gate is per tab on a tabbed canvas
+**Date:** 2026-09-22
+**Status:** accepted (Tyler-directed). Amends ADR-125 §2; interim, with the long-term fix queued.
+
+**Context:** Tyler's Doctrine Paper Notes held ten tabs, a bibliography plus nine source tabs, at 102,193 characters in total. That crossed ADR-125's 100K `LARGE_BODY_THRESHOLD`, so the canvas refused to mount the rich editor: all ten tabs collapsed into one raw textarea and the note read as broken. No single tab was anywhere near the line (the largest was about 23K). The gate measured the wrong thing. ADR-125's freeze is one Tiptap document of that size, and `TabbedBody` never mounts one: it mounts only the active tab's section and remounts on a switch. Tabs already solve the problem the gate exists for. They just weren't on the paper Notes surface (`NotesTab.tsx`, 2026-09-16) until three months after the gate was set.
+
+Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use (Brandon saving PDFs and ebooks as read-only notes) and should not limit every user. "A user should be able to write a book using Ledgr."
+
+**Decision:**
+
+1. **On a tab-enabled canvas whose body has tabs, the whole-body gate does not apply** (`isLargeForCanvas(text, tabsEnabled)` in `src/lib/body.ts`, used by `BodyEditor`). An untabbed body, or any body on a type without tabs, keeps ADR-125's gate exactly as before.
+2. **The gate moves down to the tab.** `TabbedBody` applies `isLargeBody` to the active section when it mounts. An oversized tab opens in the raw-markdown textarea with a banner scoped to that tab ("splitting this one into smaller tabs brings back the rich editor"), and the view-mode pill moves into the banner, since it normally rides the rich toolbar. Every other tab stays rich. The check runs per mount, like the whole-body one, so a tab that grows past the line while open never flips editors mid-keystroke.
+3. **Same 100K number.** Only what it measures changes: 100K characters per tab instead of per note.
+
+**What does not change:** the server's size-aware revision throttle (`item-mutations.ts`) and the MCP read window (ADR-126) still measure the whole body, because those are about storage and context size, not the editor.
+
+**Long-term (queued, not built):** the per-tab gate is a workaround that asks writers to structure long work as tabs. The real fix is making the rich editor scale on its own (virtualize or chunk the ProseMirror document, or mount by section around the viewport) so no ordinary user meets a cap, and Brandon's million-character imports become the edge case they are rather than setting the rule for everyone. See `next_steps.md`.
+
+**Why / alternatives:** *Raise the threshold* was rejected: it just moves the cliff, and a real single-document freeze exists above some size. *Gate on the largest tab from `BodyEditor`* (drop the whole canvas to source if any tab is large) was rejected: one big tab would take every small tab's rich editor with it, the same failure in a smaller form.
+
+**Affects:** `src/lib/body.ts` (`isLargeForCanvas`), `src/components/markdown-editor/BodyEditor.tsx`, `src/components/markdown-editor/TabbedBody.tsx`, `scripts/verify-body-modes.mts` (+8 checks), `src/lib/mcp/user-guide.ts`, `next_steps.md`.
