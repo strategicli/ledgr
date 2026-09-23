@@ -133,6 +133,64 @@ export async function recentCaptureId(
   return rows[0]?.id ?? null;
 }
 
+// Titles are capped here; anything past the cap would be lost, so longer text
+// always goes to a body instead (below).
+const TITLE_MAX = 300;
+
+// Shared text too big to be a quick capture: a recording app handing over a
+// whole transcript as text rather than as a .txt file (seen 2026-09-22, where
+// it became a 300-character title and the rest of the transcript was dropped).
+// Such a share goes to the share screen, like a shared file does.
+export function isLongShare(text: string): boolean {
+  return text.length > TITLE_MAX || text.split("\n").filter((l) => l.trim()).length > 3;
+}
+
+// Does this text read like a meeting transcript? Speaker labels ("[Speaker 1]",
+// "Speaker 2:", "Jane Doe:") or timestamps at line starts ("00:01:23", "12:04 ").
+// Only decides which option the share screen offers FIRST, so a miss costs a
+// tap, never data. ponytail: a regex heuristic; extend the patterns if a
+// recorder's format keeps landing on "Save as a note" first.
+export function looksLikeTranscript(text: string): boolean {
+  const lines = text.split("\n").filter((l) => l.trim());
+  const cues = lines.filter((l) =>
+    /^\s*(\[?speaker\s*\d+\]?|\[?\d{1,2}:\d{2}(:\d{2})?\]?\s|[A-Z][\w.'-]*( [A-Z][\w.'-]*){0,2}:\s)/i.test(l)
+  ).length;
+  return /\[speaker\s*\d+\]/i.test(text) || cues >= Math.min(3, lines.length);
+}
+
+// A short title from a long shared text: its first non-empty line, capped.
+export function titleFromSharedText(text: string): string {
+  const first = text.split("\n").find((l) => l.trim())?.trim() ?? "";
+  return (first.length > 120 ? `${first.slice(0, 117).trimEnd()}…` : first) || "Shared text";
+}
+
+// Every share that isn't a file lands here (both the signed-in POST and the
+// cold-session claim), and returns the path to send the phone to. A link keeps
+// the web-clipper path; a long text becomes an inbox transcript and opens the
+// share screen, where the owner files it to a meeting, as a note, or leaves it
+// in the Inbox; a short text stays a one-tap quick capture.
+export async function captureShare(
+  ownerId: string,
+  fields: { title?: string; text?: string; url?: string }
+): Promise<string> {
+  const text = fields.text?.trim();
+  // An explicit `url` field is a link share even with long text beside it; a
+  // URL merely MENTIONED inside a long text (a transcript naming a website)
+  // must not turn the whole transcript into a link title.
+  if (text && !fields.url?.trim() && isLongShare(text)) {
+    // Dynamic import: meetings/transcripts pulls in the item-mutations graph
+    // this module's pure helpers (and their verify script) don't need.
+    const { createInboxTranscript } = await import("@/lib/meetings/transcripts");
+    const transcript = await createInboxTranscript(ownerId, {
+      title: fields.title?.trim() || titleFromSharedText(text),
+      text,
+    });
+    return `/capture/transcript/${transcript.id}`;
+  }
+  const id = await captureSharedUrlOrText(ownerId, fields);
+  return id ? `/items/${id}` : "/";
+}
+
 // Capture a shared URL or bare text into the inbox; returns the new item's id,
 // or null when there was nothing to capture (an empty share). The caller
 // redirects to /items/{id} on a hit.
@@ -156,28 +214,38 @@ export async function captureSharedUrlOrText(
     // Shared title wins; then the text minus the URL (share sheets often
     // send "Page title https://…"); then the extracted/page <title>; then host.
     const fromText = text?.replace(url, "").trim();
+    // Text too long for a title rides at the top of the body instead of being
+    // cut off.
+    const longText = fromText && fromText.length > TITLE_MAX ? fromText : undefined;
     const itemTitle =
       title ||
-      fromText ||
+      (longText ? undefined : fromText) ||
       article?.title ||
       (await fetchPageTitle(url)) ||
       new URL(url).hostname;
     const item = await createItem(ownerId, {
       type: "link",
-      title: itemTitle.slice(0, 300),
+      title: itemTitle.slice(0, TITLE_MAX),
       url,
       source: "share_target",
-      body: article ? makeMarkdownBody(article.markdown) : null,
+      body:
+        longText || article
+          ? makeMarkdownBody([longText, article?.markdown].filter(Boolean).join("\n\n"))
+          : null,
     });
     return item.id;
   }
 
-  const itemTitle = [title, text].filter(Boolean).join(" ").trim();
-  if (!itemTitle) return null; // empty share: nothing to capture
+  const joined = [title, text].filter(Boolean).join(" ").trim();
+  if (!joined) return null; // empty share: nothing to capture
+  // Never truncate away what was shared: an over-long capture keeps a short
+  // title and the whole text in its body.
+  const tooLong = joined.length > TITLE_MAX;
   const item = await createItem(ownerId, {
     type: "unmarked",
-    title: itemTitle.slice(0, 300),
+    title: tooLong ? title?.slice(0, TITLE_MAX) || titleFromSharedText(joined) : joined,
     source: "share_target",
+    body: tooLong ? makeMarkdownBody(text ?? joined) : null,
   });
   return item.id;
 }

@@ -90,7 +90,11 @@ export default function TabStrip({
   };
 
   return (
-    <div className={`relative ${className ?? ""}`}>
+    // min-w-0: as a flex child (ListLenses' flex-1) the strip would otherwise
+    // refuse to shrink below its tabs' width, the inner overflow-x-auto would
+    // never engage, and the too-wide row would widen the whole mobile page,
+    // dragging the fixed bottom nav off-screen with it.
+    <div className={`relative min-w-0 ${className ?? ""}`}>
       <div
         ref={scroller}
         data-scroll-x

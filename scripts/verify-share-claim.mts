@@ -4,7 +4,12 @@
 // arbitrary storage key or losing an empty share.
 // Run: npx tsx scripts/verify-share-claim.mts
 import { buildClaimQuery } from "../src/app/capture/share/route";
-import { shareRedirectBase } from "../src/lib/capture/share";
+import {
+  isLongShare,
+  looksLikeTranscript,
+  shareRedirectBase,
+  titleFromSharedText,
+} from "../src/lib/capture/share";
 import { isValidStashId } from "../src/app/capture/share/claim/route";
 
 let failures = 0;
@@ -66,6 +71,35 @@ check("rejects the empty string", !isValidStashId(""));
 check("rejects a path-traversal attempt", !isValidStashId("../../etc/passwd"));
 check("rejects a key with the stash prefix baked in", !isValidStashId("share-stash/abc.json"));
 check("rejects a near-miss UUID (wrong grouping)", !isValidStashId("123e4567e89b12d3a456426614174000"));
+
+// --- long shared text (a transcript shared as text, 2026-09-22) -------------
+// The real opening of the transcript that lost everything past 300 characters.
+const SAMSUNG = `Sep 22 at 7:44 PM [Speaker 1]
+Straightforward, she she actually wrote out what she was going to share.
+[Speaker 2]
+Okay, that makes sense.
+[Speaker 1]
+So we talked about it after.`;
+check("a quick one-liner is not a long share", !isLongShare("Call Roger about the budget"));
+check("over 300 characters is a long share", isLongShare("x".repeat(301)));
+check("more than three lines is a long share", isLongShare("a\nb\nc\nd"));
+check("a speaker-labelled transcript is a long share", isLongShare(SAMSUNG));
+check("bracketed speaker labels read as a transcript", looksLikeTranscript(SAMSUNG));
+check(
+  "'Name:' dialogue lines read as a transcript",
+  looksLikeTranscript("Roger: hi\nBrandon: hey\nRoger: so about Sunday\nBrandon: yes")
+);
+check(
+  "timestamped lines read as a transcript",
+  looksLikeTranscript("00:00:01 Welcome\n00:00:09 Let's pray\n00:01:12 First item")
+);
+check(
+  "a pasted article does not read as a transcript",
+  !looksLikeTranscript("The history of the church.\nIt began in Acts.\nPaul wrote letters.\nThey were read aloud.")
+);
+check("title is the first line", titleFromSharedText("\n\nSep 22 at 7:44 PM [Speaker 1]\nmore") === "Sep 22 at 7:44 PM [Speaker 1]");
+check("a huge first line is capped", titleFromSharedText("y".repeat(500)).length === 118);
+check("an all-blank text still gets a title", titleFromSharedText("   \n  ") === "Shared text");
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -486,8 +486,12 @@ export default function NavShell({
       .slice(0, RECOMMENDED_MOBILE_NAV_SLOTS)
       .flatMap(({ slot }) => (slot.kind === "destination" ? [slot.href] : [])),
   ]);
+  // The MOBILE slots lead: a phone slot past the bar's first few overflows here,
+  // and must, or a mobile-only destination (one not also in the desktop nav)
+  // would render nowhere at all. The desktop slots follow, deduped by href.
+  const seenTileHrefs = new Set<string>();
   const launcherTiles: LauncherTile[] = [
-    ...[HOME_SLOT, ...slots].flatMap((s) =>
+    ...[HOME_SLOT, ...mobileSlots, ...slots].flatMap((s) =>
       s.kind === "tools"
         ? s.children.map((c) => ({ label: c.label, href: c.href, icon: c.icon, count: c.count }))
         : [{ label: s.label, href: s.href, icon: s.icon, count: s.count }]
@@ -498,7 +502,11 @@ export default function NavShell({
     { label: "Changelog", href: "/changelog", icon: "book" },
     { label: "Trash", href: "/trash", icon: "archive" },
   ]
-    .filter((t) => !visibleBarHrefs.has(t.href))
+    .filter((t) => {
+      if (visibleBarHrefs.has(t.href) || seenTileHrefs.has(t.href)) return false;
+      seenTileHrefs.add(t.href);
+      return true;
+    })
     // The Search tile follows the same rule as the Search slot (ADR-182): in
     // "palette" mode it opens the overlay instead of navigating to the page.
     // Without this, an owner whose Search slot overflowed out of the bar would
