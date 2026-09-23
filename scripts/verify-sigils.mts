@@ -110,13 +110,26 @@ check(
 
 // "@name" in a PRE-FILLED title (the promote-to-task flow) — the typed capture
 // consumes these on pick, but promoted text never had a pick.
+const firstNames = (s: string) => parseMentionTokens(s).map((c) => c[c.length - 1].name);
 check(
   "pre-filled @tokens parse, expand dashes, and dedupe",
-  JSON.stringify(parseMentionTokens("Email @Roger and @elder-board again @roger")) ===
-    JSON.stringify([
-      { token: "@Roger", name: "Roger" },
-      { token: "@elder-board", name: "elder board" },
-    ])
+  JSON.stringify(firstNames("Email @Roger, @elder-board, again @roger")) ===
+    JSON.stringify(["Roger", "elder board"]),
+  JSON.stringify(parseMentionTokens("Email @Roger, @elder-board, again @roger"))
+);
+const zach = parseMentionTokens("help him lead her well p2 @Zach Samz #personnel");
+check(
+  "a spaced name offers the full name first, stopping at the next sigil",
+  JSON.stringify(zach) ===
+    JSON.stringify([[
+      { token: "@Zach Samz", name: "Zach Samz" },
+      { token: "@Zach", name: "Zach" },
+    ]]),
+  JSON.stringify(zach)
+);
+check(
+  "a priority word ends the name",
+  JSON.stringify(parseMentionTokens("@Zach p2 call")[0]?.map((c) => c.name)) === JSON.stringify(["Zach"])
 );
 check(
   "an @ mid-word is not a mention (an email address stays text)",
