@@ -13,7 +13,9 @@
 //               for a large body: reading is the common act for a document-note.
 //
 // Size gate: at/above LARGE_BODY_THRESHOLD the rich editor is never mounted; the
-// body opens in preview with a banner and a "Edit as text" → source path.
+// body opens in preview with a banner and a "Edit as text" → source path. On a
+// tabbed canvas the gate is per tab instead (ADR-270): the whole body can be any
+// size, and only a single oversized tab drops to source (TabbedBody).
 //
 // Mode-switch text sync: every editor emits markdown through `handleChange`,
 // kept in `liveText`. Switching modes snapshots that into `mountText` (the
@@ -26,7 +28,7 @@ import LazyMarkdownEditor from "./LazyMarkdownEditor";
 import TabbedBody from "./TabbedBody";
 import RawMarkdownEditor from "./RawMarkdownEditor";
 import MarkdownPreview from "./MarkdownPreview";
-import { isLargeBody } from "@/lib/body";
+import { isLargeForCanvas } from "@/lib/body";
 import { setToolbarOpenPref, useToolbarOpenPref } from "@/lib/toolbar-prefs";
 import type { PromotedRefs } from "./block-anchor-extension";
 import "./markdown-editor.css";
@@ -44,8 +46,9 @@ export type BodyEditorProps = {
   collapsibleToolbar?: boolean;
   compact?: boolean;
   editable?: boolean;
-  // The type uses canvas tabs (notes, opt-in types). Honored only in rich mode
-  // and only for normal-size bodies; a large body is edited as one flat document.
+  // The type uses canvas tabs (notes, opt-in types). Honored only in rich mode.
+  // A tabbed body is gated per tab, not as a whole (ADR-270); an untabbed large
+  // body is still edited as one flat document.
   tabsEnabled?: boolean;
   // Papers only: keep `[^id]` footnote markers out of the serializer's escaping
   // so a citation survives a save (FootnoteMarkdownFix, extensions.ts). Opt-in,
@@ -167,7 +170,7 @@ export default function BodyEditor({
   focusSignal,
   follower = false,
 }: BodyEditorProps) {
-  const large = isLargeBody(initialMarkdown);
+  const large = isLargeForCanvas(initialMarkdown, tabsEnabled);
   // Tab affordance (Brandon, 2026-07-20): TabbedBody owns tab state, but the
   // "start tabs" trigger now rides the body controls row here. It reports whether
   // any tab currently exists (so the icon shows only when there are none — once

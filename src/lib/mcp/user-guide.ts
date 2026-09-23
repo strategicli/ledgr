@@ -246,6 +246,10 @@ A segmented pill above the body switches between them.
   their values.**
 
 A very large note opens in Preview on purpose, with "Edit as text" as the way in.
+On a note with tabs the limit is per tab, not per note: the whole note can be as
+long as you like (a book, a paper's notes with every source in its own tab), and
+only a single tab past about 100,000 characters (~16,000 words) opens as raw
+text. Splitting that tab into smaller ones brings the rich editor back.
 
 ## Formatting
 
