@@ -8,12 +8,13 @@ import {
   listRecentMeetingsForPicker,
 } from "@/lib/meetings/transcripts";
 import TranscriptMeetingPicker from "@/components/capture/TranscriptMeetingPicker";
+import ShareOtherOptions from "@/components/capture/ShareOtherOptions";
+import { looksLikeTranscript } from "@/lib/capture/share";
 
-// Meeting picker for a transcript shared in from Android (the share-target file
-// path). /capture/share captured the file as an inbox transcript and sent the
-// owner here to choose where it belongs. Picking a meeting (or making a new one)
-// attaches the transcript and lands on the meeting. Backing out is safe: the
-// transcript stays in the Inbox, nothing is lost.
+// The share screen for a text file, or a long text, shared in from Android.
+// /capture/share already saved it as an inbox transcript and sent the owner
+// here to choose where it belongs: attach it to a meeting (or a new one), save
+// it as a note, or leave it in the Inbox. Backing out is safe: nothing is lost.
 export const dynamic = "force-dynamic";
 
 export default async function TranscriptSharePicker({
@@ -48,11 +49,39 @@ export default async function TranscriptSharePicker({
   const text = (transcript.bodyText ?? "").trim();
   const wordCount = text ? text.split(/\s+/).length : 0;
   const preview = text.length > 280 ? `${text.slice(0, 280)}…` : text;
+  const transcriptFirst = looksLikeTranscript(text);
+
+  const meetingSection = (
+    <section className="mt-6">
+      <h2 className="text-sm font-medium text-neutral-300">
+        {transcriptFirst ? "Add this transcript to a meeting" : "Or add it to a meeting as a transcript"}
+      </h2>
+      <TranscriptMeetingPicker
+        transcriptId={transcript.id}
+        defaultMeetingTitle={transcript.title || "Meeting"}
+        meetings={meetings.map((m) => ({
+          id: m.id,
+          title: m.title || "Untitled",
+          meetingAt: m.meetingAt ? m.meetingAt.toISOString() : null,
+          createdAt: m.createdAt.toISOString(),
+          updatedAt: m.updatedAt.toISOString(),
+        }))}
+      />
+    </section>
+  );
+  const otherSection = (
+    <section className="mt-6">
+      <h2 className="text-sm font-medium text-neutral-300">
+        {transcriptFirst ? "Not a meeting?" : "Keep this"}
+      </h2>
+      <ShareOtherOptions itemId={transcript.id} />
+    </section>
+  );
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8">
+    <main className="mx-auto w-full max-w-xl px-4 py-8">
       <p className="text-xs uppercase tracking-wide text-neutral-500">
-        Shared transcript
+        Shared to Ledgr
       </p>
       <h1 className="mt-1 text-lg font-medium text-neutral-100">
         {transcript.title || "Transcript"}
@@ -66,20 +95,20 @@ export default async function TranscriptSharePicker({
         </p>
       )}
 
-      <h2 className="mt-6 text-sm font-medium text-neutral-300">
-        Add this transcript to a meeting
-      </h2>
-      <TranscriptMeetingPicker
-        transcriptId={transcript.id}
-        defaultMeetingTitle={transcript.title || "Meeting"}
-        meetings={meetings.map((m) => ({
-          id: m.id,
-          title: m.title || "Untitled",
-          meetingAt: m.meetingAt ? m.meetingAt.toISOString() : null,
-          createdAt: m.createdAt.toISOString(),
-          updatedAt: m.updatedAt.toISOString(),
-        }))}
-      />
+      {/* Transcript-shaped text leads with the meeting picker; anything else
+          (a long article or note shared as text) leads with "Save as a note".
+          Both choices are always offered, so a wrong guess costs one scroll. */}
+      {transcriptFirst ? (
+        <>
+          {meetingSection}
+          {otherSection}
+        </>
+      ) : (
+        <>
+          {otherSection}
+          {meetingSection}
+        </>
+      )}
     </main>
   );
 }

@@ -166,8 +166,13 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
 ## Capturing from outside the app
 
 - **From your phone's share sheet:** share a URL, some text, or a text file into
-  Ledgr. A URL becomes a link item with the page's readable text; a text file
-  becomes a transcript and asks which meeting it belongs to.
+  Ledgr. A URL becomes a link item with the page's readable text, and a short
+  text becomes a quick capture. A text file, or a long text (some recorder apps
+  share a transcript as text rather than as a file), is saved to your Inbox
+  first and then opens a screen with three choices: add it to a meeting as a
+  transcript (meetings you just had are listed first), save it as a note, or
+  leave it in the Inbox. If it reads like a transcript, the meeting choice
+  comes first; otherwise "Save as a note" does.
 - **From your desktop browser:** the web clipper bookmarklet saves the page's
   article text as a link item. Drag it to your bookmarks bar from **\`/build/capture\`
   → Save from the web** — there is no token to generate

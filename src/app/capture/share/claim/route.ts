@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
-import { captureSharedUrlOrText, shareRedirectBase } from "@/lib/capture/share";
+import { captureShare, shareRedirectBase } from "@/lib/capture/share";
 import { createInboxTranscript } from "@/lib/meetings/transcripts";
 import { getStorage } from "@/lib/storage";
 
@@ -85,17 +85,17 @@ export async function GET(request: Request) {
       );
     }
 
-    const itemId = await captureSharedUrlOrText(owner.id, {
+    const path = await captureShare(owner.id, {
       title: payload.title,
       text: payload.text,
       url: payload.url,
     });
     await cleanup();
-    return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
+    return NextResponse.redirect(new URL(path, shareRedirectBase(request)), 303);
   }
 
   // No stash: the URL/text share rode directly in the query string.
-  const itemId = await captureSharedUrlOrText(owner.id, {
+  const path = await captureShare(owner.id, {
     title: url.searchParams.get("title")?.trim() || undefined,
     text: url.searchParams.get("text")?.trim() || undefined,
     url: url.searchParams.get("url")?.trim() || undefined,
@@ -106,5 +106,5 @@ export async function GET(request: Request) {
   // recapture window in lib/capture/share.ts). A bare TEXT share still has no
   // URL to key on, so that one can still double; soft-delete + inbox triage
   // stays the safety net there.
-  return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
+  return NextResponse.redirect(new URL(path, shareRedirectBase(request)), 303);
 }

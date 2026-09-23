@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
-import { captureSharedUrlOrText, shareRedirectBase } from "@/lib/capture/share";
+import { captureShare, shareRedirectBase } from "@/lib/capture/share";
 import { createInboxTranscript } from "@/lib/meetings/transcripts";
 import { getStorage } from "@/lib/storage";
 
@@ -14,7 +14,9 @@ import { getStorage } from "@/lib/storage";
 //   • a shared .txt/.md file → captured as an inbox `transcript` (text never
 //     lost), then on to /capture/transcript/{id} to pick the meeting.
 //   • a shared URL/text → the existing capture (link/unmarked into the inbox),
-//     then on to /items/{id}.
+//     then on to /items/{id}. A LONG text (a recorder that shares its
+//     transcript as text instead of a file) takes the file's path instead:
+//     captureShare in lib/capture/share.ts.
 //
 // This is now a PUBLIC route (see proxy.ts) because a cold Android share can
 // arrive after the 60s Clerk session JWT has expired, and Clerk's handshake
@@ -138,13 +140,14 @@ export async function POST(request: Request) {
     }
   }
 
-  // Otherwise a shared URL/text — the existing quick-capture / web-clipper path.
-  const itemId = await captureSharedUrlOrText(owner.id, {
+  // Otherwise a shared URL/text: a link or a short text is a quick capture; a
+  // long text (a transcript shared as text, not a file) goes to the share screen.
+  const path = await captureShare(owner.id, {
     title: str(form.get("title")),
     text: str(form.get("text")),
     url: str(form.get("url")),
   });
-  return NextResponse.redirect(new URL(itemId ? `/items/${itemId}` : "/", shareRedirectBase(request)), 303);
+  return NextResponse.redirect(new URL(path, shareRedirectBase(request)), 303);
 }
 
 // A stray GET (a bookmark to the old page, a manual hit) has nothing to capture;

@@ -202,8 +202,9 @@ export async function attachTranscriptToMeeting(
   await relateItems(ownerId, meetingId, transcriptId, TRANSCRIPT_RELATION_ROLE);
 }
 
-// Recent meetings for the share picker: newest meeting time first (then newest
-// edited for undated events), body-free. The owner taps one to attach a shared
+// Recent meetings for the share picker: meetings already under way first,
+// nearest to now, then upcoming ones, then undated events by last edit.
+// Body-free. The owner taps one to attach a shared
 // transcript to it.
 export async function listRecentMeetingsForPicker(
   ownerId: string,
@@ -233,7 +234,16 @@ export async function listRecentMeetingsForPicker(
         isNull(items.deletedAt)
       )
     )
-    .orderBy(sql`${items.meetingAt} desc nulls last`, sql`${items.updatedAt} desc`)
+    // Meetings that have already started lead (the one just recorded is at the
+    // top); future ones follow. Newest-first alone put every synced upcoming
+    // recurrence above today's meeting. The hour of slack covers a recording
+    // shared before a meeting's scheduled start.
+    .orderBy(
+      sql`(${items.meetingAt} > now() + interval '1 hour') asc nulls last`,
+      // Within each group, nearest to now first.
+      sql`abs(extract(epoch from ${items.meetingAt} - now())) asc nulls last`,
+      sql`${items.updatedAt} desc`
+    )
     .limit(limit);
   return rows;
 }
