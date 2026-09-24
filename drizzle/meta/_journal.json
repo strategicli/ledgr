@@ -442,6 +442,13 @@
       "when": 1789924614999,
       "tag": "0062_types_quick_capture_status",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1790253092186,
+      "tag": "0063_agent_tables",
+      "breakpoints": true
     }
   ]
 }

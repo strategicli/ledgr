@@ -8,6 +8,8 @@ import Nav from "@/components/nav/Nav";
 import NavProgress from "@/components/nav/NavProgress";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import OutboxSync from "@/components/pwa/OutboxSync";
+import AgentPanel from "@/components/agent/AgentPanel";
+import { agentAvailable } from "@/lib/agent/gate";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";
@@ -120,6 +122,9 @@ export default async function RootLayout({
   // Resolved owner timezone: seeds the sync cache (appTimezoneSync) for the whole
   // request and is provided to client components via TimezoneProvider.
   let tz = DEFAULT_TIMEZONE;
+  // The in-app agent (ADR-271): on only where the machine can run it and the
+  // owner switched it on. Stamped on <body> so the editor can offer inline edit.
+  let agentOn = false;
   try {
     const owner = await resolveOwner();
     if (owner) {
@@ -137,6 +142,7 @@ export default async function RootLayout({
       sectionStyle = s.sectionStyle;
       theme = s.theme;
       tz = s.timezone ?? DEFAULT_TIMEZONE;
+      agentOn = s.agent.enabled && agentAvailable();
     }
   } catch (err) {
     // Next's dynamic-usage marker must propagate (it's how a build learns the
@@ -169,6 +175,7 @@ export default async function RootLayout({
         <body
           className="min-h-full flex flex-col"
           data-section-style={sectionStyle}
+          data-agent={agentOn ? "on" : undefined}
           style={{ "--accent": accent, "--accent-gradient": accentGradient, "--accent-highlight-image": accentHighlightImage, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
           <style dangerouslySetInnerHTML={{ __html: uiScaleCss }} />
@@ -187,6 +194,9 @@ export default async function RootLayout({
           <DeskSendContextMenu />
           {/* One global Send-to-Desk popover (ADR-146): opened at the cursor by
               inline mention/link right-clicks; desktop-only. */}
+          {agentOn && <AgentPanel />}
+          {/* The Claude sidebar (ADR-271): one global panel, desktop right edge
+              or a phone bottom sheet; it follows whatever item is open. */}
           <PwaRegister />
           <OutboxSync />
         </body>

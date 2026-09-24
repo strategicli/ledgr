@@ -348,7 +348,8 @@ body {
     padding-top: var(--nav-pt, 0px);
     padding-bottom: var(--nav-pb, 0px);
     padding-left: var(--nav-pl, 0px);
-    padding-right: var(--nav-pr, 0px);
+    /* --agent-w: the open Claude sidebar (ADR-271) takes room beside the canvas. */
+    padding-right: calc(var(--nav-pr, 0px) + var(--agent-w, 0px));
     transition: padding 0.18s ease;
   }
 }

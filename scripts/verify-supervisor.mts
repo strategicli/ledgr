@@ -877,6 +877,7 @@ check(
     "the shared jobs and the movable exclusive ones run by default",
     JSON.stringify(defaults) ===
       JSON.stringify([
+        "agent-purge",
         "calendar-sync",
         "email-import",
         "export",
@@ -936,6 +937,7 @@ check(
   "a job can be turned off individually",
   normalizeCrons({
     purge: false,
+    "agent-purge": false,
     snapshot: false,
     export: false,
     "calendar-sync": false,
@@ -1074,6 +1076,7 @@ check(
   // Two jobs, named explicitly, so the default set can grow without rewriting
   // the expectations below.
   const jobs = normalizeCrons({
+    "agent-purge": false,
     snapshot: false,
     export: false,
     "calendar-sync": false,

@@ -55,6 +55,12 @@ export const INBOX_SOURCES = [
     help: "Items Claude files over the assistant connection.",
     defaultRoute: "filed",
   },
+  {
+    key: "ai_agent",
+    label: "Claude in Ledgr",
+    help: "Items the in-app Claude sidebar creates.",
+    defaultRoute: "filed",
+  },
 ] as const;
 
 export type InboxSourceKey = (typeof INBOX_SOURCES)[number]["key"];

@@ -1133,3 +1133,105 @@ export const apiCredentials = pgTable(
     index("api_credentials_owner_idx").on(t.ownerId),
   ]
 );
+
+// In-app agent (the Claude sidebar, ADR-271). Four hub-local tables: they are
+// NOT in the sync spine's SYNCED_TABLES, so a chat stays on the machine whose
+// Claude login ran it. Not user content in the "everything is an item" sense
+// (rule 2): a chat is a transient working session, like active_context; a
+// message worth keeping is saved out as a real note item.
+//
+// agent_sessions: one chat. kind main | side | inline. A side chat forks a main
+// one (parent_session_id) and expires 7 days after its last activity.
+export const agentSessions = pgTable(
+  "agent_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind").notNull().default("main"),
+    parentSessionId: uuid("parent_session_id").references((): AnyPgColumn => agentSessions.id, {
+      onDelete: "cascade",
+    }),
+    // The Claude Agent SDK's own session id, passed back as `resume`.
+    sdkSessionId: text("sdk_session_id"),
+    title: text("title").notNull().default("New chat"),
+    contextItemId: uuid("context_item_id").references(() => items.id, { onDelete: "set null" }),
+    model: text("model"),
+    authMode: text("auth_mode"),
+    turnCount: integer("turn_count").notNull().default(0),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    reportedCostUsd: real("reported_cost_usd").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (t) => [index("agent_sessions_owner_recent_idx").on(t.ownerId, t.updatedAt)]
+);
+
+// agent_messages: the transcript. content is an array of blocks (text,
+// tool_use, tool_result); status marks a turn cut off by Stop or a restart.
+export const agentMessages = pgTable(
+  "agent_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: "cascade" }),
+    turnId: uuid("turn_id").notNull(),
+    role: text("role").notNull(),
+    content: jsonb("content").notNull(),
+    mentions: jsonb("mentions"),
+    commandPromptId: uuid("command_prompt_id"),
+    status: text("status").notNull().default("complete"),
+    usage: jsonb("usage"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("agent_messages_session_idx").on(t.sessionId, t.createdAt)]
+);
+
+// agent_approvals: a delete or share the agent asked to run (those always ask).
+export const agentApprovals = pgTable(
+  "agent_approvals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: "cascade" }),
+    turnId: uuid("turn_id").notNull(),
+    tool: text("tool").notNull(),
+    args: jsonb("args").notNull(),
+    preview: text("preview").notNull(),
+    decision: text("decision").notNull().default("pending"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+  },
+  (t) => [index("agent_approvals_session_idx").on(t.sessionId)]
+);
+
+// agent_edit_proposals: one inline edit (select text, instruct, accept/reject).
+// Kept 90 days as the accept-rate record for tuning the chips and prompt.
+export const agentEditProposals = pgTable(
+  "agent_edit_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "cascade" }),
+    baseHash: text("base_hash"),
+    originalText: text("original_text").notNull(),
+    instruction: text("instruction").notNull(),
+    commandPromptId: uuid("command_prompt_id"),
+    proposedText: text("proposed_text"),
+    status: text("status").notNull().default("pending"),
+    model: text("model"),
+    usage: jsonb("usage"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [index("agent_edit_proposals_owner_idx").on(t.ownerId, t.createdAt)]
+);
