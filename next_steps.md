@@ -95,28 +95,16 @@ Exit 0 skips the build, exit 1 runs it, which is backwards from intuition. This 
 touches `release:prod`, which is always a production build. Not settable through the Vercel MCP (read-only on
 this account), and it must not go in `vercel.json`, which is shared with Tyler's project. Runbook §1j-1.
 
-## ▶️ NEXT RELEASE WILL PRODUCE A KILL LIST — thin the DB-backed verify scripts
+## 🔜 DB-backed verify scripts: run on their own now, one latent date bug
 
-`release:prod` now runs `npm run verify:db` (all ~90 DB-backed suites against the dev branch it just migrated),
-**report-only**, right after the four hard gates. Before this, exactly four of them ran anywhere automatic, so
-roughly 15,000 lines of guard code only ran if someone typed the command.
+All ~90 pass against dev as of PR #418 (2026-09-24). `release:prod` no longer runs them (they could never block a
+release and were most of its runtime); run `npm run verify:db` when you want the report. A script that proves
+itself can still move into `CORE_VERIFIES` in `scripts/release-prod.mjs` as a hard gate.
 
-Whatever that first run prints is the thinning list. The bar, per ADR-269: **a verify script earns its place if
-it catches a regression that `next build` and `tsc` would not, and it runs somewhere automatic.** For each
-failure, fix it or delete it. Nothing gets left failing: a guard nobody trusts is worse than no guard. One that
-proves itself moves into `CORE_VERIFIES` in `scripts/release-prod.mjs` as a hard gate.
-
-Two known-flaky ones are already logged below (`verify-sync.mts`, `verify-mcp-tasks.mts`) and should be fixed or
-deleted in the same pass.
-
-**One root cause is already known, so start there.** `verify-view-tokens.mts` went red in CI at 2026-09-22T00:19Z
-because it computed "today" with `new Date().getDate()`, which is the runner's local date (UTC in CI), while the
-code resolves the token in the OWNER'S timezone (`todayBounds(new Date(), appTimezoneSync())`). Between UTC
-midnight and the app zone's midnight, about four hours a night on the `America/New_York` default, the two
-disagree by one and the guard fails for reasons unrelated to the code. Fixed there by reading the same clock as
-the code. **Three DB-backed scripts still carry the same pattern** and are the likely "date-rotted" failures
-already logged: `verify-mcp.mts`, `verify-meeting-prep.mts`, `verify-todoist-sync.mts`. They could not be fixed
-blind (no DB in the session that found this), so check them first when `verify:db` runs.
+**Still latent:** `verify-mcp.mts`, `verify-meeting-prep.mts`, `verify-todoist-sync.mts` compute "today" with the
+machine's local date while the code uses the owner's timezone (the bug fixed in `verify-view-tokens.mts` on
+2026-09-22). They pass most of the day and can fail for the ~4 hours between UTC midnight and the app zone's
+midnight. Fix by reading the same clock as the code (`todayBounds(new Date(), appTimezoneSync())`).
 
 ## 🔜 OWED — the write boundary still doesn't reject a malformed scaffold
 

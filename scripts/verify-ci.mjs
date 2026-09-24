@@ -15,7 +15,8 @@
 // The DB/server-backed suites (verify-mcp*, verify-items, verify-structures, …)
 // need real credentials, which CI has no business holding, so they are excluded
 // here and run with --backend instead (npm run verify:db) against the DEV
-// database. `release:prod` runs them at stage 3, right after it migrates dev.
+// database. release:prod does NOT run them (report-only, and they were most
+// of its runtime); it gates on this pure half passing in GitHub CI instead.
 //
 // Why that matters: before 2026-09-22 only FOUR of the ~90 DB-backed scripts ran
 // anywhere automatic (release:prod's hard gates), so ~15k lines of guard code
