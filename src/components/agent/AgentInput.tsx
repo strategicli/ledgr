@@ -1,8 +1,8 @@
 // The one message box for the in-app agent (ADR-271): the chat sidebar, the
 // side chat, and the inline-edit popover all use it. "/" at the start picks a
 // built-in command or one of Brandon's prompt items; "@" anywhere attaches an
-// item as context. Picked things become chips above the box, so the text stays
-// plain and removing a chip removes it from the message.
+// item as context. Picked things become chips above the box (a mention also
+// leaves "@Title" in the sentence); removing a chip removes it from the message.
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -67,6 +67,9 @@ export default function AgentInput({
   const [text, setText] = useState(initialText);
   const [prompt, setPrompt] = useState<PromptOption | null>(null);
   const [mentions, setMentions] = useState<Mention[]>([]);
+  // The "@" already turned into a mention, so typing after its name doesn't
+  // reopen the picker on it.
+  const chosenAt = useRef<number | null>(null);
   const [prompts, setPrompts] = useState<PromptOption[]>([]);
   const [pick, setPick] = useState<Pick>(null);
   const [hits, setHits] = useState<Mention[]>([]);
@@ -133,9 +136,12 @@ export default function AgentInput({
     setText(v);
     const upto = v.slice(0, caret);
     const slash = /^\/(\S*)$/.exec(upto);
-    const at = allowMentions ? /(^|\s)@([^\s@]{0,40})$/.exec(upto) : null;
+    // Spaces allowed so "@Jeff Harrison" can be typed out; Enter with no
+    // matches still sends.
+    const at = allowMentions ? /(^|\s)@([^\n@]{0,40})$/.exec(upto) : null;
+    const atStart = at ? caret - at[2].length - 1 : -1;
     if (slash) setPick({ kind: "slash", q: slash[1] });
-    else if (at) setPick({ kind: "mention", q: at[2], start: caret - at[2].length - 1 });
+    else if (at && atStart !== chosenAt.current) setPick({ kind: "mention", q: at[2], start: atStart });
     else setPick(null);
   }
 
@@ -159,8 +165,11 @@ export default function AgentInput({
       }
     } else if (pick?.kind === "mention" && o.mention) {
       const m = o.mention;
+      chosenAt.current = pick.start;
       setMentions((xs) => (xs.some((x) => x.id === m.id) || xs.length >= 10 ? xs : [...xs, m]));
-      setText((t) => t.slice(0, pick.start) + t.slice(pick.start + pick.q.length + 1));
+      // Keep the name in the sentence ("what is @Jeff Harrison?") so it still
+      // reads; the chip is what attaches the item itself.
+      setText((t) => `${t.slice(0, pick.start)}@${m.title || "Untitled"} ${t.slice(pick.start + pick.q.length + 1)}`);
       setPick(null);
     }
     ta.current?.focus();
@@ -183,6 +192,7 @@ export default function AgentInput({
     setPrompt(null);
     setMentions([]);
     setAsk(null);
+    chosenAt.current = null;
   }
 
   return (

@@ -78,7 +78,14 @@ const canon = (s: string) => {
   return [...p.slice(0, -1).sort(), p[p.length - 1]].join("-");
 };
 const boundCanon = new Set([...bound].map(canon));
-for (const spec of [...new Set(specs)]) {
+// Shortcuts Ledgr binds itself rather than Tiptap: check the handler exists.
+const OWN: Record<string, RegExp> = {
+  "Mod-Shift-e": /e\.shiftKey && e\.key\.toLowerCase\(\) === "e"/, // inline edit, ADR-271
+};
+for (const [spec, handler] of Object.entries(OWN)) {
+  check(`Ledgr binds ${spec}`, handler.test(toolbar));
+}
+for (const spec of [...new Set(specs)].filter((s) => !(s in OWN))) {
   check(`Tiptap binds ${spec}`, boundCanon.has(canon(spec)));
 }
 

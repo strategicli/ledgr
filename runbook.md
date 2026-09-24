@@ -332,6 +332,23 @@ A **local peer** is Ledgr running entirely on the owner's own machine: embedded 
 
 **The status icon (Windows).** `npm run local:tray` puts a dot near the clock and brings it back at every sign-in: **green** serving, **amber** the database is up but the app is not answering, **red** nothing running. Right-click for Open, Check status, Start, Restart, Stop. It is the only surface that still answers when Ledgr itself is down, which is exactly when the question gets asked. It is separate from whether the service runs — `npm run local:tray -- --uninstall` removes the icon and touches nothing else.
 
+## 1n. Claude in Ledgr: the in-app agent (ADR-271)
+
+The Claude sidebar, inline edit, slash prompts, and side chat. It runs Claude Code (through the Agent SDK) **on the hub only**, under that machine's own Claude login. Vercel and spokes never offer it (`src/lib/agent/gate.ts`).
+
+- **Turn it on:** User Settings → **Claude in Ledgr** → the checkbox. The section only appears on a machine that can run it. **Check sign-in** there sends Claude a one-word test.
+- **One-time login (per hub machine).** The agent cannot use the Claude desktop app's sign-in. On the hub, in Windows PowerShell, run the bundled Claude Code, then `/login` (Claude account, Edgewood email, Team org), `/status` to confirm, and `/exit`:
+  ```powershell
+  & "C:\dev\ledgr\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe"
+  ```
+  Run it as the Windows user the supervisor runs as (on BC-EDGEWOOD, `colli`). An expired login shows up as a red health line in Settings with these same steps.
+- **Lockdown, and why each part matters** (`src/lib/agent/runtime.ts`, pinned by `scripts/verify-agent.mts`): no Claude Code built-in tools (no shell, no file access), no on-disk settings (so the machine's CLI skills, hooks, and CLAUDE.md never load), `strictMcpConfig` plus `disableClaudeAiConnectors` plus `ENABLE_CLAUDEAI_MCP_SERVERS=false` (without these the Team account's claude.ai connectors auto-connect mid-turn: dozens of foreign tools and a ~$4 first turn in the Phase 0 spike), an empty sandbox folder as cwd, and an env allowlist so `DATABASE_URL`, R2 keys, and tokens never reach the child.
+- **Tools** are Ledgr's own MCP registry served in-process, in tiers (`src/lib/agent/tools.ts`): reads and writes run, **Delete and Share always ask** with an approval card, and workspace-reshaping tools are not exposed. A new registry tool gets no access until it is given a tier; CI fails if one is missing.
+- **Switch to API billing** if Anthropic's subscription rules change: set `LEDGR_AGENT_AUTH=apikey` and `ANTHROPIC_API_KEY` in the hub's environment and restart. Nothing else moves.
+- **Usage.** Each turn resends the tool definitions (about 12K to 15K tokens, mostly cache reads) once per model call, so a long chat grows expensive. Start a new chat per topic. Settings shows the last 7 days.
+- **Cleanup:** the nightly `agent-purge` local job (03:50) deletes side chats nobody kept after 7 days.
+- **Testing override:** `LEDGR_AGENT=on|off` forces availability. Never the way to switch it on for the owner (ADR-222).
+
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
 
 On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>/snapshots/`, thinned into a tiered spread (dense recent, sparse old) so a fixed file count covers weeks. It fills the gap between `revisions` (one item's body history) and the weekly OneDrive dump (§4 — exact, but weekly); the nightly markdown export stays the lossy Sunday-proof fire escape, not a restore path.

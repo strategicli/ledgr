@@ -308,6 +308,7 @@ the original stays, because this log never rewrites history.
 - [ADR-268](#adr-268-a-types-properties-can-be-quick-add-chips-one-optional-flag-on-the-property) a type's properties can be quick-add chips, one optional flag on the property
 - [ADR-269](#adr-269-branch-pr-green-ci-merge) branch, PR, green CI, merge
 - [ADR-270](#adr-270-the-large-body-gate-is-per-tab-on-a-tabbed-canvas) the large-body gate is per tab on a tabbed canvas
+- [ADR-271](#adr-271-claude-in-ledgr-an-in-app-agent-on-the-hub) Claude in Ledgr: an in-app agent on the hub
 
 </details>
 
@@ -4746,3 +4747,25 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Why / alternatives:** *Raise the threshold* was rejected: it just moves the cliff, and a real single-document freeze exists above some size. *Gate on the largest tab from `BodyEditor`* (drop the whole canvas to source if any tab is large) was rejected: one big tab would take every small tab's rich editor with it, the same failure in a smaller form.
 
 **Affects:** `src/lib/body.ts` (`isLargeForCanvas`), `src/components/markdown-editor/BodyEditor.tsx`, `src/components/markdown-editor/TabbedBody.tsx`, `scripts/verify-body-modes.mts` (+8 checks), `src/lib/mcp/user-guide.ts`, `next_steps.md`.
+
+## ADR-271: Claude in Ledgr, an in-app agent on the hub
+**Date:** 2026-09-24
+**Status:** accepted (Brandon). Plan: the four Ledgr notes "Ledgr in-app agent plan 1-4 of 4".
+
+**Context:** Brandon works with Claude constantly, but always outside Ledgr: claude.ai over the MCP connector, or Claude Code. That means pasting context in, and every claude.ai edit to an open note bounced the page to the top. He wanted a Claudian-style assistant inside the app: a sidebar that knows what is open, inline editing of a selection, his Prompt items as slash commands, @-mentions, and side questions. His Edgewood Team seat already includes Claude Code, and the hub (BC-EDGEWOOD) is always on.
+
+**Decision:**
+
+1. **Run Claude Code through the Agent SDK inside the hub's Next.js process** (process model A), under the hub machine's own one-time Claude login. No API key in the default mode; `LEDGR_AGENT_AUTH=apikey` switches billing without other changes.
+2. **Hub only.** `agentAvailable()` is true on a supervisor install that is its own hub, false on Vercel and on spokes. The owner turns it on with a Settings checkbox (ADR-222), and every `/api/agent` route 404s while it is off.
+3. **Locked down.** No Claude Code built-in tools, no on-disk settings, no MCP server but Ledgr's, claude.ai connectors disabled three ways (the Phase 0 spike showed them auto-connecting mid-turn otherwise), an empty sandbox cwd, and an env allowlist. Pinned by `scripts/verify-agent.mts` in CI.
+4. **Ledgr's own MCP registry, in-process, in tiers.** Read and Write run without asking (Brandon's answer: Trash and revisions are the undo). **Delete and Share always ask**, every time, with no "allow for this chat". Workspace-reshaping tools are not exposed. An untiered tool is not exposed, and CI fails on one.
+5. **Four hub-local tables** (migration 0063, additive): chats, messages, approvals, inline-edit proposals. Not synced and skipped by pg-copy. Chats are the hub's working memory, not owner data.
+6. **Editable behavior lives in two seeded Prompt items** (the sidebar's base prompt and the inline-edit prompt), with Revert to default, the same pattern as ADR-162's Note Editing Partner. The Prompt type gains optional Slash name, Use in, and Model properties (Brandon's own type, updated in place, additive).
+7. **Live in-place updates (Feature 0)** ship with it: an outside change to the open note patches into the editor with a three-way merge instead of reloading.
+
+**Why / alternatives:** *A separate agent process (model B)* was deferred: model A was fast enough in the spike (about 3 seconds to first token, 4.6 seconds for an inline edit on Opus) and needs no new service. *API-key billing by default* was rejected because the seat already pays for it. *Syncing chats to spokes* was rejected (Brandon: hub-only). *Rate limits and a daily soft cap* were cut from v1 at Brandon's request; the usage chart stays.
+
+**Consequences.** A long chat is expensive, since every model call resends about 12K to 15K tokens of tool definitions (mostly cache reads). The runbook says to start a new chat per topic; trimming the tool set is the lever if it bites. The supervisor restarting for an update interrupts an in-flight turn, which shows as interrupted with Retry.
+
+**Affects:** `drizzle/0063_agent_tables.sql`, `src/db/schema.ts`, `src/lib/agent/*`, `src/app/api/agent/*`, `src/app/api/machine/agent-purge`, `supervisor/lib.mjs` (nightly purge), `scripts/lib/pg-copy.mjs`, `src/components/agent/*`, `src/components/settings/AgentSettings.tsx`, `src/app/settings/page.tsx`, `src/lib/settings.ts`, `src/lib/inbox-sources.ts` (the `ai_agent` arrival path), `src/lib/mcp/tools/index.ts` (`TOOL_NAMES`), `scripts/verify-agent.mts`, `runbook.md` §1n, `schema.md`, `src/lib/mcp/user-guide.ts`.

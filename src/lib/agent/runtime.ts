@@ -39,7 +39,10 @@ export function authMode(): "subscription" | "apikey" {
 }
 
 export function scrubbedEnv(): Record<string, string> {
-  const env: Record<string, string> = { CLAUDE_AGENT_SDK_CLIENT_APP: "ledgr-agent/1" };
+  // The claude.ai login would otherwise auto-connect the account's cloud
+  // connectors (Outlook, Notion, ...) mid-turn: tools the agent must not have.
+  // Blocked here, in settings, and by strictMcpConfig.
+  const env: Record<string, string> = { CLAUDE_AGENT_SDK_CLIENT_APP: "ledgr-agent/1", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
   for (const k of ENV_ALLOW) {
     const v = process.env[k];
     if (v) env[k] = v;
@@ -76,6 +79,8 @@ export function lockedOptions(i: LockedInput): Options {
     cwd: sandboxDir(),
     env: scrubbedEnv(),
     settingSources: [],
+    settings: { disableClaudeAiConnectors: true, syncClaudeAiSkills: false, syncClaudeAiPlugins: false },
+    strictMcpConfig: true,
     tools: [],
     systemPrompt: i.systemPrompt,
     mcpServers: i.mcpServers ?? {},

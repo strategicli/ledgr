@@ -9,7 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { getItem } from "@/lib/items";
 import { callTool } from "@/lib/mcp/tools";
 import { readAgentPrompt } from "./prompts";
-import { resolvePromptItem } from "./context";
+import { promptModel, resolvePromptItem } from "./context";
 import { explainError, lockedOptions, noteError, noteOk, resultError, run } from "./runtime";
 
 export type InlineInput = {
@@ -70,7 +70,7 @@ export async function runInlineEdit(ownerId: string, i: InlineInput) {
     }
   }
   const settings = await getSettings(ownerId);
-  const model = settings.agent.inlineModel;
+  const model = (await promptModel(ownerId, i.commandPromptId)) ?? settings.agent.inlineModel;
   let system = await readAgentPrompt(ownerId, "inline");
   if (i.commandPromptId) {
     const p = await resolvePromptItem(ownerId, i.commandPromptId, i.itemId);

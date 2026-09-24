@@ -6,6 +6,23 @@ Anything that stops being live moves to `next_steps_archive.md`, which holds the
 
 ---
 
+## 🟡 FOLLOW-UPS — Claude in Ledgr (ADR-271, shipped 2026-09-24)
+
+Built and live-tested on the hub (sidebar, tool calls, live edit of the open note,
+Delete approval, inline edit, "/" prompts, "@" items, side chat with Bring back,
+phone sheet at 375px). Left for real use to decide:
+- **Phone over the tunnel.** Streaming was tested on localhost only. Open the sidebar
+  on the phone through the public address and confirm a 1 to 3 minute turn streams
+  without buffering or dropping (plan note 4, Phase 0 step 9).
+- **Token cost of a long chat.** Every model call resends about 12K to 15K tokens of
+  tool definitions; a 7-turn test chat reached 400K. If plan usage bites, trim rarely
+  used tools from the agent (set_recurrence, link_to_line, apply_template, export_item,
+  get_record_layout are the heaviest or rarest) or load them on demand.
+- **Fake-SDK test** for turns, reconnect, and approvals (plan note 4, Testing) was not
+  built; `verify-agent.mts` covers the safety rails only.
+- **Eval pass** on inline edit after a few weeks: accept rates are in
+  `agent_edit_proposals`.
+
 ## 📚 LONG-TERM — no user should meet a size cap on a note (Tyler, 2026-09-22)
 
 **Where it stands:** ADR-270 made the 100K large-body gate per tab on tabbed canvases,

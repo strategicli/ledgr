@@ -10,7 +10,8 @@ import { getDb } from "@/db";
 import { agentApprovals, agentMessages, agentSessions } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
 import { captureError } from "@/lib/log";
-import { buildSystemPrompt, type TurnContext } from "./context";
+import { resolveMentions } from "@/lib/mentions";
+import { buildSystemPrompt, promptModel, type TurnContext } from "./context";
 import { bareName, buildToolServer, describeCall, tierOf } from "./tools";
 import { authMode, explainError, lockedOptions, noteError, noteOk, resultError, run } from "./runtime";
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk";
@@ -301,7 +302,11 @@ async function runTurn(
   const canUseTool: CanUseTool = async (toolName, args) => {
     const tool = bareName(toolName);
     if (tierOf(tool) !== "D") return { behavior: "deny", message: `${tool} is not available here` };
-    const preview = describeCall(tool, args);
+    // Name what the card is about: "Move an item to Trash" alone makes the
+    // owner open Exact details to learn which item.
+    const ids = [args.id, ...(Array.isArray(args.ids) ? args.ids : [])].filter((x): x is string => typeof x === "string");
+    const names = [...(await resolveMentions(ownerId, ids)).values()].map((m) => `"${m.title || "Untitled"}"`);
+    const preview = describeCall(tool, args) + (names.length ? `: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}` : "");
     const [a] = await db
       .insert(agentApprovals)
       .values({ sessionId: s.id, turnId: turn.id, tool, args, preview })
@@ -329,7 +334,7 @@ async function runTurn(
     const tools = await buildToolServer(ownerId);
     const systemPrompt = await buildSystemPrompt(ownerId, ctx);
     const options = lockedOptions({
-      model: settings.agent.chatModel,
+      model: (await promptModel(ownerId, ctx.commandPromptId)) ?? settings.agent.chatModel,
       systemPrompt,
       maxTurns: s.kind === "side" ? MAX_TURNS.side : MAX_TURNS.main,
       abort: turn.abort,

@@ -4,7 +4,7 @@
 // (about 4 per token); anything over budget goes in as title + id with a note
 // to fetch the rest, so a huge note can never crowd out the conversation.
 import { callTool } from "@/lib/mcp/tools";
-import { getSettings } from "@/lib/settings";
+import { AGENT_MODELS, getSettings } from "@/lib/settings";
 import { getAppTimezone } from "@/lib/today";
 import { buildItemTokenContext } from "@/lib/item-tokens-service";
 import { resolveItemTokens } from "@/lib/item-tokens";
@@ -82,6 +82,18 @@ export async function todayLine(ownerId: string, now = new Date()): Promise<{ li
     ymd,
     tz,
   };
+}
+
+// A prompt item's own Model property, when it names a model the agent offers.
+// Overrides the Settings model for the turn that runs that prompt.
+export async function promptModel(ownerId: string, promptId: string | null | undefined): Promise<string | null> {
+  if (!promptId) return null;
+  try {
+    const m = ((await getItem(ownerId, promptId)).properties as Record<string, unknown> | null)?.model;
+    return typeof m === "string" && (AGENT_MODELS as readonly string[]).includes(m) ? m : null;
+  } catch {
+    return null;
+  }
 }
 
 // A prompt item's instructions, with its tokens filled against the open item.

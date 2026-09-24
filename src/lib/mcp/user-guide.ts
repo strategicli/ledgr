@@ -1167,6 +1167,51 @@ connected; that dead-end tab is the client closing its one-time listener.
   where each capture path lands — the Inbox, filed straight away, or a project —
   the same controls as Build → Types, /dashboards, and /build/capture.
 
+## Claude in Ledgr
+
+A Claude assistant built into the app, as opposed to one connected from outside.
+It runs on your always-on hub computer under that computer's own Claude sign-in,
+so it is only offered there (not on the cloud copy, not on another device). Turn
+it on in **User Settings → Claude in Ledgr**, where you also pick the model for
+the sidebar and for inline edits, open or revert its two editable prompts, check
+that it is signed in, and see the last week of use.
+
+- **The sidebar** — **Ctrl/Cmd+J** or the round sparkle button. It knows the
+  item you have open and any text you have highlighted (shown as chips at the
+  top; click ✕ to leave the item out of that chat). It can search, read, create,
+  and edit your items, and an edit to the open note appears in place while you
+  watch. **Deleting and sharing always ask first** with an Allow / Deny card.
+  Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
+  as a note, or archives it.
+- **Inline edit** — highlight text in a note and press **Ctrl/Cmd+Shift+E** (or
+  the sparkle button in the editor toolbar). Pick a chip (Tighten, Fix grammar,
+  My voice, Warmer, Simplify, Bullets, Expand) or type what you want. You see the
+  change as a word diff, then Accept (one undo step), Reject, Retry, or refine it.
+  With nothing highlighted it writes new text at the cursor. If the note changed
+  underneath you, it says so rather than overwriting.
+- **"/" prompts** — type **/** at the start of a message to run one of your
+  Prompt items, or a built-in like **/btw**. On a Prompt item, **Slash name**
+  gives it a short name, **Use in** limits it to the sidebar or inline edit, and
+  **Model** runs it on a specific model.
+- **"@" items** — type **@** and a name to attach an item's contents to your
+  message.
+- **Side chat** — **Ctrl/Cmd+Alt+J**, the ⤳ button, or **/btw your question**
+  asks a quick question without cluttering the chat. **Bring back** adds a short
+  summary to the main chat, **Keep** saves it as its own chat, **Close** discards
+  it. Side chats you don't keep are deleted after 7 days.
+
+Long chats cost more of your Claude plan's usage, since each reply re-reads the
+whole conversation. Start a new chat (＋) when you change topics.
+
+## Changes from elsewhere appear in place
+
+When Claude (in the sidebar or over a connector) or another device changes the
+note you have open, the change patches in where you are instead of reloading the
+page. It glows briefly, and a small **Edited above / below** pill points to it
+when it is off screen. If you had unsaved typing, it is merged in; if you and the
+other edit touched the same paragraph, your text is kept and a **Review** window
+offers **Keep mine** or **Use theirs**.
+
 ## Two features that are off until you turn them on
 
 Both are in **User Settings**.

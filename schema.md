@@ -246,6 +246,16 @@ Verification is one indexed fetch by `key_id` then one `timingSafeEqual` on the 
 
 ---
 
+## Agent tables (ADR-271; the in-app Claude agent)
+Four tables for the Claude sidebar, side chats, and inline edit. **Hub-local:** they are not in `SYNCED_TABLES` and `scripts/lib/pg-copy.mjs` skips them, so chats never reach a spoke, Vercel, or Neon. Migration 0063, additive only.
+
+- **`agent_sessions`**: one row per chat. `owner_id`, `kind` (`main` or `side`), `parent_session_id` (a side chat's main chat, cascade), `sdk_session_id` (the Agent SDK's own id, for resume and fork), `title`, `context_item_id` (set null on item delete), `model`, `auth_mode`, running totals `turn_count`/`input_tokens`/`output_tokens`/`reported_cost_usd`, `archived_at`, and `expires_at` (an unkept side chat; the nightly `agent-purge` job deletes it after 7 days). Index `(owner_id, updated_at)`.
+- **`agent_messages`**: one row per user message or Claude reply. `session_id` (cascade), `turn_id`, `role`, `content` (jsonb blocks: text and tool rows), `mentions` (item ids attached with @), `command_prompt_id` (the / prompt used), `status`, `usage`. Index `(session_id, created_at)`.
+- **`agent_approvals`**: one row per Delete/Share request the owner was asked about. `session_id` (cascade), `turn_id`, `tool`, `args`, `preview` (the card text), `decision` (`pending`, `allow_once`, `deny`, `timeout`), `note`, `decided_at`.
+- **`agent_edit_proposals`**: one row per inline edit. `owner_id`, `item_id` (cascade), `base_hash` (the stale guard), `original_text`, `instruction`, `command_prompt_id`, `proposed_text`, `status` (`pending`, `accepted`, `rejected`, `stale`), `model`, `usage`. Accept rates here are the eval signal for the chips and the inline prompt.
+
+---
+
 ## `error_log` (Phase 1; or use a free Sentry tier)
 No silent failures. Failed crons/webhooks captured here and surfaced through `/health` and the UI.
 

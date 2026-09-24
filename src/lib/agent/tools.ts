@@ -84,12 +84,14 @@ export function tierOf(tool: string): Tier {
 // One-line plain-English summary of a call, for the tool row and approvals.
 export function describeCall(tool: string, args: Record<string, unknown>): string {
   const s = (v: unknown) => (typeof v === "string" ? v : "");
-  const q = (v: unknown) => `"${s(v).slice(0, 60)}"`;
+  const q = (v: unknown) => `"${s(v).replace(/^"|"$/g, "").slice(0, 60)}"`;
   switch (tool) {
     case "search_items":
       return `Searched for ${q(args.query)}`;
     case "get_item":
       return "Read an item";
+    case "get_active_context":
+      return "Looked at what you have open";
     case "list_items":
       return `Listed ${s(args.type) || "items"}`;
     case "create_item":

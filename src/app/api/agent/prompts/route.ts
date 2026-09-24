@@ -49,7 +49,8 @@ export async function GET(request: Request) {
         title: r.title,
         slug: typeof p.slug === "string" ? p.slug : null,
         scope: p.scope === "chat" || p.scope === "inline" ? p.scope : "both",
-        description: r.preview.split("\n").find((l) => l.trim())?.trim() ?? "",
+        // The flattened body usually opens with the title as a heading; skip it.
+        description: (r.preview.split("\n").find((l) => l.trim())?.trim() ?? "").replace(r.title, "").replace(/^[\s#:.-]+/, ""),
         system: typeof p.system === "string" && AGENT_PROMPT_MARKERS.includes(p.system),
         usedAt: use[r.id] ?? null,
         updatedAt: r.updatedAt,

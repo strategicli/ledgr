@@ -1,4 +1,4 @@
-﻿// The Claude sidebar (ADR-271, Features 1 and 5). One global panel mounted by
+// The Claude sidebar (ADR-271, Features 1 and 5). One global panel mounted by
 // the root layout when the agent is on: a resizable right-side panel on desktop
 // (it takes room beside the canvas through --agent-w rather than covering it),
 // a full-height bottom sheet on a phone. It follows whatever item is open and
@@ -117,8 +117,12 @@ export default function AgentPanel() {
   // Restore the owner's panel state on this device.
   // After mount, not in the initial state: the server render has no storage,
   // and reading it during render would mismatch hydration.
+  // The save effects below wait for this, or their first run would write the
+  // empty defaults over what was stored before the restore could read it.
+  const restored = useRef(false);
   useEffect(() => {
     queueMicrotask(() => {
+      restored.current = true;
       setOpen(store(OPEN_KEY, false));
       setWidth(store(WIDTH_KEY, 420));
       const t = store<Tab[]>(TABS_KEY, []);
@@ -126,8 +130,12 @@ export default function AgentPanel() {
       setActive(t[0]?.id ?? null);
     });
   }, []);
-  useEffect(() => save(OPEN_KEY, open), [open]);
-  useEffect(() => save(TABS_KEY, tabs), [tabs]);
+  useEffect(() => {
+    if (restored.current) save(OPEN_KEY, open);
+  }, [open]);
+  useEffect(() => {
+    if (restored.current) save(TABS_KEY, tabs);
+  }, [tabs]);
 
   // Take room beside the canvas on desktop; overlay on a phone.
   useEffect(() => {
@@ -264,7 +272,7 @@ export default function AgentPanel() {
   async function sideAction(action: "bring" | "keep" | "close") {
     if (!side) return;
     if (action === "bring") {
-      showToast("Summarizing the side chatâ€¦");
+      showToast("Summarizing the side chat…");
       try {
         await api(`/api/agent/sessions/${side.id}/bring-back`, { method: "POST" });
         showToast("Brought back. It rides along with your next message.");
@@ -317,11 +325,11 @@ export default function AgentPanel() {
             {activeTab?.title ?? "Claude"}
           </button>
         )}
-        <HeaderBtn label="Your chats" onClick={() => void (switcher ? setSwitcher(null) : openSwitcher())}>â˜°</HeaderBtn>
-        <HeaderBtn label="New chat" onClick={() => void newChat()}>ï¼‹</HeaderBtn>
-        <HeaderBtn label="Side chat (Ctrl/Cmd+Alt+J): a temporary question that doesn't touch this chat" onClick={() => void openSide()}>â¤³</HeaderBtn>
-        <HeaderBtn label="More" onClick={() => setMenu((m) => !m)}>â‹¯</HeaderBtn>
-        <HeaderBtn label="Close (Ctrl/Cmd+J)" onClick={() => setOpen(false)}>âœ•</HeaderBtn>
+        <HeaderBtn label="Your chats" onClick={() => void (switcher ? setSwitcher(null) : openSwitcher())}>☰</HeaderBtn>
+        <HeaderBtn label="New chat" onClick={() => void newChat()}>＋</HeaderBtn>
+        <HeaderBtn label="Side chat (Ctrl/Cmd+Alt+J): a temporary question that doesn't touch this chat" onClick={() => void openSide()}>⤳</HeaderBtn>
+        <HeaderBtn label="More" onClick={() => setMenu((m) => !m)}>⋯</HeaderBtn>
+        <HeaderBtn label="Close (Ctrl/Cmd+J)" onClick={() => setOpen(false)}>✕</HeaderBtn>
       </header>
       {menu && (
         <div className="absolute right-2 top-10 z-30 w-52 rounded-card border border-line-strong bg-surface-2 py-1 text-sm shadow-xl">
@@ -341,7 +349,7 @@ export default function AgentPanel() {
                 {t.title}
               </button>
               <button type="button" aria-label="Close tab" onClick={() => closeTab(t.id)} className="opacity-60 hover:opacity-100">
-                âœ•
+                ✕
               </button>
             </span>
           ))}
@@ -372,7 +380,7 @@ export default function AgentPanel() {
               <span className="truncate">Viewing: {ctx.item.title || "Untitled"}</span>
               <span className="text-ink-faint">({ctx.item.type})</span>
               <button type="button" aria-label="Don't send this item in this chat" onClick={() => active && setDetached((d) => ({ ...d, [active]: true }))} className="hover:text-ink">
-                âœ•
+                ✕
               </button>
             </span>
           )}
