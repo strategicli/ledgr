@@ -21,6 +21,7 @@ const {
 const { relateItems, addMatchEdge } = await import("../src/lib/relations");
 const { getTemplate } = await import("../src/lib/templates");
 const { getMeetingPeople } = await import("../src/lib/meetings/prep");
+const { ATTENDING_ROLE } = await import("../src/lib/events/people");
 const { derivePinCondition, pinEventAsTemplate } = await import("../src/lib/templates/pin");
 const { applyEventIntake } = await import("../src/lib/calendar/intake");
 const { eq } = await import("drizzle-orm");
@@ -61,7 +62,7 @@ try {
   // Event with the owner + Pat as attendees → derive should pick Pat (owner skipped).
   const cal = { attendees: [{ name: "Me", email: ownerEmail }, { name: "Pat", email: "pat@x.com" }], attendeeEmails: [ownerEmail, "pat@x.com"], seriesMasterId: null };
   const event = await createItem(owner.id, { type: "event", title: "Pat / Brandon 1:1", properties: { calendar: cal } });
-  await relateItems(owner.id, event.id, pat.id); // confirmed
+  await relateItems(owner.id, event.id, pat.id, ATTENDING_ROLE); // confirmed attendee (ADR-144)
   await addMatchEdge(owner.id, event.id, sam.id, "suggested"); // suggested (must NOT be pinned)
 
   // --- derivePinCondition: owner-excluded attendee email wins ---

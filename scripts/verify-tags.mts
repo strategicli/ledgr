@@ -45,10 +45,10 @@ let tempUserId: string | null = null;
 try {
   const types = await listTypes();
 
-  // 1. The tag type is seeded and ordinary (not system, not in quick capture).
+  // 1. The tag type is seeded, built-in since migration 0052 (ADR-199), not in quick capture.
   const tag = types.find((t) => t.key === "tag");
   check("tag type is seeded", !!tag);
-  check("tag is an ordinary type (is_system = false)", tag?.isSystem === false);
+  check("tag is a built-in type (is_system = true)", tag?.isSystem === true);
   check("tag is not in the quick-capture dropdown", tag?.showInQuickCapture === false);
 
   // 2. task / event / note carry the built-in `tags` relation field (-> tag, many).
