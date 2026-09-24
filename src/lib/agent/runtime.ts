@@ -1,5 +1,5 @@
 // The only place that calls the Claude Agent SDK (ADR-271). Every call goes
-// through lockedOptions(): no Claude Code built-in tools, no user or project
+// through lockedOptions(): no Claude Code built-in tools but ToolSearch, no user or project
 // settings (so the hub's CLI skills, hooks, and CLAUDE.md never load), an empty
 // sandbox folder as cwd, Ledgr's own tools in-process, and a scrubbed
 // environment so DATABASE_URL, R2 keys, and Ledgr tokens never reach the child.
@@ -42,7 +42,16 @@ export function scrubbedEnv(): Record<string, string> {
   // The claude.ai login would otherwise auto-connect the account's cloud
   // connectors (Outlook, Notion, ...) mid-turn: tools the agent must not have.
   // Blocked here, in settings, and by strictMcpConfig.
-  const env: Record<string, string> = { CLAUDE_AGENT_SDK_CLIENT_APP: "ledgr-agent/1", ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
+  //
+  // ENABLE_TOOL_SEARCH keeps all but the core tools in reserve (tools.ts), and
+  // the one-hour cache keeps a chat cheap when the owner comes back after a
+  // pause (the default five minutes rarely survives a real conversation).
+  const env: Record<string, string> = {
+    CLAUDE_AGENT_SDK_CLIENT_APP: "ledgr-agent/1",
+    ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+    ENABLE_TOOL_SEARCH: "true",
+    ENABLE_PROMPT_CACHING_1H: "1",
+  };
   for (const k of ENV_ALLOW) {
     const v = process.env[k];
     if (v) env[k] = v;
@@ -81,10 +90,11 @@ export function lockedOptions(i: LockedInput): Options {
     settingSources: [],
     settings: { disableClaudeAiConnectors: true, syncClaudeAiSkills: false, syncClaudeAiPlugins: false },
     strictMcpConfig: true,
-    tools: [],
+    // The one built-in: ToolSearch, which only looks up Ledgr's reserve tools.
+    tools: ["ToolSearch"],
     systemPrompt: i.systemPrompt,
     mcpServers: i.mcpServers ?? {},
-    allowedTools: i.allowedTools ?? [],
+    allowedTools: i.allowedTools ? [...i.allowedTools, "ToolSearch"] : [],
     canUseTool: i.canUseTool ?? (async () => ({ behavior: "deny", message: "not allowed here" })),
     permissionMode: "default",
     model: i.model,

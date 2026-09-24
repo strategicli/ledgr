@@ -71,6 +71,19 @@ export const TOOL_TIERS: Record<string, Tier> = {
   embed_attachment: "X",
 };
 
+// Sent on every model call. Every other tool waits in reserve and is found
+// through Claude Code's ToolSearch when a request needs it, which cut the tool
+// definitions resent per call to about a third (2026-09-24).
+export const CORE_TOOLS = new Set([
+  "search_items",
+  "list_items",
+  "get_item",
+  "get_active_context",
+  "create_item",
+  "update_item",
+  "edit_item_body",
+]);
+
 export const SERVER = "ledgr";
 export const sdkName = (tool: string) => `mcp__${SERVER}__${tool}`;
 export const bareName = (sdk: string) => sdk.replace(`mcp__${SERVER}__`, "");
@@ -92,6 +105,8 @@ export function describeCall(tool: string, args: Record<string, unknown>): strin
       return "Read an item";
     case "get_active_context":
       return "Looked at what you have open";
+    case "ToolSearch":
+      return "Found the right tool";
     case "list_items":
       return `Listed ${s(args.type) || "items"}`;
     case "create_item":
@@ -116,7 +131,7 @@ export function describeCall(tool: string, args: Record<string, unknown>): strin
 // Capture settings (and the owner) can tell sidebar captures from connector ones.
 export async function buildToolServer(ownerId: string) {
   const defs = (await listToolDefs(ownerId)).filter((d) => tierOf(d.name) !== "X");
-  const cfg = createSdkMcpServer({ name: SERVER, version: "1", alwaysLoad: true });
+  const cfg = createSdkMcpServer({ name: SERVER, version: "1" });
   const server = cfg.instance.server;
   server.registerCapabilities({ tools: {} });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -125,6 +140,7 @@ export async function buildToolServer(ownerId: string) {
       description: d.description,
       inputSchema: d.inputSchema,
       annotations: d.annotations,
+      ...(CORE_TOOLS.has(d.name) ? { _meta: { "anthropic/alwaysLoad": true } } : {}),
     })),
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {

@@ -2,7 +2,7 @@
 // Claude call. What it pins:
 //   - every registered MCP tool has a tier, so a new tool can't reach the agent
 //     (or silently miss it) without someone deciding how much it may do;
-//   - the locked SDK options: no Claude Code built-in tools, no on-disk
+//   - the locked SDK options: no Claude Code built-in tool but ToolSearch, no on-disk
 //     settings, no claude.ai cloud connectors (they auto-connected mid-turn in
 //     the 2026-09-24 spike, a ~$4 first turn with dozens of foreign tools);
 //   - the env allowlist: hub secrets never reach the child process;
@@ -10,7 +10,7 @@
 //
 //   npx tsx scripts/verify-agent.mts
 import { TOOL_NAMES } from "../src/lib/mcp/tools";
-import { TOOL_TIERS, tierOf } from "../src/lib/agent/tools";
+import { CORE_TOOLS, TOOL_TIERS, tierOf } from "../src/lib/agent/tools";
 import { lockedOptions, scrubbedEnv } from "../src/lib/agent/runtime";
 import { cleanReplacement, formattingChanged } from "../src/lib/agent/inline";
 
@@ -49,7 +49,9 @@ delete process.env.LEDGR_AGENT_AUTH;
 
 // Locked options
 const o = lockedOptions({ model: "claude-opus-5-5", systemPrompt: "x", maxTurns: 1, abort: new AbortController() });
-check("no Claude Code built-in tools", Array.isArray(o.tools) && o.tools.length === 0);
+check("no Claude Code built-in tool but ToolSearch", JSON.stringify(o.tools) === '["ToolSearch"]');
+check("reserve tools and the one-hour cache are on", env.ENABLE_TOOL_SEARCH === "true" && env.ENABLE_PROMPT_CACHING_1H === "1");
+check("every core tool is a read or a write", [...CORE_TOOLS].every((t) => tierOf(t) === "R" || tierOf(t) === "W"));
 check("no on-disk settings, skills, hooks, or CLAUDE.md", Array.isArray(o.settingSources) && o.settingSources.length === 0);
 check("only Ledgr's MCP server", o.strictMcpConfig === true);
 const st = o.settings as Record<string, unknown>;

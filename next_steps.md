@@ -14,10 +14,10 @@ phone sheet at 375px). Left for real use to decide:
 - **Phone over the tunnel.** Streaming was tested on localhost only. Open the sidebar
   on the phone through the public address and confirm a 1 to 3 minute turn streams
   without buffering or dropping (plan note 4, Phase 0 step 9).
-- **Token cost of a long chat.** Every model call resends about 12K to 15K tokens of
-  tool definitions; a 7-turn test chat reached 400K. If plan usage bites, trim rarely
-  used tools from the agent (set_recurrence, link_to_line, apply_template, export_item,
-  get_record_layout are the heaviest or rarest) or load them on demand.
+- **Token cost.** Done 2026-09-24: seven core tools load every call, the rest wait
+  behind ToolSearch, the cache lasts an hour, and the counter splits new from cached.
+  Watch the Settings chart in real use; if a reserve tool turns out to be needed in most
+  chats, add it to `CORE_TOOLS`.
 - **Fake-SDK test** for turns, reconnect, and approvals (plan note 4, Testing) was not
   built; `verify-agent.mts` covers the safety rails only.
 - **Eval pass** on inline edit after a few weeks: accept rates are in

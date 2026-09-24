@@ -206,7 +206,7 @@ export default function AgentSettings({ initial }: { initial: Agent }) {
           <div className="text-xs text-neutral-400">Last 7 days (Claude replies per day)</div>
           <div className="mt-1 flex h-16 items-end gap-1">
             {days.map((d) => (
-              <div key={d.key} className="flex flex-1 flex-col items-center gap-1" title={`${d.turns} replies, ${d.tokens.toLocaleString()} tokens`}>
+              <div key={d.key} className="flex flex-1 flex-col items-center gap-1" title={`${d.turns} replies, ${d.tokens.toLocaleString()} new tokens (cache re-reads not counted)`}>
                 <div className="w-full rounded-sm bg-neutral-600" style={{ height: `${(d.turns / maxTurns) * 44}px`, minHeight: d.turns ? 2 : 0 }} />
                 <span className="text-[10px] text-neutral-500">{d.label}</span>
               </div>
