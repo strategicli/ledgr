@@ -162,6 +162,60 @@ export function diffWords(a: string, b: string): DiffSegment[] {
   return coalesce(out);
 }
 
+// A changed region of `base`: lines [start, end) replaced by `text`. An insert
+// is an empty range (start === end).
+type Hunk = { start: number; end: number; text: string };
+
+function lineHunks(baseLines: string[], other: string): Hunk[] {
+  const hunks: Hunk[] = [];
+  let at = 0;
+  let open: Hunk | null = null;
+  for (const seg of trimmedLcsDiff(baseLines, tokenizeLines(other))) {
+    // Segments from lcsDiff are per-line, but the trimmed prefix/suffix and the
+    // coarse fallback arrive as joined runs, so count lines rather than segments.
+    const n = seg.op === "add" ? 0 : tokenizeLines(seg.text).length;
+    if (seg.op === "eq") {
+      open = null;
+      at += n;
+      continue;
+    }
+    if (!open) hunks.push((open = { start: at, end: at, text: "" }));
+    if (seg.op === "del") open.end = at += n;
+    else open.text += seg.text;
+  }
+  return hunks;
+}
+
+// Three-way line merge for a live editor (Feature 0): `mine` and `theirs` both
+// started from `base`. Non-overlapping edits merge cleanly; two edits touching
+// the same line (or inserting at the same spot) are a conflict, and the caller
+// keeps `mine` and asks. Markdown paragraphs are single lines, so "the same
+// line" means "the same paragraph", which is the granularity a person notices.
+export function merge3(
+  base: string,
+  mine: string,
+  theirs: string
+): { ok: true; text: string } | { ok: false } {
+  if (mine === base || mine === theirs) return { ok: true, text: theirs };
+  if (theirs === base) return { ok: true, text: mine };
+  const baseLines = tokenizeLines(base);
+  const a = lineHunks(baseLines, mine);
+  const b = lineHunks(baseLines, theirs);
+  for (const x of a)
+    for (const y of b) {
+      const touch =
+        x.start < y.end && y.start < x.end ||
+        x.start === y.start ||
+        (x.start === x.end && x.start > y.start && x.start < y.end) ||
+        (y.start === y.end && y.start > x.start && y.start < x.end);
+      if (touch) return { ok: false };
+    }
+  const all = [...a, ...b].sort((p, q) => q.start - p.start);
+  const out = [...baseLines];
+  for (const h of all) out.splice(h.start, h.end - h.start, h.text);
+  return { ok: true, text: out.join("") };
+}
+
 // A short "+N −M words" summary for a diff. Counts word tokens (non-whitespace)
 // in add/del segments, so reordered whitespace alone reads as no change.
 export function diffStats(segments: DiffSegment[]): {

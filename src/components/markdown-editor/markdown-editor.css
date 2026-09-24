@@ -234,6 +234,15 @@
   position: relative;
 }
 
+/* Live in-place updates: a change made elsewhere glows briefly, then fades. */
+.ledgr-live-flash {
+  animation: ledgr-live-flash 3s ease-out forwards;
+}
+@keyframes ledgr-live-flash {
+  from { background-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  to { background-color: transparent; }
+}
+
 /* Mention chip (type-aware): a leading type glyph + the label, clickable. */
 .ledgr-mention {
   display: inline-flex;

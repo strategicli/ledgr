@@ -10,14 +10,18 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { bodyDigest, bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import {
   beginSave,
+  clearConflict,
   clearLocalSave,
   endSave,
   registerDirtyCheck,
   registerForceSave,
+  registerRemoteChange,
   registerSaveRetry,
   reportConflict,
+  reportReview,
   setKnownVersion,
 } from "@/lib/save-status";
+import { merge3 } from "@/lib/diff";
 import { publishBodyMarkdown } from "@/lib/word-count";
 import { uploadAttachment } from "@/components/attachments/upload";
 import BodyEditor from "./BodyEditor";
@@ -137,6 +141,12 @@ export default function ItemEditor({
   const inFlight = useRef(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const didAutofocus = useRef(false);
+  // Live in-place updates: a body that changed elsewhere, handed down to the
+  // mounted editor to patch in (n bumps per arrival). remoteDeferred holds an
+  // arrival that landed mid-save, replayed once the save settles.
+  const [incoming, setIncoming] = useState<{ text: string; n: number } | null>(null);
+  const remoteDeferred = useRef(false);
+  const onRemoteRef = useRef<() => void>(() => {});
 
   // New items land ready to type: focus the title when an item opens with an
   // empty title (the most common entry action). Once only, and never for the
@@ -192,6 +202,9 @@ export default function ItemEditor({
         pending.current = { ...patch, ...pending.current };
         conflictPending.current = true;
         reportConflict();
+        // Live in-place updates: fetch the other version and try the merge; a
+        // clean merge clears this banner, an overlap turns it into Review.
+        remoteDeferred.current = true;
         return;
       }
       if (!res.ok) throw new Error(String(res.status));
@@ -215,7 +228,10 @@ export default function ItemEditor({
       endSave(false);
     } finally {
       inFlight.current = false;
-      if (Object.keys(pending.current).length && !conflictPending.current) {
+      if (remoteDeferred.current) {
+        remoteDeferred.current = false;
+        onRemoteRef.current();
+      } else if (Object.keys(pending.current).length && !conflictPending.current) {
         schedule();
       }
     }
@@ -246,6 +262,83 @@ export default function ItemEditor({
       ),
     []
   );
+
+  // Live in-place updates: the item changed elsewhere. Fetch it and fold it in
+  // without a reload. Clean editor: take theirs. Unsaved typing that doesn't
+  // overlap: merge both and save the merge. Overlap: keep the owner's text,
+  // pause autosave, and park both versions for the Review banner. A follower
+  // mirrors another panel, so it never takes part.
+  useEffect(() => {
+  onRemoteRef.current = async () => {
+    if (inFlight.current) {
+      remoteDeferred.current = true;
+      return;
+    }
+    let fresh: { title: string; body: unknown } | undefined;
+    try {
+      const res = await fetch(`/api/items/${item.id}`, { cache: "no-store" });
+      if (!res.ok) return;
+      fresh = ((await res.json()) as { item?: { title: string; body: unknown } }).item;
+    } catch {
+      return;
+    }
+    if (!fresh) return;
+    if (slot !== "body" && pending.current.title === undefined && fresh.title !== title) {
+      setTitle(fresh.title);
+    }
+    if (slot === "title") return;
+    const theirs = bodyMarkdown(fresh.body);
+    const base = syncedBodyText.current;
+    if (theirs === base) return;
+    const mine = savedBodyText.current;
+    const apply = (text: string) => {
+      savedBodyText.current = text;
+      setIncoming((p) => ({ text, n: (p?.n ?? 0) + 1 }));
+      publishBodyMarkdown(item.id, text);
+      onLiveChange?.({ markdown: text });
+    };
+    const settle = () => {
+      conflictPending.current = false;
+      clearConflict();
+      reportReview(null);
+    };
+    const merged = merge3(base, mine, theirs);
+    if (merged.ok) {
+      syncedBodyText.current = theirs;
+      if (merged.text === theirs) delete pending.current.body;
+      else {
+        pending.current.body = makeMarkdownBody(merged.text);
+        schedule();
+      }
+      if (merged.text !== mine) apply(merged.text);
+      settle();
+      return;
+    }
+    conflictPending.current = true;
+    reportReview({
+      mine,
+      theirs,
+      keepMine: () => {
+        // Adopting theirs as the baseline lets the save through; it replaces
+        // their version, which stays in revision history.
+        syncedBodyText.current = theirs;
+        pending.current.body = makeMarkdownBody(savedBodyText.current);
+        settle();
+        void flush();
+      },
+      useTheirs: () => {
+        syncedBodyText.current = theirs;
+        delete pending.current.body;
+        apply(theirs);
+        settle();
+      },
+    });
+  };
+  });
+  useEffect(() => {
+    if (follower) return;
+    return registerRemoteChange(() => void onRemoteRef.current());
+  }, [follower]);
 
   // While following, keep the save baseline pinned to the mirrored body: the
   // content on screen IS what the (other) source is saving, so treating it as
@@ -407,7 +500,8 @@ export default function ItemEditor({
     publishBodyMarkdown(item.id, markdown);
     pending.current.body = makeMarkdownBody(markdown);
     onLiveChange?.({ markdown });
-    schedule();
+    // Held while a conflict or Review is open: a save would only be refused.
+    if (!conflictPending.current) schedule();
   };
   // Body rendering (mode + size gate) lives in BodyEditor (ADR-125): rich Tiptap
   // for normal notes (TabbedBody when the type uses tabs), a raw-markdown Source
@@ -431,6 +525,7 @@ export default function ItemEditor({
       controlledSection={controlledSection}
       focusSignal={bodyFocusSignal}
       follower={follower}
+      incoming={incoming}
     />
   );
 
