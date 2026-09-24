@@ -262,11 +262,13 @@ Migrations are additive and reversible by rule (add a column, then backfill, nev
 
 1. **preflight** — clean working tree + `git fetch`.
 2. **ff-merge** — fast-forward the deploy branch (`prod-brandon` by default; `RELEASE_TARGET_BRANCH` overrides) to `origin/main`.
-3. **dev + gates** — migrate the **dev** Neon branch first (canary), then `lint`, `build`, and the core `verify-*` scripts against dev; **abort on the first failure** so a red gate can't reach prod.
+3. **gates + dev** — first, the GitHub CI `check` job (typecheck, lint, build, `verify:ci`) must have concluded **success on the exact `origin/main` commit** being released. If it is still running, the script checks every 15s for up to 10 minutes; if it failed, or no run exists, the release **aborts before touching any database**. Then it migrates the **dev** Neon branch (canary) and runs the four core `verify-*` scripts against it; **abort on the first failure** so a red gate can't reach prod. If GitHub is down, `npm run release:prod -- --full` swaps the CI gate for a local `lint` + `build`.
 4. **migrate prod** — `npm run db:migrate:prod` (prod creds come only from `.env.production.local`, gitignored, never `.env.local`).
 5. **push** — push the deploy branch → Vercel builds and deploys.
 
 Confirm the deploy reached `READY` via the Vercel MCP (`get_deployment` on the `prod-*` push, `target: production`; the build lags the push ~60–90s) or the public `/health` endpoint. Migrating dev-before-prod means every migration is exercised by the verifies before it touches production.
+
+The release no longer runs the ~90 report-only DB suites: they could never block a deploy, yet they were most of its 10+ minutes. Run them on their own with `npm run verify:db` (dev database, via `.env.local`) when you want the report.
 
 ---
 
