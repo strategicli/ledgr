@@ -55,6 +55,9 @@ const TOOLS: McpTool[] = [
   ...contextTools,
 ];
 
+// Every registered tool name, for guards like verify-agent (each needs a tier).
+export const TOOL_NAMES = TOOLS.map((t) => t.name);
+
 const MEMORY_TOOL_SET = new Set<string>(MEMORY_TOOL_NAMES);
 const LIVE_CONTEXT_TOOL_SET = new Set<string>(LIVE_CONTEXT_TOOL_NAMES);
 

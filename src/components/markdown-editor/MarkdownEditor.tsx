@@ -99,6 +99,9 @@ import { withShortcut } from "@/lib/editor/shortcuts";
 import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
 import CommentPopover from "./CommentPopover";
 import PromoteLinePopup from "./PromoteLinePopup";
+import { LiveFlash, patchMarkdown } from "./live-patch";
+import InlineEdit from "@/components/agent/InlineEdit";
+import { useAgentOn } from "@/components/agent/useAgentOn";
 import "./markdown-editor.css";
 
 export type MarkdownEditorProps = {
@@ -744,6 +747,8 @@ export default function MarkdownEditor({
       // The "/" slash-command menu (headings + toggle). Toggle entry gated by
       // toggleBlocksEnabled (setSlashToggleEnabled below).
       SlashCommands,
+      // Live in-place updates: the fading highlight over a patched range.
+      LiveFlash,
     ],
     // Start EMPTY; the body is loaded in the post-mount effect below via
     // setContent. Parsing markdown in the constructor — before every extension's
@@ -1102,17 +1107,58 @@ export default function MarkdownEditor({
   // emitUpdate:false so this load never counts as a user edit; we then adopt the
   // canonical serialization as the save baseline so a later programmatic
   // re-serialize isn't mistaken for one either.
+  //
+  // After the first load, a new `initialMarkdown` is a change made elsewhere
+  // (live in-place updates): patch just the changed slice so the owner keeps
+  // their scroll, caret, and undo history, and point at it if it's off screen.
+  // In-app agent inline edit (ADR-271): offered only when the layout marked the
+  // page agent-on (body[data-agent="on"]).
+  const agentOn = useAgentOn();
+  const [inlineOpen, setInlineOpen] = useState(false);
+  useEffect(() => {
+    if (!editor || !agentOn || !editable) return;
+    const dom = editor.view.dom as HTMLElement;
+    const k = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setInlineOpen(true);
+      }
+    };
+    dom.addEventListener("keydown", k);
+    return () => dom.removeEventListener("keydown", k);
+  }, [editor, agentOn, editable]);
+  const loaded = useRef(false);
+  const [editedPill, setEditedPill] = useState<{ dir: "above" | "below"; reveal: () => void } | null>(null);
   useEffect(() => {
     if (!editor) return;
     const current = editor.getMarkdown();
     if (current !== initialMarkdown) {
-      editor.commands.setContent(initialMarkdown, {
-        contentType: "markdown",
-        emitUpdate: false,
-      });
+      let patched = false;
+      if (loaded.current) {
+        try {
+          const res = patchMarkdown(editor, initialMarkdown);
+          patched = true;
+          const dir = res?.offscreen;
+          if (dir) queueMicrotask(() => setEditedPill({ dir, reveal: res.reveal }));
+        } catch {
+          // A slice ProseMirror can't fit falls back to the whole-document swap.
+        }
+      }
+      if (!patched) {
+        editor.commands.setContent(initialMarkdown, {
+          contentType: "markdown",
+          emitUpdate: false,
+        });
+      }
       lastEmitted.current = editor.getMarkdown();
     }
+    loaded.current = true;
   }, [initialMarkdown, editor]);
+  useEffect(() => {
+    if (!editedPill) return;
+    const t = setTimeout(() => setEditedPill(null), 8000);
+    return () => clearTimeout(t);
+  }, [editedPill]);
 
   const [hiddenTb, setHiddenTb] = useState<Set<string>>(new Set());
   // Toggle-block creation gate (toolbar button + slash command). Default on;
@@ -1409,6 +1455,9 @@ export default function MarkdownEditor({
         insertToggle(editor);
       } },
     ],
+    [
+      { id: "aiEdit", title: "Edit with Claude (select text first, or write at the cursor)", keys: "Mod-Shift-e", icon: TOOLBAR_ICONS.aiEdit, when: agentOn, run: () => setInlineOpen(true) },
+    ],
   ];
   const visibleGroups = groups
     .map((g) => g.filter((b) => showTb(b.id) && b.when !== false))
@@ -1565,6 +1614,24 @@ export default function MarkdownEditor({
           Mobile: the formatting buttons float above the keyboard (fixed, bottom);
           the view controls live in a separate top row the host renders, so
           viewControls is desktop-only here. */}
+      {inlineOpen && editor && createPortal(
+        <InlineEdit editor={editor} itemId={itemId} onClose={() => setInlineOpen(false)} />,
+        document.body
+      )}
+      {editedPill && (
+        <button
+          type="button"
+          onClick={() => {
+            editedPill.reveal();
+            setEditedPill(null);
+          }}
+          className={`fixed left-1/2 z-[60] -translate-x-1/2 rounded-full border border-line-strong bg-surface-3 px-3 py-1 text-xs text-ink shadow-lg ${
+            editedPill.dir === "below" ? "bottom-20" : "top-20"
+          }`}
+        >
+          {editedPill.dir === "below" ? "Edited below ↓" : "Edited above ↑"}
+        </button>
+      )}
       {editable && (showToolbarButtons || viewControls) &&
         (focused && !isDesktop
           ? createPortal(formattingBar, document.body)

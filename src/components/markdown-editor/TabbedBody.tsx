@@ -110,16 +110,15 @@ export default function TabbedBody({
   // a render-time state adjustment (not an effect) so it doesn't cascade; uses
   // setTabs directly (not commitTabs) so it never publishes. Content-only edits
   // keep the section count stable, so the active editor is re-fed, not remounted.
-  // Tracked for the source too (so becoming a follower later re-syncs cleanly),
-  // but only APPLIED when following — the source's sections are its own edits.
+  // The sole-source editor gets a new initialMarkdown only for a change made
+  // elsewhere (live in-place updates: BodyEditor re-seeds on `incoming`, never
+  // from its own typing), so it re-derives the sections too.
   const [lastInitial, setLastInitial] = useState(initialMarkdown);
   if (initialMarkdown !== lastInitial) {
     setLastInitial(initialMarkdown);
-    if (follower) {
-      const next = parseTabs(initialMarkdown);
-      setTabs(next);
-      setUntabbed(next ? "" : initialMarkdown);
-    }
+    const next = parseTabs(initialMarkdown);
+    setTabs(next);
+    setUntabbed(next ? "" : initialMarkdown);
   }
 
   // In the Desk the active section is controlled by the panel chrome; elsewhere

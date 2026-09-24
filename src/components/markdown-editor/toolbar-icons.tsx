@@ -75,6 +75,8 @@ export const TOOLBAR_ICONS: Record<string, ReactNode> = {
   // left of the comment bubble, since the two are the same gesture (mark a span)
   // for different audiences: a comment is for you, a slide is for the room.
   slide: <Svg><rect x="3" y="4" width="18" height="12" rx="1" /><line x1="12" y1="16" x2="12" y2="20" /><line x1="9" y1="20" x2="15" y2="20" /></Svg>,
+  // Edit with Claude (ADR-271): a sparkle, the common "AI does this" mark.
+  aiEdit: <Svg><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z" /></Svg>,
 };
 
 // The toolbar items in display order (id → label), for the configurable-toolbar
@@ -105,4 +107,5 @@ export const TOOLBAR_ITEMS: { id: string; label: string }[] = [
   { id: "slide", label: "Slide (on screen)" },
   { id: "comment", label: "Comment" },
   { id: "mention", label: "@ mention hint" },
+  { id: "aiEdit", label: "Edit with Claude" },
 ];

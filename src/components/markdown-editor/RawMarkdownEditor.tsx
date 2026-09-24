@@ -8,7 +8,7 @@
 // the event, so reading it is free, and React never re-sets the giant value.
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 export default function RawMarkdownEditor({
   initialMarkdown,
@@ -22,6 +22,16 @@ export default function RawMarkdownEditor({
   editable?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // A change made elsewhere (live in-place updates) arrives as a new
+  // initialMarkdown; adopt it without moving the caret or the scroll.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || el.value === initialMarkdown) return;
+    const { selectionStart, selectionEnd, scrollTop } = el;
+    el.value = initialMarkdown;
+    el.setSelectionRange(selectionStart, selectionEnd);
+    el.scrollTop = scrollTop;
+  }, [initialMarkdown]);
   return (
     <textarea
       ref={ref}

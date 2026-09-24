@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import { getSettings, updateSettings, type UserSettings } from "@/lib/settings";
 import { ensureNoteEditingPrompt } from "@/lib/note-editing-prompt";
+import { agentAvailable } from "@/lib/agent/gate";
+import { ensureAgentPrompts } from "@/lib/agent/prompts";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,16 @@ export async function PATCH(request: Request) {
   try {
     const patch = (await request.json()) as Partial<UserSettings>;
     const before = await getSettings(owner.id);
+    // The agent block merges per field, so a checkbox that sends { enabled }
+    // can't wipe the seeded prompt ids or the "/" ranking.
+    if (patch.agent) patch.agent = { ...before.agent, ...patch.agent };
     let settings = await updateSettings(owner.id, patch);
+    // First time the in-app agent is turned on on a machine that can run it
+    // (ADR-271): seed its editable base and inline-edit prompts.
+    if (!before.agent.enabled && settings.agent.enabled && agentAvailable()) {
+      await ensureAgentPrompts(owner.id);
+      settings = await getSettings(owner.id);
+    }
     // First time Live editing context is turned on (ADR-162): seed the editable
     // "Note Editing Partner" prompt item, then refresh so the response carries
     // the stored item id.

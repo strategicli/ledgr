@@ -171,6 +171,50 @@ export function hasPendingEdits(): boolean {
   return false;
 }
 
+// Clear a latched conflict that was resolved without a save (live in-place
+// updates merged the other device's change into this editor).
+export function clearConflict() {
+  if (!conflicted) return;
+  conflicted = false;
+  emit();
+}
+
+// Live in-place updates (in-app agent, Feature 0). The indicator detects that
+// the item changed elsewhere; each mounted ItemEditor registers here to fetch
+// the new version and merge it in place instead of the page reloading. With no
+// handler registered (a canvas with no body editor), the indicator falls back
+// to its old reload.
+const remoteListeners = new Set<() => void>();
+export function registerRemoteChange(fn: () => void): () => void {
+  remoteListeners.add(fn);
+  return () => {
+    remoteListeners.delete(fn);
+  };
+}
+export function hasRemoteHandlers(): boolean {
+  return remoteListeners.size > 0;
+}
+export function emitRemoteChange() {
+  for (const fn of remoteListeners) fn();
+}
+
+// A change made elsewhere that overlaps the owner's unsaved typing: the editor
+// keeps their text and parks both versions here for the Review banner.
+export type ReviewState = {
+  mine: string;
+  theirs: string;
+  keepMine: () => void;
+  useTheirs: () => void;
+};
+let review: ReviewState | null = null;
+export function reportReview(r: ReviewState | null) {
+  review = r;
+  emit();
+}
+export function useReview(): ReviewState | null {
+  return useSyncExternalStore(subscribe, () => review, () => null);
+}
+
 function getSnapshot() {
   return conflicted ? "conflict" : state;
 }

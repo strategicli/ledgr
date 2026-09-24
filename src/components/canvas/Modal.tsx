@@ -605,7 +605,7 @@ export default function Modal({
           bottom: "var(--nav-pb, 0px)",
           ...(dockLeft
             ? { left: "var(--nav-pl, 0px)" }
-            : { right: "var(--nav-pr, 0px)" }),
+            : { right: "calc(var(--nav-pr, 0px) + var(--agent-w, 0px))" }),
           // A dragged width wins (persisted); otherwise the responsive default:
           // non-wide holds the ~48rem canvas column comfortably (up from 34rem,
           // which squished it); wide (song chord charts) stays roomier. The vw

@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "verify:ci": "node scripts/verify-ci.mjs",
     "verify:list": "node scripts/verify-ci.mjs --list",
-  "verify:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/verify-ci.mjs --backend",
+    "verify:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/verify-ci.mjs --backend",
     "ci": "npm run typecheck && npm run lint && npm run build && npm run verify:ci",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.mjs",
@@ -34,6 +34,7 @@
     "r2:cors:check": "node scripts/r2-cors.mjs --check"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.281",
     "@clerk/nextjs": "7.5.2",
     "@mozilla/readability": "^0.6.0",
     "@neondatabase/serverless": "1.1.0",

@@ -971,6 +971,17 @@ export const LOCAL_JOBS = {
       "synced-table list, so a local peer's Discover and Loose Ends stay empty until " +
       "it computes its own. Two peers filling their own caches is not a conflict.",
   },
+  "agent-purge": {
+    path: "/api/machine/agent-purge",
+    label: "Claude in Ledgr cleanup",
+    at: "03:50",
+    shared: true,
+    on: true,
+    why:
+      "In-app agent chats are hub-local tables outside the synced set, so each " +
+      "machine clears its own expired side chats and old records. A peer without " +
+      "the agent has nothing to delete, which is a no-op.",
+  },
   snapshot: {
     path: "/api/machine/snapshot",
     label: "Local snapshots (restore points)",

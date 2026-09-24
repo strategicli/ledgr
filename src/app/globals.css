@@ -348,7 +348,8 @@ body {
     padding-top: var(--nav-pt, 0px);
     padding-bottom: var(--nav-pb, 0px);
     padding-left: var(--nav-pl, 0px);
-    padding-right: var(--nav-pr, 0px);
+    /* --agent-w: the open Claude sidebar (ADR-271) takes room beside the canvas. */
+    padding-right: calc(var(--nav-pr, 0px) + var(--agent-w, 0px));
     transition: padding 0.18s ease;
   }
 }
@@ -805,4 +806,15 @@ body[data-editing="true"] [data-work-nav-pill] {
 .ui-meta {
   font-size: 0.75rem; /* 12 */
   color: var(--ink-subtle);
+}
+
+/* Read-only renders (MarkdownPreview, the Claude sidebar) emit a plain
+   a.mention; without this the icon takes the svg display:block reset and sits
+   on its own line (the editor's chip is styled in markdown-editor.css). */
+a.mention .mention-icon {
+  display: inline;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  margin-right: 0.12em;
 }

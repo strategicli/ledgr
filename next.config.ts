@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   experimental: {
     cssChunking: "strict",
   },
+  // The in-app agent's SDK (ADR-271) locates its bundled Claude Code executable
+  // relative to its own package on disk, so it must load from node_modules, not
+  // from a bundled chunk.
+  serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
   async rewrites() {
     return [
       // OAuth discovery (ADR-117). The metadata is origin-dependent (it

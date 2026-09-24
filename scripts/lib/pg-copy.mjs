@@ -22,10 +22,20 @@
 //     row for THIS peer the moment it migrates; cloning the hub's would make
 //     two peers share one device id and corrupt sync cursoring.
 //   - sync_peers: device registrations belong to the hub that minted them.
+//   - agent_*: in-app agent chats (ADR-271) belong to the machine whose Claude
+//     login ran them; a peer starts with none.
 // drizzle's own migration bookkeeping table lives in the `drizzle` schema,
 // not `public` (confirmed against a migrated database), so a public-schema
 // catalog query already excludes it without needing to list it here.
-export const EXCLUDED_TABLES = new Set(["sync_ops", "sync_peers", "sync_device"]);
+export const EXCLUDED_TABLES = new Set([
+  "sync_ops",
+  "sync_peers",
+  "sync_device",
+  "agent_sessions",
+  "agent_messages",
+  "agent_approvals",
+  "agent_edit_proposals",
+]);
 
 export function isCopyableTable(name) {
   return !EXCLUDED_TABLES.has(name);

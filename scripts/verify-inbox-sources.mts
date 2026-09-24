@@ -35,8 +35,8 @@ const OTHER_PROJECT = "9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d";
 
 // --- the source table -------------------------------------------------------
 check(
-  "all seven arrival paths are named",
-  INBOX_SOURCES.length === 7,
+  "all eight arrival paths are named",
+  INBOX_SOURCES.length === 8,
   INBOX_SOURCES.length
 );
 check(
@@ -48,9 +48,9 @@ check(
   INBOX_SOURCES.every((s) => s.defaultRoute === "inbox" || s.defaultRoute === "filed")
 );
 check(
-  "Claude is the only path that defaults to filed",
+  "Claude's two paths (connector and in-app agent) are the only ones that default to filed",
   INBOX_SOURCES.filter((s) => s.defaultRoute === "filed").map((s) => s.key).join(",") ===
-    "ai_mcp",
+    "ai_mcp,ai_agent",
   INBOX_SOURCES.filter((s) => s.defaultRoute === "filed").map((s) => s.key).join(",")
 );
 check(

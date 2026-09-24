@@ -68,6 +68,9 @@ export type BodyEditorProps = {
   // editor applies it without a remount. Ignored on the sole-source editor, which
   // must NOT re-seed from its own emitted text (that would reset the caret).
   follower?: boolean;
+  // Live in-place updates: a body that changed elsewhere (n bumps per arrival).
+  // Re-seeded into whichever child is mounted, which patches it in place.
+  incoming?: { text: string; n: number } | null;
 };
 
 function ModeButton({
@@ -169,6 +172,7 @@ export default function BodyEditor({
   controlledSection,
   focusSignal,
   follower = false,
+  incoming,
 }: BodyEditorProps) {
   const large = isLargeForCanvas(initialMarkdown, tabsEnabled);
   // Tab affordance (Brandon, 2026-07-20): TabbedBody owns tab state, but the
@@ -200,6 +204,17 @@ export default function BodyEditor({
     }, 300);
     return () => clearTimeout(t);
   }, [follower, initialMarkdown]);
+
+  // Render-time adjustment (like TabbedBody's follower sync) rather than an
+  // effect, so an arrival doesn't cascade a second render.
+  const [lastIncoming, setLastIncoming] = useState(incoming?.n);
+  if (incoming && incoming.n !== lastIncoming) {
+    setLastIncoming(incoming.n);
+    setMountText(incoming.text);
+  }
+  useEffect(() => {
+    if (incoming) liveText.current = incoming.text;
+  }, [incoming]);
 
   // Formatting-bar collapse state (S5). The toggle lives in the mode-row below
   // and its state is owned here so it survives a rich↔source switch and persists

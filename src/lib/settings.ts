@@ -266,6 +266,47 @@ export type NavSlotConfig =
       children: NavDestination[]; // up to MAX_TOOLS_CHILDREN; no nesting
     };
 
+export type AgentSettings = {
+  enabled: boolean;
+  chatModel: string;
+  inlineModel: string;
+  basePromptItemId: string | null;
+  inlinePromptItemId: string | null;
+  promptUse: Record<string, string>;
+};
+
+export const AGENT_MODELS = ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"] as const;
+
+const DEFAULT_AGENT: AgentSettings = {
+  enabled: false,
+  chatModel: "claude-opus-5-5",
+  inlineModel: "claude-opus-5-5",
+  basePromptItemId: null,
+  inlinePromptItemId: null,
+  promptUse: {},
+};
+
+function parseAgent(raw: unknown): AgentSettings {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const model = (v: unknown, d: string) =>
+    typeof v === "string" && (AGENT_MODELS as readonly string[]).includes(v) ? v : d;
+  const ref = (v: unknown) => (typeof v === "string" && SETTINGS_UUID_RE.test(v) ? v : null);
+  const promptUse: Record<string, string> = {};
+  if (r.promptUse && typeof r.promptUse === "object") {
+    for (const [k, v] of Object.entries(r.promptUse as Record<string, unknown>)) {
+      if (SETTINGS_UUID_RE.test(k) && typeof v === "string") promptUse[k] = v;
+    }
+  }
+  return {
+    enabled: r.enabled === true,
+    chatModel: model(r.chatModel, DEFAULT_AGENT.chatModel),
+    inlineModel: model(r.inlineModel, DEFAULT_AGENT.inlineModel),
+    basePromptItemId: ref(r.basePromptItemId),
+    inlinePromptItemId: ref(r.inlinePromptItemId),
+    promptUse,
+  };
+}
+
 export type UserSettings = {
   // Configurable editor toolbar (app-wide): ids the user hid from the markdown
   // toolbar. Empty = show all. See toolbar-icons / TOOLBAR_ITEMS.
@@ -392,6 +433,13 @@ export type UserSettings = {
   // settings surface can link to it and "Revert to default" can find it. null
   // until the feature is enabled (or if the item was purged — it's re-seeded).
   noteEditingPromptItemId: string | null;
+  // In-app agent (ADR-271): the Claude sidebar, inline edit, and slash commands,
+  // run on the hub under the owner's own Claude login. Off by default and only
+  // offered where agentAvailable() (lib/agent/gate.ts) says the machine can run
+  // it. Models are chosen here; the two prompt ids point at the owner's editable
+  // copies of the seeded base and inline-edit prompts; promptUse ranks the "/"
+  // picker by recent use without touching the prompt items' updatedAt.
+  agent: AgentSettings;
   // Editor: show a fold chevron on H1/H2/H3 to collapse the section beneath a
   // heading (view-only, never written to the body). On by default. When off the
   // markdown editor renders headings plainly.
@@ -551,6 +599,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   aiMemoryEnabled: false,
   liveContextEnabled: false,
   noteEditingPromptItemId: null,
+  agent: DEFAULT_AGENT,
   collapsibleHeadingsEnabled: true,
   toggleBlocksEnabled: true,
   deskWorkspaces: [],
@@ -862,6 +911,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const liveContextEnabled =
     typeof r.liveContextEnabled === "boolean" ? r.liveContextEnabled : DEFAULT_SETTINGS.liveContextEnabled;
   const noteEditingPromptItemId = dashRef(r.noteEditingPromptItemId);
+  const agent = parseAgent(r.agent);
   const collapsibleHeadingsEnabled =
     typeof r.collapsibleHeadingsEnabled === "boolean"
       ? r.collapsibleHeadingsEnabled
@@ -917,6 +967,7 @@ export function parseSettings(raw: unknown): UserSettings {
     aiMemoryEnabled,
     liveContextEnabled,
     noteEditingPromptItemId,
+    agent,
     collapsibleHeadingsEnabled,
     toggleBlocksEnabled,
     deskWorkspaces,
