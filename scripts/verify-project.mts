@@ -33,7 +33,8 @@ const [owner] = await db
 {
   // --- the seeded project type ---
   const proj = await getType("project");
-  check("project type exists, not is_system", !!proj && proj.isSystem === false);
+  // Built-in since migration 0052 (ADR-199): extendable, not deletable.
+  check("project type exists, built-in (is_system)", !!proj && proj.isSystem === true);
   const statuses = resolveStatusSchema(proj.statusSchema);
   const keys = statuses.map((s) => s.key);
   check("project statuses = Todoist buckets",

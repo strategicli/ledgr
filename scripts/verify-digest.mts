@@ -18,6 +18,7 @@ const { createItem } = await import("../src/lib/item-mutations");
 const { setHome } = await import("../src/lib/relations");
 const { digestStatus, composeDigest, daysUntil } = await import("../src/lib/digest/compose");
 const { runDigestNotify } = await import("../src/lib/digest/notify");
+const { DEFAULT_DIGEST } = await import("../src/lib/composition");
 const { eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;
@@ -70,8 +71,9 @@ console.log("\n# Live: fresh vs stale (isolated owner)");
   const fresh = await runDigestNotify(ownerId, sender, new Date()); // ~now, just created
   check("a fresh project does not ping", (await digestStamp(project.id)) === undefined && fresh.notified === 0);
 
-  const future = new Date(Date.now() + 10 * DAY);
-  const stale = await runDigestNotify(ownerId, sender, future); // 10 days quiet
+  // Just past the default quiet window (14d since ADR-200), read from source so it can't drift.
+  const future = new Date(Date.now() + (DEFAULT_DIGEST.stalenessDays + 3) * DAY);
+  const stale = await runDigestNotify(ownerId, sender, future);
   check("a stale project pings", stale.notified === 1 && typeof (await digestStamp(project.id)) === "string");
 
   const again = await runDigestNotify(ownerId, sender, future); // dedup

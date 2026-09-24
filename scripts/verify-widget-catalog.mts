@@ -15,7 +15,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 const { getDb } = await import("../src/db");
 const { items, users, activityEvents } = await import("../src/db/schema");
 const { WIDGET_CATALOG, availableWidgets, widgetsForScope, widgetById } = await import("../src/lib/widgets");
-const { parseComposition, resolveComposition, generatedDefaultComposition, addableWidgets, isWidgetEnabled } = await import("../src/lib/composition");
+const { parseComposition, resolveComposition, generatedDefaultComposition, addableWidgets, isWidgetEnabled, DEFAULT_DIGEST } = await import("../src/lib/composition");
 const { createItem } = await import("../src/lib/item-mutations");
 const { setHome, relateItems } = await import("../src/lib/relations");
 const { queryViewItems } = await import("../src/lib/views");
@@ -43,7 +43,7 @@ console.log("\n# Layer 2: generated default composition");
   const proj = generatedDefaultComposition("project");
   const ids = proj.widgets.map((w) => w.defId);
   check("project default has the redesigned widgets (header + cards)", ["status", "people", "progress", "tasks", "milestones", "notes", "meetings"].every((id) => ids.includes(id)), ids.join(","));
-  check("project default turns Digest on", proj.behaviors.digest?.enabled === true && proj.behaviors.digest.stalenessDays === 7);
+  check("project default turns Digest on", proj.behaviors.digest?.enabled === true && proj.behaviors.digest.stalenessDays === DEFAULT_DIGEST.stalenessDays);
   const generic = generatedDefaultComposition("songsheet");
   check("a generic type default is minimal (overview + status), Digest off", generic.widgets.map((w) => w.defId).sort().join(",") === "overview,status" && !generic.behaviors.digest);
 }

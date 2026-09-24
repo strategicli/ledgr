@@ -48,7 +48,8 @@ try {
   const loose = await note("Quarterly budget planning loose thread");
   const mate = await note("Quarterly budget planning committee");
   // An orphan with no possible candidate → must be skipped, not shown empty.
-  const orphan = await note("Zxqwv lonely gibberish token");
+  // Every word nonsense: real words ("token") match the dev owner's own items.
+  const orphan = await note("Zxqwv Qjxptl Vbnmzk");
   // A well-connected item (degree 4 > DEGREE_MAX) → must be excluded.
   const hub = await note("Well connected hub note");
   for (let i = 0; i < 4; i++) {
@@ -65,7 +66,7 @@ try {
     (byId.get(loose.id)?.suggestions ?? []).some((s) => s.id === mate.id)
   );
   check("  …reporting degree 0", byId.get(loose.id)?.degree === 0);
-  check("the orphan with no candidate is skipped", !byId.has(orphan.id));
+  check("the orphan with no candidate is skipped", !byId.has(orphan.id), JSON.stringify(byId.get(orphan.id)?.suggestions));
   check("the well-connected hub (degree 4) is excluded", !byId.has(hub.id));
   check(
     "every returned loose end has at least one suggestion",

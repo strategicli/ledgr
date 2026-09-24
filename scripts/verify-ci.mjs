@@ -42,11 +42,19 @@ const all = readdirSync(DIR)
   .filter((f) => /^verify-.*\.(mts|mjs)$/.test(f))
   .sort();
 
+// A script that drives a RUNNING peer (its own app server + its own cluster,
+// named by PEER_URL / PEER_DB) can run in neither mode: CI has no server and
+// release:prod has no peer. It exits before testing anything, so running it
+// only ever printed a FAIL that said nothing. Listed, never run here; the
+// manual step is in supervisor/README.md.
+const NEEDS_PEER = /process\.env\.PEER_DB/;
+
 const pure = [];
 const backend = [];
+const manual = [];
 for (const f of all) {
   const src = readFileSync(join(DIR, f), "utf8");
-  (NEEDS_BACKEND.test(src) ? backend : pure).push(f);
+  (NEEDS_PEER.test(src) ? manual : NEEDS_BACKEND.test(src) ? backend : pure).push(f);
 }
 
 if (process.argv.includes("--list")) {
@@ -54,6 +62,8 @@ if (process.argv.includes("--list")) {
   for (const f of pure) console.log(`  ${f}`);
   console.log(`\nBACKEND (${backend.length}, local/manual only):`);
   for (const f of backend) console.log(`  ${f}`);
+  console.log(`\nMANUAL (${manual.length}, need a running peer, never run here):`);
+  for (const f of manual) console.log(`  ${f}`);
   process.exit(0);
 }
 

@@ -222,13 +222,14 @@ try {
   check("cross-owner search isolation", !scoped.some((r) => r.id === foreignNote.id));
 
   // 6. Coverage beyond title+body (ADR-014): url, properties; weighting.
-  const link = await createItem(ownerId, { type: "link", title: "V14 a saved video", url: "https://www.youtube.com/watch?v=xylovid123" });
+  const link = await createItem(ownerId, { type: "link", title: "V14 a saved video", url: "https://www.xylotube.com/watch?v=xylovid123" });
   const propped = await createItem(ownerId, { type: "task", title: "V14 propped task", properties: { campus: "Xylocampus North" } });
   const quokkaTitle = await createItem(ownerId, { type: "note", title: "V14 quokka in the title" });
   const quokkaBody = await createItem(ownerId, { type: "note", title: "V14 plain note", body: para("A quokka appears only in the body.") });
   created.push(link.id, propped.id, quokkaTitle.id, quokkaBody.id);
 
-  const byUrl = await searchItems(ownerId, "youtube");
+  // A made-up domain: the dev owner has 50+ real youtube items, which fill the result cap.
+  const byUrl = await searchItems(ownerId, "xylotube");
   check("url words are searchable (punctuation split)", byUrl.some((r) => r.id === link.id));
   const byUrlId = await searchItems(ownerId, "xylovid123");
   check("url path tokens are searchable", byUrlId.some((r) => r.id === link.id));

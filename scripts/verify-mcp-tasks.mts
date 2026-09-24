@@ -4,6 +4,10 @@
 // what a Claude client actually gets. Live Neon under throwaway owners; cleans
 // up in finally.
 //
+// Dates are in 2037 on purpose: get_item projects occurrences from TODAY, so
+// hardcoded near-term dates go stale once the calendar passes them (they did,
+// 2026-09). 2037 has 2026's exact weekday layout; move again around 2036.
+//
 // Covers: parentId on create/update (re-parent, lift, cycle guard), add_subtasks
 // (mixed shapes, order, all-or-nothing validation), list_subtasks (nesting +
 // "n of m done" rollup over task children only), set_recurrence (natural
@@ -104,7 +108,7 @@ try {
       type: "task",
       title: "Book the venue",
       parentId,
-      dueDate: "2026-09-01",
+      dueDate: "2037-09-01",
     });
     eq("create_item parentId files the child under the parent", one.parentId, parentId);
 
@@ -113,7 +117,7 @@ try {
       parentId,
       subtasks: [
         "Set the theme",
-        { title: "Line up speakers", urgency: 2, scheduledDate: "2026-08-20" },
+        { title: "Line up speakers", urgency: 2, scheduledDate: "2037-08-20" },
         { title: "Notes from last year", type: "note", bodyMarkdown: "# Lessons\n\n- Start earlier" },
       ],
     });
@@ -203,12 +207,12 @@ try {
       const t = await call(owner.id, "create_item", {
         type: "task",
         title: `Repeat: ${phrase}`,
-        scheduledDate: "2026-09-01",
+        scheduledDate: "2037-09-01",
       });
       const res = await call(owner.id, "set_recurrence", { id: t.id, repeat: phrase });
       eq(`"${phrase}" → ${wantRrule}`, res.recurrence.rrule, wantRrule);
       eq(`"${phrase}" describes as "${wantDescribe}"`, res.recurrence.describe, wantDescribe);
-      eq(`"${phrase}" anchors on the task's planned date`, res.recurrence.dtstart, "2026-09-01");
+      eq(`"${phrase}" anchors on the task's planned date`, res.recurrence.dtstart, "2037-09-01");
     }
 
     const junk = await call(owner.id, "create_item", { type: "task", title: "Junk phrase" });
@@ -225,22 +229,22 @@ try {
       freq: "weekly",
       interval: 2,
       byDay: ["mo", "TH"],
-      dtstart: "2026-09-07",
-      until: "2026-12-31",
+      dtstart: "2037-09-07",
+      until: "2037-12-31",
     });
-    eq("structured parts build the rule", res.recurrence.rrule, "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;UNTIL=20261231");
-    eq("no planned date yet ⇒ scheduled seeded to the first occurrence", dateToYmdUtc(new Date(res.scheduledDate)), "2026-09-07");
+    eq("structured parts build the rule", res.recurrence.rrule, "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;UNTIL=20371231");
+    eq("no planned date yet ⇒ scheduled seeded to the first occurrence", dateToYmdUtc(new Date(res.scheduledDate)), "2037-09-07");
     eq("the projection honors interval + byday", res.recurrence.nextOccurrences.slice(0, 4), [
-      "2026-09-07",
-      "2026-09-10",
-      "2026-09-21",
-      "2026-09-24",
+      "2037-09-07",
+      "2037-09-10",
+      "2037-09-21",
+      "2037-09-24",
     ]);
 
-    const both = await callErr(owner.id, "set_recurrence", { id: t.id, freq: "daily", count: 5, until: "2026-10-01" });
+    const both = await callErr(owner.id, "set_recurrence", { id: t.id, freq: "daily", count: 5, until: "2037-10-01" });
     check("count and until together are rejected", /not both/.test(both), both);
 
-    const ord = await call(owner.id, "create_item", { type: "task", title: "Ordinal", scheduledDate: "2026-09-01" });
+    const ord = await call(owner.id, "create_item", { type: "task", title: "Ordinal", scheduledDate: "2037-09-01" });
     const ordRes = await call(owner.id, "set_recurrence", {
       id: ord.id,
       freq: "monthly",
@@ -256,7 +260,7 @@ try {
     const badOrd = await callErr(owner.id, "set_recurrence", { id: ord.id, freq: "monthly", byDayOrdinal: ["9ZZ"] });
     check("a malformed ordinal is rejected", /1SU/.test(badOrd), badOrd);
 
-    const comp = await call(owner.id, "create_item", { type: "task", title: "Completion anchored", scheduledDate: "2026-09-01" });
+    const comp = await call(owner.id, "create_item", { type: "task", title: "Completion anchored", scheduledDate: "2037-09-01" });
     const compRes = await call(owner.id, "set_recurrence", { id: comp.id, repeat: "every 3 days", anchorMode: "completion" });
     eq("anchorMode carries through", compRes.recurrence.anchorMode, "completion");
     check("describe says so", /after completion/.test(compRes.recurrence.describe), compRes.recurrence.describe);
@@ -267,22 +271,22 @@ try {
     const t = await createItem(owner.id, {
       type: "task",
       title: "Live series",
-      scheduledDate: ymdToUtc("2026-09-08"),
+      scheduledDate: ymdToUtc("2037-09-08"),
       properties: {
         recurrence: {
-          ...makeRecurrence({ freq: "weekly", byDay: ["TU"], dtstart: "2026-09-01" }),
-          completeInstances: ["2026-09-01"],
+          ...makeRecurrence({ freq: "weekly", byDay: ["TU"], dtstart: "2037-09-01" }),
+          completeInstances: ["2037-09-01"],
         },
       },
     });
 
     // Only `until` passed: the weekly/BYDAY rule carries through untouched.
-    const bounded = await call(owner.id, "set_recurrence", { id: t.id, until: "2026-11-30" });
-    eq("a partial edit keeps freq + byDay", bounded.recurrence.rrule, "FREQ=WEEKLY;BYDAY=TU;UNTIL=20261130");
-    eq("a partial edit KEEPS the completion log", bounded.recurrence.completeInstances, ["2026-09-01"]);
+    const bounded = await call(owner.id, "set_recurrence", { id: t.id, until: "2037-11-30" });
+    eq("a partial edit keeps freq + byDay", bounded.recurrence.rrule, "FREQ=WEEKLY;BYDAY=TU;UNTIL=20371130");
+    eq("a partial edit KEEPS the completion log", bounded.recurrence.completeInstances, ["2037-09-01"]);
 
     const widened = await call(owner.id, "set_recurrence", { id: t.id, interval: 2 });
-    eq("editing interval keeps byDay and the bound", widened.recurrence.rrule, "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;UNTIL=20261130");
+    eq("editing interval keeps byDay and the bound", widened.recurrence.rrule, "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;UNTIL=20371130");
 
     const wiped = await call(owner.id, "set_recurrence", { id: t.id, repeat: "every wednesday", resetLog: true });
     eq("resetLog:true starts a fresh log", wiped.recurrence.completeInstances, []);
@@ -306,88 +310,88 @@ try {
     const plainRead = await call(owner.id, "get_item", { id: plain.id });
     check("a non-recurring item has NO recurrence key (shape unchanged)", !("recurrence" in plainRead));
 
-    const rec = await call(owner.id, "create_item", { type: "task", title: "Weekly review", scheduledDate: "2026-09-04" });
+    const rec = await call(owner.id, "create_item", { type: "task", title: "Weekly review", scheduledDate: "2037-09-04" });
     await call(owner.id, "set_recurrence", { id: rec.id, repeat: "every friday", count: 4 });
     const read = await call(owner.id, "get_item", { id: rec.id });
     eq("get_item describes the rule", read.recurrence.describe, "Weekly on Fri, 4×");
     eq("get_item projects the bounded series", read.recurrence.nextOccurrences, [
-      "2026-09-04",
-      "2026-09-11",
-      "2026-09-18",
-      "2026-09-25",
+      "2037-09-04",
+      "2037-09-11",
+      "2037-09-18",
+      "2037-09-25",
     ]);
-    eq("get_item reports the next uncompleted date", read.recurrence.nextUncompleted, "2026-09-04");
+    eq("get_item reports the next uncompleted date", read.recurrence.nextUncompleted, "2037-09-04");
     eq("get_item reports the mode", read.recurrence.occurrenceMode, "virtual");
   }
 
   console.log("\n# Occurrences: complete / uncomplete / carve");
   {
-    const t = await call(owner.id, "create_item", { type: "task", title: "Trash to the curb", scheduledDate: "2026-09-01" });
+    const t = await call(owner.id, "create_item", { type: "task", title: "Trash to the curb", scheduledDate: "2037-09-01" });
     await call(owner.id, "set_recurrence", { id: t.id, repeat: "every tuesday" });
 
-    const done = await call(owner.id, "update_occurrence", { id: t.id, date: "2026-09-08", action: "complete" });
-    eq("complete stamps that date", done.series.recurrence.completeInstances, ["2026-09-08"]);
+    const done = await call(owner.id, "update_occurrence", { id: t.id, date: "2037-09-08", action: "complete" });
+    eq("complete stamps that date", done.series.recurrence.completeInstances, ["2037-09-08"]);
     eq("complete reports a change", done.changed, true);
-    const twice = await call(owner.id, "update_occurrence", { id: t.id, date: "2026-09-08", action: "complete" });
+    const twice = await call(owner.id, "update_occurrence", { id: t.id, date: "2037-09-08", action: "complete" });
     eq("complete is IDEMPOTENT (not a toggle)", twice.changed, false);
-    eq("the double complete left one stamp", twice.series.recurrence.completeInstances, ["2026-09-08"]);
+    eq("the double complete left one stamp", twice.series.recurrence.completeInstances, ["2037-09-08"]);
 
-    const undone = await call(owner.id, "update_occurrence", { id: t.id, date: "2026-09-08", action: "uncomplete" });
+    const undone = await call(owner.id, "update_occurrence", { id: t.id, date: "2037-09-08", action: "uncomplete" });
     eq("uncomplete removes the stamp", undone.series.recurrence.completeInstances, []);
-    const undoneTwice = await call(owner.id, "update_occurrence", { id: t.id, date: "2026-09-08", action: "uncomplete" });
+    const undoneTwice = await call(owner.id, "update_occurrence", { id: t.id, date: "2037-09-08", action: "uncomplete" });
     eq("uncomplete is idempotent too", undoneTwice.changed, false);
 
-    const off = await callErr(owner.id, "update_occurrence", { id: t.id, date: "2026-09-09", action: "complete" });
+    const off = await callErr(owner.id, "update_occurrence", { id: t.id, date: "2037-09-09", action: "complete" });
     check("a date the rule doesn't fire on is rejected", /not an occurrence/.test(off), off);
     const badDate = await callErr(owner.id, "update_occurrence", { id: t.id, date: "next tuesday", action: "complete" });
     check("a non-YYYY-MM-DD date is rejected", /YYYY-MM-DD/.test(badDate), badDate);
 
     // Carve: that one week becomes its own editable item; the series skips it.
-    const carved = await call(owner.id, "update_occurrence", { id: t.id, date: "2026-09-15", action: "carve" });
+    const carved = await call(owner.id, "update_occurrence", { id: t.id, date: "2037-09-15", action: "carve" });
     check("carve returns a new item id", typeof carved.carvedItemId === "string");
     const clone = await getItem(owner.id, carved.carvedItemId);
-    eq("the carved item is planned on that date", dateToYmdUtc(clone.scheduledDate!), "2026-09-15");
+    eq("the carved item is planned on that date", dateToYmdUtc(clone.scheduledDate!), "2037-09-15");
     check(
       "the carved item does NOT itself recur",
       (clone.properties as Record<string, unknown>)?.recurrence == null
     );
-    eq("the series skips the carved date", carved.series.recurrence.skippedInstances, ["2026-09-15"]);
+    eq("the series skips the carved date", carved.series.recurrence.skippedInstances, ["2037-09-15"]);
     check(
       "the series projection still holds the other Tuesdays",
-      carved.series.recurrence.nextOccurrences.includes("2026-09-22")
+      carved.series.recurrence.nextOccurrences.includes("2037-09-22")
     );
 
     const plain = await call(owner.id, "create_item", { type: "task", title: "Not recurring" });
-    const notRec = await callErr(owner.id, "update_occurrence", { id: plain.id, date: "2026-09-01", action: "complete" });
+    const notRec = await callErr(owner.id, "update_occurrence", { id: plain.id, date: "2037-09-01", action: "complete" });
     check("update_occurrence on a plain task points at set_recurrence", /set_recurrence/.test(notRec), notRec);
 
-    const mat = await call(owner.id, "create_item", { type: "task", title: "Materialized", scheduledDate: "2026-09-01" });
+    const mat = await call(owner.id, "create_item", { type: "task", title: "Materialized", scheduledDate: "2037-09-01" });
     await call(owner.id, "set_recurrence", { id: mat.id, repeat: "every monday", occurrenceMode: "materialized" });
-    const matMsg = await callErr(owner.id, "update_occurrence", { id: mat.id, date: "2026-09-07", action: "complete" });
+    const matMsg = await callErr(owner.id, "update_occurrence", { id: mat.id, date: "2037-09-07", action: "complete" });
     check("a materialized series is redirected to its occurrence item", /materializes/.test(matMsg), matMsg);
   }
 
   console.log("\n# Completing the CURRENT occurrence through update_item");
   {
-    const t = await call(owner.id, "create_item", { type: "task", title: "Water the plants", scheduledDate: "2026-09-02" });
+    const t = await call(owner.id, "create_item", { type: "task", title: "Water the plants", scheduledDate: "2037-09-02" });
     await call(owner.id, "set_recurrence", { id: t.id, repeat: "every wednesday" });
     const after = await call(owner.id, "update_item", { id: t.id, status: "done" });
-    eq("the series advanced to the next Wednesday", dateToYmdUtc(new Date(after.scheduledDate)), "2026-09-09");
+    eq("the series advanced to the next Wednesday", dateToYmdUtc(new Date(after.scheduledDate)), "2037-09-09");
     const read = await call(owner.id, "get_item", { id: t.id });
-    eq("the completed date is logged", read.recurrence.completeInstances, ["2026-09-02"]);
+    eq("the completed date is logged", read.recurrence.completeInstances, ["2037-09-02"]);
     check("the series did not close", read.status !== "done", read.status);
   }
 
   console.log("\n# Owner scoping");
   {
-    const mine = await call(owner.id, "create_item", { type: "task", title: "Mine only", scheduledDate: "2026-09-01" });
+    const mine = await call(owner.id, "create_item", { type: "task", title: "Mine only", scheduledDate: "2037-09-01" });
     await call(owner.id, "set_recurrence", { id: mine.id, repeat: "every day" });
     await call(owner.id, "add_subtasks", { parentId: mine.id, subtasks: ["a step"] });
     for (const [name, args] of [
       ["list_subtasks", { id: mine.id }],
       ["add_subtasks", { parentId: mine.id, subtasks: ["sneaky"] }],
       ["set_recurrence", { id: mine.id, repeat: "every friday" }],
-      ["update_occurrence", { id: mine.id, date: "2026-09-02", action: "complete" }],
+      ["update_occurrence", { id: mine.id, date: "2037-09-02", action: "complete" }],
     ] as [string, Record<string, unknown>][]) {
       const msg = await callErr(other.id, name, args);
       check(`${name} is owner-scoped`, msg.length > 0, msg);
