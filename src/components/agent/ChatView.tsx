@@ -13,7 +13,7 @@ export type Block =
   | { type: "text"; text: string }
   | { type: "tool"; id: string; name: string; summary: string; input?: unknown; result?: string; isError?: boolean };
 
-type Msg = { id: string; role: string; content: Block[]; status: string; usage?: { inputTokens?: number; outputTokens?: number } | null };
+type Msg = { id: string; role: string; content: Block[]; status: string; usage?: { inputTokens?: number; outputTokens?: number; cachedTokens?: number } | null };
 type Approval = { id: string; tool: string; args: unknown; preview: string };
 type SessionData = {
   session: { id: string; title: string; kind: string; inputTokens: number; outputTokens: number; parentSessionId: string | null };
@@ -335,7 +335,7 @@ export default function ChatView({
         />
         {data && (
           <p className="mt-1 text-right text-xs text-ink-faint">
-            {(data.session.inputTokens + data.session.outputTokens).toLocaleString()} tokens in this chat
+            <ChatTokens session={data.session} messages={data.messages} />
           </p>
         )}
       </div>
@@ -431,5 +431,17 @@ function ApprovalCard({ a, onDecide }: { a: Approval; onDecide: (d: "allow_once"
         )}
       </div>
     </div>
+  );
+}
+
+// "12,400 new · 88,000 cached": re-reads from the prompt cache cost about a
+// tenth of a new token, so one lumped total overstated a chat's cost ~5x.
+function ChatTokens({ session, messages }: { session: { inputTokens: number; outputTokens: number }; messages: Msg[] }) {
+  const cached = messages.reduce((n, m) => n + (m.usage?.cachedTokens ?? 0), 0);
+  const fresh = session.inputTokens + session.outputTokens - cached;
+  return (
+    <span title="Cached tokens are re-read from Claude's prompt cache and cost about a tenth as much.">
+      {fresh.toLocaleString()} new · {cached.toLocaleString()} cached
+    </span>
   );
 }

@@ -388,6 +388,9 @@ async function runTurn(
       } else if (m.type === "result") {
         usage = {
           inputTokens: m.usage.input_tokens + (m.usage.cache_read_input_tokens ?? 0) + (m.usage.cache_creation_input_tokens ?? 0),
+          // The part of inputTokens re-read from the prompt cache, which costs
+          // about a tenth of a fresh token. Kept apart so the counter is honest.
+          cachedTokens: m.usage.cache_read_input_tokens ?? 0,
           outputTokens: m.usage.output_tokens,
           costUsd: m.total_cost_usd,
         };
@@ -481,7 +484,7 @@ export async function usageByDay(ownerId: string) {
     .select({
       day: sql<string>`to_char(${agentMessages.createdAt}, 'YYYY-MM-DD')`,
       turns: sql<number>`count(*)::int`,
-      tokens: sql<number>`coalesce(sum(((${agentMessages.usage}->>'inputTokens')::bigint + (${agentMessages.usage}->>'outputTokens')::bigint)), 0)::bigint`,
+      tokens: sql<number>`coalesce(sum(((${agentMessages.usage}->>'inputTokens')::bigint + (${agentMessages.usage}->>'outputTokens')::bigint - coalesce((${agentMessages.usage}->>'cachedTokens')::bigint, 0))), 0)::bigint`,
     })
     .from(agentMessages)
     .innerJoin(agentSessions, eq(agentSessions.id, agentMessages.sessionId))
