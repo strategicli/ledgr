@@ -200,6 +200,36 @@ export default function ChatView({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [live?.turnId, reattach]);
 
+  // The same chat open on another device: while this tab is visible and idle,
+  // check every few seconds for messages or a turn started elsewhere, and
+  // follow that turn's stream live. Cheap on the hub (one indexed read).
+  // ponytail: polling, a per-session push channel if many tabs ever matter.
+  const idle = !live;
+  useEffect(() => {
+    if (!idle) return;
+    const tick = async () => {
+      if (document.visibilityState !== "visible" || streaming.current) return;
+      const r = await fetch(`/api/agent/sessions/${sessionId}`, { cache: "no-store" }).catch(() => null);
+      if (!r?.ok) return;
+      const d = (await r.json()) as SessionData;
+      if (d.liveTurnId) {
+        setData(d);
+        setLive({ turnId: d.liveTurnId, blocks: [], approvals: d.pendingApprovals, error: null });
+        seq.current = 0;
+        void reattach(d.liveTurnId);
+      } else {
+        setData((cur) => (cur && cur.messages.length === d.messages.length && cur.messages.at(-1)?.id === d.messages.at(-1)?.id ? cur : d));
+      }
+    };
+    const t = setInterval(() => void tick(), 4000);
+    const onVis = () => void tick();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [idle, sessionId, reattach]);
+
   // Keep the newest message in view unless the owner scrolled up to read.
   useEffect(() => {
     const el = scroller.current;
