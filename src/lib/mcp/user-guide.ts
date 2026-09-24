@@ -1182,7 +1182,10 @@ that it is signed in, and see the last week of use.
   and edit your items, and an edit to the open note appears in place while you
   watch. **Deleting and sharing always ask first** with an Allow / Deny card.
   Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
-  as a note, or archives it.
+  as a note, or archives it. Under each reply, **▶ Listen** reads it aloud in the
+  voice and speed you picked on an item's Listen bar. A chat open on two devices
+  stays in step: what you send from your phone appears on your computer within
+  a few seconds, reply and all.
 - **Inline edit** — highlight text in a note and press **Ctrl/Cmd+Shift+E** (or
   the sparkle button in the editor toolbar). Pick a chip (Tighten, Fix grammar,
   My voice, Warmer, Simplify, Bullets, Expand) or type what you want. You see the

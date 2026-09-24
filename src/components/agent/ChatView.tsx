@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MarkdownPreview from "@/components/markdown-editor/MarkdownPreview";
 import { showToast } from "@/components/ui/ActionToast";
+import { RATE_STORAGE_KEY, VOICE_STORAGE_KEY, chunkText, pickableVoices } from "@/components/canvas/ListenBar";
 import AgentInput, { type Builtin, type Submit } from "./AgentInput";
 
 export type Block =
@@ -407,8 +408,73 @@ function Message({ m, canRetry, onRetry, onSave }: { m: Msg; canRetry: boolean; 
         <button type="button" onClick={onSave} className="hover:text-ink" title="Create a note from this reply">
           Save as note
         </button>
+        <ListenBtn text={text} />
       </div>
     </div>
+  );
+}
+
+// Read a reply aloud with the browser's own voices, using the voice and rate
+// saved by the item Listen bar. One reply speaks at a time: starting another
+// stops this one.
+let stopSpeaking: (() => void) | null = null;
+function ListenBtn({ text }: { text: string }) {
+  const [on, setOn] = useState(false);
+  const mine = useRef<(() => void) | null>(null);
+  // Leaving the chat stops its reading.
+  useEffect(() => () => {
+    if (mine.current && stopSpeaking === mine.current) mine.current();
+  }, []);
+  function stop() {
+    stopSpeaking = null;
+    window.speechSynthesis.cancel();
+    setOn(false);
+  }
+  function play() {
+    stopSpeaking?.();
+    const plain = text
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/[*_#>`~|]/g, "");
+    const chunks = chunkText(plain);
+    let voiceURI = "";
+    let rate = 1;
+    try {
+      voiceURI = localStorage.getItem(VOICE_STORAGE_KEY) ?? "";
+      rate = parseFloat(localStorage.getItem(RATE_STORAGE_KEY) ?? "") || 1;
+    } catch {
+      // Defaults hold.
+    }
+    const ranked = pickableVoices(window.speechSynthesis.getVoices());
+    const voice = ranked.find((v) => v.voiceURI === voiceURI) ?? ranked[0] ?? null;
+    let cancelled = false;
+    const me = () => {
+      cancelled = true;
+      stop();
+    };
+    stopSpeaking = me;
+    mine.current = me;
+    setOn(true);
+    // One chunk at a time, never all queued: Chrome silently drops long queues.
+    const next = (i: number) => {
+      if (cancelled) return;
+      if (i >= chunks.length) return stop();
+      const u = new SpeechSynthesisUtterance(chunks[i]);
+      u.rate = rate;
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang;
+      }
+      u.onend = u.onerror = () => next(i + 1);
+      window.speechSynthesis.speak(u);
+    };
+    next(0);
+  }
+  if (typeof window !== "undefined" && !("speechSynthesis" in window)) return null;
+  return (
+    <button type="button" onClick={on ? () => stopSpeaking?.() : play} className="hover:text-ink" title={on ? "Stop reading" : "Read this reply aloud"}>
+      {on ? "■ Stop" : "▶ Listen"}
+    </button>
   );
 }
 
