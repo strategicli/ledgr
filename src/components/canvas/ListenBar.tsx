@@ -29,8 +29,8 @@ import { useEffect, useRef, useState } from "react";
 // they hold together past ~2x, so the ceiling here is "still intelligible for
 // skimming," not the API limit.
 const RATE_OPTIONS = [0.8, 1, 1.2, 1.5, 2, 2.5, 3] as const;
-const RATE_STORAGE_KEY = "ledgr.listen.rate";
-const VOICE_STORAGE_KEY = "ledgr.listen.voice";
+export const RATE_STORAGE_KEY = "ledgr.listen.rate";
+export const VOICE_STORAGE_KEY = "ledgr.listen.voice";
 const MAX_CHUNK_CHARS = 250;
 
 // Picking a voice is the whole point of the Edge trip, and it has to be
@@ -52,7 +52,7 @@ function voiceScore(v: SpeechSynthesisVoice): number {
 
 // Same language family as the page, so a US reader never lands on a French
 // voice reading English. Falls back to every voice if nothing matches.
-function pickableVoices(all: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
+export function pickableVoices(all: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
   const lang = (typeof document !== "undefined" && document.documentElement.lang) || "en";
   const base = lang.split("-")[0].toLowerCase();
   const matching = all.filter((v) => v.lang.split("-")[0].toLowerCase() === base);
@@ -60,7 +60,7 @@ function pickableVoices(all: SpeechSynthesisVoice[]): SpeechSynthesisVoice[] {
   return [...pool].sort((a, b) => voiceScore(b) - voiceScore(a));
 }
 
-function chunkText(text: string, maxLen = MAX_CHUNK_CHARS): string[] {
+export function chunkText(text: string, maxLen = MAX_CHUNK_CHARS): string[] {
   const sentences = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text];
   const chunks: string[] = [];
   let buf = "";
