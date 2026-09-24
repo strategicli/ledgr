@@ -23,15 +23,27 @@ export async function agentOn(ownerId: string): Promise<boolean> {
   return agentAvailable() && (await getSettings(ownerId)).agent.enabled;
 }
 
+// Same-origin check by host only. Behind the tunnel TLS ends at the proxy, so
+// request.url says http:// while the browser's Origin says https://; comparing
+// full origins refused every write from the public address. A cross-site page
+// can't forge Host or X-Forwarded-Host without a preflight it would fail.
+export function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 // For every /api/agent route: the signed-in owner with the agent on, or a 404
 // that doesn't admit the feature exists. Same-origin only, since the hub is
 // reachable from the public internet through the tunnel.
 export async function requireAgentOwner(request: Request): Promise<Owner | NextResponse> {
   if (!agentAvailable()) return new NextResponse(null, { status: 404 });
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) {
-    return new NextResponse(null, { status: 403 });
-  }
+  if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   if (!(await getSettings(owner.id)).agent.enabled) return new NextResponse(null, { status: 404 });

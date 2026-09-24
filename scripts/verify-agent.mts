@@ -13,6 +13,7 @@ import { TOOL_NAMES } from "../src/lib/mcp/tools";
 import { CORE_TOOLS, TOOL_TIERS, tierOf } from "../src/lib/agent/tools";
 import { lockedOptions, scrubbedEnv } from "../src/lib/agent/runtime";
 import { cleanReplacement, formattingChanged } from "../src/lib/agent/inline";
+import { sameOrigin } from "../src/lib/agent/gate";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -22,6 +23,13 @@ function check(name: string, ok: boolean, detail?: unknown) {
     console.log(`FAIL  ${name}${detail === undefined ? "" : `  (${String(detail)})`}`);
   }
 }
+
+// Same-origin (behind the tunnel the server sees http, the browser sends https)
+const req = (h: Record<string, string>) => new Request("http://ledgr.example/api/agent/sessions", { method: "POST", headers: h });
+check("tunnel https origin matches its own host", sameOrigin(req({ origin: "https://ledgr.example", host: "ledgr.example" })));
+check("forwarded host is honored", sameOrigin(req({ origin: "https://ledgr.example", host: "127.0.0.1:3000", "x-forwarded-host": "ledgr.example" })));
+check("no origin header passes", sameOrigin(req({ host: "ledgr.example" })));
+check("a foreign site is refused", !sameOrigin(req({ origin: "https://evil.example", host: "ledgr.example" })));
 
 // Tiers
 const untiered = TOOL_NAMES.filter((n) => !(n in TOOL_TIERS));
