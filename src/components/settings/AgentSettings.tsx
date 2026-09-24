@@ -83,7 +83,7 @@ export default function AgentSettings({ initial }: { initial: Agent }) {
     setBusy("check");
     setMsg(null);
     const res = await fetch("/api/agent/health", { method: "POST" }).catch(() => null);
-    const r = res?.ok ? ((await res.json()) as { ok: boolean; error?: string }) : { ok: false, error: "The check didn't reach the server." };
+    const r = res?.ok ? ((await res.json()) as { ok: boolean; error?: string }) : { ok: false, error: res ? `The server refused the check (HTTP ${res.status}).` : "The check didn't reach the server." };
     setMsg(r.ok ? "Signed in. Claude answered." : (r.error ?? "The check failed."));
     await loadHealth();
     setBusy(null);

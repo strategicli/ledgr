@@ -39,6 +39,8 @@ function save(key: string, v: unknown) {
   }
 }
 
+const fail = (what: string) => (e: unknown) => showToast(`Couldn't ${what} (${e instanceof Error ? e.message : "error"})`);
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -251,7 +253,9 @@ export default function AgentPanel() {
     if (!active) return null;
     const d = await api<{ session: { title: string }; messages: { role: string; content: Block[] }[] }>(`/api/agent/sessions/${active}`);
     const text = d.messages
-      .map((m) => `**${m.role === "assistant" ? "Claude" : "Brandon"}:** ${m.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim()}`)
+      .map((m) => ({ who: m.role === "assistant" ? "Claude" : "Brandon", said: m.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim() }))
+      .filter((m) => m.said)
+      .map((m) => `**${m.who}:** ${m.said}`)
       .join("\n\n");
     return { title: d.session.title, text };
   }
@@ -262,9 +266,9 @@ export default function AgentPanel() {
     showToast("Transcript copied");
   }
   async function saveTranscript() {
-    const t = await transcript();
     setMenu(false);
-    if (!t) return;
+    const t = await transcript().catch(() => null);
+    if (!t?.text) return showToast("Nothing to save yet: this chat has no messages");
     await api("/api/items", { method: "POST", body: JSON.stringify({ type: "note", title: `Chat: ${t.title}`, body: { format: "markdown", text: t.text } }) });
     showToast("Saved the chat as a note");
   }
@@ -326,11 +330,22 @@ export default function AgentPanel() {
           </button>
         )}
         <HeaderBtn label="Your chats" onClick={() => void (switcher ? setSwitcher(null) : openSwitcher())}>☰</HeaderBtn>
-        <HeaderBtn label="New chat" onClick={() => void newChat()}>＋</HeaderBtn>
-        <HeaderBtn label="Side chat (Ctrl/Cmd+Alt+J): a temporary question that doesn't touch this chat" onClick={() => void openSide()}>⤳</HeaderBtn>
+        <HeaderBtn label="New chat" onClick={() => void newChat().catch(fail("start a new chat"))}>＋</HeaderBtn>
+        <HeaderBtn label="Side chat (Ctrl/Cmd+Alt+J): a temporary question that doesn't touch this chat" onClick={() => void openSide().catch(fail("open a side chat"))}>⤳</HeaderBtn>
         <HeaderBtn label="More" onClick={() => setMenu((m) => !m)}>⋯</HeaderBtn>
         <HeaderBtn label="Close (Ctrl/Cmd+J)" onClick={() => setOpen(false)}>✕</HeaderBtn>
       </header>
+      {(menu || switcher) && (
+        // Click-off closes the open menu, like any other popover.
+        <div
+          aria-hidden
+          className="fixed inset-0 z-20"
+          onClick={() => {
+            setMenu(false);
+            setSwitcher(null);
+          }}
+        />
+      )}
       {menu && (
         <div className="absolute right-2 top-10 z-30 w-52 rounded-card border border-line-strong bg-surface-2 py-1 text-sm shadow-xl">
           <MenuBtn onClick={() => void copyTranscript()}>Copy transcript</MenuBtn>

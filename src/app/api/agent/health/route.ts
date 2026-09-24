@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentAvailable } from "@/lib/agent/gate";
+import { agentAvailable, sameOrigin } from "@/lib/agent/gate";
 import { authMode, explainError, health, lockedOptions, noteError, noteOk, resultError, run } from "@/lib/agent/runtime";
 import { usageByDay } from "@/lib/agent/chat";
 import { requireOwner } from "@/lib/api";
@@ -39,8 +39,7 @@ export async function GET() {
 // agent on (and after a restart, when the in-process health above is blank).
 export async function POST(request: Request) {
   if (!agentAvailable()) return new NextResponse(null, { status: 404 });
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return new NextResponse(null, { status: 403 });
+  if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   const abort = new AbortController();
