@@ -1,7 +1,7 @@
 // AI Memory tools (ADR-137): get_memory_stumps loads the compact stump index
 // at session start; remember files one durable memory + links it to the
-// items it's about. Gated by the ai-memory module — see MEMORY_TOOL_NAMES
-// below and its use in index.ts's listToolDefs/callTool.
+// items it's about. Gated by the ai-memory module, whose manifest claims these
+// tool names (mcpTools slot, src/lib/modules/features.ts).
 import { parseItemPayload } from "@/lib/api";
 import { makeMarkdownBody } from "@/lib/body";
 import { ItemError } from "@/lib/items";
@@ -26,7 +26,6 @@ import type { McpTool } from "./wire";
 // subsystem on (the ai-memory module). Filtered out of tools/list and
 // rejected by callTool when off, so a "vanilla" MCP client never sees the
 // memory concept and its AI never gets confused by tools it can't use.
-export const MEMORY_TOOL_NAMES = ["get_memory_stumps", "remember"] as const;
 
 export const memoryTools: McpTool[] = [
   {

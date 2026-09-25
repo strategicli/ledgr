@@ -13,16 +13,17 @@
 // tool result so Claude sees a clean message and the session stays open;
 // unexpected errors are captured (rule 9) and returned with a correlation id.
 import { getSettings, type UserSettings } from "@/lib/settings";
+import { moduleOwningTool, toolEnabledFor } from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
 import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
 import { attachmentTools } from "./attachments";
 import { calendarTools } from "./calendar";
-import { contextTools, LIVE_CONTEXT_TOOL_NAMES } from "./context";
+import { contextTools } from "./context";
 import { dashboardTools } from "./dashboards";
 import { exportTools } from "./export";
 import { itemTools } from "./items";
-import { MEMORY_TOOL_NAMES, memoryTools } from "./memory";
+import { memoryTools } from "./memory";
 import { recordTools } from "./records";
 import { relationTools } from "./relations";
 import { shareTools } from "./share";
@@ -35,7 +36,6 @@ import type { McpTool, McpToolDef, ToolCallResult } from "./wire";
 import { workspaceTools } from "./workspace";
 
 export type { McpToolDef, ToolCallResult } from "./wire";
-export { MEMORY_TOOL_NAMES };
 
 const TOOLS: McpTool[] = [
   ...itemTools,
@@ -45,7 +45,7 @@ const TOOLS: McpTool[] = [
   ...calendarTools,
   ...typeTools,
   ...relationTools,
-  ...shareTools,
+  ...shareTools, // core for now: sharing is not a module yet, so no manifest claims these
   ...trashTools,
   ...exportTools,
   ...viewTools,
@@ -59,23 +59,18 @@ const TOOLS: McpTool[] = [
 // Every registered tool name, for guards like verify-agent (each needs a tier).
 export const TOOL_NAMES = TOOLS.map((t) => t.name);
 
-const MEMORY_TOOL_SET = new Set<string>(MEMORY_TOOL_NAMES);
-const LIVE_CONTEXT_TOOL_SET = new Set<string>(LIVE_CONTEXT_TOOL_NAMES);
-
-// Whether an owner-gated tool is enabled for this owner. A tool that isn't
-// behind a gate is always available.
+// Whether a tool is on for this owner (the mcpTools slot, ADR-272 step 3): a
+// tool a module claims follows that module's switch; any other tool is core
+// and always on. The share tools stay core until sharing becomes a module.
 function toolEnabled(
   name: string,
   settings: Pick<UserSettings, "modules">
 ): boolean {
-  if (MEMORY_TOOL_SET.has(name)) return moduleOn(settings, "ai-memory");
-  if (LIVE_CONTEXT_TOOL_SET.has(name)) return moduleOn(settings, "live-context");
-  return true;
+  return toolEnabledFor(name, (id) => moduleOn(settings, id));
 }
 
-// The wire definitions (handler stripped) for tools/list. Owner-aware: the
-// memory tools drop out unless AI Memory is on; the live-context tools unless
-// Live editing context is on.
+// The wire definitions (handler stripped) for tools/list. Owner-aware: a
+// module's tools drop out while that module is off.
 export async function listToolDefs(ownerId: string): Promise<McpToolDef[]> {
   const flags = await getSettings(ownerId);
   return TOOLS.filter((t) => toolEnabled(t.name, flags)).map(
@@ -104,12 +99,9 @@ export async function callTool(
   try {
     // Defense in depth: a disabled gated tool is rejected even if a client calls
     // it directly without listing (listToolDefs already hides it).
-    if (MEMORY_TOOL_SET.has(name) || LIVE_CONTEXT_TOOL_SET.has(name)) {
-      const flags = await getSettings(ownerId);
-      if (!toolEnabled(name, flags)) {
-        const feature = MEMORY_TOOL_SET.has(name) ? "AI Memory" : "Live editing context";
-        return toolError(`tool '${name}' is not enabled — turn on ${feature} at Build → Modules`);
-      }
+    const owning = moduleOwningTool(name);
+    if (owning && !toolEnabled(name, await getSettings(ownerId))) {
+      return toolError(`tool '${name}' is not enabled — turn on ${owning.label} at Build → Modules`);
     }
     const payload = await tool.handler(ownerId, a);
     // A handler that returns a string has already rendered its own wire format

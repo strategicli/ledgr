@@ -4,25 +4,38 @@
 // the same canaries in-process rather than calling its own HTTP endpoint
 // (cleaner than the PRD §6.2 "hits /health" phrasing, and it still works when
 // routing itself is the problem).
+//
+// Modules bring their own canaries (the healthCheck slot, ADR-272 step 3): this
+// file runs the core checks, then each enabled module's check, and reports
+// those under `checks.modules[<module id>]`. The feature areas below that are
+// not modules yet still read here directly, in the marked block; each moves
+// onto its manifest when step 4 makes it a module. Their top-level keys stay
+// exactly as they are, because the weekly check and outside readers depend on
+// them.
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { hasActiveCredential } from "@/lib/auth/credentials";
 import { hasScopedToken } from "@/lib/auth/machine";
 import { resolveMcpOwner } from "@/lib/mcp/owner";
+import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
+import { checkGithub, type GithubHealth } from "@/lib/github/client";
+import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
+import { allModules } from "@/lib/modules";
+import { moduleOn } from "@/lib/modules/enabled";
+import { getSettings } from "@/lib/settings";
+import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
+import { createLogger, isDebugMode } from "@/lib/log";
+// not yet modules (step 4): export, calendar, todoist, email, push, discovery,
+// sync, tasks adapter, transcription adapter.
 import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
 import { getExportState } from "@/lib/export/engine";
 import { getRelatednessState } from "@/lib/discovery/refresh";
-import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
-import { checkGithub, type GithubHealth } from "@/lib/github/client";
-import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
 import { getTodoistState } from "@/lib/todoist/sync";
-import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
 import { transcriptionAdapter, type TranscriptionAdapterId } from "@/lib/transcription/provider";
-import { createLogger, isDebugMode } from "@/lib/log";
 
 export type DatabaseCheck =
   | { ok: true; latencyMs: number }
@@ -74,6 +87,10 @@ export type HealthReport = {
     schema: SchemaStatus;
     sync: SyncCanary;
     errors: ErrorsCheck;
+    // Each enabled module's own canaries, keyed by module id (ADR-272 step 3).
+    // Present only when at least one module reported, so an instance with no
+    // such module on returns exactly the shape it always did.
+    modules?: Record<string, Record<string, unknown>>;
   };
   timestamp: string;
 };
@@ -122,6 +139,34 @@ async function checkErrors(): Promise<ErrorsCheck> {
   }
 }
 
+// One canary read. A state row being unreadable while `select 1` works is
+// strange enough to surface as nulls rather than fail the whole check, so a
+// throw becomes undefined and the caller falls back to null.
+async function safe<T>(read: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await read();
+  } catch {
+    return undefined;
+  }
+}
+
+// The healthCheck slot: every module that is on for the owner and declares a
+// check runs it, one at a time. A module that throws reports an error under its
+// own id and never touches the others or the core checks.
+async function checkModules(ownerId: string): Promise<Record<string, Record<string, unknown>>> {
+  const settings = await getSettings(ownerId);
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const m of allModules()) {
+    if (!m.healthCheck || !moduleOn(settings, m.id)) continue;
+    try {
+      out[m.id] = await m.healthCheck(ownerId);
+    } catch (err) {
+      out[m.id] = { error: isDebugMode() && err instanceof Error ? err.message : "check failed" };
+    }
+  }
+  return out;
+}
+
 // One read of every canary. `status` is "degraded" only when the DB is down —
 // integrations being unconfigured or stalled must never make the app itself
 // look unhealthy (Sunday-proof: the DB is what matters). The weekly health
@@ -129,103 +174,42 @@ async function checkErrors(): Promise<ErrorsCheck> {
 export async function gatherHealth(): Promise<HealthReport> {
   const database = await checkDatabase();
 
-  let lastExportAt: string | null = null;
-  let lastExportRunAt: string | null = null;
-  let lastExportRemaining: number | null = null;
-  let lastCalendarSyncAt: string | null = null;
-  let lastCalendarRunAt: string | null = null;
-  let lastTodoistSyncAt: string | null = null;
-  let lastTodoistRunAt: string | null = null;
-  let lastEmailImportAt: string | null = null;
-  let lastEmailRunAt: string | null = null;
-  let lastAgendaNotifyAt: string | null = null;
-  let lastPrepNotifyAt: string | null = null;
-  let lastRelatednessRunAt: string | null = null;
   let mcp: McpCanary = { configured: false, hasToken: false, ownerResolves: false };
   let healthCheck: HealthCheckCanary = { lastRunAt: null, lastSuccessAt: null, lastAlertAt: null, alerts: [] };
   let errors: ErrorsCheck = null;
+  let modules: Record<string, Record<string, unknown>> = {};
+  // not yet modules (step 4): each read below moves onto its module's manifest.
+  let exp, cal, td, em, push, rel;
   if (database.ok) {
-    try {
-      const state = await getExportState();
-      lastExportAt = state?.lastSuccessAt ?? null;
-      lastExportRunAt = state?.lastRunAt ?? null;
-      lastExportRemaining = state?.lastResult?.remaining ?? null;
-    } catch {
-      // job_state being unreadable while select 1 works is strange enough
-      // to surface as nulls rather than fail the whole check.
+    exp = await safe(getExportState);
+    cal = await safe(getCalendarState);
+    td = await safe(getTodoistState);
+    em = await safe(getEmailState);
+    push = await safe(getPushState);
+    rel = await safe(getRelatednessState);
+    const owner = await safe(resolveMcpOwner);
+    // Either credential path counts as "a token exists" (ADR-224): the static
+    // env entry, or a live minted credential carrying `mcp`.
+    const hasToken = await safe(async () => hasScopedToken("mcp") || (await hasActiveCredential("mcp")));
+    if (owner !== undefined && hasToken !== undefined) {
+      mcp = { configured: hasToken && !!owner, hasToken, ownerResolves: !!owner };
     }
-    try {
-      const cal = await getCalendarState();
-      lastCalendarSyncAt = cal?.lastSuccessAt ?? null;
-      lastCalendarRunAt = cal?.lastRunAt ?? null;
-    } catch {
-      // same posture as the export state read.
-    }
-    try {
-      const td = await getTodoistState();
-      lastTodoistSyncAt = td?.lastSuccessAt ?? null;
-      lastTodoistRunAt = td?.lastRunAt ?? null;
-    } catch {
-      // same posture as the export state read.
-    }
-    try {
-      const em = await getEmailState();
-      lastEmailImportAt = em?.lastSuccessAt ?? null;
-      lastEmailRunAt = em?.lastRunAt ?? null;
-    } catch {
-      // same posture as the export state read.
-    }
-    try {
-      const push = await getPushState();
-      lastAgendaNotifyAt = push.agenda?.lastSuccessAt ?? null;
-      lastPrepNotifyAt = push.prep?.lastSuccessAt ?? null;
-    } catch {
-      // same posture as the export state read.
-    }
-    try {
-      const rel = await getRelatednessState();
-      lastRelatednessRunAt = rel?.lastRunAt ?? null;
-    } catch {
-      // same posture as the export state read.
-    }
-    try {
-      // Either credential path counts as "a token exists" (ADR-224): the
-      // static env entry, or a live minted credential carrying `mcp`.
-      const hasToken =
-        hasScopedToken("mcp") || (await hasActiveCredential("mcp"));
-      const ownerResolves = !!(await resolveMcpOwner());
-      mcp = { configured: hasToken && ownerResolves, hasToken, ownerResolves };
-    } catch {
-      // same posture as the export state read.
-    }
-    try {
-      healthCheck = await getHealthCheckState();
-    } catch {
-      // same posture as the export state read.
-    }
+    healthCheck = (await safe(getHealthCheckState)) ?? healthCheck;
     errors = await checkErrors();
+    if (owner) modules = (await safe(() => checkModules(owner))) ?? {};
   }
 
   // App-only Graph token grant (slice 21): a failed grant is the secret-expiry
   // / consent-revocation canary for every unattended Graph job. `{configured:
   // false}` until the registration exists; it never changes overall status,
   // since Graph being down must not make the app itself look unhealthy.
-  let graph: GraphHealth = { configured: false };
-  try {
-    graph = await checkGraphAuth();
-  } catch {
-    // checkGraphAuth swallows its own errors; this is belt-and-suspenders.
-  }
+  // checkGraphAuth swallows its own errors; `safe` is belt-and-suspenders.
+  const graph: GraphHealth = (await safe(checkGraphAuth)) ?? { configured: false };
 
   // GitHub canary (changelog + collab notes): a failed repo read is the
   // token-expiry / wrong-repo signal. Like Graph, it never changes overall
   // status — GitHub being down must not make the app itself look unhealthy.
-  let github: GithubHealth = { configured: false };
-  try {
-    github = await checkGithub();
-  } catch {
-    // checkGithub swallows its own errors; belt-and-suspenders.
-  }
+  const github: GithubHealth = (await safe(checkGithub)) ?? { configured: false };
 
   // Migration currency. getSchemaStatus never throws (it reports "unknown"),
   // and it degrades to "unknown" on its own when the DB is down.
@@ -234,39 +218,29 @@ export async function gatherHealth(): Promise<HealthReport> {
   // Sync canary: env-only {enabled: false} on non-spokes; two small oplog
   // reads on a spoke. Never changes overall status — sync being behind must
   // not make the app itself look unhealthy (same posture as Graph/GitHub).
-  let syncCheck: SyncCanary = { enabled: false };
-  try {
-    const s = await gatherSyncStatus();
-    if (s.enabled) {
-      syncCheck = {
-        enabled: true,
-        state: s.state,
-        pendingOps: s.pendingOps,
-        lastSyncAt: s.lastSyncAt,
-      };
-    }
-  } catch {
-    // same posture as the export state read.
-  }
+  const s = await safe(gatherSyncStatus);
+  const syncCheck: SyncCanary = s?.enabled
+    ? { enabled: true, state: s.state, pendingOps: s.pendingOps, lastSyncAt: s.lastSyncAt }
+    : { enabled: false };
 
   return {
     status: database.ok ? "ok" : "degraded",
     checks: {
       database,
-      lastExportAt,
-      lastExportRunAt,
-      lastExportRemaining,
-      lastCalendarSyncAt,
-      lastCalendarRunAt,
+      lastExportAt: exp?.lastSuccessAt ?? null,
+      lastExportRunAt: exp?.lastRunAt ?? null,
+      lastExportRemaining: exp?.lastResult?.remaining ?? null,
+      lastCalendarSyncAt: cal?.lastSuccessAt ?? null,
+      lastCalendarRunAt: cal?.lastRunAt ?? null,
       tasksAdapter: tasksAdapter(),
       transcription: transcriptionAdapter(),
-      lastTodoistSyncAt,
-      lastTodoistRunAt,
-      lastEmailImportAt,
-      lastEmailRunAt,
-      lastAgendaNotifyAt,
-      lastPrepNotifyAt,
-      lastRelatednessRunAt,
+      lastTodoistSyncAt: td?.lastSuccessAt ?? null,
+      lastTodoistRunAt: td?.lastRunAt ?? null,
+      lastEmailImportAt: em?.lastSuccessAt ?? null,
+      lastEmailRunAt: em?.lastRunAt ?? null,
+      lastAgendaNotifyAt: push?.agenda?.lastSuccessAt ?? null,
+      lastPrepNotifyAt: push?.prep?.lastSuccessAt ?? null,
+      lastRelatednessRunAt: rel?.lastRunAt ?? null,
       mcp,
       graph,
       github,
@@ -274,6 +248,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       schema,
       sync: syncCheck,
       errors,
+      ...(Object.keys(modules).length > 0 ? { modules } : {}),
     },
     timestamp: new Date().toISOString(),
   };

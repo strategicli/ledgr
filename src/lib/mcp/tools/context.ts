@@ -2,9 +2,9 @@
 // co-editing loop. get_active_context tells Claude which note the owner is
 // looking at right now (and what they've highlighted); edit_item_body makes a
 // surgical, single-spot change to a note's markdown without resending the whole
-// body. Both are gated by the live-context module (see
-// LIVE_CONTEXT_TOOL_NAMES and its use in index.ts) — off by default, so a
-// vanilla MCP client never sees them.
+// body. Both are gated by the live-context module, whose manifest claims them
+// (mcpTools slot, src/lib/modules/features.ts). Off by default, so a vanilla
+// MCP client never sees them.
 //
 // Thin wrappers over the same owner-scoped libs the app uses (active-context.ts,
 // items.ts, item-mutations.ts), so this surface can't drift from the app
@@ -20,10 +20,6 @@ import type { McpTool } from "./wire";
 // Present only when the owner has turned on Live editing context. Filtered out of
 // tools/list and rejected by callTool when off — same posture as the memory
 // tools (ADR-137).
-export const LIVE_CONTEXT_TOOL_NAMES = [
-  "get_active_context",
-  "edit_item_body",
-] as const;
 
 // Whole seconds since a timestamp, for the staleness hints.
 function ageSeconds(when: Date): number {

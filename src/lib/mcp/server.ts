@@ -22,6 +22,7 @@ import {
 } from "@/lib/mcp/guide";
 import { USER_GUIDE_RESOURCE } from "@/lib/mcp/user-guide";
 import { getSettings } from "@/lib/settings";
+import { moduleInstructions } from "@/lib/modules";
 import { moduleOn, moduleOnFor } from "@/lib/modules/enabled";
 
 // Free-form version string for clients to display; tracks the PRD epoch
@@ -83,52 +84,14 @@ export const INSTRUCTIONS = [
   "modify their items.",
 ].join("\n");
 
-// Appended to INSTRUCTIONS only when the owner has AI Memory on (ADR-137). The
-// connect-time instructions are the one place every client reliably surfaces to
-// the model, so this is what actually gets the memory system used: tool
-// descriptions are only read once a tool is already under consideration, and
-// most clients never fetch resources unprompted. Kept short — it points at the
-// protocol resource for the full contract rather than restating it. When AI
-// Memory is off, INSTRUCTIONS is emitted byte-for-byte unchanged.
-const MEMORY_INSTRUCTIONS = [
-  "",
-  "AI MEMORY is on. The owner keeps durable memories about themselves, their",
-  "people, and their work in Ledgr, in two tiers. Call get_memory_stumps at the",
-  "START of the session: it returns the small PINNED set, the standing rules you",
-  "need on every run. Everything else is retrieved on demand — when a person,",
-  "project, or system comes up that you don't already know, search_items for it",
-  "by name with type: \"memory\", then get_item the stump for detail. When you",
-  "learn something durable worth carrying into a later session, file it with",
-  "remember. Read the memory-protocol resource (ledgr://guide/memory-protocol)",
-  "for the full contract.",
-].join("\n");
-
-// Appended to INSTRUCTIONS only when the owner has Live editing context on
-// (ADR-162). Like the memory addendum, the connect-time instructions are the one
-// place every client reliably surfaces to the model, so this is what actually
-// gets the co-editing loop used. Kept short; points at the tools.
-const LIVE_CONTEXT_INSTRUCTIONS = [
-  "",
-  "LIVE EDITING CONTEXT is on. The owner may refer to \"this note\", \"this page\",",
-  "\"the draft\", \"this sentence\", \"this\", or \"it\" to mean whatever they",
-  "currently have open in Ledgr. Call get_active_context to resolve that — it",
-  "returns the open note's freshly-read body and any text they've highlighted.",
-  "Re-read it whenever they reference the note again or ask what you think of it;",
-  "they edit directly with keyboard and mouse, so don't trust a body you saw",
-  "earlier. To change the note, use edit_item_body (a surgical find-and-replace on",
-  "one spot) rather than update_item (which resends the whole body), so you never",
-  "clobber an edit they made elsewhere. Confirm before writing unless they've told",
-  "you to go ahead.",
-].join("\n");
-
 // The instructions the client sees at initialize, owner-aware: the stable base,
-// plus the memory addendum when AI Memory is on and the live-context addendum
-// when Live editing context is on.
+// plus the instruction block of every module that is on (the mcpTools slot,
+// ADR-272 step 3: AI Memory's and Live editing context's live on their
+// manifests in src/lib/modules/features.ts).
 export async function buildInstructions(ownerId: string): Promise<string> {
   const settings = await getSettings(ownerId);
   let out = INSTRUCTIONS;
-  if (moduleOn(settings, "ai-memory")) out += `\n${MEMORY_INSTRUCTIONS}`;
-  if (moduleOn(settings, "live-context")) out += `\n${LIVE_CONTEXT_INSTRUCTIONS}`;
+  for (const block of moduleInstructions((id) => moduleOn(settings, id))) out += `\n${block}`;
   return out;
 }
 

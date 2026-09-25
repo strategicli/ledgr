@@ -13,6 +13,8 @@
 //  4. The enable seam: a disabled module's type falls back to the default
 //     canvas, contributes no exporters, and reports no format override.
 //  5. Boundary hygiene: duplicate module ids are rejected.
+//  6. Feature modules and the fold from the old settings keys.
+//  7. Contribution slots: a module's MCP tools, instructions, and health check.
 //
 //   npx tsx scripts/verify-module-registry.mts
 import { MARKDOWN_FORMAT } from "../src/lib/body";
@@ -263,6 +265,34 @@ await runEach(
 );
 check("a throwing hook does not stop the next one", ran.join(",") === "a,b");
 check("the throwing hook is reported with its module", reported.length === 1 && (reported[0] as { module: string }).module === "a");
+// --- 8. contribution slots: MCP tools and health (ADR-272 step 3) -----------
+const { moduleInstructions, moduleOwningTool, toolEnabledFor } = await import("../src/lib/modules");
+registerModule({
+  id: "fake-tools",
+  label: "Fake tools",
+  enabledByDefault: false,
+  types: [],
+  exporters: [],
+  mcpTools: { names: ["fake_read", "fake_write"], instructions: "FAKE is on." },
+  healthCheck: async () => ({ ok: true }),
+});
+check("a module's tools resolve to that module", ["fake_read", "fake_write"].every((n) => moduleOwningTool(n)?.id === "fake-tools"));
+check("a core tool resolves to no module", moduleOwningTool("search_items") === undefined);
+check("the share tools stay core", ["share_item", "list_share_links", "revoke_share_link"].every((n) => !moduleOwningTool(n)));
+check("ai-memory owns the memory tools", ["get_memory_stumps", "remember"].every((n) => moduleOwningTool(n)?.id === "ai-memory"));
+check("live-context owns the context tools", ["get_active_context", "edit_item_body"].every((n) => moduleOwningTool(n)?.id === "live-context"));
+const onlyFake = (id: string) => id === "fake-tools";
+const noneOn = () => false;
+check("module on -> its tools are available", toolEnabledFor("fake_read", onlyFake));
+check("module off -> its tools are excluded", !toolEnabledFor("fake_read", noneOn) && !toolEnabledFor("fake_write", noneOn));
+check("a core tool is available with every module off", toolEnabledFor("search_items", noneOn));
+check("module off -> no instruction block", !moduleInstructions(noneOn).includes("FAKE is on."));
+check("module on -> its instruction block", JSON.stringify(moduleInstructions(onlyFake)) === JSON.stringify(["FAKE is on."]));
+const memFirst = moduleInstructions((id) => id === "ai-memory" || id === "live-context");
+check("memory block comes before live-context (the old order)", memFirst.length === 2 && memFirst[0].includes("AI MEMORY is on") && memFirst[1].includes("LIVE EDITING CONTEXT is on"));
+const fakeCheck = allModules().find((m) => m.id === "fake-tools")?.healthCheck;
+check("a module's healthCheck is on its manifest", JSON.stringify(await fakeCheck?.("owner")) === JSON.stringify({ ok: true }));
+check("youtube-transcripts contributes a health check", typeof allModules().find((m) => m.id === "youtube-transcripts")?.healthCheck === "function");
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);
