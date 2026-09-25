@@ -167,6 +167,14 @@ ${SLIDE_CSS}
   h2,h3,h4{page-break-after:avoid}
 }
 ${CHART_CSS}
+/* CHART_CSS is tuned for the dark in-app canvas; on this page the chart follows
+   the chosen look instead, so its grays and chord color read on light/sepia too.
+   The @media print block above redefines these vars, so print stays right. */
+.cc-head{border-color:var(--rule)}
+.cc-artist,.cc-meta,.cc-comment{color:var(--muted)}
+.cc-arrangement,.cc-ref .cc-label,.cc-pipe,.cc-beat{color:var(--faint)}
+.cc-bars{color:var(--fg)}
+.cc-chord{color:var(--link)}
 `;
 
 // Renders one item to a complete HTML page. `body` is the item's stored body
