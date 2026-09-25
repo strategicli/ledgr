@@ -26,7 +26,6 @@ const {
   ERROR_WINDOW_DAYS,
 } = await import("../src/lib/health-check");
 const { gatherHealth } = await import("../src/lib/health");
-const { NOTIFICATION_CENTER_ENABLED } = await import("../src/lib/notifications-enabled");
 type HealthReport = import("../src/lib/health").HealthReport;
 type PushSender = import("../src/lib/push/types").PushSender;
 type PushMessage = import("../src/lib/push/types").PushMessage;
@@ -176,10 +175,12 @@ check("a fully-green report yields zero alerts", evaluateHealth(baseReport(), 0,
   const pausedAgenda = baseReport();
   pausedAgenda.checks.lastAgendaNotifyAt = iso(24 * 30);
   check(
-    NOTIFICATION_CENTER_ENABLED
-      ? "with the notification center live, a stale agenda push alerts"
-      : "a paused agenda push (ADR-130) never alerts, however stale",
-    evaluateHealth(pausedAgenda, 0, NOW).some((x) => x.code === "agenda") === NOTIFICATION_CENTER_ENABLED
+    "a paused agenda push (ADR-130) never alerts, however stale",
+    !evaluateHealth(pausedAgenda, 0, NOW).some((x) => x.code === "agenda")
+  );
+  check(
+    "with the notification-center module on, a stale agenda push alerts",
+    evaluateHealth(pausedAgenda, 0, NOW, true).some((x) => x.code === "agenda")
   );
 }
 

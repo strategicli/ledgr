@@ -22,6 +22,7 @@ import {
 } from "@/lib/mcp/guide";
 import { USER_GUIDE_RESOURCE } from "@/lib/mcp/user-guide";
 import { getSettings } from "@/lib/settings";
+import { moduleOn, moduleOnFor } from "@/lib/modules/enabled";
 
 // Free-form version string for clients to display; tracks the PRD epoch
 // (v0.18, the Markdown epoch), not the package.json build number.
@@ -124,10 +125,10 @@ const LIVE_CONTEXT_INSTRUCTIONS = [
 // plus the memory addendum when AI Memory is on and the live-context addendum
 // when Live editing context is on.
 export async function buildInstructions(ownerId: string): Promise<string> {
-  const { aiMemoryEnabled, liveContextEnabled } = await getSettings(ownerId);
+  const settings = await getSettings(ownerId);
   let out = INSTRUCTIONS;
-  if (aiMemoryEnabled) out += `\n${MEMORY_INSTRUCTIONS}`;
-  if (liveContextEnabled) out += `\n${LIVE_CONTEXT_INSTRUCTIONS}`;
+  if (moduleOn(settings, "ai-memory")) out += `\n${MEMORY_INSTRUCTIONS}`;
+  if (moduleOn(settings, "live-context")) out += `\n${LIVE_CONTEXT_INSTRUCTIONS}`;
   return out;
 }
 
@@ -170,7 +171,7 @@ export async function handleMcpMessage(
       // protocol when the owner has AI Memory on (ADR-137) — so a vanilla client
       // never sees it. The user guide (ADR-189) is ungated: "what can Ledgr do"
       // is useful to every client, and it holds no owner data.
-      const { aiMemoryEnabled } = await getSettings(ownerId);
+      const aiMemoryEnabled = await moduleOnFor(ownerId, "ai-memory");
       const resources = aiMemoryEnabled
         ? [GUIDE_RESOURCE, USER_GUIDE_RESOURCE, MEMORY_PROTOCOL_RESOURCE]
         : [GUIDE_RESOURCE, USER_GUIDE_RESOURCE];
@@ -189,7 +190,7 @@ export async function handleMcpMessage(
       }
       // The memory protocol is gated: when AI Memory is off it's unlisted, and
       // reading it directly answers unknown-resource just like any other URI.
-      if (params.uri === MEMORY_PROTOCOL_URI && !(await getSettings(ownerId)).aiMemoryEnabled) {
+      if (params.uri === MEMORY_PROTOCOL_URI && !(await moduleOnFor(ownerId, "ai-memory"))) {
         return rpcError(id, JSONRPC.INVALID_PARAMS, `unknown resource '${params.uri}'`);
       }
       const contents = readGuideResource(params.uri);

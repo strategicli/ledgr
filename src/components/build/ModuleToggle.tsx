@@ -11,10 +11,13 @@ export default function ModuleToggle({
   moduleId,
   label,
   enabled,
+  disabled = false,
 }: {
   moduleId: string;
   label: string;
   enabled: boolean;
+  // The machine cannot run this module (the reason shows beside it).
+  disabled?: boolean;
 }) {
   const router = useRouter();
   const [on, setOn] = useState(enabled);
@@ -52,7 +55,7 @@ export default function ModuleToggle({
         role="switch"
         aria-checked={on}
         aria-label={`${label} module`}
-        disabled={busy}
+        disabled={busy || disabled}
         onClick={() => void toggle()}
         className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
           on ? "bg-[var(--accent)]" : "bg-surface-3"

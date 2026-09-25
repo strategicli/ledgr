@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
-import { getSettings } from "@/lib/settings";
+import { moduleOnFor } from "@/lib/modules/enabled";
 import {
   ensureNoteEditingPrompt,
   revertNoteEditingPrompt,
@@ -16,7 +16,7 @@ export async function GET() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
-    if (!(await getSettings(owner.id)).liveContextEnabled) {
+    if (!(await moduleOnFor(owner.id, "live-context"))) {
       return NextResponse.json({ error: "live editing context is off" }, { status: 409 });
     }
     return NextResponse.json({ id: await ensureNoteEditingPrompt(owner.id) });
@@ -30,7 +30,7 @@ export async function POST() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
-    if (!(await getSettings(owner.id)).liveContextEnabled) {
+    if (!(await moduleOnFor(owner.id, "live-context"))) {
       return NextResponse.json({ error: "live editing context is off" }, { status: 409 });
     }
     return NextResponse.json({ id: await revertNoteEditingPrompt(owner.id) });

@@ -11,7 +11,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getUpdateReport } from "@/lib/updates";
-import YoutubeTranscripts from "@/components/updates/YoutubeTranscripts";
+import { moduleOn } from "@/lib/modules/enabled";
 import JobOwnerControl from "@/components/updates/JobOwnerControl";
 import { getSettings } from "@/lib/settings";
 import { ytDlpVersion } from "@/lib/youtube/fetch";
@@ -374,7 +374,7 @@ export default async function ScheduledJobs() {
         </Card>
       </section>
 
-      {/* ── Video transcripts: the switch, and can this machine do it ──── */}
+      {/* ── Video transcripts: is it on, and can this machine do it ──── */}
       <section className="mt-8">
         <h2 className="ui-section-label">Video transcripts</h2>
         <Card>
@@ -385,12 +385,17 @@ export default async function ScheduledJobs() {
             word.
           </p>
 
-          <div className="mt-4">
-            <YoutubeTranscripts enabled={settings.youtubeTranscripts.enabled} />
-          </div>
+          <p className="mt-4 text-sm text-ink">
+            {moduleOn(settings, "youtube-transcripts") ? "On." : "Off."} Turn it on
+            or off at{" "}
+            <Link href="/build/modules" className="text-[var(--accent)] hover:underline">
+              Build → Modules
+            </Link>
+            .
+          </p>
 
           {/* Can the machine you are looking at actually do the work? Asked
-              here rather than left to a log, because "I ticked the box and
+              here rather than left to a log, because "I turned it on and
               nothing happened" is the whole failure mode. */}
           {instance.supervisorDir ? (
             ytDlp ? (

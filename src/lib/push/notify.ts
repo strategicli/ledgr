@@ -7,12 +7,9 @@ import { and, eq, gt, isNull, lte, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, jobState } from "@/db/schema";
 import { getMeetingPeople } from "@/lib/meetings/prep";
-import {
-  countUnread,
-  recordNotification,
-  NOTIFICATION_CENTER_ENABLED,
-} from "@/lib/notifications";
+import { countUnread, recordNotification } from "@/lib/notifications";
 import { getSettings, notificationEnabled } from "@/lib/settings";
+import { notificationCenterOn } from "@/lib/notifications-enabled";
 import { getTodayData, getAppTimezone, DEFAULT_TIMEZONE, ymdInZone } from "@/lib/today";
 import { listSubscriptions, pruneSubscription } from "./store";
 import type { PushMessage, PushSender } from "./types";
@@ -86,7 +83,7 @@ export async function runAgendaNotify(
 ): Promise<{ skipped: boolean; tally?: SendTally }> {
   // Notification center paused (ADR-130) — no rows, no push, even on a manual
   // cron dispatch. The cron itself is disabled in config; this is the guard.
-  if (!NOTIFICATION_CENTER_ENABLED) return { skipped: true };
+  if (!(await notificationCenterOn(ownerId))) return { skipped: true };
   const tz = await getAppTimezone(ownerId);
   const today = ymdInZone(now, tz);
   const todayKey = `${today.y}-${today.m}-${today.d}`;
@@ -154,7 +151,7 @@ export async function runPrepNotify(
   // Notification center paused (ADR-130): no prep push, no rows, no stamps, even
   // on a manual cron dispatch — so re-enabling later still surfaces in-window
   // meetings. The cron itself is disabled in config; this is the guard.
-  if (!NOTIFICATION_CENTER_ENABLED) {
+  if (!(await notificationCenterOn(ownerId))) {
     return { notified: 0, tally: { sent: 0, pruned: 0, failed: 0 } };
   }
   const db = getDb();

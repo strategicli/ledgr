@@ -22,7 +22,7 @@ import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
 import { captureError, createLogger } from "@/lib/log";
-import { getSettings } from "@/lib/settings";
+import { moduleOnFor } from "@/lib/modules/enabled";
 import { fetchTranscript, ytDlpVersion } from "@/lib/youtube/fetch";
 
 // The hosts a YouTube video can be saved from. youtu.be is the share-sheet form,
@@ -220,7 +220,7 @@ export async function runYoutubeTranscripts(
 ): Promise<TranscriptRun> {
   // The owner's switch (ADR-222), so turning this on is a checkbox rather than
   // a config file and a restart. Off means off: no process is touched.
-  if (!(await getSettings(ownerId)).youtubeTranscripts.enabled) {
+  if (!(await moduleOnFor(ownerId, "youtube-transcripts"))) {
     return { ...NOTHING, skipped: "switched off" };
   }
 

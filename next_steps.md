@@ -15,8 +15,11 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
 1. ~~Step 0: definitions and the fence.~~ Done.
 2. ~~Step 1: the switch.~~ Done. `settings.modules`, a real `isModuleEnabled` (resolver
    seam in `src/lib/modules/enabled.ts`), and `/build/modules`.
-3. **Step 2: fold the scattered switches onto that page** (AI memory, live context, agent,
-   YouTube transcripts, the notification-center constant), reading the old keys once.
+3. ~~Step 2: fold the scattered switches onto that page.~~ Done. Five feature modules
+   (`src/lib/modules/features.ts`), seeded once from the old keys by
+   `seedModulesFromLegacy`; read sites use `moduleOn` / `moduleOnFor`. Build-nav's
+   `gatedBy` became `module`. Per-install switches (`snapshots:enabled`, `sync:mode`)
+   are not on the page yet.
 4. **Step 3: manifest slots replace the hand-written lists**, one PR each: build-nav,
    proxy public paths, ~~the job catalog~~ (done: `supervisor/jobs.json`, read by both
    the supervisor and the app), MCP tool gating, health checks, the on-save/on-create

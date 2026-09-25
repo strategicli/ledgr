@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import DeskClient from "@/components/desk/DeskClient";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
+import { moduleOn } from "@/lib/modules/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default async function DeskPage() {
       tocPinnedItems={settings.tocPinnedItems}
       // Live editing context (ADR-167a): the Desk reports the focused panel's
       // item so Claude's get_active_context works here as it does on a canvas.
-      liveContextEnabled={settings.liveContextEnabled}
+      liveContextEnabled={moduleOn(settings, "live-context")}
     />
   );
 }

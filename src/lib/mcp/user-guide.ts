@@ -206,8 +206,9 @@ Save a YouTube video the way you save anything else and Ledgr can write the
 whole transcript into that link item, so the words are searchable, readable
 offline, and quotable without scrubbing through the video.
 
-- **Switch it on** at \`/build/jobs\` → **Video transcripts**. It is off until
-  you turn it on.
+- **Switch it on** at \`/build/modules\` → **YouTube transcripts**. It is off
+  until you turn it on. \`/build/jobs\` → **Video transcripts** shows whether it
+  is on and whether this computer has the tools.
 - **It starts as soon as you save.** A video saved on the copy doing the work
   begins at once; anything else is picked up within ten minutes.
 - **Captions first, listening second.** Most videos already carry captions, which
@@ -441,11 +442,13 @@ Build your own kinds of item at \`/build/types\`.
 - **Bespoke tools** at \`/build/tools\` attach a ready-made capability — chord
   chart, paper workspace, tabs, longform document, widget homepage — to a type
   you name yourself.
-- **Modules** at \`/build/modules\` switch whole feature sets on or off: Songs,
-  Papers, Mindmap and Files. Each has one switch. Turning a module off hides
-  its types from quick capture, "+ New" and an assistant's list of types.
-  Nothing is deleted: existing items of that type stay, and open on the plain
-  document page until you turn the module back on.
+- **Modules** at \`/build/modules\` hold every on/off switch you have, in two
+  groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off
+  hides its type from quick capture, "+ New" and an assistant's list of types.
+  **Features** are AI Memory, Live editing context, the In-app agent, YouTube
+  transcripts and the Notification center (paused). Nothing is deleted: existing
+  items stay, and open on the plain document page until you turn the module
+  back on. The In-app agent's switch is greyed out on a copy that cannot run it.
 - **Workflows and wikis** at \`/build/new\` ask a few questions and generate a
   type, its properties, and starter views in one go.
 - **A paper or a song opens on Notes.** Both types spend their main body on a
@@ -1177,9 +1180,10 @@ connected; that dead-end tab is the client closing its one-time listener.
 A Claude assistant built into the app, as opposed to one connected from outside.
 It runs on your always-on hub computer under that computer's own Claude sign-in,
 so it is only offered there (not on the cloud copy, not on another device). Turn
-it on in **User Settings → Claude in Ledgr**, where you also pick the model for
-the sidebar and for inline edits, open or revert its two editable prompts, check
-that it is signed in, and see the last week of use.
+it on at \`/build/modules\` → **In-app agent**. **User Settings → Claude in
+Ledgr** is where you pick the model for the sidebar and for inline edits, open
+or revert its two editable prompts, check that it is signed in, and see the last
+week of use.
 
 - **The sidebar** — **Ctrl/Cmd+J** or the round sparkle button. It knows the
   item you have open and any text you have highlighted (shown as chips at the
@@ -1222,7 +1226,7 @@ offers **Keep mine** or **Use theirs**.
 
 ## Two features that are off until you turn them on
 
-Both are in **User Settings**.
+Both are switched on at \`/build/modules\` → **Features**.
 
 - **AI Memory** lets an assistant keep durable facts about you in Ledgr, linked
   into your relation graph, instead of forgetting between sessions. It adds
@@ -1262,7 +1266,7 @@ Three, all plain Markdown over MCP:
 | Data | Trash retention, in days |
 | Search | Your own synonym dictionary |
 | Feeds | The task calendar (ICS) feed; the web clipper |
-| AI | AI Memory; live editing context |
+| AI | The Note Editing Partner prompt (when live editing context is on); the in-app agent's models and prompts. The AI switches themselves are at \`/build/modules\` |
 
 Some settings live where you use them: nav slots and what the Search icon opens
 at \`/build/navigation\`, Home and Today at \`/dashboards\`, type visibility at
@@ -1617,7 +1621,9 @@ Listed so you do not go looking.
 
 - **Notifications and push are paused.** The notification centre, the bell, and
   the morning and meeting-prep pushes are all switched off. Reminders come from
-  the task calendar (ICS) feed instead, fired by your own calendar app.
+  the task calendar (ICS) feed instead, fired by your own calendar app. The
+  **Notification center** module at \`/build/modules\` brings back the inbox and
+  its menu link, but its reminder jobs stay off, so nothing new arrives.
 - **Import & Migration** (\`/build/import\`) is a placeholder. The page describes
   the plan; there are no actions on it. (Data Hygiene has its first real tool —
   the orphaned-files sweep; the rest of that page is still the plan.)

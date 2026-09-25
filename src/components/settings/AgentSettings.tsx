@@ -1,11 +1,11 @@
-// "Claude in Ledgr" settings (ADR-271): the on/off switch for the in-app agent,
+// "Claude in Ledgr" settings (ADR-271): the in-app agent's options (its on/off
+// lives on Build → Modules, ADR-272 step 2):
 // its two model choices, the two seeded prompts (open or revert), a health line
 // that says how to sign in when it's red, and the last 7 days of use. Rendered
 // only where the agent can run (lib/agent/gate.ts), so a spoke or Vercel never
 // shows it.
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AGENT_MODELS, type AgentSettings as Agent } from "@/lib/settings";
 
@@ -50,8 +50,7 @@ function when(iso: string) {
   return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function AgentSettings({ initial }: { initial: Agent }) {
-  const router = useRouter();
+export default function AgentSettings({ initial, on }: { initial: Agent; on: boolean }) {
   const [agent, setAgent] = useState(initial);
   const [health, setHealth] = useState<Health | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -75,8 +74,6 @@ export default function AgentSettings({ initial }: { initial: Agent }) {
     if (!res?.ok) return setMsg("Couldn't save. Try again.");
     const { settings } = (await res.json()) as { settings: { agent: Agent } };
     setAgent(settings.agent);
-    // The root layout mounts the sidebar and toolbar button from this setting.
-    if ("enabled" in patch) router.refresh();
   }
 
   async function check() {
@@ -115,18 +112,13 @@ export default function AgentSettings({ initial }: { initial: Agent }) {
         only. Deleting or sharing always asks first.
       </p>
 
-      <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
-        <input
-          type="checkbox"
-          checked={agent.enabled}
-          onChange={(e) => void save({ enabled: e.target.checked })}
-          className="ledgr-check mt-0.5"
-        />
-        <span>
-          Turn on Claude in Ledgr
-          <span className="block text-xs text-neutral-500">Adds the sidebar button and the editor&rsquo;s sparkle button.</span>
-        </span>
-      </label>
+      <p className="mt-2 text-sm text-neutral-400">
+        Turn the agent on or off at{" "}
+        <a href="/build/modules" className="text-[var(--accent)] hover:underline">
+          Build → Modules
+        </a>
+        {on ? "." : ". It is off right now."}
+      </p>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {(
@@ -152,7 +144,7 @@ export default function AgentSettings({ initial }: { initial: Agent }) {
         ))}
       </div>
 
-      {agent.enabled && (
+      {on && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {agent.basePromptItemId && (
             <a href={`/items/${agent.basePromptItemId}`} className={btn}>
@@ -201,7 +193,7 @@ export default function AgentSettings({ initial }: { initial: Agent }) {
         </p>
       </div>
 
-      {agent.enabled && (
+      {on && (
         <div className="mt-3">
           <div className="text-xs text-neutral-400">Last 7 days (Claude replies per day)</div>
           <div className="mt-1 flex h-16 items-end gap-1">

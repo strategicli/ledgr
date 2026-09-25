@@ -5,8 +5,8 @@
 // /list/memory; this page is the orientation + the live stump index (what the
 // assistant actually loads at the start of a session).
 //
-// Gated by settings.aiMemoryEnabled: off → an enable prompt (the sidebar entry
-// is hidden too, so you only land here from Settings or a direct link); on →
+// Gated by the ai-memory module: off → an enable prompt (the sidebar entry
+// is hidden too, so you only land here from Build → Modules or a link); on →
 // the stumps, marked always-on (pinned) vs. pull-only.
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -14,7 +14,7 @@ import NewItemButton from "@/components/home/NewItemButton";
 import AiMemoryGuide from "@/components/memory/AiMemoryGuide";
 import { getMemoryStumps, type MemoryStump } from "@/lib/memory";
 import { resolveOwner } from "@/lib/owner";
-import { getSettings } from "@/lib/settings";
+import { moduleOnFor } from "@/lib/modules/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +73,7 @@ export default async function AiMemoryPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const { aiMemoryEnabled } = await getSettings(owner.id);
+  const aiMemoryEnabled = await moduleOnFor(owner.id, "ai-memory");
 
   return (
     <main className="min-h-screen">
@@ -97,8 +97,8 @@ export default async function AiMemoryPage() {
             <p className="text-sm font-semibold text-neutral-100">AI Memory is off</p>
             <p className="mt-1.5 text-sm leading-relaxed text-neutral-400">
               Turn it on in{" "}
-              <Link href="/settings" className="text-[var(--accent)] hover:underline">
-                User Settings → AI Memory
+              <Link href="/build/modules" className="text-[var(--accent)] hover:underline">
+                Build → Modules
               </Link>
               . While off, the memory tools aren’t exposed to any connected AI and this surface stays
               empty, so a plain MCP client behaves exactly as before.

@@ -6,10 +6,10 @@
 // The supervisor marks a local install with LEDGR_SUPERVISOR_DIR and gives a
 // spoke LEDGR_SYNC_HUBS; a hub has the first and not the second. LEDGR_AGENT
 // (on|off) overrides for testing only. Turning the feature on for the owner is
-// the Settings checkbox, never this (the config-file rule, ADR-222).
+// the Build → Modules switch, never this (the config-file rule, ADR-222).
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
-import { getSettings } from "@/lib/settings";
+import { moduleOnFor } from "@/lib/modules/enabled";
 import type { Owner } from "@/lib/owner";
 
 export function agentAvailable(): boolean {
@@ -20,7 +20,7 @@ export function agentAvailable(): boolean {
 }
 
 export async function agentOn(ownerId: string): Promise<boolean> {
-  return agentAvailable() && (await getSettings(ownerId)).agent.enabled;
+  return agentAvailable() && (await moduleOnFor(ownerId, "agent"));
 }
 
 // Same-origin check by host only. Behind the tunnel TLS ends at the proxy, so
@@ -46,6 +46,6 @@ export async function requireAgentOwner(request: Request): Promise<Owner | NextR
   if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
-  if (!(await getSettings(owner.id)).agent.enabled) return new NextResponse(null, { status: 404 });
+  if (!(await moduleOnFor(owner.id, "agent"))) return new NextResponse(null, { status: 404 });
   return owner;
 }

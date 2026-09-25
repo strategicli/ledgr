@@ -4,6 +4,7 @@ import { getSettings, updateSettings, type UserSettings } from "@/lib/settings";
 import { ensureNoteEditingPrompt } from "@/lib/note-editing-prompt";
 import { agentAvailable } from "@/lib/agent/gate";
 import { ensureAgentPrompts } from "@/lib/agent/prompts";
+import { moduleOn } from "@/lib/modules/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -25,23 +26,23 @@ export async function PATCH(request: Request) {
   try {
     const patch = (await request.json()) as Partial<UserSettings>;
     const before = await getSettings(owner.id);
-    // The agent block merges per field, so a checkbox that sends { enabled }
+    // The agent block merges per field, so a control that sends one field
     // can't wipe the seeded prompt ids or the "/" ranking.
     if (patch.agent) patch.agent = { ...before.agent, ...patch.agent };
-    // Module switches merge per id too, so flipping one on /build/modules
-    // leaves the others as they were.
-    if (patch.modules) patch.modules = { ...before.modules, ...patch.modules };
+    // Module switches merge per id inside updateSettings, which also maps an
+    // old key (aiMemoryEnabled, agent.enabled, …) from an older client onto
+    // settings.modules and drops it (ADR-272 step 2).
     let settings = await updateSettings(owner.id, patch);
     // First time the in-app agent is turned on on a machine that can run it
     // (ADR-271): seed its editable base and inline-edit prompts.
-    if (!before.agent.enabled && settings.agent.enabled && agentAvailable()) {
+    if (!moduleOn(before, "agent") && moduleOn(settings, "agent") && agentAvailable()) {
       await ensureAgentPrompts(owner.id);
       settings = await getSettings(owner.id);
     }
     // First time Live editing context is turned on (ADR-162): seed the editable
     // "Note Editing Partner" prompt item, then refresh so the response carries
     // the stored item id.
-    if (!before.liveContextEnabled && settings.liveContextEnabled) {
+    if (!moduleOn(before, "live-context") && moduleOn(settings, "live-context")) {
       await ensureNoteEditingPrompt(owner.id);
       settings = await getSettings(owner.id);
     }

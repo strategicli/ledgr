@@ -9,7 +9,7 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
-import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
+import { notificationCenterOn } from "@/lib/notifications-enabled";
 import { sendToOwner, type SendTally } from "@/lib/push/notify";
 import type { PushSender } from "@/lib/push/types";
 import type { HealthReport } from "@/lib/health";
@@ -85,21 +85,17 @@ const FRESHNESS: FreshnessRule[] = [
   // lastAgendaNotifyAt at that date forever. The never-ran escape hatch above
   // can't save a *paused* job: it did run once, so `run` stays truthy while
   // `success` ages without bound, and the rule alerted on every run from
-  // 2026-07-06 onward with no way to ever clear. Gating on the same flag that
-  // paused it means the check comes back by itself when the flag flips —
-  // defer-by-hiding, not deletion.
-  ...(NOTIFICATION_CENTER_ENABLED
-    ? [
-        {
-          code: "agenda",
-          label: "Morning agenda",
-          success: "lastAgendaNotifyAt",
-          run: "lastAgendaNotifyAt",
-          maxAgeHours: 48,
-        } satisfies FreshnessRule,
-      ]
-    : []),
+  // 2026-07-06 onward with no way to ever clear. Gating on the same switch that
+  // paused it (the notification-center module, ADR-272) means the check comes
+  // back by itself when the module is turned on: defer-by-hiding, not deletion.
 ];
+const AGENDA_RULE: FreshnessRule = {
+  code: "agenda",
+  label: "Morning agenda",
+  success: "lastAgendaNotifyAt",
+  run: "lastAgendaNotifyAt",
+  maxAgeHours: 48,
+};
 
 function isStale(lastSuccess: string | null, now: Date, maxAgeHours: number): boolean {
   if (!lastSuccess) return true; // ran before (checked by caller) but never cleanly
@@ -113,7 +109,8 @@ function isStale(lastSuccess: string | null, now: Date, maxAgeHours: number): bo
 export function evaluateHealth(
   report: HealthReport,
   recentErrorCount: number,
-  now: Date
+  now: Date,
+  notificationsOn = false
 ): HealthAlert[] {
   const alerts: HealthAlert[] = [];
 
@@ -145,7 +142,7 @@ export function evaluateHealth(
 
   // 4. Stalled scheduled jobs — the §12 "GitHub Actions auto-disabled after 60
   // days of inactivity" failure mode, and any silently-wedged poll.
-  for (const rule of FRESHNESS) {
+  for (const rule of notificationsOn ? [...FRESHNESS, AGENDA_RULE] : FRESHNESS) {
     const ranBefore = report.checks[rule.run] as string | null;
     if (!ranBefore) continue; // never configured / never ran → quiet
     const lastSuccess = report.checks[rule.success] as string | null;
@@ -231,7 +228,7 @@ export async function runHealthCheck(
   const recentErrorCount =
     opts.recentErrorCount ?? (await countRecentErrors(now));
 
-  const alerts = evaluateHealth(report, recentErrorCount, now);
+  const alerts = evaluateHealth(report, recentErrorCount, now, await notificationCenterOn(ownerId));
   const nowIso = now.toISOString();
 
   let delivered: SendTally | null = null;

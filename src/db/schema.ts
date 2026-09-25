@@ -898,7 +898,7 @@ export const templates = pgTable(
 // nothing is highlighted; the two *_at stamps let the reader judge staleness
 // (an abandoned tab shouldn't masquerade as the live note) and tell a fresh
 // selection from a stale one. Cascade on the item FK so a purged item can't
-// leave a dangling active-context pointer. Gated by settings.liveContextEnabled;
+// leave a dangling active-context pointer. Gated by the live-context module;
 // when off, nothing writes here.
 export const activeContext = pgTable(
   "active_context",

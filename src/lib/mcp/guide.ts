@@ -39,7 +39,7 @@ export const GUIDE_RESOURCE = {
 
 // The AI Memory protocol (ADR-137), a second resource served only when the owner
 // has AI Memory on (server.ts gates resources/list + resources/read on
-// settings.aiMemoryEnabled). It is the "how to recall and when to remember"
+// the ai-memory module). It is the "how to recall and when to remember"
 // counterpart to the get_memory_stumps/remember tools — the rising-bar recall
 // rule and the write conventions, written once so any connected AI follows them.
 export const MEMORY_PROTOCOL_URI = "ledgr://guide/memory-protocol";
@@ -374,7 +374,7 @@ store, reachable from every client the owner connects.
 // resources/read: return the contents for a known guide URI, else null so the
 // dispatcher can answer an unknown URI with an error (never throwing it out to
 // the transport). The memory protocol is additionally gated by the caller
-// (server.ts) on aiMemoryEnabled before this is reached.
+// (server.ts) on the ai-memory module before this is reached.
 export function readGuideResource(
   uri: string
 ): { uri: string; mimeType: string; text: string } | null {

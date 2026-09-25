@@ -15,6 +15,7 @@ import IcsFeed from "@/components/settings/IcsFeed";
 import BackButton from "@/components/ui/BackButton";
 import AgentSettings from "@/components/settings/AgentSettings";
 import { agentAvailable } from "@/lib/agent/gate";
+import { moduleOn } from "@/lib/modules/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +41,15 @@ export default async function SettingsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-neutral-100">User Settings</h1>
           <BackButton />
         </div>
-        <SettingsForm initial={settings} serverDefaultTz={DEFAULT_TIMEZONE} />
-        {agentAvailable() && <AgentSettings initial={settings.agent} />}
+        <SettingsForm
+          initial={settings}
+          serverDefaultTz={DEFAULT_TIMEZONE}
+          notificationsOn={moduleOn(settings, "notification-center")}
+          liveContextOn={moduleOn(settings, "live-context")}
+        />
+        {agentAvailable() && (
+          <AgentSettings initial={settings.agent} on={moduleOn(settings, "agent")} />
+        )}
         <IcsFeed initialToken={settings.icsToken} />
         <ApiCredentials
           initial={credentials}

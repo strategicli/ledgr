@@ -1,25 +1,27 @@
 // ── Notification center: PAUSED (2026-06-29, ADR-130, pausing ADR-129) ──────────
 // Brandon's call: the published ICS feed (ADR-079) already gives him a precise,
 // offline, per-device reminder + history on whatever calendar he subscribes, so
-// the in-app notification center is redundant for now. This flag DETACHES it
-// without deleting anything — the notifications table, migration, the
-// notifications lib, the API routes, the /notifications page, and the whole Web
-// Push transport (ADR-034: subscriptions, VAPID, service worker, PushToggle) all
-// stay in the tree, recoverable, in case a more capable notifications app is
-// built later. Deferred by hiding (the soft-delete analog for features), not dead.
+// the in-app notification center is redundant for now. It is DETACHED without
+// deleting anything: the notifications table, migration, the notifications lib,
+// the API routes, the /notifications page, and the whole Web Push transport
+// (ADR-034: subscriptions, VAPID, service worker, PushToggle) all stay in the
+// tree, recoverable. Deferred by hiding (the soft-delete analog for features).
 //
-// Lives in its own dependency-free module (no db imports) so both server code
-// AND client components ("use client": NavShell, SettingsForm) can read it
-// without dragging server-only code into the client bundle.
+// Since ADR-272 step 2 the switch is the `notification-center` module on
+// Build → Modules (default off), replacing the old hardcoded
+// NOTIFICATION_CENTER_ENABLED constant. Server code asks this helper; client
+// components (NavShell, SettingsForm) get the answer as a prop from the server
+// component that renders them, and nav-slot-options takes it as an argument.
 //
-// What this flag gates (search for NOTIFICATION_CENTER_ENABLED): the senders in
-// push/notify.ts (so a manual cron dispatch is a no-op), the nav link + badges,
-// the Settings "Notifications" section, and a redirect off the /notifications
-// page. The two crons are disabled in config too (notify-agenda removed from
-// vercel.json; notify-prep.yml `schedule:` commented, workflow_dispatch kept).
-//
-// TO RE-ENABLE: flip this to true, restore the notify-agenda entry in
-// vercel.json and the `schedule:` in .github/workflows/notify-prep.yml, redeploy.
-// Nothing else was removed. Do NOT "tidy up" the dormant code — it's deferred on
-// purpose.
-export const NOTIFICATION_CENTER_ENABLED = false;
+// What the switch gates: the senders in push/notify.ts (so a manual cron
+// dispatch is a no-op), the nav link + badges, the Settings "Notifications"
+// section, the agenda freshness check in health-check.ts, and a redirect off
+// the /notifications page. The two crons are disabled in config too
+// (notify-agenda removed from vercel.json; notify-prep.yml `schedule:`
+// commented, workflow_dispatch kept), so turning the module on shows the inbox
+// but sends nothing new until those are restored.
+import { moduleOnFor } from "@/lib/modules/enabled";
+
+export function notificationCenterOn(ownerId: string): Promise<boolean> {
+  return moduleOnFor(ownerId, "notification-center");
+}

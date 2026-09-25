@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { clearActiveContext, setActiveContext } from "@/lib/active-context";
-import { getSettings } from "@/lib/settings";
+import { moduleOnFor } from "@/lib/modules/enabled";
 
 // Live editing context (ADR-162): the open item canvas reports here what the
 // owner is currently looking at (the item, and any text selection), so Claude
 // can resolve "this note" / "this sentence" over MCP. Clerk-authed and
 // owner-scoped via requireOwner — this is a browser-session write, not a machine
-// token. Gated by settings.liveContextEnabled: when the feature is off, both
+// token. Gated by the live-context module (Build → Modules): when the feature is off, both
 // verbs no-op with 204 so a stale client can't keep a row alive after the owner
 // turns tracking off.
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   if (owner instanceof NextResponse) return owner;
 
   try {
-    if (!(await getSettings(owner.id)).liveContextEnabled) {
+    if (!(await moduleOnFor(owner.id, "live-context"))) {
       return new NextResponse(null, { status: 204 });
     }
     const body = (await request.json()) as {
