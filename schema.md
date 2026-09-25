@@ -230,6 +230,8 @@ One row per issued public link (PRD §4.12): an unguessable `token` grants read-
 
 The public resolve joins token→item in one query so it only ever yields a live (non-revoked) token bound to a live (non-trashed) item. Indexes on `item_id` (list a page's links) and `owner_id`.
 
+**Synced** since migration 0066 (ADR-277): in `SYNCED_TABLES`, with the ordinary oplog triggers, so a link made on one copy opens on the copy serving `users.settings.publicUrl`.
+
 ---
 
 ## `api_credentials` (ADR-224; minted machine credentials)

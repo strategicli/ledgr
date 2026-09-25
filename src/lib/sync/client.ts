@@ -1049,7 +1049,9 @@ async function readCursor(hub: string): Promise<Cursor> {
   return { push: Number(v?.push ?? 0), pull: Number(v?.pull ?? 0) };
 }
 
-async function writeCursor(hub: string, cursor: Cursor): Promise<void> {
+// Exported for the cloud-copy pairing (ADR-277), which sets a freshly filled
+// copy's push cursor to the point its fill covered before listing the copy.
+export async function writeCursor(hub: string, cursor: Cursor): Promise<void> {
   await getDb()
     .insert(jobState)
     .values({ key: `sync:cursor:${hub}`, value: cursor })

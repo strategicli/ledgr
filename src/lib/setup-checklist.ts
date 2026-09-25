@@ -80,7 +80,9 @@ export function setupChecklist(f: SetupFacts): SetupItem[] {
         ? "On this computer, run npm run local:setup-owner (or right-click the Ledgr tray icon and choose Reset sign-in password). It opens this page with a one-time link and asks for your email and a password."
         : f.clerkConfigured
           ? "Sign in. The first person to sign in with Clerk becomes this Ledgr's owner, so do it before sharing the address."
-          : "Run npm run db:seed with SEED_OWNER_EMAIL set to your email address. See runbook §1.",
+          : f.deployed
+            ? "If this is a cloud copy of a Ledgr you already run, pair it with that one (above): your owner and password arrive with your data. Otherwise run npm run db:seed with SEED_OWNER_EMAIL set to your email address. See runbook §1."
+            : "Run npm run db:seed with SEED_OWNER_EMAIL set to your email address. See runbook §1.",
       href: f.clerkConfigured && !f.supervised ? { label: "Sign in", path: "/sign-in" } : undefined,
     });
   } else if (f.hasOwner) {
