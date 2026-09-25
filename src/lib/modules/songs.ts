@@ -37,6 +37,7 @@ const SONG_SURFACES: SurfaceDef[] = [
 export const songModule: ModuleManifest = {
   id: "songs",
   label: "Songs",
+  description: "A Song type with a chord chart editor, transpose, and a Planning Center copy button.",
   enabledByDefault: true,
   types: [
     {

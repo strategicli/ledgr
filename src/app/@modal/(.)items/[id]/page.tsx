@@ -7,6 +7,7 @@ import Modal from "@/components/canvas/Modal";
 import { getItem } from "@/lib/items";
 import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
+import { preloadModuleSettings } from "@/lib/modules/enabled";
 import { resolveOwner } from "@/lib/owner";
 import { DEFAULT_SETTINGS, getSettings, type ItemOpenMode } from "@/lib/settings";
 import { getType } from "@/lib/types";
@@ -46,6 +47,7 @@ export default async function ItemModal({
       // Resolve through the capability too (SPIKE), so a user type borrowing the
       // chord chart widens the modal like a real song.
       const typeDef = await getType(item.type).catch(() => null);
+      await preloadModuleSettings(owner.id); // module switches, ADR-272
       wide = canvasIdForType(item.type, owner.id, typeDef?.capability) === "chord";
       title = item.title;
       type = item.type;

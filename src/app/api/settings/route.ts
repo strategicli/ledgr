@@ -28,6 +28,9 @@ export async function PATCH(request: Request) {
     // The agent block merges per field, so a checkbox that sends { enabled }
     // can't wipe the seeded prompt ids or the "/" ranking.
     if (patch.agent) patch.agent = { ...before.agent, ...patch.agent };
+    // Module switches merge per id too, so flipping one on /build/modules
+    // leaves the others as they were.
+    if (patch.modules) patch.modules = { ...before.modules, ...patch.modules };
     let settings = await updateSettings(owner.id, patch);
     // First time the in-app agent is turned on on a machine that can run it
     // (ADR-271): seed its editable base and inline-edit prompts.

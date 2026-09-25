@@ -23,6 +23,7 @@ import {
 } from "@/lib/settings";
 import { syncEnabled } from "@/lib/sync/client";
 import { compareTypeKeys } from "@/lib/type-order";
+import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
 import { listTypes } from "@/lib/types";
 
 export default async function Nav() {
@@ -57,7 +58,7 @@ export default async function Nav() {
   // Quick-capture types are data-driven and opt-in (type-and-kind-ux §2): only
   // types flagged show_in_quick_capture appear, so a custom type can be
   // captured into and a "data only" one can stay out of the dropdown.
-  const [inboxCount, unreadCount, typeRows, settings, buildTypes] = await Promise.all([
+  const [inboxCount, unreadCount, allCaptureRows, settings, buildTypes, moduleOff] = await Promise.all([
     countInbox(owner.id),
     // Notification center paused (ADR-130): skip the unread query, badge stays 0.
     NOTIFICATION_CENTER_ENABLED ? countUnread(owner.id) : Promise.resolve(0),
@@ -75,7 +76,10 @@ export default async function Nav() {
     // The owner's live types (non-hidden, non-deleted) for the Build sidebar's
     // Types & Properties dropdown. Tiny instance-global table; cheap to read.
     listTypes(),
+    disabledModuleTypeKeys(owner.id),
   ]);
+  // A switched-off module's types (ADR-272) are not offered for new items.
+  const typeRows = allCaptureRows.filter((t) => !moduleOff.has(t.key));
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
 
   const counts: Record<NavBadge, number | null> = {

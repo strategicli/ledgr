@@ -30,6 +30,7 @@ import {
 } from "@/lib/status";
 import { ItemError } from "@/lib/items";
 import { capabilityById } from "@/lib/modules";
+import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
 // SPIKE (bespoke-tool catalog): registers the workflow modules (Songs, Papers)
 // onto core for their side effect, so capability validation here — and the API
 // route that calls parseTypeInput — sees the attachable capabilities. Idempotent
@@ -400,10 +401,17 @@ const listTypesCached = cache(async (includeHidden: boolean): Promise<TypeDefini
     );
 });
 
+// Pass `ownerId` on a surface where new items are made (quick capture, the
+// "+ New" menus, MCP list_types / describe_workspace): the types of any module
+// that owner has switched off on Build → Modules drop out (ADR-272). Without it
+// every type is returned, which is what lookups for existing items need.
 export async function listTypes(
-  opts: { includeHidden?: boolean } = {}
+  opts: { includeHidden?: boolean; ownerId?: string } = {}
 ): Promise<TypeDefinition[]> {
-  return listTypesCached(opts.includeHidden === true);
+  const all = await listTypesCached(opts.includeHidden === true);
+  if (!opts.ownerId) return all;
+  const off = await disabledModuleTypeKeys(opts.ownerId);
+  return off.size === 0 ? all : all.filter((t) => !off.has(t.key));
 }
 
 // Whether an item of this type may belong to SEVERAL records at once (ADR-232).

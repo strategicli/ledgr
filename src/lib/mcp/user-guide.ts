@@ -441,6 +441,11 @@ Build your own kinds of item at \`/build/types\`.
 - **Bespoke tools** at \`/build/tools\` attach a ready-made capability — chord
   chart, paper workspace, tabs, longform document, widget homepage — to a type
   you name yourself.
+- **Modules** at \`/build/modules\` switch whole feature sets on or off: Songs,
+  Papers, Mindmap and Files. Each has one switch. Turning a module off hides
+  its types from quick capture, "+ New" and an assistant's list of types.
+  Nothing is deleted: existing items of that type stay, and open on the plain
+  document page until you turn the module back on.
 - **Workflows and wikis** at \`/build/new\` ask a few questions and generate a
   type, its properties, and starter views in one go.
 - **A paper or a song opens on Notes.** Both types spend their main body on a

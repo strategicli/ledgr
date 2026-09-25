@@ -13,9 +13,8 @@ core list, the ESLint fence, the ADR) landed with this section. The full six-ste
 is §6 of `explorations/core-and-modules.md`; each step is its own PR.
 
 1. ~~Step 0: definitions and the fence.~~ Done.
-2. **Step 1: the switch.** `settings.modules`, a real `isModuleEnabled`, and `/build/modules`
-   with a toggle per module. Types whose module is off vanish from new-item, quick capture
-   and `list_types`; existing items keep rendering on the default canvas.
+2. ~~Step 1: the switch.~~ Done. `settings.modules`, a real `isModuleEnabled` (resolver
+   seam in `src/lib/modules/enabled.ts`), and `/build/modules`.
 3. **Step 2: fold the scattered switches onto that page** (AI memory, live context, agent,
    YouTube transcripts, the notification-center constant), reading the old keys once.
 4. **Step 3: manifest slots replace the hand-written lists**, one PR each: build-nav,

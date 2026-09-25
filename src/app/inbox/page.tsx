@@ -23,6 +23,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { compareTypeKeys } from "@/lib/type-order";
+import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
 import type { Priority } from "@/lib/priority";
 
 export const dynamic = "force-dynamic";
@@ -36,13 +37,14 @@ export default async function Inbox() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [typeRows, inboxItems, tz] = await Promise.all([
+  const [typeRows, inboxItems, tz, moduleOff] = await Promise.all([
     getDb().select({ key: types.key, label: types.label }).from(types),
     // Active-only: a completed/archived item is no longer awaiting triage, and
     // completion clears the inbox flag (see updateItem). This also keeps done
     // items from ever showing here while the import-flag backlog is cleaned up.
     listItems(owner.id, { inbox: true, statusCategory: "active", limit: 200 }),
     getAppTimezone(owner.id),
+    disabledModuleTypeKeys(owner.id),
   ]);
   const today = appTodayYmd(new Date(), tz);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
@@ -79,7 +81,9 @@ export default async function Inbox() {
         </div>
 
         <div className="mt-6">
-          <QuickCapture typeOptions={typeRows} />
+          {/* A switched-off module's types (ADR-272) are not offered for new
+              items; triage below still lists every type. */}
+          <QuickCapture typeOptions={typeRows.filter((t) => !moduleOff.has(t.key))} />
         </div>
 
         {/* Empty state (ADR-249): an empty queue is now ambiguous — you may have

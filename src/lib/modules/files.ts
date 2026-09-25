@@ -10,6 +10,7 @@ import type { ModuleManifest } from "@/lib/modules";
 export const fileModule: ModuleManifest = {
   id: "files",
   label: "Files",
+  description: "A File type where the item is the file itself, with its description in the body.",
   enabledByDefault: true,
   types: [
     {
