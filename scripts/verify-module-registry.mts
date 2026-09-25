@@ -226,6 +226,9 @@ check(
     JSON.stringify({ songs: false, papers: false })
 );
 
+// Server-only slots (hooks, healthCheck) are attached outside the pure manifests.
+await import("../src/lib/modules/server-slots");
+
 // --- 7. save hooks (ADR-272 step 3.6) ---------------------------------------
 const hookFixture: ModuleManifest = {
   id: "hook-fixture",

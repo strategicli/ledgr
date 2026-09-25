@@ -7,10 +7,11 @@
 // switch before step 3.6, it always ran, so it defaults on. The code each one
 // gates still lives where it did; step 4 of the plan moves it under the module.
 //
-// Hooks (step 3.6) load their implementation with `await import(...)`: this file
-// is on the pure path (register.ts, which verify scripts and client pages
-// import), and the implementations reach the database, yt-dlp and
-// item-mutations.ts itself.
+// Hooks and health checks (step 3.4 to 3.6) are NOT declared here: this file is
+// on the pure path (register.ts, imported by build-nav.ts for the client sidebar
+// and by proxy.ts for the middleware), and their implementations reach the
+// database, yt-dlp and child_process. `server-slots.ts` attaches them on the
+// server only.
 import type { ModuleManifest } from "@/lib/modules";
 
 const feature = (
@@ -90,59 +91,20 @@ export const FEATURE_MODULES: ModuleManifest[] = [
     "In-app agent",
     "A Claude sidebar, inline edit and slash commands inside Ledgr, run under this computer's Claude login."
   ),
-  {
-    ...feature(
-      "youtube-transcripts",
-      "YouTube transcripts",
-      "Saved YouTube links fill their body with the video's transcript, using captions or Whisper on this computer."
-    ),
-    hooks: {
-      // Start transcribing a video the moment it is saved, instead of leaving
-      // it to the ten-minute timer. Every capture path (share sheet,
-      // bookmarklet, quick capture, MCP) creates through createItem, so this
-      // one hook covers them all; the timer stays as the backstop for videos
-      // saved while this copy was closed or on another copy.
-      onCreate: async ({ ownerId, type, url }) => {
-        // The cheap half first, so creating a task or a note costs nothing more.
-        if (type !== "link" || !url) return;
-        const { isYoutubeVideoUrl, runYoutubeTranscripts } = await import("@/lib/youtube/transcripts");
-        if (!isYoutubeVideoUrl(url)) return;
-        // Only the machine named under Scheduled work does this, exactly as
-        // the timer path checks.
-        const { jobRunVerdict } = await import("@/lib/job-owners-store");
-        const { run } = await jobRunVerdict(ownerId, "youtube-transcript");
-        if (!run) return;
-        // Detached: the save that started this is an HTTP request too, and it
-        // must not be held open while a video is transcribed.
-        await runYoutubeTranscripts(ownerId, { detach: true });
-      },
-    },
-    // The backlog is the canary: a count that keeps growing means nothing on
-    // this instance is transcribing. Imported lazily so this manifest stays
-    // pure (no database import at load).
-    healthCheck: async (ownerId) => ({
-      pendingVideos: await (await import("@/lib/youtube/transcripts")).pendingVideoCount(ownerId),
-    }),
-  },
+  feature(
+    "youtube-transcripts",
+    "YouTube transcripts",
+    "Saved YouTube links fill their body with the video's transcript, using captions or Whisper on this computer."
+  ),
   feature(
     "notification-center",
     "Notification center",
     "An in-app notification inbox and push alerts. Paused: its reminder jobs are switched off, so turning it on shows the inbox but sends nothing new."
   ),
-  {
-    ...feature(
-      "passages",
-      "Scripture passages",
-      "Scripture references in a body become links to a passage page."
-    ),
-    enabledByDefault: true,
-    hooks: {
-      // Rebuild the item's passage_refs from the saved body. Runs on a cleared
-      // body too: clearing a body clears its edges.
-      onBodySave: async ({ ownerId, itemId, body }) => {
-        const { syncPassageRefs } = await import("@/lib/passages/refs");
-        await syncPassageRefs(ownerId, itemId, body);
-      },
-    },
-  },
+  feature(
+    "passages",
+    "Scripture passages",
+    "Scripture references in a body become links to a passage page.",
+    { enabledByDefault: true }
+  ),
 ];

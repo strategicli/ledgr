@@ -22,6 +22,8 @@ import { checkGithub, type GithubHealth } from "@/lib/github/client";
 import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
 import { allModules } from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
+// Attaches each module's server-only healthCheck onto its manifest.
+import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";

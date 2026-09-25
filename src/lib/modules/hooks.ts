@@ -5,6 +5,8 @@
 // createItem fire it and forget it.
 import { hooksFor, type HookContext, type HookFn, type HookName } from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
+// Attaches each module's server-only hooks onto its manifest.
+import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { captureError } from "@/lib/log";
 
