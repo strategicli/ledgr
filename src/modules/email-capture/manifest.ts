@@ -6,9 +6,9 @@
 // over Microsoft Graph and turns each forwarded message into an inbox item
 // (lib/), the "Import now" and "Open in Outlook" routes, and the scheduled
 // email-import job. Its place in the mailbox is the `email_import` row in
-// job_state, which stays where it is. The shared Graph sign-in
-// (src/lib/graph/client.ts) and the mailbox-owner lookup
-// (src/lib/calendar/owner.ts) are core, and the module imports them.
+// job_state, which stays where it is. The shared Graph sign-in is the
+// microsoft module, which this one requires; the mailbox-owner lookup
+// (src/lib/calendar/owner.ts) is core. The module imports both.
 //
 // Turning it off stops the job (the step 3 job verdict answers "module-off")
 // and turns the two routes away. Items it already made are ordinary items and
@@ -24,6 +24,8 @@ export const emailCaptureModule: ModuleManifest = {
   enabledByDefault: true,
   types: [],
   exporters: [],
+  // Reads and writes through the Microsoft Graph sign-in.
+  requires: ["microsoft"],
   routes: [
     "src/app/api/email/import/route.ts",
     "src/app/api/email/open/route.ts",

@@ -4,7 +4,7 @@
 // what's new since the stored token; imported messages move to an "Imported"
 // subfolder so they never re-import. Verified live only (a stub covers the
 // engine); needs the §1c Mail.ReadWrite grant + the Outlook folder.
-import { graphFetch, getGraphMailboxUpn, GraphError, graphGet } from "@/lib/graph/client";
+import { graphFetch, getGraphMailboxUpn, GraphError, graphGet } from "@/modules/microsoft/lib/client";
 import type { MailAttachment, MailSource, NormalizedMessage } from "./types";
 
 const IMPORT_FOLDER = "Ledgr Import";

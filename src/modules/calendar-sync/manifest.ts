@@ -26,7 +26,7 @@
 //  - src/lib/matchers/types.ts: the condition vocabulary templates use.
 //  - owner.ts: the mailbox-owner lookup, shared by MCP, push, machine auth,
 //    email capture and Todoist.
-//  - src/lib/graph/client.ts: the shared Graph sign-in.
+// The shared Graph sign-in is not core: it is the microsoft module, required below.
 //
 // Tables: calendar_events is written by this module's sync and read by core.
 // items.ms_event_id is the sync's match key; the sync and the core Add both
@@ -44,6 +44,8 @@ export const calendarSyncModule: ModuleManifest = {
   enabledByDefault: true,
   types: [],
   exporters: [],
+  // Reads and writes through the Microsoft Graph sign-in.
+  requires: ["microsoft"],
   routes: [
     "src/app/api/calendar/sync/route.ts",
     "src/app/api/matchers/route.ts",

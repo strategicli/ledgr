@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
 import { moduleIsOn } from "@/lib/modules/gate";
 import { getGraphMailSource } from "@/modules/email-capture/lib/graph-source";
-import { GraphError } from "@/lib/graph/client";
+import { GraphError } from "@/modules/microsoft/lib/client";
 
 // Reopen an email-in note's original message in Outlook. The note body links
 // here rather than to a captured webLink because a message's Graph id — and so

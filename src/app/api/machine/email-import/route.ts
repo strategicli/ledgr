@@ -5,7 +5,7 @@ import { stampJobRun } from "@/lib/job-owners-store";
 import { getGraphMailSource } from "@/modules/email-capture/lib/graph-source";
 import { runEmailImport } from "@/modules/email-capture/lib/sync";
 import { resolveMailboxOwner } from "@/lib/calendar/owner";
-import { getGraphMailboxUpn, GraphError } from "@/lib/graph/client";
+import { getGraphMailboxUpn, GraphError } from "@/modules/microsoft/lib/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // Scheduled email-in (slice 26, PRD §5.3). GitHub Actions cron with a

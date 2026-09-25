@@ -5,7 +5,7 @@ import { stampJobRun } from "@/lib/job-owners-store";
 import { getGraphCalendarSource } from "@/modules/calendar-sync/lib/graph-source";
 import { resolveMailboxOwner } from "@/lib/calendar/owner";
 import { runCalendarSync } from "@/modules/calendar-sync/lib/sync";
-import { getGraphMailboxUpn, GraphError } from "@/lib/graph/client";
+import { getGraphMailboxUpn, GraphError } from "@/modules/microsoft/lib/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // Scheduled calendar sync (slice 22, PRD §5.1). Sub-daily, so it runs from

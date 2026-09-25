@@ -13,6 +13,11 @@
 // Plain fetch, no Graph SDK (CLAUDE.md rule 5). The token is cached in module
 // scope for the life of the lambda and shared across every caller, since the
 // `.default` scope already covers all granted application permissions.
+//
+// Moved under src/modules/microsoft (ADR-272 step 4). The canary shape lives in
+// core's health report, which reads it by key.
+import type { GraphHealth } from "@/lib/health";
+export type { GraphHealth };
 
 // Distinguishes "you never configured this" from "Microsoft said no": the
 // first is a visible 503 / null health check, the second is the secret-expiry
@@ -146,11 +151,6 @@ export async function graphGet<T>(url: string): Promise<T> {
   }
   return (await res.json()) as T;
 }
-
-export type GraphHealth =
-  | { configured: false }
-  | { configured: true; ok: true }
-  | { configured: true; ok: false; detail: string };
 
 // /health probe (the "visible condition, not a silent stall" requirement,
 // slice 21). A token grant alone proves the registration + secret are valid

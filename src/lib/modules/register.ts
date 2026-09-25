@@ -19,6 +19,7 @@ import { todoistModule } from "@/modules/todoist/manifest";
 import { passagesModule } from "@/modules/passages/manifest";
 import { youtubeTranscriptsModule } from "@/modules/youtube-transcripts/manifest";
 import { sharingModule } from "@/modules/sharing/manifest";
+import { microsoftModule } from "@/modules/microsoft/manifest";
 import { onedriveExportModule } from "@/modules/onedrive-export/manifest";
 import { snapshotsModule } from "@/modules/snapshots/manifest";
 import { emailCaptureModule } from "@/modules/email-capture/manifest";
@@ -44,6 +45,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   youtubeTranscriptsModule,
   passagesModule,
   sharingModule,
+  microsoftModule,
   onedriveExportModule,
   snapshotsModule,
   emailCaptureModule,

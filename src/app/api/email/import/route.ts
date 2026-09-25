@@ -3,7 +3,7 @@ import { requireOwner } from "@/lib/api";
 import { routeGate } from "@/lib/modules/gate";
 import { getGraphMailSource } from "@/modules/email-capture/lib/graph-source";
 import { runEmailImport } from "@/modules/email-capture/lib/sync";
-import { GraphError } from "@/lib/graph/client";
+import { GraphError } from "@/modules/microsoft/lib/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // "Import now" for email-in (slice 26): the user-authed twin of the cron.

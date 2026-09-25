@@ -3,7 +3,7 @@ import { requireOwner } from "@/lib/api";
 import { routeGate } from "@/lib/modules/gate";
 import { getGraphCalendarSource } from "@/modules/calendar-sync/lib/graph-source";
 import { runCalendarSync } from "@/modules/calendar-sync/lib/sync";
-import { GraphError } from "@/lib/graph/client";
+import { GraphError } from "@/modules/microsoft/lib/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // "Sync now" (slice 22, PRD §5.1): the user-authed twin of the GitHub Actions

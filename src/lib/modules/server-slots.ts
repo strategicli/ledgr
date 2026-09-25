@@ -17,6 +17,7 @@ import "@/modules/todoist/server";
 import "@/modules/passages/server";
 import "@/modules/youtube-transcripts/server";
 import "@/modules/sharing/server";
+import "@/modules/microsoft/server";
 import "@/modules/onedrive-export/server";
 import "@/modules/email-capture/server";
 import "@/modules/calendar-sync/server";

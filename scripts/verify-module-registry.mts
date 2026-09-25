@@ -793,6 +793,25 @@ for (const r of sharingRoutes) {
   );
   check("module-shells.tsx imports no module directly", !read("src/lib/module-shells.tsx").includes("@/modules"));
 }
+// --- step 4: microsoft is the parent of the three Graph modules ------------
+{
+  const { microsoftModule } = await import("../src/modules/microsoft/manifest");
+  const { existsSync } = await import("node:fs");
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  check("microsoft is registered from its module folder", allModules().find((x) => x.id === "microsoft") === microsoftModule);
+  check("microsoft is on by default", microsoftModule.enabledByDefault && moduleOn({ modules: {} }, "microsoft"));
+  check("microsoft contributes a health check (server slot)", typeof microsoftModule.healthCheck === "function");
+  for (const id of ["calendar-sync", "email-capture", "onedrive-export"]) {
+    check(`${id} requires microsoft`, !!allModules().find((x) => x.id === id)?.requires?.includes("microsoft"));
+  }
+  check("turning microsoft off with its dependents on is a violation", requiresViolations({ microsoft: false }).length === 3);
+  check(
+    "microsoft off is fine once its dependents are off",
+    requiresViolations({ microsoft: false, "calendar-sync": false, "email-capture": false, "onedrive-export": false }).length === 0
+  );
+  check("the old Graph client path is gone", !existsSync(new URL("../src/lib/graph/client.ts", import.meta.url)));
+  check("health.ts no longer imports the Graph client", !read("src/lib/health.ts").includes("microsoft/lib/client"));
+}
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

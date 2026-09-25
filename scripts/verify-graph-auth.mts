@@ -19,7 +19,7 @@ const {
   checkGraphAuth,
   GraphError,
   _resetTokenCacheForTests,
-} = await import("../src/lib/graph/client");
+} = await import("../src/modules/microsoft/lib/client");
 const { getGraphConfig } = await import("../src/modules/onedrive-export/lib/onedrive");
 
 let failures = 0;
