@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 import type { getItem } from "@/lib/items";
 import { MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
 import type { McpTool } from "@/lib/mcp/tools/wire";
+import type { SearchResult } from "@/lib/search";
 
 // --- canvas contract (re-homed from canvas-registry, ADR-041) --------------
 
@@ -234,6 +235,13 @@ export type ModuleManifest = {
   // database, so it is never written on the pure manifest: the module's
   // server.ts attaches it, and the MCP registry collects it from there.
   mcpTools?: { names: string[]; instructions?: string; tools?: McpTool[] };
+  // MCP resources this module serves (step 4), listed and readable only while
+  // it is on. Server-filled by the module's server.ts, like `mcpTools.tools`.
+  mcpResources?: McpResourceDef[];
+  // Filters and annotates core's search_items hits (step 4), so a module can
+  // drop or mark its own rows without the core tool importing it. Runs only
+  // while the module is on. Server-filled by the module's server.ts.
+  mcpSearchHits?: (ownerId: string, hits: McpSearchHit[]) => Promise<McpSearchHit[]>;
   // The module's own canaries for /health, reported under the module id. Runs
   // only while the module is on for the instance owner. Keep it cheap; a throw
   // is caught and reported for that module alone.
@@ -266,6 +274,19 @@ export type ModuleManifest = {
   // --- step 4: where the module's route files live ---
   routes?: string[]; // src/app paths owned by this module
 };
+
+// An MCP resource a module serves: the resources/list descriptor plus a reader.
+export type McpResourceDef = {
+  uri: string;
+  name: string;
+  title?: string;
+  description: string;
+  mimeType: string;
+  read: () => string;
+};
+
+// A search_items hit; `extra` is merged into the tool's row for that hit.
+export type McpSearchHit = SearchResult & { extra?: Record<string, unknown> };
 
 // --- core as the first module ----------------------------------------------
 
@@ -666,6 +687,11 @@ export function moduleInstructions(isOn: (moduleId: string) => boolean): string[
   return allModules().flatMap((m) =>
     m.mcpTools?.instructions && isOn(m.id) ? [m.mcpTools.instructions] : []
   );
+}
+
+// The MCP resources of every module that is on, in registration order.
+export function moduleResources(isOn: (moduleId: string) => boolean): McpResourceDef[] {
+  return allModules().flatMap((m) => (m.mcpResources && isOn(m.id) ? m.mcpResources : []));
 }
 
 // --- contribution-slot resolvers (ADR-272 step 3) ---------------------------

@@ -9,12 +9,14 @@ import SharePanel from "@/modules/sharing/components/SharePanel";
 import DiscoverSection from "@/modules/relatedness/components/DiscoverSection";
 import ExploreView from "@/modules/relatedness/components/ExploreView";
 import DeskSendContextMenu from "@/modules/desk/components/DeskSendMenu";
+import LiveContextPanel from "@/modules/live-context/components/LiveContextPanel";
 
 type PanelProps = { itemId: string; title?: string; bare?: boolean };
 
 const ITEM_PANELS: Record<string, (props: PanelProps) => ReactNode | Promise<ReactNode>> = {
   share: SharePanel,
   discover: DiscoverSection,
+  "live-context": LiveContextPanel,
 };
 
 export function ModuleItemPanel({ id, ...props }: PanelProps & { id: string }) {

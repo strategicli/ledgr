@@ -39,7 +39,7 @@ Core is the code every module may import from. Modules never import each other's
 | Storage and the offline fallback | `src/lib/storage/`, the export *engine* in `src/lib/export/engine.ts` (Save Offline is Sunday-proof, Principle 4; the OneDrive *target* is a module) |
 | Sync infrastructure | `src/lib/sync/`, the sync spine triggers, `supervisor/` (the process runner; the job *catalog* it reads becomes registry-fed in step 3) |
 | Scheduled-job plumbing | `src/lib/job-owners*.ts`, `local-jobs.ts`, `src/app/api/machine/` (the door), `.github/workflows/`, `vercel.json` |
-| The MCP and REST doors | `src/lib/mcp/{server,protocol,owner}.ts`, `src/app/api/mcp`, `src/app/api/oauth`, `src/lib/api.ts`, `src/lib/machine/`. The doors are core; the *tools* behind them are contributed by modules |
+| The MCP and REST doors | `src/lib/mcp/{server,protocol,owner}.ts`, `src/app/api/mcp`, `src/app/api/oauth`, `src/lib/api.ts`, `src/lib/machine/`. The doors are core, and so are the item-level tool families behind them (see §5); a module contributes only its own tools |
 
 Everything not in that table is a module or will become one. The five system types (task, event, note, link, person) plus project, milestone, tag, unmarked and file stay in `coreModule`.
 
@@ -61,11 +61,13 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | ~~snapshots~~ | moved: `src/modules/snapshots/` (lib, components); keeps its per-install switch too | supervisor | none left |
 | passages | `lib/passages/`, `passage_refs`, `/passage/[ref]` | none | item-mutations (on-save hook) |
 | ~~desk~~ | moved: `src/modules/desk/` (manifest, `lib/` layout + persistence + send + workspaces, the components); `/desk` gated; the send menu is a layout shell panel (`module-panels.tsx` `shellPanels`); the editor reaches it through core's `lib/inline-ref-menu`; `settings.deskWorkspaces` is an opaque slot the module validates; the `/desk` Work nav destination hides while off | editor | none left |
-| ai-memory | `lib/memory.ts`, `memory` type, 2 MCP tools, `/build/memory` | mcp door | tools gating, build-nav (already `gatedBy`), agent context |
-| live-context | `active_context` table, 2 MCP tools | mcp door | tools gating, ItemCanvas tracker |
+| ~~ai-memory~~ | moved: `src/modules/ai-memory/` (`lib/memory.ts`, the two tools, the memory-protocol resource via a new `mcpResources` slot, a `mcpSearchHits` hook so `search_items` no longer imports it, the guide component); `/build/memory` gated. The `memory` type row is data and stays; the agent reads memory through `callTool`, not an import | mcp door | none left |
+| ~~live-context~~ | moved: `src/modules/live-context/` (`lib/active-context.ts`, the two tools, the tracker); ItemCanvas mounts it through `module-panels.tsx`; both routes gated; `active_context` stays in the schema with an ownership note. Left behind: `note-editing-prompt.ts` (the settings route imports it) and a re-export at the tracker's old path for the Desk until desk moves | mcp door | none left |
 | agent | `lib/agent/`, 4 tables, 11 routes, sidebar | mcp tools, ai-memory (optional) | layout, settings, jobs (purge) |
-| mcp-tools (per family) | 16 files under `lib/mcp/tools/` | mcp door | `tools/index.ts`, `agent/tools.ts` tiers |
+| ~~mcp-tools (per family)~~ | stays core (see below) | | |
 | notification-center | `NOTIFICATION_CENTER_ENABLED = false` | push | nav |
+
+**MCP tool families: core, because each is the MCP face of core data (step 4, 2026-09-24).** After ai-memory, live-context and sharing took their tools, `src/lib/mcp/tools/` holds items, tasks, records, types, views, workspace, attachments, dashboards, relations, templates, trash, export and calendar, plus the `args`, `serializers` and `wire` helpers. Each is a thin wrapper over a core library (`items.ts`, `item-mutations.ts`, `types.ts`, `views*.ts`, `dashboards*.ts`, `relations*.ts`, `templates/`, storage, the export engine, the calendar cache). None has anything an owner could sensibly switch off: "tasks off" or "relations off" would leave Claude unable to read or write data the app itself still shows. The two add-from-calendar tools stay core for the reason the calendar-sync move gave: they work on hand-made events too. So the plan's "move the tool families into modules" item closes as "stays core". A family that later turns out to be a real switch moves in its own PR.
 
 **Why themes stays core (step 4, 2026-09-24).** Themes has no routes, jobs, tools or data of its own, and nothing to turn off: "themes off" could only mean "everyone sees Dark", which is the Dark button that is already there. The theme is also read by core, not by a feature: `layout.tsx` sets `data-theme` and the title-bar color, the print view and every share link open in it, and `settings.ts` validates it. A module switch would make each of those ask the registry before reading one setting, for no gain to the owner. So the theme sits with Display density and Section style as an ordinary core preference on `/settings`.
 

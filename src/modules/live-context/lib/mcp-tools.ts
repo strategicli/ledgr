@@ -3,7 +3,7 @@
 // looking at right now (and what they've highlighted); edit_item_body makes a
 // surgical, single-spot change to a note's markdown without resending the whole
 // body. Both are gated by the live-context module, whose manifest claims them
-// (mcpTools slot, src/lib/modules/features.ts). Off by default, so a vanilla
+// (mcpTools slot, src/modules/live-context/manifest.ts). Off by default, so a vanilla
 // MCP client never sees them.
 //
 // Thin wrappers over the same owner-scoped libs the app uses (active-context.ts,
@@ -13,9 +13,9 @@ import { asUuid } from "@/lib/api";
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { ItemError, getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
-import { getActiveContext } from "@/lib/active-context";
-import { rowView } from "./serializers";
-import type { McpTool } from "./wire";
+import { getActiveContext } from "@/modules/live-context/lib/active-context";
+import { rowView } from "@/lib/mcp/tools/serializers";
+import type { McpTool } from "@/lib/mcp/tools/wire";
 
 // Present only when the owner has turned on Live editing context. Filtered out of
 // tools/list and rejected by callTool when off — same posture as the memory

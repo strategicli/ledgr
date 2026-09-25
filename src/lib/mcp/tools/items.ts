@@ -14,7 +14,9 @@ import {
 } from "@/lib/editor/block-anchor";
 import { ItemError, URGENCIES, getItem, getItemType, listItems } from "@/lib/items";
 import { createItem, moveItemType, updateItem } from "@/lib/item-mutations";
-import { MEMORY_TYPE, memoryAge, memoryFacets, memoryMarker, supersededByFor } from "@/lib/memory";
+import { allModules, type McpSearchHit } from "@/lib/modules";
+import { moduleOn } from "@/lib/modules/enabled";
+import { getSettings } from "@/lib/settings";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { listRelatedItems, relateItems } from "@/lib/relations";
 import { searchItems } from "@/lib/search";
@@ -67,32 +69,17 @@ export const itemTools: McpTool[] = [
         type: optString(args, "type"),
         limit: optInt(args, "limit"),
       });
-      // A retired (archived) memory stays in the store for the record but is
-      // no longer a claim to recall, so it drops out of memory search (ADR-259).
-      // Other types keep their archived rows: "find that archived note" is real.
-      const rows = found.filter((r) => !(r.type === MEMORY_TYPE && r.statusCategory === "archived"));
-      // Memory hits carry their age (ADR-230) plus the same STALE / SUPERSEDED
-      // marker the stump index renders (ADR-259): Tier 2 memories are reached
-      // by search, so the hedge has to appear here or it never appears.
-      const memoryIds = rows.filter((r) => r.type === MEMORY_TYPE).map((r) => r.id);
-      const superseded = await supersededByFor(ownerId, memoryIds);
+      // Modules that are on may drop or annotate their own hits (the
+      // mcpSearchHits slot, ADR-272 step 4): AI Memory hides retired memories
+      // and adds each memory's age and STALE / SUPERSEDED marker.
+      let rows: McpSearchHit[] = found;
+      const settings = await getSettings(ownerId);
+      for (const m of allModules()) {
+        if (m.mcpSearchHits && moduleOn(settings, m.id)) rows = await m.mcpSearchHits(ownerId, rows);
+      }
       return {
         count: rows.length,
-        items: rows.map((r) => ({
-          ...rowView(r),
-          ...(r.type === MEMORY_TYPE
-            ? {
-                age:
-                  memoryAge(r.updatedAt) +
-                  memoryMarker(
-                    memoryFacets(r.properties).horizon,
-                    r.updatedAt,
-                    superseded.get(r.id) ?? null
-                  ),
-              }
-            : {}),
-          snippet: r.snippet,
-        })),
+        items: rows.map((r) => ({ ...rowView(r), ...r.extra, snippet: r.snippet })),
       };
     },
   },

@@ -16,7 +16,7 @@
 // drag-select moves the marker before the selection lands.
 "use client";
 
-import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
+import ActiveContextTracker from "@/modules/live-context/components/ActiveContextTracker";
 import { findLeaf } from "@/modules/desk/lib/layout";
 import { useDesk } from "./DeskContext";
 import { useDoc } from "./desk-doc-store";
