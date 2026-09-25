@@ -51,11 +51,19 @@ type status struct {
 	At      string `json:"at"`
 }
 
-var statusPath string
+var (
+	statusPath string
+	lastStatus status
+)
 
 // writeStatus replaces the status file in one step (write, then rename), so
-// the app never reads half a file.
+// the app never reads half a file. An unchanged status is not rewritten: the
+// sign-in wait polls every second and should not touch the disk every second.
 func writeStatus(s status) {
+	if s == lastStatus {
+		return
+	}
+	lastStatus = s
 	s.At = time.Now().UTC().Format(time.RFC3339)
 	b, _ := json.MarshalIndent(s, "", "  ")
 	tmp := statusPath + ".tmp"
