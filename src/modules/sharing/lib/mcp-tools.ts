@@ -1,13 +1,13 @@
-// Share-link tools: thin wrappers over src/lib/share.ts, the same owner-scoped
+// Share-link tools: thin wrappers over ./share.ts, the same owner-scoped
 // functions the item's Share control and /api/items/[id]/share use. Additive
 // MCP surface (ADR-183 carve-out). Views are not counted: the public page is
 // CDN-cached, so an origin hit count would undercount anyway.
 import { asUuid } from "@/lib/api";
 import { ItemError } from "@/lib/items";
-import { createShareToken, listShareTokens, revokeShareToken, type ShareOptions } from "@/lib/share";
+import { createShareToken, listShareTokens, revokeShareToken, type ShareOptions } from "@/modules/sharing/lib/share";
 import { THEMES } from "@/lib/settings";
-import { optEnum, optString } from "./args";
-import type { McpTool } from "./wire";
+import { optEnum, optString } from "@/lib/mcp/tools/args";
+import type { McpTool } from "@/lib/mcp/tools/wire";
 
 function origin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "https://ledgr-teal.vercel.app").replace(/\/+$/, "");

@@ -28,10 +28,6 @@ const CORE_PUBLIC_ROUTES = [
   "/api/oauth/authorization-server",
   "/api/oauth/register",
   "/api/oauth/token",
-  // Public share links (slice 31): an unguessable token is the credential, so
-  // the render path takes no Clerk session. Issuance (/api/items/[id]/share)
-  // stays Clerk-protected.
-  "/share(.*)",
   // Published ICS task feed (T4, ADR-079): an unguessable token in the URL is
   // the credential, so calendar apps subscribe with no Clerk session. The
   // token-management route (/api/ics/token) still gates itself with

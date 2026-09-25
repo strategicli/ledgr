@@ -13,7 +13,9 @@
 // tool result so Claude sees a clean message and the session stays open;
 // unexpected errors are captured (rule 9) and returned with a correlation id.
 import { getSettings, type UserSettings } from "@/lib/settings";
-import { moduleOwningTool, toolEnabledFor } from "@/lib/modules";
+import { allModules, moduleOwningTool, toolEnabledFor } from "@/lib/modules";
+// Attaches each module's server-only slots, including its MCP tool definitions.
+import "@/lib/modules/server-slots";
 import { moduleOn } from "@/lib/modules/enabled";
 import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
@@ -26,7 +28,6 @@ import { itemTools } from "./items";
 import { memoryTools } from "./memory";
 import { recordTools } from "./records";
 import { relationTools } from "./relations";
-import { shareTools } from "./share";
 import { taskTools } from "./tasks";
 import { templateTools } from "./templates";
 import { trashTools } from "./trash";
@@ -45,7 +46,6 @@ const TOOLS: McpTool[] = [
   ...calendarTools,
   ...typeTools,
   ...relationTools,
-  ...shareTools, // core for now: sharing is not a module yet, so no manifest claims these
   ...trashTools,
   ...exportTools,
   ...viewTools,
@@ -54,6 +54,9 @@ const TOOLS: McpTool[] = [
   ...dashboardTools,
   ...memoryTools,
   ...contextTools,
+  // Tools a module brings on its manifest (mcpTools.tools, ADR-272 step 4),
+  // such as the sharing module's three share-link tools.
+  ...allModules().flatMap((m) => m.mcpTools?.tools ?? []),
 ];
 
 // Every registered tool name, for guards like verify-agent (each needs a tier).
@@ -61,7 +64,7 @@ export const TOOL_NAMES = TOOLS.map((t) => t.name);
 
 // Whether a tool is on for this owner (the mcpTools slot, ADR-272 step 3): a
 // tool a module claims follows that module's switch; any other tool is core
-// and always on. The share tools stay core until sharing becomes a module.
+// and always on.
 function toolEnabled(
   name: string,
   settings: Pick<UserSettings, "modules">

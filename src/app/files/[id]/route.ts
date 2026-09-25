@@ -26,8 +26,9 @@
 import { NextResponse } from "next/server";
 import { getAttachmentForRead } from "@/lib/attachments";
 import { SHARE_PARAM } from "@/lib/attachment-url";
+import { moduleIsOn } from "@/lib/modules/gate";
 import { resolveOwner } from "@/lib/owner";
-import { resolveShareToken } from "@/lib/share";
+import { resolveShareToken } from "@/modules/sharing/lib/share";
 import { getStorage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +63,11 @@ export async function GET(request: Request, context: Context) {
     // Scoped deliberately to the parent item: a live token for item A must not
     // become a skeleton key for every attachment the owner has.
     const shared = await resolveShareToken(token);
-    allowed = !!shared && shared.itemId === att.parentItemId;
+    // A share link whose module is off opens nothing, its images included.
+    allowed =
+      !!shared &&
+      shared.itemId === att.parentItemId &&
+      (await moduleIsOn(shared.ownerId, "sharing"));
   } else {
     const owner = await resolveOwner();
     allowed = !!owner && owner.id === att.ownerId;

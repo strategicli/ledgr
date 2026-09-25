@@ -266,7 +266,7 @@ try {
   const noteAfter = await callJson(ownerId, "get_item", { id: note.id as string });
   check("unrelate_items leaves no edge but keeps both items", typeof noteAfter.id === "string" && !(noteAfter.related as Json[]).some((r) => r.id === entity.id));
 
-  // share_item / list_share_links / revoke_share_link (thin over lib/share).
+  // share_item / list_share_links / revoke_share_link (thin over the sharing module).
   const before = await callJson(ownerId, "list_share_links", { id: note.id as string });
   check("list_share_links: unshared item reports shared=false", before.shared === false && before.activeCount === 0);
   const s1 = await callJson(ownerId, "share_item", { id: note.id as string, theme: "sepia", showIcons: false });

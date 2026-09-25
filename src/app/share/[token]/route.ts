@@ -7,7 +7,7 @@
 // is a plain 404.
 import { NextResponse } from "next/server";
 import { renderPrintDocument } from "@/lib/print-html";
-import { resolveShareToken } from "@/lib/share";
+import { resolveShareToken } from "@/modules/sharing/lib/share";
 import { resolveMentions } from "@/lib/mentions";
 import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
@@ -16,6 +16,7 @@ import { addShareTokenToAttachmentUrls } from "@/lib/attachment-url";
 import { getSettings } from "@/lib/settings";
 import { makeMarkdownBody } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
+import { moduleIsOn } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,11 @@ export async function GET(
     return new NextResponse("Something went wrong.", { status: 500 });
   }
   if (!shared) return new NextResponse(NOT_FOUND, { status: 404 });
+  // The sharing module is off for this link's owner: the link stops working,
+  // and the token is kept, so turning the module back on revives it.
+  if (!(await moduleIsOn(shared.ownerId, "sharing"))) {
+    return new NextResponse(NOT_FOUND, { status: 404 });
+  }
 
   // Resolve live {{item.*}} tokens (LT1) against the shared item's current
   // state, so a public link always shows the up-to-date title/date and any

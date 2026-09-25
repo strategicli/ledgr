@@ -18,6 +18,7 @@ import { songModule } from "@/lib/modules/songs";
 import { todoistModule } from "@/modules/todoist/manifest";
 import { passagesModule } from "@/modules/passages/manifest";
 import { youtubeTranscriptsModule } from "@/modules/youtube-transcripts/manifest";
+import { sharingModule } from "@/modules/sharing/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -29,6 +30,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   // Moved under src/modules/<id>/ (ADR-272 step 4).
   youtubeTranscriptsModule,
   passagesModule,
+  sharingModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

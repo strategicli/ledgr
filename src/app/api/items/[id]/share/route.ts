@@ -4,8 +4,9 @@
 // absolute URL from the returned token, so this stays env-agnostic.
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { createShareToken, listShareTokens, revokeShareToken, type ShareOptions } from "@/lib/share";
+import { createShareToken, listShareTokens, revokeShareToken, type ShareOptions } from "@/modules/sharing/lib/share";
 import { isTheme } from "@/lib/settings";
+import { routeGate } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ export async function GET(
 ) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "sharing");
+  if (off) return off;
   try {
     const { id } = await ctx.params;
     const itemId = asUuid(id, "id");
@@ -31,6 +34,8 @@ export async function POST(
 ) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "sharing");
+  if (off) return off;
   try {
     const { id } = await ctx.params;
     const itemId = asUuid(id, "id");
@@ -61,6 +66,8 @@ export async function DELETE(
 ) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "sharing");
+  if (off) return off;
   try {
     await ctx.params; // path-shaped, but the token identifies the row
     const url = new URL(request.url);

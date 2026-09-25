@@ -807,7 +807,9 @@ export const notifications = pgTable(
 // no Clerk on the public path. Owner-scoped issuance; revocation is a stamp
 // (revoked_at), not a delete, so a revoked token can't be silently reissued to
 // the same string and the history is auditable. Cascade-deletes with the item
-// at purge (a purged item has no shareable render).
+// at purge (a purged item has no shareable render). Owned by the sharing module
+// (src/modules/sharing, ADR-272 step 4); the table stays here with the rest of
+// the schema, and turning the module off leaves every row untouched.
 export const shareTokens = pgTable(
   "share_tokens",
   {

@@ -23,7 +23,7 @@
 // History as individually arrangeable cards, so it renders those directly and
 // does NOT use this footer; every non-arranged canvas does.
 import SaveOffline from "@/components/canvas/SaveOffline";
-import ShareLink from "@/components/canvas/ShareLink";
+import { ModuleItemPanel } from "@/lib/module-panels";
 import PresentationExport from "@/components/canvas/PresentationExport";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 import ItemFilesSection from "@/components/attachments/ItemFilesSection";
@@ -86,7 +86,8 @@ export default async function ItemUtilitiesFooter({
             </summary>
             <div className="mt-2 flex flex-col gap-2">
               <SaveOffline itemId={itemId} bare />
-              <ShareLink itemId={itemId} bare />
+              {/* The sharing module's control; renders nothing while it is off. */}
+              <ModuleItemPanel id="share" itemId={itemId} bare />
               <PresentationExport itemId={itemId} bare />
             </div>
           </details>

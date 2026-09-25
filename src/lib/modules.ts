@@ -20,6 +20,7 @@
 import type { ReactNode } from "react";
 import type { getItem } from "@/lib/items";
 import { MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
+import type { McpTool } from "@/lib/mcp/tools/wire";
 
 // --- canvas contract (re-homed from canvas-registry, ADR-041) --------------
 
@@ -229,7 +230,10 @@ export type ModuleManifest = {
   // while the module is on for the owner; a tool no module claims is core and
   // always on. `instructions` is the block the MCP server appends to its
   // connect-time instructions while the module is on.
-  mcpTools?: { names: string[]; instructions?: string };
+  // `tools` holds the definitions themselves (step 4). A tool reaches the
+  // database, so it is never written on the pure manifest: the module's
+  // server.ts attaches it, and the MCP registry collects it from there.
+  mcpTools?: { names: string[]; instructions?: string; tools?: McpTool[] };
   // The module's own canaries for /health, reported under the module id. Runs
   // only while the module is on for the instance owner. Keep it cheap; a throw
   // is caught and reported for that module alone.
