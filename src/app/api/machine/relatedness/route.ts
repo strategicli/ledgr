@@ -4,7 +4,9 @@ import { jobState } from "@/db/schema";
 import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { captureError, createLogger } from "@/lib/log";
 import { resolveMachineOwner } from "@/lib/machine/owner";
-import { refreshRelatedness, RELATEDNESS_JOB_KEY } from "@/lib/discovery/refresh";
+import { standDownDetail } from "@/lib/job-owners";
+import { moduleIsOn } from "@/lib/modules/gate";
+import { refreshRelatedness, RELATEDNESS_JOB_KEY } from "@/modules/relatedness/lib/refresh";
 
 // Nightly relatedness refresh (Discover, ADR-127). A scheduler (Vercel cron /
 // GitHub Actions) calls this through the machine-token door (cron scope, ADR-036)
@@ -26,6 +28,16 @@ export async function GET(request: Request) {
     if (!ownerId) {
       log.warn("relatedness: no owner resolved");
       return NextResponse.json({ ok: true, scanned: 0, note: "no owner" });
+    }
+    // The relatedness module is off (ADR-272 step 4): stand down with a 200,
+    // like any stood-down job, so the scheduler records no failure.
+    if (!(await moduleIsOn(ownerId, "relatedness"))) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "module-off",
+        detail: standDownDetail("module-off", null),
+      });
     }
     const result = await refreshRelatedness(ownerId);
     const value = { lastRunAt: new Date().toISOString(), lastResult: result };

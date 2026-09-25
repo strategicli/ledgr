@@ -19,7 +19,7 @@ import FieldStrip, { type StripValues } from "@/components/canvas/FieldStrip";
 import CustomProperties from "@/components/build/CustomProperties";
 import RelationField from "@/components/relations/RelationField";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import DiscoverPanel from "@/components/relations/DiscoverPanel";
+import { ModuleItemPanel } from "@/lib/module-panels";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import NavGlyph from "@/components/nav/NavGlyph";
 import SmartHref from "@/components/ui/SmartHref";
@@ -137,7 +137,7 @@ export default async function LongformCanvas(canvasProps: CanvasProps) {
       {/* Full-width below the editor: the connected-data web, deterministic
           suggestions, and the shared export/history utilities. */}
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
-      <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
+      <ModuleItemPanel id="discover" itemId={item.id} title={item.title} />
       <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
     </>
   );

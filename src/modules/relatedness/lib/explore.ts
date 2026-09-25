@@ -7,8 +7,8 @@
 // another bounded compute), so it never depends on the panel cache, which is
 // deliberately unlinked-only.
 import { listRelatedItems } from "@/lib/relations";
-import { scoreRelated } from "@/lib/discovery/score";
-import type { ScoredCandidate } from "@/lib/discovery/types";
+import { scoreRelated } from "@/modules/relatedness/lib/score";
+import type { ScoredCandidate } from "@/modules/relatedness/lib/types";
 
 export async function exploreNeighborhood(
   ownerId: string,

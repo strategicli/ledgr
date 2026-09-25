@@ -262,6 +262,7 @@ export default async function ItemCanvas({
                   wordCountPerTab={wordCountPerTab}
                   wordCountLive={!composed}
                   listen={Boolean(listenText)}
+                  explore={moduleOn(settings, "relatedness")}
                 />
               )}
             </span>

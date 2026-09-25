@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { suggestedRelations } from "@/lib/discovery/score";
+import { routeGate } from "@/lib/modules/gate";
+import { suggestedRelations } from "@/modules/relatedness/lib/score";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ type Context = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "relatedness");
+  if (off) return off;
 
   try {
     const id = asUuid((await context.params).id, "id");

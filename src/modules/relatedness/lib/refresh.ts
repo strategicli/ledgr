@@ -9,7 +9,7 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { itemRelatedness, jobState } from "@/db/schema";
-import { scoreRelated } from "@/lib/discovery/score";
+import { scoreRelated } from "@/modules/relatedness/lib/score";
 
 export const RELATEDNESS_JOB_KEY = "relatedness";
 

@@ -6,7 +6,7 @@
 // body-free, bounded.
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { scoreRelated } from "@/lib/discovery/score";
+import { scoreRelated } from "@/modules/relatedness/lib/score";
 
 export type LooseEndSuggestion = {
   id: string;

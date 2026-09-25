@@ -117,7 +117,7 @@ the per-device retention holds (ADR-213) decide nothing.
 | Job | Default | Safe on more than one peer? |
 | --- | --- | --- |
 | `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
-| `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
+| `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. Owned by the relatedness module: switched off at Build → Modules, it stands down with `module-off`. |
 | `agent-purge` | **on**, 03:50 | Yes. Prunes THIS instance's own expired agent sessions (ADR-271), so each peer cleans its own. |
 | `snapshot` | **scheduled**, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Scheduled always, but it does nothing until restore points are switched on **in the app** (ADR-222) — see "Snapshots" below. |
 | `export` | **scheduled**, 04:10 | **No.** One OneDrive folder, and `items.exported_at` is synced. Scheduled always; it runs only on the copy named in the app (ADR-225). |

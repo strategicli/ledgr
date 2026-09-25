@@ -23,6 +23,7 @@ import { onedriveExportModule } from "@/modules/onedrive-export/manifest";
 import { snapshotsModule } from "@/modules/snapshots/manifest";
 import { emailCaptureModule } from "@/modules/email-capture/manifest";
 import { calendarSyncModule } from "@/modules/calendar-sync/manifest";
+import { relatednessModule } from "@/modules/relatedness/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -39,6 +40,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   snapshotsModule,
   emailCaptureModule,
   calendarSyncModule,
+  relatednessModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

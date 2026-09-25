@@ -26,7 +26,7 @@ import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingNotes from "@/components/meetings/MeetingNotes";
 import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import DiscoverPanel from "@/components/relations/DiscoverPanel";
+import { ModuleItemPanel } from "@/lib/module-panels";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import { promotedBlockRefs } from "@/lib/meetings/promote";
 import { topStripFields } from "@/lib/canvas-fields";
@@ -148,7 +148,7 @@ export default async function EventCanvas(canvasProps: CanvasProps) {
       )}
 
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
-      <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
+      <ModuleItemPanel id="discover" itemId={item.id} title={item.title} />
       <ItemUtilitiesFooter itemId={item.id} currentText={bodyMarkdown(item.body)} />
     </>
   );

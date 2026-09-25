@@ -21,9 +21,9 @@ const {
 } = await import("../src/lib/item-mutations");
 const { relateItems } = await import("../src/lib/relations");
 const { scoreRelated, suggestedRelations, readCachedRelated } = await import(
-  "../src/lib/discovery/score"
+  "../src/modules/relatedness/lib/score"
 );
-const { refreshRelatedness } = await import("../src/lib/discovery/refresh");
+const { refreshRelatedness } = await import("../src/modules/relatedness/lib/refresh");
 const { eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;

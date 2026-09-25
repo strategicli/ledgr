@@ -9,7 +9,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, itemRelatedness, types } from "@/db/schema";
 import { ItemError, listColumns } from "@/lib/items";
-import type { RelatednessSignal, ScoredCandidate } from "@/lib/discovery/types";
+import type { RelatednessSignal, ScoredCandidate } from "@/modules/relatedness/lib/types";
 
 // The starter mix, in one named, readable place (ADR-127). Unitless and
 // comparable only within one anchor; tuned from real use via the reason chips.
