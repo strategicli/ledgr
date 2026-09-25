@@ -1,0 +1,2 @@
+# The helper build script runs under sh; keep it LF on every checkout.
+tailnet/*.sh text eol=lf
