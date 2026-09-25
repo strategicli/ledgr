@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ViewRenderer from "@/components/views/ViewRenderer";
-import { DeskHostProvider } from "@/components/desk/DeskHostContext";
+import { DeskHostProvider } from "@/modules/desk/components/DeskHostContext";
 import DuplicateViewButton from "@/components/views/DuplicateViewButton";
 import NewItemButton from "@/components/home/NewItemButton";
 import BulkActionBar from "@/components/selection/BulkActionBar";

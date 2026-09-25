@@ -462,9 +462,12 @@ Build your own kinds of item at \`/build/types\`.
   until you turn it back on) and **Calendar sync** (on by default: brings your
   Outlook calendar in every few hours for the Planner and the event list's
   Calendar lens; switched off, your events stay and only new calendar entries
-  stop arriving) and **Relatedness** (on by default: Discover, the Related
+  stop arriving), **Relatedness** (on by default: Discover, the Related
   Explorer and Loose Ends; switched off, all three disappear, Loose Ends leaves
-  Build, and your own links are untouched). A module that is off also drops
+  Build, and your own links are untouched) and **Desk** (on by default: the
+  side-by-side workspace at \`/desk\`; switched off, the page, its Work nav slot
+  and the "Send to Desk" menu items disappear, and your saved workspaces wait
+  until you turn it back on). A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module

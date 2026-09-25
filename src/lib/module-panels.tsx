@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import SharePanel from "@/modules/sharing/components/SharePanel";
 import DiscoverSection from "@/modules/relatedness/components/DiscoverSection";
 import ExploreView from "@/modules/relatedness/components/ExploreView";
+import DeskSendContextMenu from "@/modules/desk/components/DeskSendMenu";
 
 type PanelProps = { itemId: string; title?: string; bare?: boolean };
 
@@ -33,4 +34,18 @@ const ITEM_PAGES: Record<string, (props: PageProps) => ReactNode | Promise<React
 export function ModuleItemPage({ id, ...props }: PageProps & { id: string }) {
   const Page = ITEM_PAGES[id];
   return Page ? <Page {...props} /> : null;
+}
+
+// --- shell panels: mounted once in the root layout (ADR-272 step 4) ---
+// A module's app-wide component (a global popover, a side panel). The root
+// layout maps over this list and mounts each one only while its module is on
+// for the owner, so a switched-off module leaves nothing in the shell.
+type ShellPanel = { moduleId: string; Component: () => ReactNode };
+
+export function shellPanels(): ShellPanel[] {
+  return [
+    // The Desk's "Send to Desk" popover, opened by inline mention/link
+    // right-clicks (ADR-146 S3b).
+    { moduleId: "desk", Component: DeskSendContextMenu },
+  ];
 }

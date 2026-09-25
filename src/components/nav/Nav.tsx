@@ -24,6 +24,7 @@ import { syncEnabled } from "@/lib/sync/client";
 import { compareTypeKeys } from "@/lib/type-order";
 import { disabledModuleTypeKeys, moduleOnFor, offModuleIds } from "@/lib/modules/enabled";
 import { listTypes } from "@/lib/types";
+import { offModuleHrefs } from "@/lib/nav-slot-options";
 
 export default async function Nav() {
   // No owner, no nav — correct for the signed-out hero and /sign-in, since this
@@ -133,7 +134,11 @@ export default async function Nav() {
   const showInbox =
     inboxCount > 0 ||
     INBOX_SOURCES.some((s) => routeFor(settings.inboxRoutes, s.key).inbox);
-  const keep = (d: { href: string }) => showInbox || d.href !== "/inbox";
+  // A switched-off module's page (the Desk, ADR-272 step 4) drops out the same
+  // way: the slot hides, and turning the module back on restores it.
+  const offHrefs = offModuleHrefs(offModuleIds(settings));
+  const keep = (d: { href: string }) =>
+    (showInbox || d.href !== "/inbox") && !offHrefs.has(d.href);
   const shellSlots = (config: NavSlotConfig[]) =>
     config
       .filter((s) => s.type === "tools" || keep(s))

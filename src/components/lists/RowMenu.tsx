@@ -20,7 +20,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/ui/ActionToast";
 import DateInput from "@/components/ui/DateInput";
-import { DeskSendItems } from "@/components/desk/DeskSendMenu";
+import { DeskSendItems } from "@/modules/desk/components/DeskSendMenu";
 import { addDaysYmd } from "@/lib/recurrence";
 
 const LONG_PRESS_MS = 450;

@@ -569,5 +569,62 @@ for (const r of sharingRoutes) {
   check("server-slots attached relatedness' healthCheck", typeof relatednessModule.healthCheck === "function");
 }
 
+// --- 14. step 4: the Desk lives under src/modules/desk ------------------------
+{
+  const { deskModule } = await import("../src/modules/desk/manifest");
+  const { existsSync, readdirSync } = await import("node:fs");
+  const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  check("desk is registered from @/modules/desk/manifest", allModules().find((m) => m.id === "desk") === deskModule);
+  check("desk is on by default (used daily)", deskModule.enabledByDefault === true && moduleOn({ modules: {} }, "desk"));
+  check("desk has a description for the Modules page", !!deskModule.description);
+  check("desk adds no item types", deskModule.types.length === 0);
+  const routes = deskModule.routes ?? [];
+  check("desk lists its one route file", JSON.stringify(routes) === JSON.stringify(["src/app/desk/page.tsx"]));
+  for (const r of routes) {
+    check(`desk route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+    check(`desk route calls the gate: ${r}`, src(r).includes('pageGate(owner.id, "desk")'));
+  }
+  check("the old desk folders are gone", !existsSync(new URL("../src/lib/desk", import.meta.url)) && !existsSync(new URL("../src/components/desk", import.meta.url)));
+  // The shell slot: the root layout mounts module panels from shellPanels(),
+  // filtered by the owner's switches, and the Desk's send menu is one of them.
+  const panels = src("src/lib/module-panels.tsx");
+  const shellBlock = panels.slice(panels.indexOf("export function shellPanels"));
+  check("shellPanels() lists the desk send menu", /moduleId:\s*"desk",\s*Component:\s*DeskSendContextMenu/.test(shellBlock));
+  const layout = src("src/app/layout.tsx");
+  check("the root layout maps shellPanels() gated by moduleOn", layout.includes("shellPanels().filter((p) => moduleOn(s, p.moduleId))"));
+  // The fenced core files that used to import desk code no longer do.
+  for (const f of [
+    "src/lib/settings.ts",
+    "src/app/layout.tsx",
+    "src/components/markdown-editor/MarkdownEditor.tsx",
+    "src/components/markdown-editor/MarkdownPreview.tsx",
+  ]) {
+    check(`${f} imports no desk code`, !/from "[^"]*\/desk\//.test(src(f)));
+  }
+  // The editor reaches the menu through core's inline-ref seam: no listener
+  // (Desk off) means it is unavailable and the native menu stays.
+  const ref = await import("../src/lib/inline-ref-menu");
+  check("no listener: the inline menu is unavailable", !ref.inlineRefMenuAvailable());
+  let opened = "";
+  const unlisten = ref.listenInlineRefMenu({ available: () => true, open: (d) => (opened = d.itemId) });
+  ref.openInlineRefMenu({ itemId: "x", x: 0, y: 0 });
+  check("a listener makes it available and receives the click", ref.inlineRefMenuAvailable() && opened === "x");
+  unlisten();
+  check("unlistening makes it unavailable again", !ref.inlineRefMenuAvailable());
+  // settings keeps workspaces as an opaque slot; the module validates layouts.
+  const { parseSettings } = await import("../src/lib/settings");
+  const parsed = parseSettings({ deskWorkspaces: [{ id: "a", name: "A", savedAt: 1, layout: { version: -1 } }, { id: "b", name: "B", layout: "nope" }] });
+  check("core keeps an object layout it cannot read, drops a non-object", parsed.deskWorkspaces.length === 1 && parsed.deskWorkspaces[0].id === "a");
+  const { sanitizeWorkspaces } = await import("../src/modules/desk/lib/workspaces");
+  check("the module drops a workspace whose layout fails sanitizeLayout", sanitizeWorkspaces(parsed.deskWorkspaces).length === 0);
+  // Work nav: /desk is not offered, and an existing slot hides, while off.
+  const { buildDestOptions, offModuleHrefs } = await import("../src/lib/nav-slot-options");
+  const builtins = (off: string[]) => buildDestOptions([], [], [], false, off).filter((o) => o.group === "Built-in").map((o) => o.href);
+  check("the picker offers /desk while desk is on", builtins([]).includes("/desk"));
+  check("the picker drops /desk while desk is off", !builtins(["desk"]).includes("/desk"));
+  check("Nav hides a /desk slot while desk is off", offModuleHrefs(["desk"]).has("/desk") && !offModuleHrefs([]).has("/desk"));
+  check("there are no verify-desk scripts to repoint", !readdirSync(new URL("./", import.meta.url)).some((f) => f.startsWith("verify-desk")));
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

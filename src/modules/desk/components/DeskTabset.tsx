@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { DeskLeaf, DeskTab } from "@/lib/desk/layout";
+import type { DeskLeaf, DeskTab } from "@/modules/desk/lib/layout";
 import { wordCountOf } from "@/lib/body";
 import { parseTabs } from "@/lib/editor/canvas-tabs";
 import { useDesk } from "./DeskContext";

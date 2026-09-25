@@ -10,7 +10,7 @@
 "use client";
 
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import type { DeskNode, DeskSplit } from "@/lib/desk/layout";
+import type { DeskNode, DeskSplit } from "@/modules/desk/lib/layout";
 import { useDesk } from "./DeskContext";
 import DeskTabset from "./DeskTabset";
 
