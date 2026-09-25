@@ -220,6 +220,10 @@ export type ModuleManifest = {
   exporters: ExporterDef[];
   integration?: IntegrationDef;
   capabilities?: ModuleCapability[];
+  // --- contribution slots: hooks and jobs (ADR-272 step 3) ---
+  // Code a module runs when core writes an item, so core never imports the
+  // module by name. Runs only while the module is on for the owner.
+  hooks?: ModuleHooks;
 };
 
 // --- core as the first module ----------------------------------------------
@@ -554,3 +558,46 @@ export const referenceModule: ModuleManifest = {
     direction: "pull",
   },
 };
+
+// --- save hooks (ADR-272 step 3.6) -----------------------------------------
+//
+// What a module runs when core writes an item, so item-mutations.ts calls one
+// runner instead of importing each module (passages, YouTube) by name. Only the
+// types and the pure lookup live here; the runner that reads the owner's
+// switches and catches each hook's failure is `src/lib/modules/hooks.ts`. A
+// hook loads anything heavy with `await import(...)`, because manifests sit on
+// the pure path that verify scripts and client pages import.
+export type HookContext = {
+  ownerId: string;
+  itemId: string;
+  // Set on create. A body save does not know the type.
+  type?: string;
+  // The saved body on a body save; null when the body was cleared.
+  body?: unknown;
+  url?: string | null;
+};
+
+export type HookFn = (ctx: HookContext) => Promise<void>;
+
+export type ModuleHooks = {
+  // After a body is written (create or update). Awaited inline, after the
+  // revision snapshot and the mention edges. Runs on a cleared body too.
+  onBodySave?: HookFn;
+  // After an item is created. Fire and forget: the caller's reply never waits.
+  onCreate?: HookFn;
+};
+
+export type HookName = keyof ModuleHooks;
+
+// The hooks of this name from every module `isOn` says is on, in registration
+// order. Pure: the caller decides what "on" means (the owner's switches, or a
+// fixture in a verify script).
+export function hooksFor(
+  name: HookName,
+  isOn: (moduleId: string) => boolean
+): { moduleId: string; run: HookFn }[] {
+  return allModules().flatMap((m) => {
+    const run = m.hooks?.[name];
+    return run && isOn(m.id) ? [{ moduleId: m.id, run }] : [];
+  });
+}

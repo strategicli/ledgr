@@ -16,6 +16,7 @@ import {
   claimFor,
   DEFAULT_OWNER_OPTION,
   isMovableJob,
+  jobModuleOff,
   standDownDetail,
   MOVABLE_JOBS,
   MOVABLE_JOB_NAMES,
@@ -336,6 +337,41 @@ ok("ownership of one job never affects another", () => {
   const owners: JobOwners = { export: claim() };
   // The mailbox job is untouched: still the old behavior, still running.
   assert.equal(shouldRunHere({ owners, job: "email-import", selfDeviceId: "dev-cloud" }).run, true);
+});
+
+// ── Module gating (ADR-272 step 3) ──────────────────────────────────────────
+
+ok("a job whose module is off stands down, even on its owner", () => {
+  const owners: JobOwners = { "youtube-transcript": claim() };
+  const v = shouldRunHere({
+    owners,
+    job: "youtube-transcript",
+    selfDeviceId: "dev-pc",
+    offModules: ["youtube-transcripts"],
+  });
+  assert.deepEqual(v, { run: false, reason: "module-off" });
+  assert.ok(jobModuleOff("youtube-transcript", ["youtube-transcripts"]));
+  assert.ok(standDownDetail("module-off", null).includes("Modules"));
+});
+
+ok("a job with no module is unaffected by switched-off modules", () => {
+  const everything = ["youtube-transcripts", "agent", "todoist", "onedrive-export"];
+  assert.equal(jobModuleOff("transcription-poll", everything), false);
+  assert.deepEqual(
+    shouldRunHere({ owners: {}, job: "transcription-poll", selfDeviceId: "dev-cloud", offModules: everything }),
+    { run: true, reason: "unset" }
+  );
+});
+
+ok("a job whose module is on is unaffected", () => {
+  const owners: JobOwners = { "youtube-transcript": claim() };
+  const on = shouldRunHere({ owners, job: "youtube-transcript", selfDeviceId: "dev-pc", offModules: ["agent"] });
+  assert.deepEqual(on, { run: true, reason: "owner" });
+  // And another job's module being off does not leak onto it.
+  assert.equal(
+    shouldRunHere({ owners: {}, job: "export", selfDeviceId: "dev-cloud", offModules: ["youtube-transcripts"] }).run,
+    true
+  );
 });
 
 // ── Claiming ────────────────────────────────────────────────────────────────
