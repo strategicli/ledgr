@@ -539,7 +539,7 @@ export default function Modal({
       setDragging(false);
     };
     return (
-      <div className="fixed inset-0 z-50 bg-black/60" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <div data-item-modal className="fixed inset-0 z-50 bg-black/60" onMouseDown={(e) => e.target === e.currentTarget && close()}>
         <div
           role="dialog"
           aria-label={title || "Item"}
@@ -656,6 +656,7 @@ export default function Modal({
 
   return (
     <div
+      data-item-modal
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 py-3 sm:px-6 sm:py-8"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();

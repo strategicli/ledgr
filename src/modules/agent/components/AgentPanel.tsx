@@ -303,7 +303,11 @@ export default function AgentPanel() {
         onClick={() => setOpen(true)}
         title="Claude (Ctrl/Cmd+J)"
         aria-label="Open Claude"
-        className="fixed bottom-24 right-4 z-[45] flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-3 text-ink shadow-lg hover:bg-surface-2 sm:bottom-16"
+        // Lifts above the mobile nav drawer while it's open (--launcher-h, set
+        // by Launcher; same curve as the drawer). z-45 clears the nav (40);
+        // over an open item modal (50) it steps to 55, still under floating
+        // panels, the Claude sheet (66), and toasts/menus (60-70).
+        className="fixed bottom-[max(6rem,calc(var(--launcher-h,0px)_+_0.75rem))] right-4 z-[45] motion-safe:[transition:bottom_0.28s_cubic-bezier(0.2,0.9,0.3,1)] [html:has([data-item-modal])_&]:z-[55] flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-3 text-ink shadow-lg hover:bg-surface-2 sm:bottom-16"
       >
         <Sparkle />
       </button>

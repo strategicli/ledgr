@@ -97,6 +97,18 @@ export default function Launcher({
     };
   }, [open]);
 
+  // Publish the open drawer's height as --launcher-h on <html>, so floating
+  // buttons that live above the bar (the Claude launcher) can lift clear of the
+  // grid instead of covering its tiles. Unset while closed. The panel's height
+  // already includes the safe-area padding.
+  useEffect(() => {
+    const style = document.documentElement.style;
+    if (open && panel.current) style.setProperty("--launcher-h", `${panel.current.offsetHeight}px`);
+    return () => {
+      style.removeProperty("--launcher-h");
+    };
+  }, [open, reveal]);
+
   // --- The drag state machine ------------------------------------------------
   // Kept in a ref: touchmove writes styles straight to the DOM, so dragging
   // never re-renders React. `claimed` flips after the slop threshold; a tap
