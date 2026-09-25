@@ -16,6 +16,7 @@ import { createAttachment } from "@/lib/attachments";
 import { ItemError } from "@/lib/items";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { captureError } from "@/lib/log";
+import { absoluteStorageUrl, requestOriginFrom } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,12 @@ export async function POST(request: Request) {
         typeof input.contentType === "string" ? input.contentType : "",
       sizeBytes: typeof input.sizeBytes === "number" ? input.sizeBytes : NaN,
     });
-    return NextResponse.json(result, { status: 201 });
+    // A local-disk install signs a root-relative URL; this caller is a script,
+    // not a page, so hand it the absolute form on the address it used.
+    return NextResponse.json(
+      { ...result, uploadUrl: absoluteStorageUrl(result.uploadUrl, requestOriginFrom(request.headers)) },
+      { status: 201 }
+    );
   } catch (err) {
     if (err instanceof ItemError) {
       return NextResponse.json(
