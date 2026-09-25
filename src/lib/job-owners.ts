@@ -62,15 +62,59 @@
 // Pure on purpose (no db, no fs, no env): the callers pass in what they read,
 // so `scripts/verify-job-owners.mts` can exercise every branch in CI.
 
-/** The jobs this picker can move. Keyed by the ADR-214 job name. */
-export type MovableJob =
-  | "export"
-  | "calendar-sync"
-  | "email-import"
-  | "todoist-sync"
-  | "transcription-poll"
-  | "health-check"
-  | "youtube-transcript";
+import jobCatalog from "../../supervisor/jobs.json";
+
+// WHERE THE JOBS ARE WRITTEN DOWN. Once, in `supervisor/jobs.json` (ADR-272
+// step 3.3): the supervisor schedules from it and this file builds the picker
+// from it, so the two can no longer drift. Add or edit a job there.
+
+/**
+ * One job in `supervisor/jobs.json`. The first block is what the supervisor
+ * schedules; the second is what the picker shows, present only on the
+ * exclusive (`shared: false`) jobs. `label` is the supervisor's name for the
+ * job; `ownerLabel` is the owner-facing one the picker shows.
+ */
+export type JobCatalogEntry = {
+  path: string;
+  label: string;
+  at?: string;
+  everyMinutes?: number;
+  shared: boolean;
+  on: boolean;
+  timeoutMs?: number;
+  /** The module that owns the job. Unset means core. Nothing reads it yet. */
+  module?: string;
+  why: string;
+  /** The longer reasoning that would be a code comment, since JSON has none. */
+  notes?: string[];
+  ownerLabel?: string;
+  what?: string;
+  movable?: boolean;
+  blocked?: string;
+  consequence?: string | null;
+};
+
+export const JOB_CATALOG: Record<string, JobCatalogEntry> = jobCatalog;
+
+/**
+ * The jobs this picker can move (every `shared: false` job in the catalog), in
+ * the order the picker lists them. The order lives here rather than coming
+ * from the JSON because the JSON's order is the supervisor's run order;
+ * `verify-supervisor.mts` fails if this list and the catalog's exclusive jobs
+ * ever disagree.
+ */
+const PICKER_ORDER = [
+  "export",
+  "calendar-sync",
+  "email-import",
+  "todoist-sync",
+  "transcription-poll",
+  "health-check",
+  "youtube-transcript",
+] as const;
+
+/** Keyed by the ADR-214 job name. */
+export type MovableJob = (typeof PICKER_ORDER)[number];
 
 export type JobDef = {
   /** What the job is, in the owner's words. No "cron", no "target". */
@@ -98,88 +142,34 @@ export type JobDef = {
   consequence: string | null;
 };
 
-export const MOVABLE_JOBS: Record<MovableJob, JobDef> = {
-  export: {
-    label: "Offline backup",
-    what:
-      "Writes a copy of everything to OneDrive as plain files. That copy is what you would open if the internet were down.",
-    movable: true,
-    consequence:
-      "A backup that runs late is harmless: the next run catches up on everything that changed.",
-  },
-  "calendar-sync": {
-    label: "Calendar sync",
-    what: "Turns your calendar events into meeting records here.",
-    // PROVEN 2026-08-25 (ADR-221). The worry was a second copy of the same
-    // meeting, and it cannot happen: "have I already made a record for this
-    // event?" is answered from `items.ms_event_id`, which SYNCS, so a machine
-    // that has never run this job still knows every meeting every other copy
-    // made. There is no place-in-the-queue to lose either, because each run
-    // pulls the whole window fresh. `calendar_events` is a per-copy cache of
-    // what is on offer, and a new owner refills it on its first run
-    // (`verify-calendar-sync.mts` empties it and proves the next run creates
-    // nothing).
-    movable: true,
-    consequence:
-      "Meetings already brought in stay correct everywhere. The list of meetings waiting to be added only refreshes on the machine that runs it.",
-  },
-  "email-import": {
-    label: "Email capture",
-    what: "Turns messages you forward into items here.",
-    // PROVEN 2026-08-25 (ADR-221). "Reading the mailbox consumes it" was true;
-    // the conclusion drawn from it was not. What consumes a message is MOVING
-    // it out of the pickup folder, and that move happens in the mailbox itself,
-    // where every copy can see it. A new owner starting fresh lists the
-    // folder's current contents, which is exactly the messages nobody has
-    // brought in yet. The per-copy record is only an optimization on top of
-    // that. The second guard is `items.properties.email.internetMessageId`,
-    // which syncs, so even a message created but not yet moved is recognized
-    // elsewhere (`verify-email-in.mts` hands the job over mid-flight and proves
-    // it).
-    movable: true,
-    consequence:
-      "Nothing is missed while it waits. A forwarded message stays in the folder until it has been brought in.",
-  },
-  "todoist-sync": {
-    label: "Todoist sync",
-    what: "Keeps tasks in step with Todoist, in both directions.",
-    movable: false,
-    blocked: "Moving this needs one check first: it writes to Todoist as well as reading from it.",
-    consequence: null,
-  },
-  "transcription-poll": {
-    label: "Transcription",
-    what: "Collects finished transcripts of meeting recordings.",
-    movable: false,
-    blocked: "Moving this needs one check first: two machines would race for the same job.",
-    consequence: null,
-  },
-  "health-check": {
-    label: "Weekly check-up",
-    what: "Looks everything over once a week and notifies you only if something needs attention.",
-    movable: false,
-    blocked:
-      "Moving this needs one check first: notifications are registered per machine, so it would reach different devices.",
-    consequence: null,
-  },
-  "youtube-transcript": {
-    label: "Video transcripts",
-    what: "Writes the words spoken in a saved video into the saved link, so you can read and search them here.",
-    // Movable from the day it shipped, because there is no place in the line to
-    // lose. The waiting list is not stored anywhere: it is simply "saved videos
-    // that have no transcript yet", worked out fresh on every run. And the mark
-    // that says a video is already done lives in the video's own body, which
-    // syncs, so a machine that has never run this job still knows exactly which
-    // ones are finished. Only a machine with the transcribing tools installed
-    // can do the work, and one without them says so on Build rather than
-    // failing quietly.
-    movable: true,
-    consequence:
-      "A late run costs nothing. A video simply waits until the machine that does this picks it up, however long that takes.",
-  },
-};
+function pickerDef(name: MovableJob): JobDef {
+  const e = JOB_CATALOG[name];
+  if (
+    !e ||
+    e.shared ||
+    !e.ownerLabel ||
+    !e.what ||
+    typeof e.movable !== "boolean" ||
+    e.consequence === undefined
+  ) {
+    throw new Error(
+      `supervisor/jobs.json: "${name}" must be a shared:false job with ownerLabel, what, movable and consequence`
+    );
+  }
+  return {
+    label: e.ownerLabel,
+    what: e.what,
+    movable: e.movable,
+    ...(e.blocked !== undefined ? { blocked: e.blocked } : {}),
+    consequence: e.consequence,
+  };
+}
 
-export const MOVABLE_JOB_NAMES = Object.keys(MOVABLE_JOBS) as MovableJob[];
+export const MOVABLE_JOBS = Object.fromEntries(
+  PICKER_ORDER.map((name) => [name, pickerDef(name)])
+) as Record<MovableJob, JobDef>;
+
+export const MOVABLE_JOB_NAMES: MovableJob[] = [...PICKER_ORDER];
 
 /**
  * How the absent slot reads to a person, everywhere it is named. One string

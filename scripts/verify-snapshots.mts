@@ -344,7 +344,7 @@ ok("the supervisor's job catalog carries snapshot, hourly, shared, always schedu
   assert.equal(job.everyMinutes, 60);
   assert.equal(job.shared, true, "a purely local dump is safe on every peer");
   assert.equal(job.on, true, "the GUI switch only works if the job is scheduled to ask");
-  assert.ok(job.timeoutMs > 120_000, "a pg_dump needs longer than an API call");
+  assert.ok((job.timeoutMs ?? 0) > 120_000, "a pg_dump needs longer than an API call");
   const def = lib
     .normalizeCrons(undefined)
     .find((j: { name: string }) => j.name === "snapshot");

@@ -12,7 +12,14 @@
 //
 // Run: npx tsx scripts/verify-supervisor.mts
 import { existsSync, readFileSync } from "node:fs";
-import { MOVABLE_JOBS, type MovableJob } from "@/lib/job-owners";
+import assert from "node:assert";
+import {
+  JOB_CATALOG,
+  MOVABLE_JOBS,
+  MOVABLE_JOB_NAMES,
+  type JobCatalogEntry,
+  type MovableJob,
+} from "@/lib/job-owners";
 import { resolve } from "node:path";
 import {
   assembleAppEnv,
@@ -43,6 +50,7 @@ import {
   startupStatePath,
   stopSignalPath,
   LOCAL_JOBS,
+  loadJobCatalog,
   normalizeCrons,
   parseDailyAt,
   nextDailyAt,
@@ -1381,6 +1389,225 @@ check(
   check(
     "perf-audit measures buffers, not just wall clock",
     auditSrc.includes("ANALYZE, BUFFERS")
+  );
+}
+
+// THE JOB CATALOG IS ONE FILE (ADR-272 step 3.3). supervisor/jobs.json is read
+// by this process (LOCAL_JOBS) and by the app (MOVABLE_JOBS). These checks pin
+// that the two readers agree, and that the move from two hand-written lists to
+// one file changed nothing: the literals below are the values both lists held
+// the day before the move. When a job is deliberately edited, edit its literal
+// here in the same PR, so the change is visible in review.
+{
+  const raw = JSON.parse(readFileSync("supervisor/jobs.json", "utf8")) as Record<
+    string,
+    JobCatalogEntry
+  >;
+  check("jobs.json parses to an object of jobs", Object.keys(raw).length > 0);
+  check(
+    "every job in jobs.json has exactly one valid schedule",
+    Object.values(raw).every((e) =>
+      e.at !== undefined
+        ? e.everyMinutes === undefined && parseDailyAt(e.at) !== null
+        : Number.isFinite(e.everyMinutes) && (e.everyMinutes as number) >= 1
+    )
+  );
+  check(
+    "the supervisor exposes exactly the jobs in jobs.json, in its order",
+    JSON.stringify(Object.keys(raw)) === JSON.stringify(Object.keys(LOCAL_JOBS))
+  );
+  check(
+    "the app reads the same file",
+    JSON.stringify(JOB_CATALOG) === JSON.stringify(raw)
+  );
+  const exclusive = Object.keys(raw).filter((n) => !raw[n].shared).sort();
+  check(
+    "every job the picker lists is an exclusive (shared: false) job",
+    MOVABLE_JOB_NAMES.every((n) => raw[n] && raw[n].shared === false)
+  );
+  check(
+    "every exclusive job is in the picker",
+    JSON.stringify([...MOVABLE_JOB_NAMES].sort()) === JSON.stringify(exclusive),
+    exclusive.join(",")
+  );
+  const paths = Object.values(raw).map((e) => e.path);
+  check("no two jobs share a path", new Set(paths).size === paths.length);
+  check(
+    "a malformed catalog entry stops the load and names the job",
+    (() => {
+      try {
+        loadJobCatalog({ broken: { path: "/x", label: "X", shared: true, on: true } });
+        return false;
+      } catch (e) {
+        return String(e).includes('"broken"');
+      }
+    })() &&
+      throws(() =>
+        loadJobCatalog({ both: { path: "/x", label: "X", at: "03:00", everyMinutes: 5, shared: true, on: true } })
+      ) &&
+      throws(() => loadJobCatalog({ noshare: { path: "/x", label: "X", at: "03:00", on: true } }))
+  );
+
+  const localBefore = {
+    "purge": {
+      "path": "/api/machine/purge",
+      "label": "Trash purge and sync-oplog prune",
+      "at": "03:10",
+      "shared": true,
+      "on": true,
+      "why": "Every peer must run this itself: pruneSyncOps only ever prunes the oplog of the instance it runs on. The hard deletes are the same decision from the same data on every peer, and deleting an already-deleted row is a no-op."
+    },
+    "relatedness": {
+      "path": "/api/machine/relatedness",
+      "label": "Relatedness cache refresh",
+      "at": "03:40",
+      "shared": true,
+      "on": true,
+      "why": "item_relatedness is a per-instance cache, deliberately outside ADR-206's synced-table list, so a local peer's Discover and Loose Ends stay empty until it computes its own. Two peers filling their own caches is not a conflict."
+    },
+    "agent-purge": {
+      "path": "/api/machine/agent-purge",
+      "label": "Claude in Ledgr cleanup",
+      "at": "03:50",
+      "shared": true,
+      "on": true,
+      "why": "In-app agent chats are hub-local tables outside the synced set, so each machine clears its own expired side chats and old records. A peer without the agent has nothing to delete, which is a no-op."
+    },
+    "snapshot": {
+      "path": "/api/machine/snapshot",
+      "label": "Local snapshots (restore points)",
+      "everyMinutes": 60,
+      "shared": true,
+      "on": true,
+      "timeoutMs": 900000,
+      "why": "Purely local: it dumps THIS peer's own cluster to THIS peer's own disk, so two peers snapshotting is two independent backups rather than a conflict. SCHEDULED here, but switched on in the app (ADR-222): the endpoint asks `snapshots:enabled` and returns without dumping when the owner has not turned restore points on, which is the default. Scheduling it always is what lets that switch be a checkbox instead of a config edit and a restart."
+    },
+    "export": {
+      "path": "/api/machine/export",
+      "label": "OneDrive export",
+      "at": "04:10",
+      "shared": false,
+      "on": true,
+      "why": "One OneDrive folder. Two peers writing it would fight over the files and over items.exported_at — so the endpoint runs only on the copy named under Scheduled work, and stands down everywhere else. Scheduled here always so that naming this machine is all it takes (ADR-225)."
+    },
+    "calendar-sync": {
+      "path": "/api/machine/calendar-sync",
+      "label": "Calendar sync",
+      "everyMinutes": 240,
+      "shared": false,
+      "on": true,
+      "why": "Creates items from Graph events. Two peers matching the same event would create two rows and sync would propagate both — so the endpoint runs only on the copy named under Scheduled work. Scheduled here always (ADR-225)."
+    },
+    "email-import": {
+      "path": "/api/machine/email-import",
+      "label": "Email-in",
+      "everyMinutes": 240,
+      "shared": false,
+      "on": true,
+      "why": "Consumes the mailbox: whichever peer reads a message first is the only one that sees it — so the endpoint runs only on the copy named under Scheduled work. Scheduled here always (ADR-225)."
+    },
+    "todoist-sync": {
+      "path": "/api/machine/todoist-sync",
+      "label": "Todoist sync",
+      "everyMinutes": 180,
+      "shared": false,
+      "on": false,
+      "why": "Bidirectional against one Todoist account. Two peers pushing the same tasks is the classic double-write."
+    },
+    "transcription-poll": {
+      "path": "/api/machine/transcription-poll",
+      "label": "Transcription poll",
+      "everyMinutes": 15,
+      "shared": false,
+      "on": false,
+      "why": "Claims transcription jobs from the provider; two pollers race for the same job."
+    },
+    "youtube-transcript": {
+      "path": "/api/machine/youtube-transcript",
+      "label": "Video transcripts",
+      "everyMinutes": 10,
+      "shared": false,
+      "on": true,
+      "why": "Writes the transcript into the saved link itself. Two machines transcribing the same video would both write the same body and then fight over whose copy wins, so the endpoint runs only on the copy named under Scheduled work, and stands down everywhere else. Scheduled here always so that naming this machine is all it takes (ADR-225)."
+    },
+    "health-check": {
+      "path": "/api/machine/health-check",
+      "label": "Weekly health check",
+      "at": "07:00",
+      "shared": false,
+      "on": false,
+      "why": "Pushes to the owner's devices. Per-instance push subscriptions a local peer does not have, and it would double the alert where it does."
+    }
+  };
+  let localSame = true;
+  try {
+    assert.deepStrictEqual(LOCAL_JOBS, localBefore);
+  } catch {
+    localSame = false;
+  }
+  check(
+    "LOCAL_JOBS equals the values it held before the move to jobs.json",
+    localSame && JSON.stringify(LOCAL_JOBS) === JSON.stringify(localBefore)
+  );
+
+  const pickerBefore = {
+    "export": {
+      "label": "Offline backup",
+      "what": "Writes a copy of everything to OneDrive as plain files. That copy is what you would open if the internet were down.",
+      "movable": true,
+      "consequence": "A backup that runs late is harmless: the next run catches up on everything that changed."
+    },
+    "calendar-sync": {
+      "label": "Calendar sync",
+      "what": "Turns your calendar events into meeting records here.",
+      "movable": true,
+      "consequence": "Meetings already brought in stay correct everywhere. The list of meetings waiting to be added only refreshes on the machine that runs it."
+    },
+    "email-import": {
+      "label": "Email capture",
+      "what": "Turns messages you forward into items here.",
+      "movable": true,
+      "consequence": "Nothing is missed while it waits. A forwarded message stays in the folder until it has been brought in."
+    },
+    "todoist-sync": {
+      "label": "Todoist sync",
+      "what": "Keeps tasks in step with Todoist, in both directions.",
+      "movable": false,
+      "blocked": "Moving this needs one check first: it writes to Todoist as well as reading from it.",
+      "consequence": null
+    },
+    "transcription-poll": {
+      "label": "Transcription",
+      "what": "Collects finished transcripts of meeting recordings.",
+      "movable": false,
+      "blocked": "Moving this needs one check first: two machines would race for the same job.",
+      "consequence": null
+    },
+    "health-check": {
+      "label": "Weekly check-up",
+      "what": "Looks everything over once a week and notifies you only if something needs attention.",
+      "movable": false,
+      "blocked": "Moving this needs one check first: notifications are registered per machine, so it would reach different devices.",
+      "consequence": null
+    },
+    "youtube-transcript": {
+      "label": "Video transcripts",
+      "what": "Writes the words spoken in a saved video into the saved link, so you can read and search them here.",
+      "movable": true,
+      "consequence": "A late run costs nothing. A video simply waits until the machine that does this picks it up, however long that takes."
+    }
+  };
+  let pickerSame = true;
+  try {
+    assert.deepStrictEqual(MOVABLE_JOBS, pickerBefore);
+  } catch {
+    pickerSame = false;
+  }
+  check(
+    "MOVABLE_JOBS equals the values it held before the move, in the same picker order",
+    pickerSame &&
+      JSON.stringify(MOVABLE_JOBS) === JSON.stringify(pickerBefore) &&
+      JSON.stringify(MOVABLE_JOB_NAMES) === "[\"export\",\"calendar-sync\",\"email-import\",\"todoist-sync\",\"transcription-poll\",\"health-check\",\"youtube-transcript\"]"
   );
 }
 
