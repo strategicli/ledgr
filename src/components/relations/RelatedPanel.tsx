@@ -31,8 +31,9 @@ import {
 } from "@/lib/relations";
 import { resolveRelatedGroup } from "@/lib/related-views";
 import { formatPassageRef, passageSlug } from "@/lib/passages/ref";
-import { resolvePassageRefs } from "@/lib/passages/refs";
+import { resolvePassageRefs } from "@/modules/passages/lib/refs";
 import { getSettings } from "@/lib/settings";
+import { moduleOn } from "@/lib/modules/enabled";
 import { compareTypeKeys } from "@/lib/type-order";
 import { getType } from "@/lib/types";
 import { canvasIdForType } from "@/lib/modules";
@@ -79,7 +80,11 @@ export default async function RelatedPanel({
     getSettings(ownerId),
     // Passage @/refs authored in the body (ADR-149). Body-owned like mentions, so
     // these render as read-only chips to the passage page — no un-relate control.
-    resolvePassageRefs(ownerId, itemId),
+    // None while the passages module is off: its page would 404. getSettings is
+    // request-cached, so this second read is free.
+    getSettings(ownerId).then((s) =>
+      moduleOn(s, "passages") ? resolvePassageRefs(ownerId, itemId) : []
+    ),
   ]);
 
   const hostType = hostRows[0]?.type ?? "";

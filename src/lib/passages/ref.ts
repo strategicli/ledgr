@@ -5,6 +5,11 @@
 // one definition the editor picker, the on-save sync (refs.ts), the passage
 // page, and any future auto-tagger all share.
 //
+// CORE, not the passages module (ADR-272 step 4): the `ledgr://passage/` link is
+// part of the body dialect, and the fenced editor must parse and round-trip it
+// whether or not the module is on. canon.ts sits beside it for the same reason.
+// The module (src/modules/passages) owns the index, its page and its save hook.
+//
 // Encoding (pt 3): a verse is `book·1_000_000 + chapter·1_000 + verse`
 // (Rom 8:5 = 45_008_005). Max chapter 150 (Psalms) and max verse 176 (Ps 119)
 // both sit under 1_000, so the three fields never bleed into each other. A

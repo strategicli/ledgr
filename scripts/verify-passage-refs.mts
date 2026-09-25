@@ -22,7 +22,7 @@ const { items, users, passageRefs } = await import("../src/db/schema");
 const { createItem, updateItem } = await import("../src/lib/item-mutations");
 const { makeMarkdownBody } = await import("../src/lib/body");
 const { parsePassageRef, passageToMarkdown } = await import("../src/lib/passages/ref");
-const { resolvePassageRefs, itemsTouchingPassage, PASSAGE_ROLE } = await import("../src/lib/passages/refs");
+const { resolvePassageRefs, itemsTouchingPassage, PASSAGE_ROLE } = await import("../src/modules/passages/lib/refs");
 const { eq: dEq, inArray } = await import("drizzle-orm");
 
 const keyset = (arr: { startRef: number; endRef: number }[]) =>

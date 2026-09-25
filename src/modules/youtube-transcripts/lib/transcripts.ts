@@ -23,7 +23,7 @@ import { getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
 import { captureError, createLogger } from "@/lib/log";
 import { moduleOnFor } from "@/lib/modules/enabled";
-import { fetchTranscript, ytDlpVersion } from "@/lib/youtube/fetch";
+import { fetchTranscript, ytDlpVersion } from "@/modules/youtube-transcripts/lib/fetch";
 
 // The hosts a YouTube video can be saved from. youtu.be is the share-sheet form,
 // which is what the phone actually sends, so leaving it out would miss the most

@@ -16,6 +16,8 @@ import { mindmapModule } from "@/lib/modules/mindmap";
 import { paperModule } from "@/lib/modules/papers";
 import { songModule } from "@/lib/modules/songs";
 import { todoistModule } from "@/modules/todoist/manifest";
+import { passagesModule } from "@/modules/passages/manifest";
+import { youtubeTranscriptsModule } from "@/modules/youtube-transcripts/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -24,6 +26,9 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   fileModule,
   todoistModule,
   ...FEATURE_MODULES,
+  // Moved under src/modules/<id>/ (ADR-272 step 4).
+  youtubeTranscriptsModule,
+  passagesModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

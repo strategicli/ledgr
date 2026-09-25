@@ -504,6 +504,11 @@ export const itemRelatedness = pgTable(
 // queries at library size ("what touches verse V": start<=V AND end>=V; "what
 // overlaps [a,b]": start<=b AND end>=a); a GiST int-range index is the scale-up
 // if true interval search is ever needed.
+//
+// Owned by the passages module (src/modules/passages, ADR-272 step 4): its
+// onBodySave hook (and scripts/rebuild-passage-refs.mts) writes these rows. The
+// table stays here because every table lives in one schema file and one
+// migration stream.
 export const passageRefs = pgTable(
   "passage_refs",
   {

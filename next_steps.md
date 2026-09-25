@@ -34,8 +34,8 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    Modules page and PATCH /api/settings; no module sets it yet). Still open:
    `settingsSchema`, so a module's own options render on the Modules page.
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (themes, sharing,
-   youtube, ~~todoist~~, email, calendar-sync, onedrive-export, relatedness, snapshots,
-   passages, desk, ai-memory, live-context, agent, MCP tool families).
+   ~~youtube~~, ~~todoist~~, email, calendar-sync, onedrive-export, relatedness, snapshots,
+   ~~passages~~, desk, ai-memory, live-context, agent, MCP tool families).
 6. **Step 5: lazy-load the shells** so a disabled module ships zero bytes.
 7. **Step 6: instance defaults** reviewed with Tyler; done when his install is the same
    build with a shorter default list.

@@ -7,13 +7,14 @@ import { notFound, redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
 import { resolveOwner } from "@/lib/owner";
+import { pageGate } from "@/lib/modules/gate";
 import { bookByNum } from "@/lib/passages/canon";
 import {
   decodeRef,
   formatPassageRef,
   parsePassageSlug,
 } from "@/lib/passages/ref";
-import { itemsTouchingPassage, type PassageBacklink } from "@/lib/passages/refs";
+import { itemsTouchingPassage, type PassageBacklink } from "@/modules/passages/lib/refs";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function PassagePage({
 }) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
+  await pageGate(owner.id, "passages");
 
   const { ref } = await params;
   const passage = parsePassageSlug(decodeURIComponent(ref));

@@ -14,7 +14,11 @@ import {
   type SyncOp,
   type WriteAction,
 } from "./engine";
-import { replacePassageRefs } from "@/lib/passages/refs";
+import { hooksFor, type HookFn } from "@/lib/modules";
+import { moduleOn } from "@/lib/modules/enabled";
+// Attaches each module's server-only hooks (passages' onBodySave) onto its manifest.
+import "@/lib/modules/server-slots";
+import { getSettings } from "@/lib/settings";
 
 // The minimal db surface apply needs; both drizzle drivers satisfy it, and the
 // verify suite passes its own node-postgres instances for the two-DB tier.
@@ -233,24 +237,63 @@ async function runAction(
 }
 
 /**
- * The item + body an action wrote, when the write could change that item's
- * passage edges: an insert carrying a body, or an update whose merged fields
- * include one. Anything else (a soft-delete stamp, a title edit, a non-items
- * table) yields null, so a 500-op batch only derives for the bodies in it.
+ * The item + body an action wrote, when the write is a body save the modules'
+ * onBodySave hooks must see (passages rebuilds its edges from it): an insert
+ * carrying a body, or an update whose merged fields include one. Anything else
+ * (a soft-delete stamp, a title edit, a non-items table) yields null, so a
+ * 500-op batch only derives for the bodies in it.
  *
  * `fields` and `row` already hold the MERGED winning values, so the derived
- * edges match what the row will actually contain and no re-read is needed.
+ * rows match what the row will actually contain and no re-read is needed.
  */
-export function passageBodyFromAction(
+export function bodySaveFromAction(
   action: WriteAction
-): { itemId: string; body: unknown } | null {
+): { ownerId: string; itemId: string; body: unknown } | null {
   if (action.kind === "insert" && action.tbl === "items" && action.row.body != null) {
-    return { itemId: String(action.row.id), body: action.row.body };
+    return { ownerId: action.ownerId, itemId: String(action.row.id), body: action.row.body };
   }
   if (action.kind === "update" && action.tbl === "items" && "body" in action.fields) {
-    return { itemId: action.pkVal, body: action.fields.body };
+    return { ownerId: action.ownerId, itemId: action.pkVal, body: action.fields.body };
   }
   return null;
+}
+
+/**
+ * Run the enabled modules' onBodySave hooks for one applied action, through
+ * the caller's executor (ADR-272 step 4). Derived data the row write cannot
+ * carry: passage_refs is outside ADR-206's synced set and has no trigger, so
+ * a body arriving here must rebuild its own edges or the peer's passage index
+ * silently freezes. Passing the transaction keeps the row and its derived rows
+ * committing together. A hook that throws propagates, exactly as the direct
+ * call it replaced did: it aborts the transaction, or parks the action.
+ * `hooksOf` memoizes the owner's switches, so a batch reads settings once.
+ */
+async function runBodySaveHooks(
+  exec: SyncDb,
+  action: WriteAction,
+  hooksOf: (ownerId: string) => Promise<{ run: HookFn }[]>
+): Promise<void> {
+  const saved = bodySaveFromAction(action);
+  if (!saved) return;
+  for (const h of await hooksOf(saved.ownerId)) {
+    await h.run({ ...saved, db: exec as { execute(query: unknown): Promise<unknown> } });
+  }
+}
+
+// One settings read per owner per batch. An unreadable settings row falls
+// back to the manifest defaults, as the save path's runner does.
+function bodySaveHooksMemo(): (ownerId: string) => Promise<{ run: HookFn }[]> {
+  const cache = new Map<string, Promise<{ run: HookFn }[]>>();
+  return (ownerId) => {
+    let hit = cache.get(ownerId);
+    if (!hit) {
+      hit = getSettings(ownerId)
+        .catch(() => ({ modules: {} }))
+        .then((settings) => hooksFor("onBodySave", (id) => moduleOn(settings, id)));
+      cache.set(ownerId, hit);
+    }
+    return hit;
+  };
 }
 
 /** One change the hub could not apply, parked instead of re-tried forever
@@ -328,6 +371,7 @@ export async function applySyncOps(
   if (actions.length === 0) return { actions: 0, rejected: rejected.length, parked: [] };
 
   const plan = planActions(actions);
+  const hooksOf = bodySaveHooksMemo();
 
   const deleteItemsGroup = async (tgt: SyncDb, g: ItemsDeleteGroup, origin?: string) => {
     await tgt.execute(
@@ -369,12 +413,8 @@ export async function applySyncOps(
       for (const action of plan.stream) {
         await setOrigin(action.origin);
         await runAction(tx, action);
-        // Derived data the row write cannot carry: passage_refs is outside
-        // ADR-206's synced set and has no trigger, so a body arriving here
-        // must rebuild its own edges or the peer's passage index silently
-        // freezes. Inside the transaction, so the two commit together.
-        const derived = passageBodyFromAction(action);
-        if (derived) await replacePassageRefs(tx, derived.itemId, derived.body);
+        // Inside the transaction, so the row and its derived rows commit together.
+        await runBodySaveHooks(tx, action, hooksOf);
       }
       for (const g of plan.itemsDeletes) {
         await setOrigin(g.origin);
@@ -385,8 +425,7 @@ export async function applySyncOps(
     for (const action of plan.stream) {
       try {
         await runAction(db, action, action.origin);
-        const derived = passageBodyFromAction(action);
-        if (derived) await replacePassageRefs(db, derived.itemId, derived.body);
+        await runBodySaveHooks(db, action, hooksOf);
       } catch (err) {
         park(action, err);
       }

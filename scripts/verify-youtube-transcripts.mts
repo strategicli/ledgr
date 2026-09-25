@@ -7,14 +7,14 @@
 // the success and the failure — must be recognized by the same test that decides
 // what is still waiting. Pure: no DB, no network, nothing spawned.
 //   npx tsx scripts/verify-youtube-transcripts.mts
-import { vttToText } from "../src/lib/youtube/fetch";
+import { vttToText } from "../src/modules/youtube-transcripts/lib/fetch";
 import {
   VIDEO_URL_SQL_PATTERN,
   hasTranscriptMarker,
   isYoutubeVideoUrl,
   withFailure,
   withTranscript,
-} from "../src/lib/youtube/transcripts";
+} from "../src/modules/youtube-transcripts/lib/transcripts";
 
 let pass = 0;
 let fail = 0;
