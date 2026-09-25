@@ -5,7 +5,10 @@
 //
 // A REDIRECT, not a proxy: bytes must never pass through the app server
 // (CLAUDE.md principle 8, src/lib/storage/types.ts). The browser follows the
-// 302 to R2 and reads from there.
+// 302 to R2 and reads from there. On a self-hosted install with no bucket the
+// bytes live on this machine's disk, and the 302 goes to this app's own signed
+// /files/local/<key> URL instead (src/lib/storage/local.ts); the gate below is
+// the same either way.
 //
 // WHO MAY READ. The bucket is private, so there is no unsigned URL to any
 // object and the UUID alone is no longer the credential. Two ways in, and
@@ -55,7 +58,19 @@ export async function GET(request: Request, context: Context) {
   }
 
   const att = await getAttachmentForRead(id);
-  if (!att) return new NextResponse("Not found", { status: 404 });
+  if (!att) {
+    // Only the signed-in owner learns why, and the words are the same for
+    // every missing id, so this confirms nothing about any file. The common
+    // real cause: files live on the copy of Ledgr they were added to, and the
+    // attachment rows are not in sync yet, so another copy has no record.
+    const owner = await resolveOwner();
+    return new NextResponse(
+      owner
+        ? "Not found. This copy of Ledgr has no record of this file. Files stay on the copy they were added to; they don't sync between copies yet."
+        : "Not found",
+      { status: 404 }
+    );
+  }
 
   const token = new URL(request.url).searchParams.get(SHARE_PARAM);
   let allowed = false;
@@ -74,7 +89,18 @@ export async function GET(request: Request, context: Context) {
   }
   if (!allowed) return new NextResponse("Not found", { status: 404 });
 
-  return NextResponse.redirect(await storage.presignDownload(att.storageKey), {
+  const target = await storage.presignDownload(att.storageKey);
+  // The local disk signs a root-relative URL (this app serves the bytes), and
+  // a relative Location keeps the browser on whatever address it came in on:
+  // localhost, the tailnet name, a phone. NextResponse.redirect insists on an
+  // absolute URL, so that path stays for R2's absolute one, unchanged.
+  if (target.startsWith("/")) {
+    return new NextResponse(null, {
+      status: 302,
+      headers: { location: target, "cache-control": CACHE_CONTROL },
+    });
+  }
+  return NextResponse.redirect(target, {
     status: 302,
     headers: { "cache-control": CACHE_CONTROL },
   });

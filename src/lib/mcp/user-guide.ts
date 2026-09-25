@@ -1074,6 +1074,16 @@ upload that puts you past 80% of your quota says so.
 Limits: about **10 GB** in total, **100 MB** per file, and **2 GB** for an audio
 or video file.
 
+**Where files are kept.** A copy with cloud storage (Cloudflare R2) keeps them
+there. A copy you run on your own computer without it keeps them on that
+computer, in its data folder, with nothing to set up: uploading just works.
+**Build → Files** says which one this copy uses. Files kept on a computer come
+along in its restore points (Build → Backups), so restoring one brings back
+files deleted since. Two things only cloud storage can do: transcribe an
+uploaded recording (the transcription service has to reach the file from the
+internet), and show the same files on another copy of Ledgr. Files stay on the
+copy they were added to; opening one somewhere else says so.
+
 **Deleting a file for real** is the **Delete** on a file row (a File item's
 panel, or a record's Files card) — that removes it from storage. Deleting a
 link or image out of a body does **not** delete the file behind it; it keeps

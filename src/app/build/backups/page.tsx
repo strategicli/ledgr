@@ -128,7 +128,8 @@ export default async function Backups() {
           <Card>
             <p className="text-sm text-ink-muted">
               A snapshot is a complete copy of this machine&rsquo;s database at one
-              moment. Keeping a spread of them means a mistake bigger than one
+              moment, plus the attached files when they are stored on this
+              computer. Keeping a spread of them means a mistake bigger than one
               item&rsquo;s history &mdash; a bad import, a batch delete, a wrong bulk
               edit &mdash; can be answered by looking at how things were an hour
               ago, rather than waiting for the weekly backup.
@@ -242,7 +243,11 @@ export default async function Backups() {
               <Mono>npm run local:snapshot -- browse &lt;time&gt;</Mono> starts a
               throwaway copy on a spare port so you can look through it and copy
               what you need back out.{" "}
-              <Mono>npm run local:snapshot -- list</Mono> names them.
+              <Mono>npm run local:snapshot -- list</Mono> names them. To put one
+              back for real, stop Ledgr and run{" "}
+              <Mono>npm run local:restore -- &lt;its .dump file&gt;</Mono>. When files
+              are stored on this computer, any file deleted since that moment
+              comes back with it.
             </p>
           </Card>
         </section>

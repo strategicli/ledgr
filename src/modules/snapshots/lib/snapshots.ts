@@ -26,8 +26,10 @@
 // documented `npm run local:restore` path, which resets the sync identity.
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import * as fsp from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { listFiles } from "@/lib/storage/local";
 import { chooseKeepers } from "@/modules/snapshots/lib/snapshots-plan";
 
 // EVERY child process in this file is spawned ASYNCHRONOUSLY, and that is the
@@ -205,6 +207,133 @@ export async function takeSnapshot(opts: {
   }
   renameSync(partial, final);
   return { name, bytes: statSync(final).size };
+}
+
+// ── Files (installs that keep attachments on local disk) ────────────────────
+//
+// A restore point with the database but not the files is a trap: restore it,
+// and every file deleted since comes back as a row pointing at nothing. So a
+// snapshot on a local-disk install also records WHICH files existed
+// (`<name>.dump.files`, one key per line) and keeps a copy of each in one
+// shared store, `snapshots/files/<key>`.
+//
+// Cheap because a stored file never changes under its key (a new upload is a
+// new key): each file enters the store once, as a HARD LINK where the disk
+// allows it, so a snapshot costs no extra space until the live file is
+// deleted, and then the store's link is what keeps the bytes. The store holds
+// exactly the files some kept snapshot lists; pruning a snapshot drops what
+// only it needed.
+//
+// Installs whose files are in R2 have no files folder, so none of this runs.
+
+export function snapshotFilesStore(dir: string): string {
+  return join(dir, "files");
+}
+
+export function filesManifestPath(dir: string, name: string): string {
+  return join(dir, `${name}.files`);
+}
+
+/** Link (or copy) every live file not yet in the store. Returns the keys seen. */
+export async function captureFiles(filesDir: string, dir: string): Promise<string[] | null> {
+  if (!existsSync(filesDir)) return null;
+  const store = snapshotFilesStore(dir);
+  const keys: string[] = [];
+  for (const { key } of await listFiles(filesDir)) {
+    keys.push(key);
+    const to = join(store, ...key.split("/"));
+    if (existsSync(to)) continue;
+    const from = join(filesDir, ...key.split("/"));
+    try {
+      await fsp.mkdir(dirname(to), { recursive: true });
+      try {
+        await fsp.link(from, to);
+      } catch {
+        // another volume, or a filesystem without hard links: a real copy
+        await fsp.copyFile(from, to);
+      }
+    } catch {
+      // vanished mid-walk (deleted just now): nothing to keep, drop the key
+      keys.pop();
+    }
+  }
+  return keys;
+}
+
+/** Write the file list for one snapshot, via .part + rename like the dump. */
+export async function writeFilesManifest(dir: string, name: string, keys: string[]): Promise<void> {
+  const final = filesManifestPath(dir, name);
+  const partial = join(dir, `.${name}.files.part`);
+  await fsp.writeFile(partial, [...new Set(keys)].sort().join("\n"));
+  await fsp.rename(partial, final);
+}
+
+/**
+ * Drop manifests whose snapshot is gone, then every stored file that no
+ * remaining manifest lists AND that is gone from the live folder. The second
+ * condition costs nothing (the store's copy of a live file is a hard link) and
+ * means a snapshot being taken right now, whose manifest isn't written yet,
+ * can never lose a file to a prune running beside it.
+ */
+export async function pruneSnapshotFiles(dir: string, filesDir: string): Promise<number> {
+  let names: string[];
+  try {
+    names = await fsp.readdir(dir);
+  } catch {
+    return 0; // no snapshots folder yet
+  }
+  const wanted = new Set<string>();
+  for (const f of names) {
+    if (!f.endsWith(".dump.files")) continue;
+    if (!existsSync(join(dir, f.slice(0, -".files".length)))) {
+      await fsp.rm(join(dir, f), { force: true });
+      continue;
+    }
+    for (const k of (await fsp.readFile(join(dir, f), "utf8")).split("\n")) if (k) wanted.add(k);
+  }
+  const store = snapshotFilesStore(dir);
+  let removed = 0;
+  for (const { key } of await listFiles(store)) {
+    if (wanted.has(key) || existsSync(join(filesDir, ...key.split("/")))) continue;
+    const p = join(store, ...key.split("/"));
+    await fsp.rm(p, { force: true });
+    await fsp.rmdir(dirname(p)).catch(() => {}); // empty per-file folder
+    removed += 1;
+  }
+  return removed;
+}
+
+/**
+ * A snapshot plus its files, THE one way both the app and the terminal take
+ * one. Files are captured on either side of the dump: before, so a file
+ * deleted while pg_dump runs is already kept; after, so a file that arrived
+ * during the dump (whose row the dump may hold) is kept too. `files` is null
+ * where there is no local files folder (an R2 install), and then nothing but
+ * the dump is written, exactly as before.
+ */
+export async function takeSnapshotWithFiles(opts: {
+  dbUrl: string;
+  dir: string;
+  filesDir: string;
+}): Promise<{ name: string; bytes: number; files: number | null }> {
+  const before = await captureFiles(opts.filesDir, opts.dir);
+  const { name, bytes } = await takeSnapshot({ dbUrl: opts.dbUrl, dir: opts.dir });
+  const after = await captureFiles(opts.filesDir, opts.dir);
+  if (!before && !after) return { name, bytes, files: null };
+  const keys = [...new Set([...(before ?? []), ...(after ?? [])])];
+  await writeFilesManifest(opts.dir, name, keys);
+  return { name, bytes, files: keys.length };
+}
+
+/** Prune to policy, snapshots then the file store they no longer need. */
+export async function pruneWithFiles(
+  dir: string,
+  keep: number,
+  filesDir: string
+): Promise<string[]> {
+  const removed = pruneSnapshots(dir, keep);
+  await pruneSnapshotFiles(dir, filesDir);
+  return removed;
 }
 
 /** Delete the snapshots the plan does not keep. Returns what was removed. */

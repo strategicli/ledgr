@@ -38,10 +38,11 @@ import {
 import {
   findPgTool,
   listSnapshots,
-  pruneSnapshots,
+  pruneWithFiles,
   snapshotsDir,
-  takeSnapshot,
+  takeSnapshotWithFiles,
 } from "@/modules/snapshots/lib/snapshots";
+import { localFilesDir } from "@/lib/storage/local";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(here, "..");
@@ -245,16 +246,22 @@ try {
       break;
     case "now": {
       const keep = await readKeep();
-      const { name, bytes } = await takeSnapshot({ dbUrl: buildDbUrl(cfg), dir });
-      console.log(`Took ${name} (${humanBytes(bytes)})`);
-      const removed = pruneSnapshots(dir, keep);
+      const { name, bytes, files } = await takeSnapshotWithFiles({
+        dbUrl: buildDbUrl(cfg),
+        dir,
+        filesDir: localFilesDir(cfg.dataDir),
+      });
+      console.log(
+        `Took ${name} (${humanBytes(bytes)})${files === null ? "" : `, with ${files} file(s)`}`
+      );
+      const removed = await pruneWithFiles(dir, keep, localFilesDir(cfg.dataDir));
       if (removed.length > 0) console.log(`Pruned ${removed.length} older snapshot(s).`);
       printList(keep);
       break;
     }
     case "prune": {
       const keep = await readKeep();
-      const removed = pruneSnapshots(dir, keep);
+      const removed = await pruneWithFiles(dir, keep, localFilesDir(cfg.dataDir));
       console.log(removed.length === 0 ? "Nothing to prune." : `Pruned ${removed.length}.`);
       printList(keep);
       break;

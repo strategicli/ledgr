@@ -67,6 +67,15 @@ export async function startAudioTranscription(
   }
   const storage = getStorage();
   if (!storage) throw new ItemError("bad_request", "file storage is not configured");
+  // The vendor fetches the audio itself, from the internet. A file on this
+  // computer's disk has no address it can reach, so say so up front rather
+  // than submit a URL that can only fail on the vendor's side.
+  if (storage.kind === "local") {
+    throw new ItemError(
+      "bad_request",
+      "Transcribing an uploaded recording needs cloud file storage (R2). This install keeps files on this computer, where the transcription service can't reach them. Paste a transcript instead."
+    );
+  }
 
   const rows = await getDb()
     .select({
