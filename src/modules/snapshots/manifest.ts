@@ -20,5 +20,9 @@ export const snapshotsModule: ModuleManifest = {
   enabledByDefault: true,
   types: [],
   exporters: [],
+  perInstallNote: {
+    text: "Restore points are also switched per computer on Build → Backups.",
+    href: "/build/backups",
+  },
   routes: ["src/app/api/snapshots/route.ts", "src/app/api/machine/snapshot/route.ts"],
 };

@@ -34,6 +34,7 @@ export const agentModule: ModuleManifest = {
   types: [],
   exporters: [],
   available: agentAvailable,
+  settingsPanel: "agent",
   routes: [
     "src/app/api/agent/approval/[id]/route.ts",
     "src/app/api/agent/health/route.ts",

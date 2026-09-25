@@ -263,6 +263,20 @@ export type ModuleManifest = {
   // a signed webhook or a token-credentialed feed. proxy.ts appends every
   // registered module's list, on or off: see `modulePublicPaths`.
   publicPaths?: string[];
+  // A panel id (ADR-272 step 3 item 7) resolved through `module-panels.tsx`'s
+  // `MODULE_SETTINGS_PANELS`, so the Modules page can show a module's own
+  // owner-facing options (model choice, prompt ids, …) under its row without
+  // the page knowing each module. Deliberately NOT a schema-driven form: the
+  // plan's `settingsSchema` would need a generator for select/relation/number
+  // fields, which is more machinery than the one module that needs this today
+  // (the agent) justifies. A future module with several simple options can
+  // still add a real schema slot later; this is the smallest honest version.
+  settingsPanel?: string;
+  // A one-line pointer for the Modules page when part of this module's switch
+  // lives per COMPUTER (in job_state), not per owner in settings.modules — e.g.
+  // snapshots' `snapshots:enabled` on Build → Backups. Shown under the module's
+  // row so the owner doesn't go hunting for the rest of the switch.
+  perInstallNote?: { text: string; href: string };
   // Module ids this module cannot run without. isModuleEnabled does NOT enforce
   // it; the Modules page and PATCH /api/settings do, via `requiresViolations`.
   requires?: string[];
