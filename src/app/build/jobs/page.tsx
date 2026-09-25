@@ -11,7 +11,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getUpdateReport } from "@/lib/updates";
-import { moduleOn } from "@/lib/modules/enabled";
+import { moduleOn, offModuleIds } from "@/lib/modules/enabled";
 import JobOwnerControl from "@/components/updates/JobOwnerControl";
 import { getSettings } from "@/lib/settings";
 import { ytDlpVersion } from "@/lib/youtube/fetch";
@@ -23,6 +23,7 @@ import { readJobOwners, installLabel } from "@/lib/job-owners-store";
 import {
   MOVABLE_JOBS,
   MOVABLE_JOB_NAMES,
+  jobModuleOff,
   ownerLine,
   ownershipOf,
   ownershipWarning,
@@ -124,6 +125,8 @@ export default async function ScheduledJobs() {
   // is two writers on one folder, and you cannot see that from one machine if
   // only local peers show the answer.
   const jobOwners = await readJobOwners(owner.id);
+  // A job whose module is off does not run anywhere (ADR-272 step 3).
+  const offModules = offModuleIds(settings);
   const selfDeviceId = await readLocalDeviceId();
   // The roster (ADR-220) is what turns the picker from "run it here" into "run
   // it on that machine over there": one row per copy, keyed by the same ids the
@@ -308,7 +311,17 @@ export default async function ScheduledJobs() {
                       <p className="ui-row text-ink">
                         {def.label}{" "}
                         <span className="ui-meta text-ink-subtle">
-                          &middot; {ownerLine({ owners: jobOwners, job: name, selfDeviceId })}
+                          &middot;{" "}
+                          {jobModuleOff(name, offModules) ? (
+                            <>
+                              Off (module).{" "}
+                              <Link href="/build/modules" className="text-[var(--accent)] hover:underline">
+                                Turn it on under Modules
+                              </Link>
+                            </>
+                          ) : (
+                            ownerLine({ owners: jobOwners, job: name, selfDeviceId })
+                          )}
                         </span>
                       </p>
                       <p className="ui-meta mt-0.5 text-ink-subtle">{def.what}</p>

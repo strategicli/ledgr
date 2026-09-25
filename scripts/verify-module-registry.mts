@@ -23,6 +23,7 @@ import {
   canvasIdForType,
   coreModule,
   exportersForType,
+  hooksFor,
   isModuleEnabled,
   moduleForType,
   referenceModule,
@@ -222,6 +223,46 @@ check(
   JSON.stringify(applyLegacyModulePatch({ modules: { papers: false } }, { songs: false })) ===
     JSON.stringify({ songs: false, papers: false })
 );
+
+// --- 7. save hooks (ADR-272 step 3.6) ---------------------------------------
+const hookFixture: ModuleManifest = {
+  id: "hook-fixture",
+  label: "Hook fixture",
+  enabledByDefault: true,
+  types: [],
+  exporters: [],
+  hooks: { onBodySave: async () => {} },
+};
+registerModule(hookFixture);
+const listed = (on: boolean) =>
+  hooksFor("onBodySave", (id) => (id === "hook-fixture" ? on : true)).some((h) => h.moduleId === "hook-fixture");
+check("a module's hook is listed while it is on", listed(true));
+check("a module's hook is not listed while it is off", !listed(false));
+check("a module with no hook of that name is not listed", !hooksFor("onCreate", () => true).some((h) => h.moduleId === "hook-fixture"));
+
+const passages = allModules().find((m) => m.id === "passages");
+check("passages is a registered module", !!passages);
+check("passages is on by default (it always ran)", passages?.enabledByDefault === true && moduleOn({ modules: {} }, "passages"));
+check("passages adds no item types", passages?.types.length === 0);
+check("passages owns an onBodySave hook", typeof passages?.hooks?.onBodySave === "function");
+check("youtube-transcripts owns an onCreate hook", typeof allModules().find((m) => m.id === "youtube-transcripts")?.hooks?.onCreate === "function");
+check("passages' hook is dropped when the owner switches it off", !hooksFor("onBodySave", (id) => moduleOn({ modules: { passages: false } }, id)).some((h) => h.moduleId === "passages"));
+
+// The runner: a throwing hook is reported and the next one still runs.
+const { runEach } = await import("../src/lib/modules/hooks");
+const ran: string[] = [];
+const reported: unknown[] = [];
+await runEach(
+  "onBodySave",
+  [
+    { moduleId: "a", run: async () => { ran.push("a"); throw new Error("boom"); } },
+    { moduleId: "b", run: async () => { ran.push("b"); } },
+  ],
+  { ownerId: "o", itemId: "i", body: null },
+  async (_source, _err, opts) => { reported.push(opts.detail); }
+);
+check("a throwing hook does not stop the next one", ran.join(",") === "a,b");
+check("the throwing hook is reported with its module", reported.length === 1 && (reported[0] as { module: string }).module === "a");
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

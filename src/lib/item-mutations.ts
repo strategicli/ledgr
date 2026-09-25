@@ -38,7 +38,7 @@ import type { PropertyDef } from "@/lib/types";
 import { getItem, itemColumns, ItemError, type ItemStatus, type Urgency } from "@/lib/items";
 import { routeFor } from "@/lib/inbox-sources";
 import { syncMentionRelations } from "@/lib/mentions";
-import { syncPassageRefs } from "@/lib/passages/refs";
+import { runHooks } from "@/lib/modules/hooks";
 import { relateItems } from "@/lib/relations";
 import { getSettings } from "@/lib/settings";
 import { parseRecurrence } from "@/lib/recurrence";
@@ -62,7 +62,6 @@ import {
 import { statusSchemaForType } from "@/lib/status-schema";
 import { getStorage } from "@/lib/storage";
 import { emitActivity, homeParentOf, isTrackedSubjectType } from "@/lib/activity";
-import { jobRunVerdict } from "@/lib/job-owners-store";
 import { captureError } from "@/lib/log";
 
 // A new revision is skipped when the latest one is younger than this; the
@@ -277,7 +276,8 @@ async function snapshotRevision(
 }
 
 // The indexes a saved body implies: its revision snapshot, its @-mention edges,
-// and its passage refs. Every one of these runs AFTER the items row is already
+// and whatever enabled modules derive from it (their onBodySave hooks, e.g.
+// passage refs, ADR-272 step 3.6). Every one of these runs AFTER the items row is already
 // committed, so a failure here must never be reported to the caller as a failed
 // write. It used to be: one bad mention href threw out of syncMentionRelations,
 // and `edit_item_body` answered "internal error" on a find-and-replace that had
@@ -286,7 +286,7 @@ async function snapshotRevision(
 // worse than a stale derived index, so each step is captured and the write is
 // still reported as the success it was. This is the posture the activity-log
 // lines below already take; `source: "item-index"` is where a stale index shows
-// up in Build → Errors.
+// up in Build → Errors (`source: "module-hook"` for a module's hook).
 async function indexSavedBody(
   ownerId: string,
   itemId: string,
@@ -299,7 +299,7 @@ async function indexSavedBody(
   }
   // Both run on a null body too: clearing a body clears its edges.
   steps.push(["mentions", () => syncMentionRelations(ownerId, itemId, body)]);
-  steps.push(["passage_refs", () => syncPassageRefs(ownerId, itemId, body)]);
+  steps.push(["module_hooks", () => runHooks("onBodySave", { ownerId, itemId, body })]);
   for (const [step, run] of steps) {
     try {
       await run();
@@ -408,7 +408,12 @@ export async function createItem(ownerId: string, input: ItemInput) {
   if (destinationId) {
     await relateItems(ownerId, created.id, destinationId, "project").catch(() => {});
   }
-  kickYoutubeTranscript(ownerId, created.type, created.url);
+  // Modules' onCreate hooks (ADR-272 step 3.6), e.g. starting a saved video's
+  // transcript. FIRE AND FORGET, deliberately: the caller's reply goes back at
+  // once, so sharing a video from a phone never waits on Whisper. runHooks never
+  // rejects (each hook's failure goes to captureError), so no unhandled
+  // rejection can take the process down.
+  void runHooks("onCreate", { ownerId, itemId: created.id, type: created.type, url: created.url });
   return created;
 }
 
@@ -446,54 +451,6 @@ export async function resolveRoute(
       )
     );
   return live.length > 0 ? route : { inbox: true, destinationId: null };
-}
-
-/**
- * Start transcribing a video the moment it is saved, instead of leaving it to
- * the ten-minute timer.
- *
- * ONE GUARD, IN THE ONE FUNCTION EVERY SAVE ALREADY GOES THROUGH: the phone
- * share sheet, the desktop bookmarklet, quick capture in the app, and anything
- * Claude files over the assistant connection all create their link here. That
- * is why no capture route carries its own copy of this, and why a capture path
- * added next year gets it without anyone remembering to wire it up.
- *
- * The timer stays as the backstop, and it is not redundant: it is what picks up
- * a video saved while this copy was closed, or saved on another copy entirely
- * (a video saved in the cloud arrives here on the next sync and waits for the
- * next tick).
- *
- * FIRE AND FORGET, deliberately. The caller's reply goes back at once and the
- * transcript finishes behind it, so sharing a video from a phone never waits on
- * Whisper. Nothing here may delay or fail the create, so the promise is
- * swallowed into captureError rather than returned: an unhandled rejection out
- * of a background task takes the whole process down.
- */
-function kickYoutubeTranscript(ownerId: string, type: string, url: string | null) {
-  // The cheap half first, in memory, so creating a task or a note pays one
-  // string comparison and nothing else.
-  if (type !== "link" || !url) return;
-  void (async () => {
-    // Loaded on demand, never at the top of this file: the transcript module
-    // reaches for yt-dlp and Whisper as child processes, and item creation is
-    // in practically every bundle on the server.
-    const { isYoutubeVideoUrl, runYoutubeTranscripts } = await import("@/lib/youtube/transcripts");
-    if (!isYoutubeVideoUrl(url)) return;
-    // Only the machine named under Scheduled work does this, exactly as the
-    // timer path checks. Whether the feature is switched on at all is the
-    // owner's separate setting, which the job reads for itself: asking it here
-    // too is how two answers to one question start disagreeing.
-    const { run } = await jobRunVerdict(ownerId, "youtube-transcript");
-    if (!run) return;
-    // Detached for the same reason the scheduled endpoint is: the save that
-    // started this is an HTTP request too, and it must not be held open while a
-    // video is transcribed.
-    await runYoutubeTranscripts(ownerId, { detach: true });
-  })().catch((err) =>
-    captureError("youtube-transcript", err, {
-      detail: { trigger: "a video was saved, so the transcript started at once" },
-    })
-  );
 }
 
 export async function updateItem(

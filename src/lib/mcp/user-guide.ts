@@ -446,7 +446,9 @@ Build your own kinds of item at \`/build/types\`.
   groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off
   hides its type from quick capture, "+ New" and an assistant's list of types.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
-  transcripts and the Notification center (paused). Nothing is deleted: existing
+  transcripts, the Notification center (paused) and Scripture passages (on by
+  default: a Bible reference in a body becomes a link to that passage's page;
+  switched off, new references stop linking). Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
   back on. The In-app agent's switch is greyed out on a copy that cannot run it.
 - **Workflows and wikis** at \`/build/new\` ask a few questions and generate a
@@ -1416,7 +1418,9 @@ log, so it counts on the health report rather than passing quietly.
 **Scheduled work.** Some jobs write somewhere shared: one OneDrive folder, one
 mailbox, one Todoist account. Exactly one of your machines may do each of them,
 so this is where you say which one. Every device shows the same answer, because
-two machines doing the same job is the mistake worth catching.
+two machines doing the same job is the mistake worth catching. A job that
+belongs to a module you have switched off shows **Off (module)** with a link to
+\`/build/modules\`, and does not run on any machine until you turn it back on.
 
 Each job has a **Runs on** dropdown listing every copy of Ledgr you have, so you
 can send a job to a machine you are not sitting at. Naming a machine is all it

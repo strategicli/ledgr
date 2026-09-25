@@ -82,7 +82,11 @@ export type JobCatalogEntry = {
   shared: boolean;
   on: boolean;
   timeoutMs?: number;
-  /** The module that owns the job. Unset means core. Nothing reads it yet. */
+  /**
+   * The module that owns the job. Unset means core. While that module is off
+   * for the owner, the job's gate answers "module-off" (see `shouldRunHere`).
+   * An id no module has registered yet (step 4 moves the code) gates nothing.
+   */
   module?: string;
   why: string;
   /** The longer reasoning that would be a code comment, since JSON has none. */
@@ -245,7 +249,24 @@ export function parseJobOwners(raw: unknown): JobOwners {
  * made: nobody was named, so the cloud copy has it and this peer is
  * deliberately idle. It must never read as an error (ADR-225).
  */
-export type Verdict = "unset" | "unset-standby" | "owner" | "not-owner" | "nobody";
+export type Verdict =
+  | "unset"
+  | "unset-standby"
+  | "owner"
+  | "not-owner"
+  | "nobody"
+  // The job's module is switched off on Build → Modules (ADR-272 step 3).
+  | "module-off";
+
+/**
+ * Is this job's module switched off? `offModules` is the owner's list of
+ * registered modules that are off (`offModuleIds` in modules/enabled.ts), so a
+ * catalog id no module registers yet is never in it and gates nothing.
+ */
+export function jobModuleOff(job: string, offModules: readonly string[]): boolean {
+  const mod = JOB_CATALOG[job]?.module;
+  return !!mod && offModules.includes(mod);
+}
 
 /**
  * What a stood-down job says for itself, in the response the supervisor records
@@ -259,6 +280,8 @@ export function standDownDetail(reason: Verdict, ownerLabel: string | null): str
   switch (reason) {
     case "nobody":
       return "Nothing is set to run this job.";
+    case "module-off":
+      return "This job's module is switched off under Build → Modules, so it does not run anywhere.";
     case "unset-standby":
       return "Nobody is named for this job, so the cloud copy does it. Name this machine under Scheduled work to move it here.";
     default:
@@ -303,7 +326,10 @@ export function shouldRunHere(opts: {
    * make impossible.
    */
   standDownWhenUnset?: boolean;
+  /** The owner's switched-off module ids. A job whose module is here never runs. */
+  offModules?: readonly string[];
 }): { run: boolean; reason: Verdict } {
+  if (jobModuleOff(opts.job, opts.offModules ?? [])) return { run: false, reason: "module-off" };
   const owner = ownershipOf(opts.owners, opts.job);
   if (owner.state === "unset") {
     return opts.standDownWhenUnset

@@ -6,6 +6,7 @@
 // pure half has to stay importable by a verify script that runs with no
 // database.
 import { getSettings, updateSettings } from "@/lib/settings";
+import { offModuleIds } from "@/lib/modules/enabled";
 import { readLocalDeviceId } from "@/lib/sync/client";
 import { listInstalls, seedLabel } from "@/lib/installs";
 import {
@@ -59,13 +60,16 @@ export async function jobRunVerdict(
   ownerId: string,
   job: MovableJob
 ): Promise<{ run: boolean; reason: Verdict; ownerLabel: string | null }> {
-  const owners = await readJobOwners(ownerId);
+  const settings = await getSettings(ownerId);
+  const owners = settings.jobOwners;
   const selfDeviceId = await readLocalDeviceId();
   const verdict = shouldRunHere({
     owners,
     job,
     selfDeviceId,
     standDownWhenUnset: isSupervisedPeer(),
+    // A job whose module is off stands down like a not-owner (ADR-272 step 3).
+    offModules: offModuleIds(settings),
   });
   const state = ownershipOf(owners, job);
   return {

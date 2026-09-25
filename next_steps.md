@@ -22,8 +22,10 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    are not on the page yet.
 4. **Step 3: manifest slots replace the hand-written lists**, one PR each: build-nav,
    proxy public paths, ~~the job catalog~~ (done: `supervisor/jobs.json`, read by both
-   the supervisor and the app), MCP tool gating, health checks, the on-save/on-create
-   hooks, then `requires`.
+   the supervisor and the app), ~~job gating by module~~ (done: a job whose module
+   is off answers "module-off" and stands down), MCP tool gating, health checks,
+   ~~the on-save/on-create hooks~~ (done: `hooks` slot, `src/lib/modules/hooks.ts`;
+   passages is now a default-on module), then `requires`.
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (themes, sharing,
    youtube, todoist, email, calendar-sync, onedrive-export, relatedness, snapshots,
    passages, desk, ai-memory, live-context, agent, MCP tool families).
