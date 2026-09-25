@@ -35,8 +35,10 @@ const link = (r: { startRef: number; endRef: number }) => passageToMarkdown(r.st
 
 const db = getDb();
 const stamp = Date.now();
-const [owner] = await db.insert(users).values({ email: `verify-pr-${stamp}@example.invalid` }).returning({ id: users.id });
-const [other] = await db.insert(users).values({ email: `verify-pr-other-${stamp}@example.invalid` }).returning({ id: users.id });
+// passages is off by default for a new owner (migration 0064); these owners need it on.
+const on = { modules: { passages: true } };
+const [owner] = await db.insert(users).values({ email: `verify-pr-${stamp}@example.invalid`, settings: on }).returning({ id: users.id });
+const [other] = await db.insert(users).values({ email: `verify-pr-other-${stamp}@example.invalid`, settings: on }).returning({ id: users.id });
 
 try {
   console.log("\n# Create: body passage links become edges (dedup)");

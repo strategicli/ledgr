@@ -5,10 +5,11 @@
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { types } from "@/db/schema";
-import TriageDeck, { type TriageItem } from "@/components/inbox/TriageDeck";
+import TriageDeck, { type TriageItem } from "@/modules/triage/components/TriageDeck";
 import { listItems } from "@/lib/items";
 import { relatedSummaryFor } from "@/lib/relations";
 import { resolveOwner } from "@/lib/owner";
+import { pageGate } from "@/lib/modules/gate";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { compareTypeKeys } from "@/lib/type-order";
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function TriagePage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
+  await pageGate(owner.id, "triage");
 
   const [typeRows, inboxItems, tz] = await Promise.all([
     getDb().select({ key: types.key, label: types.label }).from(types),

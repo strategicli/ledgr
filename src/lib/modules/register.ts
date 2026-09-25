@@ -30,6 +30,8 @@ import { agentModule } from "@/modules/agent/manifest";
 import { aiMemoryModule } from "@/modules/ai-memory/manifest";
 import { liveContextModule } from "@/modules/live-context/manifest";
 import { meetingTranscriptsModule } from "@/modules/meeting-transcripts/manifest";
+import { triageModule } from "@/modules/triage/manifest";
+import { listenModule } from "@/modules/listen/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -55,6 +57,8 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   deskModule,
   agentModule,
   meetingTranscriptsModule,
+  triageModule,
+  listenModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

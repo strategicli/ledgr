@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
 import { setTypeListenEnabled, setTypeListenOpenInEdge } from "@/lib/types";
+import { routeGate } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ type Context = { params: Promise<{ key: string }> };
 export async function POST(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "listen");
+  if (off) return off;
   try {
     const { key } = await context.params;
     const body = (await request.json().catch(() => ({}))) as {
