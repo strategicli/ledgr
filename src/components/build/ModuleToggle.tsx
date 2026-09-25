@@ -1,7 +1,8 @@
 // Build → Modules: the on/off switch for one module (ADR-272). PATCHes
 // settings.modules (the route merges per id), then refreshes so the page and
 // every type menu re-read the stored answer. No confirm either way: turning a
-// module off only hides it, and nothing is deleted.
+// module off only hides it, and nothing is deleted. Turning one on also turns
+// on the modules it requires (`alsoEnable`), named in the note under the switch.
 "use client";
 
 import { useState } from "react";
@@ -12,12 +13,18 @@ export default function ModuleToggle({
   label,
   enabled,
   disabled = false,
+  alsoEnable = [],
+  note,
 }: {
   moduleId: string;
   label: string;
   enabled: boolean;
   // The machine cannot run this module (the reason shows beside it).
   disabled?: boolean;
+  // Module ids switched on together with this one (its requirements that are off).
+  alsoEnable?: string[];
+  // A short line under the switch: what turning it on also turns on.
+  note?: string;
 }) {
   const router = useRouter();
   const [on, setOn] = useState(enabled);
@@ -33,7 +40,12 @@ export default function ModuleToggle({
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ modules: { [moduleId]: next } }),
+        body: JSON.stringify({
+          modules: {
+            [moduleId]: next,
+            ...(next ? Object.fromEntries(alsoEnable.map((id) => [id, true])) : {}),
+          },
+        }),
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string };
@@ -67,6 +79,7 @@ export default function ModuleToggle({
           }`}
         />
       </button>
+      {note && !on && <p className="ui-meta max-w-48 text-right text-ink-subtle">{note}</p>}
       {error && <p className="ui-meta text-rose-400">{error}</p>}
     </div>
   );

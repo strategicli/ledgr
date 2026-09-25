@@ -7,7 +7,7 @@
 // Only routes that actually exist are offered, so a configured slot never
 // dead-links. `badgeEligible` marks the one destination (Inbox) that can show a
 // count badge for now.
-import { BUILD_ENTRIES } from "@/lib/build-nav";
+import { BUILD_ENTRIES, buildNavFor, type BuildEntry } from "@/lib/build-nav";
 import { isIconRef } from "@/lib/nav-icons";
 import { SEARCH_HREF, type NavBadge, type NavDestKind } from "@/lib/settings";
 
@@ -58,15 +58,21 @@ export const BUILTIN_DESTS: DestOption[] = [
 // user can pull a Build tool into their daily Work nav — a "Clean" (Data Hygiene)
 // slot, a "New Type" shortcut, etc. This is what makes the cross-the-line
 // capability *discoverable* (the separation is the default, not a wall). No route
-// is artificially excluded; the picker doesn't enforce the use/build line.
-export const BUILD_TOOL_DESTS: DestOption[] = BUILD_ENTRIES.map((e) => ({
-  group: "Build tools" as const,
-  kind: "builtin" as const,
-  href: e.href,
-  label: e.label,
-  icon: e.icon,
-  badgeEligible: false,
-}));
+// is artificially excluded; the picker doesn't enforce the use/build line, but
+// a switched-off module's Build page is not offered (buildNavFor, ADR-272).
+function toBuildToolDest(e: BuildEntry): DestOption {
+  return {
+    group: "Build tools",
+    kind: "builtin",
+    href: e.href,
+    label: e.label,
+    icon: e.icon,
+    badgeEligible: false,
+  };
+}
+
+// Every Build tool, every module's included.
+export const BUILD_TOOL_DESTS: DestOption[] = BUILD_ENTRIES.map(toBuildToolDest);
 
 export function buildDestOptions(
   views: { id: string; name: string }[],
@@ -74,7 +80,10 @@ export function buildDestOptions(
   dashboards: { id: string; name: string }[] = [],
   // The notification-center module (Build → Modules): its page is offered only
   // while it is on.
-  notificationsOn = false
+  notificationsOn = false,
+  // The owner's switched-off module ids (offModuleIds): their Build pages drop
+  // out of the "Build tools" category.
+  offModules: readonly string[] = []
 ): DestOption[] {
   return [
     // Notification center paused (ADR-130): don't offer /notifications as a nav
@@ -82,7 +91,7 @@ export function buildDestOptions(
     ...BUILTIN_DESTS.filter(
       (d) => notificationsOn || d.href !== "/notifications"
     ),
-    ...BUILD_TOOL_DESTS,
+    ...buildNavFor(offModules).flatMap((g) => g.entries).map(toBuildToolDest),
     ...dashboards.map((d) => ({
       group: "Dashboards" as const,
       kind: "dashboard" as const,

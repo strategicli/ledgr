@@ -448,7 +448,9 @@ Build your own kinds of item at \`/build/types\`.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
   transcripts, the Notification center (paused) and Scripture passages (on by
   default: a Bible reference in a body becomes a link to that passage's page;
-  switched off, new references stop linking). Nothing is deleted: existing
+  switched off, new references stop linking). A module that is off also drops
+  its Build page from the sidebar and the Navigation destination picker.
+  Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
   back on. The In-app agent's switch is greyed out on a copy that cannot run it.
 - **Workflows and wikis** at \`/build/new\` ask a few questions and generate a
