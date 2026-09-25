@@ -14,7 +14,7 @@ import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { addShareTokenToAttachmentUrls } from "@/lib/attachment-url";
 import { getSettings } from "@/lib/settings";
-import { makeMarkdownBody } from "@/lib/body";
+import { isItemBody, MARKDOWN_FORMAT } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
 import { moduleIsOn } from "@/lib/modules/gate";
 
@@ -71,10 +71,13 @@ export async function GET(
   // which an anonymous reader of this page does not have. Rewrite each address
   // on the way out so it carries THIS link's token — the route then grants
   // access only for attachments hanging off this very item. Nothing stored
-  // changes; revoking the link kills its images along with the page.
-  const shareBody = makeMarkdownBody(
-    addShareTokenToAttachmentUrls(bodyMarkdown(resolved.body), token)
-  );
+  // changes; revoking the link kills its images along with the page. The
+  // body keeps its own format: a song (chordpro) must reach the renderer as
+  // chordpro to come out as the two-column chord chart, not as raw directives.
+  const shareBody = {
+    format: isItemBody(resolved.body) ? resolved.body.format : MARKDOWN_FORMAT,
+    text: addShareTokenToAttachmentUrls(bodyMarkdown(resolved.body), token),
+  };
 
   // The footer names whose Ledgr this came from (Tyler, 2026-08-29) — the
   // owner's Settings display name, escaped since footerHtml is raw markup;
