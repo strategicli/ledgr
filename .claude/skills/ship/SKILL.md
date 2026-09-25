@@ -60,11 +60,14 @@ It is information, never a gate.
 ## 4. Wait for CI, then merge
 
 ```
-gh pr checks <n> --watch --interval 15
+gh pr checks <n> --watch --interval 10
+gh pr checks <n> | grep -P "^check\t"
 gh pr merge <n> --squash --delete-branch
 ```
 
-Only the **`check`** result matters. **Expected noise — do not investigate or report
+Only the **`check`** result matters. `--watch` exits 1 whenever any check failed,
+which is always true because of the devledgr line below, so read the `check` line
+instead of the exit code. **Expected noise — do not investigate or report
 it:** `Vercel – devledgr: Deployment was blocked` shows as a failure on every PR and
 every release. Previews on that project are switched off to save the Vercel build
 quota (runbook §1j-1). Ignore it.
