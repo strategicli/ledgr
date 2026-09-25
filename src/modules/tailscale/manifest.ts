@@ -1,6 +1,6 @@
 // The Tailscale module: private access to a Ledgr installed on your own
 // computer, from your phone and your other computers, with no Tailscale app on
-// this computer (ADR-275, install plan step 3). Pure manifest: no DB, no fs.
+// this computer (ADR-276, install plan step 3). Pure manifest: no DB, no fs.
 //
 // The work is a small helper program (tailnet/main.go) the supervisor runs
 // beside Postgres. It joins the owner's tailnet as its own machine and serves

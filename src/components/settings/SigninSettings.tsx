@@ -46,6 +46,9 @@ export type SigninSettingsProps = {
   overridden: boolean;
   where: string;
   recovered: boolean;
+  // Run by a supervisor that moves the app to this computer only when there is
+  // no sign-in (ADR-275), so "no password" really means "this computer only".
+  localService: boolean;
 };
 
 export default function SigninSettings(p: SigninSettingsProps) {
@@ -197,7 +200,9 @@ export default function SigninSettings(p: SigninSettingsProps) {
                   description={
                     p.defaultLabel === "Clerk"
                       ? "The sign-in page will show Clerk. Your password keeps working as the second way in."
-                      : "Anyone who can reach this copy of Ledgr gets in without a password. Only do this if it is reachable from this computer alone."
+                      : p.localService
+                        ? "Within a few seconds this copy answers only this computer, with no password. Other devices can't reach it until you turn password sign-in back on."
+                        : "Anyone who can reach this copy of Ledgr gets in without a password. Only do this if it is reachable from this computer alone."
                   }
                   confirmLabel="Switch"
                   tone="primary"

@@ -16,6 +16,7 @@
 //   npm run local:startup -- --disable
 //   npm run local:tray                   # the notification-area icon
 //   npm run local:reset-password         # set a new sign-in password, at this computer
+//   npm run local:setup-owner            # first run: make yourself the owner, at this computer
 //
 // A separate entry point from ledgr-supervisor.mjs on purpose: that file boots
 // Postgres and the app on import-and-run, so it cannot answer a question
@@ -785,18 +786,19 @@ function doRequest() {
  * after "#", so it never reaches a server log. The page does the rest: new
  * password, fresh recovery kit, one code typed back, signed in.
  */
-async function doResetPassword() {
+async function doResetPassword(page = "reset-password") {
+  const what = page === "setup" ? "setup" : "reset";
   const status = await appAnswers();
   if (status === null) {
     console.error(
-      "Ledgr isn't answering on this computer, so the reset page can't open.\n" +
+      `Ledgr isn't answering on this computer, so the ${what} page can't open.\n` +
         "Start it first (tray icon → Start, or npm run local:boot), then try again."
     );
     return 1;
   }
   const token = randomBytes(32).toString("base64url");
   writeFileSync(signinResetPath(cfg.dataDir), serializeSigninReset(token), "utf8");
-  const url = `http://localhost:${cfg.appPort}/reset-password#${token}`;
+  const url = `http://localhost:${cfg.appPort}/${page}#${token}`;
   const [cmd, args] = isWin
     ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
     : process.platform === "darwin"
@@ -808,7 +810,7 @@ async function doResetPassword() {
     // no browser launcher; the printed link below still works
   }
   console.log(
-    `Opening the reset page in your browser. It works for ${SIGNIN_RESET_MINUTES} minutes, on this computer only.\n` +
+    `Opening the ${what} page in your browser. It works for ${SIGNIN_RESET_MINUTES} minutes, on this computer only.\n` +
       `If nothing opened, paste this into a browser on this computer:\n  ${url}`
   );
   return 0;
@@ -817,7 +819,10 @@ async function doResetPassword() {
 // ── dispatch ─────────────────────────────────────────────────────────────────
 
 const verbs = {
-  "reset-password": doResetPassword,
+  "reset-password": () => doResetPassword(),
+  // First-run setup (ADR-275): the same one-time ticket, opening /setup, where
+  // an install with no owner yet asks for your email and a password.
+  setup: () => doResetPassword("setup"),
   status: doStatus,
   boot: doBoot,
   restart: doRestart,

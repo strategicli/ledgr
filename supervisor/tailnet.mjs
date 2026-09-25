@@ -1,4 +1,4 @@
-// The Tailscale helper, run by the supervisor (the Tailscale module, ADR-275).
+// The Tailscale helper, run by the supervisor (the Tailscale module, ADR-276).
 //
 // The helper (tailnet/main.go) joins the owner's tailnet as its own machine and
 // serves this install over HTTPS there. This file downloads it, checks it, runs

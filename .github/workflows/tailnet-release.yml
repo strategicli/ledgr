@@ -1,4 +1,4 @@
-# Build and publish the Tailscale helper (tailnet/, ADR-275).
+# Build and publish the Tailscale helper (tailnet/, ADR-276).
 #
 # The helper is a small Go program the supervisor downloads on first use. It is
 # never part of the Next.js or Vercel build; this workflow is its only build.

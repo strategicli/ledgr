@@ -354,6 +354,8 @@ const TODAY_PUBLIC = [
   "/api/oauth/token", "/api/ics(.*)", "/files/(.*)", "/capture/share",
   // The reset page at the machine (ADR-274); it answers only localhost + a ticket.
   "/reset-password",
+  // The setup page (ADR-275); only the owner sees its checklist once one exists.
+  "/setup",
   ...modulePublicPaths(),
 ];
 const proxySrc = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");

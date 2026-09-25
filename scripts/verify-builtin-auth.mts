@@ -161,6 +161,9 @@ console.log("\n5. Locked by default");
     "/files/(.*)",
     "/capture/share",
     "/reset-password",
+    // ADR-275: the setup page. Its create-owner step needs the same localhost
+    // address and machine ticket as the reset page (verify-first-run.mts).
+    "/setup",
   ];
   check(
     "the public list is explicit and exactly the known set (a new public path is a deliberate edit here)",

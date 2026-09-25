@@ -1,6 +1,6 @@
 "use client";
 
-// The buttons on the Tailscale options (ADR-275). The panel around them is a
+// The buttons on the Tailscale options (ADR-276). The panel around them is a
 // server component; these ask /api/tailscale and refresh it.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";

@@ -95,6 +95,12 @@ import {
   PG_READY_ATTEMPTS,
   pgStartDelayMs,
   tunedPostgresFlags,
+  LOOPBACK_HOST,
+  appListenHost,
+  effectiveEnv,
+  installSecretsPath,
+  nextStartArgs,
+  planInstallSecrets,
 } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -528,6 +534,54 @@ function liveBuild() {
 const CRON_TOKEN = randomBytes(32).toString("hex");
 const CRON_TOKEN_HASH = CRON_TOKEN ? createHash("sha256").update(CRON_TOKEN).digest("hex") : null;
 
+// Per-install secrets (ADR-275): made once when missing, kept in the data
+// folder, never logged. A value in extraEnv or the real environment wins, and
+// then nothing is generated or written for it.
+const INSTALL_SECRETS = (() => {
+  const p = installSecretsPath(cfg.dataDir);
+  let stored = {};
+  try {
+    stored = JSON.parse(readFileSync(p, "utf8"));
+  } catch {
+    // missing or unreadable: anything absent is made fresh below
+  }
+  const plan = planInstallSecrets({
+    stored,
+    extraEnv: cfg.extraEnv,
+    processEnv: process.env,
+    generate: () => randomBytes(32).toString("hex"),
+  });
+  if (plan.write) {
+    writeFileSync(p, JSON.stringify(plan.write, null, 2), { encoding: "utf8", mode: 0o600 });
+    log("made per-install secrets", { keys: Object.keys(plan.apply), file: p });
+  }
+  return plan.apply;
+})();
+
+// Where the app listens (ADR-275): this machine only, unless the install
+// requires sign-in. Decided before each start and re-checked every few seconds,
+// so switching sign-in on or off in the app moves it within one tick.
+let listenHost = LOOPBACK_HOST;
+
+async function desiredListenHost() {
+  const clerkKey = effectiveEnv(cfg, process.env, "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY");
+  const methodOverride = effectiveEnv(cfg, process.env, "LEDGR_SIGNIN_METHOD");
+  // Brandon's hub (Clerk keys) answers here, with no database read.
+  if (clerkKey || methodOverride) return appListenHost({ clerkKey, methodOverride });
+  const client = new PgClient({ connectionString: buildDbUrl(cfg), connectionTimeoutMillis: 3000 });
+  let signinMethod; // undefined = couldn't read it = stay on this machine
+  try {
+    await client.connect();
+    const res = await client.query("select method from signin_install where id = 1");
+    signinMethod = res.rows[0]?.method ?? null;
+  } catch {
+    // no table yet (older database) or no database: no password sign-in
+  } finally {
+    await client.end().catch(() => {});
+  }
+  return appListenHost({ clerkKey, signinMethod, methodOverride });
+}
+
 function startApp(ptr) {
   const nextBin = join(ptr.dir, "node_modules", "next", "dist", "bin", "next");
   const env = {
@@ -537,15 +591,25 @@ function startApp(ptr) {
     ...assembleAppEnv({ ...cfg, branch: readPolicy().branch }, ptr.sha, {
       cronTokenHash: CRON_TOKEN_HASH,
       inheritedApiTokens: process.env.LEDGR_API_TOKENS,
+      installSecrets: INSTALL_SECRETS,
+      listenHost,
     }),
   };
-  appChild = spawn(process.execPath, [nextBin, "start", "-p", String(cfg.appPort)], {
+  const host = listenHost;
+  appChild = spawn(process.execPath, [nextBin, ...nextStartArgs(cfg.appPort, host)], {
     cwd: ptr.dir,
     env,
     stdio: ["ignore", "inherit", "inherit"],
   });
   const child = appChild;
-  log("app started", { pid: child.pid, sha: ptr.sha.slice(0, 7), dir: ptr.dir, port: cfg.appPort });
+  child.listenHost = host;
+  log("app started", {
+    pid: child.pid,
+    sha: ptr.sha.slice(0, 7),
+    dir: ptr.dir,
+    port: cfg.appPort,
+    listening: host ?? "every network",
+  });
   const startedAt = Date.now();
   child.on("exit", (code, sig) => {
     if (child !== appChild || shuttingDown) return; // superseded or deliberate
@@ -1442,6 +1506,25 @@ primeCronState();
 seedPolicyIfMissing();
 refreshStartupState();
 await startPostgres();
+listenHost = await desiredListenHost();
+// Re-checked on a short beat (ADR-275): when the owner switches sign-in on or
+// off, the app moves between this machine and every network within one tick.
+// Only the app restarts; Postgres stays up. During an update the flip's own
+// restart picks up the new value.
+setInterval(() => {
+  void (async () => {
+    const want = await desiredListenHost();
+    listenHost = want;
+    // Compared with the RUNNING app, not the last answer, so a move skipped
+    // during an update that then failed is still made on a later tick.
+    const child = appChild;
+    if (!child || child.listenHost === want || updating || shuttingDown) return;
+    log("sign-in changed; restarting the app to move where it listens", { listening: want ?? "every network" });
+    await stopApp();
+    const cur = liveBuild();
+    if (cur && !shuttingDown && !appChild) startApp(cur);
+  })();
+}, 10_000).unref?.();
 const ptr = liveBuild();
 if (ptr) {
   startApp(ptr);
@@ -1518,7 +1601,7 @@ async function waitForOwnPort() {
   return `Came back up, but nothing answered on port ${cfg.appPort}: ${last}.`;
 }
 
-// The Tailscale module's helper (ADR-275). The app decides whether it runs;
+// The Tailscale module's helper (ADR-276). The app decides whether it runs;
 // this asks it shortly after boot, then every minute, and on every signal file.
 tailnet = createTailnet({
   dataDir: cfg.dataDir,

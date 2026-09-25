@@ -5,7 +5,7 @@ import { moduleIsOn } from "@/lib/modules/gate";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
 import { readTailscaleEnabled } from "@/modules/tailscale/lib/switch";
 
-// "Should the Tailscale helper run on this computer?" (ADR-275). Asked by the
+// "Should the Tailscale helper run on this computer?" (ADR-276). Asked by the
 // supervisor over loopback with its own cron token, every minute and on every
 // signal file. Both switches must be on: the module for the owner, and this
 // computer's own `tailscale:enabled`. The ADR-222 shape: the supervisor always

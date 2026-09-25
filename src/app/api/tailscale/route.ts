@@ -6,7 +6,7 @@ import { tailscaleAvailable } from "@/modules/tailscale/manifest";
 import { readTailnetStatus } from "@/modules/tailscale/lib/status";
 import { readTailscaleEnabled, signalSupervisor, writeTailscaleEnabled } from "@/modules/tailscale/lib/switch";
 
-// The owner's Tailscale controls (ADR-275), for this computer only.
+// The owner's Tailscale controls (ADR-276), for this computer only.
 //
 //   GET                           this computer's switch and the helper's status
 //   POST {action: "connect"}      switch it on; the supervisor starts the helper

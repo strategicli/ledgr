@@ -1,5 +1,5 @@
 // ledgr-tailnet: joins the owner's Tailscale network as its own machine and
-// serves Ledgr there over HTTPS (the Tailscale module, ADR-275).
+// serves Ledgr there over HTTPS (the Tailscale module, ADR-276).
 //
 // The supervisor starts this the way it starts Postgres. It uses Tailscale's
 // tsnet library, so it is a complete Tailscale node in one program: the

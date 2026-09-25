@@ -9,7 +9,7 @@
 //      a Cloudflare Tunnel or a Funnel, so it is read from this install's own
 //      NEXT_PUBLIC_APP_URL rather than sniffed (2026-09-17: Brandon's hub moved
 //      to https://ledgr.brasco.fyi and this page still advertised the tailnet).
-//   0b. The Tailscale module's private HTTPS address (ADR-275), when its helper
+//   0b. The Tailscale module's private HTTPS address (ADR-276), when its helper
 //      is running: this install as its own machine on the tailnet. Handed in
 //      by the caller, which reads the module's status; this file imports no module.
 //   1. The tailnet hostname (MagicDNS). Readable, and it survives a re-address,

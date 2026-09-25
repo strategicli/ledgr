@@ -1,4 +1,4 @@
-// Checks for the Tailscale module's supervisor side (ADR-275): which helper file
+// Checks for the Tailscale module's supervisor side (ADR-276): which helper file
 // this computer gets, the checksum gate in front of running it, the machine
 // name, the status file both halves read, and the Network page's ordering.
 // Pure: no network, no child processes, no database.

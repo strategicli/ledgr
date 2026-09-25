@@ -1195,6 +1195,30 @@ Sign-in** (\`/settings\`).
 Password sign-in needs an https address, or \`localhost\`. It is turned off on
 preview deployments. There is no email reset.
 
+**A copy with no sign-in answers only the computer it runs on.** Nobody on your
+wifi or tailnet can open it. To use it from your phone or another computer, set
+a password here; within a few seconds it becomes reachable from other devices.
+Turning the password off moves it back to that computer alone.
+
+## Setting up a new copy
+
+**\`/setup\`** lists what a copy of Ledgr still needs, in plain words: what is
+missing, why it matters, and what to do. It never shows a secret, only whether
+one is set. Anyone can open it, but once a copy has an owner only that owner
+sees the list.
+
+- **A new copy on your own computer** has no owner until you make one. At that
+  computer, run \`npm run local:setup-owner\` (or right-click the tray icon and
+  choose **Reset sign-in password...**). It opens \`/setup\` with a one-time
+  link that works for 15 minutes and only on that computer. Enter your email
+  and a password, save the recovery kit, type one code back, and you are signed
+  in as the owner.
+- **A new copy that uses Clerk** makes the first person who signs in its owner,
+  once. Sign in yourself before you share the address.
+- **Claude on a new local copy:** the connector secret makes itself when Ledgr
+  starts, so **Build → AI & MCP** can make a token for Claude Code straight
+  away. No config file to edit.
+
 ## Giving another app access
 
 **User Settings → API credentials** is where you hand something access to your
