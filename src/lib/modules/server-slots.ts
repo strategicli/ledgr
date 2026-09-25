@@ -11,6 +11,8 @@
 // dev HMR re-evaluating the module graph cannot double-attach.
 import { allModules, type ModuleManifest } from "@/lib/modules";
 import "@/lib/modules/register";
+// Modules under src/modules attach their own server slots (step 4).
+import "@/modules/todoist/server";
 
 const SERVER_SLOTS: Record<string, Pick<ModuleManifest, "hooks" | "healthCheck">> = {
   "youtube-transcripts": {

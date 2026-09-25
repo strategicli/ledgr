@@ -324,6 +324,8 @@ export const items = pgTable(
     // cloneItemSubtree never copies this, so applying a template yields real
     // (is_template = false) items.
     isTemplate: boolean("is_template").notNull().default(false),
+    // Owned by the todoist module (src/modules/todoist, ADR-272 step 4). The
+    // column stays here because the schema is core; only that module writes it.
     todoistId: text("todoist_id"),
     msEventId: text("ms_event_id"),
     // OneDrive export state (slice 17): when this row was last written to

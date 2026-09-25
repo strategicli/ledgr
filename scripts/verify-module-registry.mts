@@ -342,12 +342,14 @@ const toolHrefs = (off: string[]) => buildDestOptions([], [], [], false, off).fi
 check("the picker offers an enabled module's Build page", toolHrefs([]).includes("/build/memory"));
 check("the picker drops a switched-off module's Build page", !toolHrefs(["ai-memory"]).includes("/build/memory"));
 
-// publicPaths: no module declares any yet, so the proxy's list is exactly today's.
-check("no registered module declares public paths yet", modulePublicPaths().length === 0);
+// publicPaths: the Todoist webhook moved off the core list onto its manifest
+// (step 4), so the merged list is the same set with that path last.
+check("the Todoist webhook comes from the module list", modulePublicPaths().includes("/api/todoist/webhook"));
 const TODAY_PUBLIC = [
   "/sign-in(.*)", "/api/machine(.*)", "/api/mcp(.*)", "/.well-known/(.*)",
   "/api/oauth/protected-resource", "/api/oauth/authorization-server", "/api/oauth/register",
-  "/api/oauth/token", "/api/todoist/webhook", "/share(.*)", "/api/ics(.*)", "/files/(.*)", "/capture/share",
+  "/api/oauth/token", "/share(.*)", "/api/ics(.*)", "/files/(.*)", "/capture/share",
+  "/api/todoist/webhook",
 ];
 const proxySrc = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
 const coreBlock = proxySrc.match(/const CORE_PUBLIC_ROUTES = \[([\s\S]*?)\n\];/)?.[1] ?? "";
@@ -384,6 +386,37 @@ check("everything on: no violations", requiresViolations({ "req-base": true, "re
 check("core always satisfies a requirement", !requiresViolations({ "req-top": true, "req-mid": true, "req-base": true, core: false }).some((x) => x.requires === "core"));
 check("requirementsOf walks the chain", JSON.stringify(requirementsOf("req-top").sort()) === JSON.stringify(["core", "req-base", "req-mid"]));
 check("isModuleEnabled ignores requires (a plain lookup)", isModuleEnabled("req-mid") === false && moduleOn({ modules: { "req-mid": true } }, "req-mid") === true);
+
+// --- 9. step 4: the todoist module lives under src/modules/todoist ---------
+{
+  const { todoistModule } = await import("../src/modules/todoist/manifest");
+  const { existsSync } = await import("node:fs");
+  const registered = allModules().find((m) => m.id === "todoist");
+  check("todoist is registered from @/modules/todoist/manifest", registered === todoistModule);
+  check(
+    "register.ts imports the todoist manifest from its module folder",
+    readFileSync(new URL("../src/lib/modules/register.ts", import.meta.url), "utf8").includes(
+      'from "@/modules/todoist/manifest"'
+    )
+  );
+  check("todoist is off by default", todoistModule.enabledByDefault === false && moduleOn({ modules: {} }, "todoist") === false);
+  check("todoist has a description for the Modules page", !!todoistModule.description);
+  check("todoist owns its webhook's public path", todoistModule.publicPaths?.includes("/api/todoist/webhook") === true);
+  check("the core proxy list no longer names the Todoist webhook", !corePublic.includes("/api/todoist/webhook"));
+  const routes = todoistModule.routes ?? [];
+  check("todoist lists its three route files", routes.length === 3);
+  for (const r of routes) check(`todoist route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+  check("todoist contributes a health check (server slot)", typeof registered?.healthCheck === "function");
+  check("the todoist-sync job is gated by the todoist module", (await import("../src/lib/job-owners")).jobModuleOff("todoist-sync", ["todoist"]));
+  const gate = await import("../src/lib/modules/gate");
+  check(
+    "the gate helpers are exported",
+    typeof gate.moduleIsOn === "function" && typeof gate.routeGate === "function" && typeof gate.pageGate === "function"
+  );
+  for (const r of ["src/app/api/todoist/sync/route.ts", "src/app/api/todoist/webhook/route.ts"]) {
+    check(`${r} calls routeGate for todoist`, readFileSync(new URL(`../${r}`, import.meta.url), "utf8").includes('routeGate(owner'));
+  }
+}
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

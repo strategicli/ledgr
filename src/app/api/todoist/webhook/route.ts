@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { routeGate } from "@/lib/modules/gate";
 import { isTodoistAdapterActive } from "@/lib/tasks/provider";
-import { getTodoistClient } from "@/lib/todoist/client";
-import { resolveTodoistOwner } from "@/lib/todoist/owner";
-import { runTodoistSync } from "@/lib/todoist/sync";
+import { getTodoistClient } from "@/modules/todoist/lib/client";
+import { resolveTodoistOwner } from "@/modules/todoist/lib/owner";
+import { runTodoistSync } from "@/modules/todoist/lib/sync";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // Todoist webhook (slice 25, PRD §5.2 "webhook preferred"). Todoist signs the
@@ -28,6 +29,16 @@ function signatureValid(rawBody: string, header: string | null, secret: string):
 
 export async function POST(request: Request) {
   const log = createLogger("todoist-webhook");
+  // Module switch first (ADR-272 step 4). The proxy lets this path through for
+  // every install, so the route checks the owner's Todoist module itself. Off
+  // answers 404. Todoist has no status that unsubscribes a webhook: it retries a
+  // failed delivery a few times and then drops that event, so the real stop is
+  // removing the callback URL in the Todoist App Console.
+  const ownerId = await resolveTodoistOwner().catch(() => null);
+  if (ownerId) {
+    const off = await routeGate(ownerId, "todoist");
+    if (off) return off;
+  }
   // Native is the default tasks adapter (ADR-073/081): a webhook that arrives
   // when Todoist isn't active is ignored with 200 (no retry-storm), never synced.
   if (!isTodoistAdapterActive()) {
@@ -50,7 +61,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ownerId = await resolveTodoistOwner();
     if (!ownerId) throw new Error("no users row resolves the Todoist owner");
     const result = await runTodoistSync(ownerId, client, {
       onError: (itemId, err) => log.warn("task sync error", { itemId, message: errorMessage(err) }),
