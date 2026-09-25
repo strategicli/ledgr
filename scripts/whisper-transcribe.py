@@ -2,7 +2,7 @@
 """
 whisper-transcribe.py — audio file in, plain transcript text out on stdout.
 
-Called by src/lib/youtube/fetch.ts when a saved YouTube video has no captions
+Called by src/modules/youtube-transcripts/lib/fetch.ts when a saved YouTube video has no captions
 to pull. This is the slow road: minutes on the GPU rather than seconds of text,
 so nothing calls it unless the fast road found nothing.
 

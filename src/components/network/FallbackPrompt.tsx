@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { relativeTime } from "@/lib/relative-time";
-import { CADENCE_CONTINUOUS, cadenceLabel } from "@/lib/sync/client";
+import { CADENCE_CONTINUOUS, cadenceLabel } from "@/lib/sync/cadence";
 import type { FallbackApproval, FallbackPrompt as Prompt } from "@/lib/sync/client";
 
 const button =

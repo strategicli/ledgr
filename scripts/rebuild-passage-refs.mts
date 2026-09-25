@@ -15,7 +15,7 @@
 //     npx tsx scripts/rebuild-passage-refs.mts
 import { sql } from "drizzle-orm";
 import { getDb } from "../src/db";
-import { replacePassageRefs } from "../src/lib/passages/refs";
+import { replacePassageRefs } from "../src/modules/passages/lib/refs";
 
 const db = getDb();
 const BATCH = 500;

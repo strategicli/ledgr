@@ -387,6 +387,34 @@ check("core always satisfies a requirement", !requiresViolations({ "req-top": tr
 check("requirementsOf walks the chain", JSON.stringify(requirementsOf("req-top").sort()) === JSON.stringify(["core", "req-base", "req-mid"]));
 check("isModuleEnabled ignores requires (a plain lookup)", isModuleEnabled("req-mid") === false && moduleOn({ modules: { "req-mid": true } }, "req-mid") === true);
 
+// --- 8. step 4: modules that live under src/modules/<id>/ ------------------
+const { passagesModule } = await import("../src/modules/passages/manifest");
+const { youtubeTranscriptsModule } = await import("../src/modules/youtube-transcripts/manifest");
+const { existsSync } = await import("node:fs");
+const { FEATURE_MODULES } = await import("../src/lib/modules/features");
+for (const moved of [passagesModule, youtubeTranscriptsModule]) {
+  check(`${moved.id} is registered from src/modules`, allModules().find((m) => m.id === moved.id) === moved);
+  check(`${moved.id} left features.ts`, !FEATURE_MODULES.some((m) => m.id === moved.id));
+  check(`${moved.id} names its route files`, (moved.routes?.length ?? 0) > 0);
+  for (const r of moved.routes ?? []) {
+    check(`${moved.id} route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+  }
+}
+check("passages keeps its default (on)", passagesModule.enabledByDefault === true);
+check("youtube-transcripts keeps its default (off)", youtubeTranscriptsModule.enabledByDefault === false);
+check("server-slots attached passages' onBodySave", typeof passagesModule.hooks?.onBodySave === "function");
+check(
+  "server-slots attached youtube's onCreate and healthCheck",
+  typeof youtubeTranscriptsModule.hooks?.onCreate === "function" &&
+    typeof youtubeTranscriptsModule.healthCheck === "function"
+);
+const gate = await import("../src/lib/modules/gate");
+check(
+  "the route gate helpers are exported",
+  [gate.moduleIsOn, gate.routeGate, gate.pageGate].every((f) => typeof f === "function")
+);
+const passagePage = readFileSync(new URL("../src/app/passage/[ref]/page.tsx", import.meta.url), "utf8");
+check("the passage page calls the gate", passagePage.includes('pageGate(owner.id, "passages")'));
 // --- 9. step 4: the todoist module lives under src/modules/todoist ---------
 {
   const { todoistModule } = await import("../src/modules/todoist/manifest");

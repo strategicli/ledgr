@@ -6,7 +6,8 @@
 // does.
 //
 // The work itself is `runYoutubeTranscripts`, shared with the instant kick that
-// fires the moment a video is saved (src/lib/item-mutations.ts), so the timer
+// fires the moment a video is saved (the module's onCreate hook in
+// src/modules/youtube-transcripts/server.ts), so the timer
 // path and the save path cannot drift apart.
 //
 // A SKIPPED RUN IS A CLEAN 200, never a 500. Three things make this copy stand
@@ -22,7 +23,7 @@ import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { standDownIfNotOwner } from "@/lib/job-owner-guard";
 import { stampJobRun } from "@/lib/job-owners-store";
 import { resolveMachineOwner } from "@/lib/machine/owner";
-import { runYoutubeTranscripts } from "@/lib/youtube/transcripts";
+import { runYoutubeTranscripts } from "@/modules/youtube-transcripts/lib/transcripts";
 import { captureError, createLogger } from "@/lib/log";
 
 export const dynamic = "force-dynamic";

@@ -3,9 +3,9 @@
 // and the notification-center constant they replace. Pure manifests, no types,
 // no canvas. Every folded default is the old key's default (all off), and
 // seedModulesFromLegacy (settings.ts) carries an owner's existing choice across,
-// so nobody's switch flips on upgrade. `passages` is the exception: it had no
-// switch before step 3.6, it always ran, so it defaults on. The code each one
-// gates still lives where it did; step 4 of the plan moves it under the module.
+// so nobody's switch flips on upgrade. Step 4 of the plan moves each one's code
+// under src/modules/<id>/, and a moved module's manifest leaves this list for
+// register.ts (youtube-transcripts and passages have).
 //
 // Hooks and health checks (step 3.4 to 3.6) are NOT declared here: this file is
 // on the pure path (register.ts, imported by build-nav.ts for the client sidebar
@@ -92,19 +92,8 @@ export const FEATURE_MODULES: ModuleManifest[] = [
     "A Claude sidebar, inline edit and slash commands inside Ledgr, run under this computer's Claude login."
   ),
   feature(
-    "youtube-transcripts",
-    "YouTube transcripts",
-    "Saved YouTube links fill their body with the video's transcript, using captions or Whisper on this computer."
-  ),
-  feature(
     "notification-center",
     "Notification center",
     "An in-app notification inbox and push alerts. Paused: its reminder jobs are switched off, so turning it on shows the inbox but sends nothing new."
-  ),
-  feature(
-    "passages",
-    "Scripture passages",
-    "Scripture references in a body become links to a passage page.",
-    { enabledByDefault: true }
   ),
 ];

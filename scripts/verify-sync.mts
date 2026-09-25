@@ -32,7 +32,7 @@ import {
   type SyncOp,
   type WriteAction,
 } from "../src/lib/sync/engine";
-import { applySyncOps, passageBodyFromAction, planActions, type SyncDb } from "../src/lib/sync/apply";
+import { applySyncOps, bodySaveFromAction, planActions, type SyncDb } from "../src/lib/sync/apply";
 import {
   cursorTooStale,
   dedupePushedOps,
@@ -239,33 +239,33 @@ check("version gate passes a match", versionGate("0054_sync_spine", "0054_sync_s
   });
   check(
     "an insert carrying a body derives",
-    passageBodyFromAction(ins({ id: ITEM, body: { format: "markdown", text: "x" } }))?.itemId === ITEM
+    bodySaveFromAction(ins({ id: ITEM, body: { format: "markdown", text: "x" } }))?.itemId === ITEM
   );
-  check("an insert with no body does not", passageBodyFromAction(ins({ id: ITEM, body: null })) === null);
+  check("an insert with no body does not", bodySaveFromAction(ins({ id: ITEM, body: null })) === null);
   check(
     "an update touching body derives, with the MERGED value",
-    JSON.stringify(passageBodyFromAction(upd({ body: { format: "markdown", text: "won" } }))?.body) ===
+    JSON.stringify(bodySaveFromAction(upd({ body: { format: "markdown", text: "won" } }))?.body) ===
       JSON.stringify({ format: "markdown", text: "won" })
   );
   check(
     "a body cleared to null still derives (its edges must go)",
-    passageBodyFromAction(upd({ body: null }))?.itemId === ITEM
+    bodySaveFromAction(upd({ body: null }))?.itemId === ITEM
   );
-  check("a title-only update does not", passageBodyFromAction(upd({ title: "t" })) === null);
+  check("a title-only update does not", bodySaveFromAction(upd({ title: "t" })) === null);
   check(
     "a soft-delete stamp does not",
-    passageBodyFromAction(upd({ deleted_at: "2026-08-23T00:00:00Z" })) === null
+    bodySaveFromAction(upd({ deleted_at: "2026-08-23T00:00:00Z" })) === null
   );
   check(
     "a non-items table never does",
-    passageBodyFromAction({
+    bodySaveFromAction({
       kind: "update", tbl: "types", ownerId: OWNER, origin: "d", pkCol: "key", pkVal: "note",
       fields: { body: { text: "not an item" } },
     }) === null
   );
   check(
     "a hard delete does not (the cascade takes its edges)",
-    passageBodyFromAction({ kind: "delete", tbl: "items", ownerId: OWNER, origin: "d", pkCol: "id", pkVal: ITEM }) === null
+    bodySaveFromAction({ kind: "delete", tbl: "items", ownerId: OWNER, origin: "d", pkCol: "id", pkVal: ITEM }) === null
   );
 }
 

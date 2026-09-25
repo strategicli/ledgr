@@ -607,6 +607,9 @@ export type HookContext = {
   // The saved body on a body save; null when the body was cleared.
   body?: unknown;
   url?: string | null;
+  // The executor to write through when the caller holds a transaction (the
+  // sync apply path), so derived rows commit with the row. Absent: use getDb().
+  db?: { execute(query: unknown): Promise<unknown> };
 };
 
 export type HookFn = (ctx: HookContext) => Promise<void>;

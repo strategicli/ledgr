@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmButton from "@/components/ui/ConfirmButton";
-import { CADENCE_CONTINUOUS, CADENCE_PRESETS } from "@/lib/sync/client";
+import { CADENCE_CONTINUOUS, CADENCE_PRESETS } from "@/lib/sync/cadence";
 import type { HubCadence, HubFallback } from "@/lib/sync/client";
 
 const button =
