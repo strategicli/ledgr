@@ -150,6 +150,8 @@ th{text-align:left;font-weight:600;background:var(--code)}
 .print-bar label{display:flex;align-items:center;gap:.4rem;background:var(--btn);color:var(--fg);
   border:1px solid var(--rule);border-radius:6px;padding:0 0 0 .7rem}
 .print-bar label select{border:0;border-left:1px solid var(--rule);border-radius:0 6px 6px 0;padding:.4rem .6rem}
+.doc-audio{margin:0 0 1.25rem}
+.doc-audio audio{display:block;width:100%;height:2.5rem}
 ${HL_CSS}
 ${CMT_CSS}
 ${SLIDE_CSS}
@@ -164,6 +166,7 @@ ${SLIDE_CSS}
   th{background:transparent}
   .doc-footer{display:none}
   .print-bar{display:none}
+  .doc-audio{display:none}
   h2,h3,h4{page-break-after:avoid}
 }
 ${CHART_CSS}
@@ -205,6 +208,11 @@ export function renderPrintDocument(
     // reader can switch it from the page's Appearance control, which remembers
     // the choice in their browser (localStorage) for every Ledgr document.
     theme?: Theme;
+    // A recording to play (the item's preview track): full width under a
+    // chart's key/capo line, or under the title of any other document. `src` is
+    // an address the reader can already open (a share page passes the
+    // token-carrying /files URL).
+    audio?: { src: string };
   } = {}
 ): string {
   const theme: Theme = opts.theme ?? "dark";
@@ -218,6 +226,9 @@ export function renderPrintDocument(
   const accentHl = opts.accent
     ? `mark.hl-accent{background-color:${accentHighlightLiteral(opts.accent)};color:inherit}`
     : "";
+  const audio = opts.audio
+    ? `<div class="doc-audio"><audio controls preload="metadata" src="${escapeHtml(opts.audio.src)}"></audio></div>`
+    : "";
   const footer = opts.footerHtml ? `<div class="doc-footer">${opts.footerHtml}</div>` : "";
   // A chordpro body renders as a chord chart whose own header carries the title,
   // key/capo/tempo/time line — so the outer <h1> is suppressed for it. Every
@@ -228,7 +239,7 @@ export function renderPrintDocument(
   // document; the caller resolves it owner-scoped and may omit it to render
   // plain links (a share with icons turned off).
   const bodyHtml = isChordpro
-    ? chordProToHtml(bodyMarkdown(body))
+    ? chordProToHtml(bodyMarkdown(body), { afterHeadHtml: audio })
     : markdownToHtml(bodyMarkdown(body), opts.mentions, {
         comments: opts.comments === true,
       });
@@ -243,6 +254,7 @@ export function renderPrintDocument(
 <body>
 <div class="print-bar"><label for="theme-pick">Appearance<select id="theme-pick" aria-label="Page appearance">${themeOptions}</select></label><button onclick="window.print()">Print / PDF</button></div>
 ${heading}
+${isChordpro ? "" : audio}
 ${bodyHtml}
 ${footer}
 <script>(function(){var k="ledgr-doc-theme",h=document.documentElement,s=document.getElementById("theme-pick"),ok=${JSON.stringify(THEMES)};function set(v){if(v==="dark")delete h.dataset.theme;else h.dataset.theme=v;s.value=v}try{var v=localStorage.getItem(k);if(ok.indexOf(v)>=0)set(v)}catch(e){}s.onchange=function(){set(s.value);try{localStorage.setItem(k,s.value)}catch(e){}}})()</script>

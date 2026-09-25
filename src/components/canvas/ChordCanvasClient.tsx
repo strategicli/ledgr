@@ -23,6 +23,8 @@ import { CHORDPRO_FORMAT, type ChordChart } from "@/lib/chordpro/types";
 import ChordEditor from "@/components/chord-editor/ChordEditor";
 import NotesTab from "@/components/canvas/NotesTab";
 import TransposeControl from "@/components/chord-editor/TransposeControl";
+import PreviewTrack from "@/components/chord-editor/PreviewTrack";
+import { PREVIEW_AUDIO_KEY, previewAudioId } from "@/lib/preview-audio";
 import { updateMeta } from "@/components/chord-editor/chordpro-edit";
 import { useItemAutosave } from "@/components/chord-editor/useItemAutosave";
 
@@ -53,6 +55,7 @@ export default function ChordCanvasClient({
     const n = (initialProperties as Record<string, unknown> | null)?.notes;
     return typeof n === "string" ? n : "";
   });
+  const [trackId, setTrackId] = useState(() => previewAudioId(initialProperties));
   // A song with content opens in Preview (you read/perform more than you edit);
   // an empty one opens in Lyrics so you can paste a set in to start (v5) —
   // unless it has notes and no chart yet, which is a song still being thought
@@ -86,6 +89,11 @@ export default function ChordCanvasClient({
   const commitNotes = (text: string) => {
     setNotes(text);
     patch({ propertyPatch: { notes: text } });
+  };
+
+  const commitTrack = (id: string | null) => {
+    setTrackId(id);
+    patch({ propertyPatch: { [PREVIEW_AUDIO_KEY]: id } });
   };
 
   const commitTitle = (t: string) => {
@@ -162,6 +170,8 @@ export default function ChordCanvasClient({
           </>
         )}
       </div>
+
+      {mode !== "notes" && <PreviewTrack itemId={itemId} trackId={trackId} onChange={commitTrack} />}
 
       {mode === "notes" ? (
         <div className="mx-auto w-full max-w-3xl px-6 py-4">
