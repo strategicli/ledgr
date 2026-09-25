@@ -21,6 +21,7 @@ export type R2Config = {
 };
 
 export class R2Provider implements StorageProvider {
+  readonly kind = "r2" as const;
   private client: AwsClient;
 
   constructor(private config: R2Config) {
@@ -65,6 +66,11 @@ export class R2Provider implements StorageProvider {
       aws: { signQuery: true },
     });
     return signed.url;
+  }
+
+  // Exactly what every server-side reader did inline before this method existed.
+  async getObject(key: string): Promise<Response> {
+    return fetch(await this.presignDownload(key));
   }
 
   async putObject(

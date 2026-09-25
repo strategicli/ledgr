@@ -46,9 +46,23 @@
 // needs (the old reason for the refusal) simply don't apply to plain SELECTs.
 // Stop the supervisor before running either form (the cluster can't be
 // started twice).
+//
+// FILES: restoring one of this machine's own snapshots
+// (<dataDir>/snapshots/<time>.dump) also brings back the attached files that
+// snapshot knew about, on an install that keeps files on local disk. See
+// restoreSnapshotFiles below for what it does and doesn't cover.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -335,6 +349,8 @@ async function restoreFromFile(dumpPath, cfg) {
     await analyzeAfterFill(db);
     await db.end();
 
+    restoreSnapshotFiles(dumpPath, cfg);
+
     console.log(
       "\nRestore complete. Start the peer with `npm run local:supervisor`.\n" +
         "If this peer syncs against a hub, its first pull/push cycle reconciles\n" +
@@ -346,6 +362,53 @@ async function restoreFromFile(dumpPath, cfg) {
     } catch {
       // best-effort
     }
+  }
+}
+
+/**
+ * Put back the attached files a local snapshot knew about (installs that keep
+ * files on local disk). A snapshot dump `X.dump` taken by the app sits beside
+ * `X.dump.files`, the list of every stored file at that moment, and the shared
+ * copy of each lives in `files/` next to them (src/modules/snapshots/lib/
+ * snapshots.ts). Any listed file missing from this install's files folder is
+ * linked or copied back. Files already present are left alone: a file never
+ * changes under its key. Files added after the snapshot also stay (the restored
+ * database has no row for them; Data Hygiene's orphan sweep can clear them).
+ *
+ * No manifest (the weekly backup, a pg_dump from elsewhere, an R2 install): no
+ * files to bring back, and nothing is said about them.
+ */
+function restoreSnapshotFiles(dumpPath, cfg) {
+  const manifest = `${dumpPath}.files`;
+  if (!existsSync(manifest)) return;
+  const store = join(dirname(dumpPath), "files");
+  const live = join(cfg.dataDir, "files");
+  let restored = 0;
+  const missing = [];
+  for (const key of readFileSync(manifest, "utf8").split("\n")) {
+    // Keys the app wrote; still refuse anything that could step outside.
+    if (!key || key.split("/").some((s) => !s || s === "." || s === ".." || /[\\:]/.test(s))) continue;
+    const to = join(live, ...key.split("/"));
+    if (existsSync(to)) continue;
+    const from = join(store, ...key.split("/"));
+    if (!existsSync(from)) {
+      missing.push(key);
+      continue;
+    }
+    mkdirSync(dirname(to), { recursive: true });
+    try {
+      linkSync(from, to);
+    } catch {
+      copyFileSync(from, to);
+    }
+    restored += 1;
+  }
+  console.log(`Files: brought back ${restored} file(s) deleted since this snapshot.`);
+  if (missing.length > 0) {
+    console.log(
+      `WARNING: ${missing.length} file(s) this snapshot lists are in neither the files folder nor the snapshot store, ` +
+        `so they will show as missing in Ledgr. First few:\n  ${missing.slice(0, 5).join("\n  ")}`
+    );
   }
 }
 

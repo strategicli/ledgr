@@ -193,8 +193,10 @@ export default handler;
 
 export const config = {
   matcher: [
-    // All routes except /health, Next internals, and static files.
-    "/((?!health|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // All routes except /health, Next internals, and static files. Also not
+    // /files/local/: its signed URL is the credential, and with the proxy in
+    // front Next cuts request bodies at 10MB, truncating big uploads.
+    "/((?!health|_next|files/local/|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
     // Clerk's auto-proxy path (keyless/dev proxying) must hit the middleware.
     "/__clerk/:path*",

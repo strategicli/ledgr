@@ -45,6 +45,8 @@ async function throws(name: string, fn: () => Promise<unknown>, code?: string) {
 
 const deleted: string[] = [];
 const spy: SP = {
+  kind: "r2",
+  async getObject() { throw new Error("unused"); },
   async presignUpload() { throw new Error("unused"); },
   async putObject() { throw new Error("unused"); },
   async listObjects() { throw new Error("unused"); },
