@@ -428,7 +428,7 @@ On a local copy, the **Private access (Tailscale)** module puts this Ledgr on th
 
 ## 1r. Keep a copy in the cloud: pairing a hub with a fresh cloud copy (ADR-277)
 
-**What it is.** A hub (the always-on machine running the main copy) fills a brand-new cloud copy with everything, then lists it as an ordinary copy it syncs with (every 15 minutes, both ways; minting or revoking a share link checks in at once). The hub always calls the cloud (`/api/machine/pair`, `/api/machine/pair/fill`, then `/api/machine/sync`); the cloud never calls the hub. Brandon's existing hub-to-Vercel pair was set up by hand and is untouched by this.
+**What it is.** A hub (the always-on machine running the main copy) fills a brand-new cloud copy with everything, then lists it as an ordinary copy it syncs with (every 15 minutes, both ways; minting or revoking a share link checks in at once). The hub always calls the cloud (`/api/pair`, `/api/machine/pair/fill`, then `/api/machine/sync`); the cloud never calls the hub. Brandon's existing hub-to-Vercel pair was set up by hand and is untouched by this.
 
 **The flow.** Deploy a new copy (Vercel + a new, empty Neon database; `build:satellite` migrates it). On the hub: Build → Network → **Keep a copy in the cloud** → paste its address → **Get a pairing code**. On any device: open `<cloud>/setup`, type the code. The hub claims the pairing, fills, and lists the copy. Sign in on the cloud with the hub's password (the copy switches itself to password sign-in unless it has Clerk keys).
 

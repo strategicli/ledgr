@@ -1,6 +1,6 @@
 // "Keep a copy in the cloud" (ADR-277): the CLOUD copy's door. Everything here
 // runs on the fresh cloud copy, reached only by /setup (the owner typing the
-// code) and /api/machine/pair (the hub). The rules are pure, in pairing.ts;
+// code) and /api/pair + /api/machine/pair/fill (the hub). The rules are pure, in pairing.ts;
 // this file reads the facts, applies them, and writes.
 //
 // The fill writes with the sync triggers paused (ALTER TABLE … DISABLE TRIGGER
@@ -108,7 +108,7 @@ export async function cloudFacts(): Promise<CloudFacts & { firstMigratedAt: Date
   };
 }
 
-/** What anyone may learn from GET /api/machine/pair. Says nothing about a claimed copy. */
+/** What anyone may learn from GET /api/pair. Says nothing about a claimed copy. */
 export async function cloudStatus() {
   const f = await cloudFacts();
   const base = { ledgr: true, schemaVer: latestSchemaVer() };

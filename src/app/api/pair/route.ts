@@ -1,5 +1,7 @@
-// The cloud copy's pairing door (ADR-277). Public like every /api/machine route;
-// what it answers is decided in src/lib/sync/pairing-cloud.ts.
+// The cloud copy's pairing door (ADR-277). Public (src/proxy.ts) because it must
+// answer before any credential exists, which is also why it lives outside
+// /api/machine, where every handler checks a token. What it answers is decided
+// in src/lib/sync/pairing-cloud.ts.
 //
 //   GET  → is this copy empty, unowned and open to pairing? (A copy that has an
 //          owner says only that it is a Ledgr and its schema version.)

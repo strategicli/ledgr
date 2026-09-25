@@ -356,6 +356,8 @@ const TODAY_PUBLIC = [
   "/reset-password",
   // The setup page (ADR-275); only the owner sees its checklist once one exists.
   "/setup",
+  // The cloud-copy pairing door (ADR-277); nothing on a copy with an owner.
+  "/api/pair",
   ...modulePublicPaths(),
 ];
 const proxySrc = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");

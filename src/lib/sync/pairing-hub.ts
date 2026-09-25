@@ -227,7 +227,7 @@ export async function startPairing(opts: {
 
   let cloud: Record<string, unknown>;
   try {
-    cloud = await cloudJson(url, "/api/machine/pair");
+    cloud = await cloudJson(url, "/api/pair");
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
@@ -310,9 +310,9 @@ export async function advancePairing() {
   if (!s) return null;
   if (s.status === "waiting") {
     try {
-      const cloud = await cloudJson(s.url, "/api/machine/pair");
+      const cloud = await cloudJson(s.url, "/api/pair");
       if (cloud.codeEntered === true) {
-        const claimed = await cloudJson(s.url, "/api/machine/pair", {
+        const claimed = await cloudJson(s.url, "/api/pair", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ code: s.code, name: installLabel() }),
