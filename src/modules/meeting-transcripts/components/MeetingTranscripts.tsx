@@ -4,14 +4,18 @@
 // Offers paste-to-create (v1a) and, when transcription is configured, audio
 // upload (v1b). Editing a transcript opens the item itself (the full markdown
 // editor + the Minutes dropdown), so a long transcript edits in place without
-// bloating the meeting body. Server component, mirrors MeetingPrep.
+// bloating the meeting body. Server component, mirrors MeetingPrep. Core
+// canvases reach it through src/lib/module-panels.tsx; it renders nothing while
+// the meeting-transcripts module is off for the signed-in owner (ADR-272).
 import Link from "next/link";
 import {
   listMeetingTranscripts,
   type MinutesState,
 } from "@/lib/meetings/transcripts";
-import { getTranscription } from "@/lib/transcription/provider";
+import { getTranscription } from "@/modules/meeting-transcripts/lib/provider";
 import CanvasSection from "@/components/canvas/CanvasSection";
+import { moduleOnFor } from "@/lib/modules/enabled";
+import { resolveOwner } from "@/lib/owner";
 import AddTranscript from "./AddTranscript";
 import UploadTranscript from "./UploadTranscript";
 import AudioUpload from "./AudioUpload";
@@ -26,7 +30,6 @@ const MINUTES_BADGE: Record<MinutesState, { label: string; className: string }> 
 };
 
 export default async function MeetingTranscripts({
-  ownerId,
   itemId,
   // Rendered as a single grid card (ADR-069): drop the section card chrome.
   bare = false,
@@ -34,12 +37,13 @@ export default async function MeetingTranscripts({
   // transcript is opened rarely, so the section starts closed.
   collapsed = false,
 }: {
-  ownerId: string;
   itemId: string;
   bare?: boolean;
   collapsed?: boolean;
 }) {
-  const transcripts = await listMeetingTranscripts(ownerId, itemId);
+  const owner = await resolveOwner();
+  if (!owner || !(await moduleOnFor(owner.id, "meeting-transcripts"))) return null;
+  const transcripts = await listMeetingTranscripts(owner.id, itemId);
   const transcriptionEnabled = getTranscription() != null;
   // Transcripts with a still-running job — the live client-poll's work list.
   const pendingIds = transcripts

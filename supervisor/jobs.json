@@ -104,6 +104,7 @@
     "shared": false,
     "on": false,
     "why": "Claims transcription jobs from the provider; two pollers race for the same job.",
+    "module": "meeting-transcripts",
     "ownerLabel": "Transcription",
     "what": "Collects finished transcripts of meeting recordings.",
     "movable": false,

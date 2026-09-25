@@ -4,8 +4,9 @@
 // transcription provider; the panel then polls /api/transcription/[id]/status.
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
+import { routeGate } from "@/lib/modules/gate";
 import { ItemError } from "@/lib/items";
-import { startAudioTranscription } from "@/lib/meetings/transcription-service";
+import { startAudioTranscription } from "@/modules/meeting-transcripts/lib/transcription-service";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ type Context = { params: Promise<{ id: string }> };
 export async function POST(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "meeting-transcripts");
+  if (off) return off;
 
   try {
     const meetingId = asUuid((await context.params).id, "id");

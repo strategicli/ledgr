@@ -6,8 +6,8 @@
 // explicit none disables). A live submit/poll needs a real audio URL + key, so
 // it's left to the in-browser eyeball (the graph-auth gated posture).
 // Run: npx tsx scripts/verify-transcription.mts
-const { mapTranscriptResponse } = await import("../src/lib/transcription/assemblyai");
-const { transcriptToMarkdown } = await import("../src/lib/transcription/types");
+const { mapTranscriptResponse } = await import("../src/modules/meeting-transcripts/lib/assemblyai");
+const { transcriptToMarkdown } = await import("../src/modules/meeting-transcripts/lib/types");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -54,7 +54,7 @@ check("no diarization → plain text", mdPlain === "Just text.", JSON.stringify(
 // transcriptionAdapter() reads env live on every call (pure, no cache), so it
 // covers every permutation directly. getTranscription() caches its instance and
 // never caches a miss, so test it null-first then configured (the real lifecycle).
-const { transcriptionAdapter, getTranscription } = await import("../src/lib/transcription/provider");
+const { transcriptionAdapter, getTranscription } = await import("../src/modules/meeting-transcripts/lib/provider");
 
 delete process.env.TRANSCRIPTION_ADAPTER;
 delete process.env.ASSEMBLYAI_API_KEY;

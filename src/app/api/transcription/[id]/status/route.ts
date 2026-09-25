@@ -5,7 +5,8 @@
 // (/api/machine/transcription-poll) advances the rest. Idempotent.
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { advanceTranscription } from "@/lib/meetings/transcription-service";
+import { routeGate } from "@/lib/modules/gate";
+import { advanceTranscription } from "@/modules/meeting-transcripts/lib/transcription-service";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ type Context = { params: Promise<{ id: string }> };
 export async function GET(_request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "meeting-transcripts");
+  if (off) return off;
 
   try {
     const id = asUuid((await context.params).id, "id");
