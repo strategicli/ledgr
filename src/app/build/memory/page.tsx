@@ -5,16 +5,16 @@
 // /list/memory; this page is the orientation + the live stump index (what the
 // assistant actually loads at the start of a session).
 //
-// Gated by the ai-memory module: off → an enable prompt (the sidebar entry
-// is hidden too, so you only land here from Build → Modules or a link); on →
-// the stumps, marked always-on (pinned) vs. pull-only.
+// Owned by the ai-memory module (ADR-272 step 4): off → 404 through the shared
+// gate (the sidebar entry is hidden too; the switch is on Build → Modules);
+// on → the stumps, marked always-on (pinned) vs. pull-only.
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import NewItemButton from "@/components/home/NewItemButton";
-import AiMemoryGuide from "@/components/memory/AiMemoryGuide";
-import { getMemoryStumps, type MemoryStump } from "@/lib/memory";
+import AiMemoryGuide from "@/modules/ai-memory/components/AiMemoryGuide";
+import { getMemoryStumps, type MemoryStump } from "@/modules/ai-memory/lib/memory";
 import { resolveOwner } from "@/lib/owner";
-import { moduleOnFor } from "@/lib/modules/enabled";
+import { pageGate } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +73,7 @@ export default async function AiMemoryPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const aiMemoryEnabled = await moduleOnFor(owner.id, "ai-memory");
+  await pageGate(owner.id, "ai-memory");
 
   return (
     <main className="min-h-screen">
@@ -92,21 +92,7 @@ export default async function AiMemoryPage() {
           task names someone or something they cover.
         </p>
 
-        {!aiMemoryEnabled ? (
-          <div className="mt-8 rounded-xl border border-amber-900/60 bg-amber-950/20 p-5">
-            <p className="text-sm font-semibold text-neutral-100">AI Memory is off</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-neutral-400">
-              Turn it on in{" "}
-              <Link href="/build/modules" className="text-[var(--accent)] hover:underline">
-                Build → Modules
-              </Link>
-              . While off, the memory tools aren’t exposed to any connected AI and this surface stays
-              empty, so a plain MCP client behaves exactly as before.
-            </p>
-          </div>
-        ) : (
-          <EnabledBody ownerId={owner.id} />
-        )}
+        <EnabledBody ownerId={owner.id} />
 
         <details className="mt-10 rounded-xl border border-neutral-800 p-4 [&_summary]:cursor-pointer">
           <summary className="text-sm font-semibold text-neutral-200">

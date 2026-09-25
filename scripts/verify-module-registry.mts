@@ -664,5 +664,61 @@ for (const r of sharingRoutes) {
   check("there are no verify-desk scripts to repoint", !readdirSync(new URL("./", import.meta.url)).some((f) => f.startsWith("verify-desk")));
 }
 
+// --- 16. step 4: ai-memory and live-context live under src/modules -----------
+{
+  const { existsSync } = await import("node:fs");
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { aiMemoryModule } = await import("../src/modules/ai-memory/manifest");
+  const { liveContextModule } = await import("../src/modules/live-context/manifest");
+  const { FEATURE_MODULES } = await import("../src/lib/modules/features");
+  const { moduleResources } = await import("../src/lib/modules");
+  const registerSrc = read("src/lib/modules/register.ts");
+  const serverSlotsSrc = read("src/lib/modules/server-slots.ts");
+  for (const m of [aiMemoryModule, liveContextModule]) {
+    check(`${m.id} is registered from @/modules/${m.id}/manifest`, allModules().find((x) => x.id === m.id) === m);
+    check(`register.ts imports ${m.id} from its module folder`, registerSrc.includes(`from "@/modules/${m.id}/manifest"`));
+    check(`${m.id} left features.ts`, !FEATURE_MODULES.some((x) => x.id === m.id));
+    check(`${m.id} is off by default`, m.enabledByDefault === false && moduleOn({ modules: {} }, m.id) === false);
+    check(`${m.id} has a description and adds no types`, !!m.description && m.types.length === 0);
+    check(`server-slots imports ${m.id}'s server.ts`, serverSlotsSrc.includes(`import "@/modules/${m.id}/server"`));
+    check(
+      `${m.id}'s server.ts attaches exactly the tools its manifest names`,
+      JSON.stringify(m.mcpTools?.tools?.map((x) => x.name)) === JSON.stringify(m.mcpTools?.names)
+    );
+    const routes = m.routes ?? [];
+    check(`${m.id} names its route files`, routes.length > 0);
+    for (const r of routes) {
+      check(`${m.id} route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+      check(`${m.id} route calls the gate: ${r}`, /from "@\/lib\/modules\/gate"/.test(read(r)) && read(r).includes(`"${m.id}")`));
+    }
+  }
+  check("ai-memory owns /build/memory", JSON.stringify(aiMemoryModule.routes) === JSON.stringify(["src/app/build/memory/page.tsx"]));
+  check("live-context owns both active-context routes", liveContextModule.routes?.length === 2);
+  // The tool registry collects the two families from the modules, not by file.
+  const toolsIndex = read("src/lib/mcp/tools/index.ts");
+  check("tools/index.ts does not import the memory tools", !/from "\.\/memory"|tools\/memory|ai-memory/.test(toolsIndex));
+  check("tools/index.ts does not import the context tools", !/from "\.\/context"|tools\/context|live-context/.test(toolsIndex));
+  check("the old tool files are gone", !existsSync(new URL("../src/lib/mcp/tools/memory.ts", import.meta.url)) && !existsSync(new URL("../src/lib/mcp/tools/context.ts", import.meta.url)));
+  check("search_items no longer imports the memory lib", !/memory/i.test(read("src/lib/mcp/tools/items.ts").split("\n").filter((l) => l.startsWith("import")).join("\n")));
+  check("ai-memory contributes the search_items hook (server slot)", typeof aiMemoryModule.mcpSearchHits === "function");
+  // The memory protocol resource comes from the module, not from core.
+  const onRes = moduleResources((id) => id === "ai-memory");
+  check("the memory protocol is the ai-memory module's resource", onRes.length === 1 && onRes[0].uri === "ledgr://guide/memory-protocol");
+  check("…and reads as the protocol text", onRes[0]?.read().startsWith("# Working with the owner's memory") === true);
+  check("…and is gone while ai-memory is off", moduleResources(() => false).length === 0);
+  const mcpServer = read("src/lib/mcp/server.ts");
+  check("mcp/server.ts no longer names the memory protocol", !/MEMORY_PROTOCOL|"ai-memory"/.test(mcpServer));
+  check("mcp/server.ts collects module resources", mcpServer.includes("moduleResources("));
+  check("guide.ts no longer holds the memory protocol", !/MEMORY_PROTOCOL/.test(read("src/lib/mcp/guide.ts")));
+  // The canvas reaches the tracker through module-panels, never directly.
+  const itemCanvas = read("src/components/canvas/ItemCanvas.tsx");
+  check("ItemCanvas does not import ActiveContextTracker", !/import .*ActiveContextTracker/.test(itemCanvas));
+  check("ItemCanvas mounts the live-context panel", itemCanvas.includes('<ModuleItemPanel id="live-context"'));
+  const panels = read("src/lib/module-panels.tsx");
+  check("module-panels maps live-context to the module's panel", panels.includes('"live-context": LiveContextPanel'));
+  check("the live-context panel calls the switch", read("src/modules/live-context/components/LiveContextPanel.tsx").includes('moduleOnFor(owner.id, "live-context")'));
+  check("the active_context table carries its ownership note", /Owned by the live-context module/.test(read("src/db/schema.ts")));
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

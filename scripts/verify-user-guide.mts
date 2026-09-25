@@ -2,7 +2,8 @@
 // Pure functions only (no DB, no browser) — the three doorways all read from
 // static modules, so all three are checkable here.
 //   npx tsx scripts/verify-user-guide.mts
-import { readGuideResource, GUIDE_RESOURCE, MEMORY_PROTOCOL_RESOURCE } from "../src/lib/mcp/guide";
+import { readGuideResource, GUIDE_RESOURCE } from "../src/lib/mcp/guide";
+import { MEMORY_PROTOCOL_RESOURCE } from "../src/modules/ai-memory/lib/protocol";
 import {
   USER_GUIDE_URI,
   USER_GUIDE_ROUTE,
@@ -24,9 +25,9 @@ const read = readGuideResource(USER_GUIDE_URI);
 check("readGuideResource serves the user guide", read !== null);
 check("…as markdown", read?.mimeType === "text/markdown");
 check("…with the guide body", read?.text === USING_LEDGR_GUIDE);
-check("…and the other two guides still resolve",
+check("…and the workspace guide still resolves (the memory protocol is the ai-memory module's)",
   readGuideResource(GUIDE_RESOURCE.uri) !== null &&
-  readGuideResource(MEMORY_PROTOCOL_RESOURCE.uri) !== null);
+  readGuideResource(MEMORY_PROTOCOL_RESOURCE.uri) === null);
 check("an unknown guide URI is still null", readGuideResource("ledgr://guide/nope") === null);
 check("the three guide URIs are distinct",
   new Set([GUIDE_RESOURCE.uri, MEMORY_PROTOCOL_RESOURCE.uri, USER_GUIDE_URI]).size === 3);

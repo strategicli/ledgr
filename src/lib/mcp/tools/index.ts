@@ -5,7 +5,7 @@
 // surface can never drift from the app's own contract or skip owner scoping.
 //
 // Tool definitions live per-family in sibling files (items/types/relations/
-// views/templates/dashboards/workspace/memory); this file only assembles the
+// views/templates/dashboards/workspace); this file only assembles the
 // registry and dispatches calls.
 //
 // A tool handler returns a plain object; callTool serializes it to MCP text
@@ -21,11 +21,9 @@ import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
 import { attachmentTools } from "./attachments";
 import { calendarTools } from "./calendar";
-import { contextTools } from "./context";
 import { dashboardTools } from "./dashboards";
 import { exportTools } from "./export";
 import { itemTools } from "./items";
-import { memoryTools } from "./memory";
 import { recordTools } from "./records";
 import { relationTools } from "./relations";
 import { taskTools } from "./tasks";
@@ -52,10 +50,9 @@ const TOOLS: McpTool[] = [
   ...templateTools,
   ...workspaceTools,
   ...dashboardTools,
-  ...memoryTools,
-  ...contextTools,
   // Tools a module brings on its manifest (mcpTools.tools, ADR-272 step 4),
-  // such as the sharing module's three share-link tools.
+  // such as sharing's share-link tools and AI Memory's and Live editing
+  // context's two each.
   ...allModules().flatMap((m) => m.mcpTools?.tools ?? []),
 ];
 

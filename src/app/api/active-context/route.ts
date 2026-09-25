@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
-import { clearActiveContext, setActiveContext } from "@/lib/active-context";
-import { moduleOnFor } from "@/lib/modules/enabled";
+import { clearActiveContext, setActiveContext } from "@/modules/live-context/lib/active-context";
+import { routeGate } from "@/lib/modules/gate";
 
 // Live editing context (ADR-162): the open item canvas reports here what the
 // owner is currently looking at (the item, and any text selection), so Claude
 // can resolve "this note" / "this sentence" over MCP. Clerk-authed and
 // owner-scoped via requireOwner — this is a browser-session write, not a machine
-// token. Gated by the live-context module (Build → Modules): when the feature is off, both
-// verbs no-op with 204 so a stale client can't keep a row alive after the owner
-// turns tracking off.
+// token. Owned by the live-context module (ADR-272 step 4): while it is off,
+// POST answers 404 through the shared gate, so a stale client can't keep a row
+// alive after the owner turns tracking off. DELETE stays open: clearing the row
+// is always safe, and it lets a tab opened before the switch clean up after itself.
 export const dynamic = "force-dynamic";
 
 // POST — upsert the owner's active context. Body: { itemId, title?,
@@ -18,10 +19,10 @@ export async function POST(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
 
+  const off = await routeGate(owner.id, "live-context");
+  if (off) return off;
+
   try {
-    if (!(await moduleOnFor(owner.id, "live-context"))) {
-      return new NextResponse(null, { status: 204 });
-    }
     const body = (await request.json()) as {
       itemId?: unknown;
       title?: unknown;

@@ -26,6 +26,8 @@ import { calendarSyncModule } from "@/modules/calendar-sync/manifest";
 import { relatednessModule } from "@/modules/relatedness/manifest";
 import { deskModule } from "@/modules/desk/manifest";
 import { agentModule } from "@/modules/agent/manifest";
+import { aiMemoryModule } from "@/modules/ai-memory/manifest";
+import { liveContextModule } from "@/modules/live-context/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -33,6 +35,10 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   mindmapModule,
   fileModule,
   todoistModule,
+  // Moved under src/modules (step 4), kept here so the Modules page and the MCP
+  // instruction blocks keep their order.
+  aiMemoryModule,
+  liveContextModule,
   ...FEATURE_MODULES,
   // Moved under src/modules/<id>/ (ADR-272 step 4).
   youtubeTranscriptsModule,

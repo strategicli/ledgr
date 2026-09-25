@@ -23,7 +23,7 @@ import { tocForType } from "@/lib/toc";
 import WordCount from "@/components/canvas/WordCount";
 import { parseTabs } from "@/lib/editor/canvas-tabs";
 import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
-import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
+import { ModuleItemPanel } from "@/lib/module-panels";
 import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
 import ListenBar from "@/components/canvas/ListenBar";
@@ -284,11 +284,10 @@ export default async function ItemCanvas({
           the cross-device conflict banner + refresh-on-focus check (ADR-134). */}
       <SaveStatusIndicator itemId={item.id} loadedAt={item.updatedAt.toISOString()} />
       {/* Live editing context (ADR-162): report the open item + text selection so
-          Claude can resolve "this note"/"this sentence" over MCP. Opt-in, and
+          Claude can resolve "this note"/"this sentence" over MCP. A module panel
+          (module-panels.tsx) that renders nothing while live-context is off, and
           never for a template prototype (that's authoring, not the live note). */}
-      {moduleOn(settings, "live-context") && !item.isTemplate && (
-        <ActiveContextTracker itemId={item.id} title={item.title} />
-      )}
+      {!item.isTemplate && <ModuleItemPanel id="live-context" itemId={item.id} title={item.title} />}
     </>
   );
 }

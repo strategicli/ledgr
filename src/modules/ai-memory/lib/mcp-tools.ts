@@ -1,11 +1,13 @@
 // AI Memory tools (ADR-137): get_memory_stumps loads the compact stump index
 // at session start; remember files one durable memory + links it to the
 // items it's about. Gated by the ai-memory module, whose manifest claims these
-// tool names (mcpTools slot, src/lib/modules/features.ts).
+// tool names (mcpTools slot, src/modules/ai-memory/manifest.ts). Attached by
+// ../server.ts, with the search_items hook below.
 import { parseItemPayload } from "@/lib/api";
 import { makeMarkdownBody } from "@/lib/body";
 import { ItemError } from "@/lib/items";
 import { createItem } from "@/lib/item-mutations";
+import type { McpSearchHit } from "@/lib/modules";
 import {
   MEMORY_HORIZONS,
   MEMORY_KINDS,
@@ -14,18 +16,47 @@ import {
   findSimilarMemoryTitles,
   getMemoryStumps,
   memoryAge,
+  memoryFacets,
+  memoryMarker,
   renderStumpIndex,
   suggestAboutFor,
-} from "@/lib/memory";
+  supersededByFor,
+} from "@/modules/ai-memory/lib/memory";
 import { assertOwnedItems, relateItems } from "@/lib/relations";
-import { optBodyMarkdown, optEnum, optInt, optString, optUuidArray, reqString } from "./args";
-import { rowView } from "./serializers";
-import type { McpTool } from "./wire";
+import { optBodyMarkdown, optEnum, optInt, optString, optUuidArray, reqString } from "@/lib/mcp/tools/args";
+import { rowView } from "@/lib/mcp/tools/serializers";
+import type { McpTool } from "@/lib/mcp/tools/wire";
 
 // The AI Memory tools (ADR-137): present only when the owner has turned the
 // subsystem on (the ai-memory module). Filtered out of tools/list and
 // rejected by callTool when off, so a "vanilla" MCP client never sees the
 // memory concept and its AI never gets confused by tools it can't use.
+
+// The search_items hook (mcpSearchHits slot). A retired (archived) memory stays
+// in the store for the record but is no longer a claim to recall, so it drops
+// out of search (ADR-259); other types keep their archived rows. Memory hits
+// carry their age (ADR-230) plus the same STALE / SUPERSEDED marker the stump
+// index renders (ADR-259): Tier 2 memories are reached by search, so the hedge
+// has to appear here or it never appears.
+export async function memorySearchHits(ownerId: string, hits: McpSearchHit[]): Promise<McpSearchHit[]> {
+  const rows = hits.filter((r) => !(r.type === MEMORY_TYPE && r.statusCategory === "archived"));
+  const memoryIds = rows.filter((r) => r.type === MEMORY_TYPE).map((r) => r.id);
+  if (memoryIds.length === 0) return rows;
+  const superseded = await supersededByFor(ownerId, memoryIds);
+  return rows.map((r) =>
+    r.type === MEMORY_TYPE
+      ? {
+          ...r,
+          extra: {
+            ...r.extra,
+            age:
+              memoryAge(r.updatedAt) +
+              memoryMarker(memoryFacets(r.properties).horizon, r.updatedAt, superseded.get(r.id) ?? null),
+          },
+        }
+      : r
+  );
+}
 
 export const memoryTools: McpTool[] = [
   {

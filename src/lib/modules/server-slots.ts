@@ -22,3 +22,5 @@ import "@/modules/email-capture/server";
 import "@/modules/calendar-sync/server";
 import "@/modules/relatedness/server";
 import "@/modules/agent/server";
+import "@/modules/ai-memory/server";
+import "@/modules/live-context/server";

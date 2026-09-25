@@ -14,16 +14,13 @@ import {
   type JsonRpcResponse,
 } from "@/lib/mcp/protocol";
 import { callTool, listToolDefs } from "@/lib/mcp/tools";
-import {
-  GUIDE_RESOURCE,
-  MEMORY_PROTOCOL_RESOURCE,
-  MEMORY_PROTOCOL_URI,
-  readGuideResource,
-} from "@/lib/mcp/guide";
+import { GUIDE_RESOURCE, readGuideResource } from "@/lib/mcp/guide";
 import { USER_GUIDE_RESOURCE } from "@/lib/mcp/user-guide";
 import { getSettings } from "@/lib/settings";
-import { moduleInstructions } from "@/lib/modules";
-import { moduleOn, moduleOnFor } from "@/lib/modules/enabled";
+import { moduleInstructions, moduleResources } from "@/lib/modules";
+// Attaches each module's server-only slots (its tools and resources).
+import "@/lib/modules/server-slots";
+import { moduleOn } from "@/lib/modules/enabled";
 
 // Free-form version string for clients to display; tracks the PRD epoch
 // (v0.18, the Markdown epoch), not the package.json build number.
@@ -87,7 +84,7 @@ export const INSTRUCTIONS = [
 // The instructions the client sees at initialize, owner-aware: the stable base,
 // plus the instruction block of every module that is on (the mcpTools slot,
 // ADR-272 step 3: AI Memory's and Live editing context's live on their
-// manifests in src/lib/modules/features.ts).
+// manifests under src/modules/ai-memory and src/modules/live-context).
 export async function buildInstructions(ownerId: string): Promise<string> {
   const settings = await getSettings(ownerId);
   let out = INSTRUCTIONS;
@@ -130,15 +127,16 @@ export async function handleMcpMessage(
       return rpcResult(id, { tools: await listToolDefs(ownerId) });
 
     case "resources/list": {
-      // The stable workspace-shaping and user guides, plus the AI Memory
-      // protocol when the owner has AI Memory on (ADR-137) — so a vanilla client
-      // never sees it. The user guide (ADR-189) is ungated: "what can Ledgr do"
-      // is useful to every client, and it holds no owner data.
-      const aiMemoryEnabled = await moduleOnFor(ownerId, "ai-memory");
-      const resources = aiMemoryEnabled
-        ? [GUIDE_RESOURCE, USER_GUIDE_RESOURCE, MEMORY_PROTOCOL_RESOURCE]
-        : [GUIDE_RESOURCE, USER_GUIDE_RESOURCE];
-      return rpcResult(id, { resources });
+      // The stable workspace-shaping and user guides, plus the resources of
+      // every module that is on (the mcpResources slot, ADR-272 step 4), such as
+      // the AI Memory protocol, so a vanilla client never sees them. The user
+      // guide (ADR-189) is ungated: "what can Ledgr do" is useful to every
+      // client, and it holds no owner data.
+      const settings = await getSettings(ownerId);
+      const fromModules = moduleResources((m) => moduleOn(settings, m)).map(
+        ({ read: _read, ...descriptor }) => descriptor
+      );
+      return rpcResult(id, { resources: [GUIDE_RESOURCE, USER_GUIDE_RESOURCE, ...fromModules] });
     }
 
     case "resources/templates/list":
@@ -151,12 +149,13 @@ export async function handleMcpMessage(
       if (typeof params.uri !== "string") {
         return rpcError(id, JSONRPC.INVALID_PARAMS, "resources/read requires a string 'uri'");
       }
-      // The memory protocol is gated: when AI Memory is off it's unlisted, and
-      // reading it directly answers unknown-resource just like any other URI.
-      if (params.uri === MEMORY_PROTOCOL_URI && !(await moduleOnFor(ownerId, "ai-memory"))) {
-        return rpcError(id, JSONRPC.INVALID_PARAMS, `unknown resource '${params.uri}'`);
-      }
-      const contents = readGuideResource(params.uri);
+      // A module's resource is readable only while its module is on; when off
+      // it answers unknown-resource just like any other URI.
+      const settings = await getSettings(ownerId);
+      const owned = moduleResources((m) => moduleOn(settings, m)).find((r) => r.uri === params.uri);
+      const contents = owned
+        ? { uri: owned.uri, mimeType: owned.mimeType, text: owned.read() }
+        : readGuideResource(params.uri);
       if (!contents) {
         return rpcError(id, JSONRPC.INVALID_PARAMS, `unknown resource '${params.uri}'`);
       }
