@@ -67,6 +67,12 @@ const CORE_PUBLIC_ROUTES = [
   // owner sees only "set up, sign in"; creating the first owner there needs the
   // same localhost address and one-time ticket as the reset page.
   "/setup",
+  // The cloud-copy pairing door (ADR-277): a hub asks whether this copy is empty
+  // and open to pairing, then offers the one-time code its owner typed on
+  // /setup. Like the OAuth registration door, it must answer before any
+  // credential exists; everything it grants is decided in pairing-cloud.ts, and
+  // it grants nothing on a copy that has an owner or data.
+  "/api/pair",
 ];
 
 // Modules add their own public paths through the manifest `publicPaths` slot

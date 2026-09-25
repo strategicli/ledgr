@@ -20,8 +20,10 @@ const noSubscribe = () => () => {};
 
 type TokenRow = { token: string; revokedAt: string | null; createdAt: string };
 
-function shareUrl(token: string): string {
-  return `${window.location.origin}/share/${token}`;
+// `base` is the owner's public address (ADR-277), e.g. the cloud copy a hub
+// keeps; without one, the link uses the address this browser is on, as always.
+function shareUrl(token: string, base: string | null): string {
+  return `${base ?? window.location.origin}/share/${token}`;
 }
 
 export default function ShareLink({
@@ -38,6 +40,7 @@ export default function ShareLink({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+  const [base, setBase] = useState<string | null>(null);
   // Bakes into the next link: off → the shared/PDF render drops @-mention icons
   // for a cleaner document. The choice rides the token, so the recipient sees it.
   const [showIcons, setShowIcons] = useState(true);
@@ -51,8 +54,10 @@ export default function ShareLink({
     let cancelled = false;
     void fetch(`/api/items/${itemId}/share`)
       .then((r) => (r.ok ? r.json() : { tokens: [] }))
-      .then((data: { tokens?: TokenRow[] }) => {
-        if (!cancelled) setActive((data.tokens ?? []).filter((t) => !t.revokedAt));
+      .then((data: { tokens?: TokenRow[]; base?: string | null }) => {
+        if (cancelled) return;
+        setActive((data.tokens ?? []).filter((t) => !t.revokedAt));
+        setBase(data.base ?? null);
       })
       .catch(() => {});
     return () => {
@@ -83,7 +88,7 @@ export default function ShareLink({
 
   async function copy(token: string) {
     try {
-      await navigator.clipboard.writeText(shareUrl(token));
+      await navigator.clipboard.writeText(shareUrl(token, base));
       setCopied(token);
       setTimeout(() => setCopied((c) => (c === token ? null : c)), 2000);
     } catch {
