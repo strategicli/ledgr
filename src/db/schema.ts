@@ -1159,6 +1159,9 @@ export const apiCredentials = pgTable(
 // Claude login ran it. Not user content in the "everything is an item" sense
 // (rule 2): a chat is a transient working session, like active_context; a
 // message worth keeping is saved out as a real note item.
+// Owned by the agent module (ADR-272 step 4, src/modules/agent/): the tables
+// stay here with the rest of the schema, and turning the module off keeps
+// their rows; nothing reads or purges them until it is back on.
 //
 // agent_sessions: one chat. kind main | side | inline. A side chat forks a main
 // one (parent_session_id) and expires 7 days after its last activity.

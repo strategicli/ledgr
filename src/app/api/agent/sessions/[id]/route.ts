@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAgentOwner } from "@/lib/agent/gate";
-import { deleteSession, getSession, updateSession } from "@/lib/agent/chat";
+import { requireAgentOwner } from "@/modules/agent/lib/gate";
+import { deleteSession, getSession, updateSession } from "@/modules/agent/lib/chat";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };

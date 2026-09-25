@@ -7,8 +7,11 @@ import {
   type UserSettings,
 } from "@/lib/settings";
 import { ensureNoteEditingPrompt } from "@/lib/note-editing-prompt";
-import { agentAvailable } from "@/lib/agent/gate";
-import { ensureAgentPrompts } from "@/lib/agent/prompts";
+// This route is not fenced core, so it imports the agent module directly for
+// the first-time prompt seeding below. An `onModuleEnabled` hook slot would be
+// the inversion if this route ever joins the fence (ADR-272 step 4).
+import { agentAvailable } from "@/modules/agent/lib/gate";
+import { ensureAgentPrompts } from "@/modules/agent/lib/prompts";
 import { moduleOn } from "@/lib/modules/enabled";
 import { requiresViolations } from "@/lib/modules";
 

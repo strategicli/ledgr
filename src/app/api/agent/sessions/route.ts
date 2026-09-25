@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAgentOwner } from "@/lib/agent/gate";
-import { createSession, getSession, listSessions } from "@/lib/agent/chat";
+import { requireAgentOwner } from "@/modules/agent/lib/gate";
+import { createSession, getSession, listSessions } from "@/modules/agent/lib/chat";
 
 export const dynamic = "force-dynamic";
 

@@ -3,14 +3,13 @@ import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import ActionToast from "@/components/ui/ActionToast";
 import UploadProgress from "@/components/attachments/UploadProgress";
-import { shellPanels } from "@/lib/module-panels";
 import Nav from "@/components/nav/Nav";
 import NavProgress from "@/components/nav/NavProgress";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import OutboxSync from "@/components/pwa/OutboxSync";
-import AgentPanel from "@/components/agent/AgentPanel";
-import { agentAvailable } from "@/lib/agent/gate";
 import { moduleOn } from "@/lib/modules/enabled";
+import { moduleAvailable } from "@/lib/modules";
+import { shellPanels } from "@/lib/module-panels";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";
@@ -123,17 +122,15 @@ export default async function RootLayout({
   // Resolved owner timezone: seeds the sync cache (appTimezoneSync) for the whole
   // request and is provided to client components via TimezoneProvider.
   let tz = DEFAULT_TIMEZONE;
-  // The in-app agent (ADR-271): on only where the machine can run it and the
-  // owner switched it on. Stamped on <body> so the editor can offer inline edit.
+  // Module shell panels (ADR-272 step 4): which modules are on for the owner
+  // AND runnable on this machine (the manifest's `available`). The in-app agent
+  // (ADR-271) is also stamped on <body> so the editor can offer inline edit.
+  let shellOn: (moduleId: string) => boolean = () => false;
   let agentOn = false;
-  // Modules' shell panels (module-panels.tsx), filtered to the ones switched on
-  // for this owner. Signed out or failed: none.
-  let shell: ReturnType<typeof shellPanels> = [];
   try {
     const owner = await resolveOwner();
     if (owner) {
       const s = await getSettings(owner.id);
-      shell = shellPanels().filter((p) => moduleOn(s, p.moduleId));
       accent = s.highlightColor;
       accentGradient = s.highlightGradient ?? s.highlightColor;
       accentHighlightImage = s.highlightGradient
@@ -147,7 +144,8 @@ export default async function RootLayout({
       sectionStyle = s.sectionStyle;
       theme = s.theme;
       tz = s.timezone ?? DEFAULT_TIMEZONE;
-      agentOn = moduleOn(s, "agent") && agentAvailable();
+      shellOn = (moduleId) => moduleOn(s, moduleId) && moduleAvailable(moduleId);
+      agentOn = shellOn("agent");
     }
   } catch (err) {
     // Next's dynamic-usage marker must propagate (it's how a build learns the
@@ -196,14 +194,11 @@ export default async function RootLayout({
           <UploadProgress />
           {/* One global upload-progress stack (bottom-right), same trick: every
               uploadAttachment reports here via a window event (ADR-236). */}
-          {shell.map(({ moduleId, Component }) => (
-            <Component key={moduleId} />
-          ))}
-          {/* Modules' app-wide panels (ADR-272 step 4), e.g. the Desk's global
-              Send-to-Desk popover (ADR-146); each only while its module is on. */}
-          {agentOn && <AgentPanel />}
-          {/* The Claude sidebar (ADR-271): one global panel, desktop right edge
-              or a phone bottom sheet; it follows whatever item is open. */}
+          {shellPanels()
+            .filter((p) => shellOn(p.moduleId))
+            .map(({ moduleId, Component }) => <Component key={moduleId} />)}
+          {/* Module shell panels (ADR-272 step 4), such as the Claude sidebar
+              (ADR-271): one global panel each, mounted only while on. */}
           <PwaRegister />
           <OutboxSync />
         </body>

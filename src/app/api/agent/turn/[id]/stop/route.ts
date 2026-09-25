@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAgentOwner } from "@/lib/agent/gate";
-import { turns } from "@/lib/agent/chat";
+import { requireAgentOwner } from "@/modules/agent/lib/gate";
+import { turns } from "@/modules/agent/lib/chat";
 
 export const dynamic = "force-dynamic";
 

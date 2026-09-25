@@ -100,8 +100,7 @@ import { inlineRefMenuAvailable, openInlineRefMenu } from "@/lib/inline-ref-menu
 import CommentPopover from "./CommentPopover";
 import PromoteLinePopup from "./PromoteLinePopup";
 import { LiveFlash, patchMarkdown } from "./live-patch";
-import InlineEdit from "@/components/agent/InlineEdit";
-import { useAgentOn } from "@/components/agent/useAgentOn";
+import { InlineEditPopover, useInlineEditOn } from "@/lib/module-editor";
 import "./markdown-editor.css";
 
 export type MarkdownEditorProps = {
@@ -1114,7 +1113,7 @@ export default function MarkdownEditor({
   // their scroll, caret, and undo history, and point at it if it's off screen.
   // In-app agent inline edit (ADR-271): offered only when the layout marked the
   // page agent-on (body[data-agent="on"]).
-  const agentOn = useAgentOn();
+  const agentOn = useInlineEditOn();
   const [inlineOpen, setInlineOpen] = useState(false);
   useEffect(() => {
     if (!editor || !agentOn || !editable) return;
@@ -1616,7 +1615,7 @@ export default function MarkdownEditor({
           the view controls live in a separate top row the host renders, so
           viewControls is desktop-only here. */}
       {inlineOpen && editor && createPortal(
-        <InlineEdit editor={editor} itemId={itemId} onClose={() => setInlineOpen(false)} />,
+        <InlineEditPopover editor={editor} itemId={itemId} onClose={() => setInlineOpen(false)} />,
         document.body
       )}
       {editedPill && (

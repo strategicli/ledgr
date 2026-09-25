@@ -21,17 +21,18 @@ import {
   type ModuleManifest,
 } from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
-import { agentAvailable } from "@/lib/agent/gate";
 import ModuleToggle from "@/components/build/ModuleToggle";
 
 export const dynamic = "force-dynamic";
 
 // Why a switch can't be flipped on this machine, when it can't. The agent runs
 // under this computer's Claude login, so only a local install that is its own
-// hub can run it (lib/agent/gate.ts).
+// hub can run it (the manifest's `available`, src/modules/agent/manifest.ts).
 function unavailableReason(m: ModuleManifest): string | null {
-  if (m.id === "agent" && !agentAvailable()) {
-    return "Not available here: the agent runs only on a Ledgr installed on your own computer, not on the cloud copy or a synced second computer.";
+  if (m.available?.() === false) {
+    return m.id === "agent"
+      ? "Not available here: the agent runs only on a Ledgr installed on your own computer, not on the cloud copy or a synced second computer."
+      : "Not available on this machine.";
   }
   return null;
 }

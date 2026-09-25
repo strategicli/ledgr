@@ -568,6 +568,42 @@ for (const r of sharingRoutes) {
   check("the relatedness job is tied to the module in jobs.json", (await import("../src/lib/job-owners")).jobModuleOff("relatedness", ["relatedness"]));
   check("server-slots attached relatedness' healthCheck", typeof relatednessModule.healthCheck === "function");
 }
+// --- 14. step 4: the in-app agent lives under src/modules/agent ---------------
+{
+  const { agentModule } = await import("../src/modules/agent/manifest");
+  const { moduleAvailable } = await import("../src/lib/modules");
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  check("agent is registered from @/modules/agent/manifest", allModules().find((m) => m.id === "agent") === agentModule);
+  check("agent is gone from features.ts", !read("src/lib/modules/features.ts").includes('"agent"'));
+  check("agent is off by default", agentModule.enabledByDefault === false && moduleOn({ modules: {} }, "agent") === false);
+  check("agent declares whether this machine can run it", typeof agentModule.available === "function");
+  const prev = process.env.LEDGR_AGENT;
+  process.env.LEDGR_AGENT = "off";
+  check("moduleAvailable reads the manifest (forced off)", moduleAvailable("agent") === false);
+  process.env.LEDGR_AGENT = "on";
+  check("moduleAvailable reads the manifest (forced on)", moduleAvailable("agent") === true);
+  if (prev === undefined) delete process.env.LEDGR_AGENT;
+  else process.env.LEDGR_AGENT = prev;
+  check("a module without `available` is available", moduleAvailable("relatedness") === true);
+  const routes = agentModule.routes ?? [];
+  check("agent lists its twelve route files", routes.length === 12);
+  for (const r of routes) {
+    check(`agent route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+    // The machine route is checked below; health answers while the module is
+    // off on purpose (Settings' "Check sign-in" before switching it on).
+    if (r.includes("/api/machine/") || r.includes("/agent/health/")) continue;
+    check(`agent route calls the gate: ${r}`, read(r).includes("requireAgentOwner(request)"));
+  }
+  check("requireAgentOwner uses the shared module gate", read("src/modules/agent/lib/gate.ts").includes('moduleIsOn(owner.id, "agent")'));
+  check("the agent-purge job stands down when the module is off", read("src/app/api/machine/agent-purge/route.ts").includes('moduleIsOn(ownerId, "agent")'));
+  const layout = read("src/app/layout.tsx");
+  check("layout.tsx imports nothing from the agent module", !/from "@\/modules\/agent|agent\/gate|AgentPanel/.test(layout));
+  check("layout.tsx mounts the shell panels", layout.includes("shellPanels()"));
+  check("shellPanels() lists the agent", /moduleId: "agent", Component: AgentPanel/.test(read("src/lib/module-panels.tsx")));
+  check("the editor reaches inline edit through module-editor.tsx", !read("src/components/markdown-editor/MarkdownEditor.tsx").includes("@/modules/"));
+  check("verify-agent follows the move", read("scripts/verify-agent.mts").includes("../src/modules/agent/lib/tools"));
+  check("server-slots attached the agent's healthCheck", typeof agentModule.healthCheck === "function");
+}
 
 // --- 14. step 4: the Desk lives under src/modules/desk ------------------------
 {
@@ -591,7 +627,9 @@ for (const r of sharingRoutes) {
   const shellBlock = panels.slice(panels.indexOf("export function shellPanels"));
   check("shellPanels() lists the desk send menu", /moduleId:\s*"desk",\s*Component:\s*DeskSendContextMenu/.test(shellBlock));
   const layout = src("src/app/layout.tsx");
-  check("the root layout maps shellPanels() gated by moduleOn", layout.includes("shellPanels().filter((p) => moduleOn(s, p.moduleId))"));
+  // The layout gates each shell panel on `shellOn`, which is moduleOn AND the
+  // manifest's `available` (the agent module's machine check).
+  check("the root layout maps shellPanels() gated by the module switch", /shellPanels\(\)\s*\.filter\(\(p\) => shellOn\(p\.moduleId\)\)/.test(layout) && layout.includes("moduleOn(s, moduleId) && moduleAvailable(moduleId)"));
   // The fenced core files that used to import desk code no longer do.
   for (const f of [
     "src/lib/settings.ts",

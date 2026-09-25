@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAgentOwner } from "@/lib/agent/gate";
-import { runInlineEdit } from "@/lib/agent/inline";
+import { requireAgentOwner } from "@/modules/agent/lib/gate";
+import { runInlineEdit } from "@/modules/agent/lib/inline";
 
 export const dynamic = "force-dynamic";
 

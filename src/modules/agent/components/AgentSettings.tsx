@@ -2,7 +2,7 @@
 // lives on Build → Modules, ADR-272 step 2):
 // its two model choices, the two seeded prompts (open or revert), a health line
 // that says how to sign in when it's red, and the last 7 days of use. Rendered
-// only where the agent can run (lib/agent/gate.ts), so a spoke or Vercel never
+// only where the agent can run (src/modules/agent/lib/gate.ts), so a spoke or Vercel never
 // shows it.
 "use client";
 

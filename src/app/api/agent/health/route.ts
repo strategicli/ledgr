@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentAvailable, sameOrigin } from "@/lib/agent/gate";
-import { authMode, explainError, health, lockedOptions, noteError, noteOk, resultError, run } from "@/lib/agent/runtime";
-import { usageByDay } from "@/lib/agent/chat";
+import { agentAvailable, sameOrigin } from "@/modules/agent/lib/gate";
+import { authMode, explainError, health, lockedOptions, noteError, noteOk, resultError, run } from "@/modules/agent/lib/runtime";
+import { usageByDay } from "@/modules/agent/lib/chat";
 import { requireOwner } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
