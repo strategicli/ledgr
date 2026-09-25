@@ -18,7 +18,7 @@ import { hooksFor, type HookFn } from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
 // Attaches each module's server-only hooks (passages' onBodySave) onto its manifest.
 import "@/lib/modules/server-slots";
-import { getSettings } from "@/lib/settings";
+import { parseSettings } from "@/lib/settings";
 
 // The minimal db surface apply needs; both drizzle drivers satisfy it, and the
 // verify suite passes its own node-postgres instances for the two-DB tier.
@@ -281,13 +281,17 @@ async function runBodySaveHooks(
 }
 
 // One settings read per owner per batch. An unreadable settings row falls
-// back to the manifest defaults, as the save path's runner does.
-function bodySaveHooksMemo(): (ownerId: string) => Promise<{ run: HookFn }[]> {
+// back to the manifest defaults, as the save path's runner does. Read through
+// the batch's own executor, not getDb(): the switches that count are the ones
+// on the database the ops are landing in.
+function bodySaveHooksMemo(db: SyncDb): (ownerId: string) => Promise<{ run: HookFn }[]> {
   const cache = new Map<string, Promise<{ run: HookFn }[]>>();
   return (ownerId) => {
     let hit = cache.get(ownerId);
     if (!hit) {
-      hit = getSettings(ownerId)
+      hit = db
+        .execute(sql`select settings from users where id = ${ownerId}::uuid`)
+        .then((r) => parseSettings(r.rows[0]?.settings))
         .catch(() => ({ modules: {} }))
         .then((settings) => hooksFor("onBodySave", (id) => moduleOn(settings, id)));
       cache.set(ownerId, hit);
@@ -371,7 +375,7 @@ export async function applySyncOps(
   if (actions.length === 0) return { actions: 0, rejected: rejected.length, parked: [] };
 
   const plan = planActions(actions);
-  const hooksOf = bodySaveHooksMemo();
+  const hooksOf = bodySaveHooksMemo(db);
 
   const deleteItemsGroup = async (tgt: SyncDb, g: ItemsDeleteGroup, origin?: string) => {
     await tgt.execute(

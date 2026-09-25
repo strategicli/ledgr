@@ -9,8 +9,10 @@ export const passagesModule: ModuleManifest = {
   id: "passages",
   label: "Scripture passages",
   description: "Scripture references in a body become links to a passage page.",
-  // It had no switch before step 3.6 and always ran, so it defaults on.
-  enabledByDefault: true,
+  // Off for new installs. It had no switch before step 3.6 and always ran, so
+  // migration 0064 wrote modules.passages = true for every owner that existed
+  // then: nobody who had it loses it.
+  enabledByDefault: false,
   types: [],
   exporters: [],
   routes: ["src/app/passage/[ref]/page.tsx"],

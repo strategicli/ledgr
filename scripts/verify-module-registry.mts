@@ -247,7 +247,8 @@ check("a module with no hook of that name is not listed", !hooksFor("onCreate", 
 
 const passages = allModules().find((m) => m.id === "passages");
 check("passages is a registered module", !!passages);
-check("passages is on by default (it always ran)", passages?.enabledByDefault === true && moduleOn({ modules: {} }, "passages"));
+check("passages is off by default for new installs", passages?.enabledByDefault === false && !moduleOn({ modules: {} }, "passages"));
+check("an owner backfilled by 0064 keeps passages on", moduleOn({ modules: { passages: true } }, "passages"));
 check("passages adds no item types", passages?.types.length === 0);
 check("passages owns an onBodySave hook", typeof passages?.hooks?.onBodySave === "function");
 check("youtube-transcripts owns an onCreate hook", typeof allModules().find((m) => m.id === "youtube-transcripts")?.hooks?.onCreate === "function");
@@ -403,7 +404,7 @@ for (const moved of [passagesModule, youtubeTranscriptsModule]) {
     check(`${moved.id} route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
   }
 }
-check("passages keeps its default (on)", passagesModule.enabledByDefault === true);
+check("passages defaults off (existing owners carry an explicit true)", passagesModule.enabledByDefault === false);
 check("youtube-transcripts keeps its default (off)", youtubeTranscriptsModule.enabledByDefault === false);
 check("server-slots attached passages' onBodySave", typeof passagesModule.hooks?.onBodySave === "function");
 check(
