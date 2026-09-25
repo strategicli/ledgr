@@ -16,7 +16,7 @@ const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
 const { createItem } = await import("../src/lib/item-mutations");
 const { relateItems } = await import("../src/lib/relations");
-const { findLooseEnds } = await import("../src/lib/discovery/loose-ends");
+const { findLooseEnds } = await import("../src/modules/relatedness/lib/loose-ends");
 const { eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;

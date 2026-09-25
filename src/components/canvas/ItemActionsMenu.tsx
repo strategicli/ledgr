@@ -37,6 +37,7 @@ export default function ItemActionsMenu({
   wordCountPerTab = false,
   wordCountLive = true,
   listen = false,
+  explore = true,
 }: {
   itemId: string;
   type: string;
@@ -58,6 +59,9 @@ export default function ItemActionsMenu({
   // The menu stays dumb: a click just dispatches a window event; ListenBar
   // (mounted once per item in ItemCanvas) owns the Edge-redirect-or-play logic.
   listen?: boolean;
+  // Whether the relatedness module is on, so "Explore related" is offered
+  // (ADR-272 step 4). Its page 404s while the module is off.
+  explore?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -309,10 +313,12 @@ export default function ItemActionsMenu({
           {/* Related Explorer (ADR-127 Phase 2): the always-available entry to
               the score-sorted neighborhood map, reachable even when the Discover
               panel auto-hid. */}
-          <a role="menuitem" href={`/items/${itemId}/explore`} className={rowClass}>
-            <ActionGlyph icon="network" />
-            Explore related
-          </a>
+          {explore && (
+            <a role="menuitem" href={`/items/${itemId}/explore`} className={rowClass}>
+              <ActionGlyph icon="network" />
+              Explore related
+            </a>
+          )}
           {/* The canonical body as plain markdown, with a copy button (Tyler,
               2026-08-12). Reachable on EVERY type, not just bespoke ones: the
               need is sharpest on a song (the chord canvas shows a rendering, not

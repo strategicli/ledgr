@@ -43,7 +43,6 @@ import { parseScheduledTime } from "@/lib/scheduled-time";
 import FocusStar from "@/components/today/FocusStar";
 import { isFocusedOn } from "@/lib/focus";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import DiscoverPanel from "@/components/relations/DiscoverPanel";
 import RelationProperties from "@/components/relations/RelationProperties";
 import Subtasks from "@/components/subtasks/Subtasks";
 import { topStripFields, footerFieldsFor, type CanvasField } from "@/lib/canvas-fields";
@@ -252,7 +251,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
         return <ItemFilesSection itemId={item.id} initial={itemFiles} bare />;
       if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} bare />;
       if (id === "discover")
-        return <DiscoverPanel itemId={item.id} anchorTitle={item.title} bare />;
+        return isModuleEnabled("relatedness", ownerId) ? <ModuleItemPanel id="discover" itemId={item.id} title={item.title} bare /> : null;
       if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
       // The sharing module's control (ADR-272 step 4). Checked here too so a
       // switched-off module leaves no empty "Share" card in the grid.
@@ -415,7 +414,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
           linking but not linked yet, directly under Linked here. Collapsed,
           auto-hides when nothing clears the floor; Link graduates a row up into
           the panel above. */}
-      <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
+      <ModuleItemPanel id="discover" itemId={item.id} title={item.title} />
       {/* Export & sharing (Save Offline PRD §4.7 + Share link §4.12) folded into
           one collapsed section, with Version History (Track changes) beside it.
           Shared with every canvas via ItemUtilitiesFooter. The arrange grid above

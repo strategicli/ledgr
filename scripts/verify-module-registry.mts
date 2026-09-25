@@ -334,7 +334,7 @@ check("an entry whose after is unknown goes to the end of its group", buildNavFo
 check("a switched-off module's entries are gone", !hrefs(["nav-fixture"]).some((h) => h.startsWith("/build/fixture")));
 check(
   "core entries are untouched, in order, with modules off",
-  JSON.stringify(hrefs(["nav-fixture", "ai-memory"])) === JSON.stringify(coreHrefs)
+  JSON.stringify(hrefs(["nav-fixture", "ai-memory", "relatedness"])) === JSON.stringify(coreHrefs)
 );
 check("core groups keep their order", buildNavFor([]).map((g) => g.label).join(",") === "DATA,INTERFACE,MAINTAIN,SYSTEM");
 const { buildDestOptions } = await import("../src/lib/nav-slot-options");
@@ -533,6 +533,40 @@ for (const r of sharingRoutes) {
   }
   check("email-capture owns the three email routes", emailCaptureModule.routes?.length === 3);
   check("calendar-sync owns sync, matchers and its job route", calendarSyncModule.routes?.length === 4);
+}
+// --- 13. step 4: relatedness lives under src/modules/relatedness --------------
+{
+  const { relatednessModule } = await import("../src/modules/relatedness/manifest");
+  const { existsSync } = await import("node:fs");
+  check("relatedness is registered from @/modules/relatedness/manifest", allModules().find((m) => m.id === "relatedness") === relatednessModule);
+  check("relatedness is on by default (the job always ran)", relatednessModule.enabledByDefault === true && moduleOn({ modules: {} }, "relatedness"));
+  check("relatedness has a description for the Modules page", !!relatednessModule.description);
+  check("relatedness adds no item types", relatednessModule.types.length === 0);
+  check(
+    "Loose Ends comes from the relatedness manifest",
+    navEntriesForModules().some((e) => e.moduleId === "relatedness" && e.href === "/build/loose-ends" && e.group === "MAINTAIN")
+  );
+  check("Loose Ends is no longer a static core entry", !coreHrefs.includes("/build/loose-ends"));
+  const buildNavSrc = readFileSync(new URL("../src/lib/build-nav.ts", import.meta.url), "utf8");
+  check("build-nav.ts no longer lists Loose Ends", !/href:\s*"\/build\/loose-ends"/.test(buildNavSrc));
+  check("Loose Ends sits right after Data Hygiene", maintain([]).indexOf("/build/loose-ends") === maintain([]).indexOf("/build/hygiene") + 1);
+  check("Loose Ends drops out when relatedness is off", !hrefs(["relatedness"]).includes("/build/loose-ends"));
+  const routes = relatednessModule.routes ?? [];
+  check("relatedness lists its four route files", routes.length === 4);
+  for (const r of routes) {
+    check(`relatedness route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+    // The explore route is core (src/app/items/**) and reaches the module through
+    // module-panels.tsx, whose ExploreView calls the gate; the machine route is
+    // gated as a job. Every other route imports the gate itself.
+    if (r.includes("/api/machine/") || r.includes("/explore/")) continue;
+    check(`relatedness route calls the gate: ${r}`, /from "@\/lib\/modules\/gate"/.test(readFileSync(new URL(`../${r}`, import.meta.url), "utf8")));
+  }
+  const exploreView = readFileSync(new URL("../src/modules/relatedness/components/ExploreView.tsx", import.meta.url), "utf8");
+  check("the Explore view calls the gate", exploreView.includes('pageGate(owner.id, "relatedness")'));
+  const machine = readFileSync(new URL("../src/app/api/machine/relatedness/route.ts", import.meta.url), "utf8");
+  check("the relatedness job stands down when the module is off", machine.includes('moduleIsOn(ownerId, "relatedness")'));
+  check("the relatedness job is tied to the module in jobs.json", (await import("../src/lib/job-owners")).jobModuleOff("relatedness", ["relatedness"]));
+  check("server-slots attached relatedness' healthCheck", typeof relatednessModule.healthCheck === "function");
 }
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);

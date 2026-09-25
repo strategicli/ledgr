@@ -13,7 +13,7 @@ import ItemEditor from "@/components/markdown-editor/ItemEditor";
 import MarkdownCanvas from "@/components/canvas/MarkdownCanvas";
 import FilePanel from "@/components/attachments/FilePanel";
 import RelatedPanel from "@/components/relations/RelatedPanel";
-import DiscoverPanel from "@/components/relations/DiscoverPanel";
+import { ModuleItemPanel } from "@/lib/module-panels";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import { listAttachments } from "@/lib/attachments";
 import { getType } from "@/lib/types";
@@ -60,7 +60,7 @@ export default async function FileCanvas(canvasProps: CanvasProps) {
         locked={locked}
       />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
-      <DiscoverPanel itemId={item.id} anchorTitle={item.title} />
+      <ModuleItemPanel id="discover" itemId={item.id} title={item.title} />
       {/* The Files section stays ON here (Tyler, 2026-09-12): every type other
           than task answers "is a file attached?" in the same place, the
           utilities stack, and a `file` item is where that question gets asked

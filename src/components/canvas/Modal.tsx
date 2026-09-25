@@ -126,6 +126,7 @@ export default function Modal({
   isTemplate = false,
   locked = false,
   favorited = false,
+  explore = true,
   openMode = "auto",
 }: {
   itemId: string;
@@ -149,6 +150,8 @@ export default function Modal({
   locked?: boolean;
   // Whether the item is in the owner's favorites — drives the menu's star label.
   favorited?: boolean;
+  // Whether the relatedness module is on (the menu's "Explore related").
+  explore?: boolean;
   // The owner's item-open preference (settings.itemOpenMode). Narrowed by the
   // live layout in computeShape — a phone is always the sheet, and a docked nav
   // rail wins its edge. Defaults to "auto", the pre-setting measured behavior.
@@ -464,6 +467,7 @@ export default function Modal({
               title={title}
               locked={locked}
               favorited={favorited}
+              explore={explore}
             />
           )}
           {/* Plain <a>, not <Link>: a soft nav to the same URL would stay

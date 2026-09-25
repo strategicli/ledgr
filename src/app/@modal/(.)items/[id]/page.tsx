@@ -6,7 +6,7 @@ import ItemCanvas from "@/components/canvas/ItemCanvas";
 import Modal from "@/components/canvas/Modal";
 import { getItem } from "@/lib/items";
 import { isItemFavorited } from "@/lib/favorites";
-import { canvasIdForType } from "@/lib/modules";
+import { canvasIdForType, isModuleEnabled } from "@/lib/modules";
 import { preloadModuleSettings } from "@/lib/modules/enabled";
 import { resolveOwner } from "@/lib/owner";
 import { DEFAULT_SETTINGS, getSettings, type ItemOpenMode } from "@/lib/settings";
@@ -34,6 +34,7 @@ export default async function ItemModal({
   let isTemplate = false;
   let locked = false;
   let favorited = false;
+  let explore = true;
   // Where this owner wants an item to open (left/right dock, center popup, or the
   // measured default). Resolved server-side and handed to the client Modal, which
   // still narrows it by what the layout allows — a phone is always the sheet, and
@@ -58,6 +59,7 @@ export default async function ItemModal({
         (item.properties as Record<string, unknown> | null)?.locked
       );
       favorited = await isItemFavorited(owner.id, id);
+      explore = isModuleEnabled("relatedness", owner.id);
     }
   } catch {
     // ignore — render the default modal width
@@ -73,6 +75,7 @@ export default async function ItemModal({
       isTemplate={isTemplate}
       locked={locked}
       favorited={favorited}
+      explore={explore}
       openMode={itemOpenMode}
     >
       <ItemCanvas id={id} variant="modal" />

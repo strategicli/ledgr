@@ -16,7 +16,7 @@ const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
 const { createItem } = await import("../src/lib/item-mutations");
 const { relateItems } = await import("../src/lib/relations");
-const { exploreNeighborhood } = await import("../src/lib/discovery/explore");
+const { exploreNeighborhood } = await import("../src/modules/relatedness/lib/explore");
 const { eq, inArray } = await import("drizzle-orm");
 
 let failures = 0;

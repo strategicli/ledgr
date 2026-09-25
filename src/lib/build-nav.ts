@@ -103,9 +103,8 @@ export const CORE_BUILD_NAV: BuildGroup[] = [
         keywords: ["help", "docs", "documentation", "manual", "how to"],
       },
       { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
-      // Loose Ends (ADR-127 Phase 3): under-connected items + their top
-      // suggested links — the relatedness engine inverted across the corpus.
-      { label: "Loose Ends", href: "/build/loose-ends", icon: "affiliate" },
+      // (Loose Ends, /build/loose-ends, lands here from the relatedness
+      // module's manifest while that module is on.)
       { label: "Import & Migration", href: "/build/import", icon: "download" },
       // Labelled "AI & MCP", not "Claude": the MCP server is client-agnostic
       // (any MCP-speaking AI can connect), so the surface name stays generic

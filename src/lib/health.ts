@@ -27,9 +27,7 @@ import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
-// not yet modules (step 4): push, discovery, sync, tasks adapter,
-// transcription adapter.
-import { getRelatednessState } from "@/lib/discovery/refresh";
+// not yet modules (step 4): push, sync, tasks adapter, transcription adapter.
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
@@ -177,10 +175,9 @@ export async function gatherHealth(): Promise<HealthReport> {
   let errors: ErrorsCheck = null;
   let modules: Record<string, Record<string, unknown>> = {};
   // not yet modules (step 4): each read below moves onto its module's manifest.
-  let push, rel;
+  let push;
   if (database.ok) {
     push = await safe(getPushState);
-    rel = await safe(getRelatednessState);
     const owner = await safe(resolveMcpOwner);
     // Either credential path counts as "a token exists" (ADR-224): the static
     // env entry, or a live minted credential carrying `mcp`.
@@ -231,6 +228,8 @@ export async function gatherHealth(): Promise<HealthReport> {
   type SyncCanaryShape = { lastSyncAt?: string | null; lastRunAt?: string | null } | undefined;
   const cal = modules["calendar-sync"] as SyncCanaryShape;
   const em = modules["email-capture"] as SyncCanaryShape;
+  // Relatedness likewise (step 4): its last nightly run, null while it is off.
+  const rel = modules.relatedness as { lastRunAt?: string | null } | undefined;
 
   return {
     status: database.ok ? "ok" : "degraded",

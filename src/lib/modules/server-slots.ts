@@ -20,3 +20,4 @@ import "@/modules/sharing/server";
 import "@/modules/onedrive-export/server";
 import "@/modules/email-capture/server";
 import "@/modules/calendar-sync/server";
+import "@/modules/relatedness/server";

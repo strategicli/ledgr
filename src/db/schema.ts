@@ -456,13 +456,16 @@ export const relations = pgTable(
 // revisions / the search tsvector — NOT user content (rule 2) and NOT on
 // items.properties (that would bump items.updated_at on every recompute,
 // re-triggering export + a rescore loop, and pollute the FTS tsvector). A
-// bounded nightly job (src/lib/discovery/refresh.ts) runs the pure scorer
-// (src/lib/discovery/score.ts) and upserts each item's top-N scored candidates
+// bounded nightly job (src/modules/relatedness/lib/refresh.ts) runs the pure scorer
+// (src/modules/relatedness/lib/score.ts) and upserts each item's top-N scored candidates
 // here; the suggested-relations endpoint reads it (live-compute fallback on a
 // miss). signals is the reason-chip list ([{kind,label}]) so the guess can show
 // its work. Both FK columns cascade so a purged item drops its cache rows as
 // anchor AND as candidate (self-healing). Score is unitless and comparable only
 // within one anchor; computed_at vs items.updated_at drives the dirty rescore.
+// Owned by the relatedness module (ADR-272 step 4, src/modules/relatedness/):
+// the table stays here with the rest of the schema, and turning the module off
+// keeps its rows, it just stops reading and refreshing them.
 export const itemRelatedness = pgTable(
   "item_relatedness",
   {

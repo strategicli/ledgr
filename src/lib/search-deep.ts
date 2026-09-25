@@ -22,7 +22,7 @@
 // is one SQL query over indexes we already maintain (items_search_gin,
 // items_type_idx, items_properties_gin). No model, no network, no embeddings.
 //
-// The scoring shape is Discover's (lib/discovery/score.ts): normalize each signal
+// The scoring shape is Discover's (modules/relatedness/lib/score.ts): normalize each signal
 // to 0..1, multiply by a named weight, sum. The difference is that here the owner
 // sets the weights instead of a hardcoded WEIGHTS table.
 import { and, desc, eq, isNull, sql, type SQL } from "drizzle-orm";

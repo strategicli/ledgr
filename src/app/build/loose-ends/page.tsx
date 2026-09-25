@@ -4,14 +4,16 @@
 // sidebar shell (isBuildPath). Owner-scoped + body-free via findLooseEnds.
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
-import { findLooseEnds } from "@/lib/discovery/loose-ends";
-import LooseEndCard from "@/components/relations/LooseEndCard";
+import { pageGate } from "@/lib/modules/gate";
+import { findLooseEnds } from "@/modules/relatedness/lib/loose-ends";
+import LooseEndCard from "@/modules/relatedness/components/LooseEndCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function LooseEndsPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
+  await pageGate(owner.id, "relatedness");
 
   const ends = await findLooseEnds(owner.id);
 
