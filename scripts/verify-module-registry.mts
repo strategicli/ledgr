@@ -804,5 +804,20 @@ for (const r of sharingRoutes) {
   check("the Inbox hides its Triage link when the module is off", read("src/app/inbox/page.tsx").includes('moduleOnFor(owner.id, "triage")'));
 }
 
+// --- 20. step 4: listen lives under src/modules/listen ---------------------
+{
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { listenModule } = await import("../src/modules/listen/manifest");
+  check("listen is registered from @/modules/listen/manifest", allModules().find((m) => m.id === "listen") === listenModule);
+  check("listen is on by default (it shipped with no switch)", moduleOn({ modules: {} }, "listen"));
+  check("the listen route calls the gate", read("src/app/api/types/[key]/listen/route.ts").includes('routeGate(owner.id, "listen")'));
+  const canvas = read("src/components/canvas/ItemCanvas.tsx");
+  check("ItemCanvas mounts Listen only while the module is on", canvas.includes('moduleOn(settings, "listen")'));
+  check(
+    "module-editor.tsx loads ListenBar through dynamic()",
+    read("src/lib/module-editor.tsx").includes('dynamic(() => import("@/modules/listen/components/ListenBar")')
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

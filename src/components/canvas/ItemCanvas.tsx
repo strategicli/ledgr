@@ -26,7 +26,7 @@ import SaveStatusIndicator from "@/components/canvas/SaveStatusIndicator";
 import { ModuleItemPanel } from "@/lib/module-panels";
 import FloatingToc from "@/components/canvas/FloatingToc";
 import ItemActionsMenu from "@/components/canvas/ItemActionsMenu";
-import ListenBar from "@/components/canvas/ListenBar";
+import { ListenPanel } from "@/lib/module-editor";
 import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 import TypeCue from "@/components/canvas/TypeCue";
@@ -143,7 +143,7 @@ export default async function ItemCanvas({
   // Computed here, not in the per-type canvas, so it works identically on
   // EVERY canvas (default markdown, tabs, two-pane, module canvases) — the
   // entry point is the kebab menu, not a canvas-specific bar.
-  const listenText = typeDef?.listenEnabled
+  const listenText = moduleOn(settings, "listen") && typeDef?.listenEnabled
     ? speechTextFor(bodyMarkdown(item.body))
     : "";
 
@@ -277,7 +277,7 @@ export default async function ItemCanvas({
             (tabs, two-pane, module canvases included) — the bug a bespoke canvas
             exposed. Renders nothing until armed (kebab click or ?listen=1). */}
         {listenText && (
-          <ListenBar text={listenText} listenOpenInEdge={typeDef?.listenOpenInEdge ?? false} />
+          <ListenPanel text={listenText} listenOpenInEdge={typeDef?.listenOpenInEdge ?? false} />
         )}
       </div>
       {/* One always-visible autosave indicator for the whole canvas; also owns
