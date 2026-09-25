@@ -76,6 +76,12 @@ const root = join(out, "ledgr");
 step(`${key}, channel ${channel}, version ${version}, commit ${commit.slice(0, 7)}`);
 
 // ── 1. The standalone app ────────────────────────────────────────────────────
+// next build reads .env files from the checkout and bakes any NEXT_PUBLIC_
+// value into the pages. Packages for other people come from CI, which has none.
+const envFiles = readdirSync(repoRoot).filter((f) => /^\.env/.test(f) && f !== ".env.example");
+if (envFiles.length > 0) {
+  console.warn(`package: WARNING this checkout has ${envFiles.join(", ")}; a package built here carries their NEXT_PUBLIC_ values. Fine for testing, never publish it.`);
+}
 if (!opt["skip-build"]) {
   step("next build (standalone)…");
   const r = spawnSync(process.execPath, [join(repoRoot, "node_modules", "next", "dist", "bin", "next"), "build"], {
@@ -95,7 +101,15 @@ mkdirSync(root, { recursive: true });
 const copy = (from, to) => cpSync(join(repoRoot, from), join(root, to), { recursive: true, verbatimSymlinks: true });
 
 step("assembling the app…");
-cpSync(standalone, join(root, "app"), { recursive: true, verbatimSymlinks: true });
+// Only what the standalone server runs from. Next's file tracing pulls in the
+// whole project when code reads files relative to the working directory, and a
+// builder's checkout can hold .env files with real secrets, so the app folder
+// is an allowlist, never "whatever the trace copied".
+const APP_KEEP = new Set([".next", "node_modules", "server.js", "package.json"]);
+mkdirSync(join(root, "app"), { recursive: true });
+for (const name of readdirSync(standalone)) {
+  if (APP_KEEP.has(name)) cpSync(join(standalone, name), join(root, "app", name), { recursive: true, verbatimSymlinks: true });
+}
 copy(".next/static", "app/.next/static");
 copy("public", "app/public");
 // Read at run time from the app's working directory (the transcription job).

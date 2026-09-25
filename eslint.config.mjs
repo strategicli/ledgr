@@ -101,6 +101,8 @@ const eslintConfig = defineConfig([
     // code when eslint runs from inside it (paths are relative). Ignore the whole
     // .claude/ dir — nothing there is project source.
     ".claude/**",
+    // Build output, including ready-made packages (scripts/package.mjs).
+    "dist/**",
   ]),
 ]);
 
