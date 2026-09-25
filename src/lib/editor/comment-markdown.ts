@@ -64,7 +64,19 @@ const COMMENT =
 // carry byte-identical notes and sit back to back merge into one. Cheaper than
 // giving every comment an id the syntax has no room for; if it ever bites, that's
 // the upgrade.
-const BRIDGE_GAP = /^[\s>#*+\-.\d)|\\]*$/;
+const BRIDGE_GAP = /^[\s>#*+\-_~.\d)|\\]*$/;
+
+// Gap text that is scaffolding even though BRIDGE_GAP's character class can't say
+// so: inline HTML tags (a highlight or color wraps each line's pair in its own
+// <mark>/<span>, so the tags sit between the pairs), a task checkbox, and a
+// trailing block anchor. Stripped before the gap is tested.
+const GAP_SCAFFOLD = /<\/?[a-z][^>]*>|\[[ xX]\]|\^[a-z0-9]{4,}/g;
+function isBridgeGap(gap: string): boolean {
+  return BRIDGE_GAP.test(gap.replace(GAP_SCAFFOLD, ""));
+}
+
+// A block anchor at the end of a line (mirrors block-anchor.ts).
+const TRAILING_ANCHOR = /[ \t]+\^[a-z0-9]{4,}[ \t]*$/;
 
 // Cheap bail: every claimed form contains "{>>".
 function mayHaveComments(markdown: string): boolean {
@@ -95,6 +107,57 @@ export function sanitizeNote(note: string): string {
     .replace(/\s*[\r\n]+\s*/g, " ")
     .replace(/<<\}/g, "<< }")
     .trim();
+}
+
+// Two ranged pairs with the same note and nothing but spaces between them → one pair:
+//
+//   {==see ==}{>>n<<}{==[@Roger](ledgr://item/…)==}{>>n<<}   →   {==see [@Roger](…)==}{>>n<<}
+//
+// The editor's serializer closes every open mark before an inline atom (a mention
+// or passage chip, an image) and reopens it after, so a comment across a chip came
+// out in pieces. comment-mark.ts wraps the chip in its own pair and runs this over
+// the output. Only a whitespace gap joins (the serializer also pushes a space out
+// past a pair it is opening, which is how `chip␠text` split): any other character
+// between the pairs is text the comment genuinely does not cover. That is the same
+// whitespace rule BRIDGE_GAP applies across lines.
+//
+// It also lifts a trailing block anchor (` ^id`, block-anchor.ts) back out of a
+// pair that ends its line: an anchor only counts at the very end of a line, so
+// `{==do it ^k3x9==}{>>n<<}` would silently orphan a promoted action item.
+export function tidyEditorComments(markdown: string): string {
+  if (!mayHaveComments(markdown)) return markdown;
+  return mapLines(markdown, (line, inFence) => {
+    if (inFence) return line;
+    let out = "";
+    let last = 0;
+    let open: { anchored: string; note: string; end: number } | null = null;
+    const flush = () => {
+      if (!open) return;
+      const o: { anchored: string; note: string; end: number } = open;
+      const tail = o.end === line.length ? TRAILING_ANCHOR.exec(o.anchored) : null;
+      const anchored = tail ? o.anchored.slice(0, tail.index) : o.anchored;
+      out += `{==${anchored}==}{>>${o.note}<<}${tail ? tail[0] : ""}`;
+      open = null;
+    };
+    COMMENT.lastIndex = 0;
+    for (let m = COMMENT.exec(line); m; m = COMMENT.exec(line)) {
+      const [raw, anchored, note] = m;
+      const o = open as { anchored: string; note: string; end: number } | null;
+      const gap = o ? line.slice(o.end, m.index) : "";
+      if (anchored !== undefined && o && o.note === note && !gap.trim()) {
+        o.anchored += gap + anchored;
+        o.end = m.index + raw.length;
+      } else {
+        flush();
+        out += line.slice(last, m.index);
+        if (anchored === undefined) out += raw;
+        else open = { anchored, note, end: m.index + raw.length };
+      }
+      last = m.index + raw.length;
+    }
+    flush();
+    return out + line.slice(last);
+  });
 }
 
 // Apply `fn` to every line, telling it whether the line is inside (or is a
@@ -184,7 +247,7 @@ export function renderComments(markdown: string): string {
         out += `<span class="cmt cmt-point"${noteAttr(pointNote)}></span>${card(pointNote)}`;
         prevNote = null;
       } else {
-        const continues = note === prevNote && BRIDGE_GAP.test(gap);
+        const continues = note === prevNote && isBridgeGap(gap);
         out += `<span class="cmt"${noteAttr(note)}>${anchored}</span>`;
         if (!continues) out += card(note);
         prevNote = note;

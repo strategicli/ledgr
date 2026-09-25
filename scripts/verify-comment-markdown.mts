@@ -8,6 +8,7 @@ import {
   renderComments,
   sanitizeNote,
   stripComments,
+  tidyEditorComments,
 } from "../src/lib/editor/comment-markdown";
 import { markdownToHtml, markdownToText } from "../src/lib/markdown-render";
 
@@ -309,5 +310,31 @@ check("FTS text carries no markup", !text.includes("<span") && !text.includes("{
   check("a position outside every comment has no range", commentRangeAt(differing, 12) === null);
 }
 
+
+// --- bridging across scaffolding the old gap test missed (2026-09-25) --------
+const cardCount = (md: string) => (renderComments(md).match(/class="cmt-note"/g) ?? []).length;
+check(
+  "highlighted lines bridge (the <mark> tags are scaffolding)",
+  cardCount("<mark>{==one==}{>>n<<}</mark>\n\n<mark>{==two==}{>>n<<}</mark>") === 1
+);
+check("task items bridge", cardCount("- [ ] {==one==}{>>n<<}\n- [x] {==two==}{>>n<<}") === 1);
+check(
+  "a trailing block anchor doesn't break the bridge",
+  cardCount("{==one==}{>>n<<} ^abc123\n\n{==two==}{>>n<<}") === 1
+);
+check("italic and strike delimiters bridge", cardCount("_{==one==}{>>n<<}_\n~~{==two==}{>>n<<}~~") === 1);
+check("real prose between still splits", cardCount("{==one==}{>>n<<} and more\n{==two==}{>>n<<}") === 2);
+check(
+  "tidy joins same-note pairs with only a space between",
+  tidyEditorComments("{==[@R](ledgr://item/x)==}{>>n<<} {==said==}{>>n<<}") === "{==[@R](ledgr://item/x) said==}{>>n<<}"
+);
+check(
+  "tidy never joins across real text or a different note",
+  tidyEditorComments("{==a==}{>>n<<}, {==b==}{>>n<<} {==c==}{>>m<<}") === "{==a==}{>>n<<}, {==b==}{>>n<<} {==c==}{>>m<<}"
+);
+check(
+  "tidy lifts a trailing block anchor out of the pair",
+  tidyEditorComments("{==do it ^k3x9ab==}{>>n<<}") === "{==do it==}{>>n<<} ^k3x9ab"
+);
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

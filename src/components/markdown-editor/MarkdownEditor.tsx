@@ -89,6 +89,7 @@ import {
 import {
   Comment,
   CommentCards,
+  CommentableCode,
   EDIT_COMMENT_EVENT,
   commentNoteAt,
   removeComment,
@@ -655,7 +656,10 @@ export default function MarkdownEditor({
     immediatelyRender: false,
     editable,
     extensions: [
-      StarterKit,
+      // StarterKit's inline code excludes every mark, so a comment could not sit
+      // on it; CommentableCode (comment-mark.ts, registered beside Comment below)
+      // stands in for it.
+      StarterKit.configure({ code: false }),
       // Serialize nested lists at a 4-space step. @tiptap/markdown defaults to
       // 2 spaces, which the editor's own (lenient) parser nests fine but
       // CommonMark renderers (markdown-it, on the print/share/export path, and
@@ -715,6 +719,7 @@ export default function MarkdownEditor({
       // HTML, so its content needs the serializer's normal escaping.
       Comment,
       CommentCards,
+      CommentableCode,
       // Inline images (paste/drop → R2) and GFM tables. Both round-trip to
       // markdown via the hooks in extensions.ts.
       LedgrImage,
