@@ -84,6 +84,18 @@ Ledgr is built by two people sharing one codebase and schema, each deploying the
 
 **What stays:** CI on every PR (it caught the two breakages that reached `main` in August, and it is why a broken build can no longer reach anyone's production), never committing directly to `main`, every merge through a PR, additive migrations, and soft-delete + revisions + the weekly backup + git revert as the safety net.
 
+## Core and modules (ADR-272)
+
+**One codebase, one `main`, many instances that differ only in which modules are on.** Ledgr is used by several people with different wants. The answer is not a branch per person (that is a fork, and forks never come back together). It is trunk-based development plus a per-owner switch: every module's code ships in every build, and `settings.modules` says which are on. A Modules page under Build (plan step 1) shows the toggles; flipping one takes effect on the next page load, no rebuild. A rebuild happens only when new module code merges to `main`, which deploys today anyway. Disabling a module never touches data. The closest model in the wider world is Django's `INSTALLED_APPS`, not WordPress: in-tree modules, per-install activation, no plugin host.
+
+- **Core is the code every module may import from, and core never imports a module.** The core list, by directory, is §4 of `explorations/core-and-modules.md`. In short: the item model and its CRUD, the body and its dialect, the editor, search, settings, auth, the module registry (`src/lib/modules.ts` + `module-wiring.tsx`), the shells and default canvases, storage and the offline export engine, sync infrastructure, the scheduled-job plumbing, and the MCP/REST *doors* (the tools behind them are module-contributed).
+- **The fence is an ESLint rule, not a convention.** Files in core paths cannot import from `src/modules/**` (`eslint.config.mjs`, the "core fence" block). CI fails on a violation. `module-wiring.tsx` is the one file allowed to import module canvases.
+- **New personal work goes in as a module, default off, merged to `main`.** A feature one builder wants ships to everyone's repo and shows on nobody else's screen. Wanting it later is a toggle, not a merge.
+- **Where module code lives:** today, scattered under `src/lib/<feature>` and `src/components/<feature>`, registered (for the four type-modules) through `src/lib/modules/register.ts`. The plan moves each one under `src/modules/<id>/` with a manifest, one PR at a time, easiest first. Route files stay under `src/app` because Next.js requires it; the manifest names them.
+- **Cross-repo plugins, npm-packaged modules and a plugin host are deliberately not built.** An outside builder who needs to extend Ledgr does it through the MCP server or a webhook, which keeps their code out of the process that holds the owner's data.
+
+The stepped plan (switch → fold in the existing toggles → manifest slots replace the hand-written lists → move code → lazy-load the shells → instance defaults) is §6 of the exploration; `next_steps.md` carries the pointer.
+
 ## ADRs are a record, never a gate
 
 `decisions.md` is where a decision gets written down after it is made. **It is never a reason to stop, ask, or wait.** An agent does not say "that needs an ADR" or ask whether to write one; it makes the change and writes the entry as part of the work, the same way it updates a doc. Brandon should never be blocked by, or prompted about, an ADR.

@@ -21,6 +21,64 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // The core fence (ADR-272, explorations/core-and-modules.md). Core is the
+  // code every module may import from; core never imports a module. Files in
+  // the core paths below may not import from `src/modules/**`. The rule passes
+  // today because `src/modules/` is empty and starts failing as each module
+  // moves there (plan step 4). `module-wiring.tsx` is the one deliberate
+  // exception: it is the impure half of the registry that maps canvas ids to
+  // module components, so it is left out of the fenced set.
+  {
+    files: [
+      "src/db/**",
+      "src/proxy.ts",
+      "src/app/layout.tsx",
+      "src/app/items/**",
+      "src/components/nav/**",
+      "src/components/markdown-editor/**",
+      "src/components/canvas/ItemCanvas.tsx",
+      "src/components/canvas/MarkdownCanvas.tsx",
+      "src/components/canvas/LongformCanvas.tsx",
+      "src/components/canvas/TaskCanvas.tsx",
+      "src/components/canvas/EventCanvas.tsx",
+      "src/components/canvas/WidgetCanvas.tsx",
+      "src/lib/modules.ts",
+      "src/lib/items.ts",
+      "src/lib/item-mutations.ts",
+      "src/lib/relations*.ts",
+      "src/lib/revisions*.ts",
+      "src/lib/types.ts",
+      "src/lib/views*.ts",
+      "src/lib/dashboards*.ts",
+      "src/lib/templates/**",
+      "src/lib/body*.ts",
+      "src/lib/markdown-render.ts",
+      "src/lib/search*.ts",
+      "src/lib/settings.ts",
+      "src/lib/owner.ts",
+      "src/lib/auth/**",
+      "src/lib/build-nav.ts",
+      "src/lib/storage/**",
+      "src/lib/sync/**",
+      "src/lib/mcp/server.ts",
+      "src/lib/mcp/protocol.ts",
+      "src/lib/mcp/owner.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/modules", "@/modules/*", "@/modules/**", "**/src/modules/**"],
+              message:
+                "Core must not import a module. Modules register onto core through src/lib/modules.ts (ADR-272; explorations/core-and-modules.md).",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
