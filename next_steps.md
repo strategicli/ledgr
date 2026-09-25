@@ -18,8 +18,8 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
 3. ~~Step 2: fold the scattered switches onto that page.~~ Done. Five feature modules
    (`src/lib/modules/features.ts`), seeded once from the old keys by
    `seedModulesFromLegacy`; read sites use `moduleOn` / `moduleOnFor`. Build-nav's
-   `gatedBy` became `module`. Per-install switches (`snapshots:enabled`, `sync:mode`)
-   are not on the page yet.
+   `gatedBy` became `module`. ~~Per-install switches (`snapshots:enabled`, `sync:mode`)
+   are not on the page yet.~~ Now listed there too, under "Per-install settings".
 4. ~~**Step 3: manifest slots replace the hand-written lists.**~~ Done, one PR each:
    `nav` (merged by `buildNavFor`; AI Memory moved onto its manifest, and a module
    that is off drops its Build page from the sidebar and the destination picker),
@@ -31,8 +31,8 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    (results under `/health` `checks.modules`; areas that are not modules yet stay in
    a marked block in `health.ts`), `hooks` (`src/lib/modules/hooks.ts`; passages is
    now a default-on module), and `requires` (`requiresViolations`, enforced on the
-   Modules page and PATCH /api/settings; no module sets it yet). Still open:
-   `settingsSchema`, so a module's own options render on the Modules page.
+   Modules page and PATCH /api/settings; no module sets it yet). Done:
+   `settingsPanel` (a panel id, not a schema) puts a module's options under its row.
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (~~themes~~ stays
    core, see §5 of the exploration; ~~sharing~~ done, `src/modules/sharing/`;
    ~~youtube~~, ~~todoist~~, ~~email~~, ~~calendar-sync~~ (the Outlook pull only; event

@@ -11,6 +11,7 @@
 // Requirements (the manifest `requires` slot, ADR-272 step 3): a module another
 // enabled module needs cannot be switched off here, and switching a module on
 // switches on what it needs too. PATCH /api/settings enforces the same rule.
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
 import ModuleToggle from "@/components/build/ModuleToggle";
+import { ModuleSettingsPanel } from "@/lib/module-panels";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +99,23 @@ export default async function Modules() {
                       Default {m.enabledByDefault ? "on" : "off"}
                     </p>
                     {reason && <p className="ui-meta mt-1 text-ink-subtle">{reason}</p>}
+                    {m.perInstallNote && (
+                      <p className="ui-meta mt-1 text-ink-subtle">
+                        <Link href={m.perInstallNote.href} className="hover:underline">
+                          {m.perInstallNote.text}
+                        </Link>
+                      </p>
+                    )}
+                    {on(m.id) && m.settingsPanel && (
+                      <details id={`${m.id}-options`} className="mt-2">
+                        <summary className="ui-meta cursor-pointer text-ink-subtle">
+                          Options
+                        </summary>
+                        <div className="mt-2">
+                          <ModuleSettingsPanel id={m.settingsPanel} ownerId={owner.id} />
+                        </div>
+                      </details>
+                    )}
                   </div>
                   <ModuleToggle
                     moduleId={m.id}
@@ -116,6 +135,37 @@ export default async function Modules() {
           </ul>
         </section>
       ))}
+
+      {/* Switches that live per computer, not per owner, so they never show
+          on/off state here — the row above just points at where each one
+          lives (ADR-272 step 3 item 7). */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">Per-install settings</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          These are set separately on each computer running Ledgr, not once for
+          the owner like the switches above.
+        </p>
+        <ul className="mt-3 space-y-3">
+          <li className="rounded-card border border-line bg-surface-1 p-4">
+            <p className="ui-row text-ink">Backups</p>
+            <p className="ui-meta mt-0.5 text-ink-muted">
+              Whether this computer keeps hourly restore points.
+            </p>
+            <Link href="/build/backups" className="ui-meta mt-1 inline-block text-ink-subtle hover:underline">
+              Build → Backups
+            </Link>
+          </li>
+          <li className="rounded-card border border-line bg-surface-1 p-4">
+            <p className="ui-row text-ink">Network</p>
+            <p className="ui-meta mt-0.5 text-ink-muted">
+              Whether this computer sends its changes to your other copies.
+            </p>
+            <Link href="/build/network#state" className="ui-meta mt-1 inline-block text-ink-subtle hover:underline">
+              Build → Network
+            </Link>
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }

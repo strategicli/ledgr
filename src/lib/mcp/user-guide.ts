@@ -472,6 +472,11 @@ Build your own kinds of item at \`/build/types\`.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
   back on. The In-app agent's switch is greyed out on a copy that cannot run it.
+  A module with its own owner-facing options, like the In-app agent's model
+  choices, shows them under its row behind an "Options" disclosure. Two
+  switches live per computer rather than per owner — Snapshots' restore
+  points (\`/build/backups\`) and Network's sync mode (\`/build/network\`) — and
+  both are listed at the bottom of the page with links to where they live.
 - **Workflows and wikis** at \`/build/new\` ask a few questions and generate a
   type, its properties, and starter views in one go.
 - **A paper or a song opens on Notes.** Both types spend their main body on a

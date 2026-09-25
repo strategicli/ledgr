@@ -720,5 +720,44 @@ for (const r of sharingRoutes) {
   check("the active_context table carries its ownership note", /Owned by the live-context module/.test(read("src/db/schema.ts")));
 }
 
+// --- 17. Modules-page follow-ups: settingsPanel + perInstallNote ------------
+// A literal allow-list, so a future module declaring either field is a
+// deliberate addition to this test, not a silent gap.
+{
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { existsSync } = await import("node:fs");
+  const { agentModule } = await import("../src/modules/agent/manifest");
+  const { snapshotsModule } = await import("../src/modules/snapshots/manifest");
+
+  check("agent declares its settingsPanel", agentModule.settingsPanel === "agent");
+  const panelsSrc = read("src/lib/module-panels.tsx");
+  check(
+    "the agent's settingsPanel id resolves in module-panels.tsx",
+    new RegExp(`MODULE_SETTINGS_PANELS[\\s\\S]*?agent:\\s*AgentSettingsPanel`).test(panelsSrc)
+  );
+
+  check(
+    "snapshots declares a perInstallNote",
+    !!snapshotsModule.perInstallNote?.text && !!snapshotsModule.perInstallNote?.href
+  );
+  const href = snapshotsModule.perInstallNote?.href ?? "";
+  const routeFile = `src/app${href}/page.tsx`;
+  check(
+    `snapshots' perInstallNote href exists as a route: ${href}`,
+    existsSync(new URL(`../${routeFile}`, import.meta.url))
+  );
+
+  const SETTINGS_PANEL_MODULES = ["agent"];
+  const PER_INSTALL_NOTE_MODULES = ["snapshots"];
+  check(
+    "no other module declares settingsPanel",
+    allModules().every((m) => !m.settingsPanel || SETTINGS_PANEL_MODULES.includes(m.id))
+  );
+  check(
+    "no other module declares perInstallNote",
+    allModules().every((m) => !m.perInstallNote || PER_INSTALL_NOTE_MODULES.includes(m.id))
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

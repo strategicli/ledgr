@@ -55,3 +55,29 @@ export function shellPanels(): ShellPanel[] {
     { moduleId: "agent", Component: AgentPanel },
   ];
 }
+
+// --- settings panels: a module's own options on /build/modules (ADR-272) ---
+// A module's `settingsPanel` (a panel id, not a schema — see the comment on
+// that field in modules.ts) resolves here, the same way an item panel does
+// above. Only the agent declares one today: its model choices and prompt
+// links, wrapped so the Modules page can render them without its own fetch
+// (`AgentSettingsPanel`, which reads the owner's settings and hands
+// `AgentSettings` the same props /settings already passes it directly).
+import AgentSettingsPanel from "@/modules/agent/components/AgentSettingsPanel";
+
+type SettingsPanelProps = { ownerId: string };
+
+const MODULE_SETTINGS_PANELS: Record<
+  string,
+  (props: SettingsPanelProps) => ReactNode | Promise<ReactNode>
+> = {
+  agent: AgentSettingsPanel,
+};
+
+export function ModuleSettingsPanel({
+  id,
+  ownerId,
+}: SettingsPanelProps & { id: string }) {
+  const Panel = MODULE_SETTINGS_PANELS[id];
+  return Panel ? <Panel ownerId={ownerId} /> : null;
+}
