@@ -60,7 +60,7 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | ~~relatedness~~ | moved: `src/modules/relatedness/` (manifest, `lib/` scorer + job + Loose Ends, the Discover and Explore components); Loose Ends nav from the manifest; canvases reach Discover and the Explore page through `module-panels.tsx`; `related-lens/prefs/views` stay core (explicit relations) | jobs | none left |
 | ~~snapshots~~ | moved: `src/modules/snapshots/` (lib, components); keeps its per-install switch too | supervisor | none left |
 | passages | `lib/passages/`, `passage_refs`, `/passage/[ref]` | none | item-mutations (on-save hook) |
-| ~~desk~~ | moved: `src/modules/desk/` (manifest, `lib/` layout + persistence + send + workspaces, the components); `/desk` gated; the send menu is a layout shell panel (`module-panels.tsx` `shellPanels`); the editor reaches it through core's `lib/inline-ref-menu`; `settings.deskWorkspaces` is an opaque slot the module validates; the `/desk` Work nav destination hides while off | editor | none left |
+| ~~desk~~ | moved: `src/modules/desk/` (manifest, `lib/` layout + persistence + send + workspaces, the components); `/desk` gated; the send menu is a layout shell panel (`module-shells.tsx` `shellPanels`, loaded lazily through `module-editor.tsx`); the editor reaches it through core's `lib/inline-ref-menu`; `settings.deskWorkspaces` is an opaque slot the module validates; the `/desk` Work nav destination hides while off | editor | none left |
 | ~~ai-memory~~ | moved: `src/modules/ai-memory/` (`lib/memory.ts`, the two tools, the memory-protocol resource via a new `mcpResources` slot, a `mcpSearchHits` hook so `search_items` no longer imports it, the guide component); `/build/memory` gated. The `memory` type row is data and stays; the agent reads memory through `callTool`, not an import | mcp door | none left |
 | ~~live-context~~ | moved: `src/modules/live-context/` (`lib/active-context.ts`, the two tools, the tracker); ItemCanvas mounts it through `module-panels.tsx`; both routes gated; `active_context` stays in the schema with an ownership note. Left behind: `note-editing-prompt.ts` (the settings route imports it) and a re-export at the tracker's old path for the Desk until desk moves | mcp door | none left |
 | agent | `lib/agent/`, 4 tables, 11 routes, sidebar | mcp tools, ai-memory (optional) | layout, settings, jobs (purge) |
@@ -94,7 +94,7 @@ Each step is one PR or a small batch, reversible, and leaves the app working for
 
 **Step 4. Move code under `src/modules/<id>/`, one module per PR, easiest first** (table order in §5). Each move: create `src/modules/<id>/manifest.ts`, move the `lib/` and `components/` code, leave route files under `src/app` (Next.js requires it) but have the manifest name them and a verify script confirm they match, wrap UI entry points in `next/dynamic` behind the switch, run the fence. Routes for a disabled module return 404 through one shared guard so a stray webhook cannot wake a module the owner turned off.
 
-**Step 5. Lazy-load the shells.** `layout.tsx` and `NavShell.tsx` mount module UI (agent panel, Desk menu, sync pill, capture modal extras) through the registry and `next/dynamic`, so a disabled module contributes zero bytes to the page bundle. Measure the per-page bundle before and after with `next build` output.
+**Step 5. Lazy-load the shells.** Done 2026-09-24; the measured result is in §7. `layout.tsx` and `NavShell.tsx` mount module UI (agent panel, Desk menu, sync pill, capture modal extras) through the registry and `next/dynamic`, so a disabled module contributes zero bytes to the page bundle. Measure the per-page bundle before and after with `next build` output.
 
 **Step 6. Instance defaults.** `enabledByDefault` reviewed per module with Tyler. A new install starts with the short list. Done when Tyler's instance is "the same build, fewer modules on," and a feature Brandon's dad asked for can merge to `main` default-off without anyone else seeing it.
 
@@ -105,7 +105,18 @@ Each step is one PR or a small batch, reversible, and leaves the app working for
 Four costs, honestly weighed for "120 modules, 10 on":
 
 - **Build time: the one real cost.** Every module compiles in every build. Vercel Hobby's build quota (runbook §1j-1) is the ceiling; 120 modules would roughly triple today's build. Mitigation is CI caching and fewer, larger PRs (already the cadence).
-- **Page bundle: near zero once step 5 lands.** Next.js splits code per route and `next/dynamic` splits per component. A module that is off and lazy-loaded ships nothing to the browser. Today the opposite is true (the agent panel and Desk menu are in every page), so this work makes the app faster for anyone with them off.
+- **Page bundle: measured, and smaller since step 5 (2026-09-24).** Before step 5 the root layout imported every module's client code, so the Claude sidebar, the Desk send menu and all four item-panel controls shipped on every page. Step 5 loads the module client components through `next/dynamic` in a client file (`module-editor.tsx`) and gives the layout its own shell list (`module-shells.tsx`). First-load JavaScript, gzipped, from `next build` on the same commit before and after:
+
+  | Page | Before | After | Change |
+  |---|---|---|---|
+  | Root layout (every page) | 362.7 kB | 343.4 kB | −19.3 kB |
+  | `/` | 383.2 kB | 366.7 kB | −16.5 kB |
+  | `/items/[id]` | 480.7 kB | 469.4 kB | −11.3 kB |
+  | `/build/modules` | 363.6 kB | 344.3 kB | −19.3 kB |
+  | `/desk` | 407.1 kB | 392.5 kB | −14.6 kB |
+  | `/inbox` | 370.9 kB | 355.7 kB | −15.2 kB |
+
+  Next 16 no longer prints a size column, so these come from the client-reference manifests (root main files plus the layout and page entry chunks, gzipped). The agent sidebar and inline-edit popover now download only for an owner with the agent on. Two leaks remain and are known: the item-panel controls (Share link, Discover, the live-context tracker, the Explore row) still ship on item pages when their module is off, because they are client children of server components inside the modules; and `RowMenu` (core list code outside the fence) imports the Desk's send items statically, so that menu is still on list pages. Each needs a module-side change, not a registry change.
 - **Server: near zero.** Vercel bundles a function per route; an unused route is never loaded. On the local supervisor, Node loads a module's code only when a request reaches it.
 - **Database: negligible.** A disabled module's tables exist and stay empty. Migrations still run on every install (additive, so safe). A settings read is already cached per request, so the toggle check is free.
 - **The real cost is human:** CI minutes, review time, and keeping 120 things working. That is why the fence matters more than the folder layout. A module that only touches its own folder and the registry cannot break another one.

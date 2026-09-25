@@ -45,6 +45,9 @@ const eslintConfig = defineConfig([
       "src/components/canvas/EventCanvas.tsx",
       "src/components/canvas/WidgetCanvas.tsx",
       "src/lib/modules.ts",
+      // The root layout's shell list: its components come from module-editor.tsx
+      // (lazy), so a direct module import here would ship on every page.
+      "src/lib/module-shells.tsx",
       "src/lib/items.ts",
       "src/lib/item-mutations.ts",
       "src/lib/relations*.ts",
