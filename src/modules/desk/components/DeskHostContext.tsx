@@ -10,7 +10,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { DeskHost } from "@/lib/desk/send";
+import type { DeskHost } from "@/modules/desk/lib/send";
 
 const DeskHostContext = createContext<DeskHost | null>(null);
 

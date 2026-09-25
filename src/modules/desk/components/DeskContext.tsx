@@ -7,7 +7,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { DeskLayout, DropTarget } from "@/lib/desk/layout";
+import type { DeskLayout, DropTarget } from "@/modules/desk/lib/layout";
 import type { TocConfig } from "@/lib/toc";
 
 export type DeskActions = {

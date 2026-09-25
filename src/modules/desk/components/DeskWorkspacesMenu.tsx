@@ -6,8 +6,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { DeskWorkspace } from "@/lib/settings";
-import type { RecentSnapshot } from "@/lib/desk/persist";
+import type { DeskWorkspace } from "@/modules/desk/lib/workspaces";
+import type { RecentSnapshot } from "@/modules/desk/lib/persist";
 
 function formatTs(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {

@@ -24,6 +24,10 @@ export type DestOption = {
   // badge-eligible built-ins (inbox / notifications); the editor stamps it onto
   // the stored slot so Nav.tsx reads the right counter.
   badge?: NavBadge;
+  // The module this built-in page belongs to (ADR-272 step 4). While that
+  // module is off the picker does not offer it and Nav hides a slot already
+  // pointing at it (offModuleHrefs).
+  moduleId?: string;
 };
 
 // The built-in pages that make sense as daily-nav destinations. Views/Items/Types
@@ -37,8 +41,8 @@ export const BUILTIN_DESTS: DestOption[] = [
   { group: "Built-in", kind: "builtin", href: "/planner", label: "Planner", icon: "calendar", badgeEligible: false },
   // The Desk (ADR-146): a desktop-only multi-panel workspace. Offered in the
   // destination picker so the owner can add it to their own Work nav (ADR-063
-  // opt-in posture); it's not a default slot.
-  { group: "Built-in", kind: "builtin", href: "/desk", label: "Desk", icon: "grid", badgeEligible: false },
+  // opt-in posture); it's not a default slot. A module (ADR-272 step 4).
+  { group: "Built-in", kind: "builtin", href: "/desk", label: "Desk", icon: "grid", badgeEligible: false, moduleId: "desk" },
   { group: "Built-in", kind: "builtin", href: "/favorites", label: "Favorites", icon: "starred", badgeEligible: false },
   // ONE Search destination (ADR-182). It used to be listed as "Advanced search"
   // to distinguish the PAGE from the ⌘K palette that every layout hardcoded a
@@ -89,7 +93,9 @@ export function buildDestOptions(
     // Notification center paused (ADR-130): don't offer /notifications as a nav
     // destination while its module is off. Turning the module on restores it.
     ...BUILTIN_DESTS.filter(
-      (d) => notificationsOn || d.href !== "/notifications"
+      (d) =>
+        (notificationsOn || d.href !== "/notifications") &&
+        !(d.moduleId && offModules.includes(d.moduleId))
     ),
     ...buildNavFor(offModules).flatMap((g) => g.entries).map(toBuildToolDest),
     ...dashboards.map((d) => ({
@@ -117,6 +123,15 @@ export function buildDestOptions(
       badgeEligible: false,
     })),
   ];
+}
+
+// The built-in pages of switched-off modules, for Nav to hide a slot already
+// pointing at one. This hides the slot, not the route (the route's own gate
+// answers 404 while the module is off).
+export function offModuleHrefs(offModules: readonly string[]): Set<string> {
+  return new Set(
+    BUILTIN_DESTS.filter((d) => d.moduleId && offModules.includes(d.moduleId)).map((d) => d.href)
+  );
 }
 
 // Find the option a stored href points at (to resolve badge-eligibility and the

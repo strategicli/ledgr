@@ -92,30 +92,16 @@ export function sendOpenBeside(itemId: string, host: DeskHost | null): void {
   notifyLayoutChanged();
 }
 
-// --- Inline context-menu event (S3b) --------------------------------------
+// --- Inline context menu (S3b) -------------------------------------------
 // Inline references (mention chips in the editor, item links in the preview)
-// dispatch this so the one globally-mounted DeskSendContextMenu opens at the
-// cursor. Keeps the editor/preview from each owning a popover.
-// The Desk is desktop-only: a fine pointer at ≥640px. Inline surfaces check this
-// before intercepting a right-click, so touch/small screens keep native behavior.
+// reach the one globally-mounted DeskSendContextMenu through core's
+// lib/inline-ref-menu; this is that listener's "would I open?" check. The Desk
+// is desktop-only: a fine pointer at 640px and up, so touch/small screens keep
+// native behavior.
 export function deskSendAvailable(): boolean {
   if (typeof window === "undefined") return false;
   return (
     window.matchMedia("(min-width: 640px)").matches &&
     !window.matchMedia("(pointer: coarse)").matches
   );
-}
-
-export const DESK_SEND_EVENT = "ledgr:desk-send";
-
-export type DeskSendDetail = {
-  itemId: string;
-  currentItemId?: string;
-  x: number;
-  y: number;
-};
-
-export function openDeskSendMenu(detail: DeskSendDetail): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(DESK_SEND_EVENT, { detail }));
 }

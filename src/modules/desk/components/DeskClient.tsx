@@ -36,16 +36,16 @@ import {
   splitLeaf,
   viewTab,
   type DeskLayout,
-} from "@/lib/desk/layout";
+} from "@/modules/desk/lib/layout";
 import {
   loadLiveLayout,
   loadRecent,
   saveLiveLayout,
   snapshotToRecent,
   type RecentSnapshot,
-} from "@/lib/desk/persist";
-import { DESK_LAYOUT_CHANGED_EVENT } from "@/lib/desk/send";
-import type { DeskWorkspace } from "@/lib/settings";
+} from "@/modules/desk/lib/persist";
+import { DESK_LAYOUT_CHANGED_EVENT } from "@/modules/desk/lib/send";
+import type { DeskWorkspace } from "@/modules/desk/lib/workspaces";
 import type { TocConfig } from "@/lib/toc";
 import DeskActiveContext from "./DeskActiveContext";
 import { DeskProvider, type DeskActions, type MoveArmed } from "./DeskContext";

@@ -17,7 +17,7 @@
 "use client";
 
 import ActiveContextTracker from "@/components/canvas/ActiveContextTracker";
-import { findLeaf } from "@/lib/desk/layout";
+import { findLeaf } from "@/modules/desk/lib/layout";
 import { useDesk } from "./DeskContext";
 import { useDoc } from "./desk-doc-store";
 

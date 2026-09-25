@@ -6,7 +6,7 @@
 // gesture would. Every zone is labeled (scope-the-UI rule).
 "use client";
 
-import type { DropZone } from "@/lib/desk/layout";
+import type { DropZone } from "@/modules/desk/lib/layout";
 
 // The proportion of the panel each edge strip claims; the center fills the rest.
 const EDGE = "28%";

@@ -5,24 +5,25 @@
 // Both then navigate to /desk. Reused two ways:
 //   - DeskSendItems: the two menu rows, embedded in the list RowMenu (S3).
 //   - DeskSendContextMenu: one globally-mounted popover (like ActionToast) that
-//     opens at the cursor when an inline mention/link dispatches DESK_SEND_EVENT
-//     (S3b).
+//     opens at the cursor when an inline mention/link is right-clicked (S3b).
+//     It is the module's shell panel (module-panels.tsx `shellPanels`), mounted
+//     by the root layout only while the Desk module is on, and it hears the
+//     editor through core's lib/inline-ref-menu (ADR-272 step 4).
 // Desktop-only: the Desk is a desktop surface, so these are absent on touch and
-// below 640px.
+// below 640px. Off: the shell panel is not mounted, so neither the inline menu
+// nor the row-menu items appear.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIsDesktop } from "@/components/markdown-editor/useIsDesktop";
+import { listenInlineRefMenu, type InlineRefMenuDetail } from "@/lib/inline-ref-menu";
 import {
-  DESK_SEND_EVENT,
   deskSendAvailable,
-  openDeskSendMenu,
   sendOpenBeside,
   sendOpenInDesk,
   type DeskHost,
-  type DeskSendDetail,
-} from "@/lib/desk/send";
+} from "@/modules/desk/lib/send";
 import { useDeskHost } from "./DeskHostContext";
 
 // The Desk is desktop-only: available on a fine pointer at ≥640px. Pointer type
@@ -36,6 +37,12 @@ function useDeskAvailable(): boolean {
   );
   return isDesktop && finePointer;
 }
+
+// Whether the shell panel below is mounted, i.e. the Desk module is on for this
+// owner (the root layout mounts it only then). The row-menu items read it so a
+// switched-off Desk offers no "Send to Desk" in a list's RowMenu either. Read
+// when a menu opens, long after the shell's effect has run.
+let shellMounted = false;
 
 const itemClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2";
@@ -64,7 +71,7 @@ export function DeskSendItems({
   const router = useRouter();
   const available = useDeskAvailable();
   const pageHost = useDeskHost();
-  if (!available) return null;
+  if (!available || !shellMounted) return null;
 
   // Explicit reading-context item wins; otherwise the page's host surface.
   const host: DeskHost | null = currentItemId
@@ -94,19 +101,25 @@ export function DeskSendItems({
   );
 }
 
-// One instance mounted in the root layout. Opens at the cursor when an inline
-// reference dispatches DESK_SEND_EVENT; renders the same two actions.
+// One instance mounted in the root layout while the Desk module is on. Opens at
+// the cursor when an inline reference is right-clicked; renders the same two
+// actions.
 export default function DeskSendContextMenu() {
-  const [detail, setDetail] = useState<DeskSendDetail | null>(null);
+  const [detail, setDetail] = useState<InlineRefMenuDetail | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onEvent = (e: Event) => {
-      const d = (e as CustomEvent<DeskSendDetail>).detail;
-      if (d?.itemId && deskSendAvailable()) setDetail(d);
+    shellMounted = true;
+    const unlisten = listenInlineRefMenu({
+      available: deskSendAvailable,
+      open: (d) => {
+        if (d.itemId) setDetail(d);
+      },
+    });
+    return () => {
+      shellMounted = false;
+      unlisten();
     };
-    window.addEventListener(DESK_SEND_EVENT, onEvent);
-    return () => window.removeEventListener(DESK_SEND_EVENT, onEvent);
   }, []);
 
   useEffect(() => {
@@ -146,7 +159,3 @@ export default function DeskSendContextMenu() {
     </div>
   );
 }
-
-// Re-export the dispatcher so inline surfaces (editor/preview) import from one
-// place alongside the menu they open.
-export { openDeskSendMenu };

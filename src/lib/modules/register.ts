@@ -24,6 +24,7 @@ import { snapshotsModule } from "@/modules/snapshots/manifest";
 import { emailCaptureModule } from "@/modules/email-capture/manifest";
 import { calendarSyncModule } from "@/modules/calendar-sync/manifest";
 import { relatednessModule } from "@/modules/relatedness/manifest";
+import { deskModule } from "@/modules/desk/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -41,6 +42,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   emailCaptureModule,
   calendarSyncModule,
   relatednessModule,
+  deskModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

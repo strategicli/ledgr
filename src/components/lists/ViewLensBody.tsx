@@ -13,7 +13,7 @@
 // "Linked here" and meeting "Open tasks" groups reuse this same body, getting
 // the multi-select layer for free without a parallel wrapper (ADR-118 + #129).
 import type { ReactNode } from "react";
-import { DeskHostProvider } from "@/components/desk/DeskHostContext";
+import { DeskHostProvider } from "@/modules/desk/components/DeskHostContext";
 import BulkActionBar from "@/components/selection/BulkActionBar";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";

@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import ActionToast from "@/components/ui/ActionToast";
 import UploadProgress from "@/components/attachments/UploadProgress";
-import DeskSendContextMenu from "@/components/desk/DeskSendMenu";
+import { shellPanels } from "@/lib/module-panels";
 import Nav from "@/components/nav/Nav";
 import NavProgress from "@/components/nav/NavProgress";
 import PwaRegister from "@/components/pwa/PwaRegister";
@@ -126,10 +126,14 @@ export default async function RootLayout({
   // The in-app agent (ADR-271): on only where the machine can run it and the
   // owner switched it on. Stamped on <body> so the editor can offer inline edit.
   let agentOn = false;
+  // Modules' shell panels (module-panels.tsx), filtered to the ones switched on
+  // for this owner. Signed out or failed: none.
+  let shell: ReturnType<typeof shellPanels> = [];
   try {
     const owner = await resolveOwner();
     if (owner) {
       const s = await getSettings(owner.id);
+      shell = shellPanels().filter((p) => moduleOn(s, p.moduleId));
       accent = s.highlightColor;
       accentGradient = s.highlightGradient ?? s.highlightColor;
       accentHighlightImage = s.highlightGradient
@@ -192,9 +196,11 @@ export default async function RootLayout({
           <UploadProgress />
           {/* One global upload-progress stack (bottom-right), same trick: every
               uploadAttachment reports here via a window event (ADR-236). */}
-          <DeskSendContextMenu />
-          {/* One global Send-to-Desk popover (ADR-146): opened at the cursor by
-              inline mention/link right-clicks; desktop-only. */}
+          {shell.map(({ moduleId, Component }) => (
+            <Component key={moduleId} />
+          ))}
+          {/* Modules' app-wide panels (ADR-272 step 4), e.g. the Desk's global
+              Send-to-Desk popover (ADR-146); each only while its module is on. */}
           {agentOn && <AgentPanel />}
           {/* The Claude sidebar (ADR-271): one global panel, desktop right edge
               or a phone bottom sheet; it follows whatever item is open. */}

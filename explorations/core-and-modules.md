@@ -60,7 +60,7 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | ~~relatedness~~ | moved: `src/modules/relatedness/` (manifest, `lib/` scorer + job + Loose Ends, the Discover and Explore components); Loose Ends nav from the manifest; canvases reach Discover and the Explore page through `module-panels.tsx`; `related-lens/prefs/views` stay core (explicit relations) | jobs | none left |
 | ~~snapshots~~ | moved: `src/modules/snapshots/` (lib, components); keeps its per-install switch too | supervisor | none left |
 | passages | `lib/passages/`, `passage_refs`, `/passage/[ref]` | none | item-mutations (on-save hook) |
-| desk | `lib/desk/`, `components/desk/`, `/desk` | editor | layout (send menu), editor menus, nav |
+| ~~desk~~ | moved: `src/modules/desk/` (manifest, `lib/` layout + persistence + send + workspaces, the components); `/desk` gated; the send menu is a layout shell panel (`module-panels.tsx` `shellPanels`); the editor reaches it through core's `lib/inline-ref-menu`; `settings.deskWorkspaces` is an opaque slot the module validates; the `/desk` Work nav destination hides while off | editor | none left |
 | ai-memory | `lib/memory.ts`, `memory` type, 2 MCP tools, `/build/memory` | mcp door | tools gating, build-nav (already `gatedBy`), agent context |
 | live-context | `active_context` table, 2 MCP tools | mcp door | tools gating, ItemCanvas tracker |
 | agent | `lib/agent/`, 4 tables, 11 routes, sidebar | mcp tools, ai-memory (optional) | layout, settings, jobs (purge) |

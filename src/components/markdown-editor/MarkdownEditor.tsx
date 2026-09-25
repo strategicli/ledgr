@@ -96,7 +96,7 @@ import {
 } from "./comment-mark";
 import { extractPromotable } from "@/lib/editor/block-anchor";
 import { withShortcut } from "@/lib/editor/shortcuts";
-import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
+import { inlineRefMenuAvailable, openInlineRefMenu } from "@/lib/inline-ref-menu";
 import CommentPopover from "./CommentPopover";
 import PromoteLinePopup from "./PromoteLinePopup";
 import { LiveFlash, patchMarkdown } from "./live-patch";
@@ -1054,21 +1054,22 @@ export default function MarkdownEditor({
     return () => dom.removeEventListener(EDIT_COMMENT_EVENT, onCardClick);
   }, [editor]);
 
-  // Right-click a mention chip → the Send-to-Desk menu (S3b, ADR-146), with this
+  // Right-click a mention chip → a module's inline-reference menu (the Desk's
+  // "Send to Desk", S3b, ADR-146, reached through lib/inline-ref-menu), with this
   // item as "current" so "Open beside" puts the host left and the mention right.
-  // Desktop-only; otherwise the native context menu is left alone.
+  // With no listener (Desk off, touch, small screen) the native menu is left alone.
   useEffect(() => {
     if (!editor) return;
     const dom = editor.view.dom;
     const handler = (e: MouseEvent) => {
-      if (!deskSendAvailable()) return;
+      if (!inlineRefMenuAvailable()) return;
       const chip = (e.target as Element).closest?.(
         ".ledgr-mention[data-item-id]"
       ) as HTMLElement | null;
       const linkedId = chip?.dataset.itemId;
       if (!linkedId) return;
       e.preventDefault();
-      openDeskSendMenu({
+      openInlineRefMenu({
         itemId: linkedId,
         currentItemId: itemId,
         x: e.clientX,

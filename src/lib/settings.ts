@@ -11,7 +11,6 @@ import { isIconRef, NAV_ICON_FALLBACK } from "@/lib/nav-icons";
 import { parseListTabs, type Lens } from "@/lib/list-lenses";
 import { parseTocByType, type TocConfig } from "@/lib/toc";
 import { parseCardsByType, type ProjectCardConfig } from "@/lib/project-card-config";
-import { sanitizeLayout, type DeskLayout } from "@/lib/desk/layout";
 import { parseJobOwners, type JobOwners } from "@/lib/job-owners";
 
 // The accent palette offered in settings. Stored as the hex so it can drop
@@ -231,14 +230,18 @@ export const TOC_PINNED_HARD_CAP = 500;
 // --- Desk workspaces (ADR-146) --------------------------------------------
 // Named, saved Desk layouts. Synced (in this jsonb, no migration) so they
 // follow the owner across devices, unlike the live layout + Recent ring which
-// are per-device in localStorage. A DeskLayout is validated by sanitizeLayout on
-// read, same tolerant posture as navSlots: a malformed entry is dropped.
+// are per-device in localStorage. The Desk is a module (src/modules/desk,
+// ADR-272 step 4) and core may not import it, so core keeps this as an opaque
+// slot: it checks the envelope (id, name, savedAt, an object layout) and leaves
+// `layout` unread. The module validates the layout itself on read
+// (sanitizeWorkspaces in src/modules/desk/lib/workspaces.ts) and drops a
+// malformed entry, the same tolerant posture as before.
 export const DESK_WORKSPACES_CAP = 50;
 export type DeskWorkspace = {
   id: string;
   name: string;
   savedAt: number; // epoch ms
-  layout: DeskLayout;
+  layout: unknown; // a DeskLayout, validated by the Desk module
 };
 
 // A destination points at one route. `builtin` is a hardcoded app page, `view`
@@ -751,9 +754,9 @@ function parseRelatedLensChoices(raw: unknown): Record<string, string> {
   return out;
 }
 
-// Parse saved Desk workspaces: drop entries missing an id/name or with an
-// unreadable layout (sanitizeLayout returns null on an unknown version), bound
-// the count and the name length. Anything not an array yields the empty list.
+// Parse saved Desk workspaces: drop entries missing an id/name or with no layout
+// object, bound the count and the name length. The layout's inside is the Desk
+// module's to check. Anything not an array yields the empty list.
 function parseDeskWorkspaces(raw: unknown): DeskWorkspace[] {
   if (!Array.isArray(raw)) return [];
   const out: DeskWorkspace[] = [];
@@ -762,7 +765,7 @@ function parseDeskWorkspaces(raw: unknown): DeskWorkspace[] {
     const o = r as Record<string, unknown>;
     const id = typeof o.id === "string" && o.id ? o.id : null;
     const name = typeof o.name === "string" ? o.name.trim().slice(0, 80) : "";
-    const layout = sanitizeLayout(o.layout);
+    const layout = o.layout && typeof o.layout === "object" ? o.layout : null;
     if (!id || !name || !layout) continue;
     const savedAt = typeof o.savedAt === "number" && Number.isFinite(o.savedAt) ? o.savedAt : Date.now();
     out.push({ id, name, savedAt, layout });

@@ -22,7 +22,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deskSendAvailable, openDeskSendMenu } from "@/lib/desk/send";
+import { inlineRefMenuAvailable, openInlineRefMenu } from "@/lib/inline-ref-menu";
 import CommentPopover from "./CommentPopover";
 import { litComment } from "./comment-hover";
 import { useMediaQuery } from "./useIsDesktop";
@@ -47,9 +47,10 @@ function cachePut(key: string, html: string): void {
   }
 }
 
-// Right-click an item link in the rendered body → the Send-to-Desk menu (S3b),
+// Right-click an item link in the rendered body → a module's inline-reference
+// menu (the Desk's "Send to Desk", S3b, reached through lib/inline-ref-menu),
 // with the host item as "current" so "Open beside" puts it left, the link right.
-// Desktop-only; on touch/small screens the native context menu is left alone.
+// With no listener (Desk off, touch, small screen) the native menu is left alone.
 function itemIdFromHref(href: string | null | undefined): string | null {
   if (!href) return null;
   const m = /\/items\/([0-9a-f-]{36})(?:[#?].*)?$/i.exec(href);
@@ -137,12 +138,12 @@ export default function MarkdownPreview({
         onMouseOver={(e) => litComment(e.currentTarget, e.target)}
         onMouseLeave={(e) => litComment(e.currentTarget, null)}
         onContextMenu={(e) => {
-          if (!deskSendAvailable()) return;
+          if (!inlineRefMenuAvailable()) return;
           const a = (e.target as Element).closest?.('a[href^="/items/"]');
           const linkedId = itemIdFromHref(a?.getAttribute("href"));
           if (!linkedId) return;
           e.preventDefault();
-          openDeskSendMenu({
+          openInlineRefMenu({
             itemId: linkedId,
             currentItemId: itemId,
             x: e.clientX,
