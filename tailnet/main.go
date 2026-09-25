@@ -16,9 +16,11 @@
 //     link), running (with the address), or error (with a message).
 //   - exits cleanly when stdin closes, so it cannot outlive the supervisor.
 //   - with -logout, signs this node out of the tailnet and exits.
-//
-// ponytail: Funnel (step 5 of the install plan) is a second listener here,
-// s.ListenFunnel("tcp", ":443"), behind a flag. Not built yet.
+//   - with -funnel, serves the same :443 through Tailscale Funnel as well, so
+//     the address also answers from the public internet (ADR-278). The
+//     supervisor passes it only when the app requires sign-in. If the tailnet
+//     does not allow Funnel yet, the helper keeps serving privately and reports
+//     why, with the link that fixes it.
 package main
 
 import (
@@ -48,7 +50,13 @@ type status struct {
 	DNSName string `json:"dnsName,omitempty"`
 	URL     string `json:"url,omitempty"`
 	Message string `json:"message,omitempty"`
-	At      string `json:"at"`
+	// Funnel: "on" (public), "unavailable" (asked for, the tailnet refused;
+	// FunnelMessage says why, FunnelFixURL is the page that fixes it), or
+	// empty (not asked for).
+	Funnel        string `json:"funnel,omitempty"`
+	FunnelMessage string `json:"funnelMessage,omitempty"`
+	FunnelFixURL  string `json:"funnelFixUrl,omitempty"`
+	At            string `json:"at"`
 }
 
 var (
@@ -110,6 +118,7 @@ func main() {
 	flag.StringVar(&statusPath, "status", "", "file to write this helper's status to (JSON)")
 	logout := flag.Bool("logout", false, "sign this node out of the tailnet, then exit")
 	verbose := flag.Bool("verbose", false, "print Tailscale's own detailed logs to stderr")
+	funnel := flag.Bool("funnel", false, "also serve through Tailscale Funnel (the public internet)")
 	flag.Parse()
 	log.SetFlags(0)
 	log.SetPrefix("ledgr-tailnet: ")
@@ -158,12 +167,12 @@ func main() {
 		stop()
 	}()
 
-	code := serve(ctx, s, lc, backend)
+	code := serve(ctx, s, lc, backend, *funnel)
 	_ = s.Close()
 	os.Exit(code)
 }
 
-func serve(ctx context.Context, s *tsnet.Server, lc *local.Client, backend *url.URL) int {
+func serve(ctx context.Context, s *tsnet.Server, lc *local.Client, backend *url.URL, funnel bool) int {
 	// 1. Wait for sign-in, reporting the link while there is one.
 	var domain string
 	for domain == "" {
@@ -189,8 +198,20 @@ func serve(ctx context.Context, s *tsnet.Server, lc *local.Client, backend *url.
 	// 2. Listen for HTTPS. This fails when HTTPS certificates are switched off
 	// for the tailnet; say so and keep trying, since the owner can fix it in
 	// the Tailscale admin console without us restarting.
+	// With -funnel, one Funnel listener serves both the tailnet and the public
+	// internet on :443. When the tailnet refuses Funnel, fall back to private.
 	var ln net.Listener
-	for {
+	var pub status
+	if funnel {
+		var err error
+		if ln, err = s.ListenFunnel("tcp", ":443"); err == nil {
+			pub.Funnel = "on"
+		} else {
+			pub = funnelRefused(ctx, lc, err)
+			log.Printf("funnel refused: %v", err)
+		}
+	}
+	for ln == nil {
 		var err error
 		if ln, err = s.ListenTLS("tcp", ":443"); err == nil {
 			// Fetch the certificate now, so "running" means a browser will get
@@ -202,6 +223,7 @@ func serve(ctx context.Context, s *tsnet.Server, lc *local.Client, backend *url.
 				break
 			}
 			_ = ln.Close()
+			ln = nil
 		}
 		if ctx.Err() != nil {
 			return 0
@@ -227,8 +249,9 @@ func serve(ctx context.Context, s *tsnet.Server, lc *local.Client, backend *url.
 		}
 	}()
 	addr := "https://" + domain
-	writeStatus(status{State: "running", DNSName: domain, URL: addr})
-	log.Printf("serving %s -> %s", addr, backend)
+	pub.State, pub.DNSName, pub.URL = "running", domain, addr
+	writeStatus(pub)
+	log.Printf("serving %s -> %s (funnel: %s)", addr, backend, pub.Funnel)
 
 	// 3. Stay up. If the node stops running (signed out or removed in the
 	// admin console, key expired), exit non-zero: the supervisor restarts us,
@@ -254,6 +277,28 @@ func httpsHint(err error) string {
 		return "HTTPS certificates are switched off for your tailnet. Turn on HTTPS Certificates at https://login.tailscale.com/admin/dns, then wait a minute. (" + msg + ")"
 	}
 	return "Could not serve HTTPS on the tailnet: " + msg
+}
+
+// funnelRefused explains why Funnel could not start, in words, with the one
+// page that fixes it. For a missing permission it asks Tailscale for its own
+// "turn on Funnel" link (the same one `tailscale funnel` prints).
+func funnelRefused(ctx context.Context, lc *local.Client, err error) status {
+	msg := err.Error()
+	if strings.Contains(msg, "HTTPS") {
+		return status{Funnel: "unavailable", FunnelFixURL: "https://login.tailscale.com/admin/dns",
+			FunnelMessage: "Your Tailscale network has HTTPS certificates switched off, and public access needs them. Turn on HTTPS Certificates on this page, then try again."}
+	}
+	if strings.Contains(msg, "node attribute") {
+		fix := "https://login.tailscale.com/admin/acls/file"
+		qctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		if r, qerr := lc.QueryFeature(qctx, "funnel"); qerr == nil && r.URL != "" {
+			fix = r.URL
+		}
+		cancel()
+		return status{Funnel: "unavailable", FunnelFixURL: fix,
+			FunnelMessage: "Your Tailscale network does not allow public access (Funnel) for this device yet. Open this page and allow it, then try again."}
+	}
+	return status{Funnel: "unavailable", FunnelMessage: "Tailscale refused public access: " + msg}
 }
 
 func runLogout(s *tsnet.Server) int {

@@ -8,7 +8,9 @@ import { useRouter } from "next/navigation";
 const BUTTON =
   "rounded-card border border-line-strong bg-surface-2 px-2.5 py-1 text-xs text-ink hover:bg-surface-3 disabled:opacity-40";
 
-async function post(action: "connect" | "disconnect") {
+type Action = "connect" | "disconnect" | "funnel-on" | "funnel-off" | "funnel-recheck";
+
+async function post(action: Action) {
   const res = await fetch("/api/tailscale", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -85,6 +87,39 @@ export function ConnectButton() {
   );
 }
 
+/**
+ * One public-access switch (ADR-278). The helper restarts with the new setting
+ * (a few seconds, no new sign-in), so wait, then refresh the panel.
+ */
+export function ActionButton({ action, label, busyLabel }: { action: Action; label: string; busyLabel: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      await post(action);
+      await new Promise((r) => setTimeout(r, 5000));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      router.refresh();
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" className={BUTTON} disabled={busy} onClick={() => void run()}>
+        {busy ? busyLabel : label}
+      </button>
+      {error && <p className="ui-meta mt-1 text-ink-subtle">{error}</p>}
+    </div>
+  );
+}
+
 /** Disconnect: sign this computer's Ledgr out of the tailnet and forget its keys. */
 export function DisconnectButton({ label = "Disconnect" }: { label?: string }) {
   const router = useRouter();
@@ -116,8 +151,8 @@ export function DisconnectButton({ label = "Disconnect" }: { label?: string }) {
           role="tooltip"
           className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 rounded-card border border-neutral-700 bg-neutral-900 p-2 text-xs normal-case text-ink-muted opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
         >
-          Signs this Ledgr out of your Tailscale network, so your other devices stop reaching it at the private
-          address. Tailscale still lists it as an offline device; remove it there if you like. Nothing in Ledgr is
+          Signs this Ledgr out of your Tailscale network, so your other devices stop reaching it, and turns off
+          public access if it was on. Tailscale still lists it as an offline device; remove it there if you like. Nothing in Ledgr is
           deleted, and you can connect again any time.
         </span>
       </span>

@@ -79,6 +79,9 @@ export function parseTailnetStatus(text) {
       dnsName: str(v.dnsName),
       url: str(v.url),
       message: str(v.message),
+      funnel: v.funnel === "on" || v.funnel === "unavailable" ? v.funnel : null,
+      funnelMessage: str(v.funnelMessage),
+      funnelFixUrl: str(v.funnelFixUrl),
       at: str(v.at),
     };
   } catch {
@@ -90,13 +93,31 @@ export function serializeTailnetStatus(s) {
   return JSON.stringify({ ...s, at: new Date().toISOString() }, null, 2) + "\n";
 }
 
-/** The signal file's body: `{"logout": true}` for Disconnect, anything else a re-check. */
+/**
+ * The signal file's body: `{"logout": true}` for Disconnect, `{"recheck": true}`
+ * to retry public access after the owner fixed the tailnet, anything else a
+ * plain re-check.
+ */
 export function parseTailnetRequest(text) {
   try {
-    return { logout: JSON.parse(text)?.logout === true };
+    const v = JSON.parse(text);
+    return { logout: v?.logout === true, recheck: v?.recheck === true };
   } catch {
-    return { logout: false };
+    return { logout: false, recheck: false };
   }
+}
+
+/**
+ * What the app answered, and whether public access (Funnel) may run. Both sides
+ * must say yes: the app (module on, this computer switched on, Funnel asked for,
+ * sign-in required) AND this supervisor's own reading of sign-in, so a public
+ * Ledgr with no sign-in cannot happen even if one side is wrong or bypassed.
+ * null in, null out: the app did not answer, change nothing.
+ */
+export function tailnetPlan(answer, signinRequired) {
+  if (!answer || typeof answer !== "object") return null;
+  const run = answer.run === true;
+  return { run, funnel: run && answer.funnel === true && signinRequired === true };
 }
 
 export function tailnetPaths(dataDir) {
@@ -114,9 +135,10 @@ export function tailnetPaths(dataDir) {
 
 /**
  * @param {{ dataDir: string, appPort: number, log: Function, nextBackoffMs: Function,
- *           askApp: () => Promise<boolean | null> }} o
- *   askApp answers "should the helper run?", or null when the app did not answer
- *   (then nothing changes).
+ *           askApp: () => Promise<object | null>, signinRequired: () => boolean }} o
+ *   askApp returns the app's answer ({run, funnel}), or null when the app did not
+ *   answer (then nothing changes). signinRequired is the supervisor's own reading
+ *   (the same one that decides whether the app listens beyond this machine).
  */
 export function createTailnet(o) {
   const paths = tailnetPaths(o.dataDir);
@@ -126,6 +148,8 @@ export function createTailnet(o) {
   let child = null;
   let crashes = 0;
   let wanted = false;
+  let wantedFunnel = false;
+  let childFunnel = false; // what the running helper was started with
   let busy = false;
   let stopping = false;
   let retry = null;
@@ -181,9 +205,17 @@ export function createTailnet(o) {
     const bin = await binary();
     if (!bin || !wanted || child) return;
     mkdirSync(paths.state, { recursive: true });
+    // Re-read at the last moment: never start public access on a stale yes.
+    const funnel = wantedFunnel && o.signinRequired();
     const c = spawn(
       bin,
-      ["-dir", paths.state, "-hostname", name, "-target", `http://127.0.0.1:${o.appPort}`, "-status", paths.status],
+      [
+        "-dir", paths.state,
+        "-hostname", name,
+        "-target", `http://127.0.0.1:${o.appPort}`,
+        "-status", paths.status,
+        ...(funnel ? ["-funnel"] : []),
+      ],
       {
         stdio: ["pipe", "inherit", "inherit"],
         windowsHide: true,
@@ -192,8 +224,9 @@ export function createTailnet(o) {
       }
     );
     child = c;
+    childFunnel = funnel;
     const startedAt = Date.now();
-    o.log("tailscale helper started", { pid: c.pid, hostname: name });
+    o.log("tailscale helper started", { pid: c.pid, hostname: name, public: funnel });
     c.on("error", (err) => o.log("tailscale helper could not start", { error: String(err) }));
     c.on("exit", (code, sig) => {
       if (child !== c) return;
@@ -250,11 +283,17 @@ export function createTailnet(o) {
     if (busy || stopping) return;
     busy = true;
     try {
-      const want = await o.askApp();
-      if (want === null) return;
-      if (want !== wanted) o.log(want ? "tailscale switched on" : "tailscale switched off", { reason });
-      wanted = want;
-      if (wanted && !child) await start();
+      const plan = tailnetPlan(await o.askApp(), o.signinRequired());
+      if (plan === null) return;
+      if (plan.run !== wanted) o.log(plan.run ? "tailscale switched on" : "tailscale switched off", { reason });
+      if (plan.funnel !== wantedFunnel) o.log(plan.funnel ? "public access switched on" : "public access switched off", { reason });
+      wanted = plan.run;
+      wantedFunnel = plan.funnel;
+      if (wanted && child && childFunnel !== wantedFunnel) {
+        // Same keys, new flag: a restart, never a new sign-in.
+        await stop();
+        await start();
+      } else if (wanted && !child) await start();
       else if (!wanted && child) {
         await stop();
         status({ state: "off" });
@@ -266,8 +305,24 @@ export function createTailnet(o) {
     }
   }
 
-  // The app's signal file, on the same 2s beat as the others.
+  // The app's signal file, on the same 2s beat as the others. The same beat
+  // closes public access the moment sign-in stops being required, without
+  // waiting for the app to be asked.
   setInterval(() => {
+    if (child && childFunnel && !busy && !o.signinRequired()) {
+      o.log("sign-in is no longer required here; closing public access");
+      wantedFunnel = false;
+      busy = true;
+      void (async () => {
+        try {
+          await stop();
+          await start();
+        } finally {
+          busy = false;
+        }
+      })();
+      return;
+    }
     if (!existsSync(paths.signal) || busy) return;
     let req;
     try {
@@ -283,6 +338,17 @@ export function createTailnet(o) {
           await logout();
         } catch (err) {
           o.log("tailscale sign-out FAILED", { error: String(err) });
+        } finally {
+          busy = false;
+        }
+      }
+      if (req.recheck && child && childFunnel) {
+        // The owner fixed the tailnet and asked to try again: a fresh start
+        // asks Tailscale for Funnel again.
+        busy = true;
+        try {
+          await stop();
+          await start();
         } finally {
           busy = false;
         }

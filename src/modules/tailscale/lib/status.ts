@@ -11,8 +11,17 @@ export type TailnetStatus = {
   dnsName: string | null;
   url: string | null;
   message: string | null;
+  // Public access (Funnel, ADR-278): "on", "unavailable" (asked for, refused by
+  // the tailnet, with why and the page that fixes it), or null (not asked for).
+  funnel: "on" | "unavailable" | null;
+  funnelMessage: string | null;
+  funnelFixUrl: string | null;
   at: string | null;
 };
+
+// Links the owner may be sent to: Tailscale's own pages only.
+const tailscaleLink = (u: string | null) =>
+  u && (u.startsWith("https://login.tailscale.com/") || u.startsWith("https://tailscale.com/")) ? u : null;
 
 const STATES: TailnetState[] = ["off", "starting", "needs-login", "running", "error", "signed-out"];
 
@@ -28,6 +37,9 @@ export function parseTailnetStatus(text: string): TailnetStatus | null {
       dnsName: str(v.dnsName),
       url: str(v.url)?.startsWith("https://") ? str(v.url) : null,
       message: str(v.message),
+      funnel: v.funnel === "on" || v.funnel === "unavailable" ? v.funnel : null,
+      funnelMessage: str(v.funnelMessage),
+      funnelFixUrl: tailscaleLink(str(v.funnelFixUrl)),
       at: str(v.at),
     };
   } catch {
@@ -49,4 +61,9 @@ export async function readTailnetStatus(supervisorDir: string | null): Promise<T
 /** The private address to hand out, only while the helper is actually serving it. */
 export function tailnetAddress(s: TailnetStatus | null): string | null {
   return s?.state === "running" ? s.url : null;
+}
+
+/** The same address, only while it is also on the public internet. */
+export function funnelAddress(s: TailnetStatus | null): string | null {
+  return s?.funnel === "on" ? tailnetAddress(s) : null;
 }
