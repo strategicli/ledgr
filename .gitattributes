@@ -1,2 +1,4 @@
-# The helper build script runs under sh; keep it LF on every checkout.
-tailnet/*.sh text eol=lf
+# The Tailscale helper's source is LF on every checkout: the Go build ID hashes
+# the source bytes, so a CRLF checkout would build files whose checksums differ
+# from the ones pinned in tailnet/release.json. (build.sh also runs under sh.)
+tailnet/** text eol=lf
