@@ -498,7 +498,22 @@ export type UserSettings = {
   // Turning a module off hides its types from the places new items are made; it
   // never deletes or alters data. Same no-migration posture as jobOwners.
   modules: Record<string, boolean>;
+  // The public address share links are made with (ADR-277), e.g. the cloud copy
+  // a hub keeps. Synced like the rest, so every copy hands out the same address.
+  // Null = today's behavior: the address the browser is on.
+  publicUrl: string | null;
 };
+
+/** A public address as stored: an http(s) origin, no path, no trailing slash. */
+export function normalizePublicUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const u = new URL(raw.trim());
+    return u.protocol === "https:" || u.protocol === "http:" ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
 // Each is individually on/off-toggleable (Brandon). `kind` is the value stored
@@ -618,6 +633,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   jobOwners: {},
   savedSearches: [],
   modules: {},
+  publicUrl: null,
 };
 
 export const SETTINGS_UUID_RE =
@@ -1025,6 +1041,7 @@ export function parseSettings(raw: unknown): UserSettings {
     jobOwners,
     savedSearches,
     modules,
+    publicUrl: normalizePublicUrl(r.publicUrl),
   };
 }
 

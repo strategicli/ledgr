@@ -94,6 +94,10 @@ export const SYNCED_TABLES: Record<string, { pk: string }> = {
   // installs never contend for one. That property is what earned it a table
   // rather than a key in users.settings, which is one field to this merge.
   installs: { pk: "id" },
+  // Share links (ADR-277, migration 0066), so a link made on one copy opens on
+  // the copy that serves the public address. Ordinary field-level merge: a token
+  // is minted once with a random id, and the only later write is its revoke.
+  share_tokens: { pk: "id" },
 };
 
 // The version gate /api/machine/sync applies FIRST: peers exchange ops only

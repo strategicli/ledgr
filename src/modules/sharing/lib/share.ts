@@ -7,7 +7,33 @@ import { randomBytes } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items, shareTokens } from "@/db/schema";
-import type { Theme } from "@/lib/settings";
+import { getSettings, type Theme } from "@/lib/settings";
+import { requestCheckIn } from "@/lib/sync/client";
+
+/**
+ * The address a share link is made with (ADR-277): the owner's public address
+ * when one is set (a hub's cloud copy, which is what opens the link), else the
+ * deploy's own address. Null when neither is known, so the browser control
+ * falls back to the address it is on, exactly as before.
+ */
+export async function publicShareOrigin(ownerId: string): Promise<string | null> {
+  const fromSettings = await getSettings(ownerId)
+    .then((s) => s.publicUrl)
+    .catch(() => null);
+  return fromSettings ?? ((process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/+$/, "") || null);
+}
+
+// A link only opens on the copy serving the public address once that copy has
+// heard of it, so a mint or a revoke asks this copy's sync loop to check in now
+// rather than on its schedule (a revoke most of all). Harmless where no loop
+// runs: it only sets a flag.
+function nudgeSync(): void {
+  try {
+    requestCheckIn();
+  } catch {
+    // never let sync bookkeeping fail a share action
+  }
+}
 
 // 24 random bytes (~32 base64url chars, 192 bits) — unguessable, the security
 // boundary for an unauthenticated link (same posture as the machine tokens).
@@ -58,6 +84,7 @@ export async function createShareToken(
       revokedAt: shareTokens.revokedAt,
       createdAt: shareTokens.createdAt,
     });
+  nudgeSync();
   return { ...row, options: (row.options as ShareOptions) ?? {} };
 }
 
@@ -98,6 +125,7 @@ export async function revokeShareToken(
       )
     )
     .returning({ id: shareTokens.id });
+  if (rows.length > 0) nudgeSync();
   return rows.length > 0;
 }
 

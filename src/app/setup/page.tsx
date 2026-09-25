@@ -1,5 +1,8 @@
 import Link from "next/link";
 import SetupOwnerForm from "@/components/auth/SetupOwnerForm";
+import PairingCodeForm from "@/components/auth/PairingCodeForm";
+import { cloudFacts } from "@/lib/sync/pairing-cloud";
+import { WINDOW_CLOSED } from "@/lib/sync/pairing";
 import { builtinOnState } from "@/lib/auth/builtin-state";
 import { isClerkConfigured, isDeployedEnv } from "@/lib/auth/keyless";
 import { chooseFromProcessEnv } from "@/lib/auth/local";
@@ -21,6 +24,22 @@ export default async function SetupPage() {
   const hasOwner = await installHasOwner().catch(() => null);
   const state = await resolveOwnerState().catch(() => ({ kind: "signed-out" as const }));
   const view = setupView({ hasOwner, viewerIsOwner: state.kind === "owner" });
+  // A cloud copy being paired with a hub (ADR-277). Only on a copy with no
+  // supervisor: a machine you can sit at makes its owner the way below.
+  const supervised = !!process.env.LEDGR_SUPERVISOR_DIR && !process.env.VERCEL_ENV;
+  const pair = supervised ? null : await cloudFacts().catch(() => null);
+  const pairing = pair?.state?.status === "paired" || pair?.state?.status === "filling";
+
+  if (view === "set-up" && pairing) {
+    return (
+      <Shell>
+        <p className="text-sm text-ink-muted">
+          Your main Ledgr is copying everything here. Keep its Network page open until it says it is done, then sign
+          in here with the same password.
+        </p>
+      </Shell>
+    );
+  }
 
   if (view === "set-up") {
     // The one exception is the fact the front gate's refusal already states in
@@ -77,6 +96,27 @@ export default async function SetupPage() {
           ? "Everything Ledgr needs is in place."
           : `${todo} ${todo === 1 ? "thing needs" : "things need"} attention. Each one says why it matters and what to do.`}
       </p>
+      {pair && hasOwner === false && (
+        <section className="mt-6 rounded-card border border-line bg-surface-1 p-5">
+          <h2 className="ui-section-label text-ink">Pair with your main Ledgr</h2>
+          {pairing ? (
+            <p className="mt-1 text-sm text-ink-muted">
+              Paired. Your main Ledgr is copying everything here; keep its Network page open until it says it is done.
+            </p>
+          ) : pair.windowOpen ? (
+            <>
+              <p className="mt-1 mb-4 text-sm text-ink-muted">
+                On the computer that runs your main copy of Ledgr, open Build, then Network, then Keep a copy in the
+                cloud, and paste this copy&rsquo;s address. It shows a code. Type that code here and it fills this
+                copy with everything, your password included.
+              </p>
+              <PairingCodeForm />
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-ink-muted">{WINDOW_CLOSED}</p>
+          )}
+        </section>
+      )}
       {canCreateOwner && (
         <section className="mt-6 rounded-card border border-line bg-surface-1 p-5">
           <h2 className="ui-section-label text-ink">Create the owner</h2>

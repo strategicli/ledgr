@@ -50,6 +50,9 @@ import {
   TAILSCALE_ABSENT,
 } from "@/lib/network-addresses";
 import ReleasePushButton from "@/components/network/ReleasePushButton";
+import CloudCopy from "@/components/network/CloudCopy";
+import { pairingState } from "@/lib/sync/pairing-hub";
+import { getSettings } from "@/lib/settings";
 import CheckInButton from "@/components/network/CheckInButton";
 import {
   FallbackApprovalBlock,
@@ -352,6 +355,16 @@ export default async function Network() {
           )}
         </Card>
       </section>
+
+      {/* ── Keep a copy in the cloud (ADR-277) ─────────────────────────── */}
+      {isLocal && (
+        <section className="mt-8" id="cloud-copy">
+          <h2 className="ui-section-label">Keep a copy in the cloud</h2>
+          <Card>
+            <CloudCopy initial={await pairingState().catch(() => null)} publicUrl={(await getSettings(owner.id)).publicUrl} />
+          </Card>
+        </section>
+      )}
 
       {/* ── This copy's own link state ──────────────────────────────────── */}
       {sync.enabled && (

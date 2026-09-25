@@ -52,11 +52,6 @@ export async function GET(request: Request, context: Context) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const storage = getStorage();
-  if (!storage) {
-    return new NextResponse("File storage is not configured.", { status: 503 });
-  }
-
   const att = await getAttachmentForRead(id);
   if (!att) {
     // Only the signed-in owner learns why, and the words are the same for
@@ -89,6 +84,14 @@ export async function GET(request: Request, context: Context) {
   }
   if (!allowed) return new NextResponse("Not found", { status: 404 });
 
+  // Checked after the lookup, so a copy with no file storage (a cloud copy of a
+  // hub whose files stay on its own disk, ADR-277) still gives the owner the
+  // "files stay on the copy they were added to" answer above for a file it has
+  // no record of, rather than a bare "not configured".
+  const storage = getStorage();
+  if (!storage) {
+    return new NextResponse("File storage is not configured on this copy of Ledgr.", { status: 503 });
+  }
   const target = await storage.presignDownload(att.storageKey);
   // The local disk signs a root-relative URL (this app serves the bytes), and
   // a relative Location keeps the browser on whatever address it came in on:

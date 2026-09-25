@@ -41,8 +41,11 @@ export type FileRow = {
 async function copyFileShareLink(itemId: string, attachmentId: string) {
   const listed = await fetch(`/api/items/${itemId}/share`);
   if (!listed.ok) throw new Error("couldn't read share links");
-  const tokens: { token: string; revokedAt: string | null }[] =
-    (await listed.json()).tokens ?? [];
+  const data = (await listed.json()) as {
+    tokens?: { token: string; revokedAt: string | null }[];
+    base?: string | null;
+  };
+  const tokens = data.tokens ?? [];
   let token = tokens.find((t) => !t.revokedAt)?.token;
   if (!token) {
     const created = await fetch(`/api/items/${itemId}/share`, {
@@ -54,7 +57,8 @@ async function copyFileShareLink(itemId: string, attachmentId: string) {
     token = (await created.json()).token as string;
   }
   await navigator.clipboard.writeText(
-    `${window.location.origin}${attachmentUrlWithShare(attachmentId, token)}`
+    // The owner's public address when set (ADR-277), else this browser's.
+    `${data.base ?? window.location.origin}${attachmentUrlWithShare(attachmentId, token)}`
   );
 }
 
