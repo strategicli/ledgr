@@ -7,6 +7,9 @@
 #   file against the checksums pinned in tailnet/release.json, and publishes a
 #   GitHub Release under that tag. The `tailnet-v` prefix keeps these releases
 #   apart from the app's own.
+# - A pull request that touches tailnet/ builds the same way and FAILS if the
+#   checksums in tailnet/release.json do not match the source, so the pins can
+#   never drift from the code they describe. It publishes nothing.
 # - Running it by hand (Actions → "Tailscale helper" → Run workflow) on any
 #   branch builds and uploads the files as an artifact, prints their
 #   checksums, and publishes nothing. Use that to get the checksums to pin.
@@ -19,6 +22,8 @@ name: Tailscale helper
 on:
   push:
     tags: ["tailnet-v*"]
+  pull_request:
+    paths: ["tailnet/**", ".github/workflows/tailnet-release.yml"]
   workflow_dispatch:
 
 permissions:
@@ -45,7 +50,7 @@ jobs:
               const got = crypto.createHash("sha256").update(fs.readFileSync("tailnet/dist/" + file)).digest("hex");
               if (got !== want) { bad = true; console.log(`::warning::${file}: built ${got}, release.json pins ${want}`); }
             }
-            if (bad && process.env.GITHUB_REF_TYPE === "tag") { console.log("::error::checksums differ; not publishing"); process.exit(1); }
+            if (bad && process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") { console.log("::error::the checksums in tailnet/release.json do not match this source; run sh tailnet/build.sh and copy them in"); process.exit(1); }
           '
       - uses: actions/upload-artifact@v5
         with:
