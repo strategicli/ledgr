@@ -49,6 +49,9 @@ import {
   reachableAddresses,
   TAILSCALE_ABSENT,
 } from "@/lib/network-addresses";
+import { moduleIsOn } from "@/lib/modules/gate";
+import { tailscaleAvailable } from "@/modules/tailscale/manifest";
+import { readTailnetStatus, tailnetAddress } from "@/modules/tailscale/lib/status";
 import ReleasePushButton from "@/components/network/ReleasePushButton";
 import CloudCopy from "@/components/network/CloudCopy";
 import { pairingState } from "@/lib/sync/pairing-hub";
@@ -124,6 +127,11 @@ export default async function Network() {
         // environment rather than the app's, so the dotted form can bake in as
         // undefined here. The supervisor DOES pass it to `next start`.
         publicUrl: process.env["NEXT_PUBLIC_APP_URL"],
+        // The Tailscale module's own address, only while its helper is serving.
+        privateUrl:
+          tailscaleAvailable() && (await moduleIsOn(owner.id, "tailscale"))
+            ? tailnetAddress(await readTailnetStatus(process.env.LEDGR_SUPERVISOR_DIR ?? null))
+            : null,
       })
     : [];
 

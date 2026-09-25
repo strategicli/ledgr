@@ -740,6 +740,11 @@ for (const r of sharingRoutes) {
   );
 
   check(
+    "the tailscale settingsPanel id resolves in module-panels.tsx",
+    new RegExp(`MODULE_SETTINGS_PANELS[\\s\\S]*?tailscale:\\s*TailscaleSettingsPanel`).test(panelsSrc)
+  );
+
+  check(
     "snapshots declares a perInstallNote",
     !!snapshotsModule.perInstallNote?.text && !!snapshotsModule.perInstallNote?.href
   );
@@ -750,7 +755,7 @@ for (const r of sharingRoutes) {
     existsSync(new URL(`../${routeFile}`, import.meta.url))
   );
 
-  const SETTINGS_PANEL_MODULES = ["agent"];
+  const SETTINGS_PANEL_MODULES = ["agent", "tailscale"];
   const PER_INSTALL_NOTE_MODULES = ["snapshots"];
   check(
     "no other module declares settingsPanel",

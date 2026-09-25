@@ -109,3 +109,6 @@ ledgr-icon.png
 # twice; a "git add -A" during a browser check should never sweep these in.
 scripts/tmp-*
 /.eslintcache
+
+# The Tailscale helper build output (tailnet/build.sh).
+/tailnet/dist/

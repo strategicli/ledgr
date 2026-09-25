@@ -272,6 +272,9 @@ export type ModuleManifest = {
   // (the agent) justifies. A future module with several simple options can
   // still add a real schema slot later; this is the smallest honest version.
   settingsPanel?: string;
+  // Show that panel unfolded instead of behind the "Options" disclosure, for a
+  // module whose options ARE the way to use it (Tailscale's Connect button).
+  settingsPanelOpen?: boolean;
   // A one-line pointer for the Modules page when part of this module's switch
   // lives per COMPUTER (in job_state), not per owner in settings.modules — e.g.
   // snapshots' `snapshots:enabled` on Build → Backups. Shown under the module's
