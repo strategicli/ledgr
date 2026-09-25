@@ -161,7 +161,8 @@ routes to the Inbox and nothing is left in it, the Inbox drops out of your nav
 — the page still works and is one click away from \`/build/capture\`.
 
 **Triage mode** (\`/inbox/triage\`) deals with a backlog one card at a time:
-**→** triaged, **←** trash, **↓** or **Space** skip, **Backspace** undo.
+**→** triaged, **←** trash, **↓** or **Space** skip, **Backspace** undo. It is a
+module, so it can be switched off at \`/build/modules\`.
 
 ## Capturing from outside the app
 
@@ -446,9 +447,10 @@ Build your own kinds of item at \`/build/types\`.
   groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off
   hides its type from quick capture, "+ New" and an assistant's list of types.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
-  transcripts, the Notification center (paused), Scripture passages (on by
-  default: a Bible reference in a body becomes a link to that passage's page;
-  switched off, new references stop linking), **Todoist** (off by default:
+  transcripts, the Notification center (paused), Scripture passages (off for
+  new installs, and left on for anyone who used Ledgr before that change: a
+  Bible reference in a body becomes a link to that passage's page; switched
+  off, new references stop linking), **Todoist** (off by default:
   syncs tasks both ways with a Todoist account, on a copy set up for it),
   Sharing (on by default: the Share link control and the assistant's share
   tools; switched off, the control is gone and every existing link stops
@@ -467,7 +469,17 @@ Build your own kinds of item at \`/build/types\`.
   Build, and your own links are untouched) and **Desk** (on by default: the
   side-by-side workspace at \`/desk\`; switched off, the page, its Work nav slot
   and the "Send to Desk" menu items disappear, and your saved workspaces wait
-  until you turn it back on). A module that is off also drops
+  until you turn it back on), **Microsoft 365** (on by default: the Microsoft
+  Graph connection that Calendar sync, Email capture and OneDrive export all
+  need, so it stays on while any of them is on; signing in with a Microsoft
+  account is separate and not affected), **Meeting transcripts** (on by
+  default: a meeting's Transcripts panel; switched off, the panel leaves your
+  meetings and the share screen stops offering "add to a meeting", while your
+  notes and existing transcripts stay), **Triage mode** (on by default:
+  switched off, the Inbox stops showing its Triage button) and **Listen** (on
+  by default: switched off, the Listen menu entry and its per-type switches
+  are hidden, and each type keeps its setting for when you turn it back on).
+  A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
@@ -957,7 +969,8 @@ takes you there).
 
 ## Listen (read aloud)
 
-Turn this on per type at \`/build/types\` (expand a type's row and flip the
+Listen is a module (\`/build/modules\` → **Listen**, on by default). While it
+is on, turn it on per type at \`/build/types\` (expand a type's row and flip the
 "Listen" switch). A type with it on gets a **Listen** entry in the item's ⋯
 menu, which reads the note aloud
 using your browser's own read-aloud voice. Choosing it opens a small strip
@@ -1123,7 +1136,9 @@ remove right on the record.
 Paste a transcript into a meeting's transcript panel and it becomes a linked
 child item marked "needs minutes", collected in a saved view. Uploading audio
 transcribes it with speaker labels, if your instance has a transcription
-provider configured. Audio is purged 30 days after its transcript exists.
+provider configured. Audio is purged 30 days after its transcript exists. If
+you write your own notes and never use transcripts, turn **Meeting
+transcripts** off at \`/build/modules\`.
 
 ## Giving another app access
 
