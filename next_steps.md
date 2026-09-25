@@ -6,6 +6,28 @@ Anything that stops being live moves to `next_steps_archive.md`, which holds the
 
 ---
 
+## 🟢 IN FLIGHT — core and modules (ADR-272, started 2026-09-24)
+
+One codebase, one `main`, installs differ only in which modules are on. Step 0 (the
+core list, the ESLint fence, the ADR) landed with this section. The full six-step plan
+is §6 of `explorations/core-and-modules.md`; each step is its own PR.
+
+1. ~~Step 0: definitions and the fence.~~ Done.
+2. **Step 1: the switch.** `settings.modules`, a real `isModuleEnabled`, and `/build/modules`
+   with a toggle per module. Types whose module is off vanish from new-item, quick capture
+   and `list_types`; existing items keep rendering on the default canvas.
+3. **Step 2: fold the scattered switches onto that page** (AI memory, live context, agent,
+   YouTube transcripts, the notification-center constant), reading the old keys once.
+4. **Step 3: manifest slots replace the hand-written lists**, one PR each: build-nav,
+   proxy public paths, the job catalog (one JSON both the supervisor and the app read),
+   MCP tool gating, health checks, the on-save/on-create hooks, then `requires`.
+5. **Step 4: move code under `src/modules/<id>/`**, easiest first (themes, sharing,
+   youtube, todoist, email, calendar-sync, onedrive-export, relatedness, snapshots,
+   passages, desk, ai-memory, live-context, agent, MCP tool families).
+6. **Step 5: lazy-load the shells** so a disabled module ships zero bytes.
+7. **Step 6: instance defaults** reviewed with Tyler; done when his install is the same
+   build with a shorter default list.
+
 ## 🟡 FOLLOW-UPS — Claude in Ledgr (ADR-271, shipped 2026-09-24)
 
 Built and live-tested on the hub (sidebar, tool calls, live edit of the open note,
