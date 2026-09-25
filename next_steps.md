@@ -20,16 +20,19 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    `seedModulesFromLegacy`; read sites use `moduleOn` / `moduleOnFor`. Build-nav's
    `gatedBy` became `module`. Per-install switches (`snapshots:enabled`, `sync:mode`)
    are not on the page yet.
-4. **Step 3: manifest slots replace the hand-written lists**, one PR each: build-nav,
-   proxy public paths, ~~the job catalog~~ (done: `supervisor/jobs.json`, read by both
-   the supervisor and the app), ~~job gating by module~~ (done: a job whose module
-   is off answers "module-off" and stands down), MCP tool gating, health checks,
-   ~~the on-save/on-create hooks~~ (done: `hooks` slot, `src/lib/modules/hooks.ts`;
-   passages is now a default-on module), then `requires`.
-   Also done: ~~MCP tool gating~~ (the `mcpTools` slot; a tool no manifest claims is
-   core) and ~~health checks~~ (the `healthCheck` slot, results under `/health`
-   `checks.modules`; the areas that are not modules yet stay in a marked block in
-   `health.ts`).
+4. ~~**Step 3: manifest slots replace the hand-written lists.**~~ Done, one PR each:
+   `nav` (merged by `buildNavFor`; AI Memory moved onto its manifest, and a module
+   that is off drops its Build page from the sidebar and the destination picker),
+   `publicPaths` (empty until sharing, todoist and ICS become modules; the proxy takes
+   every registered module's paths, on or off, and step 4 guards each route),
+   the job catalog (`supervisor/jobs.json`, read by both the supervisor and the app)
+   and job gating by module (a job whose module is off answers "module-off" and
+   stands down), `mcpTools` (a tool no manifest claims is core), `healthCheck`
+   (results under `/health` `checks.modules`; areas that are not modules yet stay in
+   a marked block in `health.ts`), `hooks` (`src/lib/modules/hooks.ts`; passages is
+   now a default-on module), and `requires` (`requiresViolations`, enforced on the
+   Modules page and PATCH /api/settings; no module sets it yet). Still open:
+   `settingsSchema`, so a module's own options render on the Modules page.
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (themes, sharing,
    youtube, todoist, email, calendar-sync, onedrive-export, relatedness, snapshots,
    passages, desk, ai-memory, live-context, agent, MCP tool families).

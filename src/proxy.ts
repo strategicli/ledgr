@@ -1,6 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { isClerkConfigured, keylessAllowed } from "@/lib/auth/keyless";
+import { modulePublicPaths } from "@/lib/modules";
+import "@/lib/modules/register";
 
 // Route protection (next_steps.md step 3): every route requires a signed-in
 // user except the public set below. Falls through when no Clerk key is
@@ -9,7 +11,7 @@ import { isClerkConfigured, keylessAllowed } from "@/lib/auth/keyless";
 // machine endpoints authenticate with scoped API tokens, never Clerk
 // (CLAUDE.md); /health is the matcher exclusion, machine routes verify
 // their own Bearer token in the handler.
-const isPublicRoute = createRouteMatcher([
+const CORE_PUBLIC_ROUTES = [
   "/sign-in(.*)",
   "/api/machine(.*)",
   // The MCP server (slice 36, ADR-047) authenticates with a scoped machine
@@ -54,7 +56,16 @@ const isPublicRoute = createRouteMatcher([
   // which CAN handshake. EXACT path only (no wildcard): this must not also
   // match /capture/share/claim, which stays Clerk-protected.
   "/capture/share",
-]);
+];
+
+// Modules add their own public paths through the manifest `publicPaths` slot
+// (ADR-272 step 3). This takes EVERY registered module's paths, on or off: the
+// proxy runs before auth on every request and must stay fast, so it never reads
+// the owner's settings. A switched-off module's route is refused by the route
+// itself (plan step 4). The registry and its manifests are plain TypeScript with
+// no DB, React or Node-only imports, so they load in the proxy runtime, and the
+// list is built once at load, not per request.
+const isPublicRoute = createRouteMatcher([...CORE_PUBLIC_ROUTES, ...modulePublicPaths()]);
 
 // No Clerk key on a DEPLOYED environment is a misconfiguration, not a mode.
 // Without this branch the fallback below runs instead and protects nothing, while

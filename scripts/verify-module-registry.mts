@@ -293,6 +293,94 @@ check("memory block comes before live-context (the old order)", memFirst.length 
 const fakeCheck = allModules().find((m) => m.id === "fake-tools")?.healthCheck;
 check("a module's healthCheck is on its manifest", JSON.stringify(await fakeCheck?.("owner")) === JSON.stringify({ ok: true }));
 check("youtube-transcripts contributes a health check", typeof allModules().find((m) => m.id === "youtube-transcripts")?.healthCheck === "function");
+// --- 7. contribution slots (ADR-272 step 3): nav, publicPaths, requires -----
+const { modulePublicPaths, navEntriesForModules, requiresViolations, requirementsOf } =
+  await import("../src/lib/modules");
+const { CORE_BUILD_NAV, buildNavFor } = await import("../src/lib/build-nav");
+const { readFileSync } = await import("node:fs");
+const hrefs = (off: string[] = []) => buildNavFor(off).flatMap((g) => g.entries.map((e) => e.href));
+const coreHrefs = CORE_BUILD_NAV.flatMap((g) => g.entries.map((e) => e.href));
+
+// nav: the real ai-memory entry moved off the static list onto its manifest.
+check("AI Memory is no longer a static core entry", !coreHrefs.includes("/build/memory"));
+check("AI Memory comes from the ai-memory manifest", navEntriesForModules().some((e) => e.moduleId === "ai-memory" && e.href === "/build/memory"));
+const maintain = (off: string[]) => buildNavFor(off).find((g) => g.label === "MAINTAIN")!.entries.map((e) => e.href);
+check("AI Memory sits right after API, where it always was", maintain([]).indexOf("/build/memory") === maintain([]).indexOf("/build/api") + 1);
+check("AI Memory drops out when its module is off", !hrefs(["ai-memory"]).includes("/build/memory"));
+
+// nav: a fake module's entries land where they say, and vanish when it is off.
+registerModule({
+  id: "nav-fixture",
+  label: "Nav fixture",
+  enabledByDefault: true,
+  types: [],
+  exporters: [],
+  nav: [
+    { group: "DATA", label: "Fixture A", href: "/build/fixture-a", icon: "grid", after: "/build/templates" },
+    { group: "DATA", label: "Fixture B", href: "/build/fixture-b", icon: "grid", after: "/build/templates" },
+    { group: "SYSTEM", label: "Fixture End", href: "/build/fixture-end", icon: "grid" },
+    { group: "INTERFACE", label: "Fixture Stray", href: "/build/fixture-stray", icon: "grid", after: "/nowhere" },
+  ],
+});
+const data = buildNavFor([]).find((g) => g.label === "DATA")!.entries.map((e) => e.href);
+const t = data.indexOf("/build/templates");
+check("a module entry lands right after its after", data[t + 1] === "/build/fixture-a");
+check("two entries after the same anchor keep manifest order", data[t + 2] === "/build/fixture-b");
+check("an entry with no after goes to the end of its group", buildNavFor([]).find((g) => g.label === "SYSTEM")!.entries.at(-1)?.href === "/build/fixture-end");
+check("an entry whose after is unknown goes to the end of its group", buildNavFor([]).find((g) => g.label === "INTERFACE")!.entries.at(-1)?.href === "/build/fixture-stray");
+check("a switched-off module's entries are gone", !hrefs(["nav-fixture"]).some((h) => h.startsWith("/build/fixture")));
+check(
+  "core entries are untouched, in order, with modules off",
+  JSON.stringify(hrefs(["nav-fixture", "ai-memory"])) === JSON.stringify(coreHrefs)
+);
+check("core groups keep their order", buildNavFor([]).map((g) => g.label).join(",") === "DATA,INTERFACE,MAINTAIN,SYSTEM");
+const { buildDestOptions } = await import("../src/lib/nav-slot-options");
+const toolHrefs = (off: string[]) => buildDestOptions([], [], [], false, off).filter((o) => o.group === "Build tools").map((o) => o.href);
+check("the picker offers an enabled module's Build page", toolHrefs([]).includes("/build/memory"));
+check("the picker drops a switched-off module's Build page", !toolHrefs(["ai-memory"]).includes("/build/memory"));
+
+// publicPaths: no module declares any yet, so the proxy's list is exactly today's.
+check("no registered module declares public paths yet", modulePublicPaths().length === 0);
+const TODAY_PUBLIC = [
+  "/sign-in(.*)", "/api/machine(.*)", "/api/mcp(.*)", "/.well-known/(.*)",
+  "/api/oauth/protected-resource", "/api/oauth/authorization-server", "/api/oauth/register",
+  "/api/oauth/token", "/api/todoist/webhook", "/share(.*)", "/api/ics(.*)", "/files/(.*)", "/capture/share",
+];
+const proxySrc = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
+const coreBlock = proxySrc.match(/const CORE_PUBLIC_ROUTES = \[([\s\S]*?)\n\];/)?.[1] ?? "";
+const corePublic = [...coreBlock.replace(/\/\/.*$/gm, "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+check(
+  "proxy's merged public list equals today's list exactly",
+  JSON.stringify([...corePublic, ...modulePublicPaths()]) === JSON.stringify(TODAY_PUBLIC),
+  corePublic.join(" ")
+);
+check(
+  "proxy matches core + module paths",
+  proxySrc.includes("createRouteMatcher([...CORE_PUBLIC_ROUTES, ...modulePublicPaths()])")
+);
+registerModule({
+  id: "public-fixture",
+  label: "Public fixture",
+  enabledByDefault: false,
+  types: [],
+  exporters: [],
+  publicPaths: ["/api/fixture/webhook"],
+});
+check("a module's public paths are appended, even while it is off", modulePublicPaths().includes("/api/fixture/webhook"));
+
+// requires: a module cannot be on without what it needs.
+registerModule({ id: "req-base", label: "Base", enabledByDefault: false, types: [], exporters: [] });
+registerModule({ id: "req-mid", label: "Mid", enabledByDefault: false, types: [], exporters: [], requires: ["req-base"] });
+registerModule({ id: "req-top", label: "Top", enabledByDefault: false, types: [], exporters: [], requires: ["req-mid", "core"] });
+check("the real modules have no requirement violations by default", requiresViolations({}).length === 0);
+check("requirement on but dependent off: fine", requiresViolations({ "req-base": true }).length === 0);
+const v = requiresViolations({ "req-mid": true });
+check("dependent on, requirement off: one violation", v.length === 1 && v[0].moduleId === "req-mid" && v[0].requires === "req-base");
+check("the violation message names both modules", v[0]?.message.includes("Mid") && v[0]?.message.includes("Base"));
+check("everything on: no violations", requiresViolations({ "req-base": true, "req-mid": true, "req-top": true }).length === 0);
+check("core always satisfies a requirement", !requiresViolations({ "req-top": true, "req-mid": true, "req-base": true, core: false }).some((x) => x.requires === "core"));
+check("requirementsOf walks the chain", JSON.stringify(requirementsOf("req-top").sort()) === JSON.stringify(["core", "req-base", "req-mid"]));
+check("isModuleEnabled ignores requires (a plain lookup)", isModuleEnabled("req-mid") === false && moduleOn({ modules: { "req-mid": true } }, "req-mid") === true);
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

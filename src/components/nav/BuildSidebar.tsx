@@ -15,7 +15,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import NavGlyph from "@/components/nav/NavGlyph";
-import { BUILD_NAV } from "@/lib/build-nav";
+import { buildNavFor } from "@/lib/build-nav";
 import { BUILD_SIDEBAR_W } from "@/lib/nav-layout";
 
 type BuildType = { key: string; label: string; icon: string | null };
@@ -121,14 +121,12 @@ function SidebarContent({
         <kbd className="ml-auto rounded border border-neutral-700 px-1 text-[10px] text-neutral-600">⌘K</kbd>
       </button>
 
-      {BUILD_NAV.map((group) => (
+      {buildNavFor(offModules).map((group) => (
         <div key={group.label} className="mt-2">
           <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
             {group.label}
           </p>
-          {group.entries
-            .filter((entry) => !entry.module || !offModules.includes(entry.module))
-            .map((entry) => {
+          {group.entries.map((entry) => {
             const active = entryActive(entry.href);
             // The one expandable entry this phase: Types & Properties, whose
             // dropdown lists the user's actual types for a quick edit-jump.

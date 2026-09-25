@@ -7,10 +7,19 @@
 // The switch is stored per owner in settings.modules; a module the owner never
 // touched follows its manifest default. Nothing is ever deleted. Core is not
 // listed: it cannot be turned off.
+//
+// Requirements (the manifest `requires` slot, ADR-272 step 3): a module another
+// enabled module needs cannot be switched off here, and switching a module on
+// switches on what it needs too. PATCH /api/settings enforces the same rule.
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
-import { allModules, coreModule, type ModuleManifest } from "@/lib/modules";
+import {
+  allModules,
+  coreModule,
+  requirementsOf,
+  type ModuleManifest,
+} from "@/lib/modules";
 import { moduleOn } from "@/lib/modules/enabled";
 import { agentAvailable } from "@/lib/agent/gate";
 import ModuleToggle from "@/components/build/ModuleToggle";
@@ -32,6 +41,14 @@ export default async function Modules() {
   if (!owner) redirect("/sign-in");
 
   const settings = await getSettings(owner.id);
+  const on = (id: string) => moduleOn(settings, id);
+  const labelOf = (id: string) => allModules().find((x) => x.id === id)?.label ?? id;
+  // Why an on module can't be turned off: an enabled module requires it.
+  const requiredByReason = (m: ModuleManifest): string | null => {
+    if (!on(m.id)) return null;
+    const by = allModules().filter((x) => on(x.id) && x.requires?.includes(m.id));
+    return by.length ? `Required by ${by.map((x) => x.label).join(", ")}` : null;
+  };
   const modules = allModules().filter((m) => m.id !== coreModule.id);
   const groups = [
     {
@@ -59,7 +76,9 @@ export default async function Modules() {
           <h2 className="ui-section-label">{g.label}</h2>
           <ul className="mt-3 space-y-3">
             {g.modules.map((m) => {
-              const reason = unavailableReason(m);
+              const reason = unavailableReason(m) ?? requiredByReason(m);
+              // What switching this on also switches on: its requirements that are off.
+              const alsoEnable = on(m.id) ? [] : requirementsOf(m.id).filter((r) => !on(r));
               return (
                 <li
                   key={m.id}
@@ -81,8 +100,14 @@ export default async function Modules() {
                   <ModuleToggle
                     moduleId={m.id}
                     label={m.label}
-                    enabled={moduleOn(settings, m.id)}
+                    enabled={on(m.id)}
                     disabled={!!reason}
+                    alsoEnable={alsoEnable}
+                    note={
+                      alsoEnable.length
+                        ? `Turning this on also turns on ${alsoEnable.map(labelOf).join(", ")}.`
+                        : undefined
+                    }
                   />
                 </li>
               );

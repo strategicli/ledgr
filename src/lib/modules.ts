@@ -234,6 +234,26 @@ export type ModuleManifest = {
   // only while the module is on for the instance owner. Keep it cheap; a throw
   // is caught and reported for that module alone.
   healthCheck?: (ownerId: string) => Promise<Record<string, unknown>>;
+  // --- contribution slots (ADR-272 step 3) ---
+  // Build sidebar entries this module adds. Each lands in `group`, right after
+  // the core entry whose href is `after`, else at the end of the group. Only an
+  // enabled module's entries show in the sidebar and the destination picker
+  // (build-nav.ts `buildNavFor`). `icon` is a nav-icons key.
+  nav?: {
+    group: "DATA" | "INTERFACE" | "MAINTAIN" | "SYSTEM";
+    label: string;
+    href: string;
+    icon: string;
+    after?: string;
+    keywords?: string[];
+  }[];
+  // Path patterns (createRouteMatcher syntax) that must bypass sign-in, such as
+  // a signed webhook or a token-credentialed feed. proxy.ts appends every
+  // registered module's list, on or off: see `modulePublicPaths`.
+  publicPaths?: string[];
+  // Module ids this module cannot run without. isModuleEnabled does NOT enforce
+  // it; the Modules page and PATCH /api/settings do, via `requiresViolations`.
+  requires?: string[];
 };
 
 // --- core as the first module ----------------------------------------------
@@ -632,4 +652,79 @@ export function moduleInstructions(isOn: (moduleId: string) => boolean): string[
   return allModules().flatMap((m) =>
     m.mcpTools?.instructions && isOn(m.id) ? [m.mcpTools.instructions] : []
   );
+}
+
+// --- contribution-slot resolvers (ADR-272 step 3) ---------------------------
+
+export type ModuleNavEntry = NonNullable<ModuleManifest["nav"]>[number] & {
+  moduleId: string;
+};
+
+// Every registered module's Build sidebar entries, minus those of the modules
+// in `off`. It takes the off list rather than an owner id so the client sidebar
+// can call it with the ids the server already worked out (`offModuleIds`): the
+// per-request resolver behind isModuleEnabled does not exist in the browser.
+// With no list it returns every registered module's entries, which is what the
+// command palette and describe_workspace index.
+export function navEntriesForModules(off: readonly string[] = []): ModuleNavEntry[] {
+  return allModules()
+    .filter((m) => !off.includes(m.id))
+    .flatMap((m) => (m.nav ?? []).map((e) => ({ ...e, moduleId: m.id })));
+}
+
+// Every registered module's public paths, ENABLED OR NOT. proxy.ts runs before
+// auth on every request and must stay fast, so it never reads the owner's
+// settings: a disabled module's public route stays reachable past sign-in and
+// is refused by the route itself (plan step 4's shared guard).
+export function modulePublicPaths(): string[] {
+  return allModules().flatMap((m) => m.publicPaths ?? []);
+}
+
+export type RequiresViolation = {
+  moduleId: string;
+  requires: string;
+  message: string;
+};
+
+// Every enabled module whose requirement is off, given an owner's
+// settings.modules map (a missing entry follows the manifest default, core is
+// always on, an unregistered requirement counts as off). Empty means the map is
+// consistent. The Modules page and PATCH /api/settings both call it.
+export function requiresViolations(flags: Record<string, boolean>): RequiresViolation[] {
+  const byId = new Map(allModules().map((m) => [m.id, m]));
+  const on = (id: string): boolean => {
+    if (id === coreModule.id) return true;
+    const m = byId.get(id);
+    return !!m && (flags[id] ?? m.enabledByDefault);
+  };
+  return allModules()
+    .filter((m) => on(m.id))
+    .flatMap((m) =>
+      (m.requires ?? [])
+        .filter((r) => !on(r))
+        .map((r) => {
+          const req = byId.get(r)?.label ?? r;
+          return {
+            moduleId: m.id,
+            requires: r,
+            message: `${m.label} needs ${req}. Turn ${req} on, or turn ${m.label} off first.`,
+          };
+        })
+    );
+}
+
+// Everything a module needs, directly or through another requirement (the
+// module itself excluded). The Modules page turns these on alongside it.
+export function requirementsOf(moduleId: string): string[] {
+  const out = new Set<string>();
+  const walk = (id: string) => {
+    for (const r of allModules().find((m) => m.id === id)?.requires ?? []) {
+      if (r !== moduleId && !out.has(r)) {
+        out.add(r);
+        walk(r);
+      }
+    }
+  };
+  walk(moduleId);
+  return [...out];
 }

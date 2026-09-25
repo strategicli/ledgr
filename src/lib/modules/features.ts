@@ -70,7 +70,14 @@ export const FEATURE_MODULES: ModuleManifest[] = [
     "ai-memory",
     "AI Memory",
     "Lets Claude keep durable memories in Ledgr over MCP, with a Build → AI Memory page to review them.",
-    { mcpTools: { names: ["get_memory_stumps", "remember"], instructions: MEMORY_INSTRUCTIONS } }
+    {
+      mcpTools: { names: ["get_memory_stumps", "remember"], instructions: MEMORY_INSTRUCTIONS },
+      // ADR-137: the memory an AI reads over MCP. The page gates itself too.
+      // "affiliate" (connected nodes) nods to the memory relation graph.
+      nav: [
+        { group: "MAINTAIN", label: "AI Memory", href: "/build/memory", icon: "affiliate", after: "/build/api" },
+      ],
+    }
   ),
   feature(
     "live-context",

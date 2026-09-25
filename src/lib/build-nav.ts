@@ -12,7 +12,15 @@
 // Kept as data with no JSX (the nav-slot-options pattern) so both a server page
 // and the client sidebar can read it. Icon keys come from the shared nav-icons
 // library. The sidebar is a system surface, not user-configurable (no DB row).
+//
+// Modules add entries of their own through the manifest `nav` slot (ADR-272
+// step 3). `CORE_BUILD_NAV` is the static core taxonomy; `buildNavFor(off)`
+// merges in every module's entries except the switched-off ones, and is what
+// the sidebar and the picker render. The registry is pure data, so importing it
+// here is safe in the browser.
 import type { NavIconKey } from "@/lib/nav-icons";
+import { navEntriesForModules } from "@/lib/modules";
+import "@/lib/modules/register";
 
 export type BuildGroupLabel = "DATA" | "INTERFACE" | "MAINTAIN" | "SYSTEM";
 
@@ -25,11 +33,6 @@ export type BuildEntry = {
   // (Types → the user's actual types) inject children at render; the rest grow
   // their sub-nav in later phases (see the stub plan-notes).
   expandable?: boolean;
-  // When set, the Build sidebar shows this entry only while the owner has that
-  // module on at Build → Modules (ADR-272; first user: AI Memory, ADR-137). The
-  // entry stays in the static taxonomy (so the picker/palette/describe_workspace
-  // still know it); only the sidebar doorway is hidden while the module is off.
-  module?: string;
   // Extra search words for the command palette, when what a person types isn't
   // what the entry is called ("help" → User Guide). Sidebar ignores these.
   keywords?: string[];
@@ -40,8 +43,8 @@ export type BuildGroup = {
   entries: BuildEntry[];
 };
 
-// The three groups, in display order. These exact labels render in the UI.
-export const BUILD_NAV: BuildGroup[] = [
+// The four core groups, in display order. These exact labels render in the UI.
+export const CORE_BUILD_NAV: BuildGroup[] = [
   {
     label: "DATA",
     entries: [
@@ -114,11 +117,8 @@ export const BUILD_NAV: BuildGroup[] = [
       // task; the previous home (User Settings → Save from the web) was
       // effectively undiscoverable for that.
       { label: "API", href: "/build/api", icon: "tools" },
-      // AI Memory (ADR-137): the durable memory an AI reads over MCP. Gated —
-      // the sidebar shows it only when the owner has turned AI Memory on at
-      // Build → Modules; the page itself also gates, so it is discoverable-but-off until
-      // enabled. "affiliate" (connected nodes) nods to the memory relation graph.
-      { label: "AI Memory", href: "/build/memory", icon: "affiliate", module: "ai-memory" },
+      // (AI Memory, /build/memory, lands here from the ai-memory module's
+      // manifest while that module is on.)
       // The one deliberate both-places entry: also reachable from the Work kebab
       // so personal/cosmetic settings don't require entering Build. Label stays
       // "User Settings" everywhere (never bare "Settings").
@@ -167,8 +167,38 @@ export const BUILD_NAV: BuildGroup[] = [
   },
 ];
 
-// Every Build entry as a flat list (group order preserved), for the destination
-// picker's "Build tools" category and the command palette's section index.
+// The core groups with module entries merged in, leaving out the modules in
+// `off` (the owner's switched-off ids, `offModuleIds`). A module entry goes
+// right after the core entry its `after` names, in registration order, else at
+// the end of its group. Core entries never move.
+export function buildNavFor(off: readonly string[] = []): BuildGroup[] {
+  const extra = navEntriesForModules(off);
+  const toEntry = (e: (typeof extra)[number]): BuildEntry => ({
+    label: e.label,
+    href: e.href,
+    icon: e.icon as NavIconKey,
+    keywords: e.keywords,
+  });
+  return CORE_BUILD_NAV.map((g) => {
+    const mine = extra.filter((e) => e.group === g.label);
+    const anchored = new Set(g.entries.map((c) => c.href));
+    return {
+      label: g.label,
+      entries: [
+        ...g.entries.flatMap((c) => [c, ...mine.filter((e) => e.after === c.href).map(toEntry)]),
+        ...mine.filter((e) => !e.after || !anchored.has(e.after)).map(toEntry),
+      ],
+    };
+  });
+}
+
+// Every registered module's entries included, on or off: the full taxonomy the
+// command palette and describe_workspace index. The sidebar and the picker use
+// `buildNavFor(offModules)` instead, so a switched-off module's page drops out.
+export const BUILD_NAV: BuildGroup[] = buildNavFor();
+
+// Every Build entry as a flat list (group order preserved), for the command
+// palette's section index.
 export const BUILD_ENTRIES: BuildEntry[] = BUILD_NAV.flatMap((g) => g.entries);
 
 // True for any route that renders within the Build surface (so NavShell shows
