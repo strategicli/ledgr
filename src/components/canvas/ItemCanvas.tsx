@@ -12,7 +12,7 @@ import { ItemError, getItem } from "@/lib/items";
 import { bodyMarkdown, wordCountOf } from "@/lib/body";
 import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
-import { preloadModuleSettings } from "@/lib/modules/enabled";
+import { moduleOn, preloadModuleSettings } from "@/lib/modules/enabled";
 import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
@@ -285,7 +285,7 @@ export default async function ItemCanvas({
       {/* Live editing context (ADR-162): report the open item + text selection so
           Claude can resolve "this note"/"this sentence" over MCP. Opt-in, and
           never for a template prototype (that's authoring, not the live note). */}
-      {settings.liveContextEnabled && !item.isTemplate && (
+      {moduleOn(settings, "live-context") && !item.isTemplate && (
         <ActiveContextTracker itemId={item.id} title={item.title} />
       )}
     </>

@@ -12,7 +12,8 @@
 // content. Expected validation failures (ItemError) come back as an isError
 // tool result so Claude sees a clean message and the session stays open;
 // unexpected errors are captured (rule 9) and returned with a correlation id.
-import { getSettings } from "@/lib/settings";
+import { getSettings, type UserSettings } from "@/lib/settings";
+import { moduleOn } from "@/lib/modules/enabled";
 import { ItemError } from "@/lib/items";
 import { captureError } from "@/lib/log";
 import { attachmentTools } from "./attachments";
@@ -65,10 +66,10 @@ const LIVE_CONTEXT_TOOL_SET = new Set<string>(LIVE_CONTEXT_TOOL_NAMES);
 // behind a gate is always available.
 function toolEnabled(
   name: string,
-  flags: { aiMemoryEnabled: boolean; liveContextEnabled: boolean }
+  settings: Pick<UserSettings, "modules">
 ): boolean {
-  if (MEMORY_TOOL_SET.has(name)) return flags.aiMemoryEnabled;
-  if (LIVE_CONTEXT_TOOL_SET.has(name)) return flags.liveContextEnabled;
+  if (MEMORY_TOOL_SET.has(name)) return moduleOn(settings, "ai-memory");
+  if (LIVE_CONTEXT_TOOL_SET.has(name)) return moduleOn(settings, "live-context");
   return true;
 }
 
@@ -107,7 +108,7 @@ export async function callTool(
       const flags = await getSettings(ownerId);
       if (!toolEnabled(name, flags)) {
         const feature = MEMORY_TOOL_SET.has(name) ? "AI Memory" : "Live editing context";
-        return toolError(`tool '${name}' is not enabled — turn on ${feature} in User Settings`);
+        return toolError(`tool '${name}' is not enabled — turn on ${feature} at Build → Modules`);
       }
     }
     const payload = await tool.handler(ownerId, a);

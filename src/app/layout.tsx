@@ -10,6 +10,7 @@ import PwaRegister from "@/components/pwa/PwaRegister";
 import OutboxSync from "@/components/pwa/OutboxSync";
 import AgentPanel from "@/components/agent/AgentPanel";
 import { agentAvailable } from "@/lib/agent/gate";
+import { moduleOn } from "@/lib/modules/enabled";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";
@@ -142,7 +143,7 @@ export default async function RootLayout({
       sectionStyle = s.sectionStyle;
       theme = s.theme;
       tz = s.timezone ?? DEFAULT_TIMEZONE;
-      agentOn = s.agent.enabled && agentAvailable();
+      agentOn = moduleOn(s, "agent") && agentAvailable();
     }
   } catch (err) {
     // Next's dynamic-usage marker must propagate (it's how a build learns the

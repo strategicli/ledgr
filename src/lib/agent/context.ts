@@ -5,6 +5,7 @@
 // to fetch the rest, so a huge note can never crowd out the conversation.
 import { callTool } from "@/lib/mcp/tools";
 import { AGENT_MODELS, getSettings } from "@/lib/settings";
+import { moduleOn } from "@/lib/modules/enabled";
 import { getAppTimezone } from "@/lib/today";
 import { buildItemTokenContext } from "@/lib/item-tokens-service";
 import { resolveItemTokens } from "@/lib/item-tokens";
@@ -126,7 +127,7 @@ export async function buildSystemPrompt(ownerId: string, c: TurnContext): Promis
   parts.push(`## Now\n${line}`);
 
   const settings = await getSettings(ownerId);
-  if (settings.aiMemoryEnabled) {
+  if (moduleOn(settings, "ai-memory")) {
     const r = await callTool(ownerId, "get_memory_stumps", {});
     if (!r.isError) parts.push(`## Brandon's pinned memories (standing rules)\n${clip(r.content[0].text, BUDGET.stumps)}`);
   }

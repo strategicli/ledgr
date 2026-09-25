@@ -2,7 +2,7 @@
 // co-editing loop. get_active_context tells Claude which note the owner is
 // looking at right now (and what they've highlighted); edit_item_body makes a
 // surgical, single-spot change to a note's markdown without resending the whole
-// body. Both are gated by settings.liveContextEnabled (see
+// body. Both are gated by the live-context module (see
 // LIVE_CONTEXT_TOOL_NAMES and its use in index.ts) — off by default, so a
 // vanilla MCP client never sees them.
 //

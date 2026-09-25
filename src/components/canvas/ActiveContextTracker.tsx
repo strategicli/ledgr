@@ -1,5 +1,5 @@
 // Live editing context tracker (ADR-162, extended by ADR-167a). Mounted once per
-// surface that shows an open item (only when settings.liveContextEnabled), this
+// surface that shows an open item (only when the live-context module), this
 // reports to the server what the owner is currently looking at: the item, and
 // their live text selection within it. That single per-owner row is what Claude
 // reads over MCP (get_active_context) to resolve "this note" / "this sentence"

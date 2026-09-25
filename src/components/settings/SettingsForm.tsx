@@ -29,8 +29,6 @@ import {
 } from "@/lib/settings";
 import { accentHighlightImageCss } from "@/lib/colors";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
-import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
-import AiMemoryLearnMore from "@/components/settings/AiMemoryLearnMore";
 import NoteEditingPromptActions from "@/components/settings/NoteEditingPromptActions";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
@@ -86,8 +84,14 @@ const ALL_TIMEZONES: string[] = (() => {
 export default function SettingsForm({
   initial,
   serverDefaultTz,
+  notificationsOn,
+  liveContextOn,
 }: {
   initial: UserSettings;
+  // Module switches resolved on the server (Build → Modules, ADR-272), so this
+  // client form never re-implements the "switch, else default" rule.
+  notificationsOn: boolean;
+  liveContextOn: boolean;
   // The zone "Automatic" falls back to (the LEDGR_TIMEZONE env, else
   // America/New_York), shown in the label so the default is legible.
   serverDefaultTz: string;
@@ -431,10 +435,9 @@ export default function SettingsForm({
         />
       </section>
 
-      {/* Notification center paused (ADR-130): the per-source toggles are hidden
-          while the center is detached. Flip NOTIFICATION_CENTER_ENABLED to bring
-          this section (and the prefs it edits) back. */}
-      {NOTIFICATION_CENTER_ENABLED && (
+      {/* Notification center paused (ADR-130): the per-source toggles show only
+          while the notification-center module is on (Build → Modules). */}
+      {notificationsOn && (
       <section>
         <h2 className="text-sm font-semibold text-neutral-200">Notifications</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
@@ -471,84 +474,21 @@ export default function SettingsForm({
       )}
 
       <section>
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-200">AI Memory</h2>
-          <AiMemoryLearnMore />
-        </div>
+        <h2 className="text-sm font-semibold text-neutral-200">AI features</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Let an AI assistant keep durable memories in Ledgr, read over MCP. When
-          on, a “stumps” index of what you’ve chosen to remember loads at the start
-          of a session and the assistant can follow the links from a memory to the
-          people, projects, and notes it’s about. Turning this on adds the{" "}
-          <a href="/build/memory" className="text-[var(--accent)] hover:underline">
-            Build → AI&nbsp;Memory
-          </a>{" "}
-          surface and exposes two memory tools to connected AI clients. Off by
-          default: a fresh Ledgr behaves exactly as before, and a plain MCP client
-          never sees the memory tools.
+          AI Memory, live editing context, the in-app agent and YouTube
+          transcripts are turned on and off at{" "}
+          <a href="/build/modules" className="text-[var(--accent)] hover:underline">
+            Build → Modules
+          </a>
+          . Their options stay here.
         </p>
-        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={settings.aiMemoryEnabled}
-            onChange={(e) => void save({ aiMemoryEnabled: e.target.checked }, true)}
-            className="ledgr-check mt-0.5"
-          />
-          <span>
-            Use Ledgr to manage AI memory
-            <span className="block text-xs text-neutral-500">
-              Stores memories as a hidden item type and turns on the{" "}
-              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
-                get_memory_stumps
-              </code>{" "}
-              and{" "}
-              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
-                remember
-              </code>{" "}
-              MCP tools.
-            </span>
-          </span>
-        </label>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">
-          Live editing context
-        </h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Let an AI assistant see the note you currently have open (and the text
-          you’ve highlighted) so it can co-edit it live, the way Notion’s AI
-          sidebar works. Say “use my note-editing prompt,” then things like “help
-          me sharpen this” or “rework this sentence” resolve to the open note.
-          When on, the open item reports what you’re viewing to a single private
-          row and exposes two MCP tools ({" "}
-          <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
-            get_active_context
-          </code>{" "}
-          and{" "}
-          <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
-            edit_item_body
-          </code>
-          ) to connected AI clients, and seeds an editable “Note Editing Partner”
-          prompt. Off by default: nothing is tracked and a plain MCP client never
-          sees these tools.
-        </p>
-        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={settings.liveContextEnabled}
-            onChange={(e) => void save({ liveContextEnabled: e.target.checked }, true)}
-            className="ledgr-check mt-0.5"
-          />
-          <span>
-            Track the note I’m viewing for AI editing
-            <span className="block text-xs text-neutral-500">
-              Reports the open item and your selection while a note is open;
-              clears when you close it. Your own single-user data.
-            </span>
-          </span>
-        </label>
-        {settings.liveContextEnabled && <NoteEditingPromptActions />}
+        {liveContextOn && (
+          <div className="mt-2">
+            <p className="text-sm text-neutral-300">Note Editing Partner prompt</p>
+            <NoteEditingPromptActions />
+          </div>
+        )}
       </section>
 
       <section>

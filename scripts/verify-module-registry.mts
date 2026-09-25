@@ -164,5 +164,64 @@ try {
 }
 check("registering a duplicate module id throws", threwOnDup);
 
+// --- 6. feature modules + the fold from the old keys (ADR-272 step 2) -------
+// Imported late so the real resolver in enabled.ts cannot touch the checks above.
+const { applyLegacyModulePatch, parseSettings, seedModulesFromLegacy } = await import(
+  "../src/lib/settings"
+);
+const { moduleOn } = await import("../src/lib/modules/enabled");
+const FEATURE_IDS = ["ai-memory", "live-context", "agent", "youtube-transcripts", "notification-center"];
+for (const id of FEATURE_IDS) {
+  const m = allModules().find((x) => x.id === id);
+  check(`${id} is a registered module`, !!m);
+  check(`${id} adds no item types`, m?.types.length === 0);
+  check(`${id} is off by default, as its old key was`, m?.enabledByDefault === false);
+  check(`${id} has a description for the Modules page`, !!m?.description);
+  check(`${id} is off for an owner who never touched it`, moduleOn({ modules: {} }, id) === false);
+}
+check("feature modules add no type keys", !FEATURE_IDS.some((id) => registeredTypeKeys().includes(id)));
+check("moduleOn: an explicit switch wins over the default", moduleOn({ modules: { agent: true } }, "agent") === true);
+check("moduleOn: core is always on", moduleOn({ modules: { core: false } }, "core") === true);
+check("moduleOn: an unknown module is off", moduleOn({ modules: {} }, "no-such-module") === false);
+
+// Seeding from an older settings blob: nobody's switch flips on upgrade.
+check("old key true + no modules entry -> on", seedModulesFromLegacy({ aiMemoryEnabled: true })["ai-memory"] === true);
+check("old key false + no modules entry -> off", seedModulesFromLegacy({ liveContextEnabled: false })["live-context"] === false);
+check("old key absent -> no entry, so the default applies", !("ai-memory" in seedModulesFromLegacy({})));
+check(
+  "a modules entry wins over the old key",
+  seedModulesFromLegacy({ aiMemoryEnabled: true, modules: { "ai-memory": false } })["ai-memory"] === false
+);
+check("nested agent.enabled seeds modules.agent", seedModulesFromLegacy({ agent: { enabled: true } }).agent === true);
+check(
+  "nested youtubeTranscripts.enabled seeds its module",
+  seedModulesFromLegacy({ youtubeTranscripts: { enabled: true } })["youtube-transcripts"] === true
+);
+check("a non-boolean old key is ignored", !("ai-memory" in seedModulesFromLegacy({ aiMemoryEnabled: "yes" })));
+check("other modules entries survive the seed", seedModulesFromLegacy({ modules: { songs: false } }).songs === false);
+
+// parseSettings seeds and then stops carrying the old keys, so they are never written back.
+const parsed = parseSettings({ aiMemoryEnabled: true, agent: { enabled: true, chatModel: "claude-sonnet-5" } });
+check("parseSettings seeds modules from the old keys", parsed.modules["ai-memory"] === true && parsed.modules.agent === true);
+check("parseSettings drops aiMemoryEnabled", !("aiMemoryEnabled" in parsed));
+check("parseSettings drops agent.enabled but keeps the agent's options", !("enabled" in parsed.agent) && parsed.agent.chatModel === "claude-sonnet-5");
+check("a fresh blob has no module entries at all", Object.keys(parseSettings({}).modules).length === 0);
+
+// A write that still uses an old key lands on modules[id].
+check("a patch with no switch leaves modules alone", applyLegacyModulePatch({ theme: "dark" }, { agent: true }) === undefined);
+check(
+  "an old key in a patch beats the stored entry",
+  applyLegacyModulePatch({ aiMemoryEnabled: false }, { "ai-memory": true, songs: false })?.["ai-memory"] === false
+);
+check(
+  "an old-key patch keeps the other stored switches",
+  applyLegacyModulePatch({ agent: { enabled: true } }, { songs: false })?.songs === false
+);
+check(
+  "a modules patch merges per id",
+  JSON.stringify(applyLegacyModulePatch({ modules: { papers: false } }, { songs: false })) ===
+    JSON.stringify({ songs: false, papers: false })
+);
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

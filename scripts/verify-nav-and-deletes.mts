@@ -147,7 +147,7 @@ const opts = buildDestOptions(
 // comes from calling buildDestOptions with no views/types, not from summing
 // BUILTIN_DESTS.length + BUILD_TOOL_DESTS.length directly — the function
 // conditionally filters BUILTIN_DESTS (e.g. /notifications drops out while
-// ADR-130's NOTIFICATION_CENTER_ENABLED is false), so a hardcoded sum drifts
+// the notification-center module is off, ADR-272), so a hardcoded sum drifts
 // out of sync with the real filtered count whenever that condition changes.
 const baselineOpts = buildDestOptions([], []);
 check(

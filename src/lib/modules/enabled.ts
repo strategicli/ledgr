@@ -13,9 +13,14 @@
 // It never throws. The async paths (type lists, quick capture, MCP) do not use
 // this at all: they read settings directly via `disabledModuleTypeKeys`.
 import { cache } from "react";
-import { setModuleEnabledResolver, typeKeysOfDisabledModules } from "@/lib/modules";
+import {
+  allModules,
+  coreModule,
+  setModuleEnabledResolver,
+  typeKeysOfDisabledModules,
+} from "@/lib/modules";
 import "@/lib/modules/register";
-import { getSettings } from "@/lib/settings";
+import { getSettings, type UserSettings } from "@/lib/settings";
 
 const requestHolder = cache(
   (): { ownerId?: string; flags?: Record<string, boolean> } => ({})
@@ -32,6 +37,30 @@ export async function preloadModuleSettings(ownerId: string): Promise<void> {
   const h = requestHolder();
   h.ownerId = ownerId;
   h.flags = modules;
+}
+
+// Is this module on, given settings already in hand? The same rule as
+// isModuleEnabled (the owner's switch, else the manifest default, core always
+// on) but read straight from the settings object, so route handlers, MCP and
+// the jobs (where React `cache` is a passthrough) never depend on the preload.
+export function moduleOn(settings: Pick<UserSettings, "modules">, moduleId: string): boolean {
+  if (moduleId === coreModule.id) return true;
+  const m = allModules().find((x) => x.id === moduleId);
+  if (!m) return false;
+  return settings.modules[moduleId] ?? m.enabledByDefault;
+}
+
+// The async form, for a call site that has only the owner id.
+export async function moduleOnFor(ownerId: string, moduleId: string): Promise<boolean> {
+  return moduleOn(await getSettings(ownerId), moduleId);
+}
+
+// The ids of every module this owner has off, for client components (the Build
+// sidebar) that filter by module without importing server code.
+export function offModuleIds(settings: Pick<UserSettings, "modules">): string[] {
+  return allModules()
+    .filter((m) => !moduleOn(settings, m.id))
+    .map((m) => m.id);
 }
 
 // The type keys whose module this owner has switched off.

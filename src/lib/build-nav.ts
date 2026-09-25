@@ -16,11 +16,6 @@ import type { NavIconKey } from "@/lib/nav-icons";
 
 export type BuildGroupLabel = "DATA" | "INTERFACE" | "MAINTAIN" | "SYSTEM";
 
-// A per-owner setting flag that, when false, hides an entry from the Build
-// sidebar. The taxonomy itself stays static (single source of truth); the
-// sidebar filters gated entries with the owner's settings at render time.
-export type BuildEntryFlag = "aiMemoryEnabled";
-
 export type BuildEntry = {
   label: string;
   href: string;
@@ -30,11 +25,11 @@ export type BuildEntry = {
   // (Types → the user's actual types) inject children at render; the rest grow
   // their sub-nav in later phases (see the stub plan-notes).
   expandable?: boolean;
-  // When set, the Build sidebar shows this entry only if the owner has the named
-  // setting on (ADR-137: AI Memory). The entry stays in the static taxonomy (so
-  // the picker/palette/describe_workspace still know it) — only the sidebar
-  // doorway is hidden while the feature is off.
-  gatedBy?: BuildEntryFlag;
+  // When set, the Build sidebar shows this entry only while the owner has that
+  // module on at Build → Modules (ADR-272; first user: AI Memory, ADR-137). The
+  // entry stays in the static taxonomy (so the picker/palette/describe_workspace
+  // still know it); only the sidebar doorway is hidden while the module is off.
+  module?: string;
   // Extra search words for the command palette, when what a person types isn't
   // what the entry is called ("help" → User Guide). Sidebar ignores these.
   keywords?: string[];
@@ -120,10 +115,10 @@ export const BUILD_NAV: BuildGroup[] = [
       // effectively undiscoverable for that.
       { label: "API", href: "/build/api", icon: "tools" },
       // AI Memory (ADR-137): the durable memory an AI reads over MCP. Gated —
-      // the sidebar shows it only when the owner has turned AI Memory on in
-      // Settings; the page itself also gates, so it's discoverable-but-off until
+      // the sidebar shows it only when the owner has turned AI Memory on at
+      // Build → Modules; the page itself also gates, so it is discoverable-but-off until
       // enabled. "affiliate" (connected nodes) nods to the memory relation graph.
-      { label: "AI Memory", href: "/build/memory", icon: "affiliate", gatedBy: "aiMemoryEnabled" },
+      { label: "AI Memory", href: "/build/memory", icon: "affiliate", module: "ai-memory" },
       // The one deliberate both-places entry: also reachable from the Work kebab
       // so personal/cosmetic settings don't require entering Build. Label stays
       // "User Settings" everywhere (never bare "Settings").

@@ -10,6 +10,7 @@ import { listDashboards } from "@/lib/dashboards";
 import { buildDestOptions } from "@/lib/nav-slot-options";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
+import { moduleOn } from "@/lib/modules/enabled";
 import { listTypes } from "@/lib/types";
 import { listViews } from "@/lib/views";
 
@@ -28,7 +29,8 @@ export default async function NavigationBuilder() {
   const destOptions = buildDestOptions(
     views.map((v) => ({ id: v.id, name: v.name })),
     types.map((t) => ({ key: t.key, label: t.label, icon: t.icon })),
-    dashboards.map((d) => ({ id: d.id, name: d.name }))
+    dashboards.map((d) => ({ id: d.id, name: d.name })),
+    moduleOn(settings, "notification-center")
   );
 
   return (

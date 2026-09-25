@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { agentEditProposals } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
+import { moduleOnFor } from "@/lib/modules/enabled";
 import { getItem } from "@/lib/items";
 import { callTool } from "@/lib/mcp/tools";
 import { readAgentPrompt } from "./prompts";
@@ -47,7 +48,7 @@ export function formattingChanged(original: string, proposed: string, instructio
 }
 
 async function styleGuide(ownerId: string): Promise<string | null> {
-  if (!(await getSettings(ownerId)).aiMemoryEnabled) return null;
+  if (!(await moduleOnFor(ownerId, "ai-memory"))) return null;
   const hit = await callTool(ownerId, "search_items", { query: "writing style guide", type: "memory", limit: 1 });
   if (hit.isError) return null;
   try {

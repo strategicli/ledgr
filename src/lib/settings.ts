@@ -267,7 +267,9 @@ export type NavSlotConfig =
     };
 
 export type AgentSettings = {
-  enabled: boolean;
+  /** @deprecated The on/off now lives in settings.modules.agent (Build → Modules,
+   * ADR-272 step 2). Read only to seed that once; never written back. */
+  enabled?: boolean;
   chatModel: string;
   inlineModel: string;
   basePromptItemId: string | null;
@@ -278,7 +280,6 @@ export type AgentSettings = {
 export const AGENT_MODELS = ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"] as const;
 
 const DEFAULT_AGENT: AgentSettings = {
-  enabled: false,
   chatModel: "claude-opus-5-5",
   inlineModel: "claude-opus-5-5",
   basePromptItemId: null,
@@ -298,7 +299,6 @@ function parseAgent(raw: unknown): AgentSettings {
     }
   }
   return {
-    enabled: r.enabled === true,
     chatModel: model(r.chatModel, DEFAULT_AGENT.chatModel),
     inlineModel: model(r.inlineModel, DEFAULT_AGENT.inlineModel),
     basePromptItemId: ref(r.basePromptItemId),
@@ -418,7 +418,9 @@ export type UserSettings = {
   // (get_memory_stumps, remember) and the memory-protocol resource are exposed,
   // and the Build → AI Memory surface appears. When off, none of those are
   // listed or callable, so a "vanilla" MCP client never sees the memory concept.
-  aiMemoryEnabled: boolean;
+  /** @deprecated Now settings.modules["ai-memory"] (Build → Modules, ADR-272
+   * step 2). Read once by seedModulesFromLegacy, never written back. */
+  aiMemoryEnabled?: boolean;
   // Live editing context subsystem switch (ADR-162). Off by default: a fresh
   // Ledgr behaves exactly as before. When on, the open item canvas reports the
   // item you're viewing (and your current text selection) to a single per-owner
@@ -426,7 +428,8 @@ export type UserSettings = {
   // edit_item_body) are exposed, and a "Note Editing Partner" prompt item is
   // seeded so Claude can co-edit the note you're looking at. When off, nothing
   // is tracked and those tools aren't listed or callable.
-  liveContextEnabled: boolean;
+  /** @deprecated Now settings.modules["live-context"] (ADR-272 step 2). */
+  liveContextEnabled?: boolean;
   // The "Note Editing Partner" prompt item seeded when Live editing context is
   // first turned on (ADR-162). The canonical text lives in the repo
   // (note-editing-prompt.ts); this points at the owner's editable copy so the
@@ -480,7 +483,8 @@ export type UserSettings = {
   //
   // Off by default, because the work needs tools that not every machine has:
   // yt-dlp, and Whisper for a video with no captions.
-  youtubeTranscripts: { enabled: boolean };
+  /** @deprecated Now settings.modules["youtube-transcripts"] (ADR-272 step 2). */
+  youtubeTranscripts?: { enabled: boolean };
   // Saved searches (ADR-063 palette / /search): named snapshots of the full
   // search state (q, filters, tuning criteria). Synced like everything else
   // here. `state` is opaque to settings.ts — SearchClient owns its shape.
@@ -602,8 +606,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   notificationPrefs: {},
   inboxRoutes: {},
   timezone: null,
-  aiMemoryEnabled: false,
-  liveContextEnabled: false,
   noteEditingPromptItemId: null,
   agent: DEFAULT_AGENT,
   collapsibleHeadingsEnabled: true,
@@ -611,7 +613,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   deskWorkspaces: [],
   searchSynonyms: {},
   jobOwners: {},
-  youtubeTranscripts: { enabled: false },
   savedSearches: [],
   modules: {},
 };
@@ -808,6 +809,46 @@ function parseModuleFlags(raw: unknown): Record<string, boolean> {
   );
 }
 
+// The four switches that lived in settings before Build → Modules (ADR-272 step
+// 2), as module id -> the flag an older blob or client carries. Only an explicit
+// boolean counts; an absent key says nothing, so the module's default applies.
+function legacyModuleFlags(r: Record<string, unknown>): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  const nested = (v: unknown) =>
+    v && typeof v === "object" ? (v as { enabled?: unknown }).enabled : undefined;
+  const pairs: [string, unknown][] = [
+    ["ai-memory", r.aiMemoryEnabled],
+    ["live-context", r.liveContextEnabled],
+    ["agent", nested(r.agent)],
+    ["youtube-transcripts", nested(r.youtubeTranscripts)],
+  ];
+  for (const [id, v] of pairs) if (typeof v === "boolean") out[id] = v;
+  return out;
+}
+
+// settings.modules, seeded from the old keys so nobody's switch flips on
+// upgrade: an explicit modules entry wins, then the old key, then (absent both)
+// nothing, which means the module's manifest default. parseSettings drops the
+// old keys, so the first save after upgrade writes only modules. Pure, checked
+// by verify-module-registry.
+export function seedModulesFromLegacy(raw: unknown): Record<string, boolean> {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return { ...legacyModuleFlags(r), ...parseModuleFlags(r.modules) };
+}
+
+// A write that still uses an old key (an older client, a script, or an
+// instance's UI that has not caught up) lands on modules[id]. Here the old key
+// beats the stored modules entry, because it is the newer instruction. Returns
+// undefined when the patch touches no module switch at all.
+export function applyLegacyModulePatch(
+  patch: Record<string, unknown>,
+  beforeModules: Record<string, boolean>
+): Record<string, boolean> | undefined {
+  const legacy = legacyModuleFlags(patch);
+  if (Object.keys(legacy).length === 0 && patch.modules === undefined) return undefined;
+  return { ...beforeModules, ...parseModuleFlags(patch.modules), ...legacy };
+}
+
 export const SAVED_SEARCHES_CAP = 100;
 
 // Parse saved searches: id and name must be non-empty strings, state a plain
@@ -924,10 +965,6 @@ export function parseSettings(raw: unknown): UserSettings {
     typeof r.timezone === "string" && isValidTimezone(r.timezone)
       ? r.timezone
       : DEFAULT_SETTINGS.timezone;
-  const aiMemoryEnabled =
-    typeof r.aiMemoryEnabled === "boolean" ? r.aiMemoryEnabled : DEFAULT_SETTINGS.aiMemoryEnabled;
-  const liveContextEnabled =
-    typeof r.liveContextEnabled === "boolean" ? r.liveContextEnabled : DEFAULT_SETTINGS.liveContextEnabled;
   const noteEditingPromptItemId = dashRef(r.noteEditingPromptItemId);
   const agent = parseAgent(r.agent);
   const collapsibleHeadingsEnabled =
@@ -942,14 +979,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const searchSynonyms = parseSearchSynonyms(r.searchSynonyms);
   const jobOwners = parseJobOwners(r.jobOwners);
   const savedSearches = parseSavedSearches(r.savedSearches);
-  const modules = parseModuleFlags(r.modules);
-  // Only an explicit `true` turns it on: an absent, partial or hand-edited blob
-  // leaves the feature off, which is the safe answer on a machine without the
-  // tools to do the work.
-  const youtubeTranscripts = {
-    enabled:
-      (r.youtubeTranscripts as { enabled?: unknown } | undefined)?.enabled === true,
-  };
+  const modules = seedModulesFromLegacy(r);
   return {
     highlightColor,
     highlightGradient,
@@ -983,8 +1013,6 @@ export function parseSettings(raw: unknown): UserSettings {
     notificationPrefs,
     inboxRoutes,
     timezone,
-    aiMemoryEnabled,
-    liveContextEnabled,
     noteEditingPromptItemId,
     agent,
     collapsibleHeadingsEnabled,
@@ -992,7 +1020,6 @@ export function parseSettings(raw: unknown): UserSettings {
     deskWorkspaces,
     searchSynonyms,
     jobOwners,
-    youtubeTranscripts,
     savedSearches,
     modules,
   };
@@ -1026,6 +1053,8 @@ export async function updateSettings(
 ): Promise<UserSettings> {
   const before = await getSettings(ownerId);
   const merged: Record<string, unknown> = { ...before, ...patch };
+  const modules = applyLegacyModulePatch(patch, before.modules);
+  if (modules) merged.modules = modules;
   if (patch.navSlots !== undefined) {
     merged.navSlots = keepNavPresentation(patch.navSlots, before.navSlots);
   }

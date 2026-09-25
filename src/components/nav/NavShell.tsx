@@ -50,7 +50,6 @@ import CommandPalette from "@/components/search/CommandPalette";
 import Launcher, { type LauncherTile } from "@/components/nav/Launcher";
 import SyncPill from "@/components/nav/SyncPill";
 import { isBuildPath } from "@/lib/build-nav";
-import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { BUILD_SIDEBAR_W, navPadVars, RAIL_W } from "@/lib/nav-layout";
 import {
   FAVORITES_HREF,
@@ -137,7 +136,8 @@ export default function NavShell({
   unreadCount,
   typeOptions,
   buildTypes,
-  aiMemoryEnabled,
+  offModules,
+  notificationsOn,
   navPosition,
   railSize: railSizeProp,
   navDensity: navDensityProp,
@@ -152,8 +152,11 @@ export default function NavShell({
   typeOptions: { key: string; label: string }[];
   // The owner's types, for the Build sidebar's Types & Properties dropdown.
   buildTypes: { key: string; label: string; icon: string | null }[];
-  // AI Memory on? Gates the Build sidebar's "AI Memory" entry (ADR-137).
-  aiMemoryEnabled: boolean;
+  // Ids of the modules this owner has off (Build → Modules): the Build sidebar
+  // hides an entry tagged with one (ADR-272; AI Memory, ADR-137).
+  offModules: string[];
+  // Notification center module on? Shows its menu link and app badge (ADR-130).
+  notificationsOn: boolean;
   navPosition: NavPosition;
   railSize: RailSize;
   navDensity: NavDensity;
@@ -803,8 +806,8 @@ export default function NavShell({
         <WrenchIcon />
         Build
       </Link>
-      {/* Notification center paused (ADR-130): hidden, recoverable via the flag. */}
-      {NOTIFICATION_CENTER_ENABLED && (
+      {/* Notification center paused (ADR-130): shown only while its module is on. */}
+      {notificationsOn && (
         <Link
           href="/notifications"
           role="menuitem"
@@ -1004,11 +1007,11 @@ export default function NavShell({
   return (
     <nav aria-label="Main">
       {/* PWA app-icon badge: only while the notification center is live (ADR-130). */}
-      {NOTIFICATION_CENTER_ENABLED && <AppBadgeSync count={unreadCount} />}
+      {notificationsOn && <AppBadgeSync count={unreadCount} />}
       {inBuild && (
         <BuildSidebar
           types={buildTypes}
-          aiMemoryEnabled={aiMemoryEnabled}
+          offModules={offModules}
           onOpenSearch={() => setSearchOpen(true)}
         />
       )}

@@ -9,9 +9,9 @@ import NotificationList from "@/components/notifications/NotificationList";
 import {
   listNotifications,
   notificationCounts,
-  NOTIFICATION_CENTER_ENABLED,
   type ListFilter,
 } from "@/lib/notifications";
+import { notificationCenterOn } from "@/lib/notifications-enabled";
 import { resolveOwner } from "@/lib/owner";
 
 export const dynamic = "force-dynamic";
@@ -33,12 +33,11 @@ export default async function NotificationsPage({
 }: {
   searchParams: Promise<{ filter?: string }>;
 }) {
-  // Notification center paused (ADR-130): keep the page in the tree but send a
-  // stray pin or bookmark home rather than showing an orphaned, never-fed list.
-  if (!NOTIFICATION_CENTER_ENABLED) redirect("/");
-
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
+  // Notification center paused (ADR-130): unless its module is on (Build →
+  // Modules), send a stray pin or bookmark home rather than an orphaned list.
+  if (!(await notificationCenterOn(owner.id))) redirect("/");
 
   const filter = parseFilter((await searchParams).filter);
   const [items, counts] = await Promise.all([

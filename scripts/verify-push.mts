@@ -29,7 +29,7 @@ const { generateVapidKeys, signVapidJwt, audienceFor, b64urlEncode, b64urlDecode
 const { encryptPush } = await import("../src/lib/push/encrypt");
 const store = await import("../src/lib/push/store");
 const { sendToOwner, runAgendaNotify, runPrepNotify, AGENDA_JOB_KEY, PREP_JOB_KEY } = await import("../src/lib/push/notify");
-const { NOTIFICATION_CENTER_ENABLED } = await import("../src/lib/notifications-enabled");
+const { notificationCenterOn } = await import("../src/lib/notifications-enabled");
 type PushSender = import("../src/lib/push/types").PushSender;
 type PushMessage = import("../src/lib/push/types").PushMessage;
 type PushSubscriptionRecord = import("../src/lib/push/types").PushSubscriptionRecord;
@@ -123,6 +123,8 @@ const [tempUser] = await db
   .values({ email: `verify-push-${Date.now()}@example.invalid` })
   .returning({ id: users.id });
 const ownerId = tempUser.id;
+// The notification-center module (ADR-272 step 2; default off) for this owner.
+const NOTIFICATION_CENTER_ENABLED = await notificationCenterOn(ownerId);
 
 const mk = async (v: Record<string, unknown>) =>
   (await db.insert(items).values({ ownerId, ...(v as object) } as typeof items.$inferInsert).returning({ id: items.id }))[0].id;
@@ -169,7 +171,7 @@ try {
   } else {
     // Notification center paused (ADR-130): the guard at the top of
     // runAgendaNotify short-circuits before any send. Assert the paused
-    // contract instead — flip NOTIFICATION_CENTER_ENABLED back on to
+    // contract instead — turn the notification-center module on to
     // re-exercise the send path above.
     check("agenda is a no-op while the notification center is paused (ADR-130)", agenda1.skipped === true && agendaSender.calls.length === 0);
   }
@@ -206,8 +208,8 @@ try {
   } else {
     // Notification center paused (ADR-130): the guard at the top of
     // runPrepNotify short-circuits before the window query runs, so no
-    // meeting is ever flagged. Assert the paused contract instead — flip
-    // NOTIFICATION_CENTER_ENABLED back on to re-exercise the window/dedup
+    // meeting is ever flagged. Assert the paused contract instead — turn
+    // the notification-center module on to re-exercise the window/dedup
     // logic above.
     check("prep is a no-op while the notification center is paused (ADR-130)", prep1.notified === 0 && prepSender.calls.length === 0);
   }

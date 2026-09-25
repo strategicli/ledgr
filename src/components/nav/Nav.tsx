@@ -14,7 +14,6 @@ import NavShell, {
 import { INBOX_SOURCES, routeFor } from "@/lib/inbox-sources";
 import { countInbox } from "@/lib/items";
 import { countUnread } from "@/lib/notifications";
-import { NOTIFICATION_CENTER_ENABLED } from "@/lib/notifications-enabled";
 import { resolveOwnerState } from "@/lib/owner";
 import {
   getSettings,
@@ -23,7 +22,7 @@ import {
 } from "@/lib/settings";
 import { syncEnabled } from "@/lib/sync/client";
 import { compareTypeKeys } from "@/lib/type-order";
-import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
+import { disabledModuleTypeKeys, moduleOnFor, offModuleIds } from "@/lib/modules/enabled";
 import { listTypes } from "@/lib/types";
 
 export default async function Nav() {
@@ -54,14 +53,17 @@ export default async function Nav() {
     ) : null;
   }
   const owner = state.owner;
+  // getSettings is request-cached, so this read is shared with the one below.
+  const notificationsOn = await moduleOnFor(owner.id, "notification-center");
 
   // Quick-capture types are data-driven and opt-in (type-and-kind-ux §2): only
   // types flagged show_in_quick_capture appear, so a custom type can be
   // captured into and a "data only" one can stay out of the dropdown.
   const [inboxCount, unreadCount, allCaptureRows, settings, buildTypes, moduleOff] = await Promise.all([
     countInbox(owner.id),
-    // Notification center paused (ADR-130): skip the unread query, badge stays 0.
-    NOTIFICATION_CENTER_ENABLED ? countUnread(owner.id) : Promise.resolve(0),
+    // Notification center off (ADR-130, a module since ADR-272): skip the unread
+    // query, badge stays 0.
+    notificationsOn ? countUnread(owner.id) : Promise.resolve(0),
     getDb()
       .select({ key: types.key, label: types.label })
       .from(types)
@@ -149,7 +151,8 @@ export default async function Nav() {
       unreadCount={unreadCount}
       typeOptions={typeRows}
       buildTypes={buildTypes.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
-      aiMemoryEnabled={settings.aiMemoryEnabled}
+      offModules={offModuleIds(settings)}
+      notificationsOn={notificationsOn}
       navPosition={settings.navPosition}
       railSize={settings.railSize}
       navDensity={settings.navDensity}
