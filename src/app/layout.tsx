@@ -9,7 +9,7 @@ import PwaRegister from "@/components/pwa/PwaRegister";
 import OutboxSync from "@/components/pwa/OutboxSync";
 import { moduleOn } from "@/lib/modules/enabled";
 import { moduleAvailable } from "@/lib/modules";
-import { shellPanels } from "@/lib/module-panels";
+import { shellPanels } from "@/lib/module-shells";
 import { AppAuthProvider } from "@/lib/auth/provider";
 import { TimezoneProvider } from "@/components/providers/TimezoneProvider";
 import { navPadVars } from "@/lib/nav-layout";

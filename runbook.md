@@ -462,6 +462,7 @@ Front-end (perceived speed):
 - Optimistic updates on edits, check-offs, captures.
 - Stale-while-revalidate: render from cache, then refetch.
 - Lazy-load / code-split the BlockNote editor.
+- Module client components reach core only through `next/dynamic` in `src/lib/module-editor.tsx` (a client file, because `next/dynamic` in a server file still bundles the client code), and the root layout takes its shell panels from `module-shells.tsx`, never `module-panels.tsx`. A static import would put that module's code on every page even while it is off (ADR-272 step 5; `verify-module-registry` enforces it).
 - Virtualize long lists; paginate.
 - Batch a screen's data into one request (e.g. Today), not a query per widget.
 

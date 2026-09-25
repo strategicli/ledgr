@@ -599,7 +599,7 @@ for (const r of sharingRoutes) {
   const layout = read("src/app/layout.tsx");
   check("layout.tsx imports nothing from the agent module", !/from "@\/modules\/agent|agent\/gate|AgentPanel/.test(layout));
   check("layout.tsx mounts the shell panels", layout.includes("shellPanels()"));
-  check("shellPanels() lists the agent", /moduleId: "agent", Component: AgentPanel/.test(read("src/lib/module-panels.tsx")));
+  check("shellPanels() lists the agent", /moduleId: "agent", Component: AgentShellPanel/.test(read("src/lib/module-shells.tsx")));
   check("the editor reaches inline edit through module-editor.tsx", !read("src/components/markdown-editor/MarkdownEditor.tsx").includes("@/modules/"));
   check("verify-agent follows the move", read("scripts/verify-agent.mts").includes("../src/modules/agent/lib/tools"));
   check("server-slots attached the agent's healthCheck", typeof agentModule.healthCheck === "function");
@@ -623,9 +623,7 @@ for (const r of sharingRoutes) {
   check("the old desk folders are gone", !existsSync(new URL("../src/lib/desk", import.meta.url)) && !existsSync(new URL("../src/components/desk", import.meta.url)));
   // The shell slot: the root layout mounts module panels from shellPanels(),
   // filtered by the owner's switches, and the Desk's send menu is one of them.
-  const panels = src("src/lib/module-panels.tsx");
-  const shellBlock = panels.slice(panels.indexOf("export function shellPanels"));
-  check("shellPanels() lists the desk send menu", /moduleId:\s*"desk",\s*Component:\s*DeskSendContextMenu/.test(shellBlock));
+  check("shellPanels() lists the desk send menu", /moduleId:\s*"desk",\s*Component:\s*DeskSendShellPanel/.test(src("src/lib/module-shells.tsx")));
   const layout = src("src/app/layout.tsx");
   // The layout gates each shell panel on `shellOn`, which is moduleOn AND the
   // manifest's `available` (the agent module's machine check).
@@ -757,6 +755,43 @@ for (const r of sharingRoutes) {
     "no other module declares perInstallNote",
     allModules().every((m) => !m.perInstallNote || PER_INSTALL_NOTE_MODULES.includes(m.id))
   );
+}
+
+// --- 18. step 5: module client components load lazily ----------------------
+// A module that is off must ship no client JavaScript. Each module client
+// component the importer files hand to core goes through next/dynamic in a
+// client file (next/dynamic in a server file still bundles the client code), so
+// a static import of one of these fails here. Server components (SharePanel,
+// DiscoverSection, ExploreView, LiveContextPanel) stay static in
+// module-panels.tsx: they never reach the browser.
+{
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const editor = read("src/lib/module-editor.tsx");
+  check("module-editor.tsx is a client file", /^\s*"use client";/m.test(editor));
+  const LAZY = [
+    "@/modules/agent/components/InlineEdit",
+    "@/modules/agent/components/AgentPanel",
+    "@/modules/desk/components/DeskSendMenu",
+  ];
+  for (const path of LAZY) {
+    check(`module-editor.tsx loads ${path} through dynamic()`, editor.includes(`dynamic(() => import("${path}")`));
+  }
+  for (const f of ["src/lib/module-editor.tsx", "src/lib/module-panels.tsx", "src/lib/module-shells.tsx"]) {
+    const text = read(f);
+    for (const path of LAZY) {
+      check(`${f} has no static import of ${path}`, !new RegExp(`^(import|export)[^;]*from "${path}"`, "m").test(text));
+    }
+  }
+  const layout = read("src/app/layout.tsx");
+  check("layout.tsx still imports nothing from @/modules", !layout.includes("@/modules"));
+  // The root layout reaches the shell panels through module-shells.tsx, never
+  // module-panels.tsx, which would put every item panel's client code in every
+  // page's first load.
+  check(
+    "layout.tsx takes shellPanels from module-shells.tsx",
+    layout.includes(`from "@/lib/module-shells"`) && !layout.includes("@/lib/module-panels")
+  );
+  check("module-shells.tsx imports no module directly", !read("src/lib/module-shells.tsx").includes("@/modules"));
 }
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);

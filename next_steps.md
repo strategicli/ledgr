@@ -41,7 +41,10 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    ~~passages~~, ~~desk~~, ~~ai-memory~~, ~~live-context~~, ~~agent~~, ~~MCP tool
    families~~ (stays core: each remaining family wraps a core library and has nothing
    an owner could switch off, see §5 of the exploration).
-6. **Step 5: lazy-load the shells** so a disabled module ships zero bytes.
+6. ~~**Step 5: lazy-load the shells**~~ done: the root layout lost 19.3 kB gzipped on
+   every page, and the agent sidebar now downloads only when the agent is on (numbers
+   in §7 of the exploration). Known leftovers: item-panel controls and RowMenu's Desk
+   items still ship while their module is off; each needs a module-side change.
 7. **Step 6: instance defaults** reviewed with Tyler; done when his install is the same
    build with a shorter default list.
 

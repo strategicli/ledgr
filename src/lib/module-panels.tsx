@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import SharePanel from "@/modules/sharing/components/SharePanel";
 import DiscoverSection from "@/modules/relatedness/components/DiscoverSection";
 import ExploreView from "@/modules/relatedness/components/ExploreView";
-import DeskSendContextMenu from "@/modules/desk/components/DeskSendMenu";
 import LiveContextPanel from "@/modules/live-context/components/LiveContextPanel";
 
 type PanelProps = { itemId: string; title?: string; bare?: boolean };
@@ -38,23 +37,10 @@ export function ModuleItemPage({ id, ...props }: PageProps & { id: string }) {
   return Page ? <Page {...props} /> : null;
 }
 
-// --- shell panels: mounted once in the root layout (ADR-272 step 4) ---
-// A module's app-wide surface (the Desk's Send-to-Desk popover, the Claude
-// sidebar), mounted by the fenced root layout without importing the module. The
-// layout renders each entry only while its module is on for the owner (and, for
-// a module with `available`, only on a machine that can run it).
-import AgentPanel from "@/modules/agent/components/AgentPanel";
-
-type ShellPanel = { moduleId: string; Component: () => ReactNode };
-
-export function shellPanels(): ShellPanel[] {
-  return [
-    // The Desk's "Send to Desk" popover, opened by inline mention/link
-    // right-clicks (ADR-146 S3b).
-    { moduleId: "desk", Component: DeskSendContextMenu },
-    { moduleId: "agent", Component: AgentPanel },
-  ];
-}
+// The root layout's shell panels (the Desk's Send-to-Desk popover, the Claude
+// sidebar) are listed in module-shells.tsx, not here: the layout imports that
+// file, and importing this one would put every item panel's client code in the
+// root bundle of every page (plan step 5).
 
 // --- settings panels: a module's own options on /build/modules (ADR-272) ---
 // A module's `settingsPanel` (a panel id, not a schema — see the comment on
