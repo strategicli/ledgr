@@ -46,6 +46,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
 | `LEDGR_TIMEZONE` | **Fallback** IANA timezone. The owner's zone is now a per-user setting (User Settings → Timezone; `users.settings.timezone`), resolved by `getAppTimezone()`. This env var is only the fallback before an owner is known or when none is chosen; defaults to `America/New_York`. The server runs in UTC, never assume its clock | env flag |
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
+| `LEDGR_ALLOW_PAIRING` | Optional (§1r, ADR-277): `1` reopens pairing on a new, still-empty cloud copy after its two-hour window. Does nothing once the copy has an owner | a cloud copy, only while pairing it |
 | `LEDGR_SIGNIN_METHOD` | EMERGENCY override only (§1o, ADR-274): `builtin` or `default` forces this copy's sign-in method. Unset normally; the switch is User Settings → Sign-in | per copy, only in an emergency |
 | `DEV_USER_EMAIL` | dev-only auth stand-in (ADR-006): with Clerk keys **unset** and `NODE_ENV=development`, this email resolves as the signed-in user (local UI work without a Microsoft sign-in). Ignored in production builds; never set on Vercel | local only |
 
@@ -424,6 +425,24 @@ On a local copy, the **Private access (Tailscale)** module puts this Ledgr on th
 - **Who can open it.** Every device signed in to the same Tailscale account (or invited to that tailnet). A copy with no sign-in is reachable this way on purpose: the tailnet is the lock (§1p explains the 127.0.0.1 binding the helper forwards to). If other people share your tailnet, set a password first (User Settings → Sign-in).
 - **Testing override:** `LEDGR_TAILNET_HOSTNAME` in the supervisor's environment changes the machine name (e.g. `ledgr-mypc-test` for a scratch install). Never the way to switch it on.
 - **Releasing a new helper version.** Change `tailnet/`, bump `version` in `tailnet/release.json`, run `sh tailnet/build.sh` (Go from `tailnet/go.mod`) and copy the printed checksums into `release.json` (any change under `tailnet/`, even a comment, changes them, because Go's build ID hashes the source). The PR's "Tailscale helper" check fails if they do not match. After merge, from the merged commit on `main`, run `git tag tailnet-v<version>` and `git push origin tailnet-v<version>`; the workflow builds, re-checks and publishes the release. A supervisor reads `release.json` beside its own code, so it moves to the new helper when its own code is updated and restarted, the same as any supervisor change. Undo: delete the release and the tag, revert the `release.json` bump.
+
+## 1r. Keep a copy in the cloud: pairing a hub with a fresh cloud copy (ADR-277)
+
+**What it is.** A hub (the always-on machine running the main copy) fills a brand-new cloud copy with everything, then lists it as an ordinary copy it syncs with (every 15 minutes, both ways; minting or revoking a share link checks in at once). The hub always calls the cloud (`/api/pair`, `/api/machine/pair/fill`, then `/api/machine/sync`); the cloud never calls the hub. Brandon's existing hub-to-Vercel pair was set up by hand and is untouched by this.
+
+**The flow.** Deploy a new copy (Vercel + a new, empty Neon database; `build:satellite` migrates it). On the hub: Build → Network → **Keep a copy in the cloud** → paste its address → **Get a pairing code**. On any device: open `<cloud>/setup`, type the code. The hub claims the pairing, fills, and lists the copy. Sign in on the cloud with the hub's password (the copy switches itself to password sign-in unless it has Clerk keys).
+
+**The guards.** The cloud accepts a code only while it has no owner and no items, and only for two hours after its database was first migrated (the oldest `types.created_at`). A typed code lasts 15 minutes and survives five wrong claims; the claim is single use (the device token is minted once, and a claimed copy never pairs again). **To reopen pairing after the two hours:** add `LEDGR_ALLOW_PAIRING` = `1` to the cloud copy's environment on Vercel, redeploy, pair. Once paired it has an owner and the setting does nothing; remove it at leisure.
+
+**If a stranger got there first** (the hub says the copy "already has an owner or data"): delete that Vercel project's database (or the whole project) and deploy again. Nothing of yours was ever sent to it: the hub refuses to fill a copy that is not empty.
+
+**What is not copied.** The oplog, device identity, sync peers, sign-in state, agent chats (as for every fill), plus `job_state`, `api_credentials` (make MCP and API tokens on the cloud copy itself), `push_subscriptions`, `error_log`. When the hub stores files on its own disk, `attachments` rows stay behind too: those files do not exist in the cloud, and the pairing screen says how many.
+
+**A fill that stopped.** The Network page shows the reason; **Try again** starts over from the top (every write on the cloud is an upsert) and keeps the original start point in the hub's change log, so nothing made in between is skipped. The hub process restarting mid-fill restarts it automatically the next time the Network page is open. **Cancel** before the owner row lands releases the cloud copy; after that, delete and redeploy it.
+
+**Sizes and limits.** The hub refuses, in words, a fill that would not fit a free Neon database (0.5 GB, with 10% headroom) unless the owner ticks "My cloud database has more room". Each fill request carries at most about 1.5 MB (Vercel refuses bodies over 4.5 MB) and is one transaction; a single row bigger than that (an imported book) is sent in 1 MB pieces and assembled on the cloud.
+
+**Scheduled jobs.** Pairing names the hub for every exclusive job whose slot was still unset (unset means "the cloud copy runs it", ADR-225); slots the owner already chose are left alone, and the default itself is unchanged. Move any of them on Build → Jobs.
 
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
 

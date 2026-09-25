@@ -164,6 +164,9 @@ console.log("\n5. Locked by default");
     // ADR-275: the setup page. Its create-owner step needs the same localhost
     // address and machine ticket as the reset page (verify-first-run.mts).
     "/setup",
+    // ADR-277: the cloud-copy pairing door. It grants nothing on a copy with an
+    // owner or data (verify-pairing.mts).
+    "/api/pair",
   ];
   check(
     "the public list is explicit and exactly the known set (a new public path is a deliberate edit here)",

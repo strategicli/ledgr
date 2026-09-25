@@ -39,6 +39,19 @@ reachable from the internet" on the Tailscale module's options): one more listen
 `tailnet/main.go` (`ListenFunnel`) behind a flag the supervisor passes, refused unless
 sign-in is required; bump `tailnet/release.json` and tag a new `tailnet-v` release.
 
+Step 9 (keep a copy in the cloud, ADR-277, runbook §1r) landed: Build → Network pairs a
+hub with a fresh cloud copy by a one-time code typed on the cloud's `/setup`, fills it
+from one snapshot, lists it as a 15-minute copy, and share tokens now sync with one
+public address for share links. Left over from step 9:
+- Proven on two local installs (the cloud one run with `VERCEL_ENV=production` on local
+  Postgres). Not yet run against real Vercel + Neon: the neon-http batch path for the
+  fill, `ALTER TABLE … DISABLE TRIGGER` as Neon's owner role, the 60-second limit on a
+  real fill request, and Neon's real storage figure.
+- A stronger first-claim lock for a hosted copy (a setup code the Deploy Button asks for,
+  chunk C) would close the two-hour window a stranger could use on an empty copy.
+- "Check in now" still skips a copy set to "only when there are changes" when this machine
+  has nothing to send (ADR-252 behavior, untouched); the paired copy is set without it.
+
 ## 🟢 IN FLIGHT — core and modules (ADR-272, started 2026-09-24)
 
 One codebase, one `main`, installs differ only in which modules are on. Step 0 (the

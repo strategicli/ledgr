@@ -1023,6 +1023,11 @@ to your own). The page itself has an **Appearance** dropdown at the top right,
 so whoever you send it to can switch between Dark, Light, Gray, and Sepia; their
 browser remembers the choice for every Ledgr document they open.
 
+When a **public address** is set (Build → Network → Keep a copy in the cloud),
+every share link is made with it, whichever copy of Ledgr you are on, and share
+links sync between copies, so a link made on your home computer opens from the
+cloud copy within a few seconds (making or revoking a link checks in at once).
+
 A shared **song** opens as the two-column chord chart. If the song has a
 **Preview track** (the "Add audio file" control above the chart on the song
 itself), the share page plays it above the chart, so the person gets the chords
@@ -1676,6 +1681,30 @@ in the middle you get both in one line.
   how long the quiet lasts, this machine still checks in about once a week,
   because a copy silent longer than that loses its place in the history the
   other side keeps for it and would need everything sent again.
+- **Keep a copy in the cloud.** On the computer that runs your main copy, this
+  section fills a brand-new, empty cloud copy of Ledgr (one deployed on Vercel,
+  say) with everything you have, then keeps it in sync. The cloud copy keeps
+  working when this computer is off, so your phone and browsers can fall back to
+  it, and it can open your share links for anyone. Paste its address and press
+  **Get a pairing code**; open that copy's \`/setup\` page on any device, type
+  the code, and this page moves on by itself. Your password travels with your
+  data, so you sign in there with the same one. This computer always calls the
+  cloud copy, never the other way round, so it works from behind any home
+  router. What to know before you start: only an empty copy with no owner can be
+  filled, and only within two hours of it first being set up (after that, add
+  the setting \`LEDGR_ALLOW_PAIRING\` = \`1\` in your host's environment settings
+  and redeploy); the page checks whether your data fits a free Neon database
+  first and says so if it does not; scheduled jobs no machine has been given yet
+  start running on this computer, and the page lists them; and files stored on
+  this computer's own disk stay here, so pictures and files inside items show as
+  missing on the cloud copy (the page says how many before anything is copied).
+  If the copy stops part way, **Try again** starts over from the top, and
+  nothing on either side is lost. The cloud copy is listed above as an ordinary
+  copy, checked every 15 minutes; change that on its row like any other.
+- **Public address for share links.** In the same section: the address share
+  links are made with, on every copy (it syncs). Pairing offers to set it to the
+  cloud copy's address when you have none. Leave it empty and a share link uses
+  whichever address you are on, as it always has.
 - **Check in now** exchanges with every copy immediately, whatever the schedule
   says. A schedule works in both directions: between check-ins your changes are
   waiting here, and changes made on another copy have not arrived yet. This is

@@ -4,17 +4,21 @@
 // CDN-cached, so an origin hit count would undercount anyway.
 import { asUuid } from "@/lib/api";
 import { ItemError } from "@/lib/items";
-import { createShareToken, listShareTokens, revokeShareToken, type ShareOptions } from "@/modules/sharing/lib/share";
+import {
+  createShareToken,
+  listShareTokens,
+  publicShareOrigin,
+  revokeShareToken,
+  type ShareOptions,
+} from "@/modules/sharing/lib/share";
 import { THEMES } from "@/lib/settings";
 import { optEnum, optString } from "@/lib/mcp/tools/args";
 import type { McpTool } from "@/lib/mcp/tools/wire";
 
-function origin(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || "https://ledgr-teal.vercel.app").replace(/\/+$/, "");
-}
-
-function shareUrl(token: string): string {
-  return `${origin()}/share/${token}`;
+// The owner's public address when set (ADR-277), else this deploy's own, else
+// the default this tool has always fallen back to.
+async function origin(ownerId: string): Promise<string> {
+  return (await publicShareOrigin(ownerId)) ?? "https://ledgr-teal.vercel.app";
 }
 
 export const shareTools: McpTool[] = [
@@ -52,7 +56,7 @@ export const shareTools: McpTool[] = [
         if (err instanceof Error && err.message === "item not found") throw new ItemError("not_found", "item not found");
         throw err;
       });
-      return { itemId: id, url: shareUrl(row.token), token: row.token, options: row.options, createdAt: row.createdAt.toISOString() };
+      return { itemId: id, url: `${await origin(ownerId)}/share/${row.token}`, token: row.token, options: row.options, createdAt: row.createdAt.toISOString() };
     },
   },
   {
@@ -73,8 +77,9 @@ export const shareTools: McpTool[] = [
     handler: async (ownerId, args) => {
       const id = asUuid(args.id, "id");
       const rows = await listShareTokens(ownerId, id);
+      const base = await origin(ownerId);
       const links = rows.map((r) => ({
-        url: shareUrl(r.token),
+        url: `${base}/share/${r.token}`,
         token: r.token,
         options: r.options,
         createdAt: r.createdAt.toISOString(),

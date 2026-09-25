@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { createShareToken, listShareTokens, revokeShareToken, type ShareOptions } from "@/modules/sharing/lib/share";
-import { isTheme } from "@/lib/settings";
+import { getSettings, isTheme } from "@/lib/settings";
 import { routeGate } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,10 @@ export async function GET(
     const { id } = await ctx.params;
     const itemId = asUuid(id, "id");
     const tokens = await listShareTokens(owner.id, itemId);
-    return NextResponse.json({ tokens });
+    // The owner's public address (ADR-277). Null keeps today's behavior: the
+    // browser builds links from the address it is on.
+    const base = (await getSettings(owner.id)).publicUrl;
+    return NextResponse.json({ tokens, base });
   } catch (err) {
     return errorResponse(err);
   }
