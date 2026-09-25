@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     const key = `${STASH_PREFIX}${stashId}.json`;
     let payload: StashPayload | null = null;
     try {
-      const res = await fetch(await storage.presignDownload(key));
+      const res = await storage.getObject(key);
       if (res.ok) {
         const parsed: unknown = await res.json();
         if (isStashPayload(parsed)) payload = parsed;

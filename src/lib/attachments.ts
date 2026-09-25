@@ -9,6 +9,7 @@ import { attachments, items, syncPeers } from "@/db/schema";
 import { createItem, updateItem } from "@/lib/item-mutations";
 import { ItemError } from "@/lib/items";
 import { getStorage, type StorageProvider } from "@/lib/storage";
+import { guessContentType } from "@/lib/storage/local";
 import { syncEnabled } from "@/lib/sync/client";
 import { attachmentUrl } from "./attachment-url";
 
@@ -116,11 +117,18 @@ function sanitizeFilename(filename: string): string {
   // Object keys keep the real filename for OneDrive-export friendliness,
   // minus path separators, reserved characters, and whitespace runs.
   const cleaned = filename
-    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
     .replace(/\s+/g, "_")
     .replace(/^\.+/, "_")
-    .trim();
-  return cleaned.slice(0, 200) || "file";
+    .trim()
+    .slice(0, 200)
+    // Windows drops a trailing dot and treats CON, NUL, COM1 and friends as
+    // devices; the local disk and the OneDrive export would both trip on them.
+    .replace(/\.+$/, "_");
+  const safe = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i.test(cleaned)
+    ? `_${cleaned}`
+    : cleaned;
+  return safe || "file";
 }
 
 // Validate the request, run the owner/quota/cap checks, and insert the metadata
@@ -213,7 +221,7 @@ export async function createAttachment(
     ownerId,
     req
   );
-  const presigned = await storage.presignUpload(storageKey, req.contentType);
+  const presigned = await storage.presignUpload(storageKey, req.contentType, req.sizeBytes);
   // fileUrl is the one to put in a body. publicUrl is kept as a FIELD purely
   // for API/MCP back-compat (ADR-183 carve-out) and is now the same stable
   // address — with a private bucket (ADR-231) there is no world-readable URL
@@ -466,7 +474,9 @@ export async function findOrphanedObjects(
       "file storage is not configured (R2 env vars missing)"
     );
   }
-  await assertBucketIsOurs();
+  // A local files folder is written by this install alone, so the shared-bucket
+  // precondition is true by construction there.
+  if (storage.kind !== "local") await assertBucketIsOurs();
   const objects = await storage.listObjects(`${ownerId}/`);
   const rows = await getDb()
     .select({ storageKey: attachments.storageKey })
@@ -476,37 +486,9 @@ export async function findOrphanedObjects(
   return objects.filter((o) => !known.has(o.key));
 }
 
-// Guess a row's content type from the filename for a RECOVERED attachment.
-// Metadata only: the serving content-type comes from the R2 object itself
-// (stamped at the original upload), so a miss here costs nothing at read time.
-const EXT_CONTENT_TYPES: Record<string, string> = {
-  pdf: "application/pdf",
-  html: "text/html",
-  htm: "text/html",
-  txt: "text/plain",
-  md: "text/markdown",
-  csv: "text/csv",
-  json: "application/json",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-  mp3: "audio/mpeg",
-  m4a: "audio/mp4",
-  wav: "audio/wav",
-  mp4: "video/mp4",
-  mov: "video/quicktime",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  zip: "application/zip",
-};
-function guessContentType(filename: string): string {
-  const ext = filename.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
-  return (ext && EXT_CONTENT_TYPES[ext]) || "application/octet-stream";
-}
+// A RECOVERED attachment's row content type is guessed from the filename
+// (guessContentType, shared with the local disk, which serves by it). On R2 it
+// is metadata only: R2 serves the type stamped at the original upload.
 
 // Recover the owner's orphaned objects instead of deleting them (Tyler,
 // 2026-08-29): each becomes a NOTE titled after the file, its attachment row is

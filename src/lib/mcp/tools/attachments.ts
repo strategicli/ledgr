@@ -27,6 +27,7 @@ import {
   stableAttachmentUrl,
 } from "@/lib/attachments";
 import { asUuid } from "@/lib/api";
+import { absoluteStorageUrl, requestOriginFrom } from "@/lib/storage";
 import { ItemError, getItem } from "@/lib/items";
 import { updateItem } from "@/lib/item-mutations";
 import { getType } from "@/lib/types";
@@ -38,6 +39,18 @@ import type { McpTool } from "./wire";
 // a hostile or mistaken URL. The per-file/quota caps still apply on top of this
 // (reserveAttachment), this just bounds what we buffer before those run.
 const FETCH_MAX_BYTES = 50 * 1024 * 1024;
+
+// The origin of the MCP request being served, or null outside one (the in-app
+// agent, a verify script), where absoluteStorageUrl falls back to this app's
+// own address.
+async function requestOrigin(): Promise<string | null> {
+  try {
+    const { headers } = await import("next/headers");
+    return requestOriginFrom(await headers());
+  } catch {
+    return null;
+  }
+}
 
 export function isImageContentType(contentType: string): boolean {
   return /^image\//i.test(contentType);
@@ -413,7 +426,9 @@ export const attachmentTools: McpTool[] = [
         itemId,
         filename: reserved.filename,
         storageKey: reserved.storageKey,
-        uploadUrl: reserved.uploadUrl,
+        // The agent PUTs from outside any page, so a local-disk install's
+        // root-relative URL is made absolute against the address it reached us on.
+        uploadUrl: absoluteStorageUrl(reserved.uploadUrl, await requestOrigin()),
         fileUrl: reserved.fileUrl,
         publicUrl: reserved.publicUrl,
         contentType,

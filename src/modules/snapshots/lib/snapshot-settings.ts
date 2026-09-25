@@ -13,7 +13,12 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
 import { clampKeep, DEFAULT_KEEP } from "@/modules/snapshots/lib/snapshots-plan";
-import { pruneSnapshots, snapshotsDir, takeSnapshot } from "@/modules/snapshots/lib/snapshots";
+import {
+  pruneWithFiles,
+  snapshotsDir,
+  takeSnapshotWithFiles,
+} from "@/modules/snapshots/lib/snapshots";
+import { localFilesDir } from "@/lib/storage/local";
 
 const SNAPSHOT_KEEP_KEY = "snapshots:keep";
 const SNAPSHOT_ENABLED_KEY = "snapshots:enabled";
@@ -100,11 +105,18 @@ export async function databaseBytes(): Promise<number | null> {
 export async function runSnapshot(opts: {
   supervisorDir: string;
   dbUrl: string;
-}): Promise<{ name: string; bytes: number; keep: number; removed: string[] }> {
+}): Promise<{
+  name: string;
+  bytes: number;
+  keep: number;
+  removed: string[];
+  files: number | null;
+}> {
   const keep = await readSnapshotKeep();
   const dir = snapshotsDir(opts.supervisorDir);
-  const { name, bytes } = await takeSnapshot({ dbUrl: opts.dbUrl, dir });
-  return { name, bytes, keep, removed: pruneSnapshots(dir, keep) };
+  const filesDir = localFilesDir(opts.supervisorDir);
+  const { name, bytes, files } = await takeSnapshotWithFiles({ dbUrl: opts.dbUrl, dir, filesDir });
+  return { name, bytes, keep, removed: await pruneWithFiles(dir, keep, filesDir), files };
 }
 
 /**
