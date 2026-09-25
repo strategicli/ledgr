@@ -12,7 +12,9 @@ import { resolveMentions } from "@/lib/mentions";
 import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
-import { addShareTokenToAttachmentUrls } from "@/lib/attachment-url";
+import { addShareTokenToAttachmentUrls, attachmentUrlWithShare } from "@/lib/attachment-url";
+import { listAttachments } from "@/lib/attachments";
+import { previewAudioId } from "@/lib/preview-audio";
 import { getSettings } from "@/lib/settings";
 import { isItemBody, MARKDOWN_FORMAT } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
@@ -91,7 +93,21 @@ export async function GET(
   const whose = escaped
     ? `${escaped}${/s$/i.test(escaped) ? "'" : "'s"} Ledgr`
     : "Ledgr";
+  // The item's preview track, if it has one (a song's recording). Only honored
+  // when it is still an audio attachment of THIS item: the files route would
+  // refuse anything else for this token anyway, and a deleted file should drop
+  // the player rather than leave a dead one on the page.
+  const audioId = previewAudioId(shared.properties);
+  const track = audioId
+    ? (await listAttachments(shared.ownerId, shared.itemId)).find(
+        (a) => a.id === audioId && /^audio\//i.test(a.contentType)
+      )
+    : undefined;
+
   const html = renderPrintDocument(resolved.title, shareBody, {
+    audio: track
+      ? { src: attachmentUrlWithShare(track.id, token), label: track.filename }
+      : undefined,
     footerHtml: `Shared from ${whose} · read-only`,
     mentions,
     // So an accent highlight in the body renders in the owner's color on a
