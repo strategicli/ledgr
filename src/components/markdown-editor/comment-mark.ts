@@ -19,11 +19,14 @@
 "use client";
 
 import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
+import Code from "@tiptap/extension-code";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
 import { LIT_CLASS } from "./comment-hover";
-import { sanitizeNote } from "@/lib/editor/comment-markdown";
+import { tidyEditorComments, sanitizeNote } from "@/lib/editor/comment-markdown";
+
+type JsonMarked = { type?: string; marks?: { type: string; attrs?: { note?: unknown } }[] };
 
 // Fired on the editor root when the user clicks a comment's margin card (its
 // speech-bubble icon on a narrow viewport, which is the same element). The host
@@ -61,6 +64,49 @@ export const Comment = Mark.create({
 
   parseHTML() {
     return [{ tag: "span.cmt" }];
+  },
+
+  // One comment across a chip saves as ONE pair (Brandon, 2026-09-25).
+  // @tiptap/markdown closes every open mark before an inline atom (mention,
+  // passage, image) and reopens it after, rendering the atom bare, so the comment
+  // came out as two pairs with the chip uncommented between them. Wrap a commented
+  // atom in its own pair, then join zero-gap same-note pairs on the way out.
+  // Same manager-patching discipline as MarkdownEscapeFix: onBeforeCreate, and
+  // this mark registers after Markdown.
+  onBeforeCreate() {
+    const mgr = (this.editor as unknown as { markdown?: Record<string, unknown> }).markdown;
+    if (!mgr) return;
+    const renderNode = mgr.renderNodeToMarkdown as ((...a: unknown[]) => string) | undefined;
+    const serialize = mgr.serialize as ((...a: unknown[]) => string) | undefined;
+    const encode = mgr.encodeTextForMarkdown as ((...a: unknown[]) => string) | undefined;
+    if (typeof renderNode !== "function" || typeof serialize !== "function" || typeof encode !== "function") return;
+    const boundRender = renderNode.bind(mgr);
+    const boundSerialize = serialize.bind(mgr);
+    const boundEncode = encode.bind(mgr);
+    // A soft break (a bare newline inside one paragraph) lives INSIDE the text
+    // node, between the pair's opening and closing, so a comment across it saved
+    // as one pair holding a newline — which neither the read view nor the
+    // tokenizer above can read back (both single-line by contract), so it
+    // reloaded as literal text. Close and reopen the pair at every such newline.
+    //
+    // ponytail: a bold/italic run that itself crosses the soft break keeps its
+    // delimiters on either side of the pair boundary, which won't reparse as bold.
+    // Rare; the fix is closing and reopening those marks per line too.
+    mgr.encodeTextForMarkdown = (text: string, node: JsonMarked, ...rest: unknown[]) => {
+      const out = boundEncode(text, node, ...rest);
+      const mark = node?.marks?.find((m) => m.type === "comment");
+      if (!mark || !out.includes("\n")) return out;
+      const note = sanitizeNote(String(mark.attrs?.note ?? ""));
+      return out.replace(/\n/g, `==}{>>${note}<<}\n{==`);
+    };
+    mgr.renderNodeToMarkdown = (node: JsonMarked, ...rest: unknown[]) => {
+      const out = boundRender(node, ...rest);
+      const mark = node?.type !== "text" && node?.type !== "hardBreak"
+        ? node?.marks?.find((m) => m.type === "comment")
+        : undefined;
+      return mark ? `{==${out}==}{>>${sanitizeNote(String(mark.attrs?.note ?? ""))}<<}` : out;
+    };
+    mgr.serialize = (...a: unknown[]) => tidyEditorComments(boundSerialize(...a));
   },
 
   renderHTML({ HTMLAttributes }) {
@@ -106,8 +152,29 @@ export const Comment = Mark.create({
   parseMarkdown(token, helpers) {
     // tokenizeInline is always present at runtime; the type marks it optional.
     const inner = helpers.parseInline(helpers.tokenizeInline?.(token.inner) ?? []);
-    return helpers.applyMark("comment", inner, { note: token.note });
+    // applyMark only marks TEXT nodes, so a chip inside the range would load
+    // uncommented and split the comment on the next save. Mark the atoms here.
+    const mark = { type: "comment", attrs: { note: token.note } };
+    const marked = inner.map((n) =>
+      n.type !== "text" && n.type !== "hardBreak" && !n.content
+        ? { ...n, marks: [...(n.marks ?? []), mark] }
+        : n
+    );
+    return helpers.applyMark("comment", marked, { note: token.note });
   },
+});
+
+// Inline code that a comment can sit on. Stock Code excludes EVERY other mark
+// ("_"), so a comment dragged across `a line with code in it` skipped the code
+// and saved as two comments either side of it (Brandon, 2026-09-25). This keeps
+// code exclusive of every formatting mark (backticks render their content raw, so
+// bold inside code would be literal asterisks) but lets the comment through.
+// Registered in place of StarterKit's (`code: false` there).
+//
+// ponytail: a named list, so a formatting mark added later is allowed on code
+// until it's added here. PM has no "all but X" form for excludes.
+export const CommentableCode = Code.extend({
+  excludes: "bold italic strike underline link textColor highlight slide",
 });
 
 // The margin card for one comment: the same `.cmt-note` element renderComments()
@@ -169,7 +236,9 @@ function commentRuns(doc: PMNode): CommentRun[] {
     }
     const mark: PMMark | undefined = node.marks.find((m) => m.type.name === "comment");
     if (!mark) {
-      open = null;
+      // Whitespace, or a trailing block anchor (` ^id`, kept outside the pair on
+      // purpose), is scaffolding too: the read view's gap test agrees.
+      if (!(node.isText && /^\s*(\^[a-z0-9]{4,})?\s*$/.test(node.text ?? ""))) open = null;
       return false;
     }
     const note = String(mark.attrs.note ?? "");
