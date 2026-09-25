@@ -446,10 +446,13 @@ Build your own kinds of item at \`/build/types\`.
   groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off
   hides its type from quick capture, "+ New" and an assistant's list of types.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
-  transcripts, the Notification center (paused) and Scripture passages (on by
+  transcripts, the Notification center (paused), Scripture passages (on by
   default: a Bible reference in a body becomes a link to that passage's page;
-  switched off, new references stop linking). **Todoist** (off by default)
-  syncs tasks both ways with a Todoist account, on a copy set up for it. A module that is off also drops
+  switched off, new references stop linking), **Todoist** (off by default:
+  syncs tasks both ways with a Todoist account, on a copy set up for it) and
+  Sharing (on by default: the Share link control and the assistant's share
+  tools; switched off, the control is gone and every existing link stops
+  opening until you turn it back on). A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module

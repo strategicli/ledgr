@@ -281,7 +281,7 @@ registerModule({
 });
 check("a module's tools resolve to that module", ["fake_read", "fake_write"].every((n) => moduleOwningTool(n)?.id === "fake-tools"));
 check("a core tool resolves to no module", moduleOwningTool("search_items") === undefined);
-check("the share tools stay core", ["share_item", "list_share_links", "revoke_share_link"].every((n) => !moduleOwningTool(n)));
+check("sharing owns the share tools", ["share_item", "list_share_links", "revoke_share_link"].every((n) => moduleOwningTool(n)?.id === "sharing"));
 check("ai-memory owns the memory tools", ["get_memory_stumps", "remember"].every((n) => moduleOwningTool(n)?.id === "ai-memory"));
 check("live-context owns the context tools", ["get_active_context", "edit_item_body"].every((n) => moduleOwningTool(n)?.id === "live-context"));
 const onlyFake = (id: string) => id === "fake-tools";
@@ -342,18 +342,21 @@ const toolHrefs = (off: string[]) => buildDestOptions([], [], [], false, off).fi
 check("the picker offers an enabled module's Build page", toolHrefs([]).includes("/build/memory"));
 check("the picker drops a switched-off module's Build page", !toolHrefs(["ai-memory"]).includes("/build/memory"));
 
-// publicPaths: the Todoist webhook moved off the core list onto its manifest
-// (step 4), so the merged list is the same set with that path last.
+// publicPaths: the proxy's merged list is the same set it always was. Todoist
+// (step 4) moved "/api/todoist/webhook" and sharing moved "/share(.*)" off the
+// core list onto their manifests, so both now come from modulePublicPaths().
 check("the Todoist webhook comes from the module list", modulePublicPaths().includes("/api/todoist/webhook"));
+check("sharing declares the share page's public path", JSON.stringify(allModules().find((m) => m.id === "sharing")?.publicPaths) === JSON.stringify(["/share(.*)"]));
 const TODAY_PUBLIC = [
   "/sign-in(.*)", "/api/machine(.*)", "/api/mcp(.*)", "/.well-known/(.*)",
   "/api/oauth/protected-resource", "/api/oauth/authorization-server", "/api/oauth/register",
-  "/api/oauth/token", "/share(.*)", "/api/ics(.*)", "/files/(.*)", "/capture/share",
-  "/api/todoist/webhook",
+  "/api/oauth/token", "/api/ics(.*)", "/files/(.*)", "/capture/share",
+  ...modulePublicPaths(),
 ];
 const proxySrc = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
 const coreBlock = proxySrc.match(/const CORE_PUBLIC_ROUTES = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const corePublic = [...coreBlock.replace(/\/\/.*$/gm, "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+check("/share is no longer on the proxy's core list", !corePublic.includes("/share(.*)"));
 check(
   "proxy's merged public list equals today's list exactly",
   JSON.stringify([...corePublic, ...modulePublicPaths()]) === JSON.stringify(TODAY_PUBLIC),
@@ -444,6 +447,30 @@ check("the passage page calls the gate", passagePage.includes('pageGate(owner.id
   for (const r of ["src/app/api/todoist/sync/route.ts", "src/app/api/todoist/webhook/route.ts"]) {
     check(`${r} calls routeGate for todoist`, readFileSync(new URL(`../${r}`, import.meta.url), "utf8").includes('routeGate(owner'));
   }
+}
+// --- 10. step 4: sharing lives under src/modules/sharing ---------------------
+{
+const { existsSync } = await import("node:fs");
+const sharing = allModules().find((m) => m.id === "sharing");
+check("sharing is a registered module, on by default", !!sharing && sharing.enabledByDefault === true && moduleOn({ modules: {} }, "sharing"));
+check("sharing adds no item types", sharing?.types.length === 0);
+check("sharing names its three tools", JSON.stringify(sharing?.mcpTools?.names) === JSON.stringify(["share_item", "list_share_links", "revoke_share_link"]));
+check(
+  "sharing's server.ts attaches exactly those tool definitions",
+  JSON.stringify(sharing?.mcpTools?.tools?.map((x) => x.name)) === JSON.stringify(sharing?.mcpTools?.names)
+);
+const sharingRoutes = sharing?.routes ?? [];
+check("sharing lists its route files", sharingRoutes.length === 2);
+for (const r of sharingRoutes) {
+  check(`route file exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+}
+check("sharing is off -> the share page's switch reads off", !moduleOn({ modules: { sharing: false } }, "sharing"));
+const gate = await import("../src/lib/modules/gate");
+check("the gate exports moduleIsOn, routeGate and pageGate", ["moduleIsOn", "routeGate", "pageGate"].every((k) => typeof (gate as Record<string, unknown>)[k] === "function"));
+for (const r of sharingRoutes) {
+  const src = readFileSync(new URL(`../${r}`, import.meta.url), "utf8");
+  check(`route calls the gate: ${r}`, /from "@\/lib\/modules\/gate"/.test(src));
+}
 }
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);

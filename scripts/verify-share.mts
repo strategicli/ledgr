@@ -15,7 +15,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, users } = await import("../src/db/schema");
-const { createShareToken, listShareTokens, revokeShareToken, resolveShareToken } = await import("../src/lib/share");
+const { createShareToken, listShareTokens, revokeShareToken, resolveShareToken } = await import("../src/modules/sharing/lib/share");
 const { renderPrintDocument } = await import("../src/lib/print-html");
 const { makeMarkdownBody } = await import("../src/lib/body");
 const { eq } = await import("drizzle-orm");

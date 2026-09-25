@@ -34,7 +34,7 @@ Core is the code every module may import from. Modules never import each other's
 | The item model and its CRUD | `src/db/schema.ts` (the `users`, `types`, `items`, `relations`, `revisions`, `views`, `dashboards`, `templates`, `attachments`, `job_state`, `error_log`, `api_credentials` tables), `src/lib/items.ts`, `item-mutations.ts`, `relations*.ts`, `revisions*.ts`, `types.ts`, `views*.ts`, `dashboards*.ts`, `templates/` |
 | The body and its dialect | `src/lib/body*.ts`, `markdown-render.ts`, `body-text.ts`, `print-html.ts`, `src/components/markdown-editor/` |
 | Search, settings, owner scope, auth | `src/lib/search*.ts`, `settings.ts`, `owner.ts`, `auth/`, `src/proxy.ts` |
-| The module registry | `src/lib/modules.ts` (pure) and `src/lib/module-wiring.tsx` (the one file allowed to import module canvases) |
+| The module registry | `src/lib/modules.ts` (pure), `src/lib/module-wiring.tsx` (module canvases) and `src/lib/module-panels.tsx` (a module's panel on a core canvas), the only files allowed to import a module; `src/lib/modules/gate.ts` turns a disabled module's routes away |
 | The shells and default canvases | `src/app/layout.tsx`, `src/components/nav/`, `src/lib/build-nav.ts`, `src/app/items/[id]/`, `src/components/canvas/{ItemCanvas,MarkdownCanvas,LongformCanvas,TaskCanvas,EventCanvas,WidgetCanvas}.tsx` |
 | Storage and the offline fallback | `src/lib/storage/`, the export *engine* in `src/lib/export/engine.ts` (Save Offline is Sunday-proof, Principle 4; the OneDrive *target* is a module) |
 | Sync infrastructure | `src/lib/sync/`, the sync spine triggers, `supervisor/` (the process runner; the job *catalog* it reads becomes registry-fed in step 3) |
@@ -50,8 +50,8 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | Module | Today | Depends on | Chokepoints |
 |---|---|---|---|
 | songs, papers, mindmap, files | already registered | none | 0 |
-| themes | `THEMES` in `settings.ts` | none | 1 |
-| sharing | `lib/share.ts`, `/share/[token]`, 3 MCP tools | mcp door | proxy, canvas button, tools |
+| ~~themes~~ | stays core (see below) | | |
+| ~~sharing~~ | moved: `src/modules/sharing/` (manifest, `lib/share.ts`, `lib/mcp-tools.ts`, the Share control), routes gated | mcp door | none left |
 | youtube-transcripts | `lib/youtube/`, toggle in settings | jobs, link type | item-mutations (on-create hook), jobs |
 | todoist | `lib/todoist/`, 2 routes, 1 job | jobs | proxy (webhook), jobs, health |
 | email-capture | `lib/email/`, 1 job | jobs | jobs, health |
@@ -66,6 +66,8 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | agent | `lib/agent/`, 4 tables, 11 routes, sidebar | mcp tools, ai-memory (optional) | layout, settings, jobs (purge) |
 | mcp-tools (per family) | 16 files under `lib/mcp/tools/` | mcp door | `tools/index.ts`, `agent/tools.ts` tiers |
 | notification-center | `NOTIFICATION_CENTER_ENABLED = false` | push | nav |
+
+**Why themes stays core (step 4, 2026-09-24).** Themes has no routes, jobs, tools or data of its own, and nothing to turn off: "themes off" could only mean "everyone sees Dark", which is the Dark button that is already there. The theme is also read by core, not by a feature: `layout.tsx` sets `data-theme` and the title-bar color, the print view and every share link open in it, and `settings.ts` validates it. A module switch would make each of those ask the registry before reading one setting, for no gain to the owner. So the theme sits with Display density and Section style as an ordinary core preference on `/settings`.
 
 **Known leaks the fence will catch once code moves** (core importing feature code today): `src/lib/health.ts` imports nine feature areas; `item-mutations.ts` calls passages and YouTube directly; `layout.tsx` mounts the agent panel and the Desk menu unconditionally; `settings.ts` imports `desk/layout` and `job-owners`. These are the debt step 3 retires, and the ESLint rule is written so it passes today and starts failing as each module moves under `src/modules/`.
 

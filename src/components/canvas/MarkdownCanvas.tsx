@@ -23,7 +23,7 @@ import CustomProperties from "@/components/build/CustomProperties";
 import ImageBox from "@/components/build/ImageBox";
 import { imageUrl, personImage } from "@/lib/person-image";
 import SaveOffline from "@/components/canvas/SaveOffline";
-import ShareLink from "@/components/canvas/ShareLink";
+import { ModuleItemPanel } from "@/lib/module-panels";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import ItemFilesSection from "@/components/attachments/ItemFilesSection";
@@ -58,7 +58,7 @@ import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { parseRecurrence } from "@/lib/recurrence";
 import { appTodayYmd } from "@/lib/recurrence-service";
-import type { CanvasProps } from "@/lib/modules";
+import { isModuleEnabled, type CanvasProps } from "@/lib/modules";
 
 export default async function MarkdownCanvas({ item, ownerId, arrange = false }: CanvasProps) {
   // A locked item (items.properties.locked, set from the canvas "⋯" menu)
@@ -254,7 +254,10 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       if (id === "discover")
         return <DiscoverPanel itemId={item.id} anchorTitle={item.title} bare />;
       if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
-      if (id === "share") return <ShareLink itemId={item.id} />;
+      // The sharing module's control (ADR-272 step 4). Checked here too so a
+      // switched-off module leaves no empty "Share" card in the grid.
+      if (id === "share")
+        return isModuleEnabled("sharing", ownerId) ? <ModuleItemPanel id="share" itemId={item.id} /> : null;
       if (id === "history")
         return <HistoryPanel itemId={item.id} currentText={bodyMarkdown(item.body)} />;
       if (id === "meta") return metaNode;

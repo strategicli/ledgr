@@ -25,9 +25,10 @@ const eslintConfig = defineConfig([
   // code every module may import from; core never imports a module. Files in
   // the core paths below may not import from `src/modules/**`. The rule passes
   // today because `src/modules/` is empty and starts failing as each module
-  // moves there (plan step 4). `module-wiring.tsx` is the one deliberate
-  // exception: it is the impure half of the registry that maps canvas ids to
-  // module components, so it is left out of the fenced set.
+  // moves there (plan step 4). `module-wiring.tsx` and `module-panels.tsx` are
+  // the deliberate exceptions: they are the impure half of the registry that
+  // maps canvas ids and item-panel ids to module components, so they are left
+  // out of the fenced set.
   {
     files: [
       "src/db/**",
