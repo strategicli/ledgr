@@ -26,11 +26,11 @@ import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
-// not yet modules (step 4): push, sync, tasks adapter, transcription adapter.
+// not yet modules (step 4): push, sync, tasks adapter.
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
-import { transcriptionAdapter, type TranscriptionAdapterId } from "@/lib/transcription/provider";
+import type { TranscriptionAdapterId } from "@/modules/meeting-transcripts/lib/provider";
 
 export type DatabaseCheck =
   | { ok: true; latencyMs: number }
@@ -237,6 +237,8 @@ export async function gatherHealth(): Promise<HealthReport> {
   const em = modules["email-capture"] as SyncCanaryShape;
   // Relatedness likewise (step 4): its last nightly run, null while it is off.
   const rel = modules.relatedness as { lastRunAt?: string | null } | undefined;
+  // Meeting transcripts likewise: its active adapter, "none" while it is off.
+  const mt = modules["meeting-transcripts"] as { adapter?: TranscriptionAdapterId } | undefined;
 
   return {
     status: database.ok ? "ok" : "degraded",
@@ -248,7 +250,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastCalendarSyncAt: cal?.lastSyncAt ?? null,
       lastCalendarRunAt: cal?.lastRunAt ?? null,
       tasksAdapter: tasksAdapter(),
-      transcription: transcriptionAdapter(),
+      transcription: mt?.adapter ?? "none",
       lastTodoistSyncAt: td?.lastSyncAt ?? null,
       lastTodoistRunAt: td?.lastRunAt ?? null,
       lastEmailImportAt: em?.lastSyncAt ?? null,

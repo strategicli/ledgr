@@ -21,8 +21,8 @@ import {
   transcriptToMarkdown,
   type TranscriptionProvider,
   type TranscriptionStatus,
-} from "@/lib/transcription/provider";
-import { createTranscript } from "./transcripts";
+} from "@/modules/meeting-transcripts/lib/provider";
+import { createTranscript } from "@/lib/meetings/transcripts";
 
 // Per-transcript transcription state, stored at properties.transcription. Written
 // whole each time (propertyPatch shallow-merges the top-level `transcription` key).

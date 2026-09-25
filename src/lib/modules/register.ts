@@ -29,6 +29,7 @@ import { deskModule } from "@/modules/desk/manifest";
 import { agentModule } from "@/modules/agent/manifest";
 import { aiMemoryModule } from "@/modules/ai-memory/manifest";
 import { liveContextModule } from "@/modules/live-context/manifest";
+import { meetingTranscriptsModule } from "@/modules/meeting-transcripts/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -53,6 +54,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   relatednessModule,
   deskModule,
   agentModule,
+  meetingTranscriptsModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

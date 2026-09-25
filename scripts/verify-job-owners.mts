@@ -355,10 +355,10 @@ ok("a job whose module is off stands down, even on its owner", () => {
 });
 
 ok("a job with no module is unaffected by switched-off modules", () => {
-  const everything = ["youtube-transcripts", "agent", "todoist", "onedrive-export"];
-  assert.equal(jobModuleOff("transcription-poll", everything), false);
+  const everything = ["youtube-transcripts", "meeting-transcripts", "agent", "todoist", "onedrive-export"];
+  assert.equal(jobModuleOff("health-check", everything), false);
   assert.deepEqual(
-    shouldRunHere({ owners: {}, job: "transcription-poll", selfDeviceId: "dev-cloud", offModules: everything }),
+    shouldRunHere({ owners: {}, job: "health-check", selfDeviceId: "dev-cloud", offModules: everything }),
     { run: true, reason: "unset" }
   );
 });

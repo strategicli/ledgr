@@ -14,8 +14,8 @@ import { resolveMachineOwner } from "@/lib/machine/owner";
 import {
   advanceTranscription,
   listPendingTranscriptions,
-} from "@/lib/meetings/transcription-service";
-import { getTranscription } from "@/lib/transcription/provider";
+} from "@/modules/meeting-transcripts/lib/transcription-service";
+import { getTranscription } from "@/modules/meeting-transcripts/lib/provider";
 import { captureError, createLogger } from "@/lib/log";
 
 export const dynamic = "force-dynamic";

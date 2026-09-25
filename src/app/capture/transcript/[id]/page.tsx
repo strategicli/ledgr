@@ -10,6 +10,7 @@ import {
 import TranscriptMeetingPicker from "@/components/capture/TranscriptMeetingPicker";
 import ShareOtherOptions from "@/components/capture/ShareOtherOptions";
 import { looksLikeTranscript } from "@/lib/capture/share";
+import { moduleIsOn } from "@/lib/modules/gate";
 
 // The share screen for a text file, or a long text, shared in from Android.
 // /capture/share already saved it as an inbox transcript and sent the owner
@@ -45,13 +46,16 @@ export default async function TranscriptSharePicker({
     redirect(`/items/${transcript.id}`);
   }
 
-  const meetings = await listRecentMeetingsForPicker(owner.id);
+  // With meeting transcripts off, the share screen still saves the text as a
+  // note or leaves it in the Inbox; only "add to a meeting" goes away.
+  const meetingsOn = await moduleIsOn(owner.id, "meeting-transcripts");
+  const meetings = meetingsOn ? await listRecentMeetingsForPicker(owner.id) : [];
   const text = (transcript.bodyText ?? "").trim();
   const wordCount = text ? text.split(/\s+/).length : 0;
   const preview = text.length > 280 ? `${text.slice(0, 280)}…` : text;
-  const transcriptFirst = looksLikeTranscript(text);
+  const transcriptFirst = meetingsOn && looksLikeTranscript(text);
 
-  const meetingSection = (
+  const meetingSection = meetingsOn && (
     <section className="mt-6">
       <h2 className="text-sm font-medium text-neutral-300">
         {transcriptFirst ? "Add this transcript to a meeting" : "Or add it to a meeting as a transcript"}

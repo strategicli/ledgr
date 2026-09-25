@@ -5,6 +5,7 @@
 // to the meeting, where the transcript now shows in the Transcripts panel.
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
+import { routeGate } from "@/lib/modules/gate";
 import { ItemError } from "@/lib/items";
 import { createItem } from "@/lib/item-mutations";
 import { attachTranscriptToMeeting } from "@/lib/meetings/transcripts";
@@ -16,6 +17,8 @@ type Context = { params: Promise<{ id: string }> };
 export async function POST(request: Request, context: Context) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "meeting-transcripts");
+  if (off) return off;
 
   try {
     const transcriptId = asUuid((await context.params).id, "id");
