@@ -34,10 +34,11 @@ Left over from step 1:
   Neon database.
 
 Step 2 (files on local disk) landed. Step 3 (private access through the bundled
-Tailscale helper, ADR-276, runbook §1q) landed. Next: **step 5, Funnel** ("Make this
-reachable from the internet" on the Tailscale module's options): one more listener in
-`tailnet/main.go` (`ListenFunnel`) behind a flag the supervisor passes, refused unless
-sign-in is required; bump `tailnet/release.json` and tag a new `tailnet-v` release.
+Tailscale helper, ADR-276, runbook §1q) landed. Step 5 (public access through Tailscale
+Funnel, only behind sign-in, ADR-278) landed. Left over from step 5: once
+`settings.publicUrl` (ADR-277, the cloud-copy work) is on `main`, have the Funnel panel
+offer to set it to the Funnel address, and clear it on Funnel-off only if it still holds
+that address, so share links and the MCP share tool use it.
 
 ## 🟢 IN FLIGHT — core and modules (ADR-272, started 2026-09-24)
 

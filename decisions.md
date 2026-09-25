@@ -4860,3 +4860,20 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Checks.** `scripts/verify-tailnet.mts` (pure, in CI): platform choice, the checksum gate, the machine name, status parsing on both halves, the Network ordering.
 
 **Affects:** `tailnet/`, `.github/workflows/tailnet-release.yml`, `supervisor/{tailnet.mjs,ledgr-supervisor.mjs}`, `src/modules/tailscale/`, `src/app/api/tailscale/`, `src/app/api/machine/tailscale/`, `src/lib/module-panels.tsx`, `src/lib/modules/register.ts`, `src/lib/network-addresses.ts`, the Network page, `package.json` (`uqr`, a zero-dependency QR encoder, for the phone QR code), runbook, user guide.
+
+## ADR-278: public access through Tailscale Funnel, only behind sign-in
+
+**Date:** 2026-09-25
+**Status:** accepted (install plan step 5, "Funnel, one click").
+
+**Context.** ADR-276 made a local install reachable on the owner's tailnet. Share links opened by other people and the claude.ai connector come from outside any tailnet, so a self-hosted hub also needs a public address. Tailscale Funnel gives one with no domain, no router change and no second account. It also puts Ledgr on the open internet, which a copy with no sign-in must never be.
+
+**Decision.**
+1. **One switch on the module's panel**, `tailscale:funnel` in `job_state` (per computer, never synced). The helper is restarted with `-funnel` and serves the same `:443` through `ListenFunnel`, which answers both the tailnet and the internet. Same keys, so turning it on or off needs no new Tailscale sign-in.
+2. **Refused unless the install requires sign-in** (Clerk keys, or the built-in password switched on), checked on two independent sides: the app refuses the request and never tells the supervisor `funnel: true` without it (and forgets the request when sign-in goes away, so turning sign-in back on does not silently reopen it); the supervisor passes `-funnel` only when its own reading of sign-in agrees (the one that already decides whether the app listens beyond 127.0.0.1, ADR-275), and closes Funnel on its 2-second beat when that reading changes. Bypassing either side alone cannot publish a Ledgr with no sign-in.
+3. **A tailnet that refuses Funnel is explained, not guessed at.** The helper stays private and reports `funnel: "unavailable"`, a message in words, and one fix link: Tailscale's own "enable Funnel" link from the node's `QueryFeature`, or the DNS page when HTTPS certificates are off. No Tailscale API key is asked for or held.
+4. **The address is the tailnet name** (`https://ledgr-<computer>.<tailnet>.ts.net`). The Network page lists it as the public address while Funnel is on, unless the install already names one in `NEXT_PUBLIC_APP_URL`. Share links and the MCP share tool are not pointed at it yet: the one synced public-address setting they will use (`settings.publicUrl`, ADR-277) was not on `main` when this shipped, and a second setting would be worse than the gap.
+
+**Checks.** `scripts/verify-tailnet.mts`: public access only when both sides say sign-in is required, and the Funnel status fields parse with only Tailscale fix links let through.
+
+**Affects:** `tailnet/main.go` (helper 0.2.0), `supervisor/{tailnet.mjs,ledgr-supervisor.mjs}`, `src/modules/tailscale/`, `src/app/api/tailscale/`, `src/app/api/machine/tailscale/`, the Network page, runbook §1q, user guide.
