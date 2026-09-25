@@ -116,8 +116,9 @@ export function DisconnectButton({ label = "Disconnect" }: { label?: string }) {
           role="tooltip"
           className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 rounded-card border border-neutral-700 bg-neutral-900 p-2 text-xs normal-case text-ink-muted opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
         >
-          Takes this Ledgr off your Tailscale network and removes it from your list of devices. Your other devices
-          stop reaching it at the private address. Nothing in Ledgr is deleted, and you can connect again any time.
+          Signs this Ledgr out of your Tailscale network, so your other devices stop reaching it at the private
+          address. Tailscale still lists it as an offline device; remove it there if you like. Nothing in Ledgr is
+          deleted, and you can connect again any time.
         </span>
       </span>
       {error && <p className="ui-meta mt-1 text-ink-subtle">{error}</p>}

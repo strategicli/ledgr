@@ -1739,9 +1739,11 @@ needs no Tailscale app, and a Tailscale app already installed here is left
 alone. Only devices signed in to your Tailscale account can open the address;
 nothing is put on the public internet. It uses HTTPS, which your tailnet must
 allow (HTTPS Certificates in the Tailscale admin console, on by default for new
-tailnets; the page says so if it is off). **Disconnect** takes this Ledgr off
-your Tailscale network and removes it from your devices; nothing in Ledgr is
-deleted. The switch is per computer: each computer running Ledgr connects on
+tailnets; the page says so if it is off). **Disconnect** signs this Ledgr out of
+your Tailscale network, so the private address stops answering; nothing in
+Ledgr is deleted. Tailscale keeps listing it as an offline device until you
+remove it in the Tailscale admin console (Machines); remove it before
+connecting again if you want the same name back. The switch is per computer: each computer running Ledgr connects on
 its own.
 
 - **How long a device's history is kept.** For another device to reconnect and

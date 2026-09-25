@@ -49,6 +49,20 @@ export default async function TailscaleSettingsPanel() {
           </Tip>{" "}
           as a device of its own. This computer does not need the Tailscale app.
         </p>
+        {status?.state === "signed-out" && (
+          <p className="ui-meta text-ink-subtle">
+            Disconnected. Tailscale still lists this Ledgr as an offline device.{" "}
+            <a
+              href="https://login.tailscale.com/admin/machines"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-ink"
+            >
+              Remove it in Tailscale
+            </a>{" "}
+            if you are done with it, or before connecting again to keep the same name.
+          </p>
+        )}
         <ConnectButton />
       </div>
     );
