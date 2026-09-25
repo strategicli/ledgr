@@ -275,7 +275,9 @@ ok("the code fingerprint changes when the code does, and only then", () => {
 
 ok("the running fingerprint is taken once, the installed one every write", () => {
   const sup = readFileSync("supervisor/ledgr-supervisor.mjs", "utf8");
-  assert.ok(sup.includes("const RUNNING_CODE = installedCodeFingerprint();"));
+  // Of the files this process loaded (`here`); the installed one is whatever the
+  // next start would load, which for a package is the serving build's (ADR-278).
+  assert.ok(sup.includes("const RUNNING_CODE = installedCodeFingerprint(here);"));
   // Inside writeSupervisorState, so it re-reads from disk on every write —
   // that is what makes "an update landed under me" appear without a restart.
   const fn = sup.slice(sup.indexOf("function writeSupervisorState("), sup.indexOf("// ── The app child"));

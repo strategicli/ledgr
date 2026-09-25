@@ -21,11 +21,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   cpSync,
+  createWriteStream,
   existsSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -99,9 +101,26 @@ import {
   appListenHost,
   effectiveEnv,
   installSecretsPath,
-  nextStartArgs,
   planInstallSecrets,
+  appCommand,
+  extractCommand,
+  nodeFor,
+  packageRootOf,
+  supervisorLaunch,
 } from "./lib.mjs";
+import {
+  PACKAGE_INFO_FILE,
+  githubSlug,
+  manifestFileFor,
+  parseManifest,
+  parsePackageInfo,
+  pickNewestRelease,
+  platformKey,
+  shouldUpdate,
+  updateSourceOf,
+} from "./release.mjs";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -117,6 +136,18 @@ if (!existsSync(configPath)) {
   process.exit(1);
 }
 const cfg = normalizeConfig(JSON.parse(readFileSync(configPath, "utf8")), dirname(configPath));
+
+// A ready-made package (ADR-278) runs this file from its own supervisor/
+// folder, with ledgr-package.json one level up. A git clone has no such file,
+// and then nothing below behaves differently from before.
+function readPackageInfo(root) {
+  try {
+    return parsePackageInfo(readFileSync(join(root, PACKAGE_INFO_FILE), "utf8"));
+  } catch {
+    return null;
+  }
+}
+const OWN_PACKAGE = readPackageInfo(resolve(here, ".."));
 mkdirSync(cfg.dataDir, { recursive: true });
 mkdirSync(buildsDir(cfg.dataDir), { recursive: true });
 log("config loaded", { role: cfg.role, dataDir: cfg.dataDir, appPort: cfg.appPort, dbPort: cfg.dbPort, updateMode: cfg.update.mode });
@@ -449,13 +480,42 @@ async function startPostgres() {
       if (cleared) attempt = 0;
     }
   }
-  try {
-    await pg.createDatabase("ledgr");
-    log("created database ledgr");
-  } catch {
-    // already exists — the normal case after the first boot
-  }
+  await ensureLedgrDatabase();
   log("postgres up", { port: cfg.dbPort });
+}
+
+/**
+ * Create the `ledgr` database when the cluster has none (a brand-new install).
+ *
+ * This used to be `pg.createDatabase("ledgr")` in a try/catch that read every
+ * error as "already exists". But embedded-postgres only creates a database on a
+ * server IT spawned, and we start through pg_ctl, so the call always threw and
+ * a new install's first migrate failed on a database that was never made. The
+ * wizard's start-empty path made it, which is why only an install without the
+ * wizard (a package) hit this. Asked and answered directly now, and a real
+ * failure is reported instead of swallowed.
+ */
+async function ensureLedgrDatabase() {
+  const client = new PgClient({
+    host: "127.0.0.1",
+    port: cfg.dbPort,
+    user: "postgres",
+    password: "postgres",
+    database: "postgres",
+    connectionTimeoutMillis: 5000,
+  });
+  try {
+    await client.connect();
+    const have = await client.query("select 1 from pg_database where datname = 'ledgr'");
+    if (have.rowCount === 0) {
+      await client.query("create database ledgr");
+      log("created database ledgr");
+    }
+  } catch (err) {
+    log("could not check or create the ledgr database", { error: String(err?.message ?? err) });
+  } finally {
+    await client.end().catch(() => {});
+  }
 }
 
 // ── This supervisor's own identity and state (ADR-227) ───────────────────────
@@ -465,17 +525,29 @@ async function startPostgres() {
 // is on disk, and how did the last restart end. The third one matters most: the
 // process that would report "the successor never came up" is the one that went
 // away, so the record has to survive it.
-const SUPERVISOR_FILES = ["ledgr-supervisor.mjs", "lib.mjs", "tailnet.mjs"];
+const SUPERVISOR_FILES = ["ledgr-supervisor.mjs", "lib.mjs", "tailnet.mjs", "release.mjs"];
 
-function installedCodeFingerprint() {
+/** Where the next start would load the supervisor from (a package: the live build's). */
+function nextSupervisor() {
+  const p = livePointerPath(cfg.dataDir);
+  let liveDir = null;
   try {
-    return codeFingerprint(SUPERVISOR_FILES.map((n) => readFileSync(join(here, n), "utf8")));
+    liveDir = parseLivePointer(readFileSync(p, "utf8"))?.dir ?? null;
+  } catch {
+    // no live build yet
+  }
+  return supervisorLaunch({ here, execPath: process.execPath, liveDir, isWin, exists: existsSync });
+}
+
+function installedCodeFingerprint(dir = dirname(nextSupervisor().script)) {
+  try {
+    return codeFingerprint(SUPERVISOR_FILES.map((n) => readFileSync(join(dir, n), "utf8")));
   } catch {
     return null;
   }
 }
 
-const RUNNING_CODE = installedCodeFingerprint();
+const RUNNING_CODE = installedCodeFingerprint(here);
 const STARTED_AT = new Date().toISOString();
 
 /** The restart block carried forward across writes, so phases accumulate. */
@@ -583,7 +655,12 @@ async function desiredListenHost() {
 }
 
 function startApp(ptr) {
-  const nextBin = join(ptr.dir, "node_modules", "next", "dist", "bin", "next");
+  // A package build is Next's standalone server with its own Node (ADR-278);
+  // a git build is `next start` on the Node running this, exactly as before.
+  const pkgRoot = packageRootOf(ptr.dir, existsSync);
+  const standalone = existsSync(join(ptr.dir, "server.js"));
+  const cmd = appCommand(ptr.dir, cfg.appPort, listenHost, standalone);
+  const pgTools = pkgRoot ? join(pkgRoot, "pgtools") : null;
   const env = {
     ...process.env,
     // The branch the app is told about is the policy's, so Build → Updates
@@ -594,9 +671,15 @@ function startApp(ptr) {
       installSecrets: INSTALL_SECRETS,
       listenHost,
     }),
+    ...cmd.env,
+    // What the app needs to describe and apply updates the way this install
+    // takes them, and where a package keeps pg_dump / pg_restore.
+    LEDGR_INSTALL_KIND: OWN_PACKAGE ? "package" : "git",
+    ...(ptr.version ? { LEDGR_BUILD_VERSION: ptr.version } : {}),
+    ...(pgTools && existsSync(pgTools) ? { LEDGR_PG_BIN: pgTools } : {}),
   };
   const host = listenHost;
-  appChild = spawn(process.execPath, [nextBin, ...nextStartArgs(cfg.appPort, host)], {
+  appChild = spawn(nodeFor(pkgRoot, process.execPath, isWin, existsSync), cmd.args, {
     cwd: ptr.dir,
     env,
     stdio: ["ignore", "inherit", "inherit"],
@@ -678,17 +761,25 @@ function readPolicy() {
   return policyFromConfig(cfg, "");
 }
 
+/** "git" or "release": where updates come from, re-read with the policy every time. */
+function updateSource() {
+  return updateSourceOf(readPolicy().source, !!OWN_PACKAGE);
+}
+
 function seedPolicyIfMissing() {
   const p = updatePolicyPath(cfg.dataDir);
   if (existsSync(p)) return;
-  const seed = policyFromConfig(cfg, originUrl());
+  // A package has no git remote to read; it names the repo it was built from.
+  const seed = OWN_PACKAGE
+    ? policyFromConfig(cfg, OWN_PACKAGE.repo ? `https://github.com/${OWN_PACKAGE.repo}.git` : "", "release")
+    : policyFromConfig(cfg, originUrl());
   writeFileSync(p, serializeUpdatePolicy(seed), "utf8");
   log("update policy seeded from config", seed);
 }
 
 /** Point origin where the policy says, when they differ. Logged, never silent. */
 function applyPolicyRepo(policy) {
-  if (!policy.repo) return;
+  if (!policy.repo || updateSource() === "release") return;
   const cur = originUrl();
   if (!cur || cur === policy.repo) return;
   const r = git(["remote", "set-url", "origin", policy.repo]);
@@ -720,6 +811,10 @@ async function applyUpdate(reason, { fetch = true } = {}) {
   if (updating) return;
   updating = true;
   try {
+    if (updateSource() === "release") {
+      await applyPackageUpdate(reason, { fetch });
+      return;
+    }
     log("update starting", { reason, branch: readPolicy().branch });
     const target = targetSha({ fetch });
     if (!target.ok) {
@@ -810,6 +905,149 @@ async function applyUpdate(reason, { fetch = true } = {}) {
     }
   } finally {
     updating = false;
+  }
+}
+
+// ── Updating from a ready-made package (ADR-278) ─────────────────────────────
+//
+// The same keep-last-good shape as the git path above, with the build step
+// replaced by a download: find the channel's newest package, download it,
+// check its sha256 against the release's manifest, unpack it into a fresh
+// builds/<version>/, migrate from it, and only then flip live.json. Anything
+// that fails leaves the previous build serving and removes the attempt.
+
+/** The newest package for the channel this install follows, or {ok:false, error}. */
+async function findNewestPackage() {
+  const policy = readPolicy();
+  const repo = githubSlug(policy.repo) ?? OWN_PACKAGE?.repo ?? "strategicli/ledgr";
+  const token = effectiveEnv(cfg, process.env, "GITHUB_TOKEN");
+  // Testing escape hatch only: a scratch install can list releases from a local
+  // stand-in (runbook §1s). Never the way an install is pointed anywhere.
+  const api = process.env.LEDGR_RELEASES_API || "https://api.github.com";
+  try {
+    const res = await fetch(`${api}/repos/${repo}/releases?per_page=100`, {
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": "ledgr-supervisor",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) return { ok: false, error: `GitHub answered HTTP ${res.status} listing ${repo}'s releases` };
+    const newest = pickNewestRelease(await res.json(), policy.branch);
+    if (!newest) return { ok: false, error: `no ready-made package has been published for ${policy.branch} yet` };
+    return { ok: true, repo, channel: policy.branch, release: newest };
+  } catch (err) {
+    return { ok: false, error: `could not reach GitHub: ${String(err?.message ?? err)}` };
+  }
+}
+
+/** Stream a download to `file`, refusing it unless its sha256 is exactly `sha256`. */
+async function downloadVerified(url, file, sha256) {
+  const res = await fetch(url, { headers: { "user-agent": "ledgr-supervisor" }, signal: AbortSignal.timeout(30 * 60_000) });
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} downloading ${url}`);
+  const hash = createHash("sha256");
+  const part = `${file}.part`;
+  const tap = new Transform({
+    transform(chunk, _enc, done) {
+      hash.update(chunk);
+      done(null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(res.body), tap, createWriteStream(part));
+  const got = hash.digest("hex");
+  if (got !== sha256) {
+    unlinkSync(part);
+    throw new Error(`checksum mismatch (got ${got.slice(0, 12)}…, the manifest says ${sha256.slice(0, 12)}…); refusing it`);
+  }
+  renameSync(part, file);
+}
+
+async function applyPackageUpdate(reason, { fetch: online }) {
+  const live = liveBuild();
+  // A packaged install's very first start serves the package it was installed
+  // from: no network needed, and nothing to download.
+  if (!live && OWN_PACKAGE && !online) {
+    log("first run: serving the package this install came from", { version: OWN_PACKAGE.version });
+    await adoptPackage(resolve(here, ".."), OWN_PACKAGE, { downloaded: false });
+    return;
+  }
+  const found = await findNewestPackage();
+  if (!found.ok) {
+    log("update FAILED: could not find a package", { reason, error: found.error });
+    return;
+  }
+  const { release } = found;
+  if (!shouldUpdate(live?.version ?? null, release.version)) {
+    if (reason !== "auto poll") log("already serving the newest package; nothing to do", { version: live?.version });
+    return;
+  }
+  log("package update starting", { reason, channel: found.channel, from: live?.version ?? live?.sha?.slice(0, 7), to: release.version });
+
+  const key = platformKey(process.platform, process.arch);
+  const dir = join(buildsDir(cfg.dataDir), release.version);
+  const archive = `${dir}.download`;
+  try {
+    const mres = await fetch(release.manifestUrl, { headers: { "user-agent": "ledgr-supervisor" }, signal: AbortSignal.timeout(60_000) });
+    if (!mres.ok) throw new Error(`HTTP ${mres.status} downloading the manifest`);
+    const manifest = parseManifest(await mres.json());
+    if (manifest.version !== release.version || (release.commit && manifest.commit !== release.commit)) {
+      throw new Error("the manifest does not describe the release it came with");
+    }
+    const file = manifestFileFor(manifest, key);
+    if (!file || !release.assets[file.name]) throw new Error(`this package has no build for ${key}`);
+
+    log("downloading package", { file: file.name, mb: Math.round(file.size / 1e6) });
+    await downloadVerified(release.assets[file.name], archive, file.sha256);
+
+    if (existsSync(dir)) rmDirRetry(dir); // a previous failed attempt
+    mkdirSync(dir, { recursive: true });
+    const x = extractCommand(process.platform, archive, dir, process.env.SystemRoot);
+    const unpacked = run(x.cmd, x.args, { low: true });
+    if (!unpacked.ok) throw new Error(`unpacking failed: ${unpacked.stderr || unpacked.stdout}`);
+    const info = readPackageInfo(dir);
+    if (!info || info.version !== manifest.version || info.commit !== manifest.commit) {
+      throw new Error("the unpacked package does not say it is the version that was downloaded");
+    }
+    await adoptPackage(dir, info, { downloaded: true });
+  } catch (err) {
+    log("update FAILED: package (previous build keeps serving)", { error: String(err?.message ?? err) });
+    // Never the build that is serving: only an attempt that did not flip.
+    if (liveBuild()?.dir !== join(dir, "app")) rmDirBestEffort(dir);
+  } finally {
+    try {
+      unlinkSync(archive);
+    } catch {
+      // never written, or already gone
+    }
+  }
+}
+
+/** Migrate from a package's own scripts, then flip to it. Keep-last-good on any failure. */
+async function adoptPackage(root, info, { downloaded }) {
+  const appDir = join(root, "app");
+  const buildOk = existsSync(join(appDir, "server.js")) && existsSync(join(appDir, ".next"));
+  let migrateOk = false;
+  if (!buildOk) {
+    log("update FAILED: the package has no app to serve (previous build keeps serving)", { root });
+  } else {
+    log("migrating local database", { version: info.version });
+    const mig = run(nodeFor(root, process.execPath, isWin, existsSync), [join(root, "scripts", "migrate.mjs")], {
+      cwd: root,
+      stdio: ["ignore", "inherit", "inherit"],
+      env: { ...process.env, DATABASE_URL: buildDbUrl(cfg) },
+    });
+    migrateOk = mig.ok;
+    if (!migrateOk) log("update FAILED: migrate (previous build keeps serving)");
+  }
+  if (decideFlip({ buildOk, migrateOk }) === "flip") {
+    await stopApp();
+    writeFileSync(livePointerPath(cfg.dataDir), serializeLivePointer(appDir, info.commit, info.version));
+    log("flipped live pointer", { version: info.version, sha: info.commit.slice(0, 7) });
+    startApp({ dir: appDir, sha: info.commit, version: info.version });
+    pruneBuilds(info.version);
+  } else if (downloaded) {
+    rmDirBestEffort(root);
   }
 }
 
@@ -917,11 +1155,15 @@ setInterval(() => {
 const startupSignal = startupSignalPath(cfg.dataDir);
 
 function applyStartupRequest(req) {
-  const script = join(here, "ledgr-supervisor.mjs");
+  // A package install registers the folder it was installed into, never a
+  // builds/<version> folder that a later update prunes; `boot` then starts the
+  // supervisor of whichever build is serving (ADR-278).
+  const stableRoot = OWN_PACKAGE && existsSync(join(cfg.repoDir, PACKAGE_INFO_FILE)) ? cfg.repoDir : null;
+  const script = stableRoot ? join(stableRoot, "supervisor", "ledgr-supervisor.mjs") : join(here, "ledgr-supervisor.mjs");
   const args = req.enabled
     ? schtasksCreateArgs({
         username: process.env.USERNAME || process.env.USER || "",
-        nodePath: process.execPath,
+        nodePath: nodeFor(stableRoot, process.execPath, isWin, existsSync),
         supervisorScript: script,
         configPath,
         scope: req.scope,
@@ -1244,6 +1486,12 @@ setInterval(() => {
   if (!updateCheckDue(policy, lastUpdateCheckAt, Date.now())) return;
   lastUpdateCheckAt = Date.now();
   applyPolicyRepo(policy);
+  // A package install asks GitHub for the channel's newest package; applyUpdate
+  // does that check itself and does nothing when there is nothing newer.
+  if (updateSource() === "release") {
+    void applyUpdate("auto poll");
+    return;
+  }
   const target = targetSha();
   // Against what we are SERVING, not against the checkout's HEAD: "am I
   // running the branch's tip?" is the actual question, and the old form
@@ -1418,7 +1666,9 @@ let tailnet = null;
  * prompted all this took a foreground rerun to see.
  */
 function spawnSuccessor() {
-  const script = join(here, "ledgr-supervisor.mjs");
+  // A package install restarts into the supervisor of the build it now serves,
+  // which is how a package update delivers supervisor fixes (ADR-278).
+  const { node, script } = nextSupervisor();
   let out = "ignore";
   let err = "ignore";
   try {
@@ -1427,7 +1677,7 @@ function spawnSuccessor() {
   } catch {
     // no log files: still restart, just blind
   }
-  const child = spawn(process.execPath, [script, configPath], {
+  const child = spawn(node, [script, configPath], {
     detached: true,
     stdio: ["ignore", out, err],
     env: { ...process.env, [AWAIT_PID_ENV]: String(process.pid) },

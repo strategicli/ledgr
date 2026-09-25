@@ -59,6 +59,8 @@ import {
   serializeSigninReset,
   signinResetPath,
   SIGNIN_RESET_MINUTES,
+  nodeFor,
+  supervisorLaunch,
 } from "./lib.mjs";
 import { randomBytes } from "node:crypto";
 
@@ -326,7 +328,15 @@ async function doRestart() {
 }
 
 function spawnDetachedSupervisor() {
-  const script = join(here, "ledgr-supervisor.mjs");
+  // A package install starts the supervisor of the build it serves (ADR-278);
+  // a clone starts the one beside this file, as always.
+  const { node, script } = supervisorLaunch({
+    here,
+    execPath: process.execPath,
+    liveDir: liveBuild()?.dir ?? null,
+    isWin,
+    exists: existsSync,
+  });
   let out = "ignore";
   let err = "ignore";
   try {
@@ -336,7 +346,7 @@ function spawnDetachedSupervisor() {
     // still start it, just blind
   }
   try {
-    const child = spawn(process.execPath, [script, configPath], {
+    const child = spawn(node, [script, configPath], {
       detached: true,
       stdio: ["ignore", out, err],
       cwd: cfg.repoDir,
@@ -527,10 +537,13 @@ function doStartup() {
   }
 
   const scope = startupScope(wantAlways ? "always" : "logon");
+  // A package install registers the folder it was installed into, never a
+  // builds/<version> folder a later update prunes (ADR-278).
+  const stableRoot = existsSync(join(cfg.repoDir, "ledgr-package.json")) ? cfg.repoDir : null;
   const args = schtasksCreateArgs({
     username: process.env.USERNAME || process.env.USER || "",
-    nodePath: process.execPath,
-    supervisorScript: join(here, "ledgr-supervisor.mjs"),
+    nodePath: nodeFor(stableRoot, process.execPath, isWin, existsSync),
+    supervisorScript: stableRoot ? join(stableRoot, "supervisor", "ledgr-supervisor.mjs") : join(here, "ledgr-supervisor.mjs"),
     configPath,
     scope,
   });

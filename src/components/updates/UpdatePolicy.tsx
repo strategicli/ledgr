@@ -6,7 +6,7 @@
 // there is no restart and the form says so. The tray icon's Settings tab edits
 // the same file, for the owner sitting at the machine with no login.
 import { useState } from "react";
-import type { UpdatePolicy } from "@/lib/update-policy";
+import type { UpdatePolicy, UpdateSource } from "@/lib/update-policy";
 import { MAX_EVERY_MINUTES, MIN_EVERY_MINUTES } from "@/lib/update-policy";
 
 const button =
@@ -14,10 +14,18 @@ const button =
 const field =
   "rounded-card border border-line bg-surface-0 px-2 py-1 text-sm text-ink disabled:opacity-60";
 
-const DEFAULTS: UpdatePolicy = { mode: "auto", everyMinutes: 15, branch: "main", repo: "", updatedAt: null };
+const DEFAULTS: UpdatePolicy = { mode: "auto", everyMinutes: 15, branch: "main", repo: "", source: null, updatedAt: null };
 
-export default function UpdatePolicyForm({ initial }: { initial: UpdatePolicy | null }) {
+export default function UpdatePolicyForm({
+  initial,
+  effectiveSource,
+}: {
+  initial: UpdatePolicy | null;
+  // What the service does now, including when the file names no source.
+  effectiveSource: UpdateSource;
+}) {
   const start = initial ?? DEFAULTS;
+  const [pkgSource, setPkgSource] = useState<UpdateSource>(effectiveSource);
   const [mode, setMode] = useState<UpdatePolicy["mode"]>(start.mode);
   const [every, setEvery] = useState(String(start.everyMinutes));
   const [branch, setBranch] = useState(start.branch);
@@ -31,7 +39,8 @@ export default function UpdatePolicyForm({ initial }: { initial: UpdatePolicy | 
     saved.mode !== mode ||
     String(saved.everyMinutes) !== every ||
     saved.branch !== branch.trim() ||
-    saved.repo !== repo.trim();
+    saved.repo !== repo.trim() ||
+    (saved.source ?? effectiveSource) !== pkgSource;
 
   async function save() {
     setBusy(true);
@@ -40,7 +49,7 @@ export default function UpdatePolicyForm({ initial }: { initial: UpdatePolicy | 
       const res = await fetch("/api/local/update-policy", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode, everyMinutes: Number(every), branch: branch.trim(), repo: repo.trim() }),
+        body: JSON.stringify({ mode, everyMinutes: Number(every), branch: branch.trim(), repo: repo.trim(), source: pkgSource }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; policy?: UpdatePolicy };
       if (!res.ok || !data.policy) throw new Error(data.error ?? "That could not be saved.");
@@ -84,6 +93,28 @@ export default function UpdatePolicyForm({ initial }: { initial: UpdatePolicy | 
         </label>
       </fieldset>
 
+      <fieldset className="mt-4 space-y-2">
+        <legend className="ui-meta text-ink-subtle">Where new versions come from</legend>
+        <label className="flex items-start gap-2 text-ink">
+          <input type="radio" name="update-source" className="mt-1" checked={pkgSource === "release"} onChange={() => setPkgSource("release")} disabled={busy} />
+          <span>
+            Ready-made packages
+            <span className="ui-meta block text-ink-subtle">
+              Downloads the package published for the branch below, checks it, and switches to it. Needs nothing else installed on this computer.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-ink">
+          <input type="radio" name="update-source" className="mt-1" checked={pkgSource === "git"} onChange={() => setPkgSource("git")} disabled={busy} />
+          <span>
+            Build from the repository
+            <span className="ui-meta block text-ink-subtle">
+              Fetches the branch and builds it here. Needs git and Node on this computer, and gets a change as soon as it merges.
+            </span>
+          </span>
+        </label>
+      </fieldset>
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="ui-meta block text-ink-subtle">Branch to follow</span>
@@ -105,7 +136,7 @@ export default function UpdatePolicyForm({ initial }: { initial: UpdatePolicy | 
         )}
       </div>
       <p className="ui-meta mt-3 text-ink-subtle">
-        A public repository needs no token or account. If an update fails to build or migrate, the version you are on keeps serving.
+        A public repository needs no token or account. If an update fails to download, build or migrate, the version you are on keeps serving.
       </p>
     </div>
   );

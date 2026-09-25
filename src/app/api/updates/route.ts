@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
-import { getUpdateReport, getInstanceIdentity, resolveApplicability } from "@/lib/updates";
-import { getCodeStatus, applyCodeUpdate, GithubError } from "@/lib/github/client";
+import { getUpdateReport, getInstanceIdentity, getCodeStatusFor, resolveApplicability } from "@/lib/updates";
+import { applyCodeUpdate, GithubError } from "@/lib/github/client";
 import { createLogger } from "@/lib/log";
 
 // GET  — the update report (/build/updates renders it; the client island polls
@@ -30,13 +30,8 @@ export async function POST() {
   // only one of the ways this route can be reached, and the schema-safety rule
   // is the whole reason the gate exists.
   const instance = getInstanceIdentity();
-  const code = await getCodeStatus(
-    instance.sha,
-    instance.upstreamRepo,
-    instance.branch,
-    instance.isSatellite || instance.isLocalPeer,
-    true // fresh: a stale "not behind" here would refuse a real update
-  );
+  // fresh: a stale "not behind" here would refuse a real update
+  const code = await getCodeStatusFor(instance, true);
   const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);
 
   if (code.state !== "behind") {
@@ -74,7 +69,10 @@ export async function POST() {
       ok: true,
       mergeType: "supervisor",
       commits: code.count,
-      message: "Update handed to the supervisor. This instance rebuilds and restarts now.",
+      message:
+        instance.updateSource === "release"
+          ? "Update handed to the supervisor. It downloads the new version, checks it, and restarts now."
+          : "Update handed to the supervisor. This instance rebuilds and restarts now.",
     });
   }
 

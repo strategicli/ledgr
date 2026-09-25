@@ -431,6 +431,29 @@ export async function getCodeStatus(
   };
 }
 
+/**
+ * The repo's releases, newest first as GitHub lists them. Read by a packaged
+ * install to find its channel's newest ready-made package (ADR-278); the
+ * choosing is pickNewestRelease in supervisor/release.mjs, shared with the
+ * supervisor so the two cannot disagree.
+ */
+export async function listReleases(repo: string, fresh = false): Promise<unknown[]> {
+  // Testing escape hatch only, the same one the supervisor reads: a scratch
+  // install lists releases from a local stand-in (runbook §1s).
+  const api = process.env.LEDGR_RELEASES_API;
+  if (api) {
+    const res = await fetch(`${api}/repos/${repo}/releases?per_page=100`, { cache: "no-store" });
+    if (!res.ok) throw new GithubError(`releases ${res.status}`, "request", res.status);
+    return (await res.json()) as unknown[];
+  }
+  const cfg = requireConfig();
+  return ghJson<unknown[]>(
+    cfg,
+    `/repos/${repo}/releases?per_page=100`,
+    fresh ? { cache: "no-store" } : { revalidate: 60 }
+  );
+}
+
 export type ApplyUpdateResult = {
   mergeType: "fast-forward" | "merge" | "none";
   message: string;

@@ -120,6 +120,9 @@ export function averageSnapshotBytes(snapshots: Snapshot[]): number | null {
  */
 export async function findPgTool(tool: string): Promise<string | null> {
   const exe = process.platform === "win32" ? `${tool}.exe` : tool;
+  // A ready-made package ships its own copy; the supervisor says where (ADR-278).
+  const shipped = process.env.LEDGR_PG_BIN ? join(process.env.LEDGR_PG_BIN, exe) : null;
+  if (shipped && existsSync(shipped) && (await succeeds(shipped, ["--version"]))) return shipped;
   if (await succeeds(exe, ["--version"])) return exe;
   const roots =
     process.platform === "win32"
