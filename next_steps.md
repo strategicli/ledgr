@@ -33,7 +33,11 @@ Left over from step 1:
   the same lock through a one-transaction batch and has not been exercised on a real
   Neon database.
 
-Steps 2 (files on local disk) and 3 (Tailscale module) are being built in parallel.
+Step 2 (files on local disk) landed. Step 3 (private access through the bundled
+Tailscale helper, ADR-276, runbook §1q) landed. Next: **step 5, Funnel** ("Make this
+reachable from the internet" on the Tailscale module's options): one more listener in
+`tailnet/main.go` (`ListenFunnel`) behind a flag the supervisor passes, refused unless
+sign-in is required; bump `tailnet/release.json` and tag a new `tailnet-v` release.
 
 ## 🟢 IN FLIGHT — core and modules (ADR-272, started 2026-09-24)
 

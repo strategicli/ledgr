@@ -35,6 +35,7 @@ import { constants as osConstants, setPriority, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { rmDirBestEffort, rmDirRetry } from "./rm-dir.mjs";
+import { createTailnet } from "./tailnet.mjs";
 import { pidAlive, portListening, processCommandLine, processImageName } from "./proc.mjs";
 import {
   assembleAppEnv,
@@ -464,7 +465,7 @@ async function startPostgres() {
 // is on disk, and how did the last restart end. The third one matters most: the
 // process that would report "the successor never came up" is the one that went
 // away, so the record has to survive it.
-const SUPERVISOR_FILES = ["ledgr-supervisor.mjs", "lib.mjs"];
+const SUPERVISOR_FILES = ["ledgr-supervisor.mjs", "lib.mjs", "tailnet.mjs"];
 
 function installedCodeFingerprint() {
   try {
@@ -528,8 +529,9 @@ function liveBuild() {
 // memory, never written to disk: only its sha256 reaches the app child's env,
 // as one more entry in LEDGR_API_TOKENS. So the scheduled calls below walk
 // through the same machine-token door as Vercel cron and GitHub Actions rather
-// than getting a bypass, and the credential dies with this process.
-const CRON_TOKEN = cfg.crons.length > 0 ? randomBytes(32).toString("hex") : null;
+// than getting a bypass, and the credential dies with this process. Minted
+// even with no crons: the Tailscale check below asks the app through it too.
+const CRON_TOKEN = randomBytes(32).toString("hex");
 const CRON_TOKEN_HASH = CRON_TOKEN ? createHash("sha256").update(CRON_TOKEN).digest("hex") : null;
 
 // Per-install secrets (ADR-275): made once when missing, kept in the data
@@ -1402,6 +1404,8 @@ async function forceStopPostgres() {
 }
 
 let restartAfterShutdown = false;
+/** The Tailscale helper's keeper (supervisor/tailnet.mjs), set at boot. */
+let tailnet = null;
 
 /**
  * Start the successor and leave. Called after Postgres is confirmed down, so
@@ -1440,6 +1444,7 @@ async function shutdown(sig) {
   shuttingDown = true;
   log("shutting down", { sig });
   if (restartTimer) clearTimeout(restartTimer);
+  await tailnet?.shutdown();
   await stopApp();
   const clean = stopPostgresGracefully();
   // pg_ctl start means there is no child handle to lean on, so the forced
@@ -1595,6 +1600,29 @@ async function waitForOwnPort() {
   }
   return `Came back up, but nothing answered on port ${cfg.appPort}: ${last}.`;
 }
+
+// The Tailscale module's helper (ADR-276). The app decides whether it runs;
+// this asks it shortly after boot, then every minute, and on every signal file.
+tailnet = createTailnet({
+  dataDir: cfg.dataDir,
+  appPort: cfg.appPort,
+  log,
+  nextBackoffMs,
+  askApp: async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${cfg.appPort}/api/machine/tailscale`, {
+        headers: { Authorization: `Bearer ${CRON_TOKEN}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.status === 404) return false; // a build without the module
+      if (!res.ok) return null;
+      return (await res.json())?.run === true;
+    } catch {
+      return null; // the app is not answering (starting, updating): change nothing
+    }
+  },
+});
+setTimeout(() => void tailnet.reconcile("boot"), 15_000).unref?.();
 
 // The supervisor's own state, refreshed on the same beat as the cron record, so
 // "an update landed under the running service" surfaces without a restart.
