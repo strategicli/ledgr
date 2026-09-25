@@ -106,7 +106,7 @@ export async function GET(
 
   const html = renderPrintDocument(resolved.title, shareBody, {
     audio: track
-      ? { src: attachmentUrlWithShare(track.id, token), label: track.filename }
+      ? { src: attachmentUrlWithShare(track.id, token) }
       : undefined,
     footerHtml: `Shared from ${whose} · read-only`,
     mentions,
