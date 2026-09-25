@@ -46,6 +46,7 @@ Every var, a one-line description, and where to get it. Mirrors `.env.example` i
 | `DEBUG_MODE` | `"true"` surfaces verbose errors/timings (e.g. real DB error detail on `/health`); `"false"` in normal use | env flag |
 | `LEDGR_TIMEZONE` | **Fallback** IANA timezone. The owner's zone is now a per-user setting (User Settings → Timezone; `users.settings.timezone`), resolved by `getAppTimezone()`. This env var is only the fallback before an owner is known or when none is chosen; defaults to `America/New_York`. The server runs in UTC, never assume its clock | env flag |
 | `NEXT_PUBLIC_APP_URL` | base URL of the deployed app (absolute links, share URLs, callbacks) | deployment |
+| `LEDGR_SIGNIN_METHOD` | EMERGENCY override only (§1o, ADR-274): `builtin` or `default` forces this copy's sign-in method. Unset normally; the switch is User Settings → Sign-in | per copy, only in an emergency |
 | `DEV_USER_EMAIL` | dev-only auth stand-in (ADR-006): with Clerk keys **unset** and `NODE_ENV=development`, this email resolves as the signed-in user (local UI work without a Microsoft sign-in). Ignored in production builds; never set on Vercel | local only |
 
 > **R2 provisioning (one-time, blocks live uploads):** Cloudflare dashboard → R2 → create bucket `ledgr` → Manage API tokens → create an Object Read & Write token scoped to the bucket → fill the FOUR `R2_*` vars (ADR-231 deleted `R2_PUBLIC_BASE_URL`; the bucket stays **private** — do NOT enable public access or an r2.dev URL, `/files/<id>` serves reads through presigned redirects) locally and in EVERY Vercel environment you use — **Preview included**, or preview uploads 503 (bitten 2026-08-29) — then set the CORS policy below, then paste an image into any item body and confirm it renders.
@@ -360,6 +361,35 @@ The Claude sidebar, inline edit, slash prompts, and side chat. It runs Claude Co
 - **Cleanup:** the nightly `agent-purge` local job (03:50) deletes side chats nobody kept after 7 days.
 - **Testing override:** `LEDGR_AGENT=on|off` forces availability. Never the way to switch it on for the owner (ADR-222).
 
+## 1o. Sign-in: Clerk or the built-in password (ADR-274)
+
+Each copy of Ledgr signs its owner in with **Clerk** or with **the built-in password**. Nothing changes on a copy until its owner switches it in the app.
+
+- **What syncs and what doesn't.** The password hash and recovery codes live on `users` (`password_hash`, `recovery_codes`) and sync to every copy. Each copy keeps its own `signin_install` row (method, cookie-signing secret, failed-attempt counter) and its own `signin_sessions`; neither syncs, and a fill (`local:restore`) never copies them. A refill keeps password sign-in switched on if it was on, with a new secret (everyone signs in again).
+- **Switch a copy to the password:** User Settings → Sign-in. Set a password, save the recovery kit (type one code back), then **Switch this copy to my password** with the password and one code. Clerk keeps working beside it on a copy that has Clerk keys.
+- **Switch back to Clerk:** on the sign-in page choose **Sign in with Clerk instead**, sign in, then User Settings → Sign-in → **Switch to Clerk**. On a local copy with no Clerk keys the button is **Turn off password sign-in** (back to the no-login mode; only safe where the copy is reachable from that computer alone).
+- **Needs HTTPS or localhost.** The cookie is `__Host-` + Secure, so a plain `http://` LAN address can't hold a session. Tailscale, the Cloudflare Tunnel and Vercel are all HTTPS.
+- **Vercel previews** never use password sign-in (`VERCEL_ENV=preview` turns it off), so a preview can't read or change a production copy's sign-in state even if it shares the database. Clerk behaves on previews as before.
+- **Switching lag:** the front gate caches this copy's row for 15 seconds, so right after a switch a signed-out request may reach a page before being redirected. The page itself already renders signed out (the server re-reads the row), so no data is served.
+- **Throttling:** five free wrong guesses per copy, then 30 seconds doubling to 15 minutes. The reset paths below clear it.
+
+**Getting back in, easiest first.**
+1. Any signed-in device: User Settings → Sign-in → set a new password (no old one needed).
+2. Sign-in page → **Forgot it? Use a recovery code**. Each code works once.
+3. At the machine running a local copy: tray icon → **Reset sign-in password...**, or `npm run local:reset-password`. It writes a one-time ticket (15 minutes) to `<dataDir>/signin-reset.json` and opens `http://localhost:<port>/reset-password#<ticket>`. The page answers only a localhost address, never through the tunnel or Tailscale. It sets the password, issues a fresh kit, and switches that copy to password sign-in once one code is typed back. The new password reaches a cloud copy at the next sync.
+4. **Last resort, run where the database is reachable.** Prints a temporary password; sign in and set your own.
+   ```
+   npm run signin:reset -- --config supervisor/config.json          # a local copy
+   DATABASE_URL="postgresql://..." npm run signin:reset              # any copy, e.g. the cloud
+   npm run signin:reset -- --config ... --method=default             # also put that copy back on Clerk / no-login
+   npm run signin:reset -- --config ... --method=builtin             # also switch it to the password
+   ```
+   It changes the password hash (which syncs) and that copy's attempt counter; recovery codes and sessions are untouched. Undo: sign in and set the password you want.
+
+**Emergency override (not the normal switch).** `LEDGR_SIGNIN_METHOD=builtin` or `=default` in a copy's env forces its method whatever the setting says. Use it only when the app can't be reached to switch back; remove it afterwards. User Settings says when it is in force.
+
+**A new cloud copy with no Clerk.** `npm run instance:new` prints the step: `DATABASE_URL=... npm run signin:reset -- --method=builtin`, then sign in with the temporary password and set your own. Until then the deployed copy refuses every page (fail closed, ADR-184).
+
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
 
 On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>/snapshots/`, thinned into a tiered spread (dense recent, sparse old) so a fixed file count covers weeks. It fills the gap between `revisions` (one item's body history) and the weekly OneDrive dump (§4 — exact, but weekly); the nightly markdown export stays the lossy Sunday-proof fire escape, not a restore path.
@@ -533,7 +563,7 @@ Format each entry: symptom → cause → fix → prevention. Building this log o
 ## 8. Phase 4 readiness (provider-interface seams, confirmed slice 32)
 Phase 4 (a packageable local / self-hosted build) is gated and exploratory (roadmap), but the seams that keep it a *packaging* exercise rather than a rewrite are confirmed and enforced. `scripts/verify-provider-seams.mts` (run it after touching auth, storage, or any `/api/machine` route) fails loudly if a boundary breaks. What swaps where:
 
-- **Auth (Clerk → local single-user):** the app reaches identity only through `authProvider.getCurrentUser()` (→ `resolveOwner` → `requireOwner`). `@clerk/nextjs` is imported in exactly four files — `src/lib/auth/clerk.ts` (the provider), `src/lib/auth/provider.tsx` (the React wrapper, with a no-key fallback), `src/proxy.ts` (route-protection middleware), and the sign-in page. The active provider is chosen in **one place**, `src/lib/auth/index.ts`. A local build adds a ~10-line `localAuthProvider` (returns the single user) and selects it there; the dev stand-in (`DEV_USER_EMAIL`, ADR-006) already proves the shape. Nothing else changes.
+- **Auth (Clerk → local single-user):** the app reaches identity only through `authProvider.getCurrentUser()` (→ `resolveOwner` → `requireOwner`). `@clerk/nextjs` is imported in exactly four files — `src/lib/auth/clerk.ts` (the provider), `src/lib/auth/provider.tsx` (the React wrapper, with a no-key fallback), `src/proxy.ts` (route-protection middleware), and the sign-in page. The active provider is chosen in **one place**, `src/lib/auth/index.ts`. A local build adds a ~10-line `localAuthProvider` (returns the single user) and selects it there; the dev stand-in (`DEV_USER_EMAIL`, ADR-006) already proves the shape. Nothing else changes. Since ADR-274 every provider is wrapped by the built-in password sign-in (`withBuiltin`, §1o), which needs no outside service at all.
 - **Scheduler (Vercel cron + GitHub Actions → local cron):** every scheduled job triggers an authenticated `GET /api/machine/*` with a `cron`-scoped machine token. The scheduler is interchangeable because the contract is just "authenticated HTTP call to a machine endpoint" — a local cron runs the identical `curl -H "Authorization: Bearer <token>" …`. All `/api/machine` endpoints verify their own token (the guard asserts this), so a local cron needs no new auth path.
 - **Storage (R2 → local FS):** bytes go through the `StorageProvider` interface (`src/lib/storage/`); `aws4fetch`/the R2 client is confined there (guard-asserted). A local FS provider implements the same `putObject`/presign surface.
 - **DB (Neon → local Postgres):** already portable — a `DATABASE_URL` change. The pooler guard in `src/db/index.ts` exempts non-Neon hosts, so a local Postgres connects directly.

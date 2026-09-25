@@ -24,6 +24,10 @@
 //   - sync_peers: device registrations belong to the hub that minted them.
 //   - agent_*: in-app agent chats (ADR-271) belong to the machine whose Claude
 //     login ran them; a peer starts with none.
+//   - signin_install, signin_sessions: this copy's sign-in method, cookie
+//     secret, attempt counter and sessions (ADR-274). Per install by design; a
+//     fill must never switch this copy's sign-in or carry the source's sessions.
+//     (The password hash itself is on `users` and copies, as it syncs.)
 // drizzle's own migration bookkeeping table lives in the `drizzle` schema,
 // not `public` (confirmed against a migrated database), so a public-schema
 // catalog query already excludes it without needing to list it here.
@@ -35,6 +39,8 @@ export const EXCLUDED_TABLES = new Set([
   "agent_messages",
   "agent_approvals",
   "agent_edit_proposals",
+  "signin_install",
+  "signin_sessions",
 ]);
 
 export function isCopyableTable(name) {

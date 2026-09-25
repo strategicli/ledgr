@@ -134,6 +134,12 @@ function jsonEq(a: unknown, b: unknown): boolean {
 // correctly, just with every key stamped at once.
 const SETTINGS_PREFIX = "settings.";
 
+// The users columns besides settings that sync (ADR-274, migration 0065): the
+// built-in sign-in password hash and recovery codes, each an ordinary per-field
+// LWW value. A whitelist on purpose: the trigger never sends email or clerk_id,
+// and an op claiming to must not be able to rewrite who the owner is.
+export const USERS_SYNCED_FIELDS = ["password_hash", "recovery_codes"] as const;
+
 function plainObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -149,7 +155,9 @@ export function opFieldKeys(tbl: string, changed: Record<string, unknown>): stri
   if (tbl !== "users") return Object.keys(changed);
   const settings = plainObject(changed.settings);
   if (!settings) return Object.keys(changed);
-  return Object.keys(settings).map((k) => SETTINGS_PREFIX + k);
+  // Settings stamp per key; the sign-in columns beside it stamp as themselves.
+  const others = Object.keys(changed).filter((k) => k !== "settings");
+  return [...Object.keys(settings).map((k) => SETTINGS_PREFIX + k), ...others];
 }
 
 // LWW comparison: positive when a beats b. Timestamps first, device id as the
@@ -324,7 +332,8 @@ export function mergeOps(ops: SyncOp[], state: LocalState): MergeResult {
 }
 
 /**
- * A settings op: LWW each top-level key on its own, then write the merged blob.
+ * A users op: LWW each top-level settings key on its own, then write the merged
+ * blob; plus plain per-field LWW on the whitelisted sign-in columns (ADR-274).
  *
  * Writing the whole merged column rather than a jsonb patch keeps apply's
  * executor unchanged, and is equivalent — the merge base is the row we just
@@ -339,20 +348,33 @@ function mergeSettingsOp(
 ): void {
   const row = local.row;
   if (!row) return;
+  const fields: Record<string, unknown> = {};
+  // A settings value that isn't an object is unusable: never fabricate a blob.
   const incoming = plainObject(op.changed.settings);
-  if (!incoming) return; // nothing usable; never fabricate a settings blob
-  const current = plainObject(row.settings) ?? {};
-  const merged: Record<string, unknown> = { ...current };
-  let changed = false;
-  for (const [k, value] of Object.entries(incoming)) {
-    if (jsonEq(current[k], value)) continue;
-    const stamp = local.fields[SETTINGS_PREFIX + k];
-    if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
-    merged[k] = value;
-    local.fields[SETTINGS_PREFIX + k] = opStamp(op);
-    changed = true;
+  if (incoming) {
+    const current = plainObject(row.settings) ?? {};
+    const merged: Record<string, unknown> = { ...current };
+    let changed = false;
+    for (const [k, value] of Object.entries(incoming)) {
+      if (jsonEq(current[k], value)) continue;
+      const stamp = local.fields[SETTINGS_PREFIX + k];
+      if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
+      merged[k] = value;
+      local.fields[SETTINGS_PREFIX + k] = opStamp(op);
+      changed = true;
+    }
+    if (changed) fields.settings = merged;
   }
-  if (!changed) return;
+  for (const f of USERS_SYNCED_FIELDS) {
+    if (!(f in op.changed)) continue;
+    const value = op.changed[f];
+    if (jsonEq(row[f], value)) continue;
+    const stamp = local.fields[f];
+    if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
+    fields[f] = value;
+    local.fields[f] = opStamp(op);
+  }
+  if (Object.keys(fields).length === 0) return;
   actions.push({
     kind: "update",
     tbl: "users",
@@ -360,9 +382,9 @@ function mergeSettingsOp(
     origin: opDevice(op),
     pkCol: "id",
     pkVal: String(row.id),
-    fields: { settings: merged },
+    fields,
   });
-  state.rows.set(key, { ...local, row: { ...row, settings: merged } });
+  state.rows.set(key, { ...local, row: { ...row, ...fields } });
 }
 
 // relations are a SET keyed by (source_id, target_id, role): two devices

@@ -16,13 +16,46 @@ import BackButton from "@/components/ui/BackButton";
 import AgentSettings from "@/modules/agent/components/AgentSettings";
 import { agentAvailable } from "@/modules/agent/lib/gate";
 import { moduleOn } from "@/lib/modules/enabled";
+import SigninSettings, { type SigninSettingsProps } from "@/components/settings/SigninSettings";
+import { clerkLinkedHere, currentBuiltinSession, listSessions, signinStatus } from "@/lib/auth/builtin";
+import { builtinAllowedHere, effectiveMethod, readInstall } from "@/lib/auth/builtin-state";
+import { isClerkConfigured } from "@/lib/auth/keyless";
+import { chooseFromProcessEnv } from "@/lib/auth/local";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+// The Sign-in section's facts (ADR-274), all about THIS copy of Ledgr.
+async function signinProps(ownerId: string, host: string, recovered: boolean): Promise<SigninSettingsProps> {
+  const [install, status, sessions, current] = await Promise.all([
+    readInstall(),
+    signinStatus(ownerId),
+    listSessions(ownerId),
+    currentBuiltinSession(),
+  ]);
+  const clerk = isClerkConfigured();
+  return {
+    method: effectiveMethod(install),
+    defaultLabel: clerk ? "Clerk" : chooseFromProcessEnv() === "local" ? "No sign-in (this computer only)" : null,
+    passwordSet: status.passwordSet,
+    codesLeft: status.codesLeft,
+    sessions,
+    builtinSignedIn: !!current,
+    clerkLinkedHere: await clerkLinkedHere(ownerId),
+    overridden: !!process.env.LEDGR_SIGNIN_METHOD,
+    where: host,
+    recovered,
+  };
+}
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
   const settings = await getSettings(owner.id);
+  const recovered = (await searchParams).recovered === "1";
 
   // Origin from the serving request so the clipper bookmarklet points at the
   // right host (prod, preview, or localhost) without an env var — same
@@ -33,6 +66,7 @@ export default async function SettingsPage() {
     h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
   const credentials = await listCredentials(owner.id);
+  const signin = builtinAllowedHere() ? await signinProps(owner.id, host, recovered) : null;
 
   return (
     <main className="min-h-screen">
@@ -50,6 +84,7 @@ export default async function SettingsPage() {
         {agentAvailable() && (
           <AgentSettings initial={settings.agent} on={moduleOn(settings, "agent")} />
         )}
+        {signin && <SigninSettings {...signin} />}
         <IcsFeed initialToken={settings.icsToken} />
         <ApiCredentials
           initial={credentials}

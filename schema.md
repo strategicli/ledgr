@@ -19,7 +19,12 @@ Real table, one row in v1. Exists so `owner_id` foreign keys are honest and mult
 | `id` | uuid PK | |
 | `clerk_id` | text | maps to Clerk identity |
 | `email` | text | |
+| `password_hash` | text | nullable. Built-in sign-in (ADR-274): `scrypt$logN$r$p$salt$hash`. **Syncs** (the users trigger logs it beside settings) |
+| `recovery_codes` | jsonb | nullable `string[]`: sha256 hex of each UNUSED recovery code; a used code is removed. **Syncs** |
 | `created_at` | timestamptz | |
+
+## `signin_install` and `signin_sessions` (ADR-274; per install, never synced)
+`signin_install` is one row (`id = 1`, checked): `method` (null = the default, Clerk where configured else the local no-login mode; `builtin` = password sign-in), `cookie_secret` (signs session cookies; replaced by "Sign out everywhere"), `failed_count` + `failed_at` (the guessing throttle). Created lazily on first read. `signin_sessions`: `id`, `owner_id` (FK users), `token_hash` (sha256 of the cookie's random code; unique index), `label` ("Edge on Windows"), `created_at`, `last_seen_at` (valid while used within 90 days; index on `owner_id`). Neither table has a sync trigger, and `scripts/lib/pg-copy.mjs` never copies them. Migration 0065, additive only.
 
 ---
 

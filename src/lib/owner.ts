@@ -61,6 +61,16 @@ export const resolveOwnerState = cache(async (): Promise<OwnerState> => {
   if (!authUser) return { kind: "signed-out" };
 
   const db = getDb();
+  // A built-in password session (ADR-274) already names its row. Looked up by
+  // id, and never through the clerk_id backfill below.
+  if (authUser.ownerId) {
+    const ownerId = authUser.ownerId;
+    const byId = await retryOnce(() =>
+      db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, ownerId))
+    );
+    if (byId.length > 0) return { kind: "owner", owner: byId[0] };
+    return { kind: "signed-out" };
+  }
   const byClerkId = await retryOnce(() =>
     db
       .select({ id: users.id, email: users.email })

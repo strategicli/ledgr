@@ -528,6 +528,19 @@ $miOpen.add_Click({ Start-Process "http://localhost:$AppPort" })
 $miStatus = $menu.Items.Add("Ledgr status...")
 $miStatus.add_Click({ Show-StatusWindow })
 
+# ADR-274: the locked-out owner's way back in. ledgr-ctl writes a one-time
+# ticket into the data folder and opens the reset page on localhost; being
+# signed in to this computer is the proof.
+$miReset = $menu.Items.Add("Reset sign-in password...")
+$miReset.add_Click({
+    if (-not (Test-Port $AppPort)) {
+      Show-Balloon "Ledgr" "Ledgr isn't running, so the reset page can't open. Choose Start first, then try again."
+      return
+    }
+    Show-Balloon "Ledgr" "Opening the reset page in your browser. It works for 15 minutes, on this computer only."
+    Invoke-Ctl "reset-password"
+  })
+
 $menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 
 $miStart = $menu.Items.Add("Start")

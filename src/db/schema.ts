@@ -92,10 +92,58 @@ export const users = pgTable("users", {
   // days, nav position, etc. A single jsonb keeps adding a preference from being
   // a migration each time. Shape parsed/defaulted in src/lib/settings.ts.
   settings: jsonb("settings"),
+  // Built-in owner sign-in (ADR-274). Both SYNC (the users trigger logs them
+  // beside settings), so one password works on every copy and a reset at the
+  // hub reaches the cloud within one sync. Only a scrypt hash is stored, and
+  // recovery codes are the sha256 hashes of the UNUSED codes; using one removes
+  // it. null = no password set, which is every install until its owner sets one.
+  passwordHash: text("password_hash"),
+  recoveryCodes: jsonb("recovery_codes").$type<string[]>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
+// Per-install sign-in state (ADR-274). NOT synced and never copied by a fill
+// (pg-copy EXCLUDED_TABLES): which sign-in method this copy uses, the secret its
+// session cookies are signed with, and the failed-attempt counter. Exactly one
+// row, created lazily by src/lib/auth/builtin.ts on first read. method is null
+// (the default: Clerk where configured, else the local no-login mode) or
+// "builtin" (password sign-in, set only by an explicit owner action).
+export const signinInstall = pgTable(
+  "signin_install",
+  {
+    id: integer("id").primaryKey().default(1),
+    method: text("method"),
+    cookieSecret: text("cookie_secret").notNull(),
+    failedCount: integer("failed_count").notNull().default(0),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+  },
+  (t) => [check("signin_install_one_row", sql`${t.id} = 1`)]
+);
+
+// Built-in sign-in sessions on THIS install (ADR-274). Not synced: a session is
+// only meaningful to the copy whose cookie secret signed it. token_hash is the
+// sha256 of the random code in the cookie; the code itself is never stored.
+export const signinSessions = pgTable(
+  "signin_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    // "Edge on Windows", for the sessions list. Never the raw user agent.
+    label: text("label"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Valid while used within 90 days; bumped at most hourly.
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("signin_sessions_token_uq").on(t.tokenHash),
+    index("signin_sessions_owner_idx").on(t.ownerId),
+  ]
+);
 
 // Stored View Definitions. Built-ins ship as is_system rows (seeded when the
 // views land); user-built views are just more rows.

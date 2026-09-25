@@ -6,6 +6,10 @@ export type AuthUser = {
   // Provider-issued identity; maps to users.clerk_id for the Clerk provider.
   externalId: string;
   email: string | null;
+  // Set by the built-in password sign-in (ADR-274), whose session already names
+  // the users row: resolveOwnerState looks it up by id and never writes the
+  // clerk_id link for it.
+  ownerId?: string;
 };
 
 export interface AuthProvider {

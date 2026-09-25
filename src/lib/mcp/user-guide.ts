@@ -1145,6 +1145,43 @@ provider configured. Audio is purged 30 days after its transcript exists. If
 you write your own notes and never use transcripts, turn **Meeting
 transcripts** off at \`/build/modules\`.
 
+## Signing in
+
+A copy of Ledgr signs you in one of two ways: **Clerk** (the default wherever
+it is set up) or **your own Ledgr password**. Both live in **User Settings →
+Sign-in** (\`/settings\`).
+
+- **Your password works on every copy you run**, because it syncs. Which way
+  each copy signs in is set on that copy, so switching the laptop never
+  switches the cloud.
+- **Set or change the password** there while signed in. You never need the
+  old one.
+- **The recovery kit** is ten one-time codes. Download or print it, then type
+  one back to prove it is saved. The section shows how many are left, warns at
+  two, and **New recovery kit** replaces them all.
+- **Switch this copy to my password** asks for the password and one recovery
+  code, so nothing changes until both are proven. This browser stays signed in.
+  Clerk keeps working as a second way in, and switching back to Clerk unlocks
+  once you have signed in with Clerk in this browser ("Sign in with Clerk
+  instead" on the sign-in page).
+- **Sign out**, **Sign out everywhere**, and a list of every browser signed in
+  with your password on this copy, each with its own Sign out. A session lasts
+  90 days and renews while you use it.
+
+**Locked out?** In order of ease:
+
+1. Any device that is still signed in can set a new password.
+2. On the sign-in page, **Forgot it? Use a recovery code**. Each code works
+   once, and you land on User Settings to set a new password.
+3. At the computer running Ledgr, right-click the tray icon and choose **Reset
+   sign-in password...** (or run \`npm run local:reset-password\`). It opens a
+   page that works only on that computer, where you choose a new password and
+   save a fresh kit. A cloud copy picks the new password up at its next sync.
+4. The last resort is a reset command in the runbook.
+
+Password sign-in needs an https address, or \`localhost\`. It is turned off on
+preview deployments. There is no email reset.
+
 ## Giving another app access
 
 **User Settings → API credentials** is where you hand something access to your

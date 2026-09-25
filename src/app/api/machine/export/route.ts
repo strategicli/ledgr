@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 import { verifyMachineRequest } from "@/lib/auth/credentials";
-import { getDb } from "@/db";
-import { users } from "@/db/schema";
+import { resolveMailboxOwner } from "@/lib/calendar/owner";
 import { runExport } from "@/lib/export/engine";
 import { getGraphConfig, OneDriveExportTarget } from "@/modules/onedrive-export/lib/onedrive";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
@@ -30,15 +28,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // The export writes into one person's OneDrive, so the job belongs to the
-// matching users row (multi-user-ready: a future per-user export would read
-// per-user config instead).
-async function resolveExportOwner(upn: string): Promise<string | null> {
-  const rows = await getDb()
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, upn.toLowerCase()));
-  return rows[0]?.id ?? null;
-}
+// matching users row, through the shared owner lookup (multi-user-ready: a
+// future per-user export would read per-user config instead).
+const resolveExportOwner = resolveMailboxOwner;
 
 export async function GET(request: Request) {
   const identity = await verifyMachineRequest(

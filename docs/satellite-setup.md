@@ -131,7 +131,20 @@ npm run instance:new -- --database-url "<DATABASE_URL>" \
 Do not proceed unless it ends with `Database ready`. Its failure messages say
 exactly what went wrong; fix and re-run (it's idempotent).
 
-## Phase 4 — Clerk app and keys
+## Phase 4 — Sign-in: the built-in password (default) or Clerk
+
+**Default since ADR-274: the built-in password, no Clerk account at all.** From the
+clone, with the same pooled string as Phase 3:
+
+```sh
+DATABASE_URL="<pooled string>" npm run signin:reset -- --method=builtin
+```
+
+It switches this copy to password sign-in and prints a **temporary password**.
+Keep it for Phase 6; do not paste it anywhere else. Skip the rest of this phase and
+the three Clerk variables in Phase 5.
+
+**Only if the owner wants Clerk instead:**
 
 ```sh
 npx -y clerk@latest apps create "Ledgr" --json
@@ -172,13 +185,14 @@ From the clone directory:
    ```sh
    printf '%s' "<value>" | npx -y vercel@latest env add <NAME> production
    ```
-   The boot set — a missing Clerk key is a hard 503, not a partial app:
+   The boot set. A copy with neither Clerk keys nor Phase 4's password step is a
+   hard 503, not a partial app:
    | Var | Value |
    |---|---|
    | `DATABASE_URL` | the pooled string from Phase 3 |
-   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | from `.env.clerk` |
-   | `CLERK_SECRET_KEY` | from `.env.clerk` |
-   | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` |
+   | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk only: from `.env.clerk` |
+   | `CLERK_SECRET_KEY` | Clerk only: from `.env.clerk` |
+   | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | Clerk only: `/sign-in` |
    | `NEXT_PUBLIC_APP_URL` | `https://<NAME>-ledgr.vercel.app` |
    | `LEDGR_TIMEZONE` | `<TIMEZONE>` |
    | `LEDGR_SELF_UPDATE` | `on` — only correct because step 3 set `build:satellite` |
@@ -187,7 +201,12 @@ From the clone directory:
 ## Phase 6 — Verify, then they sign in
 
 1. `curl -s https://<NAME>-ledgr.vercel.app/health` — `database` must be ok.
-2. Open `https://<NAME>-ledgr.vercel.app/sign-in` and have them sign up / sign in
+2. **Password (the default):** open `https://<NAME>-ledgr.vercel.app/sign-in`,
+   have them type the temporary password from Phase 4, then go to User Settings →
+   Sign-in, choose their own password (their password manager can suggest one),
+   and save the recovery kit (Download or Print, then type one code back). Tell
+   them in one sentence where the kit went.
+   **Clerk:** open the same page and have them sign up / sign in
    **with exactly `OWNER_EMAIL`**. They should land in the app with nav visible.
    "Signed in, but not recognized" means the address they used differs from the
    seeded one — re-run Phase 3's `instance:new` with the right address.

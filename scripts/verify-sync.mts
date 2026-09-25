@@ -776,6 +776,38 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
       );
     }
 
+    // ── The built-in sign-in columns sync, the per-install state does not ──
+    // (ADR-274, migration 0065). One password must work on every copy, so
+    // users.password_hash and users.recovery_codes ride the users trigger beside
+    // settings; the cookie secret, method and sessions stay on each copy.
+    {
+      const before = await opCount(A);
+      await A.query(`update users set password_hash = 'scrypt$15$8$3$c2FsdA$aGFzaA', recovery_codes = '["h1","h2"]' where id = $1`, [OWNER]);
+      const logged = await A.query(`select changed from sync_ops where tbl = 'users' order by seq desc limit 1`);
+      const changed = (logged.rows[0]?.changed ?? {}) as Record<string, unknown>;
+      check(
+        "a password change logs exactly the two sign-in columns",
+        (await opCount(A)) === before + 1 &&
+          JSON.stringify(Object.keys(changed).sort()) === JSON.stringify(["password_hash", "recovery_codes"]),
+        JSON.stringify(changed)
+      );
+      await A.query(`update users set clerk_id = 'user_probe' where id = $1`, [OWNER]);
+      check("a clerk_id backfill still logs nothing", (await opCount(A)) === before + 1);
+      await exchangeOnce(A, B);
+      const rb = await B.query(`select password_hash, recovery_codes from users where id = $1`, [OWNER]);
+      check(
+        "the password and codes arrive on the other copy",
+        rb.rows[0]?.password_hash === "scrypt$15$8$3$c2FsdA$aGFzaA" && JSON.stringify(rb.rows[0]?.recovery_codes) === '["h1","h2"]',
+        JSON.stringify(rb.rows[0])
+      );
+      await A.query(`insert into signin_install (id, method, cookie_secret) values (1, 'builtin', 'secret-a') on conflict (id) do update set method = 'builtin'`);
+      await A.query(`insert into signin_sessions (owner_id, token_hash) values ($1, 'probe-hash')`, [OWNER]);
+      await exchangeOnce(A, B);
+      const inst = await B.query(`select count(*)::int as n from signin_install where method = 'builtin'`);
+      const sess = await B.query(`select count(*)::int as n from signin_sessions`);
+      check("this copy's sign-in method and sessions never travel", inst.rows[0].n === 0 && sess.rows[0].n === 0);
+    }
+
     // ── Sessionless apply still stamps the origin (ADR-248) ────────────────
     // The cloud runs neon-http, which has no session, so `SET LOCAL
     // ledgr.sync_origin` never reached the oplog trigger there: every applied

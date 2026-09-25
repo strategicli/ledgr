@@ -1,6 +1,15 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { isClerkConfigured, keylessAllowed } from "@/lib/auth/keyless";
+import {
+  gateDecision,
+  needsRenewal,
+  SESSION_COOKIE,
+  sessionCookieOptions,
+  signSessionCookie,
+  verifySessionCookie,
+} from "@/lib/auth/builtin-core";
+import { builtinAllowedHere, builtinOnState, readInstallSafe } from "@/lib/auth/builtin-state";
 import { modulePublicPaths } from "@/lib/modules";
 import "@/lib/modules/register";
 
@@ -48,6 +57,11 @@ const CORE_PUBLIC_ROUTES = [
   // which CAN handshake. EXACT path only (no wildcard): this must not also
   // match /capture/share/claim, which stays Clerk-protected.
   "/capture/share",
+  // "Reset sign-in password" at the machine (ADR-274): the locked-out owner
+  // must reach it signed out. The page answers only a request addressed to
+  // localhost that carries the one-time ticket ledgr-ctl wrote into this
+  // install's data folder; anything else is a 404.
+  "/reset-password",
 ];
 
 // Modules add their own public paths through the manifest `publicPaths` slot
@@ -70,11 +84,13 @@ const isPublicRoute = createRouteMatcher([...CORE_PUBLIC_ROUTES, ...modulePublic
 // missing key doesn't also silently break cron, the MCP server, and the ICS feed.
 // /health sits outside the matcher entirely, so it stays up as the diagnostic.
 //
-// One JSON log line per blocked request, in the shape src/lib/log.ts emits — but
-// written inline, because importing that module pulls the DB client into the
-// middleware bundle for a line of text.
+// Password sign-in (ADR-274) counts as sign-in being set up: a deployed copy
+// with no Clerk key but password sign-in switched on serves through it (see
+// gateDecision in src/lib/auth/builtin-core.ts, the pure rule this follows).
+//
+// One JSON log line per blocked request, in the shape src/lib/log.ts emits —
+// written inline to keep the proxy's imports to what it needs.
 function failClosed(request: NextRequest): NextResponse {
-  if (isPublicRoute(request)) return NextResponse.next();
   console.error(
     JSON.stringify({
       ts: new Date().toISOString(),
@@ -93,15 +109,80 @@ function failClosed(request: NextRequest): NextResponse {
   );
 }
 
+// ── Built-in password sign-in at the gate (ADR-274) ─────────────────────────
+//
+// The gate checks the cookie's signature and age only; the server-side
+// provider then looks the session up in the database, so a signed-out or
+// revoked session renders signed out even inside its 90 days (the same split
+// Clerk has: its JWT is verified here, its session state by the server). "Sign
+// out everywhere" also replaces the signing secret, which this check reads
+// through a 15-second cache.
+//
+// No cookie means no work at all: an install that never uses password sign-in
+// (every Clerk install, until its owner opts in) makes no database read here.
+async function builtinCookie(request: NextRequest): Promise<{ valid: boolean; renewed?: string }> {
+  if (!builtinAllowedHere()) return { valid: false };
+  const raw = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!raw) return { valid: false };
+  const state = await readInstallSafe();
+  if (!state) return { valid: false };
+  const now = Date.now();
+  const v = verifySessionCookie(raw, state.cookieSecret, now);
+  if (!v) return { valid: false };
+  return {
+    valid: true,
+    // Re-signed at most daily, so a session in use keeps renewing its 90 days.
+    renewed: needsRenewal(v.iat, now)
+      ? signSessionCookie(v.token, Math.floor(now / 1000), state.cookieSecret)
+      : undefined,
+  };
+}
+
+function passBuiltin(renewed: string | undefined): NextResponse {
+  const res = NextResponse.next();
+  if (renewed) res.cookies.set(SESSION_COOKIE, renewed, sessionCookieOptions());
+  return res;
+}
+
+// Signed out on a password-sign-in copy: pages go to the sign-in page (and come
+// back afterwards); API calls get a plain 401.
+function toSignIn(request: NextRequest): NextResponse {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const url = new URL("/sign-in", request.url);
+  url.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+  return NextResponse.redirect(url);
+}
+
+// No Clerk key: the local no-login mode, a password-sign-in copy, or (deployed,
+// neither) the fail-closed refusal.
+async function keylessHandler(request: NextRequest): Promise<NextResponse> {
+  const isPublic = isPublicRoute(request);
+  const b = isPublic ? { valid: false } : await builtinCookie(request);
+  const decision = gateDecision({
+    isPublic,
+    builtinCookieValid: b.valid,
+    clerkConfigured: false,
+    deployed: !keylessAllowed(),
+    builtinOn: isPublic || b.valid ? false : await builtinOnState(),
+  });
+  if (decision === "pass") return b.valid ? passBuiltin(b.renewed) : NextResponse.next();
+  if (decision === "sign-in") return toSignIn(request);
+  return failClosed(request);
+}
+
 const handler = isClerkConfigured()
   ? clerkMiddleware(async (auth, request) => {
-      if (!isPublicRoute(request)) {
-        await auth.protect();
-      }
+      if (isPublicRoute(request)) return;
+      // Both doors open (the design): a valid password session passes beside
+      // Clerk's. Without one, Clerk decides exactly as before; its redirect
+      // lands on /sign-in, which shows the password form on a copy that uses it.
+      const b = await builtinCookie(request);
+      if (b.valid) return passBuiltin(b.renewed);
+      await auth.protect();
     })
-  : keylessAllowed()
-    ? () => NextResponse.next()
-    : failClosed;
+  : keylessHandler;
 
 export default handler;
 
