@@ -9,14 +9,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { calendarEvents, items, jobState } from "@/db/schema";
-import type { CalendarEvent, CalendarSource } from "./types";
+import { DEFAULT_WINDOW_DAYS, type CalendarEvent, type CalendarSource } from "@/lib/calendar/types";
 
 export const CALENDAR_JOB_KEY = "calendar_sync";
-// How far ahead each sync pulls events into the cache. 4 weeks so the Planner's
-// read-only calendar overlay (ADR-133) has a useful long-range planning horizon.
-// The meeting-import feed (listCalendarFeed) bounds itself to 2 weeks separately,
-// so widening this doesn't lengthen that suggestion list.
-export const DEFAULT_WINDOW_DAYS = 28;
 
 export type CalendarRunResult = {
   seen: number;

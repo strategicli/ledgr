@@ -23,7 +23,7 @@ import {
   defaultMatchState,
   type Matcher,
   type MatchResult,
-} from "./types";
+} from "@/lib/matchers/types";
 
 function eventEmails(e: CalendarEvent): Set<string> {
   const s = new Set<string>();

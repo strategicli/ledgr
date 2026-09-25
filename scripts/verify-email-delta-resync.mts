@@ -12,7 +12,7 @@
 //
 // Run: npx tsx scripts/verify-email-delta-resync.mts
 import { GraphError } from "../src/lib/graph/client";
-import { GraphMailSource } from "../src/lib/email/graph-source";
+import { GraphMailSource } from "../src/modules/email-capture/lib/graph-source";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

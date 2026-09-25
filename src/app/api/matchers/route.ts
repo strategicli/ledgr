@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
+import { routeGate } from "@/lib/modules/gate";
 import { errorResponse } from "@/lib/api";
 import { ItemError } from "@/lib/items";
-import { createMatcher, listMatchers } from "@/lib/matchers/store";
+import { createMatcher, listMatchers } from "@/modules/calendar-sync/lib/matchers/store";
 
 // Matcher rules (slice 23). User-authed and owner-scoped.
 // DORMANT as of EM3 (ADR-123): the calendar rule source moved onto templates
@@ -14,6 +15,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "calendar-sync");
+  if (off) return off;
   try {
     return NextResponse.json({ matchers: await listMatchers(owner.id) });
   } catch (err) {
@@ -24,6 +27,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "calendar-sync");
+  if (off) return off;
   try {
     const raw = await request.json().catch(() => {
       throw new ItemError("bad_request", "request body must be JSON");

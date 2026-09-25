@@ -3,6 +3,17 @@
 // provider-interface discipline as ExportTarget (CLAUDE.md). The Graph source
 // is production; a stub source verifies the engine against Neon with no creds
 // and is the Phase 4 local-build seam.
+//
+// Core, not the calendar-sync module (ADR-272 step 4): the event canvas, the
+// person suggester, template match rules and the calendar-cache readers all
+// speak this shape. The module (src/modules/calendar-sync) fills the cache.
+
+// How far ahead each sync pulls events into the cache. 4 weeks so the Planner's
+// read-only calendar overlay (ADR-133) has a useful long-range planning horizon.
+// The meeting-import feed (listCalendarFeed) bounds itself to 2 weeks separately,
+// so widening this doesn't lengthen that suggestion list. Lives here, in core,
+// because the feed reader clamps to it.
+export const DEFAULT_WINDOW_DAYS = 28;
 
 // A calendar event normalized to what Ledgr stores. The Graph source maps
 // Microsoft's shape onto this; the engine never sees Graph JSON. attendees

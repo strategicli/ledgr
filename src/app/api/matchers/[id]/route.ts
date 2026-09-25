@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
+import { routeGate } from "@/lib/modules/gate";
 import { ItemError } from "@/lib/items";
-import { deleteMatcher } from "@/lib/matchers/store";
+import { deleteMatcher } from "@/modules/calendar-sync/lib/matchers/store";
 
 // Delete a matcher rule (slice 23). Owner-scoped; a 404 if it isn't the
 // owner's (deleteMatcher returns 0 rows).
@@ -13,6 +14,8 @@ export async function DELETE(
 ) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "calendar-sync");
+  if (off) return off;
   try {
     const { id } = await params;
     const res = await deleteMatcher(owner.id, asUuid(id, "id"));

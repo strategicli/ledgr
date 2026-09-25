@@ -54,8 +54,8 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | ~~sharing~~ | moved: `src/modules/sharing/` (manifest, `lib/share.ts`, `lib/mcp-tools.ts`, the Share control), routes gated | mcp door | none left |
 | youtube-transcripts | `lib/youtube/`, toggle in settings | jobs, link type | item-mutations (on-create hook), jobs |
 | todoist | `lib/todoist/`, 2 routes, 1 job | jobs | proxy (webhook), jobs, health |
-| email-capture | `lib/email/`, 1 job | jobs | jobs, health |
-| calendar-sync | `lib/calendar/`, `calendar_events` table, 1 job | jobs, event type | jobs, health, nav (`/events`) |
+| ~~email-capture~~ | moved: `src/modules/email-capture/` (`lib/` = the Graph mail source, importer, HTML to markdown), 3 routes gated, job gated | jobs | none left |
+| ~~calendar-sync~~ | moved: `src/modules/calendar-sync/` (`lib/sync.ts`, `lib/graph-source.ts`, the dormant `lib/matchers/`), 4 routes gated, job gated. The event views, the calendar-cache readers (`lib/calendar/feed.ts`, `overlay.ts`), template match rules and the person suggester stay core: an owner with no Microsoft account still has events | jobs, event type | none left |
 | ~~onedrive-export~~ | moved: `src/modules/onedrive-export/` (the OneDrive target, health check); the engine stays core | export engine, jobs | none left |
 | relatedness | `lib/discovery/`, `item_relatedness`, `/build/loose-ends`, 1 job | jobs | jobs, build-nav, related panel |
 | ~~snapshots~~ | moved: `src/modules/snapshots/` (lib, components); keeps its per-install switch too | supervisor | none left |

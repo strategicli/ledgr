@@ -8,8 +8,59 @@
 // is STRICT (throws) — a silently-dropped match rule would be a confusing
 // data-loss footgun, unlike the tolerant date-rule parser on applyConfig.
 import { ItemError } from "@/lib/items";
-import { validateCondition } from "@/lib/matchers/store";
 import type { MatcherCondition } from "@/lib/matchers/types";
+
+const KINDS = ["attendeeEmail", "seriesId", "titleRegex", "titleFuzzy"] as const;
+
+// Hand-rolled validation (the api.ts pattern; small shapes don't earn a lib).
+// Bad rules must never reach the engine, where a malformed regex or condition
+// would throw mid-sync.
+export function validateCondition(raw: unknown): MatcherCondition {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ItemError("bad_request", "condition must be an object");
+  }
+  const c = raw as Record<string, unknown>;
+  if (typeof c.kind !== "string" || !KINDS.includes(c.kind as never)) {
+    throw new ItemError("bad_request", `condition.kind must be one of ${KINDS.join(", ")}`);
+  }
+  switch (c.kind) {
+    case "attendeeEmail":
+      if (typeof c.email !== "string" || !c.email.includes("@")) {
+        throw new ItemError("bad_request", "attendeeEmail condition needs an email");
+      }
+      return { kind: "attendeeEmail", email: c.email.toLowerCase() };
+    case "seriesId":
+      if (typeof c.seriesMasterId !== "string" || !c.seriesMasterId) {
+        throw new ItemError("bad_request", "seriesId condition needs seriesMasterId");
+      }
+      return { kind: "seriesId", seriesMasterId: c.seriesMasterId };
+    case "titleRegex": {
+      if (typeof c.pattern !== "string" || !c.pattern || c.pattern.length > 200) {
+        throw new ItemError("bad_request", "titleRegex needs a pattern (<=200 chars)");
+      }
+      const flags = typeof c.flags === "string" ? c.flags : undefined;
+      // Compile now so a bad pattern fails at save time, not mid-sync.
+      try {
+        new RegExp(c.pattern, flags);
+      } catch {
+        throw new ItemError("bad_request", "titleRegex pattern is not a valid regex");
+      }
+      return { kind: "titleRegex", pattern: c.pattern, ...(flags ? { flags } : {}) };
+    }
+    case "titleFuzzy": {
+      if (typeof c.pattern !== "string" || !c.pattern || c.pattern.length > 200) {
+        throw new ItemError("bad_request", "titleFuzzy needs a pattern (<=200 chars)");
+      }
+      const threshold = c.threshold === undefined ? undefined : Number(c.threshold);
+      if (threshold !== undefined && (Number.isNaN(threshold) || threshold < 0 || threshold > 1)) {
+        throw new ItemError("bad_request", "titleFuzzy threshold must be 0..1");
+      }
+      return { kind: "titleFuzzy", pattern: c.pattern, ...(threshold !== undefined ? { threshold } : {}) };
+    }
+    default:
+      throw new ItemError("bad_request", "unknown condition kind");
+  }
+}
 
 export type TemplateMatchConfig = {
   // Which calendar events this template governs.

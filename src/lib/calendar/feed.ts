@@ -6,7 +6,7 @@ import { getDb } from "@/db";
 import { calendarEvents, items } from "@/db/schema";
 import { ItemError } from "@/lib/items";
 import { getAppTimezone } from "@/lib/today";
-import { DEFAULT_WINDOW_DAYS } from "./sync";
+import { DEFAULT_WINDOW_DAYS } from "./types";
 import { applyEventIntake } from "./intake";
 import type { OverlayEvent } from "./overlay";
 import type { CalendarEvent } from "./types";

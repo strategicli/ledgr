@@ -454,10 +454,15 @@ Build your own kinds of item at \`/build/types\`.
   tools; switched off, the control is gone and every existing link stops
   opening until you turn it back on), **OneDrive export** (on by default: the
   nightly plain-file copy of everything in your OneDrive; switched off, the
-  nightly job stops and Save Offline still saves the document on your device)
-  and **Snapshots** (on by default: hourly restore points on a computer running
-  Ledgr locally; each computer still has its own switch on \`/build/backups\`).
-  A module that is off also drops
+  nightly job stops and Save Offline still saves the document on your device),
+  **Snapshots** (on by default: hourly restore points on a computer running
+  Ledgr locally; each computer still has its own switch on \`/build/backups\`),
+  **Email capture** (on by default: messages you forward to the Ledgr Import
+  folder in Outlook become inbox items; switched off, they wait in the folder
+  until you turn it back on) and **Calendar sync** (on by default: brings your
+  Outlook calendar in every few hours for the Planner and the event list's
+  Calendar lens; switched off, your events stay and only new calendar entries
+  stop arriving). A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module

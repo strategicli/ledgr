@@ -327,6 +327,8 @@ export const items = pgTable(
     // Owned by the todoist module (src/modules/todoist, ADR-272 step 4). The
     // column stays here because the schema is core; only that module writes it.
     todoistId: text("todoist_id"),
+    // The calendar-sync module's match key (src/modules/calendar-sync, ADR-272
+    // step 4). Written by its sync and by the core Add-from-calendar promotion.
     msEventId: text("ms_event_id"),
     // OneDrive export state (slice 17): when this row was last written to
     // the export tree and where. Machine state like todoist_id/ms_event_id,
@@ -657,6 +659,9 @@ export const jobState = pgTable("job_state", {
 // title-fuzzy (pg_trgm similarity, the last resort); action attaches default
 // entities/tags, names a template, sets default urgency. Populated by the
 // setup wizard and learn-by-confirmation.
+// DORMANT since EM3 (ADR-123). Owned by the calendar-sync module
+// (src/modules/calendar-sync/lib/matchers, ADR-272 step 4); the table stays here
+// because the schema is core.
 export const matchers = pgTable(
   "matchers",
   {
@@ -684,6 +689,9 @@ export const matchers = pgTable(
 // /events. Not items (CLAUDE.md rule 2 is user content; this is sync bookkeeping
 // until the user promotes it). promoted_item_id ON DELETE SET NULL: a purged
 // event item just frees its feed row, never a dangling FK.
+// Written by the calendar-sync module (src/modules/calendar-sync, ADR-272 step
+// 4) and read by core (the Planner overlay, the Calendar lens, the Add route).
+// Turning the module off stops the writes and never clears the rows.
 export const calendarEvents = pgTable(
   "calendar_events",
   {

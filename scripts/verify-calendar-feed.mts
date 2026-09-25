@@ -15,7 +15,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { calendarEvents, items, jobState, users } = await import("../src/db/schema");
-const { runCalendarSync, CALENDAR_JOB_KEY } = await import("../src/lib/calendar/sync");
+const { runCalendarSync, CALENDAR_JOB_KEY } = await import("../src/modules/calendar-sync/lib/sync");
 const { listCalendarFeed, promoteCalendarEvent } = await import("../src/lib/calendar/feed");
 const { ItemError } = await import("../src/lib/items");
 const { callTool } = await import("../src/lib/mcp/tools");

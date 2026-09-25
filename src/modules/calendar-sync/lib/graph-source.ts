@@ -4,7 +4,7 @@
 // instance separately, PRD §5.1). UTC is requested via Prefer so no zone math
 // is needed downstream; the body is requested as text for a clean preview.
 import { graphFetch, getGraphMailboxUpn, GraphError } from "@/lib/graph/client";
-import type { CalendarEvent, CalendarPerson, CalendarSource } from "./types";
+import type { CalendarEvent, CalendarPerson, CalendarSource } from "@/lib/calendar/types";
 
 type GraphAddress = { name?: string; address?: string } | undefined;
 type GraphAttendee = { type?: string; emailAddress?: GraphAddress };

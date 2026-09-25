@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
-import { getGraphMailSource } from "@/lib/email/graph-source";
+import { moduleIsOn } from "@/lib/modules/gate";
+import { getGraphMailSource } from "@/modules/email-capture/lib/graph-source";
 import { GraphError } from "@/lib/graph/client";
 
 // Reopen an email-in note's original message in Outlook. The note body links
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const owner = await resolveOwner();
   if (!owner) return NextResponse.redirect(new URL("/sign-in", request.url));
+  if (!(await moduleIsOn(owner.id, "email-capture"))) {
+    return new NextResponse("The email-capture module is off for this owner.", { status: 404 });
+  }
 
   const mid = new URL(request.url).searchParams.get("mid");
   if (!mid) return new NextResponse("missing mid", { status: 400 });
