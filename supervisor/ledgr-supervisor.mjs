@@ -1018,7 +1018,7 @@ setInterval(() => {
 // The load-bearing one is `purge`: it calls pruneSyncOps, so without it a local
 // peer's oplog never prunes and ADR-213's retention holds decide nothing.
 //
-// Which jobs, and why only two default on, is the LOCAL_JOBS table in lib.mjs.
+// Which jobs, and which default on, is supervisor/jobs.json (LOCAL_JOBS in lib.mjs).
 
 // Generous: relatedness and export both declare maxDuration 60 and an
 // attachment-heavy export pass uses all of it.

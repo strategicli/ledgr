@@ -4,6 +4,7 @@
 // ledgr-supervisor.mjs and stays thin. Node builtins only.
 import { join, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -945,139 +946,60 @@ export function nextBackoffMs(consecutiveCrashes) {
  * not be the lever the owner reaches for.
  *
  * The three still `on: false` are the ones the picker refuses to move at all
- * (`movable: false` in src/lib/job-owners.ts). Scheduling a job that can never
+ * (`movable: false` in supervisor/jobs.json). Scheduling a job that can never
  * be named here would fire an endpoint that can only ever stand down.
  */
-export const LOCAL_JOBS = {
-  purge: {
-    path: "/api/machine/purge",
-    label: "Trash purge and sync-oplog prune",
-    at: "03:10",
-    shared: true,
-    on: true,
-    why:
-      "Every peer must run this itself: pruneSyncOps only ever prunes the oplog of " +
-      "the instance it runs on. The hard deletes are the same decision from the same " +
-      "data on every peer, and deleting an already-deleted row is a no-op.",
-  },
-  relatedness: {
-    path: "/api/machine/relatedness",
-    label: "Relatedness cache refresh",
-    at: "03:40",
-    shared: true,
-    on: true,
-    why:
-      "item_relatedness is a per-instance cache, deliberately outside ADR-206's " +
-      "synced-table list, so a local peer's Discover and Loose Ends stay empty until " +
-      "it computes its own. Two peers filling their own caches is not a conflict.",
-  },
-  "agent-purge": {
-    path: "/api/machine/agent-purge",
-    label: "Claude in Ledgr cleanup",
-    at: "03:50",
-    shared: true,
-    on: true,
-    why:
-      "In-app agent chats are hub-local tables outside the synced set, so each " +
-      "machine clears its own expired side chats and old records. A peer without " +
-      "the agent has nothing to delete, which is a no-op.",
-  },
-  snapshot: {
-    path: "/api/machine/snapshot",
-    label: "Local snapshots (restore points)",
-    everyMinutes: 60,
-    shared: true,
-    on: true,
-    // A dump of a real database takes longer than an API call; the default
-    // 120s ceiling would report a false failure and leave a partial file.
-    timeoutMs: 15 * 60_000,
-    why:
-      "Purely local: it dumps THIS peer's own cluster to THIS peer's own disk, so " +
-      "two peers snapshotting is two independent backups rather than a conflict. " +
-      "SCHEDULED here, but switched on in the app (ADR-222): the endpoint asks " +
-      "`snapshots:enabled` and returns without dumping when the owner has not " +
-      "turned restore points on, which is the default. Scheduling it always is " +
-      "what lets that switch be a checkbox instead of a config edit and a restart.",
-  },
-  export: {
-    path: "/api/machine/export",
-    label: "OneDrive export",
-    at: "04:10",
-    shared: false,
-    on: true,
-    why:
-      "One OneDrive folder. Two peers writing it would fight over the files and over " +
-      "items.exported_at — so the endpoint runs only on the copy named under Scheduled " +
-      "work, and stands down everywhere else. Scheduled here always so that naming this " +
-      "machine is all it takes (ADR-225).",
-  },
-  "calendar-sync": {
-    path: "/api/machine/calendar-sync",
-    label: "Calendar sync",
-    everyMinutes: 240,
-    shared: false,
-    on: true,
-    why:
-      "Creates items from Graph events. Two peers matching the same event would create " +
-      "two rows and sync would propagate both — so the endpoint runs only on the copy " +
-      "named under Scheduled work. Scheduled here always (ADR-225).",
-  },
-  "email-import": {
-    path: "/api/machine/email-import",
-    label: "Email-in",
-    everyMinutes: 240,
-    shared: false,
-    on: true,
-    why:
-      "Consumes the mailbox: whichever peer reads a message first is the only one that " +
-      "sees it — so the endpoint runs only on the copy named under Scheduled work. " +
-      "Scheduled here always (ADR-225).",
-  },
-  "todoist-sync": {
-    path: "/api/machine/todoist-sync",
-    label: "Todoist sync",
-    everyMinutes: 180,
-    shared: false,
-    on: false,
-    why: "Bidirectional against one Todoist account. Two peers pushing the same tasks is the classic double-write.",
-  },
-  "transcription-poll": {
-    path: "/api/machine/transcription-poll",
-    label: "Transcription poll",
-    everyMinutes: 15,
-    shared: false,
-    on: false,
-    why: "Claims transcription jobs from the provider; two pollers race for the same job.",
-  },
-  "youtube-transcript": {
-    path: "/api/machine/youtube-transcript",
-    label: "Video transcripts",
-    everyMinutes: 10,
-    shared: false,
-    on: true,
-    // No custom ceiling needed, and a long one was actively wrong. This
-    // endpoint starts the work and answers immediately, because Node destroys
-    // any request left open for five minutes: the 30-minute ceiling this once
-    // carried could never be reached, and it only meant the scheduler waited
-    // five minutes to be told "fetch failed" about work that was going fine
-    // (seen on the first real run, 2026-08-31). The default 120s is now
-    // generous for a call that returns in under a second.
-    why:
-      "Writes the transcript into the saved link itself. Two machines transcribing the " +
-      "same video would both write the same body and then fight over whose copy wins, so " +
-      "the endpoint runs only on the copy named under Scheduled work, and stands down " +
-      "everywhere else. Scheduled here always so that naming this machine is all it takes " +
-      "(ADR-225).",
-  },
-  "health-check": {
-    path: "/api/machine/health-check",
-    label: "Weekly health check",
-    at: "07:00",
-    shared: false,
-    on: false,
-    why: "Pushes to the owner's devices. Per-instance push subscriptions a local peer does not have, and it would double the alert where it does.",
-  },
-};
+/**
+ * The catalog itself lives in supervisor/jobs.json (ADR-272 step 3.3), because
+ * the app reads the same file for the Build → Scheduled work picker and this
+ * process is plain Node and cannot import the app's TypeScript. One file, two
+ * readers, no drift. Add or edit a job THERE; this only loads and checks it.
+ * JSON has no comments, so a job's longer reasoning sits in its `notes` array.
+ */
+export const LOCAL_JOBS = loadJobCatalog(
+  JSON.parse(readFileSync(new URL("./jobs.json", import.meta.url), "utf8"))
+);
+
+/**
+ * Validate the parsed catalog and project it to the supervisor's shape (the
+ * same fields, in the same order, it had when it was a literal here). Throws
+ * naming the job, because a malformed catalog must stop the supervisor at
+ * boot rather than schedule something wrong.
+ *
+ * @returns {Record<string, {path: string, label: string, at?: string,
+ *   everyMinutes?: number, shared: boolean, on: boolean, timeoutMs?: number,
+ *   why: string}>}
+ */
+export function loadJobCatalog(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("supervisor/jobs.json must be an object keyed by job name");
+  }
+  const out = {};
+  for (const [name, e] of Object.entries(raw)) {
+    const bad = (why) => new Error(`supervisor/jobs.json: job "${name}" ${why}`);
+    if (!e || typeof e !== "object") throw bad("must be an object");
+    if (typeof e.path !== "string" || !e.path) throw bad("needs a path");
+    if (typeof e.label !== "string" || !e.label) throw bad("needs a label");
+    if ((e.at === undefined) === (e.everyMinutes === undefined)) {
+      throw bad("needs exactly one of at / everyMinutes");
+    }
+    if (e.at !== undefined && !parseDailyAt(e.at)) throw bad(`has a bad at ${JSON.stringify(e.at)}`);
+    if (e.everyMinutes !== undefined && !(Number.isFinite(e.everyMinutes) && e.everyMinutes >= 1)) {
+      throw bad("needs everyMinutes to be a positive number");
+    }
+    if (typeof e.shared !== "boolean") throw bad("needs shared: true or false");
+    if (typeof e.on !== "boolean") throw bad("needs on: true or false");
+    const job = { path: e.path, label: e.label };
+    if (e.at !== undefined) job.at = e.at;
+    if (e.everyMinutes !== undefined) job.everyMinutes = e.everyMinutes;
+    job.shared = e.shared;
+    job.on = e.on;
+    if (e.timeoutMs !== undefined) job.timeoutMs = e.timeoutMs;
+    job.why = e.why;
+    out[name] = job;
+  }
+  return out;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

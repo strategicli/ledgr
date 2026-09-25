@@ -126,6 +126,8 @@ the per-device retention holds (ADR-213) decide nothing.
 | `transcription-poll` | off | **No.** Two pollers race for one job. |
 | `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
 
+**Adding or editing a job: `supervisor/jobs.json`** (ADR-272 step 3.3). The table above is a summary; that file is the catalog, and it is the only place a job is written down. The supervisor schedules from it (`path`, `label`, `at` or `everyMinutes`, `shared`, `on`, `timeoutMs`, `why`), and the app builds the Build → Updates → Scheduled work picker from the same entries (`ownerLabel`, `what`, `movable`, `blocked`, `consequence`, present on every `shared: false` job). `module` names the module that owns the job and is unset for core; nothing reads it yet. JSON has no comments, so longer reasoning goes in a job's `notes`. A malformed entry stops the supervisor at startup with the job's name in the error. After an edit, run `npx tsx scripts/verify-supervisor.mts`: it pins every job's current values, so a deliberate change also updates the matching literal there, in the same PR, where review can see it. A new exclusive job also goes into `PICKER_ORDER` in `src/lib/job-owners.ts`, which sets the order the picker lists them in.
+
 **The app decides whether the work happens, and since ADR-225 it decides alone.**
 Which install owns an exclusive job is one slot in the synced settings, edited at
 **Build → Updates → Scheduled work**, and every install re-reads it before each
