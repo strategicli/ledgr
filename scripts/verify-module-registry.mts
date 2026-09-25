@@ -794,5 +794,15 @@ for (const r of sharingRoutes) {
   check("module-shells.tsx imports no module directly", !read("src/lib/module-shells.tsx").includes("@/modules"));
 }
 
+// --- 19. step 4: triage mode lives under src/modules/triage ----------------
+{
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { triageModule } = await import("../src/modules/triage/manifest");
+  check("triage is registered from @/modules/triage/manifest", allModules().find((m) => m.id === "triage") === triageModule);
+  check("triage is on by default (it shipped with no switch)", moduleOn({ modules: {} }, "triage"));
+  check("the triage page calls the gate", read("src/app/inbox/triage/page.tsx").includes('pageGate(owner.id, "triage")'));
+  check("the Inbox hides its Triage link when the module is off", read("src/app/inbox/page.tsx").includes('moduleOnFor(owner.id, "triage")'));
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);
