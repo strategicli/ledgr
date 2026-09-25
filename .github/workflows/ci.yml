@@ -17,6 +17,13 @@
 # keyed on VERCEL_ENV, which GitHub Actions does not set (ADR-184) — that split
 # exists for exactly this job. Keeping CI secretless means a fork PR runs it too,
 # and that nothing here can touch production data.
+#
+# FOUR PARALLEL JOBS, ONE VERDICT (2026-09-25). The four steps used to run one
+# after another (~3 min). Side by side, the run takes as long as the slowest job
+# (the build) plus install. `check` is the single result everything downstream
+# reads — release-prod.mjs gates on a check-run with exactly that name — so it
+# stays, as a tiny job that fails unless all four succeeded. `if: always()` is
+# what makes it FAIL rather than skip when one of them breaks.
 name: CI
 
 on:
@@ -35,43 +42,86 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  typecheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-
       # Node 24 (current LTS). Local dev is on 25 and Next 16 supports 20.9+, so
       # this is comfortably inside the supported band; deliberately NOT pinned via
       # .nvmrc, which would change which version a collaborator's `nvm use` picks.
-      # Worth confirming against the Vercel project's runtime if they ever diverge.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-
       # `ci` not `install`: respect the lockfile exactly, and fail if it and
       # package.json disagree rather than silently resolving something else.
       - run: npm ci
+      - run: npm run typecheck
 
-      # Ordered cheapest-first so an obvious break reports in seconds. Each step
-      # runs even if an earlier one failed (`!cancelled()`), because seeing all
-      # four results in one run beats fixing one thing per push.
-      - name: Typecheck
-        run: npm run typecheck
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # ESLint's own cache: only files that changed are re-linted. Safe because
+      # the config has no type-aware rules (a file's result depends only on that
+      # file and the config, both of which are in the cache key).
+      - uses: actions/cache@v4
+        with:
+          path: .eslintcache
+          key: eslint-${{ hashFiles('package-lock.json', 'eslint.config.mjs') }}-${{ github.sha }}
+          restore-keys: eslint-${{ hashFiles('package-lock.json', 'eslint.config.mjs') }}-
+      - run: npm run lint -- --cache --cache-location .eslintcache
 
-      - name: Lint
-        if: '!cancelled()'
-        run: npm run lint
+  # The job that would have caught both production breakages: `next build`
+  # typechecks generated route types, which plain `tsc` does not.
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Next's documented CI cache: the build reuses unchanged compiled modules.
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ hashFiles('package-lock.json') }}-
+      - run: npm run build
 
-      # The step that would have caught both production breakages: `next build`
-      # typechecks generated route types, which plain `tsc` does not.
-      - name: Build
-        if: '!cancelled()'
-        run: npm run build
+  # Every verify script that needs no DB and no server. The DB-backed suites
+  # stay a local/manual step — see runbook.md.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:ci
 
-      # Every verify script that needs no DB and no server (51 of 130). The
-      # DB-backed suites stay a local/manual step — see runbook.md.
-      - name: Verify (pure suites)
-        if: '!cancelled()'
-        run: npm run verify:ci
+  check:
+    if: always()
+    needs: [typecheck, lint, build, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: |
+          echo "typecheck=${{ needs.typecheck.result }} lint=${{ needs.lint.result }} build=${{ needs.build.result }} verify=${{ needs.verify.result }}"
+          test "${{ needs.typecheck.result }}" = success
+          test "${{ needs.lint.result }}" = success
+          test "${{ needs.build.result }}" = success
+          test "${{ needs.verify.result }}" = success

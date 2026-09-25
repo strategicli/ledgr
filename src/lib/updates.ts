@@ -279,7 +279,7 @@ export function resolveApplicability(
 }
 
 /** Everything /build/updates and /api/updates render, gathered once. */
-export async function getUpdateReport(): Promise<UpdateReport> {
+export async function getUpdateReport({ fresh = false } = {}): Promise<UpdateReport> {
   const instance = getInstanceIdentity();
   const [code, schema] = await Promise.all([
     // A satellite AND a local peer can both be behind upstream; only a Vercel
@@ -290,7 +290,8 @@ export async function getUpdateReport(): Promise<UpdateReport> {
       instance.sha,
       instance.upstreamRepo,
       instance.branch,
-      instance.isSatellite || isLocalPeerInstance(instance)
+      instance.isSatellite || isLocalPeerInstance(instance),
+      fresh
     ),
     getSchemaStatus(),
   ]);

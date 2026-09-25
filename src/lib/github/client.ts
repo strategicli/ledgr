@@ -372,7 +372,12 @@ export async function getCodeStatus(
   runningSha: string | null,
   upstreamRepo: string,
   branch: string,
-  isSatellite: boolean
+  isSatellite: boolean,
+  // true = ask GitHub now. The 60s cache otherwise serves a stale answer on the
+  // first visit and refreshes behind it, so /build/updates said "up to date"
+  // until a reload (Brandon, 2026-09-25). Only the page that is ABOUT this
+  // answer pays for a fresh one; the pages that just need identity keep the cache.
+  fresh = false
 ): Promise<CodeStatus> {
   if (!isSatellite) return { state: "source", touchesSchema: false };
   const cfg = getGithubConfig();
@@ -390,7 +395,7 @@ export async function getCodeStatus(
     cmp = await ghJson<CompareResponse>(
       cfg,
       `/repos/${upstreamRepo}/compare/${encodeURIComponent(runningSha)}...${encodeURIComponent(branch)}`,
-      { revalidate: 60 }
+      fresh ? { cache: "no-store" } : { revalidate: 60 }
     );
   } catch (err) {
     return {

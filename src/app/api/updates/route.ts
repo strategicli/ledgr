@@ -17,6 +17,8 @@ const log = createLogger("updates");
 export async function GET() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  // Cached (60s): the Update button polls this every 8s for minutes, and a fresh
+  // compare per poll would spend an untokened install's 60 GitHub calls an hour.
   return NextResponse.json(await getUpdateReport());
 }
 
@@ -32,7 +34,8 @@ export async function POST() {
     instance.sha,
     instance.upstreamRepo,
     instance.branch,
-    instance.isSatellite || instance.isLocalPeer
+    instance.isSatellite || instance.isLocalPeer,
+    true // fresh: a stale "not behind" here would refuse a real update
   );
   const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);
 
