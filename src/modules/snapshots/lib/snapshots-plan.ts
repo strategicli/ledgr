@@ -1,6 +1,6 @@
 // The snapshot spread: pure arithmetic, no filesystem, no database.
 //
-// Split out of src/lib/snapshots.ts so both sides can import it: the settings
+// Split out of src/modules/snapshots/lib/snapshots.ts so both sides can import it: the settings
 // island in the browser (which cannot see node:fs) and
 // scripts/verify-snapshots.mts (which runs in CI, where there is no cluster to
 // dump). The filesystem and pg_dump half lives next door in snapshots.ts:

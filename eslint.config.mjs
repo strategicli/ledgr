@@ -60,6 +60,9 @@ const eslintConfig = defineConfig([
       "src/lib/auth/**",
       "src/lib/build-nav.ts",
       "src/lib/storage/**",
+      // The export engine is core (Save Offline, Principle 4); the OneDrive
+      // target is a module and is handed in, never imported (ADR-272 step 4).
+      "src/lib/export/**",
       "src/lib/sync/**",
       "src/lib/mcp/server.ts",
       "src/lib/mcp/protocol.ts",

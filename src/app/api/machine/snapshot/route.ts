@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { captureError, createLogger } from "@/lib/log";
-import { readSnapshotsEnabled, runSnapshot, snapshotTarget } from "@/lib/snapshot-settings";
+import { readSnapshotsEnabled, runSnapshot, snapshotTarget } from "@/modules/snapshots/lib/snapshot-settings";
+import { resolveMachineOwner } from "@/lib/machine/owner";
+import { moduleIsOn } from "@/lib/modules/gate";
 
 // Hourly local snapshot (the "time machine"). Triggered by the supervisor's own
 // scheduler over loopback, through the same machine-token door as every other
@@ -35,6 +37,13 @@ export async function GET(request: Request) {
   // Not an error and not a failure — the scheduler should record a clean run.
   if (!(await readSnapshotsEnabled())) {
     return NextResponse.json({ ok: true, skipped: "snapshots are switched off" });
+  }
+  // The owner-level switch (Build → Modules, ADR-272 step 4). This is a shared
+  // job, not an owned one, so the step 3 job verdict never runs for it and the
+  // module is checked here. A clean skip, like the per-install switch above.
+  const ownerId = await resolveMachineOwner();
+  if (ownerId && !(await moduleIsOn(ownerId, "snapshots"))) {
+    return NextResponse.json({ ok: true, skipped: "the snapshots module is off" });
   }
 
   const log = createLogger("snapshot");

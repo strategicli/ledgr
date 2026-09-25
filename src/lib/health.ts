@@ -27,11 +27,10 @@ import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
-// not yet modules (step 4): export, calendar, email, push, discovery,
+// not yet modules (step 4): calendar, email, push, discovery,
 // sync, tasks adapter, transcription adapter.
 import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
-import { getExportState } from "@/lib/export/engine";
 import { getRelatednessState } from "@/lib/discovery/refresh";
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
@@ -180,9 +179,8 @@ export async function gatherHealth(): Promise<HealthReport> {
   let errors: ErrorsCheck = null;
   let modules: Record<string, Record<string, unknown>> = {};
   // not yet modules (step 4): each read below moves onto its module's manifest.
-  let exp, cal, em, push, rel;
+  let cal, em, push, rel;
   if (database.ok) {
-    exp = await safe(getExportState);
     cal = await safe(getCalendarState);
     em = await safe(getEmailState);
     push = await safe(getPushState);
@@ -227,6 +225,12 @@ export async function gatherHealth(): Promise<HealthReport> {
   // healthCheck slot, and is copied into the two top-level keys the weekly
   // check and outside readers still read. Null while the module is off.
   const td = modules.todoist as { lastSyncAt?: string | null; lastRunAt?: string | null } | undefined;
+  // OneDrive export is a module too (step 4), copied the same way into its
+  // three top-level keys. Null while the module is off, which the weekly check
+  // reads as "never ran" and does not alert on.
+  const exp = modules["onedrive-export"] as
+    | { lastSuccessAt?: string | null; lastRunAt?: string | null; remaining?: number | null }
+    | undefined;
 
   return {
     status: database.ok ? "ok" : "degraded",
@@ -234,7 +238,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       database,
       lastExportAt: exp?.lastSuccessAt ?? null,
       lastExportRunAt: exp?.lastRunAt ?? null,
-      lastExportRemaining: exp?.lastResult?.remaining ?? null,
+      lastExportRemaining: exp?.remaining ?? null,
       lastCalendarSyncAt: cal?.lastSuccessAt ?? null,
       lastCalendarRunAt: cal?.lastRunAt ?? null,
       tasksAdapter: tasksAdapter(),

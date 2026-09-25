@@ -1,7 +1,7 @@
 // Verification for local snapshots (the "time machine").
 //
 // PURE by construction, like verify-supervisor.mts: the spread arithmetic and
-// the prune decision live in src/lib/snapshots-plan.ts precisely so they can be
+// the prune decision live in src/modules/snapshots/lib/snapshots-plan.ts precisely so they can be
 // exercised with no cluster, no dump and no disk. The parts that DO touch the
 // world (pg_dump, pg_restore, the scratch cluster) stay thin and are proven by
 // running them on the rig.
@@ -30,7 +30,7 @@ import {
   planSpanMs,
   tierPlan,
   TIERS,
-} from "@/lib/snapshots-plan";
+} from "@/modules/snapshots/lib/snapshots-plan";
 import {
   averageSnapshotBytes,
   listSnapshots,
@@ -38,7 +38,7 @@ import {
   snapshotName,
   snapshotTime,
   takeSnapshot,
-} from "@/lib/snapshots";
+} from "@/modules/snapshots/lib/snapshots";
 
 const HOUR = 3_600_000;
 let checks = 0;
@@ -420,7 +420,7 @@ ok("the dump never blocks the server's event loop", () => {
   // every hour, answering nobody from any device. It read as "Ledgr is slow"
   // and "MCP is flaky" for weeks because the machine and network were fine.
   // A synchronous child process anywhere in this file brings that back.
-  const src = readFileSync(resolve("src/lib/snapshots.ts"), "utf8");
+  const src = readFileSync(resolve("src/modules/snapshots/lib/snapshots.ts"), "utf8");
   for (const banned of ["spawnSync", "execSync", "execFileSync"]) {
     assert.ok(
       !src.includes(`${banned}(`),

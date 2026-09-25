@@ -28,7 +28,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { chooseKeepers } from "@/lib/snapshots-plan";
+import { chooseKeepers } from "@/modules/snapshots/lib/snapshots-plan";
 
 // EVERY child process in this file is spawned ASYNCHRONOUSLY, and that is the
 // whole point of this helper rather than a style preference (2026-09-02,

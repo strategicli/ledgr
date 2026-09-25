@@ -56,9 +56,9 @@ Ordered easiest-first for step 4. "Chokepoints" counts the shared files a module
 | todoist | `lib/todoist/`, 2 routes, 1 job | jobs | proxy (webhook), jobs, health |
 | email-capture | `lib/email/`, 1 job | jobs | jobs, health |
 | calendar-sync | `lib/calendar/`, `calendar_events` table, 1 job | jobs, event type | jobs, health, nav (`/events`) |
-| onedrive-export | `lib/export/onedrive.ts`, 1 job, `/build/backups` | export engine, jobs | jobs, build-nav, health |
+| ~~onedrive-export~~ | moved: `src/modules/onedrive-export/` (the OneDrive target, health check); the engine stays core | export engine, jobs | none left |
 | relatedness | `lib/discovery/`, `item_relatedness`, `/build/loose-ends`, 1 job | jobs | jobs, build-nav, related panel |
-| snapshots | `lib/snapshots*.ts`, 1 job | supervisor | jobs, `/build/backups` |
+| ~~snapshots~~ | moved: `src/modules/snapshots/` (lib, components); keeps its per-install switch too | supervisor | none left |
 | passages | `lib/passages/`, `passage_refs`, `/passage/[ref]` | none | item-mutations (on-save hook) |
 | desk | `lib/desk/`, `components/desk/`, `/desk` | editor | layout (send menu), editor menus, nav |
 | ai-memory | `lib/memory.ts`, `memory` type, 2 MCP tools, `/build/memory` | mcp door | tools gating, build-nav (already `gatedBy`), agent context |

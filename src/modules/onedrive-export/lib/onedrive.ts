@@ -5,7 +5,7 @@
 // client (src/lib/graph, slice 21/ADR-022); this file keeps only the
 // OneDrive-specific path building and upload-session logic.
 import { getGraphCredentials, graphFetch } from "@/lib/graph/client";
-import type { ExportTarget } from "./target";
+import type { ExportTarget } from "@/lib/export/target";
 
 export type GraphConfig = {
   // The drive owner's UPN (Brandon's email) and the folder inside that

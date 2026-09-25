@@ -4,7 +4,7 @@ import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { runExport } from "@/lib/export/engine";
-import { getGraphConfig, OneDriveExportTarget } from "@/lib/export/onedrive";
+import { getGraphConfig, OneDriveExportTarget } from "@/modules/onedrive-export/lib/onedrive";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 import { standDownIfNotOwner } from "@/lib/job-owner-guard";
 import { stampJobRun } from "@/lib/job-owners-store";

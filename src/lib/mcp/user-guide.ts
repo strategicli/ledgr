@@ -449,10 +449,15 @@ Build your own kinds of item at \`/build/types\`.
   transcripts, the Notification center (paused), Scripture passages (on by
   default: a Bible reference in a body becomes a link to that passage's page;
   switched off, new references stop linking), **Todoist** (off by default:
-  syncs tasks both ways with a Todoist account, on a copy set up for it) and
+  syncs tasks both ways with a Todoist account, on a copy set up for it),
   Sharing (on by default: the Share link control and the assistant's share
   tools; switched off, the control is gone and every existing link stops
-  opening until you turn it back on). A module that is off also drops
+  opening until you turn it back on), **OneDrive export** (on by default: the
+  nightly plain-file copy of everything in your OneDrive; switched off, the
+  nightly job stops and Save Offline still saves the document on your device)
+  and **Snapshots** (on by default: hourly restore points on a computer running
+  Ledgr locally; each computer still has its own switch on \`/build/backups\`).
+  A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
@@ -1478,6 +1483,9 @@ were an hour ago instead of waiting for the weekly backup.
 
 They are **off until you switch them on**, since they cost disk space, and the
 switch is a checkbox on this page: *Keep hourly restore points on this machine*.
+That checkbox is for this computer only. The **Snapshots** module at
+\`/build/modules\` turns the whole feature on or off; while it is off, this page
+says so instead of showing the section.
 Ticking it takes effect at the next hourly snapshot, and unticking it stops
 taking new ones without deleting the ones you already have. Underneath it you
 set one number, *how many restore points to keep*, and Ledgr works out the
@@ -1499,7 +1507,9 @@ you need. The page names the command.
 
 **The weekly database backup and the OneDrive export** run as scheduled jobs like
 any other. Which machine does them is chosen on \`/build/jobs\` under "Scheduled
-work," not here.
+work," not here. The OneDrive export is the **OneDrive export** module at
+\`/build/modules\`; while it is off, this page notes that nothing is copied to
+OneDrive.
 
 # The sync network
 
