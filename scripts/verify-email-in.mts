@@ -22,7 +22,7 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 // --- Part A: pure footer (link-don't-copy) ----------------------------------
-const { emailFooterMarkdown } = await import("../src/lib/email/html");
+const { emailFooterMarkdown } = await import("../src/modules/email-capture/lib/html");
 {
   const full = emailFooterMarkdown({
     fromName: "Lesleigh Carmichael",
@@ -46,9 +46,9 @@ const { emailFooterMarkdown } = await import("../src/lib/email/html");
 
 const { getDb } = await import("../src/db");
 const { items, jobState, users } = await import("../src/db/schema");
-const { runEmailImport, getEmailState, EMAIL_JOB_KEY } = await import("../src/lib/email/sync");
-type MailSource = import("../src/lib/email/types").MailSource;
-type NormalizedMessage = import("../src/lib/email/types").NormalizedMessage;
+const { runEmailImport, getEmailState, EMAIL_JOB_KEY } = await import("../src/modules/email-capture/lib/sync");
+type MailSource = import("../src/modules/email-capture/lib/types").MailSource;
+type NormalizedMessage = import("../src/modules/email-capture/lib/types").NormalizedMessage;
 const { and, eq, sql } = await import("drizzle-orm");
 
 const db = getDb();

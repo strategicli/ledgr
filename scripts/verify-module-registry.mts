@@ -504,6 +504,36 @@ for (const r of sharingRoutes) {
   check("health.ts no longer reads export state itself", !read("src/lib/health.ts").includes("getExportState"));
   check("onedrive-export contributes a health check (server slot)", typeof exp?.healthCheck === "function");
 }
+// --- 12. step 4: email-capture and calendar-sync live under src/modules ------
+{
+  const { existsSync } = await import("node:fs");
+  const { emailCaptureModule } = await import("../src/modules/email-capture/manifest");
+  const { calendarSyncModule } = await import("../src/modules/calendar-sync/manifest");
+  const { JOB_CATALOG, jobModuleOff } = await import("../src/lib/job-owners");
+  const registerSrc = readFileSync(new URL("../src/lib/modules/register.ts", import.meta.url), "utf8");
+  const jobs: Record<string, string> = { "email-capture": "email-import", "calendar-sync": "calendar-sync" };
+  for (const m of [emailCaptureModule, calendarSyncModule]) {
+    check(`${m.id} is registered from @/modules/${m.id}/manifest`, allModules().find((x) => x.id === m.id) === m);
+    check(`register.ts imports ${m.id} from its module folder`, registerSrc.includes(`from "@/modules/${m.id}/manifest"`));
+    check(`${m.id} is on by default (its job runs by default)`, m.enabledByDefault === true && moduleOn({ modules: {} }, m.id));
+    check(`${m.id} has a description for the Modules page`, !!m.description);
+    check(`${m.id} adds no item types`, m.types.length === 0);
+    check(`${m.id} contributes a health check (server slot)`, typeof m.healthCheck === "function");
+    const job = jobs[m.id];
+    check(`the ${job} job names ${m.id} as its module`, JOB_CATALOG[job]?.module === m.id);
+    check(`the ${job} job stands down while ${m.id} is off`, jobModuleOff(job, [m.id]));
+    const routes = m.routes ?? [];
+    check(`${m.id} names its route files`, routes.length > 0);
+    for (const r of routes) {
+      check(`${m.id} route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+      if (r.includes("/api/machine/")) continue; // gated by the job verdict
+      const src = readFileSync(new URL(`../${r}`, import.meta.url), "utf8");
+      check(`${m.id} route calls the gate: ${r}`, /from "@\/lib\/modules\/gate"/.test(src) && src.includes(`"${m.id}")`));
+    }
+  }
+  check("email-capture owns the three email routes", emailCaptureModule.routes?.length === 3);
+  check("calendar-sync owns sync, matchers and its job route", calendarSyncModule.routes?.length === 4);
+}
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

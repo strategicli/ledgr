@@ -16,8 +16,8 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, matchers, relations, users } = await import("../src/db/schema");
-const { createMatcher, listMatchers, deleteMatcher } = await import("../src/lib/matchers/store");
-const { matchEvent, applyMatchersToMeeting } = await import("../src/lib/matchers/engine");
+const { createMatcher, listMatchers, deleteMatcher } = await import("../src/modules/calendar-sync/lib/matchers/store");
+const { matchEvent, applyMatchersToMeeting } = await import("../src/modules/calendar-sync/lib/matchers/engine");
 const { ItemError } = await import("../src/lib/items");
 type CalendarEvent = import("../src/lib/calendar/types").CalendarEvent;
 const { and, eq } = await import("drizzle-orm");

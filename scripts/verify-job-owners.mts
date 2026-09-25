@@ -140,7 +140,7 @@ ok("email capture recognizes a message from SYNCED item rows, not a local record
   // `alreadyImported` is the guard that survives a handoff. It must read
   // `items` (synced) and key on internetMessageId, which is stable across the
   // mailbox move that the volatile per-message id is not.
-  const src = SRC("src/lib/email/sync.ts");
+  const src = SRC("src/modules/email-capture/lib/sync.ts");
   const guard = src.slice(src.indexOf("async function alreadyImported"));
   assert.match(guard.slice(0, 900), /from items/, "the guard no longer reads the items table");
   assert.match(guard.slice(0, 900), /internetMessageId/, "the guard no longer keys on the stable id");
@@ -151,7 +151,7 @@ ok("email capture moves a message out of the folder only AFTER it is filed", () 
   // still see is a message nobody has filed. That only holds while the move
   // follows the write. Reversed, a crash between them loses the message for
   // every copy at once.
-  const src = SRC("src/lib/email/sync.ts");
+  const src = SRC("src/modules/email-capture/lib/sync.ts");
   const create = src.indexOf("await createItem(ownerId, {");
   // lastIndexOf: the FIRST markImported is the skip branch (a message filed on
   // a previous run, moved now), which legitimately precedes the create.
@@ -164,7 +164,7 @@ ok("calendar sync recognizes a meeting from the SYNCED item column", () => {
   // Dedup keys on items.msEventId. The `calendar_events` cache beside it is
   // per-copy and deliberately so; if the dedup ever moved onto that table, a
   // new owner with an empty cache would duplicate every promoted meeting.
-  const src = SRC("src/lib/calendar/sync.ts");
+  const src = SRC("src/modules/calendar-sync/lib/sync.ts");
   assert.match(src, /inArray\(items\.msEventId, ids\)/, "dedup no longer keys on items.msEventId");
   assert.doesNotMatch(
     src,

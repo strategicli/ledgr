@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
-import { getGraphCalendarSource } from "@/lib/calendar/graph-source";
-import { runCalendarSync } from "@/lib/calendar/sync";
+import { routeGate } from "@/lib/modules/gate";
+import { getGraphCalendarSource } from "@/modules/calendar-sync/lib/graph-source";
+import { runCalendarSync } from "@/modules/calendar-sync/lib/sync";
 import { GraphError } from "@/lib/graph/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
@@ -15,6 +16,8 @@ export const maxDuration = 60;
 export async function POST() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "calendar-sync");
+  if (off) return off;
 
   const log = createLogger("calendar-sync-now");
   const source = getGraphCalendarSource();

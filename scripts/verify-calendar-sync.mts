@@ -1,4 +1,4 @@
-// Slice 22 verification: the calendar sync engine (src/lib/calendar/sync)
+// Slice 22 verification: the calendar sync engine (src/modules/calendar-sync/lib/sync)
 // against the live Neon DB with a stub CalendarSource, under a throwaway user
 // so no real meeting is ever touched. Covers create, idempotence, reschedule,
 // cancel/uncancel (never delete), dedupe, trashed-item protection, properties
@@ -17,7 +17,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 const { getDb } = await import("../src/db");
 const { calendarEvents, items, jobState, users } = await import("../src/db/schema");
 const { runCalendarSync, getCalendarState, CALENDAR_JOB_KEY } = await import(
-  "../src/lib/calendar/sync"
+  "../src/modules/calendar-sync/lib/sync"
 );
 type CalendarEvent = import("../src/lib/calendar/types").CalendarEvent;
 type CalendarSource = import("../src/lib/calendar/types").CalendarSource;

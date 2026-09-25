@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
-import { getGraphMailSource } from "@/lib/email/graph-source";
-import { runEmailImport } from "@/lib/email/sync";
+import { routeGate } from "@/lib/modules/gate";
+import { getGraphMailSource } from "@/modules/email-capture/lib/graph-source";
+import { runEmailImport } from "@/modules/email-capture/lib/sync";
 import { GraphError } from "@/lib/graph/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
@@ -12,6 +13,8 @@ export const maxDuration = 60;
 export async function POST() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "email-capture");
+  if (off) return off;
 
   const log = createLogger("email-import-now");
   const source = getGraphMailSource();

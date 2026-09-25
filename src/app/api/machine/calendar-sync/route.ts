@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { standDownIfNotOwner } from "@/lib/job-owner-guard";
 import { stampJobRun } from "@/lib/job-owners-store";
-import { getGraphCalendarSource } from "@/lib/calendar/graph-source";
+import { getGraphCalendarSource } from "@/modules/calendar-sync/lib/graph-source";
 import { resolveMailboxOwner } from "@/lib/calendar/owner";
-import { runCalendarSync } from "@/lib/calendar/sync";
+import { runCalendarSync } from "@/modules/calendar-sync/lib/sync";
 import { getGraphMailboxUpn, GraphError } from "@/lib/graph/client";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 

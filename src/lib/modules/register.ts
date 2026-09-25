@@ -21,6 +21,8 @@ import { youtubeTranscriptsModule } from "@/modules/youtube-transcripts/manifest
 import { sharingModule } from "@/modules/sharing/manifest";
 import { onedriveExportModule } from "@/modules/onedrive-export/manifest";
 import { snapshotsModule } from "@/modules/snapshots/manifest";
+import { emailCaptureModule } from "@/modules/email-capture/manifest";
+import { calendarSyncModule } from "@/modules/calendar-sync/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -35,6 +37,8 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   sharingModule,
   onedriveExportModule,
   snapshotsModule,
+  emailCaptureModule,
+  calendarSyncModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

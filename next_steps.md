@@ -35,7 +35,9 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    `settingsSchema`, so a module's own options render on the Modules page.
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (~~themes~~ stays
    core, see §5 of the exploration; ~~sharing~~ done, `src/modules/sharing/`;
-   ~~youtube~~, ~~todoist~~, email, calendar-sync, ~~onedrive-export~~, relatedness, ~~snapshots~~,
+   ~~youtube~~, ~~todoist~~, ~~email~~, ~~calendar-sync~~ (the Outlook pull only; event
+   views, template match rules and the person suggester stay core), ~~onedrive-export~~,
+   relatedness, ~~snapshots~~,
    ~~passages~~, desk, ai-memory, live-context, agent, MCP tool families).
 6. **Step 5: lazy-load the shells** so a disabled module ships zero bytes.
 7. **Step 6: instance defaults** reviewed with Tyler; done when his install is the same

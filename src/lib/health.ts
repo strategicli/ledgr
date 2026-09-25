@@ -27,10 +27,8 @@ import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
-// not yet modules (step 4): calendar, email, push, discovery,
-// sync, tasks adapter, transcription adapter.
-import { getCalendarState } from "@/lib/calendar/sync";
-import { getEmailState } from "@/lib/email/sync";
+// not yet modules (step 4): push, discovery, sync, tasks adapter,
+// transcription adapter.
 import { getRelatednessState } from "@/lib/discovery/refresh";
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
@@ -179,10 +177,8 @@ export async function gatherHealth(): Promise<HealthReport> {
   let errors: ErrorsCheck = null;
   let modules: Record<string, Record<string, unknown>> = {};
   // not yet modules (step 4): each read below moves onto its module's manifest.
-  let cal, em, push, rel;
+  let push, rel;
   if (database.ok) {
-    cal = await safe(getCalendarState);
-    em = await safe(getEmailState);
     push = await safe(getPushState);
     rel = await safe(getRelatednessState);
     const owner = await safe(resolveMcpOwner);
@@ -231,6 +227,10 @@ export async function gatherHealth(): Promise<HealthReport> {
   const exp = modules["onedrive-export"] as
     | { lastSuccessAt?: string | null; lastRunAt?: string | null; remaining?: number | null }
     | undefined;
+  // Calendar sync and email capture follow the same pattern.
+  type SyncCanaryShape = { lastSyncAt?: string | null; lastRunAt?: string | null } | undefined;
+  const cal = modules["calendar-sync"] as SyncCanaryShape;
+  const em = modules["email-capture"] as SyncCanaryShape;
 
   return {
     status: database.ok ? "ok" : "degraded",
@@ -239,13 +239,13 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastExportAt: exp?.lastSuccessAt ?? null,
       lastExportRunAt: exp?.lastRunAt ?? null,
       lastExportRemaining: exp?.remaining ?? null,
-      lastCalendarSyncAt: cal?.lastSuccessAt ?? null,
+      lastCalendarSyncAt: cal?.lastSyncAt ?? null,
       lastCalendarRunAt: cal?.lastRunAt ?? null,
       tasksAdapter: tasksAdapter(),
       transcription: transcriptionAdapter(),
       lastTodoistSyncAt: td?.lastSyncAt ?? null,
       lastTodoistRunAt: td?.lastRunAt ?? null,
-      lastEmailImportAt: em?.lastSuccessAt ?? null,
+      lastEmailImportAt: em?.lastSyncAt ?? null,
       lastEmailRunAt: em?.lastRunAt ?? null,
       lastAgendaNotifyAt: push?.agenda?.lastSuccessAt ?? null,
       lastPrepNotifyAt: push?.prep?.lastSuccessAt ?? null,
