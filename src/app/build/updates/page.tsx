@@ -77,7 +77,7 @@ export default async function Updates() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const { instance, code, schema, canApply, blockedReason } = await getUpdateReport();
+  const { instance, code, schema, canApply, blockedReason } = await getUpdateReport({ fresh: true });
 
   // The same reader the client island polls through /api/startup, so the first
   // paint and every refresh can never disagree about it.

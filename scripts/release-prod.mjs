@@ -6,10 +6,23 @@
 //   1. preflight   — clean working tree + fetch
 //   2. ff-merge    — fast-forward the deploy branch to origin/main (code to ship)
 //   3. gates + dev — the GitHub CI "check" job must be green on this exact
-//                    SHA, then migrate DEV (canary) and run the core verifies
-//                    against it; ABORT on the first failure
-//   4. migrate prod
+//                    code, then (only if the release carries a migration)
+//                    migrate DEV (canary) and run the core verifies against it;
+//                    ABORT on the first failure
+//   4. migrate prod — only if the release carries a migration
 //   5. push        — push the deploy branch; Vercel auto-deploys
+//
+// FAST PATH (2026-09-25, "ship in 2 minutes"). Two waits were paying for
+// nothing on an ordinary release:
+//  - CI ran again on main after the squash merge, and the release waited ~3 min
+//    for it. When main's commit holds the SAME TREE (same files, byte for byte)
+//    as the PR head CI already passed, that second run can only repeat the first
+//    verdict, so the gate accepts the PR head's run. If main moved in between
+//    (someone else merged), the trees differ and it waits for main's run, as
+//    before.
+//  - Dev migrate + core verifies + prod migrate ran even with no migration.
+//    They run now only when ./drizzle changed between the deploy branch and
+//    main. `--full` runs them regardless.
 //
 // Why a CI gate instead of local lint + build: CI (.github/workflows/ci.yml:
 // typecheck, lint, build, verify:ci) already ran on every commit that reached
@@ -81,6 +94,28 @@ async function requireGreenCi(sha) {
   }
 }
 
+// The commit whose CI verdict stands for main's code: the merged PR's head when
+// it has main's exact tree, otherwise main itself.
+function ciShaFor(mainSha) {
+  try {
+    const pulls = JSON.parse(
+      execFileSync("gh", ["api", `repos/${REPO}/commits/${mainSha}/pulls`], { encoding: "utf8" })
+    );
+    const head = pulls.find((p) => p.merged_at)?.head?.sha;
+    if (!head) return mainSha;
+    const headTree = JSON.parse(
+      execFileSync("gh", ["api", `repos/${REPO}/git/commits/${head}`], { encoding: "utf8" })
+    ).tree.sha;
+    if (headTree === cap(`git rev-parse ${mainSha}^{tree}`)) {
+      console.log(`main ${mainSha.slice(0, 7)} has the same files as PR head ${head.slice(0, 7)}; using its CI run`);
+      return head;
+    }
+  } catch {
+    // Any lookup failure falls back to the safe, slower gate.
+  }
+  return mainSha;
+}
+
 let origBranch = "HEAD";
 try {
   origBranch = cap("git rev-parse --abbrev-ref HEAD");
@@ -90,6 +125,9 @@ try {
     throw new Error("working tree is dirty — commit or stash before releasing");
   }
   sh("git fetch origin --quiet");
+  // Decided before the fast-forward: what does main add that prod doesn't have?
+  const hasMigration =
+    FULL || cap(`git diff --name-only origin/${TARGET} origin/main -- drizzle`) !== "";
 
   stage(2, `fast-forward ${TARGET} to origin/main`);
   sh(`git checkout ${TARGET}`);
@@ -99,20 +137,24 @@ try {
 
   stage(3, FULL
     ? "gates: local lint + build (--full), then migrate DEV (canary) + core verifies"
-    : "gates: CI green on this SHA, then migrate DEV (canary) + core verifies");
+    : hasMigration
+      ? "gates: CI green on this code, then migrate DEV (canary) + core verifies"
+      : "gates: CI green on this code (no migration, database steps skipped)");
   if (FULL) {
     sh("npm run lint");
     sh("npm run build");
   } else {
-    await requireGreenCi(cap("git rev-parse origin/main"));
+    await requireGreenCi(ciShaFor(cap("git rev-parse origin/main")));
   }
-  sh("npm run db:migrate"); // dev, via .env.local
-  for (const v of CORE_VERIFIES) {
-    sh(`node --env-file-if-exists=.env.local --import tsx scripts/${v}`);
+  if (hasMigration) {
+    sh("npm run db:migrate"); // dev, via .env.local
+    for (const v of CORE_VERIFIES) {
+      sh(`node --env-file-if-exists=.env.local --import tsx scripts/${v}`);
+    }
   }
 
-  stage(4, "migrate PROD");
-  sh("npm run db:migrate:prod"); // prod, via .env.production.local
+  stage(4, hasMigration ? "migrate PROD" : "migrate PROD: skipped, no migration in this release");
+  if (hasMigration) sh("npm run db:migrate:prod"); // prod, via .env.production.local
 
   stage(5, `push ${TARGET} -> Vercel deploys`);
   sh(`git push origin ${TARGET}`);
