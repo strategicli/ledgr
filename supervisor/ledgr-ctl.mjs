@@ -15,6 +15,7 @@
 //   npm run local:startup -- --always    # start at boot (24/7 hub; elevation)
 //   npm run local:startup -- --disable
 //   npm run local:tray                   # the notification-area icon
+//   npm run local:reset-password         # set a new sign-in password, at this computer
 //
 // A separate entry point from ledgr-supervisor.mjs on purpose: that file boots
 // Postgres and the app on import-and-run, so it cannot answer a question
@@ -54,7 +55,11 @@ import {
   parseCronState,
   parseUpdatePolicy,
   updatePolicyPath,
+  serializeSigninReset,
+  signinResetPath,
+  SIGNIN_RESET_MINUTES,
 } from "./lib.mjs";
+import { randomBytes } from "node:crypto";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const isWin = process.platform === "win32";
@@ -771,9 +776,48 @@ function doRequest() {
   return 0;
 }
 
+// ── reset-password (ADR-274: "Reset sign-in password" at the machine) ────────
+
+/**
+ * The tray's "Reset sign-in password", and `npm run local:reset-password`.
+ * Writes a one-time ticket into the data folder (only someone signed in to this
+ * computer can) and opens the app's reset page on localhost with the ticket
+ * after "#", so it never reaches a server log. The page does the rest: new
+ * password, fresh recovery kit, one code typed back, signed in.
+ */
+async function doResetPassword() {
+  const status = await appAnswers();
+  if (status === null) {
+    console.error(
+      "Ledgr isn't answering on this computer, so the reset page can't open.\n" +
+        "Start it first (tray icon → Start, or npm run local:boot), then try again."
+    );
+    return 1;
+  }
+  const token = randomBytes(32).toString("base64url");
+  writeFileSync(signinResetPath(cfg.dataDir), serializeSigninReset(token), "utf8");
+  const url = `http://localhost:${cfg.appPort}/reset-password#${token}`;
+  const [cmd, args] = isWin
+    ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
+    : process.platform === "darwin"
+      ? ["open", [url]]
+      : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
+  } catch {
+    // no browser launcher; the printed link below still works
+  }
+  console.log(
+    `Opening the reset page in your browser. It works for ${SIGNIN_RESET_MINUTES} minutes, on this computer only.\n` +
+      `If nothing opened, paste this into a browser on this computer:\n  ${url}`
+  );
+  return 0;
+}
+
 // ── dispatch ─────────────────────────────────────────────────────────────────
 
 const verbs = {
+  "reset-password": doResetPassword,
   status: doStatus,
   boot: doBoot,
   restart: doRestart,

@@ -228,6 +228,28 @@ export function signalPath(dataDir) {
   return join(dataDir, "update-requested");
 }
 
+// ── "Reset sign-in password" at the machine (ADR-274) ───────────────────────
+//
+// The same signal-file idea, pointed the other way: ledgr-ctl writes a
+// one-time ticket here and opens the app's /reset-password page on localhost
+// with the ticket after "#". Only someone who can write into this data folder
+// (someone signed in to this computer) can produce a ticket the app accepts.
+// The file holds a sha256 of the ticket, never the ticket itself. The app's
+// side is RESET_TICKET_FILE in src/lib/auth/builtin-core.ts.
+
+export const SIGNIN_RESET_MINUTES = 15;
+
+export function signinResetPath(dataDir) {
+  return join(dataDir, "signin-reset.json");
+}
+
+/** The ticket file's content for a token, valid for SIGNIN_RESET_MINUTES. */
+export function serializeSigninReset(token, now = new Date()) {
+  const hash = createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(now.getTime() + SIGNIN_RESET_MINUTES * 60_000).toISOString();
+  return JSON.stringify({ hash, expiresAt });
+}
+
 // ── "Start when Windows starts" (ADR-211) ────────────────────────────────────
 //
 // Same shape as the update signal above, deliberately: the app cannot register

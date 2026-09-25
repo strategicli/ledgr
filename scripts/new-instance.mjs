@@ -141,9 +141,15 @@ if (!ownerRow) {
 console.log(`\nDatabase ready for "${name}".`);
 console.log("\nStill needed on the host (Vercel project → Environment Variables):");
 console.log("  DATABASE_URL                        this same pooler string");
-console.log("  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY   their OWN Clerk app, not a shared one");
-console.log("  CLERK_SECRET_KEY                    a missing key is a hard 503, not a partial app");
-console.log("  NEXT_PUBLIC_CLERK_SIGN_IN_URL       /sign-in");
+// Sign-in (ADR-274): Clerk is now optional. One of the two must be set up, or
+// the deployed copy refuses every page (fail closed, ADR-184).
+console.log("\nSign-in, ONE of:");
+console.log("  a) Password sign-in (no outside account). Run this once, with the same database:");
+console.log('       DATABASE_URL="<this pooler string>" npm run signin:reset -- --method=builtin');
+console.log("     It prints a temporary password. Sign in with it, then in User Settings → Sign-in");
+console.log("     set your own password and save the recovery kit.");
+console.log("  b) Clerk, as before (their OWN Clerk app, not a shared one):");
+console.log("       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in");
 console.log("\nOptional, and each degrades quietly if unset:");
 console.log("  R2_*                                without it, uploads and attachments do not work");
 console.log("  GITHUB_TOKEN                        powers the Changelog and the update check");

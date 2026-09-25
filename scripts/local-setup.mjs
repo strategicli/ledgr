@@ -621,6 +621,17 @@ console.log(
     `  health     http://localhost:${appPort}/health\n` +
     `  sync/updates status  http://localhost:${appPort}/build/updates`
 );
+// Sign-in (ADR-274). The wizard does not set a password itself: the page at
+// the machine does it better (a real password box, and a recovery kit you can
+// download or print and must type one code back from).
+console.log(
+  "\nSign-in: until you set a password (and unless you added Clerk keys), this\n" +
+    "copy opens with no sign-in, so anyone who can reach it gets in. Once Ledgr\n" +
+    "is running, set yours here, at\n" +
+    "this computer: right-click the Ledgr tray icon → Reset sign-in password\n" +
+    "(or run: npm run local:reset-password). You choose a password, save your\n" +
+    "recovery kit, and this copy asks for the password from then on."
+);
 if (role === "spoke") {
   console.log(
     "\nThe device token you pasted was one-time: it is now stored (hashed) on the\n" +

@@ -1,3 +1,4 @@
+import { withBuiltin } from "./builtin";
 import { clerkAuthProvider } from "./clerk";
 import { chooseFromProcessEnv, localAuthProvider } from "./local";
 import type { AuthProvider } from "./types";
@@ -28,8 +29,14 @@ const devAuthProvider = (email: string): AuthProvider => ({
 // the LH2 hub/spoke local mode (ADR-206 decision 5): production-allowed on a
 // non-Vercel machine, while a deployed env missing its Clerk key still fails
 // closed to nullAuthProvider (ADR-184).
+//
+// Every choice is wrapped by the built-in password sign-in (ADR-274): a valid
+// built-in session is accepted beside any of them, and the local no-login mode
+// closes once this copy switches to password sign-in. With no built-in cookie
+// the wrapper does no work, so an install that never uses the feature is
+// unchanged.
 const choice = chooseFromProcessEnv();
-export const authProvider: AuthProvider =
+const chosen: AuthProvider =
   choice === "clerk"
     ? clerkAuthProvider
     : choice === "local"
@@ -37,5 +44,6 @@ export const authProvider: AuthProvider =
       : choice === "dev"
         ? devAuthProvider(process.env.DEV_USER_EMAIL as string)
         : nullAuthProvider;
+export const authProvider: AuthProvider = withBuiltin(chosen, choice === "local");
 
 export type { AuthProvider, AuthUser } from "./types";

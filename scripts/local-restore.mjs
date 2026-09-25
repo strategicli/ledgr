@@ -47,6 +47,7 @@
 // Stop the supervisor before running either form (the cluster can't be
 // started twice).
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
 import { totalmem } from "node:os";
@@ -144,6 +145,41 @@ async function readPriorIdentity(pg, cfg) {
   } finally {
     await db.end().catch(() => {});
   }
+}
+
+/**
+ * Whether this copy used password sign-in before the fill (ADR-274). The
+ * sign-in tables are per install and never copied, so without this a refill
+ * would quietly turn a password-protected copy back into the no-login mode.
+ * Best-effort: no database, or one from before the table existed, is "no".
+ */
+async function readPriorSigninMethod(pg, cfg) {
+  const db = new pg.Client({ connectionString: buildDbUrl(cfg), connectionTimeoutMillis: 4000 });
+  try {
+    await db.connect();
+    const r = await db.query("select method from signin_install where id = 1");
+    return r.rows[0]?.method ?? null;
+  } catch {
+    return null;
+  } finally {
+    await db.end().catch(() => {});
+  }
+}
+
+/**
+ * Start this copy's sign-in state clean (a dump carries the SOURCE's method,
+ * cookie secret and sessions), then keep password sign-in on if it was on.
+ * Everyone signs in again, because the cookie secret is new.
+ */
+async function carrySigninForward(db, priorMethod) {
+  await db.query("delete from signin_sessions");
+  await db.query("delete from signin_install");
+  if (priorMethod !== "builtin") return;
+  await db.query(
+    "insert into signin_install (id, method, cookie_secret) values (1, 'builtin', $1)",
+    [randomBytes(32).toString("base64url")]
+  );
+  console.log("Kept password sign-in switched on for this copy (sign in again on each device).");
 }
 
 /**
@@ -260,6 +296,7 @@ async function restoreFromFile(dumpPath, cfg) {
   try {
     const dbUrl = buildDbUrl(cfg);
     const prior = await readPriorIdentity(pg, cfg);
+    const priorSignin = await readPriorSigninMethod(pg, cfg);
     await resetLocalDatabase(pg, cfg);
 
     console.log("pg_restore…");
@@ -294,6 +331,7 @@ async function restoreFromFile(dumpPath, cfg) {
     // silently arms or disarms push on a peer that never asked for it.
     await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
     await carryIdentityForward(db, prior);
+    await carrySigninForward(db, priorSignin);
     await analyzeAfterFill(db);
     await db.end();
 
@@ -346,6 +384,7 @@ async function pullFromUrl(url, cfg) {
   const { cluster, pg } = await startCluster(cfg);
   try {
     const prior = await readPriorIdentity(pg, cfg);
+    const priorSignin = await readPriorSigninMethod(pg, cfg);
     await resetLocalDatabase(pg, cfg);
     const dbUrl = buildDbUrl(cfg);
 
@@ -380,6 +419,7 @@ async function pullFromUrl(url, cfg) {
     // be inherited from the source. `sync:mode` is the GUI push-mode override.
     await db.query("delete from job_state where key like 'sync:cursor:%' or key = 'sync:mode'");
     await carryIdentityForward(db, prior);
+    await carrySigninForward(db, priorSignin);
     await analyzeAfterFill(db);
     await db.end();
 
