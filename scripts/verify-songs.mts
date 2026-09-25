@@ -53,6 +53,11 @@ const songDoc = renderPrintDocument("Demo", CHORDPRO);
 check("chordpro print renders the chart", songDoc.includes('class="cc-chart"') && songDoc.includes('class="cc-chord"'));
 check("chordpro print includes the chart CSS", songDoc.includes(".cc-body{column-count:2"));
 check("chordpro print suppresses the outer <h1>", !songDoc.includes("<h1>Demo</h1>"));
+const withTrack = renderPrintDocument("Demo", CHORDPRO, { audio: { src: "/files/x?s=t&u" } });
+const at = withTrack.indexOf('class="doc-audio"');
+check("preview track renders an escaped player", withTrack.includes('<audio controls preload="metadata" src="/files/x?s=t&amp;u">'));
+check("preview track sits between the chart header and body", at > withTrack.indexOf("</header>") && at < withTrack.indexOf('class="cc-body"'));
+check("no track, no player", !songDoc.includes("<audio"));
 const mdDoc = renderPrintDocument("Doc", MARKDOWN);
 check("markdown print unchanged (outer h1 + markdown body)", mdDoc.includes("<h1>Doc</h1>") && mdDoc.includes("<strong>Lamb</strong>"));
 // the chart CSS ships in every doc's <style>; the markdown doc must carry no chart *markup*

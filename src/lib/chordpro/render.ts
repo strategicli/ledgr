@@ -11,6 +11,9 @@ import type { ChordChart, ChordPair, Section } from "./types";
 export type RenderOptions = {
   transpose?: number; // semitones to shift every chord (and the key label)
   preferFlats?: boolean;
+  // Trusted markup placed between the header (title, key/capo line) and the
+  // song body. The share page puts the preview-track player here.
+  afterHeadHtml?: string;
 };
 
 function esc(s: string): string {
@@ -184,6 +187,7 @@ export function chartToHtml(chart: ChordChart, opts: RenderOptions = {}): string
   return (
     `<div class="cc-chart">` +
     headerHtml(chart, opts) +
+    (opts.afterHeadHtml ?? "") +
     `<div class="cc-body">${body}</div>` +
     footerHtml(chart) +
     `</div>`

@@ -106,6 +106,8 @@ export type ResolvedShare = {
   itemId: string;
   title: string;
   body: unknown;
+  // Read for the preview track (src/lib/preview-audio.ts), nothing else.
+  properties: unknown;
   options: ShareOptions;
 };
 
@@ -123,6 +125,7 @@ export async function resolveShareToken(
       itemId: items.id,
       title: items.title,
       body: items.body,
+      properties: items.properties,
       options: shareTokens.options,
     })
     .from(shareTokens)

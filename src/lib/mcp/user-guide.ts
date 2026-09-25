@@ -1020,6 +1020,11 @@ to your own). The page itself has an **Appearance** dropdown at the top right,
 so whoever you send it to can switch between Dark, Light, Gray, and Sepia; their
 browser remembers the choice for every Ledgr document they open.
 
+A shared **song** opens as the two-column chord chart. If the song has a
+**Preview track** (the "Add audio file" control above the chart on the song
+itself), the share page plays it above the chart, so the person gets the chords
+and the recording together. Revoking the link stops the audio too.
+
 Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
 same theme and icon options) and hands back the URL to paste into an email, a
 Teams message, or another item; \`list_share_links\` answers "is this shared,
