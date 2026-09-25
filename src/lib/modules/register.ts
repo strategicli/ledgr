@@ -15,12 +15,14 @@ import { fileModule } from "@/lib/modules/files";
 import { mindmapModule } from "@/lib/modules/mindmap";
 import { paperModule } from "@/lib/modules/papers";
 import { songModule } from "@/lib/modules/songs";
+import { todoistModule } from "@/modules/todoist/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
   paperModule,
   mindmapModule,
   fileModule,
+  todoistModule,
   ...FEATURE_MODULES,
 ];
 

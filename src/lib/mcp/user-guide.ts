@@ -448,7 +448,8 @@ Build your own kinds of item at \`/build/types\`.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
   transcripts, the Notification center (paused) and Scripture passages (on by
   default: a Bible reference in a body becomes a link to that passage's page;
-  switched off, new references stop linking). A module that is off also drops
+  switched off, new references stop linking). **Todoist** (off by default)
+  syncs tasks both ways with a Todoist account, on a copy set up for it. A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module

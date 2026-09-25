@@ -28,10 +28,6 @@ const CORE_PUBLIC_ROUTES = [
   "/api/oauth/authorization-server",
   "/api/oauth/register",
   "/api/oauth/token",
-  // Todoist signs its webhook with an HMAC (no Bearer token); the route
-  // verifies the signature itself (slice 25). Only the webhook is public —
-  // /api/todoist/sync stays Clerk-protected.
-  "/api/todoist/webhook",
   // Public share links (slice 31): an unguessable token is the credential, so
   // the render path takes no Clerk session. Issuance (/api/items/[id]/share)
   // stays Clerk-protected.

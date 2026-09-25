@@ -3,9 +3,9 @@ import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { standDownIfNotOwner } from "@/lib/job-owner-guard";
 import { stampJobRun } from "@/lib/job-owners-store";
 import { isTodoistAdapterActive } from "@/lib/tasks/provider";
-import { getTodoistClient } from "@/lib/todoist/client";
-import { resolveTodoistOwner } from "@/lib/todoist/owner";
-import { runTodoistSync } from "@/lib/todoist/sync";
+import { getTodoistClient } from "@/modules/todoist/lib/client";
+import { resolveTodoistOwner } from "@/modules/todoist/lib/owner";
+import { runTodoistSync } from "@/modules/todoist/lib/sync";
 import { captureError, createLogger, errorMessage } from "@/lib/log";
 
 // Polling fallback for Todoist sync (slice 25, PRD §5.2). The webhook is the

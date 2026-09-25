@@ -254,6 +254,8 @@ export type ModuleManifest = {
   // Module ids this module cannot run without. isModuleEnabled does NOT enforce
   // it; the Modules page and PATCH /api/settings do, via `requiresViolations`.
   requires?: string[];
+  // --- step 4: where the module's route files live ---
+  routes?: string[]; // src/app paths owned by this module
 };
 
 // --- core as the first module ----------------------------------------------

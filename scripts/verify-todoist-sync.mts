@@ -16,10 +16,10 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 
 const { getDb } = await import("../src/db");
 const { items, jobState, users } = await import("../src/db/schema");
-const { runTodoistSync, getTodoistState, TODOIST_JOB_KEY } = await import("../src/lib/todoist/sync");
-type TodoistTask = import("../src/lib/todoist/types").TodoistTask;
-type TodoistClient = import("../src/lib/todoist/types").TodoistClient;
-type TodoistCreate = import("../src/lib/todoist/types").TodoistCreate;
+const { runTodoistSync, getTodoistState, TODOIST_JOB_KEY } = await import("../src/modules/todoist/lib/sync");
+type TodoistTask = import("../src/modules/todoist/lib/types").TodoistTask;
+type TodoistClient = import("../src/modules/todoist/lib/types").TodoistClient;
+type TodoistCreate = import("../src/modules/todoist/lib/types").TodoistCreate;
 const { and, eq } = await import("drizzle-orm");
 
 let failures = 0;

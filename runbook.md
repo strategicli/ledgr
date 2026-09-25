@@ -175,6 +175,8 @@ Until this is done, `/health` `checks.graph` reports `{configured:true, ok:true}
 
 Todoist sync (ADR-026) pushes dated tasks out and syncs completions + date changes back; the webhook is the real-time path and a 3h GitHub Actions poll is the backstop. With the native adapter (the default) the cron returns `skipped: true` and `/health` `lastTodoistSyncAt` stays null — both expected, not an error.
 
+**Todoist is a module (ADR-272 step 4, code in `src/modules/todoist/`).** Switch it on at Build → Modules (`/build/modules`) as well as setting the env vars below; it is off by default. While it is off, the webhook and "Sync now" answer 404 and the `todoist-sync` job stands down with `module-off`. Todoist has no status that unsubscribes a webhook, so to stop deliveries for good remove the callback URL in the Todoist App Console.
+
 1. **API token:** Todoist → Settings → Integrations → Developer → copy the API token → set `TODOIST_TOKEN` in Vercel and `.env.local`.
 2. **Webhook (real-time completions/edits):** create a Todoist app at the [App Management console](https://developer.todoist.com/appconsole.html). Copy the app's **client secret** → `TODOIST_CLIENT_SECRET` (used to verify the webhook HMAC). Configure the webhook callback URL to `https://ledgr-teal.vercel.app/api/todoist/webhook` and subscribe to `item:completed`, `item:updated`, `item:added`. (The route verifies the `X-Todoist-Hmac-SHA256` signature itself; it's the one Clerk-public Todoist route.)
 3. **Owner (optional):** `TODOIST_OWNER_UPN` only if the Todoist account's email differs from `ONEDRIVE_EXPORT_UPN`; otherwise leave unset.

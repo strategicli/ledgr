@@ -27,7 +27,7 @@ import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
-// not yet modules (step 4): export, calendar, todoist, email, push, discovery,
+// not yet modules (step 4): export, calendar, email, push, discovery,
 // sync, tasks adapter, transcription adapter.
 import { getCalendarState } from "@/lib/calendar/sync";
 import { getEmailState } from "@/lib/email/sync";
@@ -35,7 +35,6 @@ import { getExportState } from "@/lib/export/engine";
 import { getRelatednessState } from "@/lib/discovery/refresh";
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
-import { getTodoistState } from "@/lib/todoist/sync";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
 import { transcriptionAdapter, type TranscriptionAdapterId } from "@/lib/transcription/provider";
 
@@ -181,11 +180,10 @@ export async function gatherHealth(): Promise<HealthReport> {
   let errors: ErrorsCheck = null;
   let modules: Record<string, Record<string, unknown>> = {};
   // not yet modules (step 4): each read below moves onto its module's manifest.
-  let exp, cal, td, em, push, rel;
+  let exp, cal, em, push, rel;
   if (database.ok) {
     exp = await safe(getExportState);
     cal = await safe(getCalendarState);
-    td = await safe(getTodoistState);
     em = await safe(getEmailState);
     push = await safe(getPushState);
     rel = await safe(getRelatednessState);
@@ -225,6 +223,11 @@ export async function gatherHealth(): Promise<HealthReport> {
     ? { enabled: true, state: s.state, pendingOps: s.pendingOps, lastSyncAt: s.lastSyncAt }
     : { enabled: false };
 
+  // Todoist is a module now (step 4): its canary arrives through the
+  // healthCheck slot, and is copied into the two top-level keys the weekly
+  // check and outside readers still read. Null while the module is off.
+  const td = modules.todoist as { lastSyncAt?: string | null; lastRunAt?: string | null } | undefined;
+
   return {
     status: database.ok ? "ok" : "degraded",
     checks: {
@@ -236,7 +239,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastCalendarRunAt: cal?.lastRunAt ?? null,
       tasksAdapter: tasksAdapter(),
       transcription: transcriptionAdapter(),
-      lastTodoistSyncAt: td?.lastSuccessAt ?? null,
+      lastTodoistSyncAt: td?.lastSyncAt ?? null,
       lastTodoistRunAt: td?.lastRunAt ?? null,
       lastEmailImportAt: em?.lastSuccessAt ?? null,
       lastEmailRunAt: em?.lastRunAt ?? null,
