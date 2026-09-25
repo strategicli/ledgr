@@ -8,8 +8,9 @@ import {
   snapshotTarget,
   writeSnapshotKeep,
   writeSnapshotsEnabled,
-} from "@/lib/snapshot-settings";
-import { MAX_KEEP, MIN_KEEP } from "@/lib/snapshots-plan";
+} from "@/modules/snapshots/lib/snapshot-settings";
+import { MAX_KEEP, MIN_KEEP } from "@/modules/snapshots/lib/snapshots-plan";
+import { routeGate } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,8 @@ function requireLocalPeer() {
 export async function PATCH(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "snapshots");
+  if (off) return off;
   const target = requireLocalPeer();
   if (target instanceof NextResponse) return target;
   try {
@@ -85,6 +88,8 @@ export async function PATCH(request: Request) {
 export async function POST() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "snapshots");
+  if (off) return off;
   const target = requireLocalPeer();
   if (target instanceof NextResponse) return target;
 

@@ -27,6 +27,11 @@ async function exportLeg(): Promise<LegState> {
         detail: "OneDrive export not configured yet (runbook §1b)",
       };
     }
+    // The OneDrive export module is off (Build → Modules): the pin leg below
+    // still saves the document on this device.
+    if (res.status === 404) {
+      return { phase: "fail", detail: "OneDrive export is switched off under Build → Modules" };
+    }
     if (!res.ok) return { phase: "fail", detail: `export failed (${res.status})` };
     // errors/remaining are counts, not arrays (ExportRunResult). This read used
     // to be `errors.length` on a number, so the failure branch never fired.

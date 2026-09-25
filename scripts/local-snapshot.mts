@@ -34,14 +34,14 @@ import {
   describeSpread,
   humanBytes,
   DEFAULT_KEEP,
-} from "@/lib/snapshots-plan";
+} from "@/modules/snapshots/lib/snapshots-plan";
 import {
   findPgTool,
   listSnapshots,
   pruneSnapshots,
   snapshotsDir,
   takeSnapshot,
-} from "@/lib/snapshots";
+} from "@/modules/snapshots/lib/snapshots";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(here, "..");

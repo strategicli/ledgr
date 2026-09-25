@@ -17,3 +17,4 @@ import "@/modules/todoist/server";
 import "@/modules/passages/server";
 import "@/modules/youtube-transcripts/server";
 import "@/modules/sharing/server";
+import "@/modules/onedrive-export/server";

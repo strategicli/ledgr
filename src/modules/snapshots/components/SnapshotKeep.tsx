@@ -18,7 +18,7 @@ import {
   MIN_KEEP,
   describeSpread,
   humanBytes,
-} from "@/lib/snapshots-plan";
+} from "@/modules/snapshots/lib/snapshots-plan";
 
 export default function SnapshotKeep({
   enabled,

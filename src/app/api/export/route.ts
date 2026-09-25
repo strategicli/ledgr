@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
 import { runExport } from "@/lib/export/engine";
-import { getGraphConfig, OneDriveExportTarget } from "@/lib/export/onedrive";
+import { getGraphConfig, OneDriveExportTarget } from "@/modules/onedrive-export/lib/onedrive";
 import { captureError } from "@/lib/log";
+import { routeGate } from "@/lib/modules/gate";
 
 // On-demand "export now" (PRD §5.4), the user-authed twin of the nightly
 // cron. Save Offline calls this before pinning; until then
@@ -15,6 +16,10 @@ export async function POST() {
   if (!owner) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // The OneDrive leg of Save Offline. Off, Save Offline still pins the
+  // document on this device; only the OneDrive copy is skipped.
+  const off = await routeGate(owner.id, "onedrive-export");
+  if (off) return off;
   const cfg = getGraphConfig();
   if (!cfg) {
     return NextResponse.json(

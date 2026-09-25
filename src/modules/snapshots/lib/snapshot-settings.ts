@@ -6,14 +6,14 @@
 // machine has its own disk), and it is read fresh on every run, so changing it
 // needs no config-file edit and no restart.
 //
-// Split out of src/lib/snapshots.ts on purpose: that module stays free of the
+// Split out of src/modules/snapshots/lib/snapshots.ts on purpose: that module stays free of the
 // db client so the spread arithmetic runs in CI (verify-ci.mjs classifies any
 // script that reaches the db as local-only).
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
-import { clampKeep, DEFAULT_KEEP } from "@/lib/snapshots-plan";
-import { pruneSnapshots, snapshotsDir, takeSnapshot } from "@/lib/snapshots";
+import { clampKeep, DEFAULT_KEEP } from "@/modules/snapshots/lib/snapshots-plan";
+import { pruneSnapshots, snapshotsDir, takeSnapshot } from "@/modules/snapshots/lib/snapshots";
 
 const SNAPSHOT_KEEP_KEY = "snapshots:keep";
 const SNAPSHOT_ENABLED_KEY = "snapshots:enabled";

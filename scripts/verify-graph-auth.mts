@@ -20,7 +20,7 @@ const {
   GraphError,
   _resetTokenCacheForTests,
 } = await import("../src/lib/graph/client");
-const { getGraphConfig } = await import("../src/lib/export/onedrive");
+const { getGraphConfig } = await import("../src/modules/onedrive-export/lib/onedrive");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

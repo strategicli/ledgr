@@ -5,18 +5,19 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { getUpdateReport } from "@/lib/updates";
-import SnapshotKeep from "@/components/updates/SnapshotKeep";
-import SnapshotNowButton from "@/components/updates/SnapshotNowButton";
-import { databaseBytes, readSnapshotKeep, readSnapshotsEnabled } from "@/lib/snapshot-settings";
-import { estimateSnapshotBytes, humanBytes } from "@/lib/snapshots-plan";
+import SnapshotKeep from "@/modules/snapshots/components/SnapshotKeep";
+import SnapshotNowButton from "@/modules/snapshots/components/SnapshotNowButton";
+import { databaseBytes, readSnapshotKeep, readSnapshotsEnabled } from "@/modules/snapshots/lib/snapshot-settings";
+import { estimateSnapshotBytes, humanBytes } from "@/modules/snapshots/lib/snapshots-plan";
 import {
   averageSnapshotBytes,
   findPgTool,
   listSnapshots,
   PG_TOOLS_MISSING,
   snapshotsDir,
-} from "@/lib/snapshots";
+} from "@/modules/snapshots/lib/snapshots";
 import { readLocalJobsReport, LOCAL_JOBS_UNAVAILABLE } from "@/lib/local-jobs";
+import { moduleIsOn } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -71,25 +72,30 @@ export default async function Backups() {
   // Snapshots (restore points) on this machine. A cloud deployment has no disk
   // and no local cluster to dump, so the whole section renders only on a peer
   // with a supervisor — the same test every other local-only surface uses.
+  // Each half of this page belongs to a module (ADR-272 step 4) and shows only
+  // while that module is on; nothing is read for a module that is off.
+  const snapshotsOn = await moduleIsOn(owner.id, "snapshots");
+  const exportOn = await moduleIsOn(owner.id, "onedrive-export");
+  const snapDir = snapshotsOn ? instance.supervisorDir : null;
   const localJobs = await readLocalJobsReport(instance.supervisorDir).catch(
     () => LOCAL_JOBS_UNAVAILABLE
   );
-  const snapshots = instance.supervisorDir
-    ? listSnapshots(snapshotsDir(instance.supervisorDir))
+  const snapshots = snapDir
+    ? listSnapshots(snapshotsDir(snapDir))
     : [];
   const snapshotJob = localJobs.jobs.find((j) => j.name === "snapshot") ?? null;
-  const snapshotKeep = instance.supervisorDir ? await readSnapshotKeep() : 0;
-  const snapshotsEnabled = instance.supervisorDir ? await readSnapshotsEnabled() : false;
+  const snapshotKeep = snapDir ? await readSnapshotKeep() : 0;
+  const snapshotsEnabled = snapDir ? await readSnapshotsEnabled() : false;
   const measuredBytes = averageSnapshotBytes(snapshots);
   // Only ask the database its size when there is nothing real to average, and
   // only look for pg_dump when nothing has been dumped — a snapshot on disk is
   // already proof the tools are there.
   const dbBytes =
-    instance.supervisorDir && measuredBytes === null ? await databaseBytes() : null;
+    snapDir && measuredBytes === null ? await databaseBytes() : null;
   const perSnapshotBytes =
     measuredBytes ?? (dbBytes === null ? null : estimateSnapshotBytes(dbBytes));
   const pgToolsMissing = Boolean(
-    instance.supervisorDir && snapshots.length === 0 && !(await findPgTool("pg_dump"))
+    snapDir && snapshots.length === 0 && !(await findPgTool("pg_dump"))
   );
   const snapshotBytes = snapshots.reduce((n, s) => n + s.bytes, 0);
 
@@ -102,7 +108,21 @@ export default async function Backups() {
       </p>
 
       {/* ── Snapshots: point-in-time recovery on this machine ──────────── */}
-      {instance.supervisorDir ? (
+      {!snapshotsOn ? (
+        <section className="mt-8">
+          <h2 className="ui-section-label">Snapshots</h2>
+          <Card>
+            <p className="text-sm text-ink-muted">
+              The Snapshots module is off. Turn it on under{" "}
+              <Link href="/build/modules" className="hover:underline">
+                Modules
+              </Link>
+              , then switch restore points on here for each computer that
+              should keep them.
+            </p>
+          </Card>
+        </section>
+      ) : snapDir ? (
         <section className="mt-8">
           <h2 className="ui-section-label">Snapshots</h2>
           <Card>
@@ -112,6 +132,14 @@ export default async function Backups() {
               item&rsquo;s history &mdash; a bad import, a batch delete, a wrong bulk
               edit &mdash; can be answered by looking at how things were an hour
               ago, rather than waiting for the weekly backup.
+            </p>
+            <p className="ui-meta mt-2 text-ink-subtle">
+              The switch below is for this computer only. The Snapshots module
+              under{" "}
+              <Link href="/build/modules" className="hover:underline">
+                Modules
+              </Link>{" "}
+              turns the whole feature on or off.
             </p>
 
             {/* Switched on here but never scheduled: the local service has not
@@ -236,14 +264,26 @@ export default async function Backups() {
         <h2 className="ui-section-label">Weekly backup and export</h2>
         <Card>
           <p className="text-sm text-ink-muted">
-            The weekly database backup and the OneDrive export run as scheduled
-            jobs, the same as any other job here. Which machine does them is
+            {exportOn
+              ? "The weekly database backup and the OneDrive export run as scheduled jobs"
+              : "The weekly database backup runs as a scheduled job"}
+            , the same as any other job here. Which machine does it is
             chosen on{" "}
             <Link href="/build/jobs#scheduled-work" className="hover:underline">
               Scheduled Jobs
             </Link>
             , not here.
           </p>
+          {!exportOn && (
+            <p className="ui-meta mt-2 text-ink-subtle">
+              The OneDrive export module is off, so nothing is copied to
+              OneDrive. Turn it on under{" "}
+              <Link href="/build/modules" className="hover:underline">
+                Modules
+              </Link>
+              .
+            </p>
+          )}
         </Card>
       </section>
     </div>

@@ -472,6 +472,38 @@ for (const r of sharingRoutes) {
   check(`route calls the gate: ${r}`, /from "@\/lib\/modules\/gate"/.test(src));
 }
 }
+// --- 11. step 4: onedrive-export and snapshots under src/modules -------------
+{
+  const { existsSync } = await import("node:fs");
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { onedriveExportModule } = await import("../src/modules/onedrive-export/manifest");
+  const { snapshotsModule } = await import("../src/modules/snapshots/manifest");
+  const exp = allModules().find((m) => m.id === "onedrive-export");
+  const snap = allModules().find((m) => m.id === "snapshots");
+  check("onedrive-export is registered from its module folder", exp === onedriveExportModule);
+  check("snapshots is registered from its module folder", snap === snapshotsModule);
+  check("onedrive-export is on by default", onedriveExportModule.enabledByDefault && moduleOn({ modules: {} }, "onedrive-export"));
+  check("snapshots is on by default", snapshotsModule.enabledByDefault && moduleOn({ modules: {} }, "snapshots"));
+  for (const m of [onedriveExportModule, snapshotsModule]) {
+    check(`${m.id} has a description and adds no types`, !!m.description && m.types.length === 0);
+    for (const r of m.routes ?? []) {
+      check(`${m.id} route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
+      if (!r.includes("/api/machine/")) {
+        check(`${r} imports the module gate`, /from "@\/lib\/modules\/gate"/.test(read(r)));
+      }
+    }
+  }
+  // Shared job: the step 3 verdict never runs for it, so the route checks itself.
+  check("the snapshot job route checks the snapshots module", read("src/app/api/machine/snapshot/route.ts").includes('moduleIsOn(ownerId, "snapshots")'));
+  check("the export job is gated by the onedrive-export module", (await import("../src/lib/job-owners")).jobModuleOff("export", ["onedrive-export"]));
+  // The engine is core (Principle 4): it takes a target and never imports one.
+  const engine = read("src/lib/export/engine.ts");
+  check("the export engine imports no module", !/@\/modules|src\/modules/.test(engine));
+  check("the export engine does not import the OneDrive target", !/onedrive/i.test(engine.split("\n").filter((l) => l.startsWith("import")).join("\n")));
+  check("the OneDrive target left src/lib/export", !existsSync(new URL("../src/lib/export/onedrive.ts", import.meta.url)));
+  check("health.ts no longer reads export state itself", !read("src/lib/health.ts").includes("getExportState"));
+  check("onedrive-export contributes a health check (server slot)", typeof exp?.healthCheck === "function");
+}
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

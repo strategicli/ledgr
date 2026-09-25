@@ -19,6 +19,8 @@ import { todoistModule } from "@/modules/todoist/manifest";
 import { passagesModule } from "@/modules/passages/manifest";
 import { youtubeTranscriptsModule } from "@/modules/youtube-transcripts/manifest";
 import { sharingModule } from "@/modules/sharing/manifest";
+import { onedriveExportModule } from "@/modules/onedrive-export/manifest";
+import { snapshotsModule } from "@/modules/snapshots/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -31,6 +33,8 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   youtubeTranscriptsModule,
   passagesModule,
   sharingModule,
+  onedriveExportModule,
+  snapshotsModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

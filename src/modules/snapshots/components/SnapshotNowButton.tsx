@@ -9,7 +9,7 @@
 // than leaving the owner to reload and guess.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { humanBytes } from "@/lib/snapshots-plan";
+import { humanBytes } from "@/modules/snapshots/lib/snapshots-plan";
 
 export default function SnapshotNowButton({ disabled }: { disabled?: boolean }) {
   const router = useRouter();
