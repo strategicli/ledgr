@@ -195,6 +195,15 @@ export function assembleAppEnv(cfg, buildSha, opts = {}) {
     env.LEDGR_SYNC_SKEW_WARN_MS = String(cfg.syncGuardrails.skewWarnMs);
     env.LEDGR_SYNC_SKEW_HOLD_MS = String(cfg.syncGuardrails.skewHoldMs);
   }
+  // Generated per-install secrets (ADR-275) fill only what nobody set; the shell
+  // has already left out any the real environment carries.
+  for (const [k, v] of Object.entries(opts.installSecrets ?? {})) {
+    if (!env[k]) env[k] = v;
+  }
+  // Tells the app whether it is listening beyond this machine (ADR-275), so the
+  // local no-login mode can refuse to serve in the moment between the owner
+  // turning sign-in off and the supervisor moving the app back to 127.0.0.1.
+  if (Object.hasOwn(opts, "listenHost")) env.LEDGR_LISTEN_HOST = opts.listenHost ?? "all";
   // After the extraEnv spread on purpose: the merged list has to win over an
   // extraEnv entry, or the owner's own LEDGR_API_TOKENS would drop ours.
   if (opts.cronTokenHash) {
@@ -248,6 +257,86 @@ export function serializeSigninReset(token, now = new Date()) {
   const hash = createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(now.getTime() + SIGNIN_RESET_MINUTES * 60_000).toISOString();
   return JSON.stringify({ hash, expiresAt });
+}
+
+// ── Who can reach the app (ADR-275) ─────────────────────────────────────────
+//
+// `next start` with no host listens on every network the machine is on. On an
+// install with no sign-in (the local no-login mode) that meant anyone on the
+// same wifi or tailnet got full owner access. So the app listens on this
+// machine only unless the install requires sign-in: Clerk keys present, or the
+// built-in password switched on. Brandon's hub has Clerk keys, so it keeps
+// listening everywhere, exactly as before. The Tailscale helper and a Cloudflare
+// tunnel both reach the app on 127.0.0.1, so they work either way.
+
+export const LOOPBACK_HOST = "127.0.0.1";
+
+/** The app env's value for a key: an extraEnv entry wins, even an empty one. */
+export function effectiveEnv(cfg, processEnv, key) {
+  return Object.hasOwn(cfg.extraEnv, key) ? cfg.extraEnv[key] : processEnv[key];
+}
+
+/**
+ * The host for `next start -H`, or null for every interface (today's behavior).
+ * `signinMethod` is the install's saved method ("builtin" or null), undefined
+ * when it could not be read, which counts as "no sign-in": when unsure, stay on
+ * this machine. LEDGR_SIGNIN_METHOD is the app's emergency override and is
+ * honored the same way the app honors it.
+ */
+/** @param {{ clerkKey?: string, signinMethod?: string | null, methodOverride?: string }} o */
+export function appListenHost({ clerkKey, signinMethod, methodOverride }) {
+  if (clerkKey) return null;
+  if (methodOverride === "builtin") return null;
+  if (methodOverride === "default") return LOOPBACK_HOST;
+  return signinMethod === "builtin" ? null : LOOPBACK_HOST;
+}
+
+/** `next start` arguments for a port and a host (null = every interface). */
+export function nextStartArgs(port, host) {
+  return ["start", "-p", String(port), ...(host ? ["-H", host] : [])];
+}
+
+// ── Per-install secrets (ADR-275) ───────────────────────────────────────────
+//
+// A local install needs its own signing secret for the Claude connector and
+// the MCP tokens minted in Build → AI & MCP. The wizard never made one, so it
+// had to be pasted into config.json by hand. Now the supervisor makes any that
+// are missing, once, and keeps them in the data folder (never the repo). A
+// value the owner already set, in extraEnv or the real environment, always
+// wins, so an install that has one is unchanged and no file is written for it.
+// Machine API tokens are deliberately not here: the owner mints those in User
+// Settings (ADR-224), which needs no secret at all.
+
+export const INSTALL_SECRET_KEYS = ["LEDGR_OAUTH_SECRET"];
+
+export function installSecretsPath(dataDir) {
+  return join(dataDir, "install-secrets.json");
+}
+
+/**
+ * Which generated secrets the app gets (`apply`), and the file's new contents
+ * when something had to be made (`write`, else null). `stored` is the parsed
+ * file ({} when missing); `generate` makes one fresh secret.
+ */
+/**
+ * @param {{ stored: unknown, extraEnv: Record<string, string>, processEnv: Record<string, string | undefined>, generate: () => string }} o
+ * @returns {{ apply: Record<string, string>, write: Record<string, string> | null }}
+ */
+export function planInstallSecrets({ stored, extraEnv, processEnv, generate }) {
+  /** @type {Record<string, string>} */
+  const next = { ...(stored && typeof stored === "object" ? stored : {}) };
+  /** @type {Record<string, string>} */
+  const apply = {};
+  let changed = false;
+  for (const k of INSTALL_SECRET_KEYS) {
+    if (extraEnv[k] || processEnv[k]) continue;
+    if (typeof next[k] !== "string" || next[k].length < 32) {
+      next[k] = generate();
+      changed = true;
+    }
+    apply[k] = next[k];
+  }
+  return { apply, write: changed ? next : null };
 }
 
 // ── "Start when Windows starts" (ADR-211) ────────────────────────────────────

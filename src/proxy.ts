@@ -62,6 +62,11 @@ const CORE_PUBLIC_ROUTES = [
   // localhost that carries the one-time ticket ledgr-ctl wrote into this
   // install's data folder; anything else is a 404.
   "/reset-password",
+  // The setup page (ADR-275): what is missing and what to do, for the person who
+  // cannot sign in yet. Once the copy has an owner, a visitor who is not that
+  // owner sees only "set up, sign in"; creating the first owner there needs the
+  // same localhost address and one-time ticket as the reset page.
+  "/setup",
 ];
 
 // Modules add their own public paths through the manifest `publicPaths` slot
@@ -104,7 +109,7 @@ function failClosed(request: NextRequest): NextResponse {
     })
   );
   return new NextResponse(
-    "Authentication is not configured on this deployment. See /health.",
+    "Sign-in is not set up on this copy of Ledgr. Open /setup to see what is missing and what to do.",
     { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }
   );
 }

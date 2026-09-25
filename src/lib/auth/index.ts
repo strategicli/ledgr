@@ -1,6 +1,6 @@
 import { withBuiltin } from "./builtin";
 import { clerkAuthProvider } from "./clerk";
-import { chooseFromProcessEnv, localAuthProvider } from "./local";
+import { chooseFromProcessEnv, localAuthProvider, noLoginListenOk } from "./local";
 import type { AuthProvider } from "./types";
 
 // Everyone-is-signed-out provider for keyless runs (fresh clone, CI build).
@@ -36,11 +36,15 @@ const devAuthProvider = (email: string): AuthProvider => ({
 // the wrapper does no work, so an install that never uses the feature is
 // unchanged.
 const choice = chooseFromProcessEnv();
+// The no-login mode never serves an app listening beyond this machine (ADR-275).
+const localOk = noLoginListenOk(process.env.LEDGR_LISTEN_HOST);
 const chosen: AuthProvider =
   choice === "clerk"
     ? clerkAuthProvider
     : choice === "local"
-      ? localAuthProvider(process.env.LEDGR_LOCAL_OWNER_EMAIL as string)
+      ? localOk
+        ? localAuthProvider(process.env.LEDGR_LOCAL_OWNER_EMAIL as string)
+        : nullAuthProvider
       : choice === "dev"
         ? devAuthProvider(process.env.DEV_USER_EMAIL as string)
         : nullAuthProvider;
