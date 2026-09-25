@@ -26,6 +26,10 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    is off answers "module-off" and stands down), MCP tool gating, health checks,
    ~~the on-save/on-create hooks~~ (done: `hooks` slot, `src/lib/modules/hooks.ts`;
    passages is now a default-on module), then `requires`.
+   Also done: ~~MCP tool gating~~ (the `mcpTools` slot; a tool no manifest claims is
+   core) and ~~health checks~~ (the `healthCheck` slot, results under `/health`
+   `checks.modules`; the areas that are not modules yet stay in a marked block in
+   `health.ts`).
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (themes, sharing,
    youtube, todoist, email, calendar-sync, onedrive-export, relatedness, snapshots,
    passages, desk, ai-memory, live-context, agent, MCP tool families).

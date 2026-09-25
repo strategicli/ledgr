@@ -224,6 +224,16 @@ export type ModuleManifest = {
   // Code a module runs when core writes an item, so core never imports the
   // module by name. Runs only while the module is on for the owner.
   hooks?: ModuleHooks;
+  // --- contribution slots: tools and health (ADR-272 step 3) ---
+  // The MCP tools this module owns, by name. They are listed and callable only
+  // while the module is on for the owner; a tool no module claims is core and
+  // always on. `instructions` is the block the MCP server appends to its
+  // connect-time instructions while the module is on.
+  mcpTools?: { names: string[]; instructions?: string };
+  // The module's own canaries for /health, reported under the module id. Runs
+  // only while the module is on for the instance owner. Keep it cheap; a throw
+  // is caught and reported for that module alone.
+  healthCheck?: (ownerId: string) => Promise<Record<string, unknown>>;
 };
 
 // --- core as the first module ----------------------------------------------
@@ -600,4 +610,26 @@ export function hooksFor(
     const run = m.hooks?.[name];
     return run && isOn(m.id) ? [{ moduleId: m.id, run }] : [];
   });
+}
+
+// --- contribution slots: tools and health (ADR-272 step 3) ------------------
+
+// The module that claims an MCP tool, or undefined for a core tool.
+export function moduleOwningTool(name: string): ModuleManifest | undefined {
+  return allModules().find((m) => m.mcpTools?.names.includes(name));
+}
+
+// Whether a tool is available, given "is this module on for the owner". Pure:
+// the MCP registry passes `moduleOn` over the owner's settings, a verify script
+// passes a fake. A tool no module claims is core, so always on.
+export function toolEnabledFor(name: string, isOn: (moduleId: string) => boolean): boolean {
+  const m = moduleOwningTool(name);
+  return !m || isOn(m.id);
+}
+
+// The MCP instruction blocks of every module that is on, in registration order.
+export function moduleInstructions(isOn: (moduleId: string) => boolean): string[] {
+  return allModules().flatMap((m) =>
+    m.mcpTools?.instructions && isOn(m.id) ? [m.mcpTools.instructions] : []
+  );
 }

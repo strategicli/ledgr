@@ -14,6 +14,8 @@ import { CORE_TOOLS, TOOL_TIERS, tierOf } from "../src/lib/agent/tools";
 import { lockedOptions, scrubbedEnv } from "../src/lib/agent/runtime";
 import { cleanReplacement, formattingChanged } from "../src/lib/agent/inline";
 import { sameOrigin } from "../src/lib/agent/gate";
+import { allModules } from "../src/lib/modules";
+import "../src/lib/modules/register";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -38,6 +40,10 @@ const stale = Object.keys(TOOL_TIERS).filter((n) => !TOOL_NAMES.includes(n));
 check("no tier names a tool that no longer exists", stale.length === 0, stale.join(", "));
 check("delete, share, and revoke always ask", ["delete_item", "share_item", "revoke_share_link"].every((t) => tierOf(t) === "D"));
 check("an unknown tool is not exposed", tierOf("some_future_tool") === "X");
+// The mcpTools slot names tools by string, so a typo would silently gate nothing.
+const claimed = allModules().flatMap((m) => m.mcpTools?.names ?? []);
+const ghost = claimed.filter((n) => !TOOL_NAMES.includes(n));
+check("every tool a module claims is a real registry tool", claimed.length > 0 && ghost.length === 0, ghost.join(", "));
 
 // Env allowlist
 // Spelled in two parts: verify-ci treats a script naming the connection-string
