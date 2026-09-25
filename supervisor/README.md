@@ -118,10 +118,12 @@ the per-device retention holds (ADR-213) decide nothing.
 | --- | --- | --- |
 | `purge` | **on**, 03:10 | Yes, and required on each. `pruneSyncOps` only prunes the local oplog; the hard deletes are the same decision from the same data everywhere, and re-deleting a gone row is a no-op. |
 | `relatedness` | **on**, 03:40 | Yes. `item_relatedness` is a per-instance cache (outside the synced-table list), so Discover and Loose Ends stay empty on a peer that never computes its own. |
+| `agent-purge` | **on**, 03:50 | Yes. Prunes THIS instance's own expired agent sessions (ADR-271), so each peer cleans its own. |
 | `snapshot` | **scheduled**, hourly | Yes. It dumps THIS peer's cluster to THIS peer's disk, so two peers snapshotting is two independent backups. Scheduled always, but it does nothing until restore points are switched on **in the app** (ADR-222) — see "Snapshots" below. |
 | `export` | **scheduled**, 04:10 | **No.** One OneDrive folder, and `items.exported_at` is synced. Scheduled always; it runs only on the copy named in the app (ADR-225). |
 | `calendar-sync` | **scheduled**, every 240 min | **No.** Two peers match the same event into two rows, and sync propagates both. Scheduled always; owner decided in the app. |
 | `email-import` | **scheduled**, every 240 min | **No.** Consumes the mailbox: the second peer silently imports nothing. Scheduled always; owner decided in the app. |
+| `youtube-transcript` | **scheduled**, every 10 min | **No.** One transcription per saved video; the second peer would re-run it. Scheduled always; owner decided in the app (ADR-242). |
 | `todoist-sync` | off | **No.** Bidirectional against one account. |
 | `transcription-poll` | off | **No.** Two pollers race for one job. |
 | `health-check` | off | **No.** Per-instance push subscriptions, and a doubled alert where they exist. |
