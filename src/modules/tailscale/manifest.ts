@@ -30,5 +30,7 @@ export const tailscaleModule: ModuleManifest = {
   exporters: [],
   available: tailscaleAvailable,
   settingsPanel: "tailscale",
+  // Connect lives in the options, so they start unfolded.
+  settingsPanelOpen: true,
   routes: ["src/app/api/tailscale/route.ts", "src/app/api/machine/tailscale/route.ts"],
 };

@@ -63,17 +63,26 @@ func writeStatus(s status) {
 	if s == lastStatus {
 		return
 	}
-	lastStatus = s
-	s.At = time.Now().UTC().Format(time.RFC3339)
-	b, _ := json.MarshalIndent(s, "", "  ")
+	stamped := s
+	stamped.At = time.Now().UTC().Format(time.RFC3339)
+	b, _ := json.MarshalIndent(stamped, "", "  ")
 	tmp := statusPath + ".tmp"
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		log.Printf("could not write status: %v", err)
 		return
 	}
-	if err := os.Rename(tmp, statusPath); err != nil {
-		log.Printf("could not write status: %v", err)
+	// On Windows the rename is refused while another process (the app reading
+	// it, a virus scanner) has the file open, so try a few times. If it still
+	// fails, lastStatus stays stale and the next call tries again.
+	var err error
+	for i := 0; i < 10; i++ {
+		if err = os.Rename(tmp, statusPath); err == nil {
+			lastStatus = s
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
+	log.Printf("could not write status: %v", err)
 }
 
 // loopbackTarget accepts only http://127.0.0.1:<port>, http://localhost:<port>

@@ -107,7 +107,7 @@ export default async function Modules() {
                       </p>
                     )}
                     {on(m.id) && m.settingsPanel && (
-                      <details id={`${m.id}-options`} className="mt-2">
+                      <details id={`${m.id}-options`} className="mt-2" open={m.settingsPanelOpen}>
                         <summary className="ui-meta cursor-pointer text-ink-subtle">
                           Options
                         </summary>
