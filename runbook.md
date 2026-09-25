@@ -390,6 +390,19 @@ Each copy of Ledgr signs its owner in with **Clerk** or with **the built-in pass
 
 **A new cloud copy with no Clerk.** `npm run instance:new` prints the step: `DATABASE_URL=... npm run signin:reset -- --method=builtin`, then sign in with the temporary password and set your own. Until then the deployed copy refuses every page (fail closed, ADR-184).
 
+## 1p. First-run setup, and who can reach a local copy (ADR-275)
+
+**`/setup` is the "what's missing" page.** It turns the health checks into plain lines: what is missing, why it matters, what to do. It never shows a secret, only whether one is set. Anyone can open it; once a copy has an owner, only that owner sees the checklist (everyone else sees "This Ledgr is set up. Sign in"). A deployed copy with no sign-in now answers every page with a one-line refusal that points at `/setup`.
+
+**A copy with no owner yet.** Two ways in, each works once:
+- **A local copy:** at that computer, run `npm run local:setup-owner` (or tray icon → **Reset sign-in password...**, which lands on the same page when there is no owner). It writes the same one-time ticket as the reset (15 minutes, `<dataDir>/signin-reset.json`) and opens `http://localhost:<port>/setup#<ticket>`. The page asks for an email and a password, shows the recovery kit, and finishes once one code is typed back: the owner exists, the copy uses password sign-in, and this browser is signed in. It refuses anything not addressed to localhost and anything without the ticket. The ticket is the real proof: a request can claim to be addressed to localhost, and a tunnel on the same machine arrives from localhost too, but only someone signed in to this computer can read the data folder.
+- **A Clerk copy:** the first person to sign in with Clerk becomes the owner. Clerk's own sign-up restriction decides who can get that far. A single database lock makes sure only one claim ever lands, even if two people sign in at the same instant.
+- Matching the owner row by email is now case-insensitive, so a row seeded as `Brandon@…` still matches Clerk's `brandon@…`.
+
+**Who can reach a local copy.** The supervisor starts the app on `127.0.0.1` (this computer only) unless the copy requires sign-in: Clerk keys in its config or environment, or password sign-in switched on. A copy with sign-in listens on every network, exactly as before. It re-checks every 10 seconds, so switching password sign-in on or off moves the app within a few seconds (only the app restarts; the database stays up). In the gap after turning sign-in off, the no-login mode refuses to sign anyone in until the app has moved. The Tailscale helper and a Cloudflare tunnel reach the app on `127.0.0.1`, so they work either way. **Consequence:** a local copy with no sign-in is no longer reachable from other machines on the wifi or tailnet. To reach it from elsewhere, set a password in User Settings → Sign-in.
+
+**Per-install secrets make themselves.** On a local copy the supervisor creates `LEDGR_OAUTH_SECRET` once, if neither `extraEnv` nor the environment has one, and keeps it in `<dataDir>/install-secrets.json` (never the repo, never logged). A value you set yourself always wins, and then no file is written. So Build → AI & MCP can mint an MCP token on a fresh local copy with no config edit. Rotating it (the MCP kill switch, §3a): delete that file and restart the supervisor. Machine API tokens are minted in User Settings (ADR-224); nothing is generated for them.
+
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
 
 On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>/snapshots/`, thinned into a tiered spread (dense recent, sparse old) so a fixed file count covers weeks. It fills the gap between `revisions` (one item's body history) and the weekly OneDrive dump (§4 — exact, but weekly); the nightly markdown export stays the lossy Sunday-proof fire escape, not a restore path.

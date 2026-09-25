@@ -626,11 +626,12 @@ console.log(
 // download or print and must type one code back from).
 console.log(
   "\nSign-in: until you set a password (and unless you added Clerk keys), this\n" +
-    "copy opens with no sign-in, so anyone who can reach it gets in. Once Ledgr\n" +
-    "is running, set yours here, at\n" +
-    "this computer: right-click the Ledgr tray icon → Reset sign-in password\n" +
+    "copy opens with no sign-in and answers only this computer, so your phone\n" +
+    "and other devices can't reach it yet. Once Ledgr is running, set a password\n" +
+    "at this computer: right-click the Ledgr tray icon → Reset sign-in password\n" +
     "(or run: npm run local:reset-password). You choose a password, save your\n" +
-    "recovery kit, and this copy asks for the password from then on."
+    "recovery kit, and this copy asks for the password from then on, and other\n" +
+    "devices can reach it. /setup lists anything else still missing."
 );
 if (role === "spoke") {
   console.log(

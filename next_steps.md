@@ -18,6 +18,23 @@ until its owner flips it (runbook §1o). Left for Brandon, in order:
    phone app in again), then the Vercel copy. At each step confirm MCP, the API and the
    phone still work. Undo: User Settings → Sign-in → Switch to Clerk.
 
+## 🟢 IN FLIGHT — self-hosted hub install plan, chunk A (Ledgr note "Ledgr install plan", 2026-09-25)
+
+Step 1 (setup quick wins, ADR-275) landed: `/setup` in plain words, the first owner
+made at the machine or by the first Clerk sign-in, a no-sign-in local copy answers
+127.0.0.1 only, and the supervisor makes `LEDGR_OAUTH_SECRET` itself (runbook §1p).
+Left over from step 1:
+- The setup form asks for email and password only. Ledgr stores no owner name anywhere
+  yet; add one when something displays it.
+- `npm run local:setup-owner` is the first-run door until the installer (step 7) opens
+  it for you. The tray has no "Set up" item; its Reset sign-in password lands on the
+  setup form when there is no owner.
+- The Clerk first-sign-in claim is proven on local Postgres; the Neon (Vercel) path runs
+  the same lock through a one-transaction batch and has not been exercised on a real
+  Neon database.
+
+Steps 2 (files on local disk) and 3 (Tailscale module) are being built in parallel.
+
 ## 🟢 IN FLIGHT — core and modules (ADR-272, started 2026-09-24)
 
 One codebase, one `main`, installs differ only in which modules are on. Step 0 (the

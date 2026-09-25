@@ -44,6 +44,8 @@ async function signinProps(ownerId: string, host: string, recovered: boolean): P
     overridden: !!process.env.LEDGR_SIGNIN_METHOD,
     where: host,
     recovered,
+    // Only a supervisor that knows ADR-275 sets this; an older one never moves the app.
+    localService: !!process.env.LEDGR_LISTEN_HOST && !process.env.VERCEL_ENV,
   };
 }
 

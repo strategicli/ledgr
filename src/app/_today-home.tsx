@@ -9,6 +9,7 @@
 // `next build` runs the typecheck, it broke every deploy from main. Not a route:
 // the `_` prefix keeps this out of the router.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import QuickCapture from "@/components/today/QuickCapture";
 import PushToggle from "@/components/pwa/PushToggle";
 import RollOverdueButton from "@/components/today/RollOverdueButton";
@@ -17,6 +18,7 @@ import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
 import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { FOCUS_SOFT_CAP, focusOrder, isFocusedOn } from "@/lib/focus";
 import { listItems } from "@/lib/items";
+import { installHasOwner } from "@/lib/instance-owner";
 import { resolveOwnerState } from "@/lib/owner";
 import { childRollups } from "@/lib/subtasks";
 import { foldTodayTasks } from "@/lib/subtask-fold";
@@ -170,6 +172,8 @@ export default async function TodayHome() {
   // the auth failure it actually was. No redirect to /sign-in here on purpose:
   // the session is valid, so Clerk would send it straight back and loop.
   if (state.kind === "unrecognized") {
+    // No owner at all yet (ADR-275): the setup page is where one gets made.
+    if (!(await installHasOwner().catch(() => true))) redirect("/setup");
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-8 text-center">
         <h1 className="ui-title">Signed in, but not recognized</h1>

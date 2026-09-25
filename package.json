@@ -26,6 +26,7 @@
     "local:tray": "node supervisor/ledgr-ctl.mjs tray",
     "local:restart": "node supervisor/ledgr-ctl.mjs restart",
     "local:reset-password": "node supervisor/ledgr-ctl.mjs reset-password",
+    "local:setup-owner": "node supervisor/ledgr-ctl.mjs setup",
     "local:stop": "node supervisor/ledgr-ctl.mjs stop",
     "local:startup": "node supervisor/ledgr-ctl.mjs startup",
     "local:restore": "node scripts/local-restore.mjs",

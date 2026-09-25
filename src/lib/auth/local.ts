@@ -10,13 +10,15 @@
 import { isDeployedEnv, isClerkConfigured } from "./keyless";
 import type { AuthProvider } from "./types";
 
+// "local-owner" matches no seeded clerk_id, so resolveOwner falls through to
+// the email lookup — and its backfill never overwrites an existing clerk_id
+// link, so a restored production database keeps its Clerk link intact while
+// this identity signs in beside it.
+export const LOCAL_OWNER_ID = "local-owner";
+
 export const localAuthProvider = (email: string): AuthProvider => ({
   async getCurrentUser() {
-    // "local-owner" matches no seeded clerk_id, so resolveOwner falls through
-    // to the email lookup — and its backfill never overwrites an existing
-    // clerk_id link, so a restored production database keeps its Clerk link
-    // intact while this identity signs in beside it.
-    return { externalId: "local-owner", email };
+    return { externalId: LOCAL_OWNER_ID, email };
   },
 });
 
@@ -55,4 +57,15 @@ export function chooseFromProcessEnv(): ProviderChoice {
     nodeEnv: process.env.NODE_ENV,
     devUserEmail: process.env.DEV_USER_EMAIL || undefined,
   });
+}
+
+/**
+ * May the no-login mode serve this process (ADR-275)? The supervisor tells the
+ * app where it listens (LEDGR_LISTEN_HOST). It keeps a no-login install on
+ * 127.0.0.1, so "every network" here means the owner just switched sign-in off
+ * and the app has not been moved back yet: in that moment nobody is signed in
+ * by default. Unset (an older supervisor, `npm run dev`) keeps today's rule.
+ */
+export function noLoginListenOk(listenHost: string | undefined): boolean {
+  return !listenHost || listenHost === "127.0.0.1";
 }

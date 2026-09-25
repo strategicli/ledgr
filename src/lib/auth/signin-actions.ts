@@ -14,7 +14,7 @@ import { isNotNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { resolveOwner } from "@/lib/owner";
-import { resolveInstanceOwner } from "@/lib/instance-owner";
+import { claimFirstOwner, resolveInstanceOwner } from "@/lib/instance-owner";
 import {
   isLoopbackHost,
   passwordProblem,
@@ -239,6 +239,42 @@ export async function resetAtMachine(token: string, password: string, confirm: s
   if (!ownerId) return { ok: false, error: "This copy of Ledgr has no owner yet. Finish setup first." };
   await setPassword(ownerId, password);
   return { ok: true, kit: await issueRecoveryKit(ownerId) };
+}
+
+// ── First-run setup at the machine (ADR-275) ────────────────────────────────
+//
+// The same door as the reset above, pointed at an install with NO owner yet:
+// the same localhost-only check, the same one-time ticket from the data folder
+// (`npm run local:setup-owner`, or the tray's Reset sign-in password), and the
+// same step 2 (finishResetAtMachine). Step 1 creates the owner instead of
+// finding one. The ticket is the real proof: a request can claim to be
+// addressed to localhost, but only someone signed in to this computer can read
+// the data folder the ticket was written into.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // the shape seed.mjs refuses on
+
+/** Step 1 of setup: create the owner, set the password, and hand back a kit. */
+export async function createOwnerAtMachine(
+  token: string,
+  email: string,
+  password: string,
+  confirm: string
+): Promise<SettingsResult> {
+  if (!(await ticketOk(token))) {
+    return {
+      ok: false,
+      error: "This setup link has expired or was already used. On this computer, run npm run local:setup-owner again.",
+    };
+  }
+  const address = typeof email === "string" ? email.trim() : "";
+  if (!EMAIL_RE.test(address) || address.length > 254) return { ok: false, error: "Enter your email address." };
+  const problem = passwordProblem(password);
+  if (problem) return { ok: false, error: problem };
+  if (password !== confirm) return { ok: false, error: "The two passwords don't match." };
+  const owner = await claimFirstOwner(address, null);
+  if (!owner) return { ok: false, error: "This copy of Ledgr already has an owner. Sign in instead." };
+  await setPassword(owner.id, password);
+  return { ok: true, kit: await issueRecoveryKit(owner.id) };
 }
 
 /** Step 2: one code typed back, then this copy uses password sign-in and this browser is signed in. */

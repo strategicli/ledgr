@@ -1,8 +1,10 @@
 import { cache } from "react";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { authProvider } from "@/lib/auth";
+import { chooseFromProcessEnv, LOCAL_OWNER_ID } from "@/lib/auth/local";
+import { claimFirstOwner, installHasOwner } from "@/lib/instance-owner";
 import { createLogger } from "@/lib/log";
 
 export type Owner = {
@@ -95,11 +97,40 @@ export const resolveOwnerState = cache(async (): Promise<OwnerState> => {
   };
 
   if (!authUser.email) return unrecognized("no email on the auth identity");
-  const byEmail = await db
+  const email = authUser.email;
+  // Case-insensitive (ADR-275): a row seeded by hand as "Brandon@…" must still
+  // match the "brandon@…" Clerk reports. An exact match wins when the table
+  // holds two rows that differ only by case; two rows and no exact match is a
+  // guess this never makes.
+  const candidates = await db
     .select({ id: users.id, email: users.email, clerkId: users.clerkId })
     .from(users)
-    .where(eq(users.email, authUser.email));
-  if (byEmail.length === 0) return unrecognized("no users row for that email");
+    .where(sql`lower(${users.email}) = ${email.toLowerCase()}`);
+  const exact = candidates.filter((r) => r.email === email);
+  const byEmail = exact.length > 0 ? exact : candidates.length === 1 ? candidates : [];
+  if (byEmail.length === 0) {
+    // First sign-in on a Clerk install with no owner yet (ADR-275): this person
+    // becomes the owner, once. Clerk's own sign-up restriction decides who can
+    // get this far, and claimFirstOwner guarantees only one claim ever lands.
+    // Only for Clerk: the local no-login identity is not proof of anything, so
+    // a local install makes its owner on the setup page at the machine.
+    if (candidates.length === 0 && chooseFromProcessEnv() === "clerk" && !(await installHasOwner())) {
+      const claimed = await claimFirstOwner(email, authUser.externalId);
+      if (claimed) {
+        log.info("first Clerk sign-in claimed this install", { externalId: authUser.externalId });
+        return { kind: "owner", owner: claimed };
+      }
+    }
+    // The local no-login mode means "whoever is at this computer is the owner".
+    // An owner made on the setup page may use a different email from the one
+    // in the supervisor's config, so on a single-owner install the only row is
+    // the answer (the same rule the MCP lookup uses). Never a guess between two.
+    if (authUser.externalId === LOCAL_OWNER_ID) {
+      const all = await db.select({ id: users.id, email: users.email }).from(users).limit(2);
+      if (all.length === 1) return { kind: "owner", owner: all[0] };
+    }
+    return unrecognized("no users row for that email");
+  }
 
   // Backfill fills an empty clerk_id only, never overwrites an existing
   // link: a second provider identity with a matching email (the dev
