@@ -478,7 +478,10 @@ Build your own kinds of item at \`/build/types\`.
   notes and existing transcripts stay), **Triage mode** (on by default:
   switched off, the Inbox stops showing its Triage button) and **Listen** (on
   by default: switched off, the Listen menu entry and its per-type switches
-  are hidden, and each type keeps its setting for when you turn it back on).
+  are hidden, and each type keeps its setting for when you turn it back on)
+  and **Private access (Tailscale)** (off by default, and only on a Ledgr
+  installed on your own computer: see "Private access with Tailscale" under
+  the sync network).
   A module that is off also drops
   its Build page from the sidebar and the Navigation destination picker.
   Nothing is deleted: existing
@@ -1680,12 +1683,33 @@ in the middle you get both in one line.
   and is the one to use: it works from anywhere, including callers that cannot
   join your tailnet. Otherwise the tailnet name is the one to use: it works from
   any device signed into your tailnet, from anywhere, and it keeps working if the
-  addresses change. A local-network address is offered too and
+  addresses change. While the **Private access (Tailscale)** module is
+  connected, its private address
+  (\`https://ledgr-<computer>.<your-tailnet>.ts.net\`) is listed right after
+  any published address. A local-network address is offered too and
   labelled for what it is: only good on that network. Nothing is exposed to the
   internet by any of this — a phone or laptop that can join your tailnet needs
   no more than this. Publishing the instance publicly is a separate step, and
   the only thing that really needs it is the Claude connector, because that
   request comes from Anthropic's servers rather than from a device of yours.
+**Private access with Tailscale.** On a Ledgr installed on your own computer,
+turn on **Private access (Tailscale)** at \`/build/modules\`, open its
+**Options**, and click **Connect with Tailscale**. A new tab opens on
+Tailscale's sign-in page (Google, Microsoft, Apple or GitHub; signing in the
+first time creates a free Tailscale account). Sign in with the account your
+other devices use. The page then shows this computer's private address, with
+a **Copy** button and a QR code: install the Tailscale app on your phone, sign
+in with the same account, then scan the code. Ledgr joins your Tailscale
+network as a device of its own, named \`ledgr-<computer name>\`, so this computer
+needs no Tailscale app, and a Tailscale app already installed here is left
+alone. Only devices signed in to your Tailscale account can open the address;
+nothing is put on the public internet. It uses HTTPS, which your tailnet must
+allow (HTTPS Certificates in the Tailscale admin console, on by default for new
+tailnets; the page says so if it is off). **Disconnect** takes this Ledgr off
+your Tailscale network and removes it from your devices; nothing in Ledgr is
+deleted. The switch is per computer: each computer running Ledgr connects on
+its own.
+
 - **How long a device's history is kept.** For another device to reconnect and
   simply carry on, this instance has to keep the changes it missed. That costs
   storage that cannot be cleaned up while it waits, so each device has a
