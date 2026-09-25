@@ -9,6 +9,9 @@
 //      a Cloudflare Tunnel or a Funnel, so it is read from this install's own
 //      NEXT_PUBLIC_APP_URL rather than sniffed (2026-09-17: Brandon's hub moved
 //      to https://ledgr.brasco.fyi and this page still advertised the tailnet).
+//   0b. The Tailscale module's private HTTPS address (ADR-275), when its helper
+//      is running: this install as its own machine on the tailnet. Handed in
+//      by the caller, which reads the module's status; this file imports no module.
 //   1. The tailnet hostname (MagicDNS). Readable, and it survives a re-address,
 //      which the raw 100.x does not.
 //   2. The tailnet IP. Same reachability, uglier, works if MagicDNS is off.
@@ -127,6 +130,9 @@ export function reachableAddresses(opts: {
   // / Funnel / reverse-proxy hostname already configured as NEXT_PUBLIC_APP_URL.
   // Nothing in here can detect a tunnel, so it is told to us.
   publicUrl?: string | null;
+  // The Tailscale module's address (https://ledgr-<machine>.<tailnet>.ts.net)
+  // while its helper is serving, else null.
+  privateUrl?: string | null;
 }): ReachableAddress[] {
   const out: ReachableAddress[] = [];
   const { tailscale: ts, port } = opts;
@@ -138,6 +144,14 @@ export function reachableAddresses(opts: {
       label: "Public address",
       note: "Use this one. It works from anywhere, including callers that cannot join your tailnet. The Claude connector is the one that matters.",
       preferred: true,
+    });
+  }
+  if (opts.privateUrl) {
+    out.push({
+      url: opts.privateUrl,
+      label: "Private address (Tailscale)",
+      note: "Works on any device signed in to your Tailscale account, from anywhere, and it is not on the public internet. The easiest one for your phone.",
+      preferred: out.length === 0,
     });
   }
   if (ts.running && ts.dnsName) {

@@ -1,0 +1,64 @@
+# Build and publish the Tailscale helper (tailnet/, ADR-275).
+#
+# The helper is a small Go program the supervisor downloads on first use. It is
+# never part of the Next.js or Vercel build; this workflow is its only build.
+#
+# - Pushing a tag `tailnet-v<version>` builds all six platforms, checks every
+#   file against the checksums pinned in tailnet/release.json, and publishes a
+#   GitHub Release under that tag. The `tailnet-v` prefix keeps these releases
+#   apart from the app's own.
+# - Running it by hand (Actions → "Tailscale helper" → Run workflow) on any
+#   branch builds and uploads the files as an artifact, prints their
+#   checksums, and publishes nothing. Use that to get the checksums to pin.
+#
+# The builds are reproducible (no cgo, -trimpath, no VCS stamp, the Go version
+# pinned by tailnet/go.mod), which is what lets the repo, not the release, be
+# the source of truth: the supervisor trusts only the checksums in the repo.
+name: Tailscale helper
+
+on:
+  push:
+    tags: ["tailnet-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # only the release step uses it
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: tailnet/go.mod
+          cache-dependency-path: tailnet/go.sum
+      - run: sh tailnet/build.sh
+      - name: Check against the pinned checksums
+        run: |
+          node -e '
+            const fs = require("fs"), crypto = require("crypto");
+            const r = require("./tailnet/release.json");
+            let bad = false;
+            for (const [file, want] of Object.entries(r.sha256)) {
+              const got = crypto.createHash("sha256").update(fs.readFileSync("tailnet/dist/" + file)).digest("hex");
+              if (got !== want) { bad = true; console.log(`::warning::${file}: built ${got}, release.json pins ${want}`); }
+            }
+            if (bad && process.env.GITHUB_REF_TYPE === "tag") { console.log("::error::checksums differ; not publishing"); process.exit(1); }
+          '
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ledgr-tailnet
+          path: tailnet/dist/*
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'require("./tailnet/release.json").version')
+          test "$GITHUB_REF_NAME" = "tailnet-v$version" || { echo "::error::tag $GITHUB_REF_NAME does not match release.json version $version"; exit 1; }
+          gh release create "$GITHUB_REF_NAME" tailnet/dist/* \
+            --title "Tailscale helper $version" \
+            --notes "The Tailscale helper the Ledgr supervisor downloads for the Tailscale module. Checksums are in SHA256SUMS and pinned in tailnet/release.json." \
+            --latest=false
