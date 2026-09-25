@@ -441,7 +441,7 @@ export type UserSettings = {
   noteEditingPromptItemId: string | null;
   // In-app agent (ADR-271): the Claude sidebar, inline edit, and slash commands,
   // run on the hub under the owner's own Claude login. Off by default and only
-  // offered where agentAvailable() (lib/agent/gate.ts) says the machine can run
+  // offered where agentAvailable() (src/modules/agent/lib/gate.ts) says the machine can run
   // it. Models are chosen here; the two prompt ids point at the owner's editable
   // copies of the seeded base and inline-edit prompts; promptUse ranks the "/"
   // picker by recent use without touching the prompt items' updatedAt.

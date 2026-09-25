@@ -87,11 +87,6 @@ export const FEATURE_MODULES: ModuleManifest[] = [
     { mcpTools: { names: ["get_active_context", "edit_item_body"], instructions: LIVE_CONTEXT_INSTRUCTIONS } }
   ),
   feature(
-    "agent",
-    "In-app agent",
-    "A Claude sidebar, inline edit and slash commands inside Ledgr, run under this computer's Claude login."
-  ),
-  feature(
     "notification-center",
     "Notification center",
     "An in-app notification inbox and push alerts. Paused: its reminder jobs are switched off, so turning it on shows the inbox but sends nothing new."

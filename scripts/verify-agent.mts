@@ -10,10 +10,10 @@
 //
 //   npx tsx scripts/verify-agent.mts
 import { TOOL_NAMES } from "../src/lib/mcp/tools";
-import { CORE_TOOLS, TOOL_TIERS, tierOf } from "../src/lib/agent/tools";
-import { lockedOptions, scrubbedEnv } from "../src/lib/agent/runtime";
-import { cleanReplacement, formattingChanged } from "../src/lib/agent/inline";
-import { sameOrigin } from "../src/lib/agent/gate";
+import { CORE_TOOLS, TOOL_TIERS, tierOf } from "../src/modules/agent/lib/tools";
+import { lockedOptions, scrubbedEnv } from "../src/modules/agent/lib/runtime";
+import { cleanReplacement, formattingChanged } from "../src/modules/agent/lib/inline";
+import { sameOrigin } from "../src/modules/agent/lib/gate";
 import { allModules } from "../src/lib/modules";
 import "../src/lib/modules/register";
 

@@ -3,25 +3,16 @@
 // hub: never Vercel (no login, billed per second of a held stream), never a
 // spoke by default (that machine's login isn't the owner's hub login).
 //
-// The supervisor marks a local install with LEDGR_SUPERVISOR_DIR and gives a
-// spoke LEDGR_SYNC_HUBS; a hub has the first and not the second. LEDGR_AGENT
-// (on|off) overrides for testing only. Turning the feature on for the owner is
-// the Build → Modules switch, never this (the config-file rule, ADR-222).
+// `agentAvailable` (the machine's half) lives on the manifest, so fenced core
+// (the root layout) can read it through the registry without importing this
+// module. Turning the feature on for the owner is the Build → Modules switch.
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/api";
-import { moduleOnFor } from "@/lib/modules/enabled";
+import { moduleIsOn } from "@/lib/modules/gate";
 import type { Owner } from "@/lib/owner";
+import { agentAvailable } from "@/modules/agent/manifest";
 
-export function agentAvailable(): boolean {
-  const o = process.env.LEDGR_AGENT;
-  if (o === "on") return true;
-  if (o === "off" || process.env.VERCEL) return false;
-  return !!process.env.LEDGR_SUPERVISOR_DIR && !process.env.LEDGR_SYNC_HUBS;
-}
-
-export async function agentOn(ownerId: string): Promise<boolean> {
-  return agentAvailable() && (await moduleOnFor(ownerId, "agent"));
-}
+export { agentAvailable };
 
 // Same-origin check by host only. Behind the tunnel TLS ends at the proxy, so
 // request.url says http:// while the browser's Origin says https://; comparing
@@ -40,12 +31,14 @@ export function sameOrigin(request: Request): boolean {
 
 // For every /api/agent route: the signed-in owner with the agent on, or a 404
 // that doesn't admit the feature exists. Same-origin only, since the hub is
-// reachable from the public internet through the tunnel.
+// reachable from the public internet through the tunnel. The module check is
+// the shared ADR-272 gate (`moduleIsOn`), answered with a bare 404 rather than
+// `routeGate`'s JSON, which would name the module.
 export async function requireAgentOwner(request: Request): Promise<Owner | NextResponse> {
   if (!agentAvailable()) return new NextResponse(null, { status: 404 });
   if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
-  if (!(await moduleOnFor(owner.id, "agent"))) return new NextResponse(null, { status: 404 });
+  if (!(await moduleIsOn(owner.id, "agent"))) return new NextResponse(null, { status: 404 });
   return owner;
 }

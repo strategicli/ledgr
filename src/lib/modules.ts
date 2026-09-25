@@ -258,6 +258,11 @@ export type ModuleManifest = {
   // Module ids this module cannot run without. isModuleEnabled does NOT enforce
   // it; the Modules page and PATCH /api/settings do, via `requiresViolations`.
   requires?: string[];
+  // Whether THIS machine can run the module at all, separate from the owner's
+  // switch (the agent needs a local hub's Claude login, ADR-271). Pure: reads
+  // the environment only. Absent means always available. The root layout's
+  // shell panels, the Modules page and the module's own routes read it.
+  available?: () => boolean;
   // --- step 4: where the module's route files live ---
   routes?: string[]; // src/app paths owned by this module
 };
@@ -687,6 +692,11 @@ export function navEntriesForModules(off: readonly string[] = []): ModuleNavEntr
 // is refused by the route itself (plan step 4's shared guard).
 export function modulePublicPaths(): string[] {
   return allModules().flatMap((m) => m.publicPaths ?? []);
+}
+
+// Whether this machine can run the module (the manifest's `available`, else yes).
+export function moduleAvailable(moduleId: string): boolean {
+  return allModules().find((m) => m.id === moduleId)?.available?.() ?? true;
 }
 
 export type RequiresViolation = {

@@ -37,9 +37,12 @@ export function ModuleItemPage({ id, ...props }: PageProps & { id: string }) {
 }
 
 // --- shell panels: mounted once in the root layout (ADR-272 step 4) ---
-// A module's app-wide component (a global popover, a side panel). The root
-// layout maps over this list and mounts each one only while its module is on
-// for the owner, so a switched-off module leaves nothing in the shell.
+// A module's app-wide surface (the Desk's Send-to-Desk popover, the Claude
+// sidebar), mounted by the fenced root layout without importing the module. The
+// layout renders each entry only while its module is on for the owner (and, for
+// a module with `available`, only on a machine that can run it).
+import AgentPanel from "@/modules/agent/components/AgentPanel";
+
 type ShellPanel = { moduleId: string; Component: () => ReactNode };
 
 export function shellPanels(): ShellPanel[] {
@@ -47,5 +50,6 @@ export function shellPanels(): ShellPanel[] {
     // The Desk's "Send to Desk" popover, opened by inline mention/link
     // right-clicks (ADR-146 S3b).
     { moduleId: "desk", Component: DeskSendContextMenu },
+    { moduleId: "agent", Component: AgentPanel },
   ];
 }

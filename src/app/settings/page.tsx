@@ -13,8 +13,8 @@ import SettingsForm from "@/components/settings/SettingsForm";
 import ApiCredentials from "@/components/settings/ApiCredentials";
 import IcsFeed from "@/components/settings/IcsFeed";
 import BackButton from "@/components/ui/BackButton";
-import AgentSettings from "@/components/settings/AgentSettings";
-import { agentAvailable } from "@/lib/agent/gate";
+import AgentSettings from "@/modules/agent/components/AgentSettings";
+import { agentAvailable } from "@/modules/agent/lib/gate";
 import { moduleOn } from "@/lib/modules/enabled";
 
 export const dynamic = "force-dynamic";
