@@ -206,6 +206,17 @@ each job's state, last success, next run and any failure detail, and flags an
 exclusive job as one only this device should run. `npm run local:status` prints
 the same list (`--json` for an install agent).
 
+### Private access: the Tailscale helper (ADR-275)
+
+When the owner turns on the **Private access (Tailscale)** module and clicks
+Connect, this supervisor downloads a small helper (`tailnet/`, checked against
+`tailnet/release.json`), runs it beside Postgres, and keeps it running. It puts
+this install on the owner's tailnet as `ledgr-<computer>` and forwards HTTPS
+there to the app on 127.0.0.1. Nothing in `config.json` controls it: the app
+decides (`GET /api/machine/tailscale`, asked every minute and on the
+`tailscale-requested` signal file). Files live in `<dataDir>/tailscale/`;
+`state/` holds the node's keys. Operations: `runbook.md` §1p.
+
 ### Snapshots: point-in-time recovery on this machine (ADR-217)
 
 Between the `revisions` table (one item's body history) and the weekly OneDrive

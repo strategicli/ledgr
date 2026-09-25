@@ -399,6 +399,18 @@ Each copy of Ledgr signs its owner in with **Clerk** or with **the built-in pass
 
 **A new cloud copy with no Clerk.** `npm run instance:new` prints the step: `DATABASE_URL=... npm run signin:reset -- --method=builtin`, then sign in with the temporary password and set your own. Until then the deployed copy refuses every page (fail closed, ADR-184).
 
+## 1p. Private access: the Tailscale helper (ADR-275)
+
+On a local copy, the **Private access (Tailscale)** module puts this Ledgr on the owner's tailnet as its own machine, `ledgr-<computer>`, at `https://ledgr-<computer>.<tailnet>.ts.net`. The computer needs no Tailscale app; a system Tailscale already installed is left alone (separate node, separate keys).
+
+- **Turning it on:** Build → Modules → **Private access (Tailscale)** → Options → **Connect with Tailscale**, then sign in on the tab that opens. Both switches must be on: the module (per owner) and this computer's own (`tailscale:enabled` in `job_state`, set by Connect and Disconnect, never synced). No config edit, no restart.
+- **Where things are, under `<dataDir>/tailscale/`:** `bin/<version>-ledgr-tailnet-<os>-<arch>` (the helper), `state/` (**this node's keys; never copy or share it**), `status.json` (what the helper last reported). The signal file is `<dataDir>/tailscale-requested`.
+- **How it runs.** The supervisor asks `GET /api/machine/tailscale` every minute and on every signal file, downloads the helper on first use from the `tailnet-v<version>` GitHub Release, refuses it unless its sha256 matches `tailnet/release.json`, starts it, restarts it with backoff if it dies, and stops it when the supervisor stops. Its lines in the supervisor log start with `ledgr-tailnet:`.
+- **"HTTPS certificates are switched off"** on the Options panel: turn on HTTPS Certificates at <https://login.tailscale.com/admin/dns>. The helper retries every 30 seconds, no restart needed.
+- **Disconnect** signs the node out, deletes `state/`, and removes the machine from the tailnet. If the helper could not reach Tailscale at that moment, remove `ledgr-<computer>` by hand in the Tailscale admin console (Machines).
+- **Testing override:** `LEDGR_TAILNET_HOSTNAME` in the supervisor's environment changes the machine name (e.g. `ledgr-mypc-test` for a scratch install). Never the way to switch it on.
+- **Releasing a new helper version.** Change `tailnet/`, bump `version` in `tailnet/release.json`, run `sh tailnet/build.sh` (Go from `tailnet/go.mod`) and copy the printed checksums into `release.json`. The PR's "Tailscale helper" check fails if they do not match. After merge, from the merged commit on `main`, run `git tag tailnet-v<version>` and `git push origin tailnet-v<version>`; the workflow builds, re-checks and publishes the release. A supervisor reads `release.json` beside its own code, so it moves to the new helper when its own code is updated and restarted, the same as any supervisor change. Undo: delete the release and the tag, revert the `release.json` bump.
+
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
 
 On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>/snapshots/`, thinned into a tiered spread (dense recent, sparse old) so a fixed file count covers weeks. It fills the gap between `revisions` (one item's body history) and the weekly OneDrive dump (§4 — exact, but weekly); the nightly markdown export stays the lossy Sunday-proof fire escape, not a restore path.

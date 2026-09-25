@@ -18,6 +18,14 @@ until its owner flips it (runbook §1o). Left for Brandon, in order:
    phone app in again), then the Vercel copy. At each step confirm MCP, the API and the
    phone still work. Undo: User Settings → Sign-in → Switch to Clerk.
 
+## 🟢 IN FLIGHT — self-hosted hub install plan (Ledgr note "Ledgr install plan: self-hosted hub, spokes, hosted")
+
+Step 3, private access through the bundled Tailscale helper, landed (ADR-275, runbook §1p).
+Next from that plan: **step 5, Funnel** ("Make this reachable from the internet" on the
+Tailscale module's options). It is one more listener in `tailnet/main.go`
+(`ListenFunnel`) behind a flag the supervisor passes, refused unless sign-in is
+required; bump `tailnet/release.json` and tag a new `tailnet-v` release.
+
 ## 🟢 IN FLIGHT — core and modules (ADR-272, started 2026-09-24)
 
 One codebase, one `main`, installs differ only in which modules are on. Step 0 (the
