@@ -17,7 +17,6 @@ import { getDb } from "@/db";
 import { hasActiveCredential } from "@/lib/auth/credentials";
 import { hasScopedToken } from "@/lib/auth/machine";
 import { resolveMcpOwner } from "@/lib/mcp/owner";
-import { checkGraphAuth, type GraphHealth } from "@/lib/graph/client";
 import { checkGithub, type GithubHealth } from "@/lib/github/client";
 import { getHealthCheckState, type HealthCheckCanary } from "@/lib/health-check";
 import { allModules } from "@/lib/modules";
@@ -27,11 +26,11 @@ import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
-// not yet modules (step 4): push, sync, tasks adapter, transcription adapter.
+// not yet modules (step 4): push, sync, tasks adapter.
 import { getPushState } from "@/lib/push/notify";
 import { gatherSyncStatus, type SyncState } from "@/lib/sync/client";
 import { tasksAdapter, type TasksAdapterId } from "@/lib/tasks/provider";
-import { transcriptionAdapter, type TranscriptionAdapterId } from "@/lib/transcription/provider";
+import type { TranscriptionAdapterId } from "@/modules/meeting-transcripts/lib/provider";
 
 export type DatabaseCheck =
   | { ok: true; latencyMs: number }
@@ -41,6 +40,13 @@ export type ErrorsCheck = {
   last24h: number;
   recent?: { source: string; message: string; at: string }[];
 } | null;
+
+// The Microsoft Graph token-grant canary, reported by the microsoft module's
+// healthCheck and copied to the top-level `graph` key (ADR-272 step 4).
+export type GraphHealth =
+  | { configured: false }
+  | { configured: true; ok: true }
+  | { configured: true; ok: false; detail: string };
 
 export type McpCanary = { configured: boolean; hasToken: boolean; ownerResolves: boolean };
 
@@ -191,11 +197,12 @@ export async function gatherHealth(): Promise<HealthReport> {
   }
 
   // App-only Graph token grant (slice 21): a failed grant is the secret-expiry
-  // / consent-revocation canary for every unattended Graph job. `{configured:
-  // false}` until the registration exists; it never changes overall status,
-  // since Graph being down must not make the app itself look unhealthy.
-  // checkGraphAuth swallows its own errors; `safe` is belt-and-suspenders.
-  const graph: GraphHealth = (await safe(checkGraphAuth)) ?? { configured: false };
+  // / consent-revocation canary for every unattended Graph job. It arrives from
+  // the microsoft module's healthCheck (ADR-272 step 4); `{configured: false}`
+  // while the module is off, the database is down, or the registration doesn't
+  // exist. It never changes overall status, since Graph being down must not
+  // make the app itself look unhealthy.
+  const graph: GraphHealth = (modules.microsoft as GraphHealth | undefined) ?? { configured: false };
 
   // GitHub canary (changelog + collab notes): a failed repo read is the
   // token-expiry / wrong-repo signal. Like Graph, it never changes overall
@@ -230,6 +237,8 @@ export async function gatherHealth(): Promise<HealthReport> {
   const em = modules["email-capture"] as SyncCanaryShape;
   // Relatedness likewise (step 4): its last nightly run, null while it is off.
   const rel = modules.relatedness as { lastRunAt?: string | null } | undefined;
+  // Meeting transcripts likewise: its active adapter, "none" while it is off.
+  const mt = modules["meeting-transcripts"] as { adapter?: TranscriptionAdapterId } | undefined;
 
   return {
     status: database.ok ? "ok" : "degraded",
@@ -241,7 +250,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       lastCalendarSyncAt: cal?.lastSyncAt ?? null,
       lastCalendarRunAt: cal?.lastRunAt ?? null,
       tasksAdapter: tasksAdapter(),
-      transcription: transcriptionAdapter(),
+      transcription: mt?.adapter ?? "none",
       lastTodoistSyncAt: td?.lastSyncAt ?? null,
       lastTodoistRunAt: td?.lastRunAt ?? null,
       lastEmailImportAt: em?.lastSyncAt ?? null,

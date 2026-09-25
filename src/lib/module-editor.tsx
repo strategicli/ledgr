@@ -35,3 +35,11 @@ export const DeskSendShellPanel = dynamic(() => import("@/modules/desk/component
 export const AgentShellPanel = dynamic(() => import("@/modules/agent/components/AgentPanel"), {
   loading: () => null,
 });
+
+// Listen (read-aloud), mounted once per item by ItemCanvas while the listen
+// module is on and the type opts in. It renders nothing until the ⋯ menu's
+// Listen fires `ledgr:listen`, so skipping SSR loses nothing.
+export const ListenPanel = dynamic(() => import("@/modules/listen/components/ListenBar"), {
+  ssr: false,
+  loading: () => null,
+});

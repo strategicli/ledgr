@@ -11,7 +11,7 @@
 // needs no mailbox, no Graph credentials and no database.
 //
 // Run: npx tsx scripts/verify-email-delta-resync.mts
-import { GraphError } from "../src/lib/graph/client";
+import { GraphError } from "../src/modules/microsoft/lib/client";
 import { GraphMailSource } from "../src/modules/email-capture/lib/graph-source";
 
 let failures = 0;

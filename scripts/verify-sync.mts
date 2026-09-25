@@ -549,7 +549,12 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
     // Seed the shared owner on both (users rows don't sync; a spoke starts
     // from a restore/clone). Types + items flow through sync itself.
     for (const p of [A, B]) {
-      await p.query(`insert into users (id, email) values ($1, 'sync-test@example.com')`, [OWNER]);
+      // passages is off by default for a new owner (migration 0064 keeps it on
+      // for existing ones); the passage_refs checks below need it on.
+      await p.query(
+        `insert into users (id, email, settings) values ($1, 'sync-test@example.com', '{"modules":{"passages":true}}')`,
+        [OWNER]
+      );
     }
     await A.query(`insert into types (key, label) values ('note', 'Note')`);
     await A.query(

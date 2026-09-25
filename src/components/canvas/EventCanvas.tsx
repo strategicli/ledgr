@@ -24,7 +24,6 @@ import RelationProperties from "@/components/relations/RelationProperties";
 import CanvasTwoPane from "@/components/canvas/CanvasTwoPane";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingNotes from "@/components/meetings/MeetingNotes";
-import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
 import RelatedPanel from "@/components/relations/RelatedPanel";
 import { ModuleItemPanel } from "@/lib/module-panels";
 import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
@@ -119,7 +118,7 @@ export default async function EventCanvas(canvasProps: CanvasProps) {
       />
 
       {/* Rarely-opened, collapsed by default (Brandon 2026-07-10). */}
-      <MeetingTranscripts ownerId={ownerId} itemId={item.id} collapsed />
+      <ModuleItemPanel id="meeting-transcripts" itemId={item.id} collapsed />
       <MeetingNotes ownerId={ownerId} itemId={item.id} collapsed />
 
       {/* Properties: scalar Build-surface fields + non-person relation fields. */}

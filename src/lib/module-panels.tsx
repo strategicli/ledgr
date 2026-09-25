@@ -9,13 +9,15 @@ import SharePanel from "@/modules/sharing/components/SharePanel";
 import DiscoverSection from "@/modules/relatedness/components/DiscoverSection";
 import ExploreView from "@/modules/relatedness/components/ExploreView";
 import LiveContextPanel from "@/modules/live-context/components/LiveContextPanel";
+import MeetingTranscripts from "@/modules/meeting-transcripts/components/MeetingTranscripts";
 
-type PanelProps = { itemId: string; title?: string; bare?: boolean };
+type PanelProps = { itemId: string; title?: string; bare?: boolean; collapsed?: boolean };
 
 const ITEM_PANELS: Record<string, (props: PanelProps) => ReactNode | Promise<ReactNode>> = {
   share: SharePanel,
   discover: DiscoverSection,
   "live-context": LiveContextPanel,
+  "meeting-transcripts": MeetingTranscripts,
 };
 
 export function ModuleItemPanel({ id, ...props }: PanelProps & { id: string }) {

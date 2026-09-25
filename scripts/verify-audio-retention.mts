@@ -23,11 +23,11 @@ for (const [k, v] of Object.entries({
 const { getDb } = await import("../src/db");
 const { items, attachments, relations, users } = await import("../src/db/schema");
 const { markAudioForPurge, purgeExpiredAudio, deleteAttachment, AUDIO_RETENTION_DAYS } = await import("../src/lib/attachments");
-const { startAudioTranscription, advanceTranscription } = await import("../src/lib/meetings/transcription-service");
+const { startAudioTranscription, advanceTranscription } = await import("../src/modules/meeting-transcripts/lib/transcription-service");
 const { ItemError } = await import("../src/lib/items");
 const { eq } = await import("drizzle-orm");
 type SP = import("../src/lib/storage").StorageProvider;
-type TP = import("../src/lib/transcription/provider").TranscriptionProvider;
+type TP = import("../src/modules/meeting-transcripts/lib/provider").TranscriptionProvider;
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

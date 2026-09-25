@@ -24,5 +24,7 @@ export const onedriveExportModule: ModuleManifest = {
   enabledByDefault: true,
   types: [],
   exporters: [],
+  // Reads and writes through the Microsoft Graph sign-in.
+  requires: ["microsoft"],
   routes: ["src/app/api/export/route.ts", "src/app/api/machine/export/route.ts"],
 };

@@ -14,6 +14,7 @@ import { resolveOwner } from "@/lib/owner";
 import { resolveStatusSchema, type StatusMode } from "@/lib/status";
 import { listTypes } from "@/lib/types";
 import { getSettings } from "@/lib/settings";
+import { moduleOn } from "@/lib/modules/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function BuildTypes() {
     getSettings(owner.id),
   ]);
   const capabilities = attachableCapabilities(owner.id);
+  const listenOn = moduleOn(settings, "listen");
 
   return (
     <main className="min-h-screen">
@@ -72,7 +74,7 @@ export default async function BuildTypes() {
               isSystem={t.isSystem}
               hidden={t.hidden}
               showInQuickCapture={t.showInQuickCapture}
-              listenEnabled={t.listenEnabled}
+              listenEnabled={listenOn ? t.listenEnabled : null}
               listenOpenInEdge={t.listenOpenInEdge}
               properties={t.propertySchema.map((p) => ({
                 key: p.key,

@@ -46,7 +46,17 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    in §7 of the exploration). Known leftovers: item-panel controls and RowMenu's Desk
    items still ship while their module is off; each needs a module-side change.
 7. **Step 6: instance defaults** reviewed with Tyler; done when his install is the same
-   build with a shorter default list.
+   build with a shorter default list. Rule (Brandon, 2026-09-25): defaults start from
+   the plain product; Brandon's own workflow is which modules his install turns on.
+8. **More modules, from the Ledgr task "Other ideas for things to move into modules".**
+   ~~Batch A~~ (branch `feat/modules-batch-a`): Microsoft 365 parent module (calendar
+   sync, email capture, OneDrive export require it), Meeting transcripts, Triage mode,
+   Listen, and Passages off for new installs (ADR-273). **Batch B next:** move Person
+   and Event out of `coreModule` into People and Events modules; Planner, the ICS feed,
+   meeting transcripts and calendar sync require Events; the `@` create picker skips
+   Person when People is off. Test on a data copy first. Later: Songs/Papers/Mindmap
+   code move, builder tools, web clipper, push into Notification center, digest +
+   Overview. Skipped: custom layouts. Parked: Google.
 
 ## 🟡 FOLLOW-UPS — Claude in Ledgr (ADR-271, shipped 2026-09-24)
 

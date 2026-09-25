@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MarkdownPreview from "@/components/markdown-editor/MarkdownPreview";
 import { showToast } from "@/components/ui/ActionToast";
-import { RATE_STORAGE_KEY, VOICE_STORAGE_KEY, chunkText, pickableVoices } from "@/components/canvas/ListenBar";
+import { RATE_STORAGE_KEY, VOICE_STORAGE_KEY, chunkText, pickableVoices } from "@/modules/listen/components/ListenBar";
 import AgentInput, { type Builtin, type Submit } from "./AgentInput";
 
 export type Block =

@@ -31,7 +31,6 @@ import { listItemFilesWithRefs } from "@/lib/attachments";
 import { bodyMarkdown } from "@/lib/body";
 import MeetingPrep from "@/components/meetings/MeetingPrep";
 import MeetingNotes from "@/components/meetings/MeetingNotes";
-import MeetingTranscripts from "@/components/meetings/MeetingTranscripts";
 import { promotedBlockRefs } from "@/lib/meetings/promote";
 import { getItem } from "@/lib/items";
 import Link from "next/link";
@@ -211,7 +210,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       if (id === "meetingPrep") return <MeetingPrep ownerId={ownerId} itemId={item.id} bare />;
       if (id === "meetingNotes") return <MeetingNotes ownerId={ownerId} itemId={item.id} bare />;
       if (id === "meetingTranscripts")
-        return <MeetingTranscripts ownerId={ownerId} itemId={item.id} bare />;
+        return isModuleEnabled("meeting-transcripts", ownerId) ? <ModuleItemPanel id="meeting-transcripts" itemId={item.id} bare /> : null;
       if (id.startsWith("prop:")) {
         const key = id.slice(5);
         // The person's built-in Image edits through the picture box (upload /
@@ -364,7 +363,7 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       {item.type === "event" && <MeetingNotes ownerId={ownerId} itemId={item.id} />}
       {/* Transcripts (meeting recording v1a, ADR-087): paste/list a meeting's
           transcripts (each its own item), the pivot for Claude-over-MCP minutes. */}
-      {item.type === "event" && <MeetingTranscripts ownerId={ownerId} itemId={item.id} />}
+      {item.type === "event" && <ModuleItemPanel id="meeting-transcripts" itemId={item.id} />}
       {/* Properties (PRD §3.6, the canvas redesign): one panel for the type's
           fields — scalar Build-surface fields (CustomProperties, over
           items.properties) AND typed relation fields (RelationProperties, link

@@ -2,9 +2,9 @@
 // App-only client credentials (the PRD §5.1 split: unattended jobs never
 // see an MFA prompt), addressing Brandon's drive as /users/{upn}/drive.
 // Token acquisition and the throttled fetch now live in the shared Graph
-// client (src/lib/graph, slice 21/ADR-022); this file keeps only the
+// client (src/modules/microsoft/lib, slice 21/ADR-022); this file keeps only the
 // OneDrive-specific path building and upload-session logic.
-import { getGraphCredentials, graphFetch } from "@/lib/graph/client";
+import { getGraphCredentials, graphFetch } from "@/modules/microsoft/lib/client";
 import type { ExportTarget } from "@/lib/export/target";
 
 export type GraphConfig = {

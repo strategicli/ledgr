@@ -4790,3 +4790,14 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Consequences.** No schema change and no behavior change in this step; the fence passes today because `src/modules/` is empty. Known leaks the fence will catch as code moves: `health.ts` imports nine feature areas, `item-mutations.ts` calls passages and YouTube directly, `layout.tsx` mounts the agent panel and Desk menu unconditionally, `settings.ts` imports `desk/layout` and `job-owners`. On performance: a big module list costs build time (the real ceiling is Vercel's build quota) and human upkeep; the page bundle and server cost of a disabled module go to near zero once the shells lazy-load (plan step 5), and today the opposite is true, so this makes the app faster for anyone with modules off. The install/onboarding problem is untouched and stays in `explorations/onboarding-and-multi-tenancy.md`.
 
 **Affects:** `CLAUDE.md` (new "Core and modules" section), `eslint.config.mjs` (the core-fence block), new `explorations/core-and-modules.md` (reasoning, core list, module list, the six-step plan), `next_steps.md` (pointer). Supersedes nothing; extends ADR-043 (the registry) and ADR-269 (the process).
+
+## ADR-273: Scripture passages defaults off for new installs, kept on for existing owners
+
+**Date:** 2026-09-25
+**Status:** accepted (Brandon-directed, 2026-09-25).
+
+**Context.** Module defaults should describe the plain product, not one owner's workflow (Brandon, 2026-09-25). Passages (Scripture references becoming passage links) defaulted on, which suits a pastor but surprises a notes-and-recipes user.
+
+**Decision.** `passagesModule.enabledByDefault` becomes `false`. Migration `0064_passages_default_off.sql` writes `settings.modules.passages = true` for every existing owner with no explicit choice, so nobody's install changes on upgrade. It leaves an explicit choice alone and is idempotent. A new install migrates before its owner exists, so only new owners get the off default. Sync's body-save hooks now read module switches from the database the ops land in (`src/lib/sync/apply.ts`), which the new default exposed.
+
+**Affects:** `src/modules/passages/manifest.ts`, `drizzle/0064_passages_default_off.sql`, `src/lib/sync/apply.ts`, the user guide.

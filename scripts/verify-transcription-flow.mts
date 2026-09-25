@@ -33,12 +33,12 @@ const {
   advanceTranscription,
   listPendingTranscriptions,
   isAudioOrVideo,
-} = await import("../src/lib/meetings/transcription-service");
+} = await import("../src/modules/meeting-transcripts/lib/transcription-service");
 const { getItem, ItemError } = await import("../src/lib/items");
 const { bodyMarkdown } = await import("../src/lib/body");
 const { eq } = await import("drizzle-orm");
-type TP = import("../src/lib/transcription/provider").TranscriptionProvider;
-type TR = import("../src/lib/transcription/provider").TranscriptionResult;
+type TP = import("../src/modules/meeting-transcripts/lib/provider").TranscriptionProvider;
+type TR = import("../src/modules/meeting-transcripts/lib/provider").TranscriptionResult;
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {

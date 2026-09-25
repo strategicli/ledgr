@@ -3,7 +3,7 @@
 // series come back expanded into individual occurrences (you prep each 1:1
 // instance separately, PRD §5.1). UTC is requested via Prefer so no zone math
 // is needed downstream; the body is requested as text for a clean preview.
-import { graphFetch, getGraphMailboxUpn, GraphError } from "@/lib/graph/client";
+import { graphFetch, getGraphMailboxUpn, GraphError } from "@/modules/microsoft/lib/client";
 import type { CalendarEvent, CalendarPerson, CalendarSource } from "@/lib/calendar/types";
 
 type GraphAddress = { name?: string; address?: string } | undefined;

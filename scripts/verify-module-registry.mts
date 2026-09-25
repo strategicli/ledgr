@@ -247,7 +247,8 @@ check("a module with no hook of that name is not listed", !hooksFor("onCreate", 
 
 const passages = allModules().find((m) => m.id === "passages");
 check("passages is a registered module", !!passages);
-check("passages is on by default (it always ran)", passages?.enabledByDefault === true && moduleOn({ modules: {} }, "passages"));
+check("passages is off by default for new installs", passages?.enabledByDefault === false && !moduleOn({ modules: {} }, "passages"));
+check("an owner backfilled by 0064 keeps passages on", moduleOn({ modules: { passages: true } }, "passages"));
 check("passages adds no item types", passages?.types.length === 0);
 check("passages owns an onBodySave hook", typeof passages?.hooks?.onBodySave === "function");
 check("youtube-transcripts owns an onCreate hook", typeof allModules().find((m) => m.id === "youtube-transcripts")?.hooks?.onCreate === "function");
@@ -403,7 +404,7 @@ for (const moved of [passagesModule, youtubeTranscriptsModule]) {
     check(`${moved.id} route exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
   }
 }
-check("passages keeps its default (on)", passagesModule.enabledByDefault === true);
+check("passages defaults off (existing owners carry an explicit true)", passagesModule.enabledByDefault === false);
 check("youtube-transcripts keeps its default (off)", youtubeTranscriptsModule.enabledByDefault === false);
 check("server-slots attached passages' onBodySave", typeof passagesModule.hooks?.onBodySave === "function");
 check(
@@ -792,6 +793,50 @@ for (const r of sharingRoutes) {
     layout.includes(`from "@/lib/module-shells"`) && !layout.includes("@/lib/module-panels")
   );
   check("module-shells.tsx imports no module directly", !read("src/lib/module-shells.tsx").includes("@/modules"));
+}
+// --- step 4: microsoft is the parent of the three Graph modules ------------
+{
+  const { microsoftModule } = await import("../src/modules/microsoft/manifest");
+  const { existsSync } = await import("node:fs");
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  check("microsoft is registered from its module folder", allModules().find((x) => x.id === "microsoft") === microsoftModule);
+  check("microsoft is on by default", microsoftModule.enabledByDefault && moduleOn({ modules: {} }, "microsoft"));
+  check("microsoft contributes a health check (server slot)", typeof microsoftModule.healthCheck === "function");
+  for (const id of ["calendar-sync", "email-capture", "onedrive-export"]) {
+    check(`${id} requires microsoft`, !!allModules().find((x) => x.id === id)?.requires?.includes("microsoft"));
+  }
+  check("turning microsoft off with its dependents on is a violation", requiresViolations({ microsoft: false }).length === 3);
+  check(
+    "microsoft off is fine once its dependents are off",
+    requiresViolations({ microsoft: false, "calendar-sync": false, "email-capture": false, "onedrive-export": false }).length === 0
+  );
+  check("the old Graph client path is gone", !existsSync(new URL("../src/lib/graph/client.ts", import.meta.url)));
+  check("health.ts no longer imports the Graph client", !read("src/lib/health.ts").includes("microsoft/lib/client"));
+}
+
+// --- 19. step 4: triage mode lives under src/modules/triage ----------------
+{
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { triageModule } = await import("../src/modules/triage/manifest");
+  check("triage is registered from @/modules/triage/manifest", allModules().find((m) => m.id === "triage") === triageModule);
+  check("triage is on by default (it shipped with no switch)", moduleOn({ modules: {} }, "triage"));
+  check("the triage page calls the gate", read("src/app/inbox/triage/page.tsx").includes('pageGate(owner.id, "triage")'));
+  check("the Inbox hides its Triage link when the module is off", read("src/app/inbox/page.tsx").includes('moduleOnFor(owner.id, "triage")'));
+}
+
+// --- 20. step 4: listen lives under src/modules/listen ---------------------
+{
+  const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const { listenModule } = await import("../src/modules/listen/manifest");
+  check("listen is registered from @/modules/listen/manifest", allModules().find((m) => m.id === "listen") === listenModule);
+  check("listen is on by default (it shipped with no switch)", moduleOn({ modules: {} }, "listen"));
+  check("the listen route calls the gate", read("src/app/api/types/[key]/listen/route.ts").includes('routeGate(owner.id, "listen")'));
+  const canvas = read("src/components/canvas/ItemCanvas.tsx");
+  check("ItemCanvas mounts Listen only while the module is on", canvas.includes('moduleOn(settings, "listen")'));
+  check(
+    "module-editor.tsx loads ListenBar through dynamic()",
+    read("src/lib/module-editor.tsx").includes('dynamic(() => import("@/modules/listen/components/ListenBar")')
+  );
 }
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);

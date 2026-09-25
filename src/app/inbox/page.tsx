@@ -23,7 +23,7 @@ import { resolveOwner } from "@/lib/owner";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { compareTypeKeys } from "@/lib/type-order";
-import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
+import { disabledModuleTypeKeys, moduleOnFor } from "@/lib/modules/enabled";
 import type { Priority } from "@/lib/priority";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ export default async function Inbox() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [typeRows, inboxItems, tz, moduleOff] = await Promise.all([
+  const [typeRows, inboxItems, tz, moduleOff, triageOn] = await Promise.all([
     getDb().select({ key: types.key, label: types.label }).from(types),
     // Active-only: a completed/archived item is no longer awaiting triage, and
     // completion clears the inbox flag (see updateItem). This also keeps done
@@ -45,6 +45,7 @@ export default async function Inbox() {
     listItems(owner.id, { inbox: true, statusCategory: "active", limit: 200 }),
     getAppTimezone(owner.id),
     disabledModuleTypeKeys(owner.id),
+    moduleOnFor(owner.id, "triage"),
   ]);
   const today = appTodayYmd(new Date(), tz);
   typeRows.sort((a, b) => compareTypeKeys(a.key, b.key));
@@ -70,7 +71,7 @@ export default async function Inbox() {
                   } awaiting triage`}
             </p>
           </div>
-          {inboxItems.length > 0 && (
+          {triageOn && inboxItems.length > 0 && (
             <Link
               href="/inbox/triage"
               className="shrink-0 rounded-card border border-line px-3 py-1.5 text-sm text-ink-muted hover:border-line-strong hover:text-ink"

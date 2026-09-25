@@ -116,7 +116,8 @@ export default function TypeSettingsRow({
   isSystem: boolean;
   hidden: boolean;
   showInQuickCapture: boolean;
-  listenEnabled: boolean;
+  // null while the listen module is off: the Listen section is hidden.
+  listenEnabled: boolean | null;
   listenOpenInEdge: boolean;
   // The type's properties with their chip flag (ADR-268).
   properties: { key: string; label: string; quickCapture: boolean }[];
@@ -276,38 +277,42 @@ export default function TypeSettingsRow({
             </div>
           )}
 
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="ui-row font-semibold text-ink">Listen</div>
-              <p className="text-xs text-ink-subtle">
-                Add a read-aloud entry to this type&rsquo;s item menu.
-              </p>
-            </div>
-            <Switch
-              checked={listenEnabled}
-              disabled={busy}
-              label="Listen"
-              onChange={() => void post("listen", { listenEnabled: !listenEnabled })}
-            />
-          </div>
-
-          {listenEnabled && (
-            <div className="ml-2 flex items-start justify-between gap-3 border-l border-line pl-3">
-              <div>
-                <div className="ui-row font-semibold text-ink">Open in Edge</div>
-                <p className="text-xs text-ink-subtle">
-                  Send Listen to Microsoft Edge, which has better free voices.
-                </p>
+          {listenEnabled != null && (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="ui-row font-semibold text-ink">Listen</div>
+                  <p className="text-xs text-ink-subtle">
+                    Add a read-aloud entry to this type&rsquo;s item menu.
+                  </p>
+                </div>
+                <Switch
+                  checked={listenEnabled}
+                  disabled={busy}
+                  label="Listen"
+                  onChange={() => void post("listen", { listenEnabled: !listenEnabled })}
+                />
               </div>
-              <Switch
-                checked={listenOpenInEdge}
-                disabled={busy}
-                label="Open in Edge for Listen"
-                onChange={() =>
-                  void post("listen", { listenOpenInEdge: !listenOpenInEdge })
-                }
-              />
-            </div>
+
+              {listenEnabled && (
+                <div className="ml-2 flex items-start justify-between gap-3 border-l border-line pl-3">
+                  <div>
+                    <div className="ui-row font-semibold text-ink">Open in Edge</div>
+                    <p className="text-xs text-ink-subtle">
+                      Send Listen to Microsoft Edge, which has better free voices.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={listenOpenInEdge}
+                    disabled={busy}
+                    label="Open in Edge for Listen"
+                    onChange={() =>
+                      void post("listen", { listenOpenInEdge: !listenOpenInEdge })
+                    }
+                  />
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex items-start justify-between gap-3">
