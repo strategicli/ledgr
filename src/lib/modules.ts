@@ -6,7 +6,7 @@
 // the first module (`coreModule` below), so the whole app resolves type behavior
 // through this one boundary — the strongest proof it's real, and the shape every
 // workflow module (Papers, Songs, …) follows later, with per-user enable as a
-// config flip (the `isModuleEnabled` seam, default-on today).
+// config flip (the `isModuleEnabled` seam, driven by settings.modules, ADR-272).
 //
 // This is the POLICY/CONTRACT half and is kept pure: it imports no React
 // component and nothing heavy, so it resolves identically on the server and in a
@@ -209,9 +209,12 @@ export type ModuleCapability = {
 export type ModuleManifest = {
   id: string;
   label: string;
-  // Whether the module is on for an instance by default. The per-user enable
-  // flip (below) starts from this; flipping it off is what `isModuleEnabled`
-  // will eventually answer per owner.
+  // One plain sentence for the Build → Modules page: what turning this on gives
+  // the owner. Optional; core has none because it is never listed.
+  description?: string;
+  // Whether the module is on for an instance by default. The owner's switch on
+  // /build/modules (settings.modules, ADR-272) overrides it; `isModuleEnabled`
+  // answers with the switch when set and this default otherwise.
   enabledByDefault: boolean;
   types: ModuleTypeDef[];
   exporters: ExporterDef[];
@@ -311,14 +314,43 @@ export function allModules(): ModuleManifest[] {
   return [...BUILTIN_MODULES, ...registered];
 }
 
-// The per-user enable seam (the "later config flip", Tyler PR #1 / roadmap M6).
-// Today it returns the manifest's default and ignores `ownerId`; per-user
-// enablement becomes a lookup against a settings table right here, with no change
-// to any call site. A type whose module is disabled resolves to the default
-// canvas, contributes no exporters, and reports no canonical format override.
-export function isModuleEnabled(moduleId: string, _ownerId?: string): boolean {
+// The per-owner enable switch (ADR-272 step 1). The owner's choice lives in
+// settings.modules, which is in the database, and this file must stay pure (no
+// DB, no React; see the header). So the choice arrives through an injection
+// seam: the impure side (`src/lib/modules/enabled.ts`) installs a resolver that
+// reads the owner's settings, preloaded once per request. The resolver answers
+// true/false when the owner has flipped the switch and undefined when it has
+// nothing to say (no owner, not preloaded, never touched), in which case the
+// manifest default wins. It must never throw. A plain-node verify script can
+// install a fake one. Core is always on: it is the frame the rest registers onto.
+// A type whose module is off resolves to the default canvas, contributes no
+// exporters, and reports no canonical format override.
+export type ModuleEnabledResolver = (
+  moduleId: string,
+  ownerId?: string
+) => boolean | undefined;
+
+let resolver: ModuleEnabledResolver = () => undefined;
+
+export function setModuleEnabledResolver(fn: ModuleEnabledResolver): void {
+  resolver = fn;
+}
+
+export function isModuleEnabled(moduleId: string, ownerId?: string): boolean {
+  if (moduleId === coreModule.id) return true;
   const m = allModules().find((x) => x.id === moduleId);
-  return m ? m.enabledByDefault : false;
+  if (!m) return false;
+  return resolver(moduleId, ownerId) ?? m.enabledByDefault;
+}
+
+// The type keys whose module is switched off, given an owner's settings.modules
+// map. The async paths (listTypes, quick capture, MCP) read settings directly
+// and call this, so they never depend on the per-request preload. Core types are
+// never in it.
+export function typeKeysOfDisabledModules(flags: Record<string, boolean>): string[] {
+  return allModules()
+    .filter((m) => m.id !== coreModule.id && (flags[m.id] ?? m.enabledByDefault) === false)
+    .flatMap((m) => m.types.map((t) => t.key));
 }
 
 function enabledModules(ownerId?: string): ModuleManifest[] {

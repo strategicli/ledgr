@@ -60,7 +60,7 @@ export const workspaceTools: McpTool[] = [
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async (ownerId) => {
       const [typeDefs, viewDefs, dashboardDefs, settings] = await Promise.all([
-        listTypes({ includeHidden: true }),
+        listTypes({ includeHidden: true, ownerId }), // minus switched-off modules (ADR-272)
         listViews(ownerId),
         listDashboards(ownerId),
         getSettings(ownerId),

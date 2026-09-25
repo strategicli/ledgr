@@ -12,6 +12,7 @@ import { ItemError, getItem } from "@/lib/items";
 import { bodyMarkdown, wordCountOf } from "@/lib/body";
 import { isItemFavorited } from "@/lib/favorites";
 import { canvasIdForType } from "@/lib/modules";
+import { preloadModuleSettings } from "@/lib/modules/enabled";
 import { canvasComponentFor } from "@/lib/module-wiring";
 import { resolveOwner } from "@/lib/owner";
 import { listAncestors } from "@/lib/subtasks";
@@ -100,7 +101,12 @@ export default async function ItemCanvas({
   // attached capability (SPIKE — bespoke-tool catalog) lets a user-named type
   // borrow a module's canvas; an unregistered type with no capability falls back
   // to the default markdown canvas, so this load is best-effort.
-  const typeDef = await getType(item.type).catch(() => null);
+  // The owner's module switches (ADR-272) must be loaded before the sync
+  // resolver runs; see src/lib/modules/enabled.ts.
+  const [typeDef] = await Promise.all([
+    getType(item.type).catch(() => null),
+    preloadModuleSettings(owner.id),
+  ]);
   const canvasId = canvasIdForType(item.type, owner.id, typeDef?.capability);
   const Canvas = canvasComponentFor(canvasId);
 

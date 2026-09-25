@@ -17,7 +17,8 @@ import {
 export async function customToolDefs(ownerId: string): Promise<WidgetDefinition[]> {
   const settings = await getSettings(ownerId);
   if (settings.toolTypes.length === 0) return [];
-  const types = await listTypes(); // excludes hidden + deleted types
+  // Excludes hidden + deleted types, and a switched-off module's (ADR-272).
+  const types = await listTypes({ ownerId });
   const byKey = new Map(types.map((t) => [t.key, t]));
   return settings.toolTypes
     .filter((key) => !BUILTIN_TOOL_TYPE_KEYS.has(key))

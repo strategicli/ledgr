@@ -83,6 +83,7 @@ const PAPER_SURFACES: SurfaceDef[] = [
 export const paperModule: ModuleManifest = {
   id: "papers",
   label: "Papers",
+  description: "A Paper type with a writing workspace: notes, shape, quote bank, outline, and draft, plus a Word export.",
   enabledByDefault: true,
   types: [
     {

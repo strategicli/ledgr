@@ -13,14 +13,14 @@ core list, the ESLint fence, the ADR) landed with this section. The full six-ste
 is §6 of `explorations/core-and-modules.md`; each step is its own PR.
 
 1. ~~Step 0: definitions and the fence.~~ Done.
-2. **Step 1: the switch.** `settings.modules`, a real `isModuleEnabled`, and `/build/modules`
-   with a toggle per module. Types whose module is off vanish from new-item, quick capture
-   and `list_types`; existing items keep rendering on the default canvas.
+2. ~~Step 1: the switch.~~ Done. `settings.modules`, a real `isModuleEnabled` (resolver
+   seam in `src/lib/modules/enabled.ts`), and `/build/modules`.
 3. **Step 2: fold the scattered switches onto that page** (AI memory, live context, agent,
    YouTube transcripts, the notification-center constant), reading the old keys once.
 4. **Step 3: manifest slots replace the hand-written lists**, one PR each: build-nav,
-   proxy public paths, the job catalog (one JSON both the supervisor and the app read),
-   MCP tool gating, health checks, the on-save/on-create hooks, then `requires`.
+   proxy public paths, ~~the job catalog~~ (done: `supervisor/jobs.json`, read by both
+   the supervisor and the app), MCP tool gating, health checks, the on-save/on-create
+   hooks, then `requires`.
 5. **Step 4: move code under `src/modules/<id>/`**, easiest first (themes, sharing,
    youtube, todoist, email, calendar-sync, onedrive-export, relatedness, snapshots,
    passages, desk, ai-memory, live-context, agent, MCP tool families).

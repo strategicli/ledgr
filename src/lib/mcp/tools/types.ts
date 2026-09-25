@@ -79,8 +79,9 @@ export const typeTools: McpTool[] = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-    handler: async (_ownerId, args) => {
-      const defs = await listTypes({ includeHidden: args.includeHidden === true });
+    handler: async (ownerId, args) => {
+      // ownerId drops the types of a module the owner switched off (ADR-272).
+      const defs = await listTypes({ includeHidden: args.includeHidden === true, ownerId });
       return {
         types: defs.map((t) => ({
           key: t.key,

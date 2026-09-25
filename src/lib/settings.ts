@@ -485,6 +485,12 @@ export type UserSettings = {
   // search state (q, filters, tuning criteria). Synced like everything else
   // here. `state` is opaque to settings.ts — SearchClient owns its shape.
   savedSearches: { id: string; name: string; state: Record<string, unknown> }[];
+  // The per-owner module switches (ADR-272), set on Build → Modules: module id
+  // -> on/off. An absent id means the module's own default (enabledByDefault in
+  // its manifest), so an owner who never visits the page changes nothing.
+  // Turning a module off hides its types from the places new items are made; it
+  // never deletes or alters data. Same no-migration posture as jobOwners.
+  modules: Record<string, boolean>;
 };
 
 // The notification sources (ADR-129), in the order the settings UI lists them.
@@ -607,6 +613,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   jobOwners: {},
   youtubeTranscripts: { enabled: false },
   savedSearches: [],
+  modules: {},
 };
 
 export const SETTINGS_UUID_RE =
@@ -790,6 +797,17 @@ function parseSearchSynonyms(raw: unknown): Record<string, string[]> {
   return out;
 }
 
+// Only string keys with boolean values survive; anything else in a hand-edited
+// blob is dropped (and so falls back to the module's default), never read as off.
+function parseModuleFlags(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>).filter(
+      (e): e is [string, boolean] => typeof e[1] === "boolean"
+    )
+  );
+}
+
 export const SAVED_SEARCHES_CAP = 100;
 
 // Parse saved searches: id and name must be non-empty strings, state a plain
@@ -924,6 +942,7 @@ export function parseSettings(raw: unknown): UserSettings {
   const searchSynonyms = parseSearchSynonyms(r.searchSynonyms);
   const jobOwners = parseJobOwners(r.jobOwners);
   const savedSearches = parseSavedSearches(r.savedSearches);
+  const modules = parseModuleFlags(r.modules);
   // Only an explicit `true` turns it on: an absent, partial or hand-edited blob
   // leaves the feature off, which is the safe answer on a machine without the
   // tools to do the work.
@@ -975,6 +994,7 @@ export function parseSettings(raw: unknown): UserSettings {
     jobOwners,
     youtubeTranscripts,
     savedSearches,
+    modules,
   };
 }
 

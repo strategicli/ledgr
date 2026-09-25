@@ -28,7 +28,9 @@ import {
   referenceModule,
   registerModule,
   registeredTypeKeys,
+  setModuleEnabledResolver,
   typeDefFor,
+  typeKeysOfDisabledModules,
   type CanvasItem,
   type ModuleManifest,
 } from "../src/lib/modules";
@@ -124,6 +126,34 @@ check("a disabled module's type falls back to the default canvas", canvasIdForTy
 check("a disabled module's type reports no format override", canonicalFormatForType("disabled-type") === MARKDOWN_FORMAT);
 check("a disabled module contributes no exporters", exportersForType("disabled-type").length === 0);
 check("a disabled module's type key is not enumerated", !registeredTypeKeys().includes("disabled-type"));
+
+// --- 4b. the owner's switch (ADR-272 step 1) -------------------------------
+// A fake resolver stands in for settings.modules. The reference module (on by
+// default, registered above) is the one we flip.
+const fakeFlags: Record<string, Record<string, boolean>> = {
+  "owner-off": { reference: false, core: false, "disabled-fixture": true },
+  "owner-on": { reference: true },
+};
+setModuleEnabledResolver((id, owner) => (owner ? fakeFlags[owner]?.[id] : undefined));
+check("switched off: module reports disabled", isModuleEnabled("reference", "owner-off") === false);
+check("switched off: type falls back to the default canvas", canvasIdForType("reference", "owner-off") === DEFAULT_CANVAS);
+check("switched off: no exporters", exportersForType("reference", "owner-off").length === 0);
+check("switched off: type key not enumerated", !registeredTypeKeys("owner-off").includes("reference"));
+check("switched on: module enabled", isModuleEnabled("reference", "owner-on") === true);
+check("switched on: own canvas resolves", canvasIdForType("reference", "owner-on") === "reference-canvas");
+check("switched on: exporter resolves", exportersForType("reference", "owner-on").length === 1);
+check("switched on: type key enumerated", registeredTypeKeys("owner-on").includes("reference"));
+check("the switch can turn a default-off module on", canvasIdForType("disabled-type", "owner-off") === "disabled-canvas");
+check("no answer from the resolver: manifest default wins", canvasIdForType("reference", "owner-unknown") === "reference-canvas");
+check("core cannot be turned off", isModuleEnabled("core", "owner-off") === true);
+check("core types keep their canvas when core is 'off'", canvasIdForType("task", "owner-off") === "task");
+check("an unknown module id is false", isModuleEnabled("no-such-module", "owner-on") === false);
+const offKeys = typeKeysOfDisabledModules({ reference: false, core: false });
+check("disabled type keys list the switched-off module's types", offKeys.includes("reference"));
+check("disabled type keys never list core types", !offKeys.includes("task"));
+check("disabled type keys include a default-off module left alone", offKeys.includes("disabled-type"));
+check("disabled type keys drop a default-off module switched on", !typeKeysOfDisabledModules({ "disabled-fixture": true }).includes("disabled-type"));
+setModuleEnabledResolver(() => undefined);
 
 // --- 5. boundary hygiene ---------------------------------------------------
 let threwOnDup = false;

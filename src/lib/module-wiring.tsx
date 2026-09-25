@@ -24,6 +24,9 @@ import { DEFAULT_CANVAS, type CanvasComponent } from "@/lib/modules";
 // `song` resolves its `chord` canvas. This is the canvas-dispatch path
 // (ItemCanvas imports this file), so registration happens before any render.
 import "@/lib/modules/register";
+// Side-effect import: installs the resolver that answers `isModuleEnabled` from
+// the owner's settings.modules (ADR-272).
+import "@/lib/modules/enabled";
 
 const CANVAS_COMPONENTS: Record<string, CanvasComponent> = {
   [DEFAULT_CANVAS]: MarkdownCanvas,

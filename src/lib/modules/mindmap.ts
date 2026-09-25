@@ -13,6 +13,7 @@ import type { ModuleManifest } from "@/lib/modules";
 export const mindmapModule: ModuleManifest = {
   id: "mindmap",
   label: "Mindmap",
+  description: "A Mindmap type: one central idea with branches you expand, collapse, and edit in place.",
   enabledByDefault: true,
   types: [
     {
