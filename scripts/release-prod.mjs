@@ -106,7 +106,9 @@ function ciShaFor(mainSha) {
     const headTree = JSON.parse(
       execFileSync("gh", ["api", `repos/${REPO}/git/commits/${head}`], { encoding: "utf8" })
     ).tree.sha;
-    if (headTree === cap(`git rev-parse ${mainSha}^{tree}`)) {
+    // execFileSync, not cap(): cmd.exe eats the ^ in ^{tree} as an escape.
+    const mainTree = execFileSync("git", ["rev-parse", `${mainSha}^{tree}`], { encoding: "utf8" }).trim();
+    if (headTree === mainTree) {
       console.log(`main ${mainSha.slice(0, 7)} has the same files as PR head ${head.slice(0, 7)}; using its CI run`);
       return head;
     }
