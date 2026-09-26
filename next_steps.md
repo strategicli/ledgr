@@ -26,9 +26,8 @@ made at the machine or by the first Clerk sign-in, a no-sign-in local copy answe
 Left over from step 1:
 - The setup form asks for email and password only. Ledgr stores no owner name anywhere
   yet; add one when something displays it.
-- `npm run local:setup-owner` is the first-run door until the installer (step 7) opens
-  it for you. The tray has no "Set up" item; its Reset sign-in password lands on the
-  setup form when there is no owner.
+- The tray has no "Set up" item; its Reset sign-in password (and the installer's Start
+  menu entry of the same name) lands on the setup form when there is no owner.
 - The Clerk first-sign-in claim is proven on local Postgres; the Neon (Vercel) path runs
   the same lock through a one-transaction batch and has not been exercised on a real
   Neon database.
@@ -46,10 +45,22 @@ Brandon's hub included, stays on git until its owner changes that. Left over fro
   Linux needs a source for portable `pg_dump`/`pg_restore`; the archive is tar.gz there.
 - The in-app agent's platform binary (230 MB) is not in the package, so the agent module
   cannot run from one yet.
-- A fresh package install still has no owner until `ledgr-ctl setup` runs; the installer
-  (step 7) should run it and open the page.
 - No LICENSE file yet (plan decision 3), needed before anyone outside Brandon and Tyler
   installs a package.
+
+Step 7 (the Windows installer, ADR-280, runbook §1t) landed: `Ledgr-Setup.exe` in every
+package release, linked as "Download Ledgr for Windows" from the README and the user
+guide. Per user, no Administrator prompt, ends on `/setup`; installs beside a git Ledgr
+on free ports. Left over from step 7:
+- Unsigned, so SmartScreen warns ("More info", then "Run anyway"). Signing needs a
+  certificate (an account and a yearly cost).
+- Not exercised: "Start with the computer → before anyone signs in" from an installed
+  copy (it raises a UAC prompt), a Windows account whose name has a space end to end
+  through the installer (the paths were tested with spaces by hand), and a machine
+  whose Windows is not in English.
+- The plan's first-run extras are not built: "start fresh or drop in a backup" and
+  "Connect with Tailscale" on the setup page. Both exist elsewhere (restore from a
+  backup is a terminal command; Tailscale is on Build → Network).
 
 Step 9 (keep a copy in the cloud, ADR-277, runbook §1r) landed: Build → Network pairs a
 hub with a fresh cloud copy by a one-time code typed on the cloud's `/setup`, fills it

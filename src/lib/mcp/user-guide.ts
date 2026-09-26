@@ -1192,7 +1192,8 @@ Sign-in** (\`/settings\`).
 2. On the sign-in page, **Forgot it? Use a recovery code**. Each code works
    once, and you land on User Settings to set a new password.
 3. At the computer running Ledgr, right-click the tray icon and choose **Reset
-   sign-in password...** (or run \`npm run local:reset-password\`). It opens a
+   sign-in password...**, or choose **Reset Ledgr sign-in password** from the
+   Start menu (or run \`npm run local:reset-password\`). It opens a
    page that works only on that computer, where you choose a new password and
    save a fresh kit. A cloud copy picks the new password up at its next sync.
 4. The last resort is a reset command in the runbook.
@@ -1205,6 +1206,35 @@ wifi or tailnet can open it. To use it from your phone or another computer, set
 a password here; within a few seconds it becomes reachable from other devices.
 Turning the password off moves it back to that computer alone.
 
+## Installing Ledgr on Windows
+
+**Download Ledgr for Windows:**
+https://github.com/strategicli/ledgr/releases/latest/download/Ledgr-Setup.exe
+(the newest build of the \`main\` channel). Double-click \`Ledgr-Setup.exe\` and
+click through. It installs for your Windows account only, with no Administrator
+prompt, starts Ledgr, and opens your browser on the setup page, where you make
+your email and password.
+
+- **"Windows protected your PC"** can appear first. The installer is not signed
+  yet, so Windows SmartScreen does not recognize it. Choose **More info**, then
+  **Run anyway**. Each release lists the file's sha256 if you want to check it.
+- **The Start menu** gets a **Ledgr** folder: **Ledgr** (opens it in the
+  browser, starting it first if needed), **Start Ledgr**, **Stop Ledgr**,
+  **Reset Ledgr sign-in password** (works only at that computer), and
+  **Uninstall Ledgr**.
+- **It starts when you sign in to Windows**, with its icon near the clock. Turn
+  that off, or ask for "before anyone signs in", with **Build → Updates → Start
+  with the computer**.
+- **Your data** lives in \`%LOCALAPPDATA%\\LedgrData\`, apart from the program.
+  Running a newer installer updates the program in place and keeps the data.
+  Ledgr also updates itself from **Build → Updates**.
+- **Uninstalling** (Start menu, or Windows Settings → Apps) stops Ledgr and
+  removes the program and its Start menu and startup entries. It keeps your data
+  unless you tick **Also delete all my Ledgr data from this computer**, and even
+  then it asks once more.
+- **Another Ledgr already on the computer** (one built from source, say) is left
+  alone: the installer puts this one beside it on its own free ports.
+
 ## Setting up a new copy
 
 **\`/setup\`** lists what a copy of Ledgr still needs, in plain words: what is
@@ -1212,9 +1242,11 @@ missing, why it matters, and what to do. It never shows a secret, only whether
 one is set. Anyone can open it, but once a copy has an owner only that owner
 sees the list.
 
-- **A new copy on your own computer** has no owner until you make one. At that
-  computer, run \`npm run local:setup-owner\` (or right-click the tray icon and
-  choose **Reset sign-in password...**). It opens \`/setup\` with a one-time
+- **A new copy on your own computer** has no owner until you make one. The
+  Windows installer opens this for you when it finishes. Later, at that
+  computer, choose **Reset Ledgr sign-in password** from the Start menu (or
+  right-click the tray icon and choose **Reset sign-in password...**, or run
+  \`npm run local:setup-owner\` in a copy built from source). It opens \`/setup\` with a one-time
   link that works for 15 minutes and only on that computer. Enter your email
   and a password, save the recovery kit, type one code back, and you are signed
   in as the owner.
@@ -1524,7 +1556,9 @@ running. Right-click it to open Ledgr, check what is answering, or start,
 restart and stop the service without a terminal. Stopping the *icon* and
 stopping *Ledgr* are deliberately worded as different things, because they are.
 Turn the icon on with \`npm run local:tray\`, off with the same command and
-\`-- --uninstall\`; either way the service itself is untouched.
+\`-- --uninstall\`; either way the service itself is untouched. A copy put on by
+the Windows installer shows its icon on its own, and **Start Ledgr** in the
+Start menu brings it back if you hid it.
 
 **Ledgr status…**, on the same right-click menu, opens a small window with two
 tabs. **Status** shows whether it is running, its version and when it last

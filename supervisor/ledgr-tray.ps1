@@ -38,10 +38,33 @@ param(
   [int]$AppPort = 3000,
   [int]$DbPort = 5433,
   [string]$DataDir = "",
-  [int]$PollSeconds = 15
+  [int]$PollSeconds = 15,
+  # The installed app's startup shortcut (install plan step 7): start the
+  # service first when it is not already running.
+  [switch]$Boot,
+  # The installed app's Start menu entries: run one ledgr-ctl verb (open,
+  # reset-password, stop), hidden, and exit without showing an icon.
+  [string]$Run = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# Ports and data folder come from the config when not passed, so a shortcut
+# only has to name the config (the installer picks the ports after it writes
+# the shortcuts). Passed values still win, exactly as before.
+if (Test-Path $ConfigPath) {
+  try {
+    $cfgJson = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    if (-not $PSBoundParameters.ContainsKey("AppPort") -and $cfgJson.appPort) { $AppPort = [int]$cfgJson.appPort }
+    if (-not $PSBoundParameters.ContainsKey("DbPort") -and $cfgJson.dbPort) { $DbPort = [int]$cfgJson.dbPort }
+    if (-not $DataDir -and $cfgJson.dataDir) { $DataDir = [string]$cfgJson.dataDir }
+  } catch { }
+}
+
+if ($Run) {
+  Start-Process -FilePath $NodePath -ArgumentList @("`"$CtlScript`"", $Run, "`"--config=$ConfigPath`"") -WindowStyle Hidden | Out-Null
+  exit 0
+}
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -180,10 +203,23 @@ $labels = @{
 # can never claim an outcome the ports do not agree with.
 
 function Invoke-Ctl([string]$Verb) {
+  # Quoted by hand: Windows PowerShell joins -ArgumentList with bare spaces, so
+  # an unquoted path under "C:\Users\Jane Doe\..." would split in two.
   Start-Process -FilePath $NodePath `
-    -ArgumentList @($CtlScript, $Verb, "--config=$ConfigPath") `
+    -ArgumentList @("`"$CtlScript`"", $Verb, "`"--config=$ConfigPath`"") `
     -WindowStyle Hidden | Out-Null
 }
+
+if ($Boot -and -not (Test-Port $AppPort)) { Invoke-Ctl "boot" }
+
+# One icon per install. "Start Ledgr" from the Start menu runs this again, and
+# a second icon for the same Ledgr would only confuse; the first one stays.
+# (An icon that was killed leaves its mutex abandoned, which counts as free.)
+$sha = [Security.Cryptography.SHA256]::Create()
+$mutexName = "Local\LedgrTray-" + ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($ConfigPath.ToLowerInvariant())))).Replace("-", "").Substring(0, 16)
+$script:trayMutex = New-Object System.Threading.Mutex($false, $mutexName)
+try { $owned = $script:trayMutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
+if (-not $owned) { exit 0 }
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Icon = $icons["down"]

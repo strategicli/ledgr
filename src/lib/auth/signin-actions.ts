@@ -263,7 +263,8 @@ export async function createOwnerAtMachine(
   if (!(await ticketOk(token))) {
     return {
       ok: false,
-      error: "This setup link has expired or was already used. On this computer, run npm run local:setup-owner again.",
+      error:
+        "This setup link has expired or was already used. On this computer, choose Reset Ledgr sign-in password from the Start menu or the tray icon again (or run npm run local:setup-owner in a copy built from source).",
     };
   }
   const address = typeof email === "string" ? email.trim() : "";

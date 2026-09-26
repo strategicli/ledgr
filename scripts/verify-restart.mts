@@ -304,7 +304,7 @@ ok("the boot-task caveat is computed from Windows, not from a stored string", ()
   // never re-checked — so a task later upgraded to run with nobody signed in
   // was still reported as if it could not (live, 2026-08-26).
   const ctl = readFileSync("supervisor/ledgr-ctl.mjs", "utf8");
-  assert.ok(ctl.includes("startupCaveat(boot.scope, boot.mode)"), "the caveat is not live");
+  assert.ok(ctl.includes("startupCaveat(boot.scope, boot.mode, STARTUP_TASK_NAME)"), "the caveat is not live");
   assert.ok(ctl.includes("parseSchtasksLogonMode(text)"), "the logon mode is never read");
   const order = ctl.indexOf("const liveCaveat") < ctl.indexOf("recorded?.ok ? recorded.caveat");
   assert.ok(order, "the recorded caveat still wins over the live one");

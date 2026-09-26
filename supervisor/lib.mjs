@@ -90,6 +90,11 @@ export function normalizeConfig(raw, baseDir) {
     postgresFlags: Array.isArray(cfg.postgresFlags)
       ? cfg.postgresFlags.filter((f) => typeof f === "string" && f.length > 0)
       : [],
+    // Set only by the Windows installer (install plan step 7): this copy's own
+    // name for its start-at-sign-in shortcut and its scheduled task, so a second
+    // Ledgr on one machine can never overwrite "Ledgr Supervisor". Unset (every
+    // git install) keeps the old task name and the old behavior exactly.
+    startupName: typeof cfg.startupName === "string" && cfg.startupName.trim() ? cfg.startupName.trim() : null,
     // Extra env passed through to the app verbatim (R2 keys, Graph secrets…).
     extraEnv: cfg.extraEnv && typeof cfg.extraEnv === "object" ? { ...cfg.extraEnv } : {},
   };
@@ -578,6 +583,46 @@ export const AWAIT_PID_TIMEOUT_MS = 90_000;
 
 export const STARTUP_TASK_NAME = "Ledgr Supervisor";
 
+/** The scheduled task this copy registers: its own name when the installer gave it one. */
+export function startupTaskNameOf(cfg) {
+  return cfg?.startupName || STARTUP_TASK_NAME;
+}
+
+/**
+ * An installed copy's start-at-sign-in entry: a shortcut in the owner's own
+ * Startup folder, which never needs an Administrator prompt (a scheduled task
+ * does on some machines, ADR-211). Only for a config with `startupName`.
+ */
+export function startupShortcutPath(appData, name) {
+  return join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", `${name}.lnk`);
+}
+
+/**
+ * What that shortcut runs: the tray icon, which starts the service first when
+ * it is not already running (`-Boot`) and reads its ports from the config. One
+ * entry, so the icon and the service cannot be registered apart. `root` is the
+ * folder Ledgr was installed into, never a builds/<version> an update prunes.
+ */
+export function trayLaunchArgs({ root, nodePath, configPath, boot = false }) {
+  const s = root.includes("\\") ? "\\" : "/";
+  return [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-WindowStyle",
+    "Hidden",
+    "-File",
+    `${root}${s}supervisor${s}ledgr-tray.ps1`,
+    "-NodePath",
+    nodePath,
+    "-CtlScript",
+    `${root}${s}supervisor${s}ledgr-ctl.mjs`,
+    "-ConfigPath",
+    configPath,
+    ...(boot ? ["-Boot"] : []),
+  ];
+}
+
 /**
  * The two scopes, and the difference matters enough that nothing defaults it
  * silently:
@@ -741,16 +786,17 @@ export function hubUrlHint(ts, port = 3000) {
 
 /**
  * @param {{username: string, nodePath: string, supervisorScript: string,
- *          configPath: string, scope?: string}} o — an absent scope means the
- *          SAFE one (logon), never the one that demands elevation.
+ *          configPath: string, scope?: string, taskName?: string}} o — an absent
+ *          scope means the SAFE one (logon), never the one that demands
+ *          elevation; an absent taskName means "Ledgr Supervisor".
  */
 export function schtasksCreateArgs(o) {
-  const { username, nodePath, supervisorScript, configPath, scope = "logon" } = o;
+  const { username, nodePath, supervisorScript, configPath, scope = "logon", taskName = STARTUP_TASK_NAME } = o;
   const always = startupScope(scope) === "always";
   return [
     "/Create",
     "/TN",
-    STARTUP_TASK_NAME,
+    taskName,
     "/SC",
     // Chosen deliberately (ADR-211). This used to be hardcoded ONSTART, which
     // quietly demanded elevation on every install.
@@ -805,12 +851,12 @@ export function ctlScriptFor(supervisorScript) {
   return cut < 0 ? "ledgr-ctl.mjs" : supervisorScript.slice(0, cut + 1) + "ledgr-ctl.mjs";
 }
 
-export function schtasksDeleteArgs() {
-  return ["/Delete", "/TN", STARTUP_TASK_NAME, "/F"];
+export function schtasksDeleteArgs(taskName = STARTUP_TASK_NAME) {
+  return ["/Delete", "/TN", taskName, "/F"];
 }
 
-export function schtasksQueryArgs() {
-  return ["/Query", "/TN", STARTUP_TASK_NAME, "/FO", "LIST", "/V"];
+export function schtasksQueryArgs(taskName = STARTUP_TASK_NAME) {
+  return ["/Query", "/TN", taskName, "/FO", "LIST", "/V"];
 }
 
 /**
@@ -859,7 +905,7 @@ export function parseSchtasksLogonMode(text) {
  * nothing to warn about. Only the always-on scope can be undercut this way:
  * the logon scope is interactive-only by definition and that is what it says.
  */
-export function startupCaveat(scope, logonMode) {
+export function startupCaveat(scope, logonMode, taskName = STARTUP_TASK_NAME) {
   if (startupScope(scope) !== "always") return null;
   if (logonMode !== "interactive") return null;
   return (
@@ -868,7 +914,7 @@ export function startupCaveat(scope, logonMode) {
     "no-password (S4U) task and Windows registered a weaker one, which usually " +
     "means this account lacks the \"Log on as a batch job\" right. Tick the box " +
     "again and accept the Administrator prompt; if it keeps happening, open " +
-    "Task Scheduler, find \"" + STARTUP_TASK_NAME + "\", and set \"Run whether " +
+    "Task Scheduler, find \"" + taskName + "\", and set \"Run whether " +
     "user is logged on or not\" with \"Do not store password\" ticked."
   );
 }

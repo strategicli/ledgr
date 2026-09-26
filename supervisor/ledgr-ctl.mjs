@@ -10,6 +10,7 @@
 //   npm run local:status -- --json       # the same, machine-readable
 //   npm run local:stop                   # graceful shutdown of the running peer
 //   npm run local:boot                   # start one if one is not already up
+//   node supervisor/ledgr-ctl.mjs open   # start it if needed, then open it in the browser
 //   npm run local:startup                # what Windows currently holds
 //   npm run local:startup -- --logon     # start at sign-in (no elevation)
 //   npm run local:startup -- --always    # start at boot (24/7 hub; elevation)
@@ -51,7 +52,8 @@ import {
   startupStatePath,
   stopSignalPath,
   parseStartupState,
-  STARTUP_TASK_NAME,
+  startupTaskNameOf,
+  startupShortcutPath as installedStartupShortcut,
   cronStatePath,
   parseCronState,
   parseUpdatePolicy,
@@ -82,6 +84,10 @@ if (!existsSync(configPath)) {
   process.exit(2);
 }
 const cfg = normalizeConfig(JSON.parse(readFileSync(configPath, "utf8")), dirname(configPath));
+// This copy's own startup names: "Ledgr Supervisor" for a git install, the
+// installer's name (and a Startup-folder shortcut) for an installed one.
+const STARTUP_TASK_NAME = startupTaskNameOf(cfg);
+const SHORTCUT = cfg.startupName && isWin ? installedStartupShortcut(process.env.APPDATA ?? "", cfg.startupName) : null;
 
 // ── Shared readers ───────────────────────────────────────────────────────────
 
@@ -152,8 +158,12 @@ async function appAnswers() {
 /** What Windows actually holds, not what we last asked for. */
 function registeredScope() {
   if (!isWin) return { supported: false, registered: false, scope: null, mode: null };
-  const res = spawnSync("schtasks", schtasksQueryArgs(), { encoding: "utf8" });
-  if (res.status !== 0) return { supported: true, registered: false, scope: null, mode: null };
+  const res = spawnSync("schtasks", schtasksQueryArgs(STARTUP_TASK_NAME), { encoding: "utf8" });
+  if (res.status !== 0) {
+    // An installed copy starts at sign-in from its Startup-folder shortcut.
+    const viaShortcut = SHORTCUT !== null && existsSync(SHORTCUT);
+    return { supported: true, registered: viaShortcut, scope: viaShortcut ? "logon" : null, mode: null };
+  }
   const text = res.stdout ?? "";
   // The logon mode comes from the SAME query, so the caveat below can be
   // computed from what Windows holds right now. It used to be printed from
@@ -275,7 +285,7 @@ async function doStatus() {
   // A successful registration that will not survive a logged-out boot is worse
   // than a failed one: it reads as done. Say so wherever we say "registered".
   // Live when we could ask Windows, recorded only as the fallback.
-  const liveCaveat = boot.registered ? startupCaveat(boot.scope, boot.mode) : null;
+  const liveCaveat = boot.registered ? startupCaveat(boot.scope, boot.mode, STARTUP_TASK_NAME) : null;
   const caveat = boot.registered ? liveCaveat : recorded?.ok ? recorded.caveat : null;
   if (caveat) {
     console.log(`  heads up    ${caveat}`);
@@ -537,8 +547,12 @@ function doStartup() {
     return 0;
   }
 
+  // An installed copy's startup is a shortcut plus, for "always", a task under
+  // its own name. The service already knows how to do both, so ask it.
+  if (cfg.startupName) return doRequest();
+
   if (wantDisable) {
-    const res = spawnSync("schtasks", schtasksDeleteArgs(), { stdio: "inherit" });
+    const res = spawnSync("schtasks", schtasksDeleteArgs(STARTUP_TASK_NAME), { stdio: "inherit" });
     if (res.status === 0) {
       console.log(`Removed "${STARTUP_TASK_NAME}". This peer no longer starts on its own.`);
       return 0;
@@ -823,6 +837,15 @@ async function doResetPassword(page = "reset-password") {
   const token = randomBytes(32).toString("base64url");
   writeFileSync(signinResetPath(cfg.dataDir), serializeSigninReset(token), "utf8");
   const url = `http://localhost:${cfg.appPort}/${page}#${token}`;
+  openBrowser(url);
+  console.log(
+    `Opening the ${what} page in your browser. It works for ${SIGNIN_RESET_MINUTES} minutes, on this computer only.\n` +
+      `If nothing opened, paste this into a browser on this computer:\n  ${url}`
+  );
+  return 0;
+}
+
+function openBrowser(url) {
   const [cmd, args] = isWin
     ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
     : process.platform === "darwin"
@@ -831,12 +854,21 @@ async function doResetPassword(page = "reset-password") {
   try {
     spawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
   } catch {
-    // no browser launcher; the printed link below still works
+    // no browser launcher; the caller prints the link
   }
-  console.log(
-    `Opening the ${what} page in your browser. It works for ${SIGNIN_RESET_MINUTES} minutes, on this computer only.\n` +
-      `If nothing opened, paste this into a browser on this computer:\n  ${url}`
-  );
+}
+
+// ── open (the Start menu's "Ledgr") ──────────────────────────────────────────
+
+/** Open Ledgr in the browser, starting it first when it is not running. */
+async function doOpen() {
+  if ((await appAnswers()) === null) {
+    const code = await doBoot();
+    if (code !== 0) return code;
+  }
+  const url = `http://localhost:${cfg.appPort}/`;
+  openBrowser(url);
+  console.log(`Opening ${url}`);
   return 0;
 }
 
@@ -848,6 +880,7 @@ const verbs = {
   // an install with no owner yet asks for your email and a password.
   setup: () => doResetPassword("setup"),
   status: doStatus,
+  open: doOpen,
   boot: doBoot,
   restart: doRestart,
   stop: doStop,

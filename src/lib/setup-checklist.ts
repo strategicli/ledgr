@@ -77,7 +77,7 @@ export function setupChecklist(f: SetupFacts): SetupItem[] {
       title: "This Ledgr has no owner yet",
       why: "Ledgr keeps one person's data. Until it knows who that is, every page is empty.",
       fix: f.supervised
-        ? "On this computer, run npm run local:setup-owner (or right-click the Ledgr tray icon and choose Reset sign-in password). It opens this page with a one-time link and asks for your email and a password."
+        ? "On this computer, open the Start menu and choose Reset Ledgr sign-in password, or right-click the Ledgr tray icon and choose Reset sign-in password (in a copy built from source, npm run local:setup-owner does the same). It opens this page with a one-time link and asks for your email and a password."
         : f.clerkConfigured
           ? "Sign in. The first person to sign in with Clerk becomes this Ledgr's owner, so do it before sharing the address."
           : f.deployed

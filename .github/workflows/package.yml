@@ -33,6 +33,8 @@ on:
     paths:
       - "scripts/package.mjs"
       - "scripts/package-pins.json"
+      - "scripts/ledgr-setup.iss"
+      - "src/app/favicon.ico"
       - "supervisor/**"
       - "next.config.ts"
       - ".github/workflows/package.yml"
@@ -102,12 +104,33 @@ jobs:
           path: .package-cache
           key: package-downloads-${{ matrix.platform }}-${{ hashFiles('scripts/package-pins.json') }}
       - run: node scripts/package.mjs --channel "${{ needs.meta.outputs.channel }}" --version "${{ needs.meta.outputs.version }}" --out dist/package
+      # The Windows installer (install plan step 7): Ledgr-Setup.exe wraps the
+      # package just built, plus its sha256. Unsigned, so Windows shows its
+      # "Windows protected your PC" warning (More info, then Run anyway).
+      - name: Windows installer
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          CHANNEL: ${{ needs.meta.outputs.channel }}
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc /Qp "/DAppVersion=$env:VERSION" "/DChannel=$env:CHANNEL" "/DSourceDir=$pwd\dist\package\ledgr" "/DOutputDir=$pwd\dist\package" scripts\ledgr-setup.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $sum = (Get-FileHash dist\package\Ledgr-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$sum  Ledgr-Setup.exe" | Out-File -Encoding ascii -NoNewline dist\package\Ledgr-Setup.exe.sha256
+          Write-Output "Ledgr-Setup.exe sha256 $sum"
       - uses: actions/upload-artifact@v5
         with:
           name: ledgr-package-${{ matrix.platform }}
           path: |
             dist/package/ledgr-*
             dist/package/manifest-*.json
+            dist/package/Ledgr-Setup.exe*
           retention-days: 7
           compression-level: 0 # already compressed
 
@@ -142,11 +165,21 @@ jobs:
           CHANNEL: ${{ needs.meta.outputs.channel }}
         run: |
           tag=$(node --input-type=module -e 'import { packageTag } from "./supervisor/release.mjs"; console.log(packageTag(process.env.CHANNEL, process.env.VERSION))')
-          gh release create "$tag" dist/ledgr-* dist/manifest.json \
+          # main's newest package is the repository's "Latest" release, so
+          # https://github.com/<repo>/releases/latest/download/Ledgr-Setup.exe
+          # is always the newest Windows installer for main (README, user guide).
+          latest=false
+          [ "$CHANNEL" = main ] && latest=true
+          sum=$(cut -d' ' -f1 dist/Ledgr-Setup.exe.sha256)
+          gh release create "$tag" dist/ledgr-* dist/Ledgr-Setup.exe dist/Ledgr-Setup.exe.sha256 dist/manifest.json \
             --target "$GITHUB_SHA" \
             --title "Ledgr package $VERSION ($CHANNEL)" \
-            --notes "Ready-made Ledgr for the $CHANNEL channel, built from $GITHUB_SHA. Installs that take packages from this channel update to it on their own or with Update now. manifest.json lists each archive's sha256; the supervisor refuses a download that does not match." \
-            --latest=false
+            --notes "Ready-made Ledgr for the $CHANNEL channel, built from $GITHUB_SHA.
+
+          **New on Windows:** download Ledgr-Setup.exe and double-click it. It installs for your Windows account only (no Administrator prompt) and opens Ledgr's setup page in your browser. The installer is not signed, so Windows may say \"Windows protected your PC\": choose More info, then Run anyway. Its sha256 is $sum (also in Ledgr-Setup.exe.sha256).
+
+          Installs that take packages from this channel update to it on their own or with Update now. manifest.json lists each archive's sha256; the supervisor refuses a download that does not match." \
+            --latest=$latest
       - name: Keep only the newest releases of this channel
         env:
           GH_TOKEN: ${{ github.token }}
