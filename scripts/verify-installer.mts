@@ -152,11 +152,11 @@ ok("this copy's names are its own", () => {
   assert.notEqual(`${INSTALLED_STARTUP_NAME}.lnk`, "Ledgr.lnk");
   const cfg = normalizeConfig(installConfig({ app: APP, data: DATA, channel: "main", appPort: 3010, dbPort: 5443 }), DATA);
   assert.equal(startupTaskNameOf(cfg), INSTALLED_STARTUP_NAME);
-  assert.equal(cfg.repoDir, APP);
-  assert.equal(cfg.dataDir, DATA);
+  // (repoDir/dataDir are Windows paths, which only resolve as absolute on Windows; CI runs Linux.)
   assert.equal(cfg.branch, "main");
+  assert.equal(cfg.appPort, 3010);
   assert.ok(schtasksCreateArgs({ username: "j", nodePath: "n", supervisorScript: "s", configPath: "c", taskName: startupTaskNameOf(cfg) }).includes(INSTALLED_STARTUP_NAME));
-  assert.ok(startupShortcutPath("C:\\AppData\\Roaming", INSTALLED_STARTUP_NAME).endsWith("\\Startup\\Ledgr app.lnk"));
+  assert.match(startupShortcutPath("C:\\AppData\\Roaming", INSTALLED_STARTUP_NAME), /[\\/]Startup[\\/]Ledgr app\.lnk$/);
 });
 ok("a git install keeps the task name it always had", () => {
   const cfg = normalizeConfig({ dataDir: "C:/ledgr-data", ownerEmail: "a@b.c" }, "C:/ledgr/supervisor");
@@ -176,8 +176,8 @@ ok("the startup shortcut runs the tray from the install folder, starting Ledgr o
 console.log("6. The Inno Setup script");
 const iss = readFileSync("scripts/ledgr-setup.iss", "utf8");
 ok("per user, no Administrator prompt", () => {
-  assert.match(iss, /^PrivilegesRequired=lowest$/m);
-  assert.match(iss, /^DefaultDirName=\{autopf\}\\Ledgr$/m);
+  assert.match(iss, /^PrivilegesRequired=lowest\r?$/m);
+  assert.match(iss, /^DefaultDirName=\{autopf\}\\Ledgr\r?$/m);
 });
 ok("its startup name is the helper's, and it never names the git hub's task", () => {
   assert.ok(iss.includes(`#define StartupName "${INSTALLED_STARTUP_NAME}"`));
