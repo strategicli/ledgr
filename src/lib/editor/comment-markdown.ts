@@ -225,6 +225,7 @@ export function hasComments(markdown: string): boolean {
 // emits its card ONCE, after the first line: one margin card, one row in the
 // outline, one thing to click. The editor places its card the same way.
 export function renderComments(markdown: string): string {
+  markdown = healEncodedComments(markdown);
   if (!mayHaveComments(markdown)) return markdown;
   // Grouping state, carried across lines: the note of the last pair seen, and the
   // text since it ended. Both reset whenever the run is broken.
@@ -283,7 +284,28 @@ function card(note: string): string {
 // print, PDF, share links, and the .docx export run, so a private note to self
 // never reaches a reader. Same "the marker never reaches the human-facing render"
 // rule as block anchors (ADR-090).
+// @tiptap/markdown entity-encodes < > & in EVERY text node it saves
+// (encodeHtmlEntities in encodeTextForMarkdown). A comment the editor holds as a
+// mark is safe, but one it holds as literal text — every point comment, i.e.
+// every speaker note, and a ranged pair typed but not yet reloaded — left the
+// editor as `{&gt;&gt;note&lt;&lt;}`, which nothing reads as a comment, so the
+// note showed on the audience's screen. The editor's serialize runs this on the
+// way out; the read side runs it on the way in, so a body already saved that way
+// renders right and heals on its next edit. Single-line and fence-aware, same
+// contract as COMMENT.
+//
+// ponytail: a literal `{&gt;&gt;…&lt;&lt;}` typed inside INLINE code (fences are
+// skipped) would be turned into `{>>…<<}` too. Nobody types that on purpose.
+const ENCODED_NOTE = /\{&gt;&gt;([^\n]*?)&lt;&lt;\}/g;
+export function healEncodedComments(markdown: string): string {
+  if (!markdown || !markdown.includes("{&gt;&gt;")) return markdown;
+  return mapLines(markdown, (line, inFence) =>
+    inFence ? line : line.replace(ENCODED_NOTE, "{>>$1<<}")
+  );
+}
+
 export function stripComments(markdown: string): string {
+  markdown = healEncodedComments(markdown);
   if (!mayHaveComments(markdown)) return markdown;
   return mapLines(markdown, (line, inFence) =>
     inFence ? line : line.replace(COMMENT, (_m, anchored) => anchored ?? "")

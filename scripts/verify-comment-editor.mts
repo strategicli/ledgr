@@ -115,6 +115,24 @@ check(
   anchored
 );
 
+// Point comments (speaker notes) are styled in place by decorations and never
+// rewritten: each gets its box + label + two faded delimiters, positions land on
+// the delimiters even after a mention chip, and code is left alone.
+const { pointNoteDecorations } = await import("../src/components/markdown-editor/comment-mark");
+{
+  const md =
+    "Slide text\n\n{>>speaker note<<}\n\nSee [@Roger](ledgr://item/00000000-0000-0000-0000-000000000001) {>>after a chip<<}\n\n`{>>in code<<}`\n\n```\n{>>in a fence<<}\n```";
+  editor.commands.setContent(md, { contentType: "markdown" });
+  const doc = editor.state.doc;
+  const found = pointNoteDecorations(doc).find();
+  const boxes = found.filter((d) => (d as unknown as { type: { attrs?: { class?: string } } }).type.attrs?.class === "cmt-point-edit");
+  const texts = boxes.map((d) => doc.textBetween(d.from, d.to));
+  check("two notes styled, code skipped", texts.length === 2, JSON.stringify(texts));
+  check("note ranges cover the delimiters exactly", texts[0] === "{>>speaker note<<}" && texts[1] === "{>>after a chip<<}", JSON.stringify(texts));
+  check("one label widget per note", found.length === boxes.length * 4, String(found.length));
+  check("styling leaves the markdown untouched", editor.getMarkdown() === md, editor.getMarkdown());
+}
+
 editor.destroy();
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 process.exit(failures ? 1 : 0);

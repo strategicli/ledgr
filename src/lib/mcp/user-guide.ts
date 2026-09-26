@@ -1060,7 +1060,9 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   slide and the text between marks becomes your speaker notes. Otherwise a \`---\`
   line (with a blank line above it) starts a new slide. With no \`---\` lines,
   each top-level heading does. Comments become speaker notes and never reach
-  the screen.
+  the screen. To write a note, type \`{>>your note<<}\` on its own line; the
+  editor shows it as a highlighted band with a **Note** label so notes stand
+  apart from slide content, and you edit it like any other text.
 - **Two windows.** The tab you open is your presenter view: the current and next
   slide, your notes, a timer and the clock. **Open audience window** opens the
   view for the projector; drag it there and press **F** for full screen.
