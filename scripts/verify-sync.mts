@@ -21,7 +21,9 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmDirBestEffort } from "../supervisor/rm-dir.mjs";
+import { createRequire } from "node:module";
 import { freePorts } from "./lib/free-port.mjs";
+import { stopCluster } from "./lib/pg-stop.mjs";
 import {
   cmpStamp,
   mergeOps,
@@ -1060,13 +1062,10 @@ async function tierB(): Promise<void> {
       `postgresql://postgres:postgres@localhost:${ports[1]}/ledgr`
     );
   } finally {
-    for (const c of clusters) {
-      try {
-        await c.stop();
-      } catch {
-        // best-effort teardown
-      }
-    }
+    // pg_ctl, not c.stop(): the kill can strand an io_worker that keeps the
+    // port bound (scripts/lib/pg-stop.mjs), which is one way a leaked
+    // postmaster wedged this suite for 77 minutes.
+    for (const [i, c] of clusters.entries()) await stopCluster(c, dirs[i], createRequire(import.meta.url));
     // Best-effort: on Windows the postmaster we just stopped releases its
     // handles asynchronously, so an immediate recursive remove loses the
     // race and throws EPERM. Every assertion has already run by here, so a

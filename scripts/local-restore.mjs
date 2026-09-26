@@ -74,6 +74,7 @@ const repoDir = resolve(here, "..");
 const { normalizeConfig, buildDbUrl, tunedPostgresFlags } = await import(new URL("../supervisor/lib.mjs", import.meta.url));
 const { redactConnectionString } = await import(new URL("./local-setup-lib.mjs", import.meta.url));
 const { copyAllTables } = await import(new URL("./lib/pg-copy.mjs", import.meta.url));
+const { stopCluster } = await import(new URL("./lib/pg-stop.mjs", import.meta.url));
 
 const USAGE =
   "usage: npm run local:restore -- /path/to/ledgr-YYYY-MM-DD.dump [/path/to/config.json]\n" +
@@ -85,8 +86,9 @@ function fail(msg) {
 
 /** Start the embedded cluster at cfg.dataDir (initdb on first run). Shared
  * by both fill modes — the one description of "bring the local cluster up".
- * Returns { cluster, pg } (the constructed EmbeddedPostgres instance and the
- * `pg` module); the caller owns calling cluster.stop() when done. */
+ * Returns { cluster, pg, stop } (the constructed EmbeddedPostgres instance,
+ * the `pg` module, and the clean shutdown the caller owes when done: pg_ctl
+ * first, never embedded-postgres's bare kill; see scripts/lib/pg-stop.mjs). */
 async function startCluster(cfg) {
   const requireFromRepo = createRequire(join(repoDir, "package.json"));
   const EmbeddedPostgres = (await import(pathToFileURL(requireFromRepo.resolve("embedded-postgres")).href)).default;
@@ -123,7 +125,7 @@ async function startCluster(cfg) {
       `could not start the local Postgres (is the supervisor still running? stop it first): ${err instanceof Error ? err.message : err}`
     );
   }
-  return { cluster, pg };
+  return { cluster, pg, stop: () => stopCluster(cluster, pgDir, requireFromRepo) };
 }
 
 /**
@@ -305,7 +307,7 @@ async function restoreFromFile(dumpPath, cfg) {
   }
   console.log(`Restoring ${dumpPath}\n  into the local cluster at ${cfg.dataDir} (port ${cfg.dbPort})`);
 
-  const { cluster, pg } = await startCluster(cfg);
+  const { pg, stop } = await startCluster(cfg);
 
   try {
     const dbUrl = buildDbUrl(cfg);
@@ -357,11 +359,7 @@ async function restoreFromFile(dumpPath, cfg) {
         "everything newer than the backup — expect a burst of ops, then steady state."
     );
   } finally {
-    try {
-      await cluster.stop();
-    } catch {
-      // best-effort
-    }
+    await stop();
   }
 }
 
@@ -444,7 +442,7 @@ async function pullFromUrl(url, cfg) {
   }
   console.log(`Pulling from ${hostname} ...`);
 
-  const { cluster, pg } = await startCluster(cfg);
+  const { pg, stop } = await startCluster(cfg);
   try {
     const prior = await readPriorIdentity(pg, cfg);
     const priorSignin = await readPriorSigninMethod(pg, cfg);
@@ -492,11 +490,7 @@ async function pullFromUrl(url, cfg) {
         "everything newer than this pull — expect a burst of ops, then steady state."
     );
   } finally {
-    try {
-      await cluster.stop();
-    } catch {
-      // best-effort
-    }
+    await stop();
   }
 }
 
