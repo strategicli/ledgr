@@ -502,6 +502,11 @@ export type UserSettings = {
   // a hub keeps. Synced like the rest, so every copy hands out the same address.
   // Null = today's behavior: the address the browser is on.
   publicUrl: string | null;
+  // The owner's default presentation design (the presentations module's design
+  // step), applied to any item that carries no design of its own. Opaque here
+  // like deskWorkspaces.layout — core doesn't know the module's shape, and it is
+  // re-validated by the module's own parseDesign every time it's read.
+  presentationDefault: unknown;
 };
 
 /** A public address as stored: an http(s) origin, no path, no trailing slash. */
@@ -634,6 +639,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   savedSearches: [],
   modules: {},
   publicUrl: null,
+  presentationDefault: null,
 };
 
 export const SETTINGS_UUID_RE =
@@ -1042,6 +1048,9 @@ export function parseSettings(raw: unknown): UserSettings {
     savedSearches,
     modules,
     publicUrl: normalizePublicUrl(r.publicUrl),
+    // Opaque pass-through (see the field comment); parseDesign re-validates it
+    // on read, so an absent/malformed value just means "no default yet".
+    presentationDefault: r.presentationDefault ?? null,
   };
 }
 
